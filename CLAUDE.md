@@ -86,6 +86,10 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 - Go module path, license, and name availability (§20) before anything is published.
 - Any gate that seems to require weakening a prime directive — that's a design conversation, not a workaround.
 
+## Seed docs
+
+`docs-livetv-integration.md` ships alongside this repo pre-written. During **phase 14**, incorporate it as `docs/integrations/media-server-livetv.md` (update any section references if the design doc has moved) and fold its "Troubleshooting hooks" into the Troubleshooting page. It is a summary — where it and the design doc disagree, the design doc wins and the seed gets corrected.
+
 ## Definition of done
 
 Two halves (design doc §21): the **automated** DoD runs in CI against the testkit; the **manual smoke** runs on the maintainer's real stack (wizard all-green, a real intent → approved → a channel actually playing in Tunarr with ad pods). The build isn't done until both are.

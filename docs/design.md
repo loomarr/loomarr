@@ -229,6 +229,16 @@ Flavor via `LIBRARY_FLAVOR`. **Season precision default:** `SEASON_PRECISION=ser
 ### Programmer — Tunarr
 The scheduler drives Tunarr's REST API (documented OpenAPI at `tunarr.com/api-docs.html`): channels CRUD, programming/lineup, filler lists, flex, custom shows. **Decided: hand-write a thin client** against only the endpoints we use — generating from Tunarr's full pre-1.0 spec would couple us to its schema churn. Pin and record the Tunarr version tested against in the README. Verify during phase 10 whether Tunarr requires an API key in the target version — `TUNARR_API_KEY` is optional config either way. Tunarr owns transcoding/streaming/EPG/HDHR+M3U output; `loomarr` owns lineup + filler. **Important:** Tunarr must have the same Emby/Jellyfin library configured as *its* media source, since Tunarr streams the underlying files — `loomarr` and Tunarr agree on titles via the library.
 
+### Live TV wiring — Tunarr → Emby/Jellyfin (tuner + guide)
+
+For Loomarr's channels to appear in the family's TV guide, the media server must consume Tunarr's **tuner + guide** surface. This is **one-time wiring of Tunarr as a tuner/guide source — never per-channel registration.** Once wired, every channel Loomarr creates/renames/deletes propagates automatically through Tunarr's M3U/XMLTV output; Loomarr only pokes the guide refresh so changes appear in minutes rather than after the nightly refresh.
+
+- **Endpoints (both flavors, Emby lineage):** `POST /LiveTv/TunerHosts` (type `m3u`, `Url` = Tunarr's playlist URL) and `POST /LiveTv/ListingProviders` (type `xmltv`, `Url` = Tunarr's guide URL), using the admin `LIBRARY_TOKEN`. **M3U is preferred over HDHomeRun emulation** — explicit and discovery-free, so registration is deterministic.
+- **One-time & never silent.** There is no per-channel media-server call, ever. Wiring is an explicit operator action — the wizard's one-click "Connect Tunarr to Emby/Jellyfin" (`POST /v1/setup/livetv-connect`, admin — §7) or the manual runbook step (§16). Loomarr never reconfigures a media server unasked.
+- **Idempotent.** Enumerate existing tuners/providers first (`GET /LiveTv/TunerHosts`, `/LiveTv/ListingProviders`); if Tunarr is already registered, the connect is a no-op. Duplicate tuners are a classic Emby mess — tests assert **second-call-no-op** (Phase 10 gate).
+- **Version fragility → live capture.** The endpoints exist on both flavors, but **payload fields and the guide-refresh task id drift across versions.** A Phase-0-style maintainer-supervised capture (folded into Phase 10, §21) pins the exact accepted request/response payloads + the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; the adapter is written against those pins, not memory. Any contract deviation ⇒ update this doc first.
+- **Division of labor is unchanged (§1 non-goals):** Loomarr decides *what plays and when*; Tunarr owns playout/transcode/EPG and the HDHR/M3U/XMLTV tuner surface; Emby/Jellyfin consume that tuner + guide like any HDHomeRun. Loomarr never builds streaming; the escape hatch is a second `Programmer` adapter (ErsatzTV).
+
 ### Suggester / Catalog — LLM
 See §8. Provider-neutral; Ollama or Anthropic; catalog tool grounds it against the real library + TMDB.
 
@@ -264,7 +274,8 @@ See §8. Provider-neutral; Ollama or Anthropic; catalog tool grounds it against 
 | GET | `/v1/users` | List users (admin). |
 | PATCH | `/v1/users/{id}` | Role / quotas / disable (admin). |
 | POST | `/v1/users/sync` | Import/sync users from the media server (admin). |
-| GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). |
+| GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). Includes the "Tunarr wired as tuner + guide in the media server" check (§6 Live TV wiring). |
+| POST | `/v1/setup/livetv-connect` | One-time wiring of Tunarr as an M3U tuner + XMLTV guide source in Emby/Jellyfin (admin; idempotent — §6). |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB + clips. Any authenticated user. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. |
 | POST | `/hooks/arr` | Sonarr/Radarr webhook ingest (shared-secret). |
@@ -370,6 +381,9 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 
 ### Tunarr integration
 Only implementation of the `Programmer` boundary, but abstracted so a future ErsatzTV/dizqueTV target is possible. Tunarr must point at the same Emby/Jellyfin library as its media source (§6).
+
+### Guide freshness
+Emby/Jellyfin refresh guide data on a schedule (nightly by default). After any channel reconcile that **creates, renames, or deletes** channels, the scheduler triggers the media server's **guide-refresh scheduled task** (best-effort — a failure degrades freshness, never the reconcile). This is the difference between "live in Tunarr" and "visible in the family's guide right now." The guide-refresh task id is version-fragile and pinned via the §6 Live TV wiring capture. Wiring itself is one-time (§6); this is the only per-reconcile media-server touch, and it is idempotent (a refresh is always safe to re-request).
 
 ---
 
@@ -477,8 +491,9 @@ Env vars remain the single source of truth for connections and secrets (§14) �
 On a fresh instance the UI walks the owner through, in order:
 1. **Claim** — first media-server admin signs in and becomes owner (wraps §11's bootstrap).
 2. **Connection checklist** — live-tests each dependency and shows pass/fail with a fix hint and a deep link into the relevant docs page: media server reachable + `LIBRARY_TOKEN` valid; filler library found (if configured); Seerr reachable + key valid; **Tunarr reachable *and* has a media source matching `LIBRARY_URL`** (queryable via Tunarr's API — this verifies §6's "Important" invariant instead of just documenting it); LLM reachable + `LLM_MODEL` present **and supports tool-calling** (Ollama: query the model's capabilities — a non-tools model fails grounding silently otherwise); TMDB key valid.
-3. **Webhook handshake** — displays the exact URL + secret to paste into Sonarr and Radarr, then listens: the operator clicks **Test** in each app and the checklist flips green on receipt (per-app last-received timestamps). No more "did the webhook actually work?" guesswork.
-4. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
+3. **Connect Tunarr to the guide** — one-click "Connect Tunarr to Emby/Jellyfin" wires Tunarr as an M3U tuner + XMLTV guide source (`POST /v1/setup/livetv-connect`, §6/§7). Idempotent and never silent — this is the step that makes Loomarr's channels appear in the family's TV guide. The `GET /v1/setup/status` "Tunarr wired as tuner + guide" check surfaces the button when it's red and confirms when green.
+4. **Webhook handshake** — displays the exact URL + secret to paste into Sonarr and Radarr, then listens: the operator clicks **Test** in each app and the checklist flips green on receipt (per-app last-received timestamps). No more "did the webhook actually work?" guesswork.
+5. **Guided first channel** — offer a template intent (below); since the owner is an admin, they can self-approve and watch the full pipeline run end to end.
 
 The checklist is backed by `GET /v1/setup/status` (runs all checks, returns structured results) and is **re-runnable from Settings** — the same panel doubles as the troubleshooting console for the life of the install.
 
@@ -736,7 +751,7 @@ Each phase ends green (compiles + its tests pass) before the next.
 7. **Provisioning reconciler + janitor.** Ticker → `ClaimDue` → retry `wanted`, missed-webhook re-check, deadline give-up + `Cancel`; retention sweeps (§5: sessions, jobs, proposals).
 8. **Self-documenting API.** Huma v2 on `humago` (§7.1, §14); `/v1/titles*`, `/v1/events`, `/openapi.*`, `/docs`, ops; `GET /v1/backup` (SQLite `VACUUM INTO`); `make openapi` + committed `api/openapi.yaml`; contract tests.
 9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, first-admin bootstrap, user sync (periodic + on-demand), role enforcement on all mutating routes, `API_TOKEN`, login rate-limit. **Auth & roles tests are the gate.**
-10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. Reconcile-against-mock-Tunarr tests are the gate.
+10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** `POST /v1/setup/livetv-connect` wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
 11. **Suggester (§8).** `Suggester` + Ollama/Anthropic; catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/suggestions*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
 12. **Commercials & filler (§10).** Catalog sync from the media server's filler library (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; `loomarr-ingest` sidecar image (yt-dlp/Archive → drop-folder). **Filler-never-a-program + pod-matching tests are the gate.**
 13. **Web UI + onboarding (§12, §13).** Vite React+TS per §14 (TanStack Query, orval hooks, Tailwind+shadcn/ui); typed client from `api/openapi.yaml`; Login + first-run wizard (claim → `GET /v1/setup/status` checklist → webhook handshake → guided first channel), embedded channel templates, Channels, Board/My-proposals, Suggestion workspace (search-driven lineup editing) + admin approval queue, ⌘K command palette, Filler library, Users, Settings w/ re-runnable checklist, Help (embedded docs rendering); SSE; embed in binary at `/`. **Onboarding tests are part of this gate.**
