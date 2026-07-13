@@ -55,7 +55,7 @@ test-pg: ## store conformance vs Postgres (testcontainers; requires Docker)
 
 .PHONY: openapi
 openapi: ## export api/openapi.yaml from the running definitions
-	@echo "openapi: implemented in Phase 8"; exit 1
+	$(GO) run ./cmd/openapi api/openapi.yaml
 
 .PHONY: openapi-verify
 openapi-verify: openapi ## regenerated spec must match committed (CI red on drift)

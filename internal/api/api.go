@@ -1,49 +1,33 @@
-// Package api wires Loomarr's inbound HTTP surface. Per design §14 the router is
-// the stdlib net/http ServeMux (Go 1.22 method+path patterns) — no third-party
-// router; the embedded same-origin SPA means no CORS layer. Phase 8 mounts the
-// versioned /v1 API here via Huma on the humago adapter; Phase 1 provides only
-// liveness (/healthz) and a readiness stub.
+// Package api wires Loomarr's inbound HTTP surface (§7). The router is the
+// stdlib net/http ServeMux (Go 1.22 patterns) with Huma v2 mounted via humago
+// for the versioned /v1 API — code-first OpenAPI 3.1, one source of truth for
+// spec + validation + docs (§7.1). No third-party router; the embedded
+// same-origin SPA means no CORS layer.
 package api
 
 import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
-// ReadyFunc reports whether the process is ready to serve (DB connectivity +
-// migrations, and soft Tunarr reachability — §17). Phase 1 has no DB, so main
-// supplies a stub that always reports ready; Phase 3 replaces it.
+// ReadyFunc reports readiness (DB + migrations; soft Tunarr) — §17.
 type ReadyFunc func() (ready bool, detail string)
 
-// Deps carries the optional subsystems the router mounts as they come online in
-// later phases. A nil field means that route isn't mounted yet.
-type Deps struct {
-	Ready ReadyFunc
-	// Ingest handles POST /hooks/arr (§6, Phase 6). Nil until a store+library
-	// are configured.
-	Ingest http.Handler
-}
-
-// Router builds the top-level handler. Later phases extend the returned mux.
-func Router(log *slog.Logger, deps Deps) http.Handler {
+// Router builds the top-level handler from the given options.
+func Router(log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
-	ready := deps.Ready
+
+	// Ops endpoints, unauthenticated on the LAN (§7).
+	ready := opts.Ready
 	if ready == nil {
 		ready = func() (bool, string) { return true, "ok" }
 	}
-
-	// Liveness: the process is up. Cheap, dependency-free (§17).
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-
-	// Sonarr/Radarr ingest webhook (§6, Phase 6), if wired.
-	if deps.Ingest != nil {
-		mux.Handle("POST /hooks/arr", deps.Ingest)
-	}
-
-	// Readiness: true only once dependencies are satisfied (§17). 503 until then.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ok, detail := ready()
 		code := http.StatusOK
@@ -52,6 +36,25 @@ func Router(log *slog.Logger, deps Deps) http.Handler {
 		}
 		writeJSON(w, code, map[string]any{"ready": ok, "detail": detail})
 	})
+
+	// Sonarr/Radarr ingest webhook (§6). Uses WEBHOOK_SECRET, not /v1 auth.
+	if opts.Ingest != nil {
+		mux.Handle("POST /hooks/arr", opts.Ingest)
+	}
+
+	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
+	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
+	humaAPI := humago.New(mux, humaConfig())
+	srv := &Server{store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite}
+	srv.registerMiddleware(humaAPI)
+	srv.registerTitles(humaAPI)
+
+	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
+	// (not a typed Huma op — §16). Auth checked inline.
+	mux.HandleFunc("GET /v1/backup", srv.backupHandler)
+
+	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
+	mux.HandleFunc("GET /docs", docsHandler)
 
 	return logRequests(log, mux)
 }
@@ -62,7 +65,6 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// logRequests emits one structured line per request (§17 observability baseline).
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)

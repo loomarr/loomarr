@@ -40,7 +40,11 @@
       "Bash(gofmt -w internal/reconcile/*.go internal/requester/*.go internal/testkit/*.go)",
       "Bash(sed -i 's|\"github.com/mantonx/loomarr/internal/library\"|\"github.com/mantonx/loomarr/internal/library\"\\\\n\\\\t\"github.com/mantonx/loomarr/internal/reconcile\"\\\\n\\\\t\"github.com/mantonx/loomarr/internal/requester\"|' cmd/loomarr/main.go)",
       "Bash(gofmt -w cmd/loomarr/main.go internal/reconcile/*.go)",
-      "Bash(gofmt -w cmd/loomarr/main.go)"
+      "Bash(gofmt -w cmd/loomarr/main.go)",
+      "Bash(rm -f /tmp/apitest.db*)",
+      "Bash(LISTEN_ADDR=:18091 DATABASE_URL=\"sqlite:///tmp/apitest.db\" API_TOKEN=admintok /tmp/lm)",
+      "Bash(pkill -9 -f '/tmp/lm' 2>/dev/null; sleep 1; echo \"server stopped\"; rm -f /tmp/lm /tmp/apitest.db*)",
+      "Bash(gofmt -w internal/api/*.go cmd/openapi/*.go cmd/loomarr/*.go)"
     ],
     "additionalDirectories": [
       "/tmp"
