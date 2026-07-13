@@ -4,8 +4,9 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**Active phase: 5 — Library adapter (Emby/Jellyfin).** Phases 0–4 done (see the phase table).
-Phase 5 builds against the pinned Emby fixtures + FINDINGS from Phase 0. Phase-0 findings:
+**Active phase: 6 — Requester + ingest.** Phases 0–5 done (see the phase table). Phase 6 builds
+the Seerr requester + `/hooks/arr` handler against the pinned Radarr/Sonarr webhook fixtures, and
+should capture the live Sonarr Grab/Download webhooks (deferred from Phase 0). Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](docs/engineering/phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 
@@ -18,7 +19,7 @@ Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 | 2 · Provisioner domain + state machine | done | `make check` green; `go test ./internal/provision/` — Key derivation, **webhook-key parity vs real Radarr fixture**, happy path, + all 5 §4 invariants (terminal monotonicity, emit-only-terminal, idempotent no-op, library-is-truth, deadline discipline) | Pure domain, no I/O. `Title`/`Key`/`State`/`Record` (§3); `Apply(rec, ev, now) → (Record, []DomainEvent)` (§4) — clock passed in for determinism. Illegal transitions are no-ops, not errors. |
 | 3 · Store + SQLite | done | `make check` green (`-race`); `go test ./internal/store/` — conformance suite (round-trip, upsert-idempotent, not-found, list, **ClaimDue + concurrent claim**, settings) + downgrade guard + unknown-scheme; app boots on real SQLite, migrates, `/readyz` ready | `Store` iface (§5); shared `database/sql` impl (one path, `?`↔`$N` rebinding); `modernc.org/sqlite` WAL+busy_timeout, single-conn; goose embedded per-dialect migrations + **startup downgrade guard**; **`ClaimDueTitles` leases rows (deadline→now+lease)** so concurrent callers/replicas never double-claim — SQLite guarded UPDATE, PG `FOR UPDATE SKIP LOCKED`. Conformance is one suite, backend-agnostic (Phase 4 reuses it). |
 | 4 · Postgres backend | done | `make test-pg` green (testcontainers `postgres:16-alpine`, 3.3s) — **same conformance suite**, incl. `ClaimDueConcurrent` under real `FOR UPDATE SKIP LOCKED` (passed 5× under `-race`); app boots + migrates on dev-compose Postgres, `/readyz` ready | `pgx` stdlib shim, `$N` placeholder rebinding, PG per-dialect migrations. Postgres test behind `//go:build integration` so default `make check` needs no Docker. Concurrent claim is the meaningful case here (SQLite serializes; PG genuinely races). |
-| 5 · Library adapter | todo | — | Emby/Jellyfin flavor header auth; `SEASON_PRECISION=series`. |
+| 5 · Library adapter | done | `make check` green; `go test ./internal/library/` — Lookup present/absent (pinned fixtures), **both-flavor token headers** (Emby `X-Emby-Token` vs Jellyfin `MediaBrowser`), **both-flavor login headers**, auth success + **§11 bad-pw 401 negative path**, ListUsers, SeasonPrecision | Shared Emby/Jellyfin `Client` (one impl, flavor differs only in auth headers — auth.go); `Lookup`/`AuthenticateByName`/`ListUsers` (§6, §11) via `httpx` 10s timeout; `SEASON_PRECISION` series(default)/seasons policy. Testkit `MediaServer` mock serves pinned fixtures + captures headers (both flavors, CLAUDE.md). Login-success body synthesized (real capture deferred to P9). |
 | 6 · Requester + ingest | todo | — | Seerr (201/409 ok); `/hooks/arr` + secret; `Test` event; confirm-before-available. Uses Phase-0 fixtures. |
 | 7 · Reconciler + janitor | todo | — | Ticker→`ClaimDue`→retry; missed-webhook re-check; deadline give-up; retention sweeps. |
 | 8 · Self-documenting API | todo | — | Huma v2 / `humago`; `/openapi.*`, `/docs`; `GET /v1/backup`; `make openapi` + committed spec; contract tests. |
