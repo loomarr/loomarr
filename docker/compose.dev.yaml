@@ -1,0 +1,29 @@
+# Loomarr dev dependencies (not the app itself — that's added in Phase 1).
+# Brings up a persistent local Tunarr to develop the Programmer adapter (§9/§10) against.
+#
+#   docker compose -f docker/compose.dev.yaml up -d
+#   docker compose -f docker/compose.dev.yaml logs -f tunarr
+#
+# Tunarr owns transcoding/streaming/EPG; loomarr owns lineup + filler (§6). Its media source
+# (Emby) is configured via Tunarr's API after first start — see docker/tunarr-dev-setup.md.
+# Pinned to the version our vendored spec (api/vendor/tunarr-openapi.json) was captured against.
+
+services:
+  tunarr:
+    # 1.3.8 — matches api/vendor/tunarr-openapi.json. Digest-pinned so :latest drift can't
+    # silently invalidate the vendored spec (design §6: "pin and record the version tested").
+    image: chrisbenincasa/tunarr:1.3.8@sha256:88122a21c21e62c3786db786cb2725f2b94da538ea613d08febb67bf3d912e3e
+    container_name: tunarr-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - tunarr-dev-config:/config/tunarr
+    # Tunarr streams the underlying files, so it must reach the same Emby as loomarr (§6).
+    # Emby is on the maintainer's Tailscale host; extra_hosts lets the container resolve it
+    # by name in the media-source config regardless of the container's own network.
+    extra_hosts:
+      - "emby-media:100.75.125.45"
+
+volumes:
+  tunarr-dev-config:

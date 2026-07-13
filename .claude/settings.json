@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/fictional/Projects/loomarr status)",
+      "Bash(sudo -n systemctl start docker)",
+      "Bash(sudo systemctl enable docker)",
+      "Bash(getent hosts *)",
+      "Bash(tailscale status *)",
+      "Bash(tailscale ip *)",
+      "Bash(exit 1)",
+      "Bash(rm -f radarr_selftest_1.json)",
+      "Bash(mv radarr_grab_3.json grab_webhook.json)",
+      "Bash(rm -f radarr_test_2.json)",
+      "WebFetch(domain:github.com)",
+      "Bash(pkill -9 -f webhook_catch 2>/dev/null; sleep 1 *)",
+      "Bash(git mv *)",
+      "Bash(docker manifest *)",
+      "Bash(git init *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(go mod *)",
+      "Bash(go list *)",
+      "Bash(gofmt -w ./internal/config/config.go)",
+      "Bash(docker rmi *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

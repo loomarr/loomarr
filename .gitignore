@@ -1,0 +1,29 @@
+# Secrets — never commit (Phase-0 capture creds, local env)
+.phase0.env
+.env
+*.local
+
+# Build output
+/bin/
+/dist/
+loomarr
+loomarr-ingest
+
+# SQLite dev databases
+*.db
+*.db-wal
+*.db-shm
+/data/
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Node / FE (web/ added in Phase 13)
+node_modules/
+web/dist/
+
+# Editor / OS
+.DS_Store
+*.swp
