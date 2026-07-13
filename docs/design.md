@@ -380,7 +380,7 @@ Commercials are core to the "feels like real TV" goal, not a garnish — this is
 ### Why filler is a separate pipeline
 Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station IDs are **not** in TMDB and aren't "titles," so the provisioning loop (§3–§7) does not apply to them. Filler gets its own ingestion — designed so the **core stays a static binary** (no Python, no ffprobe; see §16):
 - **Sources:** Internet Archive collections; curated YouTube playlists (the dizqueTV-wiki-style filler repos); user-created bumpers / station IDs / "we'll be right back" cards.
-- **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via the optional **`loomarr-ingest` sidecar** (a small Python image wrapping yt-dlp + Archive downloads; `filler` compose profile). The media server scans that folder as a dedicated **filler library**.
+- **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via the optional **`loomarr-ingest` sidecar** (a small **Go** image wrapping yt-dlp + Archive downloads; `filler` compose profile). The media server scans that folder as a dedicated **filler library**.
 - **Catalog sync (core):** loomarr syncs its clip catalog *from the media server's filler library* — item ids, names, and **duration come from the server** (it already probes media), so the core never touches ffprobe or downloads anything. Clip identity = media-server item id, consistent with "library is source of truth" (§4). `/v1/filler/sync` triggers it; a periodic sync runs alongside the reconciler.
 - Keep filler in its own library/folder, clearly separated from programming, so it never leaks into a lineup as a "show." Tunarr filler lists reference the same library items.
 
@@ -531,7 +531,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | FE tests | Vitest + Testing Library; **Playwright** for the e2e approve-flow smoke | Matches §19 |
 
 ### Sidecar & CI
-- `loomarr-ingest`: **Python 3.12 + `yt-dlp`** (CLI), plain `requests` for Archive.org; writes files + info-JSON sidecars into the drop-folder. Deliberately dumb.
+- `loomarr-ingest`: **Go**, shelling out to the bundled **`yt-dlp`** + **`ffmpeg`** binaries (CLI) for YouTube, plain `net/http` for Archive.org; writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Written in Go for repo consistency (shares the module/types/testkit with the core); shipped as a **separate** image so the ~170MB of yt-dlp+ffmpeg tooling never touches the core (§16). Only the `filler` compose profile pulls it.
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE typegen + `tsc` + Vitest; Playwright smoke.
 
 ---
@@ -583,7 +583,7 @@ Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver 
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
 - **ai:** adds a local **Ollama** service (skip if `anthropic` or external Ollama; optional GPU passthrough).
-- **filler:** adds the **`loomarr-ingest` sidecar** (Python: yt-dlp + Archive downloads → the drop-folder the media server scans). Skip it if you fill the drop-folder manually or with MeTube.
+- **filler:** adds the **`loomarr-ingest` sidecar** (Go, bundling yt-dlp + ffmpeg: YouTube + Archive downloads → the drop-folder the media server scans). Skip it if you fill the drop-folder manually or with MeTube.
 
 ```yaml
 services:
@@ -725,7 +725,7 @@ Each phase ends green (compiles + its tests pass) before the next.
    internal/api/           # §7 HTTP + OpenAPI wiring
    web/                    # §12 Vite SPA (built assets embedded)
    docs/                   # §13 markdown docs (embedded → in-app Help)
-   ingest/                 # loomarr-ingest sidecar (Python, own Dockerfile)
+   cmd/loomarr-ingest/     # loomarr-ingest sidecar (Go, own Dockerfile bundling yt-dlp+ffmpeg)
    api/openapi.yaml        # committed exported spec
    ```
 2. **Provisioner domain + state machine.** Types, keying (+ webhook-key parity test), pure transitions + invariant tests. No I/O.

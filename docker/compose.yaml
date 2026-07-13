@@ -61,6 +61,8 @@ services:
     restart: unless-stopped
 
   # ---- filler profile: loomarr-ingest sidecar (Phase 12) ----
+  # Go binary bundling yt-dlp + ffmpeg (YouTube + Archive.org → drop-folder).
+  # Separate image so that ~170MB of media tooling never touches the core (§16).
   loomarr-ingest:
     image: loomarr-ingest:latest
     profiles: ["filler"]
