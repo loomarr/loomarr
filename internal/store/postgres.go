@@ -27,6 +27,23 @@ UPDATE titles t SET deadline = $1
 FROM due WHERE t.key = due.key
 RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline, t.attempts, t.last_error, t.updated_at`
 
+// Postgres channel claim: FOR UPDATE SKIP LOCKED so two replicas never reconcile
+// the same channel (§18 single-leader-per-channel). Keyed on reconcile_deadline,
+// excludes detached channels. Placeholders: $1=leaseUntil, $2=now, $3=limit.
+const postgresChannelClaimSQL = `
+WITH due AS (
+    SELECT id FROM channels
+    WHERE status <> 'detached' AND reconcile_deadline <= $2 AND reconcile_deadline > 0
+    ORDER BY reconcile_deadline
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE channels c SET reconcile_deadline = $1
+FROM due WHERE c.id = due.id
+RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
+          c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json,
+          c.reconcile_deadline, c.updated_at`
+
 // openPostgres opens a Postgres connection via pgx's stdlib shim and returns a
 // store wired with the SKIP-LOCKED claim SQL and $N placeholder rebinding.
 // Conformance (incl. concurrent claim) is proven in Phase 4 via testcontainers.
@@ -39,7 +56,7 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &sqlStore{db: db, ph: pgPlaceholders, claimSQL: postgresClaimSQL}, nil
+	return &sqlStore{db: db, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}, nil
 }
 
 // pgPlaceholders rewrites `?` markers into Postgres `$1, $2, …` in order.

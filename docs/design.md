@@ -561,6 +561,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `LIBRARY_URL` / `LIBRARY_TOKEN` | yes | `http://emby:8096` / *(secret)* |
 | `SEERR_URL` / `SEERR_API_KEY` | yes* | `http://seerr:5055` / *(secret)* |
 | `TUNARR_URL` / `TUNARR_API_KEY` | yes | `http://tunarr:8000` / *(secret if set)* |
+| `TUNARR_TRANSCODE_CONFIG_ID` | no | Tunarr transcode-config uuid the created channels reference (Phase-0 finding: channel create requires a valid `transcodeConfigId`; empty → the wizard resolves the instance's `Default` via `GET /api/transcode_configs`, §9) |
 | `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | no | `48h` / `12h` / `5m` |
 | `CHANNEL_RECONCILE_EVERY` | no | `10m` (periodic channel sweep, §9) |
 | `TZ` | no | container time zone; time-slot schedules computed here (§9) |

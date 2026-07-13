@@ -48,11 +48,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
+		channels: opts.Channels, livetv: opts.LiveTV,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
 	srv.registerAuth(humaAPI)
 	srv.registerUsers(humaAPI)
+	srv.registerChannels(humaAPI)
+	srv.registerSetup(humaAPI)
 
 	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
 	// (not a typed Huma op — §16). Auth checked inline.

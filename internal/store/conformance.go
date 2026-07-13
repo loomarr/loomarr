@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 // NewStoreFunc builds a fresh, migrated, empty Store for one test. The SQLite
@@ -25,6 +26,10 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClaimDueTitles", func(t *testing.T) { testClaimDue(t, newStore) })
 	t.Run("ClaimDueConcurrent", func(t *testing.T) { testClaimConcurrent(t, newStore) })
 	t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
+	t.Run("ChannelRoundTrip", func(t *testing.T) { testChannelRoundTrip(t, newStore) })
+	t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
+	t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
+	t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -176,6 +181,183 @@ func testClaimConcurrent(t *testing.T, newStore NewStoreFunc) {
 	for k, c := range seen {
 		if c != 1 {
 			t.Errorf("row %s claimed %d times, want exactly 1", k, c)
+		}
+	}
+}
+
+func sampleChannel(id string, number int, deadline time.Time) Channel {
+	ch := Channel{}
+	ch.ID = id
+	ch.IntentRef = "intent-" + id
+	ch.Name = "Channel " + id
+	ch.Number = number
+	ch.Group = "Loomarr"
+	ch.Strategy = schedule.Sequential
+	ch.Status = schedule.StatusLive
+	ch.Shuffle.Seed = 7
+	ch.UpdatedAt = 1_700_000_000
+	ch.Lineup = []schedule.LineupEntry{
+		{Key: "movie:tmdb:1", Title: "A", DurationMs: 3600000},
+		{Key: "movie:tmdb:2", Title: "B"},
+	}
+	ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		{Kind: schedule.SlotFiller, Key: "movie:tmdb:2", Title: "B"},
+	}
+	ch.ReconcileDeadline = deadline
+	return ch
+}
+
+func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	want := sampleChannel("ch-a", 5, time.Unix(1_800_000_000, 0).UTC())
+	if err := s.UpsertChannel(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetChannel(ctx, "ch-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != want.ID || got.Number != want.Number || got.Strategy != want.Strategy || got.Status != want.Status {
+		t.Errorf("channel scalar round-trip mismatch: got %+v", got.Channel)
+	}
+	if len(got.Lineup) != 2 || got.Lineup[0].Key != "movie:tmdb:1" || got.Lineup[0].DurationMs != 3600000 {
+		t.Errorf("lineup JSON round-trip lost data: %+v", got.Lineup)
+	}
+	if len(got.Desired) != 2 || got.Desired[0].Kind != schedule.SlotProgram || got.Desired[1].Kind != schedule.SlotFiller {
+		t.Errorf("desired JSON round-trip lost data: %+v", got.Desired)
+	}
+	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
+		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)
+	}
+	// Upsert is idempotent: a second write with an edited field updates in place.
+	want.Status = schedule.StatusDrifted
+	if err := s.UpsertChannel(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	got2, _ := s.GetChannel(ctx, "ch-a")
+	if got2.Status != schedule.StatusDrifted {
+		t.Errorf("upsert didn't update status: %s", got2.Status)
+	}
+	all, _ := s.ListChannels(ctx)
+	if len(all) != 1 {
+		t.Errorf("upsert created a duplicate channel: %d rows", len(all))
+	}
+	// GetChannelByNumber resolves the same row.
+	byNum, err := s.GetChannelByNumber(ctx, 5)
+	if err != nil || byNum.ID != "ch-a" {
+		t.Errorf("GetChannelByNumber(5) = %q,%v want ch-a", byNum.ID, err)
+	}
+	// Missing lookups are ErrNotFound.
+	if _, err := s.GetChannel(ctx, "nope"); err != ErrNotFound {
+		t.Errorf("GetChannel(missing) = %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetChannelByNumber(ctx, 999); err != ErrNotFound {
+		t.Errorf("GetChannelByNumber(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-2", 2, time.Time{}))
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-1", 1, time.Time{}))
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-3", 3, time.Time{}))
+
+	all, err := s.ListChannels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("ListChannels = %d, want 3", len(all))
+	}
+	// Ordered by number.
+	if all[0].Number != 1 || all[1].Number != 2 || all[2].Number != 3 {
+		t.Errorf("ListChannels not ordered by number: %d,%d,%d", all[0].Number, all[1].Number, all[2].Number)
+	}
+	if err := s.DeleteChannel(ctx, "ch-2"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := s.ListChannels(ctx)
+	if len(after) != 2 {
+		t.Errorf("after delete: %d channels, want 2", len(after))
+	}
+	if _, err := s.GetChannel(ctx, "ch-2"); err != ErrNotFound {
+		t.Errorf("deleted channel still present: %v", err)
+	}
+}
+
+func testClaimDueChannels(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	// Due: deadline in the past, live.
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-due", 1, now.Add(-time.Hour)))
+	// Not due: future deadline.
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-future", 2, now.Add(time.Hour)))
+	// Not eligible: detached, even with a past deadline.
+	detached := sampleChannel("ch-detached", 3, now.Add(-time.Hour))
+	detached.Status = schedule.StatusDetached
+	_ = s.UpsertChannel(ctx, detached)
+
+	claimed, err := s.ClaimDueChannels(ctx, now, time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != "ch-due" {
+		t.Fatalf("ClaimDueChannels = %d rows, want just ch-due: %+v", len(claimed), claimed)
+	}
+	// Leased: a second claim at the same now returns nothing.
+	again, _ := s.ClaimDueChannels(ctx, now, time.Minute, 10)
+	if len(again) != 0 {
+		t.Errorf("re-claim returned %d leased channels, want 0", len(again))
+	}
+	got, _ := s.GetChannel(ctx, "ch-due")
+	if !got.ReconcileDeadline.Equal(now.Add(time.Minute)) {
+		t.Errorf("claimed channel deadline = %v, want leased %v", got.ReconcileDeadline, now.Add(time.Minute))
+	}
+}
+
+// testClaimChannelsConcurrent is the §18 guarantee: two replicas never reconcile
+// the same channel. On Postgres it exercises FOR UPDATE SKIP LOCKED.
+func testClaimChannelsConcurrent(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	const n = 20
+	for i := 0; i < n; i++ {
+		_ = s.UpsertChannel(ctx, sampleChannel("chan-"+string(rune('a'+i)), i+1, now.Add(-time.Hour)))
+	}
+
+	var mu sync.Mutex
+	seen := map[string]int{}
+	var wg sync.WaitGroup
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				batch, err := s.ClaimDueChannels(ctx, now, time.Minute, 3)
+				if err != nil || len(batch) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, c := range batch {
+					seen[c.ID]++
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(seen) != n {
+		t.Errorf("claimed %d distinct channels, want %d", len(seen), n)
+	}
+	for id, c := range seen {
+		if c != 1 {
+			t.Errorf("channel %s claimed %d times, want exactly 1", id, c)
 		}
 	}
 }

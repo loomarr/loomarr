@@ -24,6 +24,20 @@ WHERE key IN (
 )
 RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at`
 
+// SQLite channel claim: same guarded-UPDATE lease as titles, keyed on
+// reconcile_deadline and excluding detached channels (§9/§18). RETURNs the full
+// channel column set (channelSelect order) so scanChannel serves it.
+// Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
+const sqliteChannelClaimSQL = `
+UPDATE channels SET reconcile_deadline = ?1
+WHERE id IN (
+    SELECT id FROM channels
+    WHERE status <> 'detached' AND reconcile_deadline <= ?2 AND reconcile_deadline > 0
+    ORDER BY reconcile_deadline LIMIT ?3
+)
+RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
+          status, shuffle_seed, lineup_json, desired_json, reconcile_deadline, updated_at`
+
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
@@ -41,5 +55,5 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL}, nil
+	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL}, nil
 }

@@ -16,5 +16,9 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	srv := &Server{log: log} // handlers aren't invoked; only their schemas are read
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
+	srv.registerAuth(humaAPI)
+	srv.registerUsers(humaAPI)
+	srv.registerChannels(humaAPI)
+	srv.registerSetup(humaAPI)
 	return humaAPI.OpenAPI().YAML()
 }

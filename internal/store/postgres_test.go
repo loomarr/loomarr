@@ -59,9 +59,11 @@ func TestPostgresConformance(t *testing.T) {
 			t.Fatalf("open postgres store: %v", err)
 		}
 		t.Cleanup(func() {
-			// Truncate between sub-tests so shared-DB state doesn't leak.
+			// Truncate between sub-tests so shared-DB state doesn't leak. Keep
+			// this list in step with the schema — every conformance table.
 			pg := s.(*sqlStore)
-			_, _ = pg.db.ExecContext(context.Background(), "TRUNCATE titles, settings")
+			_, _ = pg.db.ExecContext(context.Background(),
+				"TRUNCATE titles, settings, channels, sessions, users")
 			_ = s.Close()
 		})
 		return s

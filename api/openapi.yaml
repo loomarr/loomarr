@@ -1,5 +1,114 @@
 components:
   schemas:
+    ChannelDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ChannelDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          examples:
+            - Kids
+          type: string
+        id:
+          examples:
+            - ch_abc123
+          type: string
+        intentRef:
+          type: string
+        name:
+          examples:
+            - Saturday Morning Cartoons
+          type: string
+        number:
+          description: Guide channel number
+          examples:
+            - 42
+          format: int64
+          type: integer
+        programCount:
+          description: Real playable programs in the desired lineup
+          format: int64
+          type: integer
+        slotCount:
+          description: Total slots incl. filler/flex placeholders
+          format: int64
+          type: integer
+        status:
+          description: Loomarr-side channel status (§9)
+          enum:
+            - building
+            - live
+            - drifted
+            - detached
+          type: string
+        strategy:
+          enum:
+            - sequential
+            - shuffle
+            - time_slot
+          type: string
+        tunarrId:
+          description: Server-assigned Tunarr channel id; empty until first reconcile
+          type: string
+      required:
+        - id
+        - name
+        - number
+        - strategy
+        - status
+        - programCount
+        - slotCount
+      type: object
+    CreateChannelInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateChannelInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          examples:
+            - Kids
+          type: string
+        id:
+          description: Loomarr channel id (caller-assigned, stable)
+          examples:
+            - ch_abc123
+          type: string
+        intentRef:
+          type: string
+        logo:
+          type: string
+        name:
+          examples:
+            - Saturday Morning Cartoons
+          type: string
+        number:
+          examples:
+            - 42
+          format: int64
+          minimum: 1
+          type: integer
+        strategy:
+          enum:
+            - sequential
+            - shuffle
+            - time_slot
+          type: string
+      required:
+        - id
+        - name
+        - number
+        - strategy
+      type: object
     EnqueueInputBody:
       additionalProperties: false
       properties:
@@ -95,6 +204,25 @@ components:
           format: uri
           type: string
       type: object
+    ListChannelsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListChannelsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - channels
+      type: object
     ListOutputBody:
       additionalProperties: false
       properties:
@@ -113,6 +241,108 @@ components:
             - "null"
       required:
         - titles
+      type: object
+    ListUsersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListUsersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        users:
+          items:
+            $ref: "#/components/schemas/UserBody"
+          type:
+            - array
+            - "null"
+      required:
+        - users
+      type: object
+    LivetvConnectOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/LivetvConnectOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        alreadyWired:
+          description: Nothing changed — Tunarr was already wired (§6 idempotent)
+          type: boolean
+        listingAdded:
+          description: An xmltv guide was registered this call
+          type: boolean
+        tunerAdded:
+          description: An m3u tuner was registered this call
+          type: boolean
+      required:
+        - tunerAdded
+        - listingAdded
+        - alreadyWired
+      type: object
+    PatchUserInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PatchUserInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        autoApprove:
+          type: boolean
+        disabled:
+          type: boolean
+        quota:
+          format: int64
+          type: integer
+        role:
+          enum:
+            - admin
+            - member
+          type: string
+      type: object
+    SetupCheck:
+      additionalProperties: false
+      properties:
+        hint:
+          description: Actionable hint when not OK (§13)
+          type: string
+        name:
+          description: Integration key
+          examples:
+            - livetv
+          type: string
+        ok:
+          type: boolean
+      required:
+        - name
+        - ok
+      type: object
+    SetupStatusOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetupStatusOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        checks:
+          items:
+            $ref: "#/components/schemas/SetupCheck"
+          type:
+            - array
+            - "null"
+      required:
+        - checks
       type: object
     TitleDTO:
       additionalProperties: false
@@ -169,12 +399,213 @@ components:
         - mediaType
         - state
       type: object
+    UserBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UserBody.json
+          format: uri
+          readOnly: true
+          type: string
+        autoApprove:
+          type: boolean
+        disabled:
+          type: boolean
+        id:
+          type: string
+        name:
+          type: string
+        quota:
+          format: int64
+          type: integer
+        role:
+          enum:
+            - admin
+            - member
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - disabled
+        - quota
+        - autoApprove
+      type: object
 info:
   description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
   title: Loomarr API
   version: 0.1.0
 openapi: 3.1.0
 paths:
+  /v1/channels:
+    get:
+      operationId: list-channels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListChannelsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List channels
+      tags:
+        - channels
+    post:
+      description: Admin only. From an approved proposal or hand-made.
+      operationId: create-channel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a channel
+      tags:
+        - channels
+  /v1/channels/{id}:
+    delete:
+      description: Admin only. Detaches by default (§7).
+      operationId: delete-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: "Also delete the Tunarr channel (default: detach only, §7)"
+          explode: false
+          in: query
+          name: purge
+          schema:
+            description: "Also delete the Tunarr channel (default: detach only, §7)"
+            type: boolean
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a channel
+      tags:
+        - channels
+    get:
+      operationId: get-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a channel definition + status
+      tags:
+        - channels
+  /v1/channels/{id}/reconcile:
+    post:
+      description: Admin only. Idempotent (§9).
+      operationId: reconcile-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Force desired→Tunarr reconciliation
+      tags:
+        - channels
+  /v1/setup/livetv-connect:
+    post:
+      description: Admin only. One-time, idempotent (§6).
+      operationId: livetv-connect
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivetvConnectOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Wire Tunarr as a tuner + guide
+      tags:
+        - setup
+  /v1/setup/status:
+    get:
+      description: Admin only. Per-integration pass/fail (§13).
+      operationId: setup-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatusOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Connection checklist
+      tags:
+        - setup
   /v1/titles:
     get:
       operationId: list-titles
@@ -283,3 +714,53 @@ paths:
       summary: Get a title's provisioning state
       tags:
         - titles
+  /v1/users:
+    get:
+      operationId: list-users
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUsersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List users (admin)
+      tags:
+        - users
+  /v1/users/{id}:
+    patch:
+      operationId: patch-user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a user's role/quota/disabled (admin)
+      tags:
+        - users

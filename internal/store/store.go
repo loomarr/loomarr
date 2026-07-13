@@ -36,6 +36,20 @@ type Store interface {
 	// guarded UPDATE (single instance, §5). Postgres: FOR UPDATE SKIP LOCKED.
 	ClaimDueTitles(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]provision.Record, error)
 
+	// --- scheduler / channels (§9) ---
+	GetChannel(ctx context.Context, id string) (Channel, error)
+	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
+	UpsertChannel(ctx context.Context, ch Channel) error
+	ListChannels(ctx context.Context) ([]Channel, error)
+	DeleteChannel(ctx context.Context, id string) error
+	// ClaimDueChannels atomically claims up to limit channels whose
+	// reconcile_deadline is at/before now, for the periodic reconcile sweep
+	// (§9). Like ClaimDueTitles it *leases* each claimed channel (deadline →
+	// now+lease) so two replicas never reconcile one Tunarr channel at once
+	// (§18: single-leader / per-channel row claiming). SQLite: guarded UPDATE.
+	// Postgres: FOR UPDATE SKIP LOCKED. Detached channels are never claimed.
+	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Channel, error)
+
 	// --- users & sessions (§11) ---
 	GetUser(ctx context.Context, id string) (User, error)
 	UpsertUser(ctx context.Context, u User) error

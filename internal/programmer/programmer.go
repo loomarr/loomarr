@@ -1,0 +1,72 @@
+// Package programmer is the Programmer boundary (design §6/§9): the port the
+// scheduler drives to make a Loomarr channel real, plus its only v1
+// implementation, a thin hand-written Tunarr client (§6: "hand-write a thin
+// client against only the endpoints we use" — not codegen against Tunarr's
+// churny pre-1.0 spec). The interface is abstracted so a future ErsatzTV/dizqueTV
+// target is possible (§9); nothing above this package knows it's talking to
+// Tunarr.
+package programmer
+
+import (
+	"context"
+
+	"github.com/mantonx/loomarr/internal/schedule"
+)
+
+// ChannelSpec is the desired Tunarr channel definition the scheduler wants to
+// exist (§9). It is the Programmer-facing projection of a store.Channel — no
+// Loomarr-internal fields, only what Tunarr needs.
+type ChannelSpec struct {
+	// TunarrID is the server-assigned channel id, "" on first create. The
+	// adapter reads the real id from the create response (Phase-0 finding:
+	// Tunarr ignores client-supplied ids) and returns it; the scheduler persists
+	// it and passes it back on every subsequent call.
+	TunarrID string
+	Number   int
+	Name     string
+	Group    string // Tunarr groupTitle
+	Logo     string // icon path; may be ""
+}
+
+// Programmer is the port the scheduler reconciles against (§9). All methods are
+// idempotent where the underlying API allows and safe to re-run (desired-vs-
+// actual). Implementations must be resilient (§6 client defaults: per-call
+// timeout, no unbounded retries in the hot path).
+type Programmer interface {
+	// EnsureChannel creates the channel if TunarrID is "", else updates it to
+	// match spec. Returns the (server-assigned) TunarrID — the caller MUST
+	// persist it, since a create ignores any client id (Phase-0 finding).
+	EnsureChannel(ctx context.Context, spec ChannelSpec) (tunarrID string, err error)
+
+	// GetChannel fetches a channel by its Tunarr id; returns ok=false if the
+	// channel doesn't exist (so the reconcile knows to recreate). Used to diff
+	// desired-vs-actual and detect out-of-band deletion.
+	GetChannel(ctx context.Context, tunarrID string) (ActualChannel, bool, error)
+
+	// SetLineup replaces the channel's programming with the desired slots
+	// (§9). The adapter translates []schedule.Slot into Tunarr's manual-lineup
+	// envelope. Idempotent: pushing the same slots twice yields the same
+	// programming.
+	SetLineup(ctx context.Context, tunarrID string, slots []schedule.Slot) error
+
+	// GetLineup reads back the channel's current programming as slots, for the
+	// desired-vs-actual diff. An unprogrammed channel returns an empty slice, not
+	// an error (the adapter absorbs Tunarr's 400-on-empty-lineup quirk, Phase-0
+	// finding 4).
+	GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slot, error)
+
+	// DeleteChannel removes the Tunarr channel (used by DELETE /v1/channels?purge).
+	// Deleting an already-absent channel is not an error (idempotent).
+	DeleteChannel(ctx context.Context, tunarrID string) error
+}
+
+// ActualChannel is the subset of Tunarr's channel we compare against desired
+// during reconcile (§9 minimal-diff). Extend only with fields the diff needs.
+type ActualChannel struct {
+	TunarrID     string
+	Number       int
+	Name         string
+	Group        string
+	Logo         string
+	ProgramCount int // Tunarr's programCount; 0 = unprogrammed
+}

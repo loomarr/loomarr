@@ -26,6 +26,26 @@ type Server struct {
 	sessions     SessionManager
 	userSync     UserSyncer
 	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
+	// channels/livetv wire /v1/channels* and /v1/setup/* (§7/§9); nil until
+	// Phase 10 is configured.
+	channels ChannelService
+	livetv   LiveTVService
+}
+
+// ChannelService is the channel-management surface the API depends on (§9).
+// Implemented by channels.Engine + the store; abstracted so the API doesn't
+// couple to the reconcile internals.
+type ChannelService interface {
+	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
+	// POST /v1/channels/{id}/reconcile).
+	Reconcile(ctx context.Context, channelID string) error
+}
+
+// LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and
+// the "wired?" status check. Implemented by setup.LiveTVConnector.
+type LiveTVService interface {
+	Connect(ctx context.Context) (tunerAdded, listingAdded bool, err error)
+	Wired(ctx context.Context) (bool, error)
 }
 
 // UserSyncer imports users from the media server (§11). Returns the count synced.
@@ -62,6 +82,8 @@ type Options struct {
 	Sessions     SessionManager // /v1/auth/logout (Phase 9)
 	UserSync     UserSyncer     // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	CookieSecure string         // COOKIE_SECURE: auto|true|false (§11)
+	Channels     ChannelService // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV       LiveTVService  // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

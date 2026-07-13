@@ -43,8 +43,9 @@ type Config struct {
 	EventWebhookURL string `env:"EVENT_WEBHOOK_URL"`
 
 	// Programmer — Tunarr (Phase 10)
-	TunarrURL    string `env:"TUNARR_URL"`
-	TunarrAPIKey string `env:"TUNARR_API_KEY"`
+	TunarrURL         string `env:"TUNARR_URL"`
+	TunarrAPIKey      string `env:"TUNARR_API_KEY"`
+	TunarrTranscodeID string `env:"TUNARR_TRANSCODE_CONFIG_ID"` // channel-create transcodeConfigId (§9, §15)
 
 	// Provisioning / scheduling timing (Phases 7, 10)
 	RequestTTL            time.Duration `env:"REQUEST_TTL" envDefault:"48h"`

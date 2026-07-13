@@ -158,6 +158,21 @@ func (c *Client) bestEffortLogout(ctx context.Context, token string) {
 	}
 }
 
+// newJSONRequest builds a request with a JSON-marshaled body and the
+// Content-Type header set. Used by the Live TV wiring POSTs (§6).
+func (c *Client) newJSONRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
+	blob, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal %s body: %w", path, err)
+	}
+	req, err := c.newRequest(ctx, method, path, blob)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
 func (c *Client) newRequest(ctx context.Context, method, path string, body []byte) (*http.Request, error) {
 	var rdr *strings.Reader
 	if body != nil {
