@@ -1,0 +1,7 @@
+# Mirrors the house config from github.com/mantonx/nexus-open (golangci-lint v2).
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errcheck

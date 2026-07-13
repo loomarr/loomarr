@@ -1,0 +1,73 @@
+# Loomarr deployment compose (design §16). Profiles: sqlite · postgres · ai · filler.
+#
+#   docker compose -f docker/compose.yaml --profile sqlite up -d
+#   docker compose -f docker/compose.yaml --profile postgres up -d
+#
+# For local dev dependencies (a persistent Tunarr wired to Emby) see compose.dev.yaml.
+
+services:
+  loomarr:
+    image: loomarr:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///data/loomarr.db}
+      LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
+      LIBRARY_URL: ${LIBRARY_URL}
+      LIBRARY_TOKEN: ${LIBRARY_TOKEN}
+      SEERR_URL: ${SEERR_URL}
+      SEERR_API_KEY: ${SEERR_API_KEY}
+      TUNARR_URL: ${TUNARR_URL}
+      TUNARR_API_KEY: ${TUNARR_API_KEY:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      API_TOKEN: ${API_TOKEN:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_URL: ${LLM_URL:-http://ollama:11434}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      AUTO_MIGRATE: "true"
+    ports: ["8080:8080"]
+    restart: unless-stopped
+    # HTTP liveness against /healthz (image is distroless — no in-container curl).
+    healthcheck:
+      test: ["CMD", "/loomarr", "healthcheck"] # `healthcheck` subcommand: Phase 8+
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---- sqlite profile: just loomarr + a /data volume for the DB file ----
+  # (attach the volume only under this profile)
+
+  # ---- postgres profile ----
+  postgres:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: loomarr
+      POSTGRES_USER: ${POSTGRES_USER:-loomarr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loomarr}
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    restart: unless-stopped
+
+  # ---- ai profile: local Ollama (skip for anthropic/external) ----
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    volumes: ["ollama:/root/.ollama"]
+    restart: unless-stopped
+
+  # ---- filler profile: loomarr-ingest sidecar (Phase 12) ----
+  loomarr-ingest:
+    image: loomarr-ingest:latest
+    profiles: ["filler"]
+    # volumes: ["/mnt/media/filler:/downloads"]   # same folder the media server scans
+    restart: unless-stopped
+
+volumes:
+  loomarr-data: # sqlite backend
+  pg-data: # postgres profile
+  ollama: # ai profile
