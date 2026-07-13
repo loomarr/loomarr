@@ -49,7 +49,7 @@ dev: ## dev compose stack (external deps: tunarr-dev wired to Emby)
 
 .PHONY: test-pg
 test-pg: ## store conformance vs Postgres (testcontainers; requires Docker)
-	@echo "test-pg: implemented in Phase 4"; exit 1
+	$(GO) test -race -tags=integration -run TestPostgresConformance ./internal/store/
 
 ## ---- OpenAPI (Phase 8) ---------------------------------------------------
 

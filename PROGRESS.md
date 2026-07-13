@@ -4,9 +4,8 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**Active phase: 4 — Postgres backend.** Phases 0–3 done (see the phase table). Phase 4 reuses
-the Phase-3 conformance suite via testcontainers; maintainer offered a `postgres` compose profile
-for manual poking (already stubbed in `docker/compose.yaml`). Phase-0 findings:
+**Active phase: 5 — Library adapter (Emby/Jellyfin).** Phases 0–4 done (see the phase table).
+Phase 5 builds against the pinned Emby fixtures + FINDINGS from Phase 0. Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](docs/engineering/phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 
@@ -18,7 +17,7 @@ Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 | 1 · Scaffold + harness | done | `make check` green (vet + golangci-lint v2.12.2 0 issues + `go test -race`); `docker build` → 8.31MB distroless image serving `/healthz` 200 as nonroot | Module `github.com/mantonx/loomarr` (go 1.26), MIT. `config`+`httpx`+`api`+`testkit`+`cmd/loomarr`; `/healthz`+`/readyz`+graceful shutdown. Makefile contract (unimpl targets fail loudly). Dockerfile (distroless static, cgo-free), `docker/compose.yaml` (sqlite/postgres/ai/filler). `.env.example` covers all §15. golangci v2 config mirrors nexus-open. |
 | 2 · Provisioner domain + state machine | done | `make check` green; `go test ./internal/provision/` — Key derivation, **webhook-key parity vs real Radarr fixture**, happy path, + all 5 §4 invariants (terminal monotonicity, emit-only-terminal, idempotent no-op, library-is-truth, deadline discipline) | Pure domain, no I/O. `Title`/`Key`/`State`/`Record` (§3); `Apply(rec, ev, now) → (Record, []DomainEvent)` (§4) — clock passed in for determinism. Illegal transitions are no-ops, not errors. |
 | 3 · Store + SQLite | done | `make check` green (`-race`); `go test ./internal/store/` — conformance suite (round-trip, upsert-idempotent, not-found, list, **ClaimDue + concurrent claim**, settings) + downgrade guard + unknown-scheme; app boots on real SQLite, migrates, `/readyz` ready | `Store` iface (§5); shared `database/sql` impl (one path, `?`↔`$N` rebinding); `modernc.org/sqlite` WAL+busy_timeout, single-conn; goose embedded per-dialect migrations + **startup downgrade guard**; **`ClaimDueTitles` leases rows (deadline→now+lease)** so concurrent callers/replicas never double-claim — SQLite guarded UPDATE, PG `FOR UPDATE SKIP LOCKED`. Conformance is one suite, backend-agnostic (Phase 4 reuses it). |
-| 4 · Postgres backend | todo | — | **Blocked on Docker daemon** (testcontainers). `FOR UPDATE SKIP LOCKED`; same conformance suite. |
+| 4 · Postgres backend | done | `make test-pg` green (testcontainers `postgres:16-alpine`, 3.3s) — **same conformance suite**, incl. `ClaimDueConcurrent` under real `FOR UPDATE SKIP LOCKED` (passed 5× under `-race`); app boots + migrates on dev-compose Postgres, `/readyz` ready | `pgx` stdlib shim, `$N` placeholder rebinding, PG per-dialect migrations. Postgres test behind `//go:build integration` so default `make check` needs no Docker. Concurrent claim is the meaningful case here (SQLite serializes; PG genuinely races). |
 | 5 · Library adapter | todo | — | Emby/Jellyfin flavor header auth; `SEASON_PRECISION=series`. |
 | 6 · Requester + ingest | todo | — | Seerr (201/409 ok); `/hooks/arr` + secret; `Test` event; confirm-before-available. Uses Phase-0 fixtures. |
 | 7 · Reconciler + janitor | todo | — | Ticker→`ClaimDue`→retry; missed-webhook re-check; deadline give-up; retention sweeps. |
