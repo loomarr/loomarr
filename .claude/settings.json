@@ -21,7 +21,13 @@
       "Bash(go list *)",
       "Bash(gofmt -w ./internal/config/config.go)",
       "Bash(docker rmi *)",
-      "Bash(gofmt -w internal/provision/*.go)"
+      "Bash(gofmt -w internal/provision/*.go)",
+      "Bash(go doc *)",
+      "Bash(/tmp/store.test -test.v)",
+      "Bash(/tmp/store.test -test.v -test.timeout 20s -test.run 'TestSQLiteConformance/\\(TitleRoundTrip|UpsertIsIdempotent|GetMissing|ListByState|ClaimDueTitles|SettingsKV\\)')",
+      "Bash(/tmp/store.test -test.v -test.timeout 10s -test.run 'TestSQLiteConformance/ClaimDueConcurrent')",
+      "Bash(/tmp/store.test -test.timeout 8s -test.run 'ClaimDueConcurrent')",
+      "Bash(gofmt -w internal/store/*.go cmd/loomarr/*.go)"
     ],
     "additionalDirectories": [
       "/tmp"
