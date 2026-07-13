@@ -25,6 +25,9 @@ type MediaServer struct {
 	// GoodUser/GoodPass authenticate successfully via /Users/AuthenticateByName.
 	GoodUser string
 	GoodPass string
+	// PresentTMDB, if set, is an additional tmdb id the mock reports present
+	// (beyond the pinned 16153) — lets ingest tests flip a title to confirmed.
+	PresentTMDB string
 }
 
 // NewMediaServer starts a mock media server serving the pinned fixtures.
@@ -37,8 +40,11 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
 		prov := r.URL.Query().Get("AnyProviderIdEquals")
-		// The pinned present fixture is tmdb.16153 (Phase 0); anything else absent.
-		if strings.EqualFold(prov, "tmdb.16153") {
+		// The pinned present fixture is tmdb.16153 (Phase 0); a test may add one
+		// more present id via PresentTMDB. Anything else is absent.
+		present := strings.EqualFold(prov, "tmdb.16153") ||
+			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB))
+		if present {
 			_, _ = w.Write(Fixture(t, "emby/lookup_present.json"))
 			return
 		}

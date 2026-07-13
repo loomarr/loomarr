@@ -30,7 +30,13 @@
       "Bash(gofmt -w internal/store/*.go cmd/loomarr/*.go)",
       "Bash(/tmp/store-pg.test -test.v -test.timeout 180s -test.run TestPostgresConformance)",
       "Bash(/tmp/store-pg.test -test.timeout 180s -test.run 'TestPostgresConformance/ClaimDueConcurrent' -test.count 5)",
-      "Bash(gofmt -w internal/library/*.go internal/testkit/*.go)"
+      "Bash(gofmt -w internal/library/*.go internal/testkit/*.go)",
+      "Bash(rm -f sonarr_probe_*.json)",
+      "Bash(mv sonarr_grab_3.json grab_webhook.json)",
+      "Bash(rm -f sonarr_test_2.json)",
+      "Bash(gofmt -w internal/ingest/*.go internal/requester/*.go internal/testkit/*.go)",
+      "Bash(sed -i 's|\"os/signal\"|\"os/signal\"\\\\n\\\\t\"strconv\"|' cmd/loomarr/main.go)",
+      "Bash(gofmt -w cmd/loomarr/main.go internal/api/api.go)"
     ],
     "additionalDirectories": [
       "/tmp"

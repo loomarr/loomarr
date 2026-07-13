@@ -4,9 +4,9 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**Active phase: 6 — Requester + ingest.** Phases 0–5 done (see the phase table). Phase 6 builds
-the Seerr requester + `/hooks/arr` handler against the pinned Radarr/Sonarr webhook fixtures, and
-should capture the live Sonarr Grab/Download webhooks (deferred from Phase 0). Phase-0 findings:
+**Active phase: 7 — Provisioning reconciler + janitor.** Phases 0–6 done (see the phase table).
+Follow-up: Sonarr `import_webhook.json` fixture still to be captured (28GB re-download in flight;
+Sonarr webhook conn id 3 left up to catch it — remove after). Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](docs/engineering/phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 
@@ -20,7 +20,7 @@ Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 | 3 · Store + SQLite | done | `make check` green (`-race`); `go test ./internal/store/` — conformance suite (round-trip, upsert-idempotent, not-found, list, **ClaimDue + concurrent claim**, settings) + downgrade guard + unknown-scheme; app boots on real SQLite, migrates, `/readyz` ready | `Store` iface (§5); shared `database/sql` impl (one path, `?`↔`$N` rebinding); `modernc.org/sqlite` WAL+busy_timeout, single-conn; goose embedded per-dialect migrations + **startup downgrade guard**; **`ClaimDueTitles` leases rows (deadline→now+lease)** so concurrent callers/replicas never double-claim — SQLite guarded UPDATE, PG `FOR UPDATE SKIP LOCKED`. Conformance is one suite, backend-agnostic (Phase 4 reuses it). |
 | 4 · Postgres backend | done | `make test-pg` green (testcontainers `postgres:16-alpine`, 3.3s) — **same conformance suite**, incl. `ClaimDueConcurrent` under real `FOR UPDATE SKIP LOCKED` (passed 5× under `-race`); app boots + migrates on dev-compose Postgres, `/readyz` ready | `pgx` stdlib shim, `$N` placeholder rebinding, PG per-dialect migrations. Postgres test behind `//go:build integration` so default `make check` needs no Docker. Concurrent claim is the meaningful case here (SQLite serializes; PG genuinely races). |
 | 5 · Library adapter | done | `make check` green; `go test ./internal/library/` — Lookup present/absent (pinned fixtures), **both-flavor token headers** (Emby `X-Emby-Token` vs Jellyfin `MediaBrowser`), **both-flavor login headers**, auth success + **§11 bad-pw 401 negative path**, ListUsers, SeasonPrecision | Shared Emby/Jellyfin `Client` (one impl, flavor differs only in auth headers — auth.go); `Lookup`/`AuthenticateByName`/`ListUsers` (§6, §11) via `httpx` 10s timeout; `SEASON_PRECISION` series(default)/seasons policy. Testkit `MediaServer` mock serves pinned fixtures + captures headers (both flavors, CLAUDE.md). Login-success body synthesized (real capture deferred to P9). |
-| 6 · Requester + ingest | todo | — | Seerr (201/409 ok); `/hooks/arr` + secret; `Test` event; confirm-before-available. Uses Phase-0 fixtures. |
+| 6 · Requester + ingest | done | `make check` green; `go test ./internal/{ingest,requester}/` — Seerr 201/OK/409-success + 500-fails + no-TMDB; `/hooks/arr` bad-secret 401, Test→200+timestamp, Grab→downloading(+deadline reset), **Import→available ONLY after library confirms (inv. 4)**, untracked-ignored, malformed 400; app wires `/hooks/arr` end-to-end | Seerr requester (`X-Api-Key`, 201-with-existing-media path per P0); `/hooks/arr` handler maps Grab/`Download`(quirk)/Test via Phase-2 keys + Phase-5 Lookup; constant-time secret. **Sonarr Grab+Test captured live** (`sonarr/{grab,test}_webhook.json`); import fixture pending a 28GB re-download (webhook conn left up to catch it) — import *logic* already tested via Radarr's real import fixture. |
 | 7 · Reconciler + janitor | todo | — | Ticker→`ClaimDue`→retry; missed-webhook re-check; deadline give-up; retention sweeps. |
 | 8 · Self-documenting API | todo | — | Huma v2 / `humago`; `/openapi.*`, `/docs`; `GET /v1/backup`; `make openapi` + committed spec; contract tests. |
 | 9 · Users & auth | todo | — | Sessions, bootstrap, user sync, role enforcement, `API_TOKEN`, login rate-limit. **Auth & roles tests are the gate** (incl. §19 negatives). |

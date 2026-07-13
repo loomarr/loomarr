@@ -16,14 +16,32 @@ import (
 // supplies a stub that always reports ready; Phase 3 replaces it.
 type ReadyFunc func() (ready bool, detail string)
 
+// Deps carries the optional subsystems the router mounts as they come online in
+// later phases. A nil field means that route isn't mounted yet.
+type Deps struct {
+	Ready ReadyFunc
+	// Ingest handles POST /hooks/arr (§6, Phase 6). Nil until a store+library
+	// are configured.
+	Ingest http.Handler
+}
+
 // Router builds the top-level handler. Later phases extend the returned mux.
-func Router(log *slog.Logger, ready ReadyFunc) http.Handler {
+func Router(log *slog.Logger, deps Deps) http.Handler {
 	mux := http.NewServeMux()
+	ready := deps.Ready
+	if ready == nil {
+		ready = func() (bool, string) { return true, "ok" }
+	}
 
 	// Liveness: the process is up. Cheap, dependency-free (§17).
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Sonarr/Radarr ingest webhook (§6, Phase 6), if wired.
+	if deps.Ingest != nil {
+		mux.Handle("POST /hooks/arr", deps.Ingest)
+	}
 
 	// Readiness: true only once dependencies are satisfied (§17). 503 until then.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
