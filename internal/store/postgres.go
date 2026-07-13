@@ -18,7 +18,7 @@ import (
 const postgresClaimSQL = `
 WITH due AS (
     SELECT key FROM titles
-    WHERE state IN ('requested','downloading') AND deadline <= $2 AND deadline > 0
+    WHERE state IN ('wanted','requested','downloading') AND deadline <= $2 AND deadline > 0
     ORDER BY deadline
     LIMIT $3
     FOR UPDATE SKIP LOCKED

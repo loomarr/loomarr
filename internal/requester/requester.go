@@ -17,4 +17,9 @@ type Requester interface {
 	// nil on acceptance; a non-nil error means the submission was not accepted
 	// and the record stays `wanted` for the reconciler to retry.
 	Request(ctx context.Context, t provision.Title) error
+
+	// Cancel best-effort withdraws a request when the reconciler gives up on a
+	// title past its deadline (§4 deadline discipline). Failure is non-fatal —
+	// the record still transitions to unavailable.
+	Cancel(ctx context.Context, t provision.Title) error
 }

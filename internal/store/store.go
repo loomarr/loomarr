@@ -26,8 +26,9 @@ type Store interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	UpsertTitle(ctx context.Context, rec provision.Record) error
 	ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error)
-	// ClaimDueTitles atomically claims up to limit in-flight records whose
-	// deadline is at/before now, for the reconciler (§4 inv. 5, §5 concurrency).
+	// ClaimDueTitles atomically claims up to limit non-terminal records
+	// (wanted/requested/downloading) whose deadline is at/before now, for the
+	// reconciler (§4: wanted→retry, in-flight→give-up; §5 concurrency).
 	// Claiming *leases* each row by advancing its deadline to now+lease, so a
 	// claimed row won't be handed out again (to a concurrent caller or the next
 	// tick) until the reconciler either transitions it or the lease expires —

@@ -19,7 +19,7 @@ const sqliteClaimSQL = `
 UPDATE titles SET deadline = ?1
 WHERE key IN (
     SELECT key FROM titles
-    WHERE state IN ('requested','downloading') AND deadline <= ?2 AND deadline > 0
+    WHERE state IN ('wanted','requested','downloading') AND deadline <= ?2 AND deadline > 0
     ORDER BY deadline LIMIT ?3
 )
 RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at`

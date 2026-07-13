@@ -36,7 +36,11 @@
       "Bash(rm -f sonarr_test_2.json)",
       "Bash(gofmt -w internal/ingest/*.go internal/requester/*.go internal/testkit/*.go)",
       "Bash(sed -i 's|\"os/signal\"|\"os/signal\"\\\\n\\\\t\"strconv\"|' cmd/loomarr/main.go)",
-      "Bash(gofmt -w cmd/loomarr/main.go internal/api/api.go)"
+      "Bash(gofmt -w cmd/loomarr/main.go internal/api/api.go)",
+      "Bash(gofmt -w internal/reconcile/*.go internal/requester/*.go internal/testkit/*.go)",
+      "Bash(sed -i 's|\"github.com/mantonx/loomarr/internal/library\"|\"github.com/mantonx/loomarr/internal/library\"\\\\n\\\\t\"github.com/mantonx/loomarr/internal/reconcile\"\\\\n\\\\t\"github.com/mantonx/loomarr/internal/requester\"|' cmd/loomarr/main.go)",
+      "Bash(gofmt -w cmd/loomarr/main.go internal/reconcile/*.go)",
+      "Bash(gofmt -w cmd/loomarr/main.go)"
     ],
     "additionalDirectories": [
       "/tmp"

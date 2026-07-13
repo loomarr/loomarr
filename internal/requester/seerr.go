@@ -78,3 +78,11 @@ func (s *Seerr) Request(ctx context.Context, t provision.Title) error {
 	}
 	return fmt.Errorf("seerr request: unexpected status %d", resp.StatusCode)
 }
+
+// Cancel is a best-effort no-op for Seerr (§4/§6): Loomarr doesn't persist the
+// Seerr request id, and Seerr owns its own request queue. Giving up on a title
+// simply stops Loomarr tracking it; any stale Seerr request ages out under
+// Seerr's own policy. A direct-arr requester (§15) can implement a real cancel.
+func (s *Seerr) Cancel(ctx context.Context, t provision.Title) error {
+	return nil
+}

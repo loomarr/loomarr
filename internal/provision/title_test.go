@@ -1,24 +1,25 @@
-package provision
+package provision_test
 
 import (
 	"encoding/json"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
 func TestTitleKey(t *testing.T) {
 	tests := []struct {
 		name  string
-		title Title
-		want  Key
+		title provision.Title
+		want  provision.Key
 		err   bool
 	}{
-		{"movie by tmdb", Title{MediaType: Movie, TMDBID: 1111867}, "movie:tmdb:1111867", false},
-		{"series prefers tvdb", Title{MediaType: Series, TVDBID: 12471, TMDBID: 999}, "series:tvdb:12471", false},
-		{"series falls back to tmdb", Title{MediaType: Series, TMDBID: 555}, "series:tmdb:555", false},
-		{"movie without id errors", Title{MediaType: Movie}, "", true},
-		{"invalid media type errors", Title{MediaType: "album", TMDBID: 1}, "", true},
+		{"movie by tmdb", provision.Title{MediaType: provision.Movie, TMDBID: 1111867}, "movie:tmdb:1111867", false},
+		{"series prefers tvdb", provision.Title{MediaType: provision.Series, TVDBID: 12471, TMDBID: 999}, "series:tvdb:12471", false},
+		{"series falls back to tmdb", provision.Title{MediaType: provision.Series, TMDBID: 555}, "series:tmdb:555", false},
+		{"movie without id errors", provision.Title{MediaType: provision.Movie}, "", true},
+		{"invalid media type errors", provision.Title{MediaType: "album", TMDBID: 1}, "", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -44,7 +45,7 @@ func TestTitleKey(t *testing.T) {
 // pinned Phase-0 Radarr import fixture (remoteMovie.tmdbId).
 func TestWebhookKeyParity(t *testing.T) {
 	// The request side: a Title we would have created for this movie.
-	titleKey, err := Title{MediaType: Movie, TMDBID: 1111867, Name: "In Flames"}.Key()
+	titleKey, err := provision.Title{MediaType: provision.Movie, TMDBID: 1111867, Name: "In Flames"}.Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestWebhookKeyParity(t *testing.T) {
 		t.Fatal("fixture missing remoteMovie.tmdbId — webhook correlation would break")
 	}
 
-	webhookKey, err := KeyFromWebhook(Movie, wh.RemoteMovie.TMDBID, 0)
+	webhookKey, err := provision.KeyFromWebhook(provision.Movie, wh.RemoteMovie.TMDBID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
