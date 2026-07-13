@@ -121,20 +121,53 @@ func (c *Client) AddListingProvider(ctx context.Context, tunarrXMLTV string) err
 // Client satisfies the LiveTV capability.
 var _ LiveTV = (*Client)(nil)
 
-// guideRefreshTaskID is the media server's "Refresh Guide" scheduled-task id.
-// VERSION-FRAGILE (§6): this value is pinned from the Phase-10 live capture. Emby
-// 4.10 / Jellyfin share the lineage; if a capture shows a different id, update
-// the design doc first, then this constant.
-const guideRefreshTaskID = "6432c1a6d4e2f8b90c1e5a7d3f2b8c4e"
+// guideRefreshTaskKey is the media server's "Refresh Guide" scheduled-task Key.
+// Phase-10 live capture (Emby 4.10.0.17) finding: the task *Id* is per-install
+// and version-fragile, but the *Key* is the stable "RefreshGuide". The run
+// endpoint takes the Id (the Key form 404s), so RefreshGuide resolves the id by
+// this Key at runtime. See fixtures/livetv/FINDINGS.md.
+const guideRefreshTaskKey = "RefreshGuide"
+
+// scheduledTask is the slice of a /ScheduledTasks entry we need to resolve the
+// guide-refresh task id from its stable Key (Phase-10 finding 4).
+type scheduledTask struct {
+	ID  string `json:"Id"`
+	Key string `json:"Key"`
+}
 
 // RefreshGuide triggers the guide-refresh scheduled task (§9). Best-effort — the
-// caller treats any error as degraded freshness, never a hard failure.
+// caller treats any error as degraded freshness, never a hard failure. It first
+// resolves the per-install task id by the stable Key "RefreshGuide" (Phase-10
+// finding 4), then POSTs /ScheduledTasks/Running/<id>.
 func (c *Client) RefreshGuide(ctx context.Context) error {
-	path := fmt.Sprintf("/ScheduledTasks/Running/%s", guideRefreshTaskID)
-	req, err := c.newRequest(ctx, http.MethodPost, path, nil)
+	id, err := c.guideRefreshTaskID(ctx)
+	if err != nil {
+		return err
+	}
+	req, err := c.newRequest(ctx, http.MethodPost, "/ScheduledTasks/Running/"+id, nil)
 	if err != nil {
 		return err
 	}
 	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
 	return c.do(req, nil)
+}
+
+// guideRefreshTaskID resolves the guide-refresh task's per-install id by its
+// stable Key (Phase-10 finding 4).
+func (c *Client) guideRefreshTaskID(ctx context.Context) (string, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/ScheduledTasks", nil)
+	if err != nil {
+		return "", err
+	}
+	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	var tasks []scheduledTask
+	if err := c.do(req, &tasks); err != nil {
+		return "", err
+	}
+	for _, t := range tasks {
+		if t.Key == guideRefreshTaskKey {
+			return t.ID, nil
+		}
+	}
+	return "", fmt.Errorf("guide-refresh task (Key=%q) not found on the media server", guideRefreshTaskKey)
 }
