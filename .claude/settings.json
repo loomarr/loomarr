@@ -20,7 +20,8 @@
       "Bash(go mod *)",
       "Bash(go list *)",
       "Bash(gofmt -w ./internal/config/config.go)",
-      "Bash(docker rmi *)"
+      "Bash(docker rmi *)",
+      "Bash(gofmt -w internal/provision/*.go)"
     ],
     "additionalDirectories": [
       "/tmp"

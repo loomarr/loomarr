@@ -4,8 +4,7 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**Active phase: 2 — Provisioner domain + state machine.** Phase 0 (contract spikes) and Phase 1
-(scaffold + harness) are done — see the phase table. Phase-0 findings:
+**Active phase: 3 — Store + SQLite.** Phases 0–2 done (see the phase table). Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](docs/engineering/phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 
@@ -15,7 +14,7 @@ Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 | --- | --- | --- | --- |
 | 0 · Contract spikes | evidence pinned | Fixtures in `internal/testkit/fixtures/*` + `api/vendor/tunarr-openapi.json`; index: `docs/engineering/phase-0-findings.md` | Tunarr 1.3.8 (CRUD ✓, key optional), Radarr 6.2.1 full lifecycle ✓, Sonarr 4.0.19 Test ✓, Emby 4.10 authed ✓, Seerr 3.2.0 requester ✓. **No §6/§9 deviations.** Deferred: Sonarr Grab/Download (P6), Emby login-success body (P9). |
 | 1 · Scaffold + harness | done | `make check` green (vet + golangci-lint v2.12.2 0 issues + `go test -race`); `docker build` → 8.31MB distroless image serving `/healthz` 200 as nonroot | Module `github.com/mantonx/loomarr` (go 1.26), MIT. `config`+`httpx`+`api`+`testkit`+`cmd/loomarr`; `/healthz`+`/readyz`+graceful shutdown. Makefile contract (unimpl targets fail loudly). Dockerfile (distroless static, cgo-free), `docker/compose.yaml` (sqlite/postgres/ai/filler). `.env.example` covers all §15. golangci v2 config mirrors nexus-open. |
-| 2 · Provisioner domain + state machine | todo | — | Pure, no I/O. Webhook-key parity test. |
+| 2 · Provisioner domain + state machine | done | `make check` green; `go test ./internal/provision/` — Key derivation, **webhook-key parity vs real Radarr fixture**, happy path, + all 5 §4 invariants (terminal monotonicity, emit-only-terminal, idempotent no-op, library-is-truth, deadline discipline) | Pure domain, no I/O. `Title`/`Key`/`State`/`Record` (§3); `Apply(rec, ev, now) → (Record, []DomainEvent)` (§4) — clock passed in for determinism. Illegal transitions are no-ops, not errors. |
 | 3 · Store + SQLite | todo | — | `modernc.org/sqlite`, WAL, goose migrations + downgrade guard, `ClaimDue`. Conformance suite (SQLite). |
 | 4 · Postgres backend | todo | — | **Blocked on Docker daemon** (testcontainers). `FOR UPDATE SKIP LOCKED`; same conformance suite. |
 | 5 · Library adapter | todo | — | Emby/Jellyfin flavor header auth; `SEASON_PRECISION=series`. |
