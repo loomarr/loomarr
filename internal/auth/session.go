@@ -1,0 +1,99 @@
+// Package auth issues and validates Loomarr sessions (design §11). Sessions are
+// revocable store rows (not JWTs) so disabling a user kills their sessions
+// immediately. The cookie carries a random 256-bit token; only its SHA-256 hash
+// is stored, so a DB read never yields a usable cookie.
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// CookieName is the session cookie (§11).
+const CookieName = "loomarr_session"
+
+// Manager issues, validates, and revokes sessions.
+type Manager struct {
+	store store.Store
+	ttl   time.Duration // sliding SESSION_TTL (§11)
+	now   func() time.Time
+}
+
+// NewManager builds a session manager. now defaults to time.Now.
+func NewManager(st store.Store, ttl time.Duration, now func() time.Time) *Manager {
+	if now == nil {
+		now = time.Now
+	}
+	if ttl <= 0 {
+		ttl = 720 * time.Hour
+	}
+	return &Manager{store: st, ttl: ttl, now: now}
+}
+
+// hashToken returns the SHA-256 hex of a token — what's stored at rest (§11).
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// newToken returns a fresh random 256-bit token, hex-encoded (§11).
+func newToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// Issue creates a session for a user and returns the plaintext cookie token
+// (stored only as its hash). Caller sets the cookie.
+func (m *Manager) Issue(ctx context.Context, userID string) (token string, expires time.Time, err error) {
+	token, err = newToken()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	now := m.now()
+	expires = now.Add(m.ttl)
+	err = m.store.CreateSession(ctx, store.Session{
+		TokenHash: hashToken(token), UserID: userID, CreatedAt: now, ExpiresAt: expires,
+	})
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, expires, nil
+}
+
+// Resolve validates a cookie token → the user, sliding the session's expiry. It
+// returns store.ErrNotFound for an unknown/expired token, and enforces that the
+// user still exists and is not disabled (§11: a disabled user's sessions must
+// not authenticate — belt-and-suspenders with immediate revocation on disable).
+func (m *Manager) Resolve(ctx context.Context, token string) (store.User, error) {
+	now := m.now()
+	sess, err := m.store.GetSession(ctx, hashToken(token), now)
+	if err != nil {
+		return store.User{}, err
+	}
+	u, err := m.store.GetUser(ctx, sess.UserID)
+	if err != nil {
+		return store.User{}, err
+	}
+	if u.Disabled {
+		// Defense in depth: even if revocation missed a session, a disabled user
+		// never authenticates.
+		return store.User{}, store.ErrNotFound
+	}
+	// Slide the expiry (§11 sliding TTL).
+	_ = m.store.TouchSession(ctx, hashToken(token), now.Add(m.ttl))
+	return u, nil
+}
+
+// Revoke ends a single session (logout).
+func (m *Manager) Revoke(ctx context.Context, token string) error {
+	return m.store.RevokeSession(ctx, hashToken(token))
+}

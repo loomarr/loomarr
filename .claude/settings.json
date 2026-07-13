@@ -44,7 +44,15 @@
       "Bash(rm -f /tmp/apitest.db*)",
       "Bash(LISTEN_ADDR=:18091 DATABASE_URL=\"sqlite:///tmp/apitest.db\" API_TOKEN=admintok /tmp/lm)",
       "Bash(pkill -9 -f '/tmp/lm' 2>/dev/null; sleep 1; echo \"server stopped\"; rm -f /tmp/lm /tmp/apitest.db*)",
-      "Bash(gofmt -w internal/api/*.go cmd/openapi/*.go cmd/loomarr/*.go)"
+      "Bash(gofmt -w internal/api/*.go cmd/openapi/*.go cmd/loomarr/*.go)",
+      "Bash(awk '{printf \"%.1f MB yt-dlp_linux \\(bundled python\\)\\\\n\", $2/1048576}')",
+      "Bash(awk '{printf \"%.1f MB  loomarr core binary\\\\n\", $5/1048576}')",
+      "Bash(sed -i 's|\"github.com/mantonx/loomarr/internal/api\"|\"github.com/mantonx/loomarr/internal/api\"\\\\n\\\\t\"github.com/mantonx/loomarr/internal/auth\"|' cmd/loomarr/main.go)",
+      "Bash(gofmt -w cmd/loomarr/main.go internal/api/*.go internal/auth/*.go internal/store/*.go)",
+      "Bash(gofmt -w internal/auth/*.go internal/testkit/*.go)",
+      "Bash(gofmt -w internal/api/*.go)",
+      "Bash(gofmt -w internal/api/*.go cmd/loomarr/main.go)",
+      "Bash(gofmt -w internal/api/*.go internal/auth/*.go cmd/loomarr/main.go)"
     ],
     "additionalDirectories": [
       "/tmp"

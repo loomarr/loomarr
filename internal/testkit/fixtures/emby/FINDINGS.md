@@ -25,9 +25,12 @@ prime directive. For now the adapter follows §6 (split); this option is recorde
   even without a token) header carrying `Client/Device/DeviceId/Version`.
 - Verified: bad password with a valid header → **401** + plaintext body
   `"Invalid username or password. Please try again."` (fixture `auth_badpw_response.json`).
-  This is the exact negative-path Phase 9's auth tests assert. (No test-user password was
-  provided this session, so the *success* body isn't pinned — capture at Phase 9 with a throwaway
-  user, or reuse Seerr's documented `AccessToken`/`User` success shape.)
+  This is the exact negative-path Phase 9's auth tests assert.
+- **Success body captured in Phase 9** (fixture `auth_success_response.json`, secrets scrubbed).
+  Real Emby 4.10 shape: top-level `{User, SessionInfo, AccessToken, ServerId}`; `User` carries
+  `{Id, Name, Policy{IsAdministrator, IsDisabled}, …}`. The adapter reads exactly
+  `AccessToken` + `User.{Id,Name,Policy.IsAdministrator,Policy.IsDisabled}` and ignores the rest —
+  confirmed the Phase-5 mock's synthesized shape matched ground truth structurally.
 
 ## The core §6 lookup (Phase-5 presence check)
 

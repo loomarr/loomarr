@@ -36,6 +36,18 @@ type Store interface {
 	// guarded UPDATE (single instance, §5). Postgres: FOR UPDATE SKIP LOCKED.
 	ClaimDueTitles(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]provision.Record, error)
 
+	// --- users & sessions (§11) ---
+	GetUser(ctx context.Context, id string) (User, error)
+	UpsertUser(ctx context.Context, u User) error
+	ListUsers(ctx context.Context) ([]User, error)
+	CountAdmins(ctx context.Context) (int, error)
+	CreateSession(ctx context.Context, sess Session) error
+	GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error)
+	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	RevokeSession(ctx context.Context, tokenHash string) error
+	RevokeSessionsForUser(ctx context.Context, userID string) error
+	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+
 	// --- settings KV (§5): instance id, per-app webhook last-received, etc. ---
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error

@@ -12,16 +12,36 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// registerMiddleware resolves each request's role (§7) before the operation
-// runs and stores it on the context for per-op authorization checks.
+// registerMiddleware resolves each request's role + user (§7) before the
+// operation runs and stores them on the context for per-op authorization.
 func (s *Server) registerMiddleware(api huma.API) {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
+		r, _ := humago.Unwrap(ctx)
 		role := RoleAnonymous
+		var user *store.User
 		if s.auth != nil {
-			r, _ := humago.Unwrap(ctx)
-			role = s.auth.Authorize(r)
+			if ua, ok := s.auth.(UserAuthorizer); ok {
+				role, user = ua.AuthorizeUser(r)
+			} else {
+				role = s.auth.Authorize(r)
+			}
 		}
-		next(huma.WithValue(ctx, roleCtxKey{}, role))
+		// CSRF (§11): mutating requests authenticated by a *cookie* must carry
+		// X-Loomarr-Csrf: 1. Combined with SameSite=Strict this closes form-based
+		// CSRF cheaply. Bearer-token (machine) callers are exempt — they don't send
+		// cookies, so they aren't a CSRF vector. Login is exempt (no session yet).
+		if isMutating(r.Method) && user != nil && r.URL.Path != "/v1/auth/login" &&
+			r.Header.Get("X-Loomarr-Csrf") != "1" {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "missing X-Loomarr-Csrf header")
+			return
+		}
+
+		c := huma.WithValue(ctx, roleCtxKey{}, role)
+		c = huma.WithValue(c, reqCtxKey{}, r) // raw request for handlers (login IP, cookies)
+		if user != nil {
+			c = huma.WithValue(c, userCtxKey{}, *user)
+		}
+		next(c)
 	})
 }
 
@@ -176,6 +196,16 @@ func (s *Server) deleteTitle(ctx context.Context, in *keyInput) (*deleteOutput, 
 		return nil, err
 	}
 	return &deleteOutput{}, nil
+}
+
+// isMutating reports whether a method changes state (needs CSRF, §11).
+func isMutating(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 // requireAdmin returns a 403 unless the caller resolved to admin (§7).

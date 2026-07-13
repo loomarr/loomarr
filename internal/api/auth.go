@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// constantEq is a constant-time string equality (auth tokens).
+func constantEq(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // Role is the caller's authorization level (§11). Phase 8 recognizes admin (via
 // API_TOKEN) and anonymous; Phase 9 adds session-derived member/admin.
 type Role string

@@ -45,9 +45,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
 	humaAPI := humago.New(mux, humaConfig())
-	srv := &Server{store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite}
+	srv := &Server{
+		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
+		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
+	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
+	srv.registerAuth(humaAPI)
+	srv.registerUsers(humaAPI)
 
 	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
 	// (not a typed Huma op — §16). Auth checked inline.

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -20,6 +21,27 @@ type Server struct {
 	// backupSQLite is set when the store is the SQLite backend (GET /v1/backup —
 	// §16). Nil for Postgres, which returns 501 + a pg_dump docs pointer.
 	backupSQLite BackupStreamer
+	// login/sessions wire /v1/auth/* (§11); nil until Phase 9 is configured.
+	login        LoginService
+	sessions     SessionManager
+	userSync     UserSyncer
+	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
+}
+
+// UserSyncer imports users from the media server (§11). Returns the count synced.
+type UserSyncer interface {
+	Sync(ctx context.Context) (int, error)
+}
+
+// LoginService verifies credentials and issues a session (Phase 9, §11).
+type LoginService interface {
+	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error)
+	Disable(ctx context.Context, userID string) error
+}
+
+// SessionManager revokes sessions (logout) (§11).
+type SessionManager interface {
+	Revoke(ctx context.Context, token string) error
 }
 
 // BackupStreamer streams a consistent DB snapshot (§16). Implemented by the
@@ -36,6 +58,10 @@ type Options struct {
 	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ingest       http.Handler   // POST /hooks/arr (Phase 6); mounted outside Huma
 	Ready        ReadyFunc
+	Login        LoginService   // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Sessions     SessionManager // /v1/auth/logout (Phase 9)
+	UserSync     UserSyncer     // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure string         // COOKIE_SECURE: auto|true|false (§11)
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

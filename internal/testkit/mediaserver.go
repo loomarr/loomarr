@@ -28,6 +28,18 @@ type MediaServer struct {
 	// PresentTMDB, if set, is an additional tmdb id the mock reports present
 	// (beyond the pinned 16153) — lets ingest tests flip a title to confirmed.
 	PresentTMDB string
+	// Accounts maps username→(password, isAdmin, disabled) for AuthenticateByName.
+	// If nil, GoodUser/GoodPass authenticate as an admin. Lets auth tests model
+	// admin vs member vs disabled logins.
+	Accounts map[string]Account
+}
+
+// Account is a media-server login the mock accepts.
+type Account struct {
+	Password string
+	ID       string
+	IsAdmin  bool
+	Disabled bool
 }
 
 // NewMediaServer starts a mock media server serving the pinned fixtures.
@@ -62,8 +74,25 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		ms.capture(r)
 		var body struct{ Username, Pw string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body.Username == ms.GoodUser && body.Pw == ms.GoodPass {
-			// Synthesize a success body in the real AuthenticationResult shape.
+
+		// Configurable accounts take precedence; otherwise the default admin.
+		if ms.Accounts != nil {
+			if acct, ok := ms.Accounts[body.Username]; ok && acct.Password == body.Pw {
+				id := acct.ID
+				if id == "" {
+					id = "user-" + body.Username
+				}
+				resp := map[string]any{
+					"AccessToken": "ms-session-token",
+					"User": map[string]any{
+						"Id": id, "Name": body.Username,
+						"Policy": map[string]any{"IsAdministrator": acct.IsAdmin, "IsDisabled": acct.Disabled},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+		} else if body.Username == ms.GoodUser && body.Pw == ms.GoodPass {
 			resp := map[string]any{
 				"AccessToken": "ms-session-token",
 				"User": map[string]any{
