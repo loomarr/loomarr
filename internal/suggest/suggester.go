@@ -152,20 +152,59 @@ func (s *Suggester) runTool(ctx context.Context, tc llm.ToolCall) (string, []cat
 	if tc.Name != catalogToolName {
 		return fmt.Sprintf(`{"error":"unknown tool %q; only %s is available"}`, tc.Name, catalogToolName), nil
 	}
-	query, _ := tc.Arguments["query"].(string)
-	// Search both corpora (library + TMDB), then honor media_type as a post-filter
-	// when the model asked for a specific type — so "find me series" doesn't return
-	// movies. Grounding is unaffected: whatever survives is still keyed into
-	// `surfaced` by the caller exactly as before.
-	cands, err := s.catalog.Search(ctx, query, catalog.ScopeAll, catalogSearchLimit)
+	mtArg, _ := tc.Arguments["media_type"].(string)
+	genres := stringSlice(tc.Arguments["genres"])
+
+	var cands []catalog.Candidate
+	var err error
+	if len(genres) > 0 {
+		// DISCOVERY: the model gave genres → find by theme (+ era) rather than title.
+		// This is what lets an abstract intent surface real content instead of an
+		// empty keyword result. Grounding is unaffected: discovered candidates are
+		// keyed into `surfaced` by the caller exactly like search results.
+		from, to := parseEra(stringArg(tc.Arguments["era"]))
+		cands, err = s.catalog.Discover(ctx, mediaTypeArg(mtArg), genres, from, to, catalogSearchLimit)
+	} else {
+		// KEYWORD: search both corpora by title.
+		cands, err = s.catalog.Search(ctx, stringArg(tc.Arguments["query"]), catalog.ScopeAll, catalogSearchLimit)
+	}
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), nil
 	}
-	if mt, ok := tc.Arguments["media_type"].(string); ok && mt != "" {
-		cands = filterByMediaType(cands, mt)
+	if mtArg != "" {
+		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
 	blob, _ := json.Marshal(toolResult(cands))
 	return string(blob), cands
+}
+
+// mediaTypeArg maps the tool's media_type string to provision's; "" ⇒ both.
+func mediaTypeArg(mt string) provision.MediaType {
+	switch provision.MediaType(mt) {
+	case provision.Movie:
+		return provision.Movie
+	case provision.Series:
+		return provision.Series
+	default:
+		return "" // both
+	}
+}
+
+// stringArg / stringSlice safely read tool-call arguments (untyped JSON).
+func stringArg(v any) string { s, _ := v.(string); return s }
+
+func stringSlice(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, e := range arr {
+		if s, ok := e.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // filterByMediaType keeps only candidates matching the requested type ("movie" or
@@ -257,6 +296,9 @@ func assistantToolCallMsg(calls []llm.ToolCall) llm.Message {
 const systemPrompt = `You are Loomarr's channel planner. You build TV channels from real content only.
 RULES:
 - You MUST NOT invent titles. To find any title, call the catalog_search tool.
+- For a THEMED intent (a mood/genre/era, not a specific title), call catalog_search with "genres" (and "era") to DISCOVER fitting titles — do NOT search a genre word as a title "query", it won't match.
+- For a KNOWN title, call catalog_search with "query".
+- Each result carries genres + a short overview — use them to judge which titles fit the intent.
 - Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.
 - Prefer titles already in the library (inLibrary:true) for the lineup; propose missing ones as acquisitions.
 When finished, reply with ONLY this JSON (no prose):
@@ -284,21 +326,34 @@ func userPrompt(i Intent) string {
 	if len(i.MustExclude) > 0 {
 		fmt.Fprintf(&b, "Must exclude: %s\n", strings.Join(i.MustExclude, ", "))
 	}
+	if i.RuntimeTgt > 0 {
+		fmt.Fprintf(&b, "Target total runtime (minutes): %d\n", i.RuntimeTgt)
+	}
+	if i.MaxAcquire > 0 {
+		fmt.Fprintf(&b, "Propose at most %d titles that need acquiring (not already in the library).\n", i.MaxAcquire)
+	}
 	return b.String()
 }
 
-// catalogTool is the provider-neutral tool schema the model may call (§8).
+// catalogTool is the provider-neutral tool schema the model may call (§8). It does
+// double duty: `query` runs a title keyword search; `genres` (+ optional `era`)
+// runs DISCOVERY by theme — use that for an abstract intent ("high-energy 90s
+// action") that no exact title matches. Either mode returns real ids + genres +
+// overview + an inLibrary flag; it is the ONLY way to find titles.
 func catalogTool() llm.ToolSchema {
 	return llm.ToolSchema{
-		Name:        catalogToolName,
-		Description: "Search the real library + TMDB for titles. Returns real external ids and an inLibrary flag. This is the ONLY way to find titles.",
+		Name: catalogToolName,
+		Description: "Find real titles from the library + TMDB. Provide `query` to search by title, OR `genres` " +
+			"(with optional `era`) to DISCOVER titles by theme when no exact title fits the intent. " +
+			"Returns real external ids, genres, a short overview, and an inLibrary flag. This is the ONLY way to find titles.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"query":      map[string]any{"type": "string", "description": "search terms"},
+				"query":      map[string]any{"type": "string", "description": "title keywords (for a known title)"},
+				"genres":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "genre names to discover by, e.g. [\"Action\",\"Science Fiction\"]"},
+				"era":        map[string]any{"type": "string", "description": "decade or year range for discovery, e.g. \"1990s\" or \"1985-1995\""},
 				"media_type": map[string]any{"type": "string", "enum": []string{"movie", "series"}},
 			},
-			"required": []string{"query"},
 		},
 	}
 }

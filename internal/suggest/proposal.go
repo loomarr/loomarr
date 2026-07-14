@@ -37,6 +37,11 @@ type ProposalItem struct {
 	LibraryItemID string              `json:"libraryItemId,omitempty"`
 	Rationale     string              `json:"rationale,omitempty"` // why-it-fits (LLM)
 	Confidence    float64             `json:"confidence,omitempty"`
+	// Genres + Overview carry from the grounded Candidate so deterministic theme
+	// scoring measures real metadata, not the title string (§8). Display/scoring
+	// only — never identity (Key ignores them).
+	Genres   []string `json:"genres,omitempty"`
+	Overview string   `json:"overview,omitempty"`
 }
 
 // Key derives the provisioning key (§3), enforcing the grounding guarantee: a
@@ -55,6 +60,7 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		MediaType: c.MediaType, TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
 		Rationale: rationale, Confidence: confidence,
+		Genres: c.Genres, Overview: c.Overview,
 	}
 }
 

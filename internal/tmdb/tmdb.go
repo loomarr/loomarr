@@ -57,6 +57,10 @@ type multiResult struct {
 	ReleaseDate   string `json:"release_date"`
 	FirstAirDate  string `json:"first_air_date"`
 	OriginalTitle string `json:"original_title"`
+	// Enrichment (§8): TMDB already returns these on /search/multi + /discover; we
+	// now parse them so the model reasons about theme (genre/overview), not titles.
+	GenreIDs []int  `json:"genre_ids"`
+	Overview string `json:"overview"`
 }
 
 type multiResponse struct {
@@ -94,6 +98,8 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 			Name:      name,
 			Year:      yearFromDate(date),
 			InLibrary: false,
+			Genres:    genreNames(r.GenreIDs),
+			Overview:  r.Overview,
 			Source:    catalog.ScopeTMDB,
 		})
 		if limit > 0 && len(out) >= limit {
@@ -101,6 +107,102 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]catalog.
 		}
 	}
 	return out, nil
+}
+
+// discoverResult is one /discover row. Same shape as multiResult minus
+// media_type (discover is per-endpoint: /discover/movie vs /discover/tv).
+type discoverResult struct {
+	ID           int    `json:"id"`
+	Title        string `json:"title"`
+	Name         string `json:"name"`
+	ReleaseDate  string `json:"release_date"`
+	FirstAirDate string `json:"first_air_date"`
+	GenreIDs     []int  `json:"genre_ids"`
+	Overview     string `json:"overview"`
+}
+
+type discoverResponse struct {
+	Results []discoverResult `json:"results"`
+}
+
+// Discover finds titles by GENRE + ERA rather than title text (§8 discovery path)
+// — the fix for abstract intents ("high-energy 90s action") that keyword search
+// can't surface. genres are human names (mapped to TMDB ids); era bounds the
+// primary release date (yearFrom/yearTo, 0 = unbounded). Returns enriched, grounded
+// Candidates (real ids + genres/overview). Movies + series unless a media type is
+// pinned via mt ("" = both). sort_by=popularity.desc so the strongest fits lead.
+func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]catalog.Candidate, error) {
+	ids := genreIDsFor(genres)
+	var out []catalog.Candidate
+	if mt == "" || mt == provision.Movie {
+		rows, err := c.discover(ctx, "/discover/movie", ids, yearFrom, yearTo, "primary_release_date")
+		if err != nil {
+			return nil, err
+		}
+		out = appendDiscover(out, rows, provision.Movie)
+	}
+	if mt == "" || mt == provision.Series {
+		rows, err := c.discover(ctx, "/discover/tv", ids, yearFrom, yearTo, "first_air_date")
+		if err != nil {
+			return nil, err
+		}
+		out = appendDiscover(out, rows, provision.Series)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (c *Client) discover(ctx context.Context, path string, genreIDs []int, yearFrom, yearTo int, dateField string) ([]discoverResult, error) {
+	q := url.Values{}
+	q.Set("include_adult", "false")
+	q.Set("sort_by", "popularity.desc")
+	if len(genreIDs) > 0 {
+		parts := make([]string, len(genreIDs))
+		for i, id := range genreIDs {
+			parts[i] = strconv.Itoa(id)
+		}
+		q.Set("with_genres", strings.Join(parts, ",")) // comma = OR
+	}
+	if yearFrom > 0 {
+		q.Set(dateField+".gte", fmt.Sprintf("%04d-01-01", yearFrom))
+	}
+	if yearTo > 0 {
+		q.Set(dateField+".lte", fmt.Sprintf("%04d-12-31", yearTo))
+	}
+	var resp discoverResponse
+	if err := c.get(ctx, path+"?"+q.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func appendDiscover(out []catalog.Candidate, rows []discoverResult, mt provision.MediaType) []catalog.Candidate {
+	for _, r := range rows {
+		name, date := r.Title, r.ReleaseDate
+		if mt == provision.Series {
+			name, date = r.Name, r.FirstAirDate
+		}
+		out = append(out, catalog.Candidate{
+			MediaType: mt, TMDBID: r.ID, Name: name, Year: yearFromDate(date),
+			InLibrary: false, Genres: genreNames(r.GenreIDs), Overview: r.Overview,
+			Source: catalog.ScopeTMDB,
+		})
+	}
+	return out
+}
+
+// genreIDsFor maps human genre names (case-insensitive) to TMDB ids, dropping
+// unknowns. Used by Discover to translate an intent's genre terms.
+func genreIDsFor(names []string) []int {
+	var out []int
+	for _, n := range names {
+		if id, ok := genreIDByName[canonGenre(n)]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // Exists re-validates an acquisition against TMDB (§8): GET /movie/{id} or

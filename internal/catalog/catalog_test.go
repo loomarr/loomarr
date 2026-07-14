@@ -75,6 +75,44 @@ func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
 	}
 }
 
+// T1.1: genre/overview enrichment is additive — it flows through merge WITHOUT
+// changing dedupe/ordering, and the merged candidate carries the theme signals the
+// model reasons about. (Guards the risk that enrichment touches identity.)
+func TestCatalogSearch_EnrichesGenreOverview_WithoutChangingDedupe(t *testing.T) {
+	lib := realLibrary(t)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "test-key")
+	c := catalog.New(lib, tm, nil)
+
+	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matrix *catalog.Candidate
+	count := 0
+	for i := range got {
+		if got[i].TMDBID == 603 {
+			matrix = &got[i]
+			count++
+		}
+	}
+	if count != 1 || matrix == nil {
+		t.Fatalf("The Matrix should still dedupe to exactly one candidate, got %d", count)
+	}
+	// The merged candidate carries theme signals (genres from TMDB, overview from
+	// TMDB) — the whole point of the enrichment.
+	if len(matrix.Genres) == 0 {
+		t.Error("merged candidate lost genres (enrichment didn't survive merge)")
+	}
+	if matrix.Overview == "" {
+		t.Error("merged candidate lost overview")
+	}
+	// And it's STILL in-library (identity/merge semantics unchanged).
+	if !matrix.InLibrary {
+		t.Error("enrichment must not disturb in_library")
+	}
+}
+
 func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	// A TMDB title absent from the library ("Speed") → in_library=false.
 	mt := testkit.NewTMDB(t)
