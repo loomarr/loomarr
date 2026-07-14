@@ -160,7 +160,7 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 		if isActive && active.APIKey != "" {
 			key = active.APIKey
 		}
-		models, live := hp.Models, false
+		models, live := hp.Fallback, false
 		if key != "" {
 			models, live = hp.LiveModels(ctx, key)
 		}
@@ -169,7 +169,9 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 			Note: hp.Note, KeyConfigured: key != "", Active: isActive, ModelsLive: live,
 		}
 		for _, m := range models {
-			view.Models = append(view.Models, api.HostedModelView{ID: m.ID, Label: m.Label, Why: m.Why})
+			view.Models = append(view.Models, api.HostedModelView{
+				ID: m.ID, Label: m.Label, Why: m.Why, Recommended: m.Recommended, Tools: m.Tools,
+			})
 		}
 		views = append(views, view)
 	}
