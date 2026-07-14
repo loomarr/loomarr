@@ -95,6 +95,12 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 	return scanClips(rows)
 }
 
+// ListUntaggedCommercials is the AI-tagging work list (§10) — sugar over the
+// commercial-scoped UntaggedOnly filter.
+func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
+	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
+}
+
 func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error {
 	res, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE clips SET era = ?, audience = ?, category = ?, ai_tagged = ?, updated_at = ? WHERE library_item_id = ?`),

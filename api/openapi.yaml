@@ -84,6 +84,60 @@ components:
         - programCount
         - slotCount
       type: object
+    ClipDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ClipDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        aiTagged:
+          type: boolean
+        audience:
+          enum:
+            - kids
+            - family
+            - general
+            - late_night
+            - ""
+          type: string
+        category:
+          type: string
+        durationMs:
+          format: int64
+          type: integer
+        era:
+          format: int64
+          type: integer
+        kind:
+          enum:
+            - commercial
+            - bumper
+            - station_id
+            - psa
+            - trailer
+            - interstitial
+          type: string
+        libraryItemId:
+          type: string
+        name:
+          type: string
+        source:
+          type: string
+        tagged:
+          description: Whether the clip has all match tags (era+audience+category)
+          type: boolean
+      required:
+        - libraryItemId
+        - name
+        - kind
+        - durationMs
+        - aiTagged
+        - tagged
+      type: object
     CreateChannelInputBody:
       additionalProperties: false
       properties:
@@ -271,6 +325,25 @@ components:
       required:
         - channels
       type: object
+    ListFillerOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListFillerOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        clips:
+          items:
+            $ref: "#/components/schemas/ClipDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - clips
+      type: object
     ListOutputBody:
       additionalProperties: false
       properties:
@@ -351,6 +424,30 @@ components:
         - tunerAdded
         - listingAdded
         - alreadyWired
+      type: object
+    PatchClipInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PatchClipInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audience:
+          enum:
+            - kids
+            - family
+            - general
+            - late_night
+            - ""
+          type: string
+        category:
+          type: string
+        era:
+          format: int64
+          type: integer
       type: object
     PatchUserInputBody:
       additionalProperties: false
@@ -538,6 +635,62 @@ components:
           type: string
       required:
         - jobId
+      type: object
+    SyncFillerOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SyncFillerOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        added:
+          format: int64
+          type: integer
+        pruned:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+        updated:
+          format: int64
+          type: integer
+      required:
+        - total
+        - added
+        - updated
+        - pruned
+      type: object
+    TagFillerOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TagFillerOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        considered:
+          format: int64
+          type: integer
+        partial:
+          format: int64
+          type: integer
+        skipped:
+          format: int64
+          type: integer
+        tagged:
+          format: int64
+          type: integer
+      required:
+        - considered
+        - tagged
+        - partial
+        - skipped
       type: object
     TitleDTO:
       additionalProperties: false
@@ -761,6 +914,139 @@ paths:
       summary: Force desired→Tunarr reconciliation
       tags:
         - channels
+  /v1/filler:
+    get:
+      description: Filter by kind/era/audience/category.
+      operationId: list-filler
+      parameters:
+        - explode: false
+          in: query
+          name: kind
+          schema:
+            enum:
+              - commercial
+              - bumper
+              - station_id
+              - psa
+              - trailer
+              - interstitial
+            type: string
+        - explode: false
+          in: query
+          name: era
+          schema:
+            format: int64
+            type: integer
+        - explode: false
+          in: query
+          name: audience
+          schema:
+            enum:
+              - kids
+              - family
+              - general
+              - late_night
+            type: string
+        - explode: false
+          in: query
+          name: category
+          schema:
+            type: string
+        - description: Only commercials missing match tags
+          explode: false
+          in: query
+          name: untagged
+          schema:
+            description: Only commercials missing match tags
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List filler clips
+      tags:
+        - filler
+  /v1/filler/sync:
+    post:
+      description: Admin only (§10).
+      operationId: sync-filler
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Sync the clip catalog from the media server
+      tags:
+        - filler
+  /v1/filler/tag:
+    post:
+      description: Admin only. Text-signal classification (§10).
+      operationId: tag-filler
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: AI-tag untagged clips
+      tags:
+        - filler
+  /v1/filler/{id}:
+    patch:
+      description: Admin only.
+      operationId: tag-filler-clip
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchClipInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClipDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a clip's tags
+      tags:
+        - filler
   /v1/search:
     get:
       operationId: search

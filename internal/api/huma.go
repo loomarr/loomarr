@@ -34,7 +34,18 @@ type Server struct {
 	// Phase 11 is configured.
 	suggest SuggestService
 	search  SearchService
-	events  EventSource // /v1/events SSE (Phase 11); nil ⇒ route 501
+	events  EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
+	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+}
+
+// FillerService backs the filler ingestion routes (§10): catalog sync and the AI
+// tagging job. Implemented by filler.Syncer + filler.Tagger. list/patch read/write
+// the store directly (no service needed).
+type FillerService interface {
+	// Sync reconciles the clip catalog from the media server's filler library.
+	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
+	// Tag runs AI classification over untagged commercials.
+	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -118,6 +129,7 @@ type Options struct {
 	Suggest      SuggestService // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
 	Search       SearchService  // /v1/search (Phase 11); nil ⇒ search route 501
 	Events       EventSource    // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler       FillerService  // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

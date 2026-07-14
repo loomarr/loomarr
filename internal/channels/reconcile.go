@@ -47,6 +47,14 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	// a title that has vanished simply comes back as a placeholder this pass.
 	desired := schedule.ComputeDesired(ch.Channel, ch.Lineup, e.avail, e.policy)
 
+	// 2b: fill filler gaps with matched ad pods (§10) when a PodFiller is wired.
+	// Each SlotFiller with no resolved item is offered to the assembler; the
+	// returned clips replace it (a matched pod), else it stays flex. Deterministic
+	// (seeded by channel + slot index) so pods reproduce across reconciles.
+	if e.pods != nil {
+		desired = e.fillPods(ctx, ch, desired)
+	}
+
 	// 3: drift detection (§9 slot revalidation) is a comparison against what we
 	// *previously* scheduled: a slot that was a real program in the persisted
 	// desired and is no longer a program now means a scheduled item vanished
@@ -100,6 +108,50 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 		e.pokeGuide(ctx, channelID)
 	}
 	return nil
+}
+
+// fillPods resolves the channel's filler-gap slots into matched ad-pod clips via
+// the assembler (§10). Each SlotFiller with no library item becomes zero-or-more
+// pod entries (matched clips or the bumper card); a slot the assembler declines
+// (empty result) stays as-is (flex). The seed is derived from the channel + slot
+// index so pods reproduce deterministically across reconciles. Program slots are
+// never touched (filler never displaces a program).
+func (e *Engine) fillPods(ctx context.Context, ch store.Channel, d schedule.DesiredLineup) schedule.DesiredLineup {
+	era := podEra(ch)
+	out := make([]schedule.Slot, 0, len(d.Slots))
+	for i, s := range d.Slots {
+		if s.Kind != schedule.SlotFiller || s.LibraryItemID != "" {
+			out = append(out, s) // programs, flex, already-resolved filler pass through
+			continue
+		}
+		gap := s.DurationMs
+		if gap <= 0 {
+			gap = 120000 // default 2-minute break when the gap is unknown
+		}
+		seed := podSeed(ch.ID, i)
+		pod := e.pods.FillGap(ctx, ch.ID, era, gap, seed)
+		if len(pod) == 0 {
+			out = append(out, s) // assembler declined → leave as flex
+			continue
+		}
+		out = append(out, pod...)
+	}
+	return schedule.DesiredLineup{ChannelID: d.ChannelID, Slots: out}
+}
+
+// podEra derives the block's target era from the channel (v1: unset → 0, any-era
+// matching). A per-block era comes from the time-slot strategy in future work.
+func podEra(ch store.Channel) int { return 0 }
+
+// podSeed derives a deterministic pod seed from the channel id + slot index (§10
+// seeded-deterministic — same channel+slot rebuilds the same pod).
+func podSeed(channelID string, slotIdx int) int64 {
+	var h int64 = 1469598103934665603 // FNV-1a offset basis
+	for _, b := range []byte(channelID) {
+		h ^= int64(b)
+		h *= 1099511628211
+	}
+	return h ^ int64(slotIdx)
 }
 
 // ensureChannel creates or updates the Tunarr channel. On create, Tunarr assigns

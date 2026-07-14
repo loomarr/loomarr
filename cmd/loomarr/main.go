@@ -22,6 +22,7 @@ import (
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/ingest"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
@@ -173,6 +174,37 @@ func run() error {
 		log.Info("suggester started", "provider", provider.Name(), "workers", cfg.JobWorkers, "tmdb", tmdbClient != nil)
 	}
 
+	// Filler & commercials (§10, Phase 12): catalog sync from the media server's
+	// filler library + a periodic sweep, the AI-tagging job, and the pod assembler
+	// wired into the channel scheduler. Wired when a store, the library, and a
+	// FILLER_LIBRARY are configured. The pod adapter (if the scheduler is up) turns
+	// filler gaps into matched ad pods.
+	var fillerSvc api.FillerService
+	if st != nil && cfg.LibraryFlavor != "" && cfg.FillerLibrary != "" {
+		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
+		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
+		syncer := filler.NewSyncer(fillerListerAdapter{lib}, fillerStoreAdapter{st}, cfg.FillerLibrary, time.Now, log)
+
+		var tagger *filler.Tagger
+		if cfg.FillerAITagging && cfg.LLMURL != "" {
+			provider := llm.NewOllama(cfg.LLMURL, cfg.LLMModel)
+			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, time.Now, log)
+		}
+		fillerSvc = fillerServiceAdapter{syncer: syncer, tagger: tagger}
+
+		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to
+		// fill filler gaps with matched pods.
+		if engine, ok := channelSvc.(*channels.Engine); ok {
+			podPolicy := filler.Policy{}
+			engine.WithPods(filler.NewPodAdapter(clipCatalogAdapter{st}, podPolicy, log))
+			log.Info("filler pod assembler wired into the scheduler")
+		}
+
+		// Periodic filler catalog sync alongside the reconciler (§10).
+		go runFillerSync(rootCtx, syncer, cfg.FillerSyncEvery, log)
+		log.Info("filler catalog sync started", "library", cfg.FillerLibrary, "every", cfg.FillerSyncEvery, "ai_tagging", cfg.FillerAITagging)
+	}
+
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
 	// Session auth (cookie) with API_TOKEN Bearer break-glass; SQLite gets a
 	// backup streamer, Postgres passes nil (→ 501).
@@ -214,6 +246,7 @@ func run() error {
 			Suggest:      suggestSvc,
 			Search:       searchSvc,
 			Events:       eventBus,
+			Filler:       fillerSvc,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -299,6 +332,119 @@ type noopValidator struct{}
 
 func (noopValidator) Exists(context.Context, provision.MediaType, int) (bool, error) {
 	return true, nil
+}
+
+// --- filler bridging adapters (§10) ---
+// These translate between the store's Clip/FillerClip types and the filler
+// package's port types, keeping filler free of a store/library import (the domain
+// stays pure; main does the wiring).
+
+// fillerListerAdapter bridges library.ListFillerClips → filler.Lister.
+type fillerListerAdapter struct{ lib *library.Client }
+
+func (a fillerListerAdapter) ListFillerClips(ctx context.Context, libraryID string) ([]filler.RawClip, error) {
+	raw, err := a.lib.ListFillerClips(ctx, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.RawClip, len(raw))
+	for i, r := range raw {
+		out[i] = filler.RawClip{LibraryItemID: r.LibraryItemID, Name: r.Name, DurationMs: r.DurationMs, Kind: r.Kind, Era: r.Era}
+	}
+	return out, nil
+}
+
+// fillerStoreAdapter bridges the store's clip methods → filler.Store (the sync).
+type fillerStoreAdapter struct{ st store.Store }
+
+func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
+func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+	c, err := a.st.GetClip(ctx, id)
+	if err == store.ErrNotFound {
+		return filler.StoreClip{}, false, nil
+	}
+	if err != nil {
+		return filler.StoreClip{}, false, err
+	}
+	return filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, true, nil
+}
+func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string) (int, error) {
+	return a.st.DeleteClipsNotIn(ctx, keep)
+}
+
+// fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
+type fillerTagStoreAdapter struct{ st store.Store }
+
+func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListUntaggedCommercials(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error {
+	return a.st.UpdateClipTags(ctx, id, era, audience, category, aiTagged, updatedAt)
+}
+
+// clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).
+type clipCatalogAdapter struct{ st store.Store }
+
+func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.Clip, len(clips))
+	for i, c := range clips {
+		out[i] = c.Clip
+	}
+	return out, nil
+}
+
+// fillerServiceAdapter bridges filler.Syncer/Tagger → api.FillerService.
+type fillerServiceAdapter struct {
+	syncer *filler.Syncer
+	tagger *filler.Tagger
+}
+
+func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
+	res, err := a.syncer.Sync(ctx)
+	return res.Total, res.Added, res.Updated, res.Pruned, err
+}
+func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, error) {
+	if a.tagger == nil {
+		return 0, 0, 0, 0, nil // AI tagging disabled (FILLER_AI_TAGGING=false)
+	}
+	res, err := a.tagger.Run(ctx)
+	return res.Considered, res.Tagged, res.Partial, res.Skipped, err
+}
+
+// runFillerSync runs the periodic filler catalog sync until ctx is done (§10).
+func runFillerSync(ctx context.Context, syncer *filler.Syncer, every time.Duration, log *slog.Logger) {
+	if every <= 0 {
+		every = 15 * time.Minute
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	if _, err := syncer.Sync(ctx); err != nil {
+		log.Warn("initial filler sync", "err", err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if _, err := syncer.Sync(ctx); err != nil {
+				log.Warn("filler sync", "err", err)
+			}
+		}
+	}
 }
 
 // newID generates a random 128-bit hex id for jobs/proposals.

@@ -37,6 +37,20 @@ type Availability interface {
 	schedule.Availability
 }
 
+// PodFiller resolves a channel's filler/flex gap slots into matched ad-pod clips
+// (§10). Implemented by the filler package (a catalog-backed pod assembler);
+// nil = flex-only (the Phase-10 default, no pods yet). Called during reconcile
+// after the desired lineup is computed: each SlotFiller with no library item is
+// offered to the assembler, which returns the pod clips to place (or leaves it as
+// flex). Deterministic (seeded by channel + slot) so pods reproduce across
+// reconciles (§10/§19).
+type PodFiller interface {
+	// FillGap returns the clips to place in a filler gap for a channel, given the
+	// gap duration and a deterministic seed. An empty result → leave it as flex
+	// (never dead air — the assembler's own fallback ladder ends in a bumper card).
+	FillGap(ctx context.Context, channelID string, era int, gapMs, seed int64) []schedule.Slot
+}
+
 // Engine reconciles channels against Tunarr. One per process; the per-channel
 // mutex map serializes reconciles of the *same* channel (§18) while allowing
 // different channels to reconcile concurrently.
@@ -45,6 +59,7 @@ type Engine struct {
 	prog  programmer.Programmer
 	avail Availability
 	guide GuidePoker
+	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
 	log   *slog.Logger
 
 	policy       schedule.PendingPolicy
@@ -88,6 +103,14 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		now:          now,
 		locks:        map[string]*sync.Mutex{},
 	}
+}
+
+// WithPods enables ad-pod assembly for filler gaps (§10). Without it the engine
+// leaves filler slots as flex (the Phase-10 default). Returns the engine for
+// chaining. Kept as a setter so New's signature stays stable for Phase-10 callers.
+func (e *Engine) WithPods(p PodFiller) *Engine {
+	e.pods = p
+	return e
 }
 
 // lockFor returns the per-channel mutex, creating it on first use (§18).

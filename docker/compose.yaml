@@ -65,11 +65,23 @@ services:
   # Separate image so that ~170MB of media tooling never touches the core (§16).
   loomarr-ingest:
     image: loomarr-ingest:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile.ingest
     profiles: ["filler"]
-    # volumes: ["/mnt/media/filler:/downloads"]   # same folder the media server scans
+    environment:
+      # The sidecar owns its OWN config (§10 — the core has no download config).
+      INGEST_DROP_DIR: /drop
+      INGEST_SOURCES: ${INGEST_SOURCES:-}      # comma-separated YouTube playlist / Archive.org URLs
+      INGEST_EVERY: ${INGEST_EVERY:-6h}        # unset for single-shot
+    volumes:
+      # The drop-folder MUST be the same path the media server scans as its
+      # filler library (§10); loomarr then syncs the catalog from the server.
+      - ${FILLER_DROP_DIR:-filler-drop}:/drop
     restart: unless-stopped
 
 volumes:
   loomarr-data: # sqlite backend
   pg-data: # postgres profile
+  filler-drop: # filler profile drop-folder (override with FILLER_DROP_DIR bind mount)
   ollama: # ai profile

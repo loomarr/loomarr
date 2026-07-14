@@ -22,5 +22,6 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	srv.registerSetup(humaAPI)
 	srv.registerSuggestions(humaAPI)
 	srv.registerSearch(humaAPI)
+	srv.registerFiller(humaAPI)
 	return humaAPI.OpenAPI().YAML()
 }

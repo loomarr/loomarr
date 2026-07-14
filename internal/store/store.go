@@ -93,6 +93,9 @@ type Store interface {
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
+	// ListUntaggedCommercials returns commercials missing match tags — the AI
+	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
+	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
 
 	// --- settings KV (§5): instance id, per-app webhook last-received, etc. ---
 	GetSetting(ctx context.Context, key string) (string, error)
