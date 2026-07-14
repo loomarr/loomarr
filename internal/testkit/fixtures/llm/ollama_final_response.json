@@ -1,0 +1,11 @@
+{
+  "model": "llama3.1:8b",
+  "message": {
+    "role": "assistant",
+    "content": "{\"picks\":[{\"tmdb_id\":100,\"title\":\"Speed\"},{\"tmdb_id\":101,\"title\":\"The Rock\"}]}"
+  },
+  "done": true,
+  "done_reason": "stop",
+  "prompt_eval_count": 133,
+  "eval_count": 27
+}

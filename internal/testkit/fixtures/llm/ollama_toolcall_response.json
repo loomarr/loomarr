@@ -1,0 +1,35 @@
+{
+  "model": "llama3.1:8b",
+  "message": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "id": "call_y85a3kha",
+        "function": {
+          "index": 0,
+          "name": "catalog_search",
+          "arguments": {
+            "media_type": "movie",
+            "query": "90s action movie"
+          }
+        }
+      },
+      {
+        "id": "call_v4r8re9p",
+        "function": {
+          "index": 1,
+          "name": "catalog_search",
+          "arguments": {
+            "media_type": "movie",
+            "query": "action movies 1990s"
+          }
+        }
+      }
+    ]
+  },
+  "done": true,
+  "done_reason": "stop",
+  "prompt_eval_count": 218,
+  "eval_count": 98
+}

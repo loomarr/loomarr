@@ -1,0 +1,18 @@
+{
+  "model": "llama3.1:8b",
+  "stream": false,
+  "messages": [
+    {"role":"system","content":"You build TV channels. To find titles you MUST call the catalog_search tool; never invent titles. Select only from tool results."},
+    {"role":"user","content":"Build a channel of 90s action movies. Find two candidates."}
+  ],
+  "tools": [
+    {"type":"function","function":{
+      "name":"catalog_search",
+      "description":"Search the real library + TMDB for titles. Returns real external ids.",
+      "parameters":{"type":"object","properties":{
+        "query":{"type":"string","description":"search terms"},
+        "media_type":{"type":"string","enum":["movie","series"]}
+      },"required":["query"]}
+    }}
+  ]
+}
