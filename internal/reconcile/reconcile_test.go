@@ -32,6 +32,33 @@ func setup(t *testing.T) (*Reconciler, store.Store, *testkit.Requester, *testkit
 	return rc, st, req, ms
 }
 
+// captureEmitter records the domain events the reconciler fans out, so the #10
+// seam (reconciler terminal transition → scheduler/SSE feed) is asserted.
+type captureEmitter struct{ events []provision.DomainEvent }
+
+func (c *captureEmitter) Emit(_ context.Context, ev provision.DomainEvent) {
+	c.events = append(c.events, ev)
+}
+
+// setupWithEmitter is setup() with a capturing emitter wired in.
+func setupWithEmitter(t *testing.T) (*Reconciler, store.Store, *testkit.MediaServer, *captureEmitter) {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/r.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	req := &testkit.Requester{}
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	emit := &captureEmitter{}
+	rc := New(st, req, lib, emit, Config{
+		RequestTTL: 48 * time.Hour, DownloadingTTL: 12 * time.Hour, Batch: 50, Lease: 2 * time.Minute,
+	}, func() time.Time { return now }, slog.New(slog.DiscardHandler))
+	return rc, st, ms, emit
+}
+
 func put(t *testing.T, st store.Store, key provision.Key, state provision.State, tmdb int, deadline time.Time) {
 	t.Helper()
 	err := st.UpsertTitle(context.Background(), provision.Record{
@@ -116,6 +143,49 @@ func TestDeadlineGiveUp(t *testing.T) {
 	}
 	if req.CancelCount() != 1 {
 		t.Errorf("give-up should best-effort Cancel, got %d cancels", req.CancelCount())
+	}
+}
+
+// TestReconcilerEmitsTerminalEvents is the reconciler half of the #10 seam: the
+// reconciler's own terminal transitions (missed-webhook re-check → available;
+// deadline give-up → unavailable) must fan domain events to the emitter, so the
+// scheduler backfills and the UI updates without an Import webhook ever arriving.
+// A non-terminal Tick (retry a wanted title) must emit nothing.
+func TestReconcilerEmitsTerminalEvents(t *testing.T) {
+	rc, st, ms, emit := setupWithEmitter(t)
+
+	// A wanted retry is non-terminal (→ requested) → no availability event.
+	put(t, st, "movie:tmdb:1", provision.Wanted, 1, now.Add(-time.Hour))
+	if _, err := rc.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(emit.events) != 0 {
+		t.Fatalf("wanted→requested emitted %d events, want 0 (non-terminal)", len(emit.events))
+	}
+
+	// Missed-webhook re-check confirms the library → available (terminal → event).
+	ms.PresentTMDB = "16153"
+	put(t, st, "movie:tmdb:16153", provision.Requested, 16153, now.Add(-time.Hour))
+	if _, err := rc.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(emit.events) != 1 {
+		t.Fatalf("missed-webhook confirm emitted %d events, want 1 (available)", len(emit.events))
+	}
+	if ev := emit.events[0]; ev.State != provision.Available || ev.Key != "movie:tmdb:16153" {
+		t.Errorf("emitted %v, want {movie:tmdb:16153, available}", ev)
+	}
+
+	// Deadline give-up on an unconfirmed title → unavailable (terminal → event).
+	put(t, st, "movie:tmdb:404", provision.Downloading, 404, now.Add(-time.Hour))
+	if _, err := rc.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(emit.events) != 2 {
+		t.Fatalf("after give-up: %d events total, want 2 (available + unavailable)", len(emit.events))
+	}
+	if ev := emit.events[1]; ev.State != provision.Unavailable || ev.Key != "movie:tmdb:404" {
+		t.Errorf("emitted %v, want {movie:tmdb:404, unavailable}", ev)
 	}
 }
 

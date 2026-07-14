@@ -22,6 +22,20 @@ var fixedNow = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
 
 func newHandler(t *testing.T) (*Handler, store.Store, *testkit.MediaServer) {
 	t.Helper()
+	h, st, ms, _ := newHandlerWithEmitter(t)
+	return h, st, ms
+}
+
+// captureEmitter records the domain events the handler fans out, so tests can
+// assert the #10 seam (webhook terminal transition → scheduler/SSE feed).
+type captureEmitter struct{ events []provision.DomainEvent }
+
+func (c *captureEmitter) Emit(_ context.Context, ev provision.DomainEvent) {
+	c.events = append(c.events, ev)
+}
+
+func newHandlerWithEmitter(t *testing.T) (*Handler, store.Store, *testkit.MediaServer, *captureEmitter) {
+	t.Helper()
 	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/t.db", true)
 	if err != nil {
 		t.Fatal(err)
@@ -30,8 +44,9 @@ func newHandler(t *testing.T) (*Handler, store.Store, *testkit.MediaServer) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	h := New(st, lib, secret, 12*time.Hour, func() time.Time { return fixedNow }, slog.New(slog.DiscardHandler))
-	return h, st, ms
+	emit := &captureEmitter{}
+	h := New(st, lib, secret, 12*time.Hour, emit, func() time.Time { return fixedNow }, slog.New(slog.DiscardHandler))
+	return h, st, ms, emit
 }
 
 func post(t *testing.T, h *Handler, token string, body []byte) *http.Response {
@@ -126,6 +141,43 @@ func TestImportConfirmsViaLibraryThenAvailable(t *testing.T) {
 	}
 	if rec.LibraryID == "" {
 		t.Error("available record should carry the library item id")
+	}
+}
+
+// TestImportEmitsAvailabilityEvent is the regression test for the #10 seam: a
+// webhook that drives a title to a terminal `available` transition must fan the
+// domain event to the emitter (→ scheduler backfill + SSE). Before the wire, the
+// handler only logged the event (comment "Phase 7 wires to scheduler") and the
+// emitter had zero callers. A no-op transition (no state change) must emit
+// nothing — events mirror terminal transitions, not every webhook.
+func TestImportEmitsAvailabilityEvent(t *testing.T) {
+	h, st, ms, emit := newHandlerWithEmitter(t)
+	ctx := context.Background()
+	key := provision.Key("movie:tmdb:1111867")
+	must(t, st.UpsertTitle(ctx, provision.Record{
+		Key: key, State: provision.Downloading,
+		Title:    provision.Title{MediaType: provision.Movie, TMDBID: 1111867},
+		Deadline: fixedNow.Add(12 * time.Hour),
+	}))
+
+	// First import: library does NOT yet confirm → no terminal transition → no event.
+	if resp := post(t, h, secret, testkit.Fixture(t, "radarr/import_webhook.json")); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Import → %d, want 200", resp.StatusCode)
+	}
+	if len(emit.events) != 0 {
+		t.Fatalf("unconfirmed import emitted %d events, want 0 (no terminal transition)", len(emit.events))
+	}
+
+	// Library confirms → title flips available → exactly one availability event.
+	ms.PresentTMDB = "1111867"
+	if resp := post(t, h, secret, testkit.Fixture(t, "radarr/import_webhook.json")); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Import → %d, want 200", resp.StatusCode)
+	}
+	if len(emit.events) != 1 {
+		t.Fatalf("confirmed import emitted %d events, want 1", len(emit.events))
+	}
+	if ev := emit.events[0]; ev.Key != key || ev.State != provision.Available {
+		t.Errorf("emitted event = {%s, %s}, want {%s, available}", ev.Key, ev.State, key)
 	}
 }
 
