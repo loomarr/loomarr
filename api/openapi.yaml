@@ -315,12 +315,18 @@ components:
           type: string
         label:
           type: string
+        recommended:
+          description: Rule-selected top pick (cheap + tool-capable)
+          type: boolean
+        tools:
+          description: Provider advertises tool-calling for this model
+          type: boolean
         why:
+          description: Rule-derived rationale (from live pricing/context/tools metadata)
           type: string
       required:
         - id
         - label
-        - why
       type: object
     HostedProviderView:
       additionalProperties: false

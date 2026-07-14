@@ -81,11 +81,13 @@ type HostedProviderView struct {
 	Models        []HostedModelView `json:"models"`
 }
 
-// HostedModelView is one recommended hosted model (§8.1).
+// HostedModelView is one hosted model, ranked from live metadata (§8.1).
 type HostedModelView struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Why   string `json:"why"`
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Why         string `json:"why,omitempty" doc:"Rule-derived rationale (from live pricing/context/tools metadata)"`
+	Recommended bool   `json:"recommended,omitempty" doc:"Rule-selected top pick (cheap + tool-capable)"`
+	Tools       bool   `json:"tools,omitempty" doc:"Provider advertises tool-calling for this model"`
 }
 
 // LLMModelView is one catalog model annotated for the machine (§8.1).

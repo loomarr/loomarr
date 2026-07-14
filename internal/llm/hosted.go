@@ -4,30 +4,41 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/httpx"
 )
 
-// This file is the curated, in-code catalog of HOSTED (OpenAI-compatible) providers
-// Loomarr knows how to recommend (§8.1) — the hosted analog of catalog.go. Like the
-// local catalog it is deliberately NOT a live registry scrape: a fixed, reviewable
-// list keeps recommendations deterministic and lets us encode Loomarr-specific truth
-// (which models tool-call + JSON well for grounding, rough cost) a registry can't.
+// This file is the curated catalog of HOSTED (OpenAI-compatible) PROVIDERS Loomarr
+// recommends (§8.1) — the hosted analog of catalog.go. The curation here is
+// deliberately PROVIDER-LEVEL only (label, base URL, keys URL, note): those are
+// stable and don't rot. The MODEL recommendations are NOT hardcoded — they are
+// DERIVED from each provider's live /models metadata by rules (does it support
+// tools? how cheap? how much context?), so they stay good as the catalog turns over
+// year to year instead of pointing at renamed/retired ids. The only per-model
+// hardcoding is a tiny FALLBACK list shown before a key is entered (when no live
+// metadata is available), clearly marked as such.
 //
-// Every provider here speaks POST {baseURL}/chat/completions with tools, so the ONE
-// openai.go client drives them all — the entry just supplies the base URL + models.
+// Every provider speaks POST {baseURL}/chat/completions with tools, so the ONE
+// openai.go client drives them all — the entry just supplies the base URL.
 
-// HostedModel is one recommended model for a hosted provider.
+// HostedModel is one model offered by a hosted provider (§8.1). For a live model
+// most fields are derived from the provider's /models metadata; Recommended +Why
+// are computed by the ranking rules (rankModels), NOT hardcoded per id.
 type HostedModel struct {
-	ID    string `json:"id"`    // exact model id for the API (LLM_MODEL)
-	Label string `json:"label"` // human name
-	Why   string `json:"why"`   // one-line cost/suitability note
+	ID          string `json:"id"`                    // exact model id for the API (LLM_MODEL)
+	Label       string `json:"label"`                 // human name (provider-supplied or the id)
+	Why         string `json:"why,omitempty"`         // rule-derived rationale ("cheap, tool-capable")
+	Recommended bool   `json:"recommended,omitempty"` // rule-selected as a top pick for grounding
+	Tools       bool   `json:"tools,omitempty"`       // provider advertises tool-calling for this model
 }
 
-// HostedProvider is one curated OpenAI-compatible provider (§8.1).
+// HostedProvider is one curated OpenAI-compatible provider (§8.1). Only provider-
+// level fields are curated; models come from live metadata (see LiveModels).
 type HostedProvider struct {
 	// Key is Loomarr's stable identifier for the provider ("openrouter", "openai", …)
 	// — used in select/test requests, NOT the API key.
@@ -38,9 +49,10 @@ type HostedProvider struct {
 	BaseURL string `json:"baseUrl"`
 	// KeysURL is where a user gets an API key (shown in the UI).
 	KeysURL string `json:"keysUrl"`
-	// Models are a few recommended tool-calling models. Not exhaustive — a user can
-	// still type any model the provider serves; these are the vetted defaults.
-	Models []HostedModel `json:"models"`
+	// Fallback is a tiny list of model ids shown ONLY before a key is entered / when
+	// the live list can't be fetched — a placeholder so the UI isn't empty. Live
+	// metadata (LiveModels) supersedes it entirely. Kept short + provider-obvious.
+	Fallback []HostedModel `json:"-"`
 	// Note is a one-line provider-level hint (free tier, one-key-many-models, …).
 	Note string `json:"note,omitempty"`
 }
@@ -60,45 +72,33 @@ var hostedCatalog = []HostedProvider{
 		Key: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1",
 		KeysURL: "https://openrouter.ai/keys",
 		Note:    "One key → many providers (OpenAI, Anthropic, Gemini, Llama, Qwen). Most flexible.",
-		Models: []HostedModel{
-			{ID: "openai/gpt-4o-mini", Label: "GPT-4o mini", Why: "Cheap, excellent tool-caller — a strong default."},
-			{ID: "google/gemini-2.5-flash", Label: "Gemini 2.5 Flash", Why: "Very cheap, great grounding; strong at owned-title recall."},
-			{ID: "anthropic/claude-haiku-4.5", Label: "Claude Haiku 4.5", Why: "Fast Anthropic model; strong reasoning."},
-		},
+		// Fallback: shown only before a key is set (no live metadata). Live ranking
+		// supersedes this. Kept short + obvious; not an allowlist.
+		Fallback: []HostedModel{{ID: "openai/gpt-4o-mini", Label: "GPT-4o mini"}},
 	},
 	{
 		Key: "openai", Label: "OpenAI", BaseURL: "https://api.openai.com/v1",
-		KeysURL: "https://platform.openai.com/api-keys",
-		Note:    "The reference OpenAI-compatible endpoint.",
-		Models: []HostedModel{
-			{ID: "gpt-4o-mini", Label: "GPT-4o mini", Why: "Cheap, excellent tool-caller — ~$0.0004/job."},
-			{ID: "gpt-4o", Label: "GPT-4o", Why: "Higher quality, higher cost; strong grounding."},
-		},
+		KeysURL:  "https://platform.openai.com/api-keys",
+		Note:     "The reference OpenAI-compatible endpoint.",
+		Fallback: []HostedModel{{ID: "gpt-4o-mini", Label: "GPT-4o mini"}},
 	},
 	{
 		Key: "anthropic", Label: "Anthropic (Claude)", BaseURL: "https://api.anthropic.com/v1",
-		KeysURL: "https://console.anthropic.com/settings/keys",
-		Note:    "Claude via its OpenAI-compatible endpoint. Strong grounding.",
-		Models: []HostedModel{
-			{ID: "claude-haiku-4-5", Label: "Claude Haiku 4.5", Why: "Fast + strong tool-use; a good balance."},
-			{ID: "claude-sonnet-4-5", Label: "Claude Sonnet 4.5", Why: "Highest quality; higher cost."},
-		},
+		KeysURL:  "https://console.anthropic.com/settings/keys",
+		Note:     "Claude via its OpenAI-compatible endpoint. Strong grounding.",
+		Fallback: []HostedModel{{ID: "claude-haiku-4-5", Label: "Claude Haiku 4.5"}},
 	},
 	{
 		Key: "groq", Label: "Groq", BaseURL: "https://api.groq.com/openai/v1",
-		KeysURL: "https://console.groq.com/keys",
-		Note:    "Free tier, very fast inference. Good for a no-cost trial.",
-		Models: []HostedModel{
-			{ID: "llama-3.3-70b-versatile", Label: "Llama 3.3 70B", Why: "Free-tier, fast, strong tool-calling."},
-		},
+		KeysURL:  "https://console.groq.com/keys",
+		Note:     "Free tier, very fast inference. Good for a no-cost trial.",
+		Fallback: []HostedModel{{ID: "llama-3.3-70b-versatile", Label: "Llama 3.3 70B"}},
 	},
 	{
 		Key: "gemini", Label: "Google Gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-		KeysURL: "https://aistudio.google.com/apikey",
-		Note:    "Free tier available; very cheap paid.",
-		Models: []HostedModel{
-			{ID: "gemini-2.5-flash", Label: "Gemini 2.5 Flash", Why: "Cheap, solid tool-use; the A/B recall winner."},
-		},
+		KeysURL:  "https://aistudio.google.com/apikey",
+		Note:     "Free tier available; very cheap paid.",
+		Fallback: []HostedModel{{ID: "gemini-2.5-flash", Label: "Gemini 2.5 Flash"}},
 	},
 }
 
@@ -116,55 +116,155 @@ func HostedProviderByKey(key string) (HostedProvider, bool) {
 	return HostedProvider{}, false
 }
 
-// LiveModels fetches the provider's CURRENT model ids from {baseURL}/models (§8.1),
-// then overlays the curated annotations (label/why) on ids we recognize and marks
-// the curated "recommended" ones. Hosted model ids churn upstream, so the live list
-// is the source of truth for WHAT EXISTS; curation only adds guidance.
+// modelMeta is the subset of a /models entry Loomarr ranks on. Rich providers
+// (OpenRouter) populate SupportedParameters + Pricing; thin ones (OpenAI, Groq,
+// Gemini) return little more than an id, in which case the rule engine degrades to
+// "show the live ids" without a fabricated ranking.
+type modelMeta struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Context    int      `json:"context_length"`
+	SupportedP []string `json:"supported_parameters"`
+	Pricing    struct {
+		Prompt     string `json:"prompt"`
+		Completion string `json:"completion"`
+	} `json:"pricing"`
+}
+
+// supportsTools reports whether the provider advertises tool-calling for this model
+// (the #1 grounding requirement). True when supported_parameters lists "tools". When
+// the field is absent (thin provider), returns false — we don't guess capability.
+func (m modelMeta) supportsTools() bool {
+	return slices.Contains(m.SupportedP, "tools") || slices.Contains(m.SupportedP, "tool_choice")
+}
+
+// costPerMTok is a rough $/1M-token blend (prompt+completion) for ranking cheapest-
+// first. Returns +Inf when pricing is absent/unparseable so unpriced models sort
+// last among priced ones (but are still shown).
+func (m modelMeta) costPerMTok() float64 {
+	p := parsePrice(m.Pricing.Prompt)
+	c := parsePrice(m.Pricing.Completion)
+	if p < 0 && c < 0 {
+		return math.Inf(1)
+	}
+	if p < 0 {
+		p = 0
+	}
+	if c < 0 {
+		c = 0
+	}
+	return (p + c) * 1_000_000 // per-token → per-1M
+}
+
+func parsePrice(s string) float64 {
+	if s == "" {
+		return -1
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return -1
+	}
+	return v
+}
+
+// LiveModels fetches the provider's CURRENT models from {baseURL}/models and RANKS
+// them by rules derived from the live metadata (§8.1) — NOT from hardcoded ids, so
+// recommendations stay good as the catalog turns over:
 //
-// On any failure (no key, unreachable, provider without a /models endpoint) it
-// returns the curated fallback list with ok=false — the UI still shows sensible
-// defaults, just flagged as not-live. This never errors hard: a stale-but-present
-// picker beats an empty one.
+//  1. HARD FILTER (when metadata is rich): keep only models the provider says support
+//     tool-calling — grounding is impossible without it.
+//  2. RANK: cheapest first (a suggestion job is small; cost dominates), context length
+//     breaks ties. The top few tool-capable + cheap models are marked Recommended
+//     with a rule-derived Why ("tool-calling, ~$X/1M tokens").
+//
+// When the provider returns THIN metadata (just ids — OpenAI/Groq/Gemini's /models),
+// the rules can't rank, so it degrades gracefully to the live id list unranked (still
+// current, just no "recommended" flags). On any fetch failure it returns the tiny
+// curated Fallback with live=false so the UI is never empty.
 func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models []HostedModel, live bool) {
-	ids, err := fetchModelIDs(ctx, hp.BaseURL, apiKey)
-	if err != nil || len(ids) == 0 {
-		return hp.Models, false // curated fallback
+	metas, err := fetchModels(ctx, hp.BaseURL, apiKey)
+	if err != nil || len(metas) == 0 {
+		return hp.Fallback, false
 	}
-	// Index curated annotations by id for overlay.
-	ann := map[string]HostedModel{}
-	for _, m := range hp.Models {
-		ann[m.ID] = m
-	}
-	// Build the live list. Recognized ids get their curated label/why; others get a
-	// bare entry (still selectable). Curated recommendations that are STILL live are
-	// surfaced first so the vetted defaults stay at the top of a long list.
 	live = true
-	seen := map[string]bool{}
-	// 1) curated-and-still-live first, in curated order (the recommended defaults).
-	for _, m := range hp.Models {
-		if slices.Contains(ids, m.ID) {
-			models = append(models, m)
-			seen[m.ID] = true
+
+	// Does this provider expose capability metadata at all? If NONE of the models
+	// advertise supported_parameters, it's a thin provider — don't hard-filter
+	// (we'd drop everything) or rank on absent data.
+	rich := false
+	for _, m := range metas {
+		if len(m.SupportedP) > 0 {
+			rich = true
+			break
 		}
 	}
-	// 2) then everything else the provider returns, annotated if we know it.
-	for _, id := range ids {
-		if seen[id] {
-			continue
+
+	if !rich {
+		// Thin provider: show the live ids as-is (current, unranked).
+		for _, m := range metas {
+			models = append(models, HostedModel{ID: m.ID, Label: labelOf(m)})
 		}
-		if a, ok := ann[id]; ok {
-			models = append(models, a)
-		} else {
-			models = append(models, HostedModel{ID: id, Label: id})
+		return models, live
+	}
+
+	// Rich provider: filter to tool-capable, then rank cheapest→biggest-context.
+	var capable []modelMeta
+	for _, m := range metas {
+		if m.supportsTools() {
+			capable = append(capable, m)
 		}
-		seen[id] = true
+	}
+	if len(capable) == 0 {
+		// No tool-capable model advertised — unusual, but don't hide everything.
+		capable = metas
+	}
+	slices.SortStableFunc(capable, func(a, b modelMeta) int {
+		if ca, cb := a.costPerMTok(), b.costPerMTok(); ca != cb {
+			if ca < cb {
+				return -1
+			}
+			return 1
+		}
+		return b.Context - a.Context // bigger context first on a price tie
+	})
+
+	const recommendCount = 3 // top-N cheapest tool-callers get the "recommended" star
+	for i, m := range capable {
+		hm := HostedModel{
+			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
+		}
+		if i < recommendCount {
+			hm.Recommended = true
+			hm.Why = whyFor(m)
+		}
+		models = append(models, hm)
 	}
 	return models, live
 }
 
-// fetchModelIDs GETs {baseURL}/models and returns the model ids. The OpenAI
-// /models shape is {"data":[{"id":"…"},…]}.
-func fetchModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+// whyFor builds a rule-derived rationale from the live metadata (no hardcoded text
+// per id, so it can't go stale).
+func whyFor(m modelMeta) string {
+	parts := []string{"tool-calling"}
+	if cost := m.costPerMTok(); !math.IsInf(cost, 1) {
+		parts = append(parts, fmt.Sprintf("~$%.2f/1M tokens", cost))
+	}
+	if m.Context >= 100_000 {
+		parts = append(parts, fmt.Sprintf("%dk context", m.Context/1000))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func labelOf(m modelMeta) string {
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.ID
+}
+
+// fetchModels GETs {baseURL}/models and returns the metadata entries. The OpenAI
+// /models shape is {"data":[{...}]}; rich providers add supported_parameters/pricing.
+func fetchModels(ctx context.Context, baseURL, apiKey string) ([]modelMeta, error) {
 	base := strings.TrimRight(baseURL, "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
 	if err != nil {
@@ -183,20 +283,18 @@ func fetchModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error
 		return nil, fmt.Errorf("models: status %d", resp.StatusCode)
 	}
 	var out struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+		Data []modelMeta `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(out.Data))
+	models := make([]modelMeta, 0, len(out.Data))
 	for _, m := range out.Data {
 		if m.ID != "" {
-			ids = append(ids, m.ID)
+			models = append(models, m)
 		}
 	}
-	return ids, nil
+	return models, nil
 }
 
 // ValidateKey does a cheap live check that a hosted provider + key is actually

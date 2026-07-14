@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -16,59 +17,84 @@ func TestHostedProviderByKey(t *testing.T) {
 	}
 }
 
-// LiveModels overlays curated annotations onto the provider's live /models list:
-// recommended-and-still-live ids come first (annotated), then the rest.
-func TestLiveModels_OverlaysCuratedOntoLive(t *testing.T) {
+// RICH provider (OpenRouter-shape): LiveModels filters to tool-capable models and
+// ranks them cheapest-first — recommendations are DERIVED from live metadata, not
+// hardcoded ids, so they can't rot.
+func TestLiveModels_RanksRichMetadataByRules(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			w.WriteHeader(404)
 			return
 		}
-		// A live list: one curated id (gpt-4o-mini) + two the catalog doesn't annotate.
-		_, _ = w.Write([]byte(`{"data":[{"id":"some/other-model"},{"id":"openai/gpt-4o-mini"},{"id":"third/model"}]}`))
+		// three models: a cheap tool-caller, an expensive tool-caller, and a
+		// NON-tool model that must be filtered out of recommendations.
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"pricey/tools","name":"Pricey","context_length":200000,"supported_parameters":["tools"],"pricing":{"prompt":"0.00001","completion":"0.00003"}},
+			{"id":"cheap/tools","name":"Cheap","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.00000015","completion":"0.0000006"}},
+			{"id":"no/tools","name":"NoTools","context_length":8000,"supported_parameters":["temperature"],"pricing":{"prompt":"0.0000001","completion":"0.0000001"}}
+		]}`))
 	}))
 	defer srv.Close()
 
-	hp := HostedProvider{
-		BaseURL: srv.URL,
-		Models:  []HostedModel{{ID: "openai/gpt-4o-mini", Label: "GPT-4o mini", Why: "cheap"}},
-	}
+	hp := HostedProvider{BaseURL: srv.URL}
 	models, live := hp.LiveModels(context.Background(), "key")
 	if !live {
-		t.Fatal("expected live=true when /models returns")
+		t.Fatal("expected live=true")
 	}
-	if len(models) != 3 {
-		t.Fatalf("got %d models, want 3 (all live ids present)", len(models))
-	}
-	// The curated recommendation is surfaced first, with its annotation intact.
-	if models[0].ID != "openai/gpt-4o-mini" || models[0].Why != "cheap" {
-		t.Errorf("first model = %+v, want the annotated curated recommendation first", models[0])
-	}
-	// A non-curated live id is still selectable (bare entry).
-	var foundBare bool
+	// The non-tool model is dropped by the hard filter (grounding needs tools).
 	for _, m := range models {
-		if m.ID == "third/model" {
-			foundBare = true
+		if m.ID == "no/tools" {
+			t.Error("a non-tool-capable model must not survive the tool filter")
 		}
 	}
-	if !foundBare {
-		t.Error("a live but non-curated id should still appear (selectable)")
+	if len(models) != 2 {
+		t.Fatalf("got %d tool-capable models, want 2", len(models))
+	}
+	// Cheapest tool-caller ranks first and is recommended with a rule-derived Why.
+	if models[0].ID != "cheap/tools" || !models[0].Recommended {
+		t.Errorf("first = %+v, want cheap/tools recommended", models[0])
+	}
+	if models[0].Why == "" || !strings.Contains(models[0].Why, "tool-calling") {
+		t.Errorf("Why should be rule-derived, got %q", models[0].Why)
+	}
+	if !models[0].Tools {
+		t.Error("ranked model should carry the tools flag")
 	}
 }
 
-// On an unreachable provider (or no key), LiveModels falls back to the curated list
-// with live=false — a stale-but-present picker beats an empty one.
+// THIN provider (OpenAI/Groq-shape: just ids, no metadata): rules can't rank, so it
+// degrades gracefully to the live id list — current, unranked, no fabricated stars.
+func TestLiveModels_ThinMetadataDegrades(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"}]}`))
+	}))
+	defer srv.Close()
+
+	hp := HostedProvider{BaseURL: srv.URL}
+	models, live := hp.LiveModels(context.Background(), "key")
+	if !live || len(models) != 2 {
+		t.Fatalf("thin provider should still return the 2 live ids, got live=%v n=%d", live, len(models))
+	}
+	for _, m := range models {
+		if m.Recommended {
+			t.Error("thin metadata must NOT produce recommendations (no data to rank on)")
+		}
+	}
+}
+
+// On an unreachable provider (or no key), LiveModels falls back to the tiny curated
+// Fallback with live=false — a placeholder beats an empty picker.
 func TestLiveModels_FallbackWhenUnreachable(t *testing.T) {
 	hp := HostedProvider{
-		BaseURL: "http://127.0.0.1:0", // unreachable
-		Models:  []HostedModel{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}},
+		BaseURL:  "http://127.0.0.1:0", // unreachable
+		Fallback: []HostedModel{{ID: "a", Label: "A"}},
 	}
 	models, live := hp.LiveModels(context.Background(), "key")
 	if live {
 		t.Error("unreachable provider should report live=false")
 	}
-	if len(models) != 2 {
-		t.Errorf("fallback should return the 2 curated models, got %d", len(models))
+	if len(models) != 1 || models[0].ID != "a" {
+		t.Errorf("should return the curated fallback, got %+v", models)
 	}
 }
 
