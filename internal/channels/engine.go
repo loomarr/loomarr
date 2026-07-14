@@ -65,9 +65,10 @@ type Engine struct {
 	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
 	log   *slog.Logger
 
-	policy       schedule.PendingPolicy
-	reconcileTTL time.Duration // how far ahead to set a channel's next sweep deadline
-	now          func() time.Time
+	policy        schedule.PendingPolicy
+	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
+	breaksPerHour int           // §10 commercial-break density applied per channel
+	now           func() time.Time
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex // per-channel-id mutex (§18)
@@ -81,6 +82,9 @@ type Config struct {
 	// sweep (CHANNEL_RECONCILE_EVERY-aligned). The Runner ticks at that cadence;
 	// this is the per-row lease horizon so ClaimDueChannels re-offers the channel.
 	ReconcileTTL time.Duration
+	// BreaksPerHour is the commercial-break density (§10, FILLER_BREAKS_PER_HOUR)
+	// applied to every channel at reconcile time. 0 = no breaks.
+	BreaksPerHour int
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -96,15 +100,16 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		now = time.Now
 	}
 	return &Engine{
-		store:        st,
-		prog:         prog,
-		avail:        avail,
-		guide:        guide,
-		log:          log,
-		policy:       cfg.Policy,
-		reconcileTTL: cfg.ReconcileTTL,
-		now:          now,
-		locks:        map[string]*sync.Mutex{},
+		store:         st,
+		prog:          prog,
+		avail:         avail,
+		guide:         guide,
+		log:           log,
+		policy:        cfg.Policy,
+		reconcileTTL:  cfg.ReconcileTTL,
+		breaksPerHour: cfg.BreaksPerHour,
+		now:           now,
+		locks:         map[string]*sync.Mutex{},
 	}
 }
 

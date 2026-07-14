@@ -65,18 +65,23 @@ const (
 // response (Phase-0 finding: Tunarr ignores client-supplied ids), empty until
 // the first reconcile creates the Tunarr channel.
 type Channel struct {
-	ID        string        // Loomarr id (uuid-like, assigned on create)
-	IntentRef string        // proposal/intent this channel came from (§8); "" for a hand-made channel
-	Name      string        // display name / Tunarr channel name
-	Number    int           // Tunarr channel number (guide position)
-	Group     string        // Tunarr groupTitle (channel grouping in the guide)
-	Logo      string        // icon URL (Tunarr channel.icon.path); optional
-	Strategy  Strategy      // ordering strategy
-	FillerRef string        // ref to the channel's filler list (§10); "" = none yet
-	TunarrID  string        // server-assigned Tunarr channel id; "" until first reconcile
-	Status    ChannelStatus // Loomarr-side status
-	Shuffle   ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
-	UpdatedAt int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
+	ID        string   // Loomarr id (uuid-like, assigned on create)
+	IntentRef string   // proposal/intent this channel came from (§8); "" for a hand-made channel
+	Name      string   // display name / Tunarr channel name
+	Number    int      // Tunarr channel number (guide position)
+	Group     string   // Tunarr groupTitle (channel grouping in the guide)
+	Logo      string   // icon URL (Tunarr channel.icon.path); optional
+	Strategy  Strategy // ordering strategy
+	// BreaksPerHour is the commercial-break density (§10): how many ad breaks per
+	// hour of program runtime the scheduler interleaves between programs (0 = none).
+	// Sourced from FILLER_BREAKS_PER_HOUR at channel build; empty breaks fill with
+	// matched pods at reconcile (fillPods), else stay flex (never dead air).
+	BreaksPerHour int
+	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
+	TunarrID      string        // server-assigned Tunarr channel id; "" until first reconcile
+	Status        ChannelStatus // Loomarr-side status
+	Shuffle       ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
+	UpdatedAt     int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
 }
 
 // ShuffleParams carries the deterministic seed material for Shuffle (§9/§10). The

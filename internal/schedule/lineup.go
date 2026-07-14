@@ -126,7 +126,50 @@ func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, polic
 	for _, e := range entries {
 		slots = append(slots, resolveEntry(e, avail, policy)...)
 	}
-	return DesiredLineup{ChannelID: ch.ID, Slots: orderSlots(ch, slots)}
+	ordered := orderSlots(ch, slots)
+	// Interleave commercial-break gaps between programs at the channel's density
+	// (§10). Empty SlotFiller gaps here are filled with matched pods by the
+	// reconcile's assembler (fillPods), or stay flex if the catalog is empty.
+	return DesiredLineup{ChannelID: ch.ID, Slots: interleaveBreaks(ch, ordered)}
+}
+
+// breakGapMs is the placeholder duration for an inserted commercial break — the
+// pod assembler sizes the actual pod to this gap (§10 default 2-minute break).
+const breakGapMs = 120_000
+
+// interleaveBreaks inserts SlotFiller break gaps between program slots at the
+// channel's BreaksPerHour density (§10). Runtime-aware and snapped to program
+// boundaries (Tunarr only breaks between programs): walk the slots accumulating
+// program runtime, and after a program that pushes the running total past the
+// next 60/BreaksPerHour-minute threshold, emit one break and reset. Never a
+// trailing break (nothing after it to return from) and never two in a row.
+func interleaveBreaks(ch Channel, slots []Slot) []Slot {
+	if ch.BreaksPerHour <= 0 || len(slots) == 0 {
+		return slots
+	}
+	thresholdMs := int64(60*60*1000) / int64(ch.BreaksPerHour) // ms of runtime per break
+	out := make([]Slot, 0, len(slots)+len(slots)/2)
+	var acc int64
+	for i, s := range slots {
+		out = append(out, s)
+		if !s.IsProgram() {
+			continue // only program runtime counts toward the break cadence
+		}
+		acc += s.DurationMs
+		// A break only makes sense between two programs — not after the last slot.
+		hasLater := false
+		for _, n := range slots[i+1:] {
+			if n.IsProgram() {
+				hasLater = true
+				break
+			}
+		}
+		if acc >= thresholdMs && hasLater {
+			out = append(out, Slot{Kind: SlotFiller, DurationMs: breakGapMs})
+			acc = 0
+		}
+	}
+	return out
 }
 
 // resolveEntry turns one approved lineup entry into its desired slot(s).
