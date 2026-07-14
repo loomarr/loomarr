@@ -42,6 +42,12 @@ type ollamaChatReq struct {
 	Format   string          `json:"format,omitempty"` // "json" forces valid JSON output
 	Messages []ollamaMessage `json:"messages"`
 	Tools    []ollamaTool    `json:"tools,omitempty"`
+	// Think disables a thinking/reasoning model's chain-of-thought for this call.
+	// Thinking-capable models (Qwen3, etc.) can, with tools present, return EMPTY
+	// content or leak reasoning markers that break tool-calls + JSON (open Ollama
+	// bugs #10976/#14601). We force it off on tool turns. Pointer so it's only sent
+	// when set — a non-thinking model that doesn't know the field is left untouched.
+	Think *bool `json:"think,omitempty"`
 	// Options carries Ollama's sampling knobs (temperature, top_p, num_predict) plus
 	// num_ctx. Ollama defaults num_ctx to a small window; the 6-round grounded tool
 	// loop grows the message history, so a too-small context silently truncates the
@@ -91,6 +97,14 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	}
 	if opts.JSONMode {
 		req.Format = "json"
+	}
+	// Disable thinking whenever tools are in play: a reasoning model's chain-of-
+	// thought interferes with tool-calls + JSON on Ollama (empty output / leaked
+	// markers). Our grounding loop always passes tools, so this is effectively
+	// always off for the suggester — the intended behavior.
+	if len(opts.Tools) > 0 {
+		off := false
+		req.Think = &off
 	}
 
 	body, err := json.Marshal(req)
