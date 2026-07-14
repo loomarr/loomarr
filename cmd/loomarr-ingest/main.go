@@ -2,8 +2,10 @@
 // §14, §16). It is a deliberately DUMB Go binary: it reads its own source list
 // (YouTube playlists + Archive.org collections), shells out to the bundled
 // yt-dlp (+ ffmpeg) for YouTube and plain net/http for Archive, and writes media
-// files + info-JSON sidecars into a drop-folder that the media server scans as
-// its filler library. The CORE never downloads or probes media — that's the
+// files + info-JSON sidecars into a drop-folder that TUNARR scans as a `local`
+// media source (§10 redesign — the media server is out of the filler path; the
+// core registers the folder with Tunarr and syncs the catalog from Tunarr's
+// scan). The CORE never downloads or probes media — that's the
 // whole point of the separate image (§16): the ~170MB of yt-dlp+ffmpeg tooling
 // never touches the distroless core. Written in Go for repo consistency (shares
 // the module + testkit), shipped as its own image behind the `filler` compose
