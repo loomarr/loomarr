@@ -228,9 +228,18 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, model, ap
 		s.log.Warn("hosted key validation failed", "provider", provider, "err", err)
 		return api.ErrKeyInvalid
 	}
-	// Default the model to the first recommended one if none was given.
-	if model == "" && len(hp.Models) > 0 {
-		model = hp.Models[0].ID
+	// Default the model when none was given — but LIVE-aware: prefer a curated
+	// recommendation that STILL EXISTS on the provider (ids churn), else the first
+	// live id. This keeps the empty-model default from ever selecting a stale/renamed
+	// hardcoded id. LiveModels already returns curated-and-live first, so [0] is the
+	// best current default; it falls back to the curated list only if /models fails.
+	if model == "" {
+		if live, _ := hp.LiveModels(ctx, apiKey); len(live) > 0 {
+			model = live[0].ID
+		}
+	}
+	if model == "" {
+		return api.ErrUnknownProvider // nothing selectable — provider returned no models
 	}
 	sel := llm.Selection{Provider: provider, URL: hp.BaseURL, Model: model, APIKey: apiKey}
 	if err := s.persist(ctx, sel); err != nil {
