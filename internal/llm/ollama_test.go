@@ -136,3 +136,36 @@ func TestOllama_SendsOptionsBlock(t *testing.T) {
 		t.Errorf("num_predict = %v, want 512 (from MaxTokens)", opts["num_predict"])
 	}
 }
+
+// Thinking is disabled when tools are present: a reasoning model's chain-of-thought
+// breaks tool-calls/JSON on Ollama (bugs #10976/#14601). Asserts think:false is sent
+// with tools, and NOT sent (field omitted) without them.
+func TestOllama_DisablesThinkingWithTools(t *testing.T) {
+	resp := testkit.Fixture(t, "llm/ollama_final_response.json")
+	var sentReq map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sentReq)
+		_, _ = w.Write(resp)
+	}))
+	defer srv.Close()
+	o := llm.NewOllama(srv.URL, "")
+
+	// With tools → think:false.
+	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}},
+		llm.ChatOptions{Tools: []llm.ToolSchema{{Name: "catalog_search"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if think, ok := sentReq["think"]; !ok || think != false {
+		t.Errorf("with tools, think should be false, got %v (present=%v)", think, ok)
+	}
+
+	// Without tools → think omitted (don't touch a non-thinking model's default).
+	sentReq = nil
+	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sentReq["think"]; ok {
+		t.Error("without tools, think should be omitted")
+	}
+}
