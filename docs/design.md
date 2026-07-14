@@ -278,6 +278,9 @@ See §8. Provider-neutral; Ollama or Anthropic; catalog tool grounds it against 
 | POST | `/v1/users/sync` | Import/sync users from the media server (admin). |
 | GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). Includes the "Tunarr wired as tuner + guide in the media server" check (§6 Live TV wiring). |
 | POST | `/v1/setup/livetv-connect` | One-time wiring of Tunarr as an M3U tuner + XMLTV guide source in Emby/Jellyfin (admin; idempotent — §6). |
+| GET | `/v1/system/llm` | Probe the LLM host + machine and recommend a model (admin, §8.1): active model, provider, and — for local `ollama` — detected VRAM/Ollama version, the curated model catalog with per-model fit ("fits"/"tight"/"won't fit" against detected VRAM + tool-calling suitability), which are already pulled, and the recommended best-fit default. Read-only. |
+| POST | `/v1/system/llm/select` | Set the active local model (admin, §8.1). Persists to the settings store and **hot-swaps** the running suggester (no restart). Rejects a model the local host hasn't pulled (409 → prompt a pull first). Only meaningful for `LLM_PROVIDER=ollama`; the setting overrides `LLM_MODEL`. |
+| POST | `/v1/system/llm/pull` | Start an Ollama `pull` of a catalog model (admin, §8.1). Returns a job id; progress streams over `/v1/events` (percent-complete). Idempotent — a pull of an already-present model completes immediately. |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB + clips. Any authenticated user. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. |
 | POST | `/hooks/arr` | Sonarr/Radarr webhook ingest (shared-secret). |
@@ -329,7 +332,17 @@ An AI that can trigger real downloads must never act on a hallucinated title.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
 
 ### Provider abstraction
-One `Suggester` interface; provider by config. **Ollama** (local, private, no cost) is the homelab default; **Anthropic (Claude)** is opt-in for stronger reasoning/tool-use. Both need structured JSON output + tool-use; prompts/tool schemas stay provider-neutral.
+One `Suggester` interface; provider by config. **Ollama** (local, private, no cost) is the homelab default; the **OpenAI-compatible** client is opt-in for stronger hosted reasoning/tool-use — one hand-written client covering OpenAI, Gemini, Groq, OpenRouter, and Ollama's own `/v1` mode, so the model is a config choice, not a per-vendor fork. Both need structured JSON output + tool-use; prompts/tool schemas stay provider-neutral. Because different models present their final JSON differently (some bare, some wrapped in a ```` ```json ```` fence or a sentence of prose even when told "ONLY JSON"), the parser extracts the outermost balanced JSON object from the final turn before validating — presentation never rejects a well-formed, grounded proposal. Grounding is unaffected: extraction only decides whether the picks are *readable*, never which picks survive the surfaced-id chokepoint.
+
+### 8.1 Model selection & system probe (local Ollama)
+
+Picking a local model is a real onboarding hurdle: a household admin shouldn't have to know which Ollama tag fits their GPU or supports tool-calling. Loomarr does that for them.
+
+- **System probe** (`GET /v1/system/llm`, admin) inspects the machine + LLM host: detected **GPU VRAM** (best-effort via `nvidia-smi`; absent → CPU/unknown, which just widens the "tight" band), the **Ollama version** (some models need a newer runtime), and which models are **already pulled** (`/api/tags`). It returns a **curated catalog** of tool-calling-capable local models — each with an approximate VRAM footprint and a **fit verdict** ("fits" / "tight" / "won't fit") computed against the detected VRAM — plus a single **recommended** best-fit default (the largest catalog model that comfortably fits *and* the runtime supports). The catalog is curated, in-code truth (not a live registry scrape) so recommendations are deterministic and reviewable; it names the model, tag, footprint, min Ollama version, and a one-line "why".
+- **Select** (`POST /v1/system/llm/select`, admin) sets the active model. It persists to a small **settings store** (§5) and **hot-swaps** the live suggester's provider via an atomic pointer — the change takes effect on the next job with **no restart** (this is the one place a runtime setting overrides a §15 env default: the persisted `llm.model` wins over `LLM_MODEL` when present, so an in-app choice survives reboots). Selecting a model the host hasn't pulled is rejected (409) — pull it first.
+- **Pull** (`POST /v1/system/llm/pull`, admin) triggers an Ollama `pull` as a background job and streams **percent-complete** over the existing `/v1/events` SSE bus (§7), so the UI shows a live download bar. Idempotent: pulling a present model returns immediately.
+
+This is **local-only** (`LLM_PROVIDER=ollama`); a hosted `openai` provider names its model in `LLM_URL`/`LLM_MODEL` and has no local footprint to probe or pull. The grounding rules (above) are untouched — model selection changes *which* grounded model runs, never *whether* grounding is enforced.
 
 ### Output contract (schema-validated, in the OpenAPI spec)
 - `lineup[]` — library items: external id, library item id, order hint, why-it-fits.
@@ -580,7 +593,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | no | `720h` / `2160h` (§5 janitor) |
 | `WEBHOOK_SECRET` | yes | *(secret; verifies `/hooks/arr`)* |
 | `EVENT_WEBHOOK_URL` | no | optional external event target |
-| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | yes† | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:14b` — use a **Q6_K** quant (stock Q4 degrades tool-calling/JSON). |
+| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | yes† | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:14b` — use a **Q6_K** quant (stock Q4 degrades tool-calling/JSON). For local `ollama`, `LLM_MODEL` is the **initial default only** — an in-app model selection (§8.1) is persisted to the settings store and **overrides** it (so a choice made in the UI survives a reboot without editing env). |
 | `LLM_API_KEY` | no | *(secret; read for `LLM_PROVIDER=openai`)* |
 | `TMDB_API_KEY` | yes† | *(secret; grounds suggestions)* |
 | `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | no | `false` / `10` |
