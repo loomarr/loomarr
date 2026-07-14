@@ -8,6 +8,27 @@ import (
 	"testing"
 )
 
+// tierOf matches by FAMILY substring so provider prefixes + dated snapshots hit the
+// same tier — the durability property that keeps this from rotting on exact ids.
+func TestTierOf_MatchesFamiliesAcrossPrefixesAndDates(t *testing.T) {
+	cases := []struct {
+		id       string
+		wantTier int
+	}{
+		{"openai/gpt-4o", 3},              // OpenRouter prefix
+		{"gpt-4o-mini", 3},                // OpenAI direct
+		{"gpt-4o-mini-2026-05-01", 3},     // dated snapshot still matches
+		{"anthropic/claude-haiku-4.5", 2}, // tier-2 workhorse
+		{"meta-llama/llama-3.3-70b", 2},
+		{"someorg/unknown-model", 0}, // untiered → tier 0
+	}
+	for _, c := range cases {
+		if got, _ := tierOf(c.id); got != c.wantTier {
+			t.Errorf("tierOf(%q) = %d, want %d", c.id, got, c.wantTier)
+		}
+	}
+}
+
 func TestHostedProviderByKey(t *testing.T) {
 	if _, ok := HostedProviderByKey("openrouter"); !ok {
 		t.Error("openrouter should be in the curated catalog")
@@ -17,21 +38,25 @@ func TestHostedProviderByKey(t *testing.T) {
 	}
 }
 
-// RICH provider (OpenRouter-shape): LiveModels filters to tool-capable models and
-// ranks them cheapest-first — recommendations are DERIVED from live metadata, not
-// hardcoded ids, so they can't rot.
-func TestLiveModels_RanksRichMetadataByRules(t *testing.T) {
+// RICH provider (OpenRouter-shape): LiveModels ranks for the USE CASE — a curated
+// quality FAMILY tier beats a cheaper-but-lower-tier model, and an untiered model
+// (even if cheapest + tool-capable) is shown but NOT recommended. This is the
+// "best for grounding, not merely cheapest" behavior.
+func TestLiveModels_RanksByQualityTierThenCost(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			w.WriteHeader(404)
 			return
 		}
-		// three models: a cheap tool-caller, an expensive tool-caller, and a
-		// NON-tool model that must be filtered out of recommendations.
+		// - a FREE untiered coding model (cheapest, tool-capable) — must NOT be recommended
+		// - a tier-3 gpt-4o family model (pricier) — SHOULD be recommended first
+		// - a tier-2 claude-haiku family model (cheaper than gpt-4o) — recommended after
+		// - a non-tool model — filtered out
 		_, _ = w.Write([]byte(`{"data":[
-			{"id":"pricey/tools","name":"Pricey","context_length":200000,"supported_parameters":["tools"],"pricing":{"prompt":"0.00001","completion":"0.00003"}},
-			{"id":"cheap/tools","name":"Cheap","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.00000015","completion":"0.0000006"}},
-			{"id":"no/tools","name":"NoTools","context_length":8000,"supported_parameters":["temperature"],"pricing":{"prompt":"0.0000001","completion":"0.0000001"}}
+			{"id":"someorg/free-coder","name":"FreeCoder","context_length":1000000,"supported_parameters":["tools"],"pricing":{"prompt":"0","completion":"0"}},
+			{"id":"openai/gpt-4o","name":"GPT-4o","context_length":128000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000025","completion":"0.00001"}},
+			{"id":"anthropic/claude-haiku-4.5","name":"Claude Haiku","context_length":200000,"supported_parameters":["tools"],"pricing":{"prompt":"0.0000008","completion":"0.000004"}},
+			{"id":"no/tools","name":"NoTools","supported_parameters":["temperature"],"pricing":{"prompt":"0","completion":"0"}}
 		]}`))
 	}))
 	defer srv.Close()
@@ -41,24 +66,31 @@ func TestLiveModels_RanksRichMetadataByRules(t *testing.T) {
 	if !live {
 		t.Fatal("expected live=true")
 	}
-	// The non-tool model is dropped by the hard filter (grounding needs tools).
-	for _, m := range models {
-		if m.ID == "no/tools" {
-			t.Error("a non-tool-capable model must not survive the tool filter")
+	// non-tool filtered out; the other three remain.
+	if len(models) != 3 {
+		t.Fatalf("got %d tool-capable models, want 3", len(models))
+	}
+	// Quality tier wins: gpt-4o (tier 3) ranks first despite being pricier than the
+	// free coder and pricier than haiku.
+	if models[0].ID != "openai/gpt-4o" || !models[0].Recommended {
+		t.Errorf("first = %+v, want openai/gpt-4o recommended (tier beats cheaper)", models[0])
+	}
+	// The Why names the family (the quality signal), not just cost.
+	if !strings.Contains(models[0].Why, "GPT-4o") {
+		t.Errorf("Why should name the curated family, got %q", models[0].Why)
+	}
+	// The FREE untiered coder is present but must NOT be recommended.
+	var coder *HostedModel
+	for i := range models {
+		if models[i].ID == "someorg/free-coder" {
+			coder = &models[i]
 		}
 	}
-	if len(models) != 2 {
-		t.Fatalf("got %d tool-capable models, want 2", len(models))
+	if coder == nil {
+		t.Fatal("the untiered free coder should still be selectable")
 	}
-	// Cheapest tool-caller ranks first and is recommended with a rule-derived Why.
-	if models[0].ID != "cheap/tools" || !models[0].Recommended {
-		t.Errorf("first = %+v, want cheap/tools recommended", models[0])
-	}
-	if models[0].Why == "" || !strings.Contains(models[0].Why, "tool-calling") {
-		t.Errorf("Why should be rule-derived, got %q", models[0].Why)
-	}
-	if !models[0].Tools {
-		t.Error("ranked model should carry the tools flag")
+	if coder.Recommended {
+		t.Error("an untiered model must never be recommended, even if cheapest")
 	}
 }
 
