@@ -361,6 +361,7 @@ Turns an approved proposal + live availability into an actual, filled Tunarr cha
 - `Channel`: id, intent ref, Tunarr channel id/number, strategy, filler-list ref, status.
 - `DesiredLineup`: ordered `Slot`s referencing external ids (some not-yet-available).
 - `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
+- **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; the downstream Tunarr programming push requires it.
 
 ### Scheduling strategies (map onto Tunarr)
 - **Ordered/sequential** (e.g., a series in episode order).
@@ -601,10 +602,28 @@ Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver 
 - **ai:** adds a local **Ollama** service (skip if `anthropic` or external Ollama; optional GPU passthrough).
 - **filler:** adds the **`loomarr-ingest` sidecar** (Go, bundling yt-dlp + ffmpeg: YouTube + Archive downloads → the drop-folder the media server scans). Skip it if you fill the drop-folder manually or with MeTube.
 
+The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
+volume is owned by `root:root`, so under the sqlite backend the container cannot create
+`/data/loomarr.db` (`SQLITE_CANTOPEN`) on first run. Fix it **in compose**, not by running
+the app as root: a one-shot `loomarr-init` sidecar chowns the volume to uid 65532 before
+`loomarr` starts (`depends_on … service_completed_successfully`). This is sqlite-only — the
+postgres backend has no `/data` volume — so the init runs under the `sqlite` profile.
+
 ```yaml
 services:
+  # sqlite-only: chown the fresh /data volume to the nonroot uid before loomarr starts.
+  loomarr-init:
+    image: busybox:1.36
+    profiles: ["sqlite"]
+    command: ["sh", "-c", "chown -R 65532:65532 /data"]
+    volumes: ["loomarr-data:/data"]
+
   loomarr:
     image: loomarr:latest
+    depends_on:
+      loomarr-init:
+        condition: service_completed_successfully   # sqlite profile only
+        required: false                             # postgres profile skips it
     environment:
       DATABASE_URL: ${DATABASE_URL}
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}

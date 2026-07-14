@@ -44,6 +44,25 @@ type fillerItemsResponse struct {
 // ticksPerMs converts Emby/Jellyfin RunTimeTicks (100-ns units) to milliseconds.
 const ticksPerMs = 10_000
 
+// ItemDurationMs returns a single library item's runtime in milliseconds,
+// resolved from the media server's server-probed RunTimeTicks (§9/§10 — the
+// core never probes media itself). Used by the scheduler to give a program slot
+// a real duration before pushing the lineup to Tunarr (which rejects ≤ 0).
+// Returns (0, nil) if the server reports no runtime.
+func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/Items/"+url.PathEscape(itemID), nil)
+	if err != nil {
+		return 0, err
+	}
+	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+
+	var it fillerItem
+	if err := c.do(req, &it); err != nil {
+		return 0, err
+	}
+	return it.RunTimeTicks / ticksPerMs, nil
+}
+
 // ListFillerClips reads every item in the media server's filler library (§10):
 //
 //	GET /Items?Recursive=true&ParentId=<fillerLibraryID>&IncludeItemTypes=Video

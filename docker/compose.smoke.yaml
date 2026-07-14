@@ -1,0 +1,18 @@
+# LIVE manual-smoke override (git-ignored territory — dev only, NOT shipped).
+# Layers host networking onto the real compose.yaml so the loomarr container can
+# reach BOTH the Tailscale homelab (100.75.125.45 — a host route) AND the
+# host-local Tunarr/Ollama on 127.0.0.1, without replicating routes into a bridge.
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.smoke.yaml --env-file docker/.env up -d loomarr
+#
+# This is the maintainer's-real-stack half of the Definition of Done (§21), not an
+# app artifact: it configures the environment, it doesn't change Loomarr's behavior.
+services:
+  loomarr:
+    network_mode: host          # shares host net: 127.0.0.1 == host, Tailscale route inherited
+    ports: !reset []            # host networking ignores port maps; drop them to avoid a warning
+    environment:
+      # host :8080 is taken by a local node process; move loomarr aside (host-net can't remap).
+      LISTEN_ADDR: ":8090"
+    volumes:
+      - loomarr-data:/data      # sqlite lives here (DATABASE_URL=sqlite:///data/loomarr.db)

@@ -130,23 +130,39 @@ func (e *Engine) lockFor(id string) *sync.Mutex {
 // the item to play. This is the concrete Availability the engine uses in
 // production; tests can substitute a map.
 type storeAvailability struct {
-	store store.Store
-	ctx   context.Context
+	store    store.Store
+	ctx      context.Context
+	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
 }
+
+// DurationResolver returns a library item's runtime in ms (§9/§10, from the media
+// server's RunTimeTicks). Injected so the scheduler stays decoupled from the
+// library client and unit tests need no live server.
+type DurationResolver func(ctx context.Context, libraryItemID string) (int64, error)
 
 // NewStoreAvailability builds an Availability over the store's title records.
-// The ctx bounds the lookups (they run inside a reconcile's context).
-func NewStoreAvailability(ctx context.Context, st store.Store) Availability {
-	return &storeAvailability{store: st, ctx: ctx}
+// The ctx bounds the lookups (they run inside a reconcile's context). dur may be
+// nil (e.g. tests) — then program slots resolve with duration 0 and ComputeDesired
+// falls back to the lineup entry's own duration.
+func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResolver) Availability {
+	return &storeAvailability{store: st, ctx: ctx, duration: dur}
 }
 
-func (s *storeAvailability) Resolve(key provision.Key) (string, bool) {
+func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
 	rec, err := s.store.GetTitle(s.ctx, key)
 	if err != nil {
-		return "", false // not found / error → treat as unavailable
+		return "", 0, false // not found / error → treat as unavailable
 	}
 	if rec.State != provision.Available || rec.LibraryID == "" {
-		return "", false
+		return "", 0, false
 	}
-	return rec.LibraryID, true
+	var durationMs int64
+	if s.duration != nil {
+		// Best-effort: a duration lookup failure shouldn't make an available title
+		// vanish. ComputeDesired falls back to the entry's own duration on 0.
+		if d, derr := s.duration(s.ctx, rec.LibraryID); derr == nil {
+			durationMs = d
+		}
+	}
+	return rec.LibraryID, durationMs, true
 }

@@ -73,7 +73,7 @@ func (d DesiredLineup) RevalidateAgainstLibrary(avail Availability, policy Pendi
 		if !s.IsProgram() {
 			continue
 		}
-		if _, ok := avail.Resolve(s.Key); ok {
+		if _, _, ok := avail.Resolve(s.Key); ok {
 			continue // still present
 		}
 		// The program vanished from the library — demote to a placeholder.

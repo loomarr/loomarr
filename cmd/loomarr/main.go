@@ -123,7 +123,9 @@ func run() error {
 		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(cfg.TunarrURL))
 		liveTVSvc = liveTVAdapter{connector}
 
-		avail := channels.NewStoreAvailability(rootCtx, st)
+		// Program duration comes from the media server (§9/§10): give the scheduler
+		// a resolver so program slots carry a real runtime before the Tunarr push.
+		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs)
 		engine := channels.New(st, prog, avail, connector, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable

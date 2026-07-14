@@ -164,7 +164,8 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 // only part approve needs to read to enqueue titles. Kept local so the API layer
 // doesn't import the suggest package (dependency-light).
 type proposalBody struct {
-	Acquisitions []acqItem `json:"acquisitions"`
+	Lineup       []lineupItem `json:"lineup"`
+	Acquisitions []acqItem    `json:"acquisitions"`
 }
 type acqItem struct {
 	MediaType string `json:"mediaType"`
@@ -173,6 +174,20 @@ type acqItem struct {
 	Name      string `json:"name"`
 	Year      int    `json:"year"`
 	Seasons   []int  `json:"seasons"`
+}
+
+// lineupItem is an in-library pick from the proposal. Approval creates an
+// `available` title Record for each so the scheduler can place it (§8 line 307:
+// "the approved lineup feeds the scheduler").
+type lineupItem struct {
+	MediaType     string `json:"mediaType"`
+	TMDBID        int    `json:"tmdbId"`
+	TVDBID        int    `json:"tvdbId"`
+	Name          string `json:"name"`
+	Year          int    `json:"year"`
+	Seasons       []int  `json:"seasons"`
+	InLibrary     bool   `json:"inLibrary"`
+	LibraryItemID string `json:"libraryItemId"`
 }
 
 type approveOutput struct {
@@ -204,6 +219,37 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 	var body proposalBody
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return nil, huma.Error500InternalServerError("stored proposal is malformed", err)
+	}
+
+	// In-library picks become `available` title Records so the scheduler can place
+	// them (§8: "the approved lineup feeds the scheduler"). Without this, an
+	// in-library pick is unresolvable and never becomes a program.
+	for _, l := range body.Lineup {
+		if !l.InLibrary || l.LibraryItemID == "" {
+			continue // a not-in-library lineup item is covered by acquisitions
+		}
+		title := provision.Title{
+			MediaType: provision.MediaType(l.MediaType),
+			TMDBID:    l.TMDBID, TVDBID: l.TVDBID, Name: l.Name, Year: l.Year, Seasons: l.Seasons,
+		}
+		key, kerr := title.Key()
+		if kerr != nil {
+			continue // grounded proposals are always keyable; skip defensively
+		}
+		// Idempotent: don't clobber an existing record (it may already be tracked
+		// through the provisioner). Only record freshly-observed in-library titles.
+		if _, gerr := s.store.GetTitle(ctx, key); gerr == nil {
+			continue
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return nil, gerr
+		}
+		rec := provision.Record{
+			Key: key, Title: title,
+			State: provision.Available, LibraryID: l.LibraryItemID,
+		}
+		if err := s.store.UpsertTitle(ctx, rec); err != nil {
+			return nil, err
+		}
 	}
 
 	enqueued := 0

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -58,6 +59,39 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestApprove_InLibraryPickBecomesAvailable is the regression test for the smoke
+// bug: approval only enqueued acquisitions, so an in-library lineup pick never
+// became an `available` title Record and the scheduler could not place it (§8
+// "the approved lineup feeds the scheduler"). Approval must create an available
+// Record (with the library item id) for each in-library pick.
+func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	// A proposal whose lineup has one in-library pick (The Matrix) and no acquisitions.
+	body := `{"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-lib", JobID: "job-lib", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-lib/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+
+	// The in-library pick is now an `available` title the scheduler can resolve.
+	avail, _ := st.ListTitlesByState(context.Background(), provision.Available)
+	if len(avail) != 1 {
+		t.Fatalf("approve created %d available titles, want 1 (the in-library pick)", len(avail))
+	}
+	if got := string(avail[0].Key); got != "movie:tmdb:603" {
+		t.Errorf("available title key = %q, want movie:tmdb:603", got)
+	}
+	if avail[0].LibraryID != "641641" {
+		t.Errorf("available title libraryID = %q, want 641641 (needed to play + resolve duration)", avail[0].LibraryID)
 	}
 }
 

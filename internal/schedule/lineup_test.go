@@ -11,9 +11,21 @@ import (
 // available at the mapped library item id.
 type mapAvail map[provision.Key]string
 
-func (m mapAvail) Resolve(k provision.Key) (string, bool) {
+func (m mapAvail) Resolve(k provision.Key) (string, int64, bool) {
 	id, ok := m[k]
-	return id, ok
+	return id, 0, ok // duration 0 ⇒ ComputeDesired falls back to the entry's own
+}
+
+// durAvail is an Availability that also supplies a resolved duration, to test
+// that ComputeDesired prefers the freshly-resolved runtime.
+type durAvail map[provision.Key]struct {
+	id  string
+	dur int64
+}
+
+func (m durAvail) Resolve(k provision.Key) (string, int64, bool) {
+	v, ok := m[k]
+	return v.id, v.dur, ok
 }
 
 func entry(key, title string) schedule.LineupEntry {
@@ -45,6 +57,35 @@ func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 	}
 	if got.Slots[0].LibraryItemID != "lib-A" {
 		t.Fatalf("want lib-A, got %q", got.Slots[0].LibraryItemID)
+	}
+}
+
+// TestComputeDesired_ProgramCarriesResolvedDuration is the regression test for
+// the smoke bug: a program slot must carry the duration the resolver supplies
+// (Tunarr rejects a program with duration ≤ 0). A lineup entry has no runtime of
+// its own — Availability.Resolve provides it from the library.
+func TestComputeDesired_ProgramCarriesResolvedDuration(t *testing.T) {
+	entries := []schedule.LineupEntry{entry("movie:tmdb:603", "The Matrix")}
+	avail := durAvail{"movie:tmdb:603": {id: "lib-603", dur: 8_160_000}} // 136 min
+
+	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
+
+	if got.Slots[0].DurationMs != 8_160_000 {
+		t.Fatalf("program slot duration = %d, want 8160000 (resolved from library)", got.Slots[0].DurationMs)
+	}
+}
+
+// TestComputeDesired_ResolvedZeroFallsBackToEntry: if the resolver reports 0
+// (server had no runtime), ComputeDesired falls back to the entry's own duration.
+func TestComputeDesired_ResolvedZeroFallsBackToEntry(t *testing.T) {
+	e := entry("movie:tmdb:1", "A")
+	e.DurationMs = 5_400_000 // 90 min known on the entry
+	avail := durAvail{"movie:tmdb:1": {id: "lib-A", dur: 0}}
+
+	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
+
+	if got.Slots[0].DurationMs != 5_400_000 {
+		t.Fatalf("duration = %d, want fallback to entry's 5400000", got.Slots[0].DurationMs)
 	}
 }
 

@@ -32,9 +32,11 @@ func (d DesiredLineup) ProgramCount() int {
 // store/library; pure tests back it with a map. Mirrors §9's "compute desired
 // from the approved lineup + live availability".
 type Availability interface {
-	// Resolve returns (libraryItemID, true) if key is available now, else
-	// ("", false). It must be side-effect free from the caller's view.
-	Resolve(key provision.Key) (libraryItemID string, available bool)
+	// Resolve returns (libraryItemID, durationMs, true) if key is available now,
+	// else ("", 0, false). durationMs is the program runtime from the library (§9,
+	// §10 RunTimeTicks) — a program slot needs it (Tunarr rejects duration ≤ 0).
+	// It must be side-effect free from the caller's view.
+	Resolve(key provision.Key) (libraryItemID string, durationMs int64, available bool)
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -83,13 +85,18 @@ func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, polic
 
 	slots := make([]Slot, 0, len(ordered))
 	for _, e := range ordered {
-		if itemID, ok := avail.Resolve(e.Key); ok {
+		if itemID, durationMs, ok := avail.Resolve(e.Key); ok {
+			// Prefer the freshly-resolved runtime; fall back to the entry's own
+			// duration if the resolver didn't supply one (0 = unknown).
+			if durationMs == 0 {
+				durationMs = e.DurationMs
+			}
 			slots = append(slots, Slot{
 				Kind:          SlotProgram,
 				Key:           e.Key,
 				LibraryItemID: itemID,
 				Title:         e.Title,
-				DurationMs:    e.DurationMs,
+				DurationMs:    durationMs,
 			})
 			continue
 		}

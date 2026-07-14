@@ -24,6 +24,22 @@ services:
     # by name in the media-source config regardless of the container's own network.
     extra_hosts:
       - "emby-media:100.75.125.45"
+    # --- NVIDIA GPU for transcoding (RTX 3080 Ti: h264_nvenc/hevc_nvenc, NVDEC) ---
+    # The nvidia-container-toolkit injects driver-matched userspace libs + device
+    # nodes at runtime; we DON'T bind-mount /dev/nvidia* by hand. `video` capability
+    # is what pulls in libnvidia-encode (NVENC) — `compute,utility` alone omits it,
+    # so Tunarr's h264_nvenc would fail to initialise. Verified: h264_nvenc encodes
+    # a test pattern at ~6x realtime inside this exact image.
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, video, utility]
 
 volumes:
   tunarr-dev-config:

@@ -16,6 +16,34 @@ conn id 3 left up to catch it — remove after). Phase-0 findings:
 [`docs/engineering/phase-0-findings.md`](docs/engineering/phase-0-findings.md). Deferred captures:
 Sonarr Grab/Download → Phase 6; Emby login success body → Phase 9.
 
+## Live manual-smoke findings — 2026-07-13/14 (maintainer's real stack)
+
+First end-to-end run against the live homelab (Emby 4.10 + Sonarr/Radarr/Seerr over Tailscale
+`100.75.125.45`, local Tunarr 1.3.8 with **RTX 3080 Ti `cuda`/NVENC transcode wired + verified**,
+Ollama `llama3.1:8b` on GPU). The run drove intent → grounded suggester → approval gate → channel.
+It surfaced a **chain of unwired seams** (two independently-correct subsystems, no wire between
+them; unit tests pass because each side is tested in isolation). **Composition-root lesson:**
+most of these live in `cmd/loomarr/main.go`, which builds the domain objects but never constructs
+the adapters that connect them.
+
+**FIXED this session (each with a regression test proven to fail against the old code; `make check` green):**
+
+- **#6** `createChannel` ignored `intentRef` → channels built with an EMPTY lineup. Fixed: `internal/api/channel_lineup.go` (`lineupFromIntent` + approval-gated resolver) + `channels.go`. Tests in `channel_lineup_test.go`.
+- **#7** program slots had `DurationMs: 0` → Tunarr rejects (`duration > 0`). Fixed: `schedule.Availability.Resolve` now returns `(itemID, durationMs, available)`; engine adapter fills it from `library.Client.ItemDurationMs` (RunTimeTicks); doc §9 updated. Tests in `schedule/lineup_test.go`.
+- **#8** `approveProposal` only enqueued acquisitions → in-library picks never became `available` Records → unschedulable. Fixed: `internal/api/suggestions.go` now creates an `available` Record (with LibraryID) per in-library lineup pick. Test in `suggestions_test.go`.
+- **infra #1** nonroot image + root-owned `/data` volume → SQLite `CANTOPEN`. Fixed: `loomarr-init` chown sidecar (sqlite profile) in `docker/compose.yaml` + doc §16.
+- **infra #5** Tunarr 1.3.8 requires `channel.transcodeConfigId` = valid UUID (empty → 400). Fixed: `TUNARR_TRANSCODE_CONFIG_ID` now passed through `docker/compose.yaml`.
+
+**OPEN — tracked follow-ups (own doc-first PRs; NOT started). Rooted in `cmd/loomarr/main.go` unless noted:**
+
+- **#9 (SEVERE)** — *acquisitions never enter a channel's `Lineup`.* `internal/api/channel_lineup.go:67-85` (`lineupEntries`) drops every non-in-library item; the suggester keeps `Lineup` (in-library) and `Acquisitions` strictly disjoint. So an acquired title, once it lands `available`, is **never placed on the channel — not by event, not by the sweep** (the sweep re-derives desired from `ch.Lineup`, which permanently lacks the acquisition key). `internal/channels/backfill.go:60-74` (`channelsReferencing`) scans `ch.Lineup` and finds nothing. FIX: carry acquisition keys into `ch.Lineup` as *pending* entries (Key preserved) so `ComputeDesired` makes a placeholder the backfill/sweep can fill. Defeats the backfill backstop → highest priority.
+- **#10** — *provisioner availability events → scheduler feed is `nil`.* `cmd/loomarr/main.go:105` builds `reconcile.New(st, req, lib, nil, …)` (nil `Emitter`); `internal/ingest/handler.go:123-125` has no emitter (comment `// Phase 7 wires to scheduler`). `internal/channels/backfill.go:23` `Engine.OnAvailability` is fully built but has **zero non-test callers**. No `Emitter` impl exists. FIX: a `reconcile.Emitter` (+ ingest emitter) fanning `DomainEvent`s to `engine.OnAvailability` AND `eventBus.Publish`. Self-heals via the 10-min sweep today — *except* for #9's keys — so it's a latency bug standing alone.
+- **#11** — *`GET /v1/events` SSE never emits.* Zero `.Publish(` calls anywhere; `events.Event{}` never constructed outside the bus pkg. `main.go:148` builds the bus, passes it only to the API. `internal/api/events.go:43` subscribes clients who then wait forever. FIX: same emitter adapter as #10 also publishes channel/title state changes to the bus. Latency-only (GET stays source of truth).
+- **#12 (smoke blocker)** — *Tunarr manual-programming content-id contract.* `internal/programmer/lineup.go:91` sends `{type:"content", id: LibraryItemID}` using the **Emby** item id; Tunarr's `updateLineup` FK-rejects it (`SqliteError: FOREIGN KEY constraint failed`) — it wants an id from **Tunarr's own indexed copy** of its media source, not the raw Emby id. Needs a Phase-0-style capture of how Tunarr references a source item in manual programming (likely a lookup: Emby id → Tunarr program id). This is what blocked the final "channel plays" step; the wiring fixes above are upstream of it.
+- **lesser** — #3 split-host: no *advertised* Tunarr URL distinct from `TUNARR_URL` (Emby must fetch the m3u/xmltv from a media-server-routable host; §15 gap). #4: `llama3.1:8b` curates weakly (themeFit 0 on a real intent) — bigger local model or the deferred Anthropic provider. `deleteChannel ?purge=true` accepted but unimplemented (only detaches; `internal/api/channels.go`). Reconcile create-conflict on channel *number* isn't adopted (re-create attempt collides) — hardening.
+
+An audit agent traced both ends of every design-doc "X feeds/drives/on-event Y" claim and **confirmed correctly-wired**: filler catalog-sync → pod assembly; webhook → confirm-via-library → `available`; guide-poke after channel-affecting reconcile; slot drift-revalidation on the sweep; the three fixes above.
+
 ## Phase table
 
 | Phase | Status | Gate evidence (commit SHA + proving command) | Notes / deviations |

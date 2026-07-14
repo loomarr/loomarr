@@ -129,6 +129,13 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	ch.Strategy = schedule.Strategy(in.Body.Strategy)
 	ch.IntentRef = in.Body.IntentRef
 	ch.Status = schedule.StatusBuilding
+	// Bind the approved proposal's lineup (§7/§9: "create a channel from an
+	// approved proposal"). Empty intentRef ⇒ hand-made channel, no lineup yet.
+	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity("resolve intent lineup", err)
+	}
+	ch.Lineup = lineup
 	if err := ch.Validate(); err != nil {
 		return nil, huma.Error422UnprocessableEntity("invalid channel", err)
 	}

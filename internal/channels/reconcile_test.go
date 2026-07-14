@@ -29,7 +29,10 @@ func newStore(t *testing.T) store.Store {
 // mapAvail is a mutable Availability tests drive to simulate content landing.
 type mapAvail map[provision.Key]string
 
-func (m mapAvail) Resolve(k provision.Key) (string, bool) { id, ok := m[k]; return id, ok }
+func (m mapAvail) Resolve(k provision.Key) (string, int64, bool) {
+	id, ok := m[k]
+	return id, 0, ok
+}
 
 // seedChannel writes a channel with the given approved lineup, unreconciled.
 func seedChannel(t *testing.T, st store.Store, id string, number int, entries ...schedule.LineupEntry) {
