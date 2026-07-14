@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/catalog"
@@ -164,5 +165,70 @@ func TestScoring_Deterministic(t *testing.T) {
 	}
 	if p1.Scores.Overall < 0 || p1.Scores.Overall > 1 {
 		t.Errorf("overall score out of [0,1]: %v", p1.Scores.Overall)
+	}
+}
+
+// T0.1: sampling controls are forwarded to the provider (low temperature for the
+// grounded/JSON turns).
+func TestSuggest_ForwardsSamplingControls(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	s := buildSuggester(t, llmMock)
+	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"}); err != nil {
+		t.Fatal(err)
+	}
+	if llmMock.LastOpts.Temperature == nil {
+		t.Fatal("temperature not forwarded to the provider")
+	}
+	if *llmMock.LastOpts.Temperature > 0.5 {
+		t.Errorf("grounded temperature = %v, want low (<=0.5) for JSON/tool adherence", *llmMock.LastOpts.Temperature)
+	}
+	if !llmMock.LastOpts.JSONMode {
+		t.Error("JSONMode should be set for the grounded turns")
+	}
+}
+
+// T0.3: a malformed final turn is repaired — the suggester re-asks and succeeds on
+// the corrected JSON rather than failing outright.
+func TestSuggest_RepairsMalformedJSON(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`not json at all, sorry`),                                             // malformed → triggers repair
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`), // repaired
+	)
+	s := buildSuggester(t, llmMock)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"})
+	if err != nil {
+		t.Fatalf("repair should have recovered, got: %v", err)
+	}
+	// The Matrix (603) is in the testkit library → lands as a lineup pick.
+	var found bool
+	for _, it := range append(prop.Lineup, prop.Acquisitions...) {
+		if it.TMDBID == 603 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("repaired proposal should contain The Matrix: %+v", prop)
+	}
+}
+
+// T0.4: a run that grounds NOTHING (every pick fabricated) returns
+// ErrNoGroundedTitles — a clear failure, not a silent empty success.
+func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		// Every id here is fabricated (never surfaced) → all dropped → empty.
+		testkit.FinalResponse(`{"picks":[
+			{"mediaType":"movie","tmdbId":99991,"name":"Fake One"},
+			{"mediaType":"movie","tmdbId":99992,"name":"Fake Two"}
+		]}`),
+	)
+	s := buildSuggester(t, llmMock)
+	_, err := s.Suggest(context.Background(), suggest.Intent{Description: "sci-fi"})
+	if !errors.Is(err, suggest.ErrNoGroundedTitles) {
+		t.Fatalf("empty-grounding should return ErrNoGroundedTitles, got: %v", err)
 	}
 }

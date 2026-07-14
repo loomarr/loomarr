@@ -42,27 +42,70 @@ func buildService(t *testing.T, st store.Store, llmMock *testkit.LLM) *suggest.S
 		idGen(), time.Now, testkit.Logger())
 }
 
-// Submit enqueues a job; a duplicate intent within TTL reuses it (§8 cache).
-func TestSubmit_CachesByIntentHash(t *testing.T) {
+// Submit caches by intent hash — but ONLY a SUCCESSFUL (done) prior job (§8).
+// A duplicate intent within TTL reuses a completed job; a still-running or failed
+// job does not (so the operator can retry a failed intent).
+func TestSubmit_CachesOnlySuccessfulJobs(t *testing.T) {
+	ctx := context.Background()
 	st := newStore(t)
 	svc := buildService(t, st, testkit.NewLLM())
 	intent := suggest.Intent{Description: "90s action"}
 
-	id1, err := svc.Submit(context.Background(), intent, "alice")
+	id1, err := svc.Submit(ctx, intent, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	id2, err := svc.Submit(context.Background(), intent, "bob") // same intent
+	// Before the job completes, a duplicate intent does NOT hit the cache (only a
+	// `done` job caches) — so it enqueues a fresh job rather than reusing a
+	// pending/failed one.
+	id2, _ := svc.Submit(ctx, intent, "bob")
+	if id2 == id1 {
+		t.Error("a not-yet-completed job must not be a cache hit")
+	}
+
+	// Mark job id1 done → NOW an identical intent reuses it.
+	j, _ := st.GetJob(ctx, id1)
+	j.Status = "done"
+	if err := st.UpdateJob(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	id3, err := svc.Submit(ctx, intent, "carol")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id1 != id2 {
-		t.Errorf("identical intent should reuse the cached job: %s vs %s", id1, id2)
+	if id3 != id1 {
+		t.Errorf("identical intent should reuse the DONE job: %s vs %s", id3, id1)
 	}
-	// A different intent gets a fresh job.
-	id3, _ := svc.Submit(context.Background(), suggest.Intent{Description: "80s horror"}, "alice")
-	if id3 == id1 {
+
+	// A different intent gets a fresh job regardless.
+	id4, _ := svc.Submit(ctx, suggest.Intent{Description: "80s horror"}, "alice")
+	if id4 == id1 {
 		t.Error("different intent should not hit the cache")
+	}
+}
+
+// A FAILED job (e.g. no grounded titles) must NOT wedge re-submits — retrying the
+// same intent re-runs generation instead of returning the failed job.
+func TestSubmit_FailedJobDoesNotCache(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM())
+	intent := suggest.Intent{Description: "obscure intent"}
+
+	id1, _ := svc.Submit(ctx, intent, "alice")
+	j, _ := st.GetJob(ctx, id1)
+	j.Status = "failed"
+	j.LastError = "no grounded titles found for this intent"
+	if err := st.UpdateJob(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+
+	id2, err := svc.Submit(ctx, intent, "alice") // retry the same intent
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id2 == id1 {
+		t.Error("a failed job must not be cached — the retry should enqueue a fresh job")
 	}
 }
 

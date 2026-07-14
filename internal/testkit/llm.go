@@ -20,6 +20,9 @@ type LLM struct {
 	// Delay simulates a slow model, to exercise JOB_TIMEOUT (§8). Zero = instant.
 	Delay time.Duration
 	Calls int
+	// LastOpts captures the ChatOptions of the most recent call, so a test can
+	// assert sampling controls (temperature/max_tokens) are forwarded (T0.1).
+	LastOpts llm.ChatOptions
 }
 
 // NewLLM builds a scripted provider that returns the given responses in order,
@@ -30,7 +33,7 @@ func NewLLM(responses ...llm.Response) *LLM {
 
 func (m *LLM) Name() string { return "mock" }
 
-func (m *LLM) Chat(ctx context.Context, _ []llm.Message, _ llm.ChatOptions) (llm.Response, error) {
+func (m *LLM) Chat(ctx context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	if m.Delay > 0 {
 		select {
 		case <-time.After(m.Delay):
@@ -40,6 +43,7 @@ func (m *LLM) Chat(ctx context.Context, _ []llm.Message, _ llm.ChatOptions) (llm
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.LastOpts = opts
 	m.Calls++
 	if len(m.turns) == 0 {
 		return llm.Response{}, nil // no more scripted turns → empty final

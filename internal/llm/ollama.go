@@ -42,6 +42,12 @@ type ollamaChatReq struct {
 	Format   string          `json:"format,omitempty"` // "json" forces valid JSON output
 	Messages []ollamaMessage `json:"messages"`
 	Tools    []ollamaTool    `json:"tools,omitempty"`
+	// Options carries Ollama's sampling knobs (temperature, top_p, num_predict) plus
+	// num_ctx. Ollama defaults num_ctx to a small window; the 6-round grounded tool
+	// loop grows the message history, so a too-small context silently truncates the
+	// tool results the model must ground against — set it explicitly. Omitted when
+	// empty so a zero-config call still works.
+	Options map[string]any `json:"options,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -81,6 +87,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Stream:   false,
 		Messages: toOllamaMessages(messages),
 		Tools:    toOllamaTools(opts.Tools),
+		Options:  ollamaOptions(opts),
 	}
 	if opts.JSONMode {
 		req.Format = "json"
@@ -113,6 +120,29 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Content:   out.Message.Content,
 		ToolCalls: fromOllamaToolCalls(out.Message.ToolCalls),
 	}, nil
+}
+
+// ollamaChatCtx is the context window we request for the grounded tool loop.
+// Ollama's default (often 2–4k) truncates the growing 6-round message history,
+// silently dropping the tool results the model must ground against. 8k comfortably
+// holds the system prompt + tool schema + several rounds of catalog results.
+const ollamaChatCtx = 8192
+
+// ollamaOptions maps the provider-neutral sampling controls to Ollama's `options`
+// block, always pinning num_ctx for the tool loop. Returns nil only if there's
+// truly nothing to send (never happens here since num_ctx is always set).
+func ollamaOptions(opts ChatOptions) map[string]any {
+	o := map[string]any{"num_ctx": ollamaChatCtx}
+	if opts.Temperature != nil {
+		o["temperature"] = *opts.Temperature
+	}
+	if opts.TopP != nil {
+		o["top_p"] = *opts.TopP
+	}
+	if opts.MaxTokens > 0 {
+		o["num_predict"] = opts.MaxTokens
+	}
+	return o
 }
 
 func toOllamaMessages(msgs []Message) []ollamaMessage {

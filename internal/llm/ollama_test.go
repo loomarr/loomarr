@@ -103,3 +103,36 @@ func TestOllama_FinalContentAndJSONMode(t *testing.T) {
 		t.Errorf("final content lost the grounded id: %+v", parsed.Picks)
 	}
 }
+
+// T0.1: the Ollama request carries an `options` block with num_ctx always set (so
+// the growing tool loop isn't truncated) and the forwarded sampling controls.
+func TestOllama_SendsOptionsBlock(t *testing.T) {
+	resp := testkit.Fixture(t, "llm/ollama_final_response.json")
+	var sentReq map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sentReq)
+		_, _ = w.Write(resp)
+	}))
+	defer srv.Close()
+
+	o := llm.NewOllama(srv.URL, "")
+	temp := 0.2
+	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}},
+		llm.ChatOptions{Temperature: &temp, MaxTokens: 512}); err != nil {
+		t.Fatal(err)
+	}
+	opts, ok := sentReq["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("request has no options block: %v", sentReq["options"])
+	}
+	if opts["num_ctx"] == nil {
+		t.Error("num_ctx must always be set (tool loop must not be truncated)")
+	}
+	if opts["temperature"] != 0.2 {
+		t.Errorf("temperature = %v, want 0.2 forwarded", opts["temperature"])
+	}
+	if opts["num_predict"] != float64(512) {
+		t.Errorf("num_predict = %v, want 512 (from MaxTokens)", opts["num_predict"])
+	}
+}
