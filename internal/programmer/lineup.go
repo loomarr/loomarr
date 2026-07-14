@@ -50,7 +50,11 @@ type lineupResponse struct {
 func (t *Tunarr) SetLineup(ctx context.Context, tunarrID string, slots []schedule.Slot) error {
 	items := make([]tunarrLineupItem, 0, len(slots))
 	for _, s := range slots {
-		items = append(items, slotToItem(s))
+		item, err := t.slotToItem(ctx, s)
+		if err != nil {
+			return fmt.Errorf("resolve slot for %s: %w", tunarrID, err)
+		}
+		items = append(items, item)
 	}
 	body := setLineupBody{Type: "manual", Lineup: items}
 	if err := t.doJSON(ctx, http.MethodPost, "/api/channels/"+tunarrID+"/programming", body, nil); err != nil {
@@ -83,21 +87,39 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 	return slots, nil
 }
 
-// slotToItem maps one domain slot to a Tunarr lineup item.
-func slotToItem(s schedule.Slot) tunarrLineupItem {
+// slotToItem maps one domain slot to a Tunarr lineup item, resolving the slot's
+// media-server item id → Tunarr program uuid (§6). A content slot whose item
+// isn't in Tunarr's index yet (unscanned / just-landed) degrades to flex rather
+// than failing the whole push — never dead air (§9); it resolves on a later
+// reconcile once Tunarr has scanned it.
+func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, error) {
 	dur := float64(s.DurationMs)
 	switch s.Kind {
 	case schedule.SlotProgram:
-		return tunarrLineupItem{Type: "content", ID: s.LibraryItemID, Duration: dur}
+		return t.contentItem(ctx, s.LibraryItemID, dur)
 	case schedule.SlotFiller:
 		if s.LibraryItemID != "" {
-			return tunarrLineupItem{Type: "content", ID: s.LibraryItemID, Duration: dur}
+			return t.contentItem(ctx, s.LibraryItemID, dur)
 		}
 		// Unresolved pod placeholder → flex padding until §10 fills it.
-		return tunarrLineupItem{Type: "flex", Duration: dur}
+		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
 	default: // SlotPending, SlotFlex, and any unknown kind → flex (never dead air)
-		return tunarrLineupItem{Type: "flex", Duration: dur}
+		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
 	}
+}
+
+// contentItem resolves a media-server item id to a Tunarr content entry, or
+// degrades to flex if Tunarr hasn't indexed the item yet.
+func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (tunarrLineupItem, error) {
+	uuid, ok, err := t.resolver.resolve(ctx, itemID)
+	if err != nil {
+		return tunarrLineupItem{}, err
+	}
+	if !ok {
+		// Not in Tunarr's index yet → flex now, resolves on a later reconcile.
+		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
+	}
+	return tunarrLineupItem{Type: "content", ID: uuid, Duration: dur}, nil
 }
 
 // itemToSlot maps a Tunarr lineup item back to a domain slot for the diff. Tunarr

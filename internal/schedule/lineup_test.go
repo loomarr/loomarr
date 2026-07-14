@@ -15,6 +15,9 @@ func (m mapAvail) Resolve(k provision.Key) (string, int64, bool) {
 	id, ok := m[k]
 	return id, 0, ok // duration 0 ⇒ ComputeDesired falls back to the entry's own
 }
+func (m mapAvail) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
+	return nil, false // movie-only fake; series expansion tested via seriesAvail
+}
 
 // durAvail is an Availability that also supplies a resolved duration, to test
 // that ComputeDesired prefers the freshly-resolved runtime.
@@ -26,6 +29,32 @@ type durAvail map[provision.Key]struct {
 func (m durAvail) Resolve(k provision.Key) (string, int64, bool) {
 	v, ok := m[k]
 	return v.id, v.dur, ok
+}
+func (m durAvail) ResolveEpisodes(provision.Key) ([]schedule.ResolvedProgram, bool) {
+	return nil, false
+}
+
+// seriesAvail is an Availability that expands series keys into episode programs,
+// to test §9 series expansion. Movie keys resolve normally; series keys return
+// their mapped episodes.
+type seriesAvail struct {
+	movies map[provision.Key]struct {
+		id  string
+		dur int64
+	}
+	episodes map[provision.Key][]schedule.ResolvedProgram
+}
+
+func (s seriesAvail) Resolve(k provision.Key) (string, int64, bool) {
+	if k.IsSeries() {
+		return "", 0, false // series resolve via ResolveEpisodes
+	}
+	v, ok := s.movies[k]
+	return v.id, v.dur, ok
+}
+func (s seriesAvail) ResolveEpisodes(k provision.Key) ([]schedule.ResolvedProgram, bool) {
+	eps, ok := s.episodes[k]
+	return eps, ok && len(eps) > 0
 }
 
 func entry(key, title string) schedule.LineupEntry {
@@ -72,6 +101,53 @@ func TestComputeDesired_ProgramCarriesResolvedDuration(t *testing.T) {
 
 	if got.Slots[0].DurationMs != 8_160_000 {
 		t.Fatalf("program slot duration = %d, want 8160000 (resolved from library)", got.Slots[0].DurationMs)
+	}
+}
+
+// TestComputeDesired_SeriesExpandsToEpisodes is the regression test for series
+// support (§9): a series lineup entry must expand into one program slot per
+// episode, each with the episode's own item id + duration — NOT one slot with the
+// show's (unplayable, duration-0) id.
+func TestComputeDesired_SeriesExpandsToEpisodes(t *testing.T) {
+	entries := []schedule.LineupEntry{entry("series:tvdb:79169", "Seinfeld")}
+	avail := seriesAvail{
+		episodes: map[provision.Key][]schedule.ResolvedProgram{
+			"series:tvdb:79169": {
+				{LibraryItemID: "ep-1", Title: "The Pilot", DurationMs: 1380000},
+				{LibraryItemID: "ep-2", Title: "The Stake Out", DurationMs: 1380000},
+				{LibraryItemID: "ep-3", Title: "The Robbery", DurationMs: 1380000},
+			},
+		},
+	}
+
+	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
+
+	if got.ProgramCount() != 3 {
+		t.Fatalf("series expanded to %d programs, want 3 episodes", got.ProgramCount())
+	}
+	// Sequential strategy preserves episode order, each with a real duration.
+	for i, wantID := range []string{"ep-1", "ep-2", "ep-3"} {
+		s := got.Slots[i]
+		if s.Kind != schedule.SlotProgram || s.LibraryItemID != wantID {
+			t.Errorf("slot %d = {%s,%s}, want program/%s", i, s.Kind, s.LibraryItemID, wantID)
+		}
+		if s.DurationMs <= 0 {
+			t.Errorf("episode slot %d has duration %d, want > 0 (Tunarr rejects ≤ 0)", i, s.DurationMs)
+		}
+	}
+}
+
+// TestComputeDesired_SeriesNoEpisodesIsPending: an available series with no
+// playable episodes yet degrades to a single pending slot (not zero programs, not
+// a broken push) — episodes join on a later reconcile.
+func TestComputeDesired_SeriesNoEpisodesIsPending(t *testing.T) {
+	entries := []schedule.LineupEntry{entry("series:tvdb:1", "New Show")}
+	avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{}} // none yet
+
+	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.ComingSoon)
+
+	if len(got.Slots) != 1 || got.Slots[0].Kind != schedule.SlotPending {
+		t.Fatalf("series with no episodes = %+v, want one pending slot", got.Slots)
 	}
 }
 

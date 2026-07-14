@@ -131,22 +131,73 @@ func TestGetChannel_ParsesFixture(t *testing.T) {
 	}
 }
 
-func TestSetLineup_TranslatesSlots(t *testing.T) {
-	var got capture
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// mockTunarrWithIndex is a Tunarr test double that serves the content-resolution
+// endpoints (media-sources → libraries → persisted programs) so SetLineup can map
+// media-server item ids → Tunarr program uuids, plus records the programming push.
+// index maps external item id → program uuid.
+func mockTunarrWithIndex(t *testing.T, got *capture, index map[string]string) *httptest.Server {
+	t.Helper()
+	// Build the persisted-programs payload from the index.
+	type ident struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+	}
+	type prog struct {
+		ID      string `json:"id"`
+		Program struct {
+			Type        string  `json:"type"`
+			Identifiers []ident `json:"identifiers"`
+		} `json:"program"`
+	}
+	var programs []prog
+	for extID, uuid := range index {
+		var p prog
+		p.ID = uuid
+		p.Program.Type = "movie"
+		p.Program.Identifiers = []ident{{Type: "emby", ID: extID}}
+		programs = append(programs, p)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/media-sources", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/media-sources" {
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "src-1"}})
+			return
+		}
+		// /api/media-sources/src-1/libraries
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "lib-A", "name": "Movies", "enabled": true}})
+	})
+	mux.HandleFunc("/api/media-sources/src-1/libraries", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "lib-A", "name": "Movies", "enabled": true}})
+	})
+	mux.HandleFunc("/api/media-libraries/lib-A/programs", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(programs)
+	})
+	mux.HandleFunc("/api/channels/ch-id/programming", func(w http.ResponseWriter, r *http.Request) {
 		got.method, got.path = r.Method, r.URL.Path
 		got.body, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
+	var got capture
+	// Tunarr has indexed lib-1 → uuid-1 and clip-9 → uuid-9; "gone" is NOT indexed.
+	srv := mockTunarrWithIndex(t, &got, map[string]string{
+		"lib-1":  "uuid-1",
+		"clip-9": "uuid-9",
+	})
 
 	c := programmer.New(srv.URL, "", "cfg")
 	slots := []schedule.Slot{
-		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000},
-		{Kind: schedule.SlotPending, DurationMs: 0},                             // → flex
-		{Kind: schedule.SlotFiller, DurationMs: 30000},                          // no lib id → flex
-		{Kind: schedule.SlotFiller, LibraryItemID: "clip-9", DurationMs: 30000}, // resolved → content
-		{Kind: schedule.SlotFlex, DurationMs: 60000},                            // → flex
+		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // → content uuid-1
+		{Kind: schedule.SlotPending, DurationMs: 0},                               // → flex
+		{Kind: schedule.SlotFiller, DurationMs: 30000},                            // no lib id → flex
+		{Kind: schedule.SlotFiller, LibraryItemID: "clip-9", DurationMs: 30000},   // → content uuid-9
+		{Kind: schedule.SlotFlex, DurationMs: 60000},                              // → flex
+		{Kind: schedule.SlotProgram, LibraryItemID: "gone", DurationMs: 1000},     // unindexed → flex
 	}
 	if err := c.SetLineup(context.Background(), "ch-id", slots); err != nil {
 		t.Fatal(err)
@@ -168,18 +219,21 @@ func TestSetLineup_TranslatesSlots(t *testing.T) {
 	if body.Type != "manual" {
 		t.Errorf("lineup type = %q, want manual", body.Type)
 	}
-	if len(body.Lineup) != 5 {
-		t.Fatalf("want 5 lineup items, got %d", len(body.Lineup))
+	if len(body.Lineup) != 6 {
+		t.Fatalf("want 6 lineup items, got %d", len(body.Lineup))
 	}
+	// Content ids are the RESOLVED Tunarr program uuids, not the raw item ids.
+	// An unindexed program degrades to flex (never dead air), not a failed push.
 	want := []struct {
 		typ string
 		id  string
 	}{
-		{"content", "lib-1"},
+		{"content", "uuid-1"}, // lib-1 resolved
 		{"flex", ""},
 		{"flex", ""},
-		{"content", "clip-9"},
+		{"content", "uuid-9"}, // clip-9 resolved
 		{"flex", ""},
+		{"flex", ""}, // "gone" not indexed → flex
 	}
 	for i, w := range want {
 		if body.Lineup[i].Type != w.typ || body.Lineup[i].ID != w.id {

@@ -8,6 +8,7 @@ package provision
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // MediaType is the kind of content a Title refers to (§3).
@@ -39,6 +40,11 @@ type Title struct {
 //	series with a TVDB id → "series:tvdb:<id>"
 //	otherwise             → "<mediatype>:tmdb:<id>"
 type Key string
+
+// IsSeries reports whether the key identifies a series (§3 keys are media-type
+// prefixed: "series:tvdb:<id>" / "series:tmdb:<id>" vs "movie:tmdb:<id>"). The
+// scheduler uses this to expand a series into its episodes (§9).
+func (k Key) IsSeries() bool { return strings.HasPrefix(string(k), string(Series)+":") }
 
 // Key derives the identity key for a Title (§3). It errors rather than produce
 // an ambiguous key from an under-identified Title, since a wrong key silently

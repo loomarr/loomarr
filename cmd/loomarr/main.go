@@ -124,8 +124,9 @@ func run() error {
 		liveTVSvc = liveTVAdapter{connector}
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
-		// a resolver so program slots carry a real runtime before the Tunarr push.
-		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs)
+		// a resolver so program slots carry a real runtime before the Tunarr push,
+		// and an episode resolver so a series entry expands into its episodes (§9).
+		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
 		engine := channels.New(st, prog, avail, connector, channels.Config{
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
@@ -295,6 +296,28 @@ func (a liveTVAdapter) Connect(ctx context.Context) (bool, bool, error) {
 	return res.TunerAdded, res.ListingAdded, err
 }
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) { return a.c.Wired(ctx) }
+
+// episodeResolver adapts the library client's ListEpisodes to the scheduler's
+// EpisodeResolver, mapping library.Episode → schedule.ResolvedProgram so a series
+// lineup entry expands into its episodes (§9). Keeps the schedule domain free of
+// a library dependency.
+func episodeResolver(lib *library.Client) channels.EpisodeResolver {
+	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
+		eps, err := lib.ListEpisodes(ctx, showItemID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]schedule.ResolvedProgram, 0, len(eps))
+		for _, e := range eps {
+			out = append(out, schedule.ResolvedProgram{
+				LibraryItemID: e.LibraryItemID,
+				Title:         e.Name,
+				DurationMs:    e.DurationMs,
+			})
+		}
+		return out, nil
+	}
+}
 
 // submitAdapter maps suggest.Service to api.SuggestService (the API interface
 // takes flat args to stay dependency-light; here we rebuild the Intent).

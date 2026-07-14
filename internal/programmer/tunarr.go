@@ -23,17 +23,20 @@ type Tunarr struct {
 	// at construction from GET /api/transcode_configs (or config).
 	transcodeConfigID string
 	http              *http.Client
+	resolver          *contentResolver // media-server item id → Tunarr program uuid (§6)
 }
 
 // New builds a Tunarr client. transcodeConfigID must be a real config id from
 // the target instance (§6 / Phase-0 finding 3).
 func New(baseURL, apiKey, transcodeConfigID string) *Tunarr {
-	return &Tunarr{
+	t := &Tunarr{
 		baseURL:           strings.TrimRight(baseURL, "/"),
 		apiKey:            apiKey,
 		transcodeConfigID: transcodeConfigID,
 		http:              httpx.New(httpx.TimeoutTunarr),
 	}
+	t.resolver = &contentResolver{refresh: t.buildContentIndex}
+	return t
 }
 
 // --- wire types (pinned to the Phase-0 fixtures, not remembered field names) ---

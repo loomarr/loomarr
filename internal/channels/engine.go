@@ -133,6 +133,7 @@ type storeAvailability struct {
 	store    store.Store
 	ctx      context.Context
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
+	episodes EpisodeResolver  // optional; nil ⇒ series resolve to a pending slot
 }
 
 // DurationResolver returns a library item's runtime in ms (§9/§10, from the media
@@ -140,15 +141,24 @@ type storeAvailability struct {
 // library client and unit tests need no live server.
 type DurationResolver func(ctx context.Context, libraryItemID string) (int64, error)
 
+// EpisodeResolver enumerates a series' episodes as playable programs (§9 series
+// expansion), given the show's library item id. Injected (from the library
+// adapter) so the scheduler stays decoupled and tests need no live server.
+type EpisodeResolver func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error)
+
 // NewStoreAvailability builds an Availability over the store's title records.
-// The ctx bounds the lookups (they run inside a reconcile's context). dur may be
-// nil (e.g. tests) — then program slots resolve with duration 0 and ComputeDesired
-// falls back to the lineup entry's own duration.
-func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResolver) Availability {
-	return &storeAvailability{store: st, ctx: ctx, duration: dur}
+// The ctx bounds the lookups (they run inside a reconcile's context). dur/eps may
+// be nil (e.g. tests): a nil dur ⇒ movies resolve with duration 0 (caller falls
+// back to the entry's); a nil eps ⇒ series resolve to a pending slot.
+func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResolver, eps EpisodeResolver) Availability {
+	return &storeAvailability{store: st, ctx: ctx, duration: dur, episodes: eps}
 }
 
 func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
+	// A series isn't directly playable — it resolves via ResolveEpisodes.
+	if key.IsSeries() {
+		return "", 0, false
+	}
 	rec, err := s.store.GetTitle(s.ctx, key)
 	if err != nil {
 		return "", 0, false // not found / error → treat as unavailable
@@ -165,4 +175,24 @@ func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
 		}
 	}
 	return rec.LibraryID, durationMs, true
+}
+
+// ResolveEpisodes expands an available series into its episode programs (§9). The
+// series' title Record carries the show's library id; the episode resolver
+// enumerates the show's episodes from the library. Returns (nil, false) for a
+// non-series, an unavailable series, or when no episode resolver is wired — the
+// series then falls back to a pending slot upstream.
+func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.ResolvedProgram, bool) {
+	if !key.IsSeries() || s.episodes == nil {
+		return nil, false
+	}
+	rec, err := s.store.GetTitle(s.ctx, key)
+	if err != nil || rec.State != provision.Available || rec.LibraryID == "" {
+		return nil, false
+	}
+	eps, err := s.episodes(s.ctx, rec.LibraryID)
+	if err != nil || len(eps) == 0 {
+		return nil, false
+	}
+	return eps, true
 }

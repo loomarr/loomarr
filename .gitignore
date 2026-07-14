@@ -29,3 +29,4 @@ web/dist/
 # Editor / OS
 .DS_Store
 *.swp
+.playwright-mcp/

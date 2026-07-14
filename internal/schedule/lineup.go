@@ -36,7 +36,24 @@ type Availability interface {
 	// else ("", 0, false). durationMs is the program runtime from the library (§9,
 	// §10 RunTimeTicks) — a program slot needs it (Tunarr rejects duration ≤ 0).
 	// It must be side-effect free from the caller's view.
+	//
+	// For a SERIES key, Resolve returns available=false: a show isn't directly
+	// playable (no single item/runtime). Series resolve via ResolveEpisodes.
 	Resolve(key provision.Key) (libraryItemID string, durationMs int64, available bool)
+
+	// ResolveEpisodes expands a SERIES key into its episode programs, in
+	// season/episode order (§9 series expansion). Returns (nil, false) for a
+	// non-series key or a series with no playable episodes yet (→ pending slot).
+	// Each episode carries its own library item id + duration. Side-effect free.
+	ResolveEpisodes(key provision.Key) (episodes []ResolvedProgram, available bool)
+}
+
+// ResolvedProgram is one concrete playable program (a movie or a single episode)
+// with the fields a program Slot needs. Used by series expansion (§9).
+type ResolvedProgram struct {
+	LibraryItemID string
+	Title         string
+	DurationMs    int64
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -81,36 +98,61 @@ type LineupEntry struct {
 //   - not available, PodFill → SlotFiller (pod-fill placeholder; §10 fills it)
 //   - not available, ComingSoon → SlotPending (explicit gap)
 func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, policy PendingPolicy) DesiredLineup {
-	ordered := orderEntries(ch, entries)
-
-	slots := make([]Slot, 0, len(ordered))
-	for _, e := range ordered {
-		if itemID, durationMs, ok := avail.Resolve(e.Key); ok {
-			// Prefer the freshly-resolved runtime; fall back to the entry's own
-			// duration if the resolver didn't supply one (0 = unknown).
-			if durationMs == 0 {
-				durationMs = e.DurationMs
-			}
-			slots = append(slots, Slot{
-				Kind:          SlotProgram,
-				Key:           e.Key,
-				LibraryItemID: itemID,
-				Title:         e.Title,
-				DurationMs:    durationMs,
-			})
-			continue
-		}
-		slots = append(slots, pendingSlot(e, policy))
+	// Resolve each entry to its program slot(s) FIRST — a movie → one slot, a
+	// series → one slot per episode (§9 expansion) — then order the whole slot
+	// list by strategy. Ordering after expansion means `shuffle` shuffles episodes
+	// with everything else, and `sequential` keeps them in season/episode order.
+	slots := make([]Slot, 0, len(entries))
+	for _, e := range entries {
+		slots = append(slots, resolveEntry(e, avail, policy)...)
 	}
-
-	return DesiredLineup{ChannelID: ch.ID, Slots: slots}
+	return DesiredLineup{ChannelID: ch.ID, Slots: orderSlots(ch, slots)}
 }
 
-// orderEntries applies the channel's strategy to the approved lineup order. It
-// copies rather than mutating the caller's slice.
-func orderEntries(ch Channel, entries []LineupEntry) []LineupEntry {
-	out := make([]LineupEntry, len(entries))
-	copy(out, entries)
+// resolveEntry turns one approved lineup entry into its desired slot(s).
+func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slot {
+	// A series expands into its episodes (each a program slot).
+	if e.Key.IsSeries() {
+		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
+			out := make([]Slot, 0, len(eps))
+			for _, ep := range eps {
+				out = append(out, Slot{
+					Kind:          SlotProgram,
+					Key:           e.Key,
+					LibraryItemID: ep.LibraryItemID,
+					Title:         ep.Title,
+					DurationMs:    ep.DurationMs,
+				})
+			}
+			return out
+		}
+		// Series with no playable episodes yet → a single pending placeholder.
+		return []Slot{pendingSlot(e, policy)}
+	}
+
+	// A movie (or any non-series) resolves to a single program slot.
+	if itemID, durationMs, ok := avail.Resolve(e.Key); ok {
+		if durationMs == 0 {
+			durationMs = e.DurationMs // fall back to the entry's own duration
+		}
+		return []Slot{{
+			Kind:          SlotProgram,
+			Key:           e.Key,
+			LibraryItemID: itemID,
+			Title:         e.Title,
+			DurationMs:    durationMs,
+		}}
+	}
+	return []Slot{pendingSlot(e, policy)}
+}
+
+// orderSlots applies the channel's strategy to the desired slot order (§9). It
+// runs AFTER series expansion, so `shuffle` shuffles episodes together with
+// everything else and `sequential` preserves season/episode (and lineup) order.
+// Copies rather than mutating the caller's slice.
+func orderSlots(ch Channel, slots []Slot) []Slot {
+	out := make([]Slot, len(slots))
+	copy(out, slots)
 
 	switch ch.Strategy {
 	case Shuffle:
@@ -119,7 +161,7 @@ func orderEntries(ch Channel, entries []LineupEntry) []LineupEntry {
 		r := rand.New(rand.NewSource(ch.Shuffle.Seed))
 		r.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
 	case Sequential, TimeSlot:
-		// Keep approved order. TimeSlot block mapping happens at push time.
+		// Keep resolved order. TimeSlot block mapping happens at push time.
 	default:
 		// Unknown strategy: preserve order (Validate rejects these upstream, but
 		// ComputeDesired must never panic on bad data).
