@@ -79,8 +79,12 @@ func NewService(st ProposalStore, sug *Suggester, cfg Config, newID func() strin
 // a duplicate (§8 cache by hash(normalized intent)). Returns the job id.
 func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (string, error) {
 	hash := IntentHash(intent)
-	if cached, err := s.store.FindJobByIntentHash(ctx, hash, s.now().Add(-s.cacheTTL)); err == nil {
-		return cached.ID, nil // cache hit — reuse the recent job
+	// Cache hit ONLY on a recent SUCCESSFUL job. A failed job — e.g. one that found
+	// no grounded titles (ErrNoGroundedTitles) or hit a timeout — must NOT wedge
+	// re-submits of the same intent for the cache TTL; the operator retrying is
+	// exactly how they recover, so a re-submit re-runs generation.
+	if cached, err := s.store.FindJobByIntentHash(ctx, hash, s.now().Add(-s.cacheTTL)); err == nil && cached.Status == "done" {
+		return cached.ID, nil // cache hit — reuse the recent successful job
 	}
 	blob, err := json.Marshal(intent)
 	if err != nil {

@@ -66,6 +66,12 @@ func (r Response) WantsTools() bool { return len(r.ToolCalls) > 0 }
 type ChatOptions struct {
 	Tools    []ToolSchema // tools the model may call this turn
 	JSONMode bool         // force the final content to be valid JSON (§8 output contract)
+	// Sampling controls (provider-neutral). Pointers so "unset" is distinct from a
+	// deliberate 0 — temperature 0 is a valid, desirable value for JSON/tool-calling
+	// (deterministic, schema-adherent). A nil pointer ⇒ the provider's default.
+	Temperature *float64
+	TopP        *float64
+	MaxTokens   int // 0 ⇒ provider default
 }
 
 // Provider is the provider-neutral LLM primitive (§8). One Chat turn: given the
