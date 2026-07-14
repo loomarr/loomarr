@@ -137,6 +137,51 @@ func TestComputeDesired_SeriesExpandsToEpisodes(t *testing.T) {
 	}
 }
 
+// TestComputeDesired_SeasonRangeFiltersEpisodes covers the season-range intent
+// filter (§9): a series entry with SeasonMin/SeasonMax expands to only the
+// in-range episodes (e.g. "old-school Simpsons", seasons 1–2 of a longer run).
+func TestComputeDesired_SeasonRangeFiltersEpisodes(t *testing.T) {
+	e := entry("series:tvdb:456", "The Simpsons")
+	e.SeasonMin, e.SeasonMax = 1, 2 // classic era only
+	avail := seriesAvail{
+		episodes: map[provision.Key][]schedule.ResolvedProgram{
+			"series:tvdb:456": {
+				{LibraryItemID: "s1e1", Title: "S1E1", DurationMs: 1320000, Season: 1},
+				{LibraryItemID: "s2e1", Title: "S2E1", DurationMs: 1320000, Season: 2},
+				{LibraryItemID: "s5e1", Title: "S5E1", DurationMs: 1320000, Season: 5},    // out of range
+				{LibraryItemID: "s30e1", Title: "S30E1", DurationMs: 1320000, Season: 30}, // out of range
+			},
+		},
+	}
+
+	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
+
+	if got.ProgramCount() != 2 {
+		t.Fatalf("season range 1–2 expanded to %d programs, want 2 (s1e1, s2e1)", got.ProgramCount())
+	}
+	for _, s := range got.Slots {
+		if s.LibraryItemID == "s5e1" || s.LibraryItemID == "s30e1" {
+			t.Errorf("out-of-range episode leaked in: %s", s.LibraryItemID)
+		}
+	}
+}
+
+// TestComputeDesired_SeasonRangeNoMatchIsPending: a range matching no in-library
+// episodes yet → a pending slot (not an empty channel).
+func TestComputeDesired_SeasonRangeNoMatchIsPending(t *testing.T) {
+	e := entry("series:tvdb:456", "The Simpsons")
+	e.SeasonMin, e.SeasonMax = 40, 50 // seasons we don't have
+	avail := seriesAvail{
+		episodes: map[provision.Key][]schedule.ResolvedProgram{
+			"series:tvdb:456": {{LibraryItemID: "s1e1", DurationMs: 1320000, Season: 1}},
+		},
+	}
+	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.ComingSoon)
+	if len(got.Slots) != 1 || got.Slots[0].Kind != schedule.SlotPending {
+		t.Fatalf("out-of-range series = %+v, want one pending slot", got.Slots)
+	}
+}
+
 // TestComputeDesired_SeriesNoEpisodesIsPending: an available series with no
 // playable episodes yet degrades to a single pending slot (not zero programs, not
 // a broken push) — episodes join on a later reconcile.

@@ -49,11 +49,14 @@ type Availability interface {
 }
 
 // ResolvedProgram is one concrete playable program (a movie or a single episode)
-// with the fields a program Slot needs. Used by series expansion (§9).
+// with the fields a program Slot needs. Used by series expansion (§9). Season is
+// the episode's season number (0 for a movie / unknown), used to apply a lineup
+// entry's optional season range.
 type ResolvedProgram struct {
 	LibraryItemID string
 	Title         string
 	DurationMs    int64
+	Season        int
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -76,6 +79,23 @@ type LineupEntry struct {
 	Key        provision.Key // provisioning key of the intended title
 	Title      string        // display label
 	DurationMs int64         // known runtime, if any (0 = unknown)
+	// SeasonMin/SeasonMax optionally constrain a SERIES entry to a season range
+	// (inclusive; 0 = unbounded on that end) — an intent-level filter such as
+	// "old-school Simpsons" (§9 series expansion). Ignored for movies.
+	SeasonMin int
+	SeasonMax int
+}
+
+// inSeasonRange reports whether an episode season falls within the entry's
+// optional [SeasonMin, SeasonMax] (0 = unbounded on that end).
+func (e LineupEntry) inSeasonRange(season int) bool {
+	if e.SeasonMin > 0 && season < e.SeasonMin {
+		return false
+	}
+	if e.SeasonMax > 0 && season > e.SeasonMax {
+		return false
+	}
+	return true
 }
 
 // ComputeDesired turns an approved lineup + current availability into a
@@ -116,6 +136,9 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slo
 		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
 			out := make([]Slot, 0, len(eps))
 			for _, ep := range eps {
+				if !e.inSeasonRange(ep.Season) {
+					continue // outside the entry's season range (e.g. "old-school" only)
+				}
 				out = append(out, Slot{
 					Kind:          SlotProgram,
 					Key:           e.Key,
@@ -124,9 +147,13 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slo
 					DurationMs:    ep.DurationMs,
 				})
 			}
-			return out
+			if len(out) > 0 {
+				return out
+			}
+			// The range matched no in-library episodes yet → pending (like an
+			// unavailable series), not an empty channel.
 		}
-		// Series with no playable episodes yet → a single pending placeholder.
+		// Series with no playable (in-range) episodes yet → a single placeholder.
 		return []Slot{pendingSlot(e, policy)}
 	}
 

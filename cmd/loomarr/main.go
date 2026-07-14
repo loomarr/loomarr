@@ -313,6 +313,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				LibraryItemID: e.LibraryItemID,
 				Title:         e.Name,
 				DurationMs:    e.DurationMs,
+				Season:        e.Season,
 			})
 		}
 		return out, nil

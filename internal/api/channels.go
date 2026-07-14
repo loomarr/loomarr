@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -113,6 +114,16 @@ type createChannelInput struct {
 		Logo      string `json:"logo,omitempty"`
 		Strategy  string `json:"strategy" enum:"sequential,shuffle,time_slot"`
 		IntentRef string `json:"intentRef,omitempty"`
+		// Series is an optional hand-made single-series channel (§7 "or hand-made"):
+		// the channel plays one show, optionally constrained to a season range (§9
+		// series expansion). The series must already be an `available` title. Use
+		// instead of intentRef; if both are set, intentRef wins.
+		Series *struct {
+			Key       string `json:"key" doc:"provisioning key, e.g. series:tvdb:71663" example:"series:tvdb:71663"`
+			Title     string `json:"title,omitempty"`
+			SeasonMin int    `json:"seasonMin,omitempty" doc:"first season (inclusive; 0 = unbounded)"`
+			SeasonMax int    `json:"seasonMax,omitempty" doc:"last season (inclusive; 0 = unbounded)"`
+		} `json:"series,omitempty"`
 	}
 }
 
@@ -134,6 +145,20 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity("resolve intent lineup", err)
+	}
+	// Hand-made single-series channel (§7 "or hand-made"): one series entry with an
+	// optional season range (§9 expansion). Only when no proposal intent is given.
+	if in.Body.IntentRef == "" && in.Body.Series != nil {
+		key := provision.Key(in.Body.Series.Key)
+		if !key.IsSeries() {
+			return nil, huma.Error422UnprocessableEntity("series.key must be a series key (e.g. series:tvdb:<id>)", nil)
+		}
+		lineup = []schedule.LineupEntry{{
+			Key:       key,
+			Title:     in.Body.Series.Title,
+			SeasonMin: in.Body.Series.SeasonMin,
+			SeasonMax: in.Body.Series.SeasonMax,
+		}}
 	}
 	ch.Lineup = lineup
 	if err := ch.Validate(); err != nil {

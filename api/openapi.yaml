@@ -171,6 +171,8 @@ components:
           format: int64
           minimum: 1
           type: integer
+        series:
+          $ref: "#/components/schemas/SeriesStruct"
         strategy:
           enum:
             - sequential
@@ -548,6 +550,27 @@ components:
             - "null"
       required:
         - candidates
+      type: object
+    SeriesStruct:
+      additionalProperties: false
+      properties:
+        key:
+          description: provisioning key, e.g. series:tvdb:71663
+          examples:
+            - series:tvdb:71663
+          type: string
+        seasonMax:
+          description: last season (inclusive; 0 = unbounded)
+          format: int64
+          type: integer
+        seasonMin:
+          description: first season (inclusive; 0 = unbounded)
+          format: int64
+          type: integer
+        title:
+          type: string
+      required:
+        - key
       type: object
     SetupCheck:
       additionalProperties: false
