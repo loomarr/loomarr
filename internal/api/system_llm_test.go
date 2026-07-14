@@ -16,20 +16,29 @@ import (
 type fakeSystemLLM struct {
 	status    api.SystemLLMStatus
 	selectErr error
-	selected  string
+	testErr   error
+	selected  api.SelectRequest
+	tested    string
 	pulled    string
 }
 
 func (f *fakeSystemLLM) Status(context.Context) (api.SystemLLMStatus, error) {
 	return f.status, nil
 }
-func (f *fakeSystemLLM) Select(_ context.Context, m string) error {
+func (f *fakeSystemLLM) Select(_ context.Context, req api.SelectRequest) error {
 	if f.selectErr != nil {
 		return f.selectErr
 	}
-	f.selected = m
-	f.status.Model = m
+	f.selected = req
+	f.status.Model = req.Model
+	if req.Provider != "" {
+		f.status.Provider = req.Provider
+	}
 	return nil
+}
+func (f *fakeSystemLLM) Test(_ context.Context, provider, _ string) error {
+	f.tested = provider
+	return f.testErr
 }
 func (f *fakeSystemLLM) Pull(_ context.Context, m string) (string, error) {
 	f.pulled = m
@@ -63,6 +72,7 @@ func TestSystemLLM_RequiresAdmin(t *testing.T) {
 	}{
 		{http.MethodGet, "/v1/system/llm", ""},
 		{http.MethodPost, "/v1/system/llm/select", `{"model":"qwen3:8b"}`},
+		{http.MethodPost, "/v1/system/llm/test", `{"provider":"openrouter"}`},
 		{http.MethodPost, "/v1/system/llm/pull", `{"model":"qwen3:8b"}`},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // no token
@@ -118,13 +128,85 @@ func TestSystemLLM_SelectOK(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("select → %d, want 200", resp.StatusCode)
 	}
-	if svc.selected != "llama3.1:8b" {
-		t.Errorf("service saw model %q, want llama3.1:8b", svc.selected)
+	if svc.selected.Model != "llama3.1:8b" {
+		t.Errorf("service saw model %q, want llama3.1:8b", svc.selected.Model)
 	}
 	var body api.SystemLLMStatus
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Model != "llama3.1:8b" {
 		t.Errorf("select response model = %q, want llama3.1:8b", body.Model)
+	}
+}
+
+// Hosted select passes provider + key through and maps a bad key to 401.
+func TestSystemLLM_SelectHosted(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"openai/gpt-4o-mini","apiKey":"sk-or-x"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("hosted select → %d, want 200", resp.StatusCode)
+	}
+	if svc.selected.Provider != "openrouter" || svc.selected.APIKey != "sk-or-x" {
+		t.Errorf("service saw %+v, want provider=openrouter key=sk-or-x", svc.selected)
+	}
+}
+
+func TestSystemLLM_SelectBadKey401(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrKeyInvalid}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"openrouter","model":"x","apiKey":"bad"}`)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("bad hosted key → %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestSystemLLM_SelectUnknownProvider422(t *testing.T) {
+	svc := &fakeSystemLLM{selectErr: api.ErrUnknownProvider}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"nope","model":"x"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("unknown provider → %d, want 422", resp.StatusCode)
+	}
+}
+
+// Test endpoint: a bad key is ok=false (200), NOT a 5xx — the UI shows it inline.
+func TestSystemLLM_TestReportsInline(t *testing.T) {
+	svc := &fakeSystemLLM{testErr: api.ErrKeyInvalid}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken,
+		`{"provider":"openrouter","apiKey":"bad"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test with bad key → %d, want 200 (inline result)", resp.StatusCode)
+	}
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.OK || body.Error == "" {
+		t.Errorf("bad-key test = %+v, want ok=false with an error", body)
+	}
+	if svc.tested != "openrouter" {
+		t.Errorf("service tested %q, want openrouter", svc.tested)
+	}
+}
+
+func TestSystemLLM_TestOK(t *testing.T) {
+	svc := &fakeSystemLLM{} // testErr nil → success
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/test", adminToken, `{"provider":"openrouter"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test → %d", resp.StatusCode)
+	}
+	var body struct {
+		OK bool `json:"ok"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if !body.OK {
+		t.Error("valid key test should report ok=true")
 	}
 }
 
