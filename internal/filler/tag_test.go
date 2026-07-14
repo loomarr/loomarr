@@ -38,7 +38,7 @@ func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audi
 
 func untaggedClip(id, name string) filler.StoreClip {
 	c := filler.StoreClip{}
-	c.LibraryItemID = id
+	c.TunarrProgramID = id
 	c.Name = name
 	c.Kind = filler.Commercial
 	return c

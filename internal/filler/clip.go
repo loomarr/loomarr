@@ -1,8 +1,10 @@
 // Package filler is the commercials & filler domain (design §10): the clip
 // catalog model and pod assembly. Filler is a PARALLEL universe to provisioning
 // (§3–§7) — clips are not titles (not in TMDB, no acquisition loop); their
-// identity is the media-server item id and their duration comes from the server,
-// so the core never downloads or probes media. Pod assembly is pure and
+// identity is the Tunarr `local`-source program uuid and their duration comes
+// from Tunarr's scan, so the core never downloads or probes media. Filler is a
+// pure Loomarr↔Tunarr concern — the media server is not in the filler path.
+// Pod assembly is pure and
 // SEEDED-DETERMINISTIC (seed = channel + window) so tests reproduce exactly and
 // the same break rebuilds identically across reconciles (§10/§19). The scheduler
 // (§9) inserts the assembled pods via Tunarr flex + filler lists; this package
@@ -35,20 +37,20 @@ const (
 	LateNight Audience = "late_night"
 )
 
-// Clip is one filler item synced from the media server's filler library (§10).
-// Identity is LibraryItemID (the media-server item id) — "library is source of
-// truth" (§4). Duration comes from the server; the core never probes it.
+// Clip is one filler item synced from Tunarr's `local` filler source (§10).
+// Identity is TunarrProgramID (the Tunarr program uuid Tunarr assigns when it
+// scans the clip). Duration comes from Tunarr's scan; the core never probes it.
 type Clip struct {
-	LibraryItemID string   // media-server item id — the identity
-	Name          string   // display name (from the server / filename)
-	Kind          Kind     // commercial | bumper | station_id | psa | trailer | interstitial
-	Era           int      // decade/year, e.g. 1994; 0 = untagged
-	Audience      Audience // kids | family | general | late_night; "" = untagged
-	Category      string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
-	DurationMs    int64    // from the media server (it already probes media)
-	Rating        string   // optional content rating
-	Source        string   // provenance: archive | youtube | manual | …
-	AITagged      bool     // whether the era/audience/category came from AI classification
+	TunarrProgramID string   // Tunarr `local`-source program uuid — the identity
+	Name            string   // display name (from Tunarr's scan / filename)
+	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
+	Era             int      // decade/year, e.g. 1994; 0 = untagged
+	Audience        Audience // kids | family | general | late_night; "" = untagged
+	Category        string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
+	DurationMs      int64    // from Tunarr's scan (Tunarr probes media, not the core)
+	Rating          string   // optional content rating
+	Source          string   // provenance: tunarr-local | manual | …
+	AITagged        bool     // whether the era/audience/category came from AI classification
 }
 
 // Tagged reports whether a clip has the metadata pod matching needs (§10). An

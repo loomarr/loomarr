@@ -587,8 +587,8 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `SEASON_PRECISION` | no | `series` (default) \| `seasons` — what counts as "in library" for a series (§6) |
 | `SCHED_DEFAULT_STRATEGY` | no | `shuffle` \| `ordered` \| `timeslot` |
 | `SCHED_BACKFILL` | no | `stable` (default) \| `reshuffle` (§9) |
-| `FILLER_LIBRARY` | no | media-server library id/name of the dedicated filler library |
-| `FILLER_SYNC_EVERY` | no | `15m` (catalog sync from the media server) |
+| `FILLER_DIR` | no | drop-folder path Loomarr registers as a Tunarr `local` media source (§10); the core reads the clip catalog from Tunarr, not the media server |
+| `FILLER_SYNC_EVERY` | no | `15m` (catalog sync from the Tunarr `local` filler source) |
 | `FILLER_AI_TAGGING` | no | `false` (classify clips via the LLM, text signals) |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | no | `4` / `4` (density + pod size) |
 | `SESSION_SECRET` | yes | *(secret; signs session cookies, §11)* |

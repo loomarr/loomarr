@@ -40,18 +40,21 @@ type Availability interface {
 	schedule.Availability
 }
 
-// PodFiller resolves a channel's filler/flex gap slots into matched ad-pod clips
-// (§10). Implemented by the filler package (a catalog-backed pod assembler);
-// nil = flex-only (the Phase-10 default, no pods yet). Called during reconcile
-// after the desired lineup is computed: each SlotFiller with no library item is
-// offered to the assembler, which returns the pod clips to place (or leaves it as
-// flex). Deterministic (seeded by channel + slot) so pods reproduce across
-// reconciles (§10/§19).
+// PodFiller assembles a channel's matched filler-clip pool (§10). Implemented by
+// the filler package (a catalog-backed pod assembler); nil = flex-only (no pods).
+// Called during reconcile after the channel exists: it returns the Tunarr program
+// uuids of the matched clips, which the engine hands to the Programmer to build +
+// attach the channel's Tunarr filler-list. Tunarr then plays those clips into the
+// flex gaps the scheduler leaves between programs (§9 break interleave) — so this
+// is a per-channel POOL, not a per-gap sequence. Seed-deterministic so the pool
+// reproduces across reconciles (§10/§19), which is what makes the filler-list
+// attach idempotent.
 type PodFiller interface {
-	// FillGap returns the clips to place in a filler gap for a channel, given the
-	// gap duration and a deterministic seed. An empty result → leave it as flex
-	// (never dead air — the assembler's own fallback ladder ends in a bumper card).
-	FillGap(ctx context.Context, channelID string, era int, gapMs, seed int64) []schedule.Slot
+	// BuildFillerList returns the Tunarr program uuids of the matched clip pool for
+	// a channel, given its era and a deterministic seed. ok=false → no pool (empty
+	// catalog / only the fallback card): the engine skips the attach and the
+	// channel's flex falls back to the bumper card (never dead air).
+	BuildFillerList(ctx context.Context, channelID string, era int, seed int64) (programIDs []string, ok bool)
 }
 
 // Engine reconciles channels against Tunarr. One per process; the per-channel

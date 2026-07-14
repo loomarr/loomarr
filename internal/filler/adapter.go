@@ -3,22 +3,20 @@ package filler
 import (
 	"context"
 	"log/slog"
-
-	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip
-// catalog and assembles a matched pod for a channel's filler gap, returning the
-// clips as schedule.Slots the reconcile engine places. It bridges the pure
-// Assemble() to the store-backed catalog + the scheduler's slot type — keeping
-// both the filler domain and the scheduler free of each other's concerns.
+// catalog, assembles a matched clip pool for a channel (era/audience-matched,
+// seed-deterministic), and returns the clips' Tunarr program uuids for the channel
+// filler-list the reconcile engine attaches. It bridges the pure Assemble() to the
+// store-backed catalog — keeping the filler domain and the scheduler free of each
+// other's concerns. Since Tunarr plays the filler-list into ANY flex gap, this is
+// a per-channel pool (not a per-gap sequence): the scheduler no longer sizes pods
+// to individual gaps.
 type PodAdapter struct {
 	catalog CatalogReader
 	policy  Policy
 	log     *slog.Logger
-	// perChannelUsed tracks no-repeat-in-window across gaps of one reconcile pass.
-	// v1 uses a fresh set per FillGap call (per-gap no-repeat); window-wide
-	// no-repeat across a channel's whole lineup is a future refinement (§10/§20).
 }
 
 // CatalogReader loads clips for pod assembly (implemented by the store).
@@ -32,39 +30,47 @@ func NewPodAdapter(catalog CatalogReader, policy Policy, log *slog.Logger) *PodA
 	return &PodAdapter{catalog: catalog, policy: policy, log: log}
 }
 
-// FillGap implements channels.PodFiller: assemble a matched pod for one gap and
-// return its clips as filler slots. On any error (or an empty catalog) it returns
-// nil so the reconcile leaves the gap as flex — pods degrade to flex, never fail
-// the reconcile (§10 never dead air, and §9 reconcile resilience).
-func (a *PodAdapter) FillGap(ctx context.Context, channelID string, era int, gapMs, seed int64) []schedule.Slot {
+// poolGapMs is the notional window Assemble fills to size the channel's clip pool.
+// A channel's filler-list is a POOL Tunarr draws from, not a single sized break,
+// so we assemble a generous pool (~one long break's worth); Tunarr picks per gap.
+const poolGapMs = 600_000 // 10 min of clips
+
+// BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
+// channel and return the clips' Tunarr program uuids for its filler-list. ok=false
+// on any error or an empty/all-fallback pool, so the reconcile skips the attach and
+// the channel's flex falls back to the bumper card — never dead air (§10, §9). The
+// pool is seed-deterministic (same catalog + seed → same uuids), so a re-reconcile
+// produces the same list (idempotency at the EnsureFillerList layer, §9).
+func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era int, seed int64) ([]string, bool) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {
 		if a.log != nil {
-			a.log.Warn("pod fill: load catalog failed (gap stays flex)", "channel", channelID, "err", err)
+			a.log.Warn("filler list: load catalog failed (channel stays flex)", "channel", channelID, "err", err)
 		}
-		return nil
+		return nil, false
 	}
 	if len(clips) == 0 {
-		return nil // no filler yet → flex
+		return nil, false // no filler yet → flex
 	}
 	w := Window{
 		ChannelID: channelID, Seed: seed, Era: era,
 		Audience: General, // v1: channel-level audience wiring is future; General matches broadly
-		GapMs:    gapMs, PodMax: 4,
+		GapMs:    poolGapMs, PodMax: 32,
 	}
 	pod := Assemble(clips, w, a.policy, map[string]bool{})
-	slots := make([]schedule.Slot, 0, len(pod.Entries))
+	ids := make([]string, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
-		slots = append(slots, schedule.Slot{
-			Kind:          schedule.SlotFiller,
-			LibraryItemID: e.LibraryItemID, // "" for the embedded bumper card → renders as flex
-			Title:         e.Name,
-			DurationMs:    e.DurationMs,
-		})
+		if e.TunarrProgramID == "" {
+			continue // the embedded bumper-card fallback isn't a real Tunarr program
+		}
+		ids = append(ids, e.TunarrProgramID)
 	}
-	return slots
+	if len(ids) == 0 {
+		return nil, false // only the fallback card → nothing to attach; flex
+	}
+	return ids, true
 }
 
 var _ interface {
-	FillGap(ctx context.Context, channelID string, era int, gapMs, seed int64) []schedule.Slot
+	BuildFillerList(ctx context.Context, channelID string, era int, seed int64) ([]string, bool)
 } = (*PodAdapter)(nil)

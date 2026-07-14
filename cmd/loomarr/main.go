@@ -197,16 +197,15 @@ func run() error {
 		log.Info("suggester started", "provider", provider.Name(), "workers", cfg.JobWorkers, "tmdb", tmdbClient != nil)
 	}
 
-	// Filler & commercials (§10, Phase 12): catalog sync from the media server's
-	// filler library + a periodic sweep, the AI-tagging job, and the pod assembler
-	// wired into the channel scheduler. Wired when a store, the library, and a
-	// FILLER_LIBRARY are configured. The pod adapter (if the scheduler is up) turns
-	// filler gaps into matched ad pods.
+	// Filler & commercials (§10, Phase 12; redesign — Loomarr-owned via Tunarr).
+	// Filler is a pure Loomarr↔Tunarr concern now: the catalog syncs from a Tunarr
+	// `local` source over the FILLER_DIR drop-folder (the media server is out of the
+	// filler path), plus the AI-tagging job and the pod assembler wired into the
+	// scheduler. Wired when a store, Tunarr, and FILLER_DIR are configured.
 	var fillerSvc api.FillerService
-	if st != nil && cfg.LibraryFlavor != "" && cfg.FillerLibrary != "" {
-		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
-		syncer := filler.NewSyncer(fillerListerAdapter{lib}, fillerStoreAdapter{st}, cfg.FillerLibrary, time.Now, log)
+	if st != nil && cfg.TunarrURL != "" && cfg.FillerDir != "" {
+		fillerProg := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID)
+		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, cfg.FillerDir, time.Now, log)
 
 		var tagger *filler.Tagger
 		if cfg.FillerAITagging && cfg.LLMURL != "" {
@@ -216,7 +215,7 @@ func run() error {
 		fillerSvc = fillerServiceAdapter{syncer: syncer, tagger: tagger}
 
 		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to
-		// fill filler gaps with matched pods.
+		// build a matched filler-list per channel (attached to Tunarr on reconcile).
 		if engine, ok := channelSvc.(*channels.Engine); ok {
 			podPolicy := filler.Policy{}
 			engine.WithPods(filler.NewPodAdapter(clipCatalogAdapter{st}, podPolicy, log))
@@ -225,7 +224,7 @@ func run() error {
 
 		// Periodic filler catalog sync alongside the reconciler (§10).
 		go runFillerSync(rootCtx, syncer, cfg.FillerSyncEvery, log)
-		log.Info("filler catalog sync started", "library", cfg.FillerLibrary, "every", cfg.FillerSyncEvery, "ai_tagging", cfg.FillerAITagging)
+		log.Info("filler catalog sync started", "dir", cfg.FillerDir, "every", cfg.FillerSyncEvery, "ai_tagging", cfg.FillerAITagging)
 	}
 
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
@@ -426,17 +425,31 @@ func (noopValidator) Exists(context.Context, provision.MediaType, int) (bool, er
 // package's port types, keeping filler free of a store/library import (the domain
 // stays pure; main does the wiring).
 
-// fillerListerAdapter bridges library.ListFillerClips → filler.Lister.
-type fillerListerAdapter struct{ lib *library.Client }
+// fillerSourceAdapter bridges the Tunarr client → filler.FillerSource (§10): it
+// ensures the `local` filler source over FILLER_DIR and reads the scanned clips.
+// Clip identity = the Tunarr program uuid; duration comes from Tunarr's scan.
+type fillerSourceAdapter struct{ prog *programmer.Tunarr }
 
-func (a fillerListerAdapter) ListFillerClips(ctx context.Context, libraryID string) ([]filler.RawClip, error) {
-	raw, err := a.lib.ListFillerClips(ctx, libraryID)
+func (a fillerSourceAdapter) EnsureLocalSource(ctx context.Context, dir string) error {
+	_, err := a.prog.EnsureLocalFillerSource(ctx, dir)
+	return err
+}
+
+func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
+	// Find Loomarr's local source, then read its clips. EnsureLocalFillerSource ran
+	// first (Sync ensures before listing), so a local source exists.
+	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.RawClip, len(raw))
-	for i, r := range raw {
-		out[i] = filler.RawClip{LibraryItemID: r.LibraryItemID, Name: r.Name, DurationMs: r.DurationMs, Kind: r.Kind, Era: r.Era}
+	out := make([]filler.RawClip, len(clips))
+	for i, c := range clips {
+		// Kind defaults to interstitial; the filename-era hint + AI tagging refine
+		// the match metadata later. (Tunarr's scan gives id/name/duration only.)
+		out[i] = filler.RawClip{
+			TunarrProgramID: c.ProgramID, Name: c.Name, DurationMs: c.DurationMs,
+			Kind: filler.Interstitial,
+		}
 	}
 	return out, nil
 }

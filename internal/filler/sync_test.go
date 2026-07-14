@@ -10,10 +10,18 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 )
 
-// fakeLister returns a fixed set of raw clips.
-type fakeLister struct{ clips []filler.RawClip }
+// fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
+// ensures counts EnsureLocalSource calls so the idempotent-setup path is covered.
+type fakeSource struct {
+	clips   []filler.RawClip
+	ensures int
+}
 
-func (f *fakeLister) ListFillerClips(_ context.Context, _ string) ([]filler.RawClip, error) {
+func (f *fakeSource) EnsureLocalSource(_ context.Context, _ string) error {
+	f.ensures++
+	return nil
+}
+func (f *fakeSource) ListLocalClips(_ context.Context) ([]filler.RawClip, error) {
 	return f.clips, nil
 }
 
@@ -23,7 +31,7 @@ type memStore struct{ clips map[string]filler.StoreClip }
 func newMemStore() *memStore { return &memStore{clips: map[string]filler.StoreClip{}} }
 
 func (m *memStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
-	m.clips[c.LibraryItemID] = c
+	m.clips[c.TunarrProgramID] = c
 	return nil
 }
 func (m *memStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
@@ -48,21 +56,21 @@ func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, erro
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func raw(id, name string, kind filler.Kind, dur int64, era int) filler.RawClip {
-	return filler.RawClip{LibraryItemID: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
+	return filler.RawClip{TunarrProgramID: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
 }
 
-func newSyncer(lister *fakeLister, st *memStore) *filler.Syncer {
-	return filler.NewSyncer(lister, st, "filler-lib",
+func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
+	return filler.NewSyncer(source, st, "/drop",
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
 }
 
 func TestSync_AddsClips_DurationFromServer(t *testing.T) {
-	lister := &fakeLister{clips: []filler.RawClip{
+	source := &fakeSource{clips: []filler.RawClip{
 		raw("c1", "Frosted Flakes 1992", filler.Commercial, 30000, 1992),
 		raw("b1", "Bumper", filler.Bumper, 5000, 0),
 	}}
 	st := newMemStore()
-	res, err := newSyncer(lister, st).Sync(context.Background())
+	res, err := newSyncer(source, st).Sync(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +90,9 @@ func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 // (by AI or by hand) keeps its era/audience/category when the media server
 // re-lists it — the server only owns id/name/duration.
 func TestSync_PreservesTagsOnResync(t *testing.T) {
-	lister := &fakeLister{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 0)}}
+	source := &fakeSource{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 0)}}
 	st := newMemStore()
-	s := newSyncer(lister, st)
+	s := newSyncer(source, st)
 
 	// First sync creates the clip untagged.
 	_, _ = s.Sync(context.Background())
@@ -98,7 +106,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 	st.clips["c1"] = tagged
 
 	// The media server re-lists the same clip (maybe with a corrected name).
-	lister.clips = []filler.RawClip{raw("c1", "clip (renamed)", filler.Commercial, 30000, 0)}
+	source.clips = []filler.RawClip{raw("c1", "clip (renamed)", filler.Commercial, 30000, 0)}
 	res, err := s.Sync(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -120,9 +128,9 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 // Idempotent: a no-change re-sync makes no updates.
 func TestSync_IdempotentNoChange(t *testing.T) {
-	lister := &fakeLister{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 1992)}}
+	source := &fakeSource{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 1992)}}
 	st := newMemStore()
-	s := newSyncer(lister, st)
+	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 	res, _ := s.Sync(context.Background())
 	if res.Added != 0 || res.Updated != 0 {
@@ -132,16 +140,16 @@ func TestSync_IdempotentNoChange(t *testing.T) {
 
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
-	lister := &fakeLister{clips: []filler.RawClip{
+	source := &fakeSource{clips: []filler.RawClip{
 		raw("c1", "keep", filler.Commercial, 30000, 1992),
 		raw("c2", "goes away", filler.Commercial, 30000, 1993),
 	}}
 	st := newMemStore()
-	s := newSyncer(lister, st)
+	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 
 	// c2 disappears from the media server.
-	lister.clips = []filler.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
+	source.clips = []filler.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
 	res, _ := s.Sync(context.Background())
 	if res.Pruned != 1 {
 		t.Errorf("pruned = %d, want 1", res.Pruned)

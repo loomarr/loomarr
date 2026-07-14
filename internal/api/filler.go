@@ -40,23 +40,24 @@ func (s *Server) registerFiller(api huma.API) {
 	}, s.tagFiller)
 }
 
-// ClipDTO is the API view of a filler clip (§10).
+// ClipDTO is the API view of a filler clip (§10). Identity is the Tunarr `local`-
+// source program uuid (the redesign moved filler off the media server).
 type ClipDTO struct {
-	LibraryItemID string `json:"libraryItemId"`
-	Name          string `json:"name"`
-	Kind          string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
-	Era           int    `json:"era,omitempty"`
-	Audience      string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
-	Category      string `json:"category,omitempty"`
-	DurationMs    int64  `json:"durationMs"`
-	Source        string `json:"source,omitempty"`
-	AITagged      bool   `json:"aiTagged"`
-	Tagged        bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
+	TunarrProgramID string `json:"tunarrProgramId"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Era             int    `json:"era,omitempty"`
+	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
+	Category        string `json:"category,omitempty"`
+	DurationMs      int64  `json:"durationMs"`
+	Source          string `json:"source,omitempty"`
+	AITagged        bool   `json:"aiTagged"`
+	Tagged          bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
 }
 
 func clipToDTO(c store.Clip) ClipDTO {
 	return ClipDTO{
-		LibraryItemID: c.LibraryItemID, Name: c.Name, Kind: string(c.Kind),
+		TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
 		DurationMs: c.DurationMs, Source: c.Source, AITagged: c.AITagged, Tagged: c.Tagged(),
 	}

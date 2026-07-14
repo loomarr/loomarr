@@ -58,6 +58,19 @@ type Programmer interface {
 	// DeleteChannel removes the Tunarr channel (used by DELETE /v1/channels?purge).
 	// Deleting an already-absent channel is not an error (idempotent).
 	DeleteChannel(ctx context.Context, tunarrID string) error
+
+	// EnsureFillerList builds/updates the channel's Loomarr-owned Tunarr filler
+	// list from the matched clip pool (identified by their Tunarr program uuids)
+	// and attaches it to the channel (§10). Tunarr then plays those clips into the
+	// flex gaps the scheduler leaves between programs. The adapter resolves each
+	// uuid to the FULL program object Tunarr's filler-list API requires (a minimal
+	// {id,duration} is rejected) from its own cached local-source index — so the
+	// domain never carries raw Tunarr JSON. Idempotent and INTERNALLY no-op on an
+	// unchanged program set: the filler-list contents are NOT part of the lineup
+	// diff, so this method must avoid a redundant write itself (§9 "second
+	// reconcile makes no writes"). An empty slice detaches the list (the channel
+	// falls back to flex / the embedded bumper card — never dead air, §10).
+	EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string) error
 }
 
 // ActualChannel is the subset of Tunarr's channel we compare against desired
