@@ -189,7 +189,9 @@ func run() error {
 		} else {
 			validator = noopValidator{} // no TMDB: acquisitions can't be re-validated, so treat as exists
 		}
-		cat := catalog.New(lib, tmdbSearcher, nil) // clip corpus wired in Phase 12
+		// clip corpus wired in Phase 12. WithPresence lets discovery mark titles the
+		// library already owns as in-library (a lineup pick, not an acquisition).
+		cat := catalog.New(lib, tmdbSearcher, nil).WithPresence(libraryPresence{lib})
 		searchSvc = searchAdapter{cat}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the
@@ -415,6 +417,23 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 		})
 	}
 	return out, nil
+}
+
+// libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
+// discovery can mark titles the library already owns as in-library. Prefers the
+// TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb.
+type libraryPresence struct{ lib *library.Client }
+
+func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (string, bool, error) {
+	kind, id := library.TMDB, strconv.Itoa(tmdbID)
+	if tmdbID == 0 && tvdbID != 0 {
+		kind, id = library.TVDB, strconv.Itoa(tvdbID)
+	}
+	lmt := library.Movie
+	if mt == provision.Series {
+		lmt = library.Series
+	}
+	return a.lib.Lookup(ctx, kind, id, lmt)
 }
 
 // noopValidator is the acquisition validator when TMDB isn't configured: it can't

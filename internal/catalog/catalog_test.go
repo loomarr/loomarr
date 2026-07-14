@@ -170,3 +170,44 @@ func TestCandidateKey(t *testing.T) {
 		t.Error("expected Key() to error on an id-less candidate")
 	}
 }
+
+// fakePresence marks a fixed set of tmdb ids as in-library.
+type fakePresence struct{ owned map[int]string }
+
+func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (string, bool, error) {
+	id, ok := f.owned[tmdbID]
+	return id, ok, nil
+}
+
+// In-library backfill: a DISCOVERED title the library already owns comes back
+// InLibrary=true (a lineup pick), not an acquisition. Closes the discovery gap.
+func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
+	lib := realLibrary(t)
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "test-key")
+	// The mock owns The Matrix (603) → discovery of Action should mark it in-library.
+	c := catalog.New(lib, tm, nil).WithPresence(fakePresence{owned: map[int]string{603: "lib-603"}})
+
+	got, err := c.Discover(context.Background(), provision.Movie, []string{"Action"}, 1990, 1999, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matrix *catalog.Candidate
+	for i := range got {
+		if got[i].TMDBID == 603 {
+			matrix = &got[i]
+		}
+	}
+	if matrix == nil {
+		t.Fatal("The Matrix (action) should be discovered")
+	}
+	if !matrix.InLibrary || matrix.LibraryItemID != "lib-603" {
+		t.Errorf("owned discovered title should be backfilled in-library, got InLibrary=%v id=%q", matrix.InLibrary, matrix.LibraryItemID)
+	}
+	// A discovered title NOT owned stays an acquisition candidate.
+	for _, c := range got {
+		if c.TMDBID == 100 && c.InLibrary { // Speed, not in the owned set
+			t.Error("un-owned discovered title should stay not-in-library")
+		}
+	}
+}

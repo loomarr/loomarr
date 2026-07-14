@@ -92,6 +92,18 @@ type TMDBDiscoverer interface {
 	Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
 }
 
+// LibraryPresence checks whether a specific title (by external id) is already in
+// the media library — the piece discovery needs that keyword search gets for free.
+// Discovery is TMDB-only (the library has no discover-by-genre endpoint), so a
+// discovered title you already OWN would otherwise come back InLibrary=false and
+// land as an acquisition. Implemented by a main.go adapter over library.Client's
+// Lookup. Optional: a Catalog without one simply skips the backfill.
+type LibraryPresence interface {
+	// Present reports whether the title is in the library, returning its library
+	// item id when so. Called per discovered candidate (a cheap indexed lookup).
+	Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (libraryItemID string, present bool, err error)
+}
+
 // ClipSearcher is the clip-catalog corpus (a name LIKE over the store — §7.2).
 // Wired in Phase 12 when the clip catalog exists; nil until then.
 type ClipSearcher interface {
@@ -100,14 +112,23 @@ type ClipSearcher interface {
 
 // Catalog federates the corpora. TMDB/clips may be nil (scope skipped).
 type Catalog struct {
-	lib   LibrarySearcher
-	tmdb  TMDBSearcher
-	clips ClipSearcher
+	lib      LibrarySearcher
+	tmdb     TMDBSearcher
+	clips    ClipSearcher
+	presence LibraryPresence // optional; backfills in-library on discovery results
 }
 
 // New builds a Catalog. Any corpus may be nil; its scope is then skipped.
 func New(lib LibrarySearcher, tmdb TMDBSearcher, clips ClipSearcher) *Catalog {
 	return &Catalog{lib: lib, tmdb: tmdb, clips: clips}
+}
+
+// WithPresence wires the in-library presence check used to backfill discovery
+// results (§8) — so a discovered title you already own is a lineup pick, not an
+// acquisition. Returns the Catalog for chaining. Nil = discovery skips the backfill.
+func (c *Catalog) WithPresence(p LibraryPresence) *Catalog {
+	c.presence = p
+	return c
 }
 
 // Search fans out to the requested scope and returns a deduped, merged candidate
@@ -197,7 +218,31 @@ func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres [
 		byKey[k] = &cp
 		order = append(order, k)
 	}
-	return dedupeAndOrder(byKey, order, limit), nil
+	out := dedupeAndOrder(byKey, order, limit)
+	c.backfillPresence(ctx, out)
+	return out, nil
+}
+
+// backfillPresence marks discovered candidates the library already owns as
+// InLibrary (with their library item id), so a title you have becomes a lineup
+// pick rather than a needless acquisition (§8). Best-effort: a per-title lookup
+// error is skipped (the candidate stays not-in-library — the approve path re-
+// checks anyway), never failing discovery. No-op when no presence check is wired.
+func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
+	if c.presence == nil {
+		return
+	}
+	for i := range cands {
+		if cands[i].InLibrary || cands[i].TMDBID == 0 {
+			continue // already known in-library, or no id to look up
+		}
+		id, present, err := c.presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
+		if err != nil || !present {
+			continue
+		}
+		cands[i].InLibrary = true
+		cands[i].LibraryItemID = id
+	}
 }
 
 // dedupeAndOrder flattens the merged candidate map into the deterministic order
