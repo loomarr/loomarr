@@ -58,7 +58,7 @@ flowchart LR
   MS[(Emby / Jellyfin)]
   Seerr[Seerr]
   Arr[Sonarr / Radarr]
-  LLM[LLM: Ollama / Anthropic]
+  LLM[LLM: Ollama / OpenAI-compatible]
   Tunarr[Tunarr]
   DB[(Postgres / SQLite)]
 
@@ -93,7 +93,7 @@ Core logic depends only on interfaces; concrete adapters live at the edges.
 | Requester | `Requester.Request/Cancel(title)` | Seerr (default), Sonarr+Radarr (alt) |
 | Ingest | HTTP webhook handler | Sonarr, Radarr |
 | **Programmer** | `Programmer.Reconcile(channel, lineup)` | **Tunarr** (only impl; abstracted for future ErsatzTV) |
-| Suggester | `Suggester.Propose(intent) → Proposal` | LLM: Ollama (local), Anthropic (hosted) |
+| Suggester | `Suggester.Propose(intent) → Proposal` | LLM: Ollama (local) or any OpenAI-compatible endpoint (hosted — OpenAI/Gemini/Groq/OpenRouter/…; Claude via OpenRouter) |
 | Catalog | `Catalog.Search(query) → []Candidate` | Library + TMDB/TVDB — grounds the LLM **and** backs `GET /v1/search` (§7.2) |
 | FillerSource | catalog sync + optional ingest | media-server filler-library sync (core); `loomarr-ingest` sidecar: yt-dlp / Archive.org → drop-folder (§10) |
 | Store | `Store` (see §5) | Postgres, SQLite |
@@ -242,7 +242,7 @@ For Loomarr's channels to appear in the family's TV guide, the media server must
 - **Division of labor is unchanged (§1 non-goals):** Loomarr decides *what plays and when*; Tunarr owns playout/transcode/EPG and the HDHR/M3U/XMLTV tuner surface; Emby/Jellyfin consume that tuner + guide like any HDHomeRun. Loomarr never builds streaming; the escape hatch is a second `Programmer` adapter (ErsatzTV).
 
 ### Suggester / Catalog — LLM
-See §8. Provider-neutral; Ollama or Anthropic; catalog tool grounds it against the real library + TMDB.
+See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hosted); catalog tool grounds it against the real library + TMDB. In-app provider/model selection with live probe + hot-swap: §8.1.
 
 ---
 
@@ -317,7 +317,7 @@ flowchart LR
   Intent[Channel intent: NL + constraints]
   SUG[Suggester]
   Cat[Catalog tool: library + TMDB]
-  LLM[LLM: Ollama / Anthropic]
+  LLM[LLM: Ollama / OpenAI-compatible]
   Prop[Proposal: lineup + acquisitions + rationale]
   Intent --> SUG
   SUG <-->|grounded tool calls| Cat
@@ -634,7 +634,7 @@ Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver 
 ### Compose (profiles: sqlite · postgres · ai · filler)
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
-- **ai:** adds a local **Ollama** service (skip if `anthropic` or external Ollama; optional GPU passthrough).
+- **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama; optional GPU passthrough).
 - **filler:** adds the **`loomarr-ingest` sidecar** (Go, bundling yt-dlp + ffmpeg: YouTube + Archive downloads → the drop-folder the media server scans). Skip it if you fill the drop-folder manually or with MeTube.
 
 The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
@@ -807,7 +807,7 @@ Each phase ends green (compiles + its tests pass) before the next.
 8. **Self-documenting API.** Huma v2 on `humago` (§7.1, §14); `/v1/titles*`, `/v1/events`, `/openapi.*`, `/docs`, ops; `GET /v1/backup` (SQLite `VACUUM INTO`); `make openapi` + committed `api/openapi.yaml`; contract tests.
 9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, first-admin bootstrap, user sync (periodic + on-demand), role enforcement on all mutating routes, `API_TOKEN`, login rate-limit. **Auth & roles tests are the gate.**
 10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** `POST /v1/setup/livetv-connect` wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
-11. **Suggester (§8).** `Suggester` + Ollama/Anthropic; catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/suggestions*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
+11. **Suggester (§8).** `Suggester` + Ollama and the OpenAI-compatible client (hosted OR Ollama's own `/v1`); in-app provider/model selection (§8.1: probe, catalog, hot-swap); catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/suggestions*` + `/v1/system/llm*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
 12. **Commercials & filler (§10).** Catalog sync from the media server's filler library (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; `loomarr-ingest` sidecar image (yt-dlp/Archive → drop-folder). **Filler-never-a-program + pod-matching tests are the gate.**
 12.5. **End-to-end integration (the seams).** *Added after the first live smoke (2026-07-13/14) revealed that phases 0–12, each gate-green in isolation, had unwired seams between them — the per-phase unit gates never exercised the composition.* This phase makes "the whole thing works, driven only through Loomarr's own endpoints" an explicit gate, not an emergent hope. Scope = close every seam between an approved intent and a playing channel **with pods**, each proven against the live stack AND covered by an integration test:
     - **Approve → lineup carries acquisitions** (`#9`): a not-yet-available acquisition must enter the channel's lineup as a *pending* entry (key preserved) so backfill/sweep can place it — today `lineupEntries` drops non-in-library items, so acquired titles never appear.
