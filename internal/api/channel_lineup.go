@@ -31,7 +31,7 @@ func (s *Server) lineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
 		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
 	}
-	return lineupEntries(p.Lineup)
+	return lineupEntries(p)
 }
 
 // approvedProposalForJob finds the proposal for a suggestion job.
@@ -61,25 +61,40 @@ func (s *Server) approvedProposalForJob(ctx context.Context, jobID string) (stor
 	return store.Proposal{}, fmt.Errorf("no approved proposal for intent %q", jobID)
 }
 
-// lineupEntries maps a proposal's in-library lineup to scheduler entries. Only
-// in-library items become lineup entries here; missing titles are acquisitions
-// (a separate path) and only join the lineup once they land and backfill runs.
-func lineupEntries(items []suggest.ProposalItem) ([]schedule.LineupEntry, error) {
-	out := make([]schedule.LineupEntry, 0, len(items))
-	for _, it := range items {
-		if !it.InLibrary {
-			continue // acquisitions backfill in later; not a playable slot yet
+// lineupEntries maps an approved proposal's picks — BOTH the in-library lineup
+// AND the acquisition list — to scheduler entries. This is the fix for the #9
+// seam: acquisitions previously never entered ch.Lineup, so once a title landed
+// `available` it had no entry to fill and was permanently unschedulable (the
+// backfill sweep re-derives desired slots from ch.Lineup, so an absent key can
+// never be recovered). Every approved pick is an entry; whether it renders as a
+// program or a pending slot is decided at reconcile time by resolveEntry against
+// live availability (§9), NOT by the proposal's (possibly stale) InLibrary flag.
+//
+// Ordering: lineup picks first (the human-curated order), then acquisitions —
+// which start as pending slots and swap to programs in place as they land.
+// Duplicate keys are collapsed so a title that appears in both lists (e.g. an
+// acquisition the human also marked in-library) yields exactly one entry.
+func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
+	out := make([]schedule.LineupEntry, 0, len(p.Lineup)+len(p.Acquisitions))
+	seen := make(map[provision.Key]struct{}, len(p.Lineup)+len(p.Acquisitions))
+	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {
+		for _, it := range items {
+			key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
+			if err != nil {
+				return nil, fmt.Errorf("lineup key for %q: %w", it.Name, err)
+			}
+			if _, dup := seen[key]; dup {
+				continue // same title in both lists → one entry
+			}
+			seen[key] = struct{}{}
+			out = append(out, schedule.LineupEntry{
+				Key:   key,
+				Title: it.Name,
+				// DurationMs is left 0 (unknown) here; the reconciler resolves real
+				// runtime from the library when it computes desired slots (§9). An
+				// acquisition not yet in the library resolves to a pending slot.
+			})
 		}
-		key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
-		if err != nil {
-			return nil, fmt.Errorf("lineup key for %q: %w", it.Name, err)
-		}
-		out = append(out, schedule.LineupEntry{
-			Key:   key,
-			Title: it.Name,
-			// DurationMs is left 0 (unknown) here; the reconciler resolves real
-			// runtime from the library when it computes desired slots (§9).
-		})
 	}
 	return out, nil
 }
