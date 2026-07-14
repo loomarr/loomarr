@@ -46,12 +46,60 @@ type finalOutput struct {
 
 // parsePicks parses the model's final JSON. A malformed final output is an error
 // (the job fails cleanly rather than emitting a garbage proposal).
+//
+// Some capable models (Claude especially) wrap their final JSON in a markdown code
+// fence (```json ... ```) or add a sentence before/after it, even when the prompt
+// says "ONLY JSON". extractJSONObject pulls the JSON object out of that wrapping so
+// a well-formed proposal isn't rejected over presentation. Grounding is unaffected:
+// this only decides whether we can READ the picks, never which picks survive — the
+// surfaced-map chokepoint downstream is the actual grounding gate.
 func parsePicks(content string) ([]pick, string, error) {
 	var out finalOutput
-	if err := json.Unmarshal([]byte(content), &out); err != nil {
+	if err := json.Unmarshal([]byte(extractJSONObject(content)), &out); err != nil {
 		return nil, "", fmt.Errorf("suggester: model final output is not valid JSON: %w", err)
 	}
 	return out.Picks, out.Rationale, nil
+}
+
+// extractJSONObject returns the outermost {...} span in s, or s unchanged if there
+// is no balanced object. This unwraps a markdown code fence or strips stray prose
+// around the JSON without touching bare JSON (which is already a single {...} span).
+// It scans for balanced braces while respecting string literals + escapes, so a
+// brace inside a title/overview string can't end the object early.
+func extractJSONObject(s string) string {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return s
+	}
+	depth := 0
+	inStr := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return s // unbalanced — let json.Unmarshal report the real error
 }
 
 // toolResult is the JSON the catalog tool returns to the model — a trimmed
