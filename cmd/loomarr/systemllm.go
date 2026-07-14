@@ -12,46 +12,87 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// llmModelSettingKey is the settings-store key holding the in-app-selected local
-// model (§8.1). Present ⇒ it overrides LLM_MODEL; absent ⇒ LLM_MODEL is the default.
-const llmModelSettingKey = "llm.model"
+// Settings-store keys for the in-app LLM selection (§8.1). Present ⇒ they override
+// the LLM_* env defaults. The api_key is a secret (never echoed by any endpoint).
+const (
+	setLLMProvider = "llm.provider"
+	setLLMURL      = "llm.url"
+	setLLMModel    = "llm.model"
+	setLLMAPIKey   = "llm.api_key" //nolint:gosec // settings key name, not a credential
+)
 
-// buildLLM constructs the suggester's provider and, for a LOCAL ollama provider,
-// the SystemLLMService that powers /v1/system/llm* (§8.1). For local ollama the
-// provider is an llm.Swappable so an in-app model selection hot-swaps the running
-// suggester with no restart; the persisted setting (llm.model) overrides LLM_MODEL.
-// For a hosted openai provider there's nothing local to probe/pull, so the service
-// is nil (routes 501) and the provider is the plain OpenAI client.
+// buildLLM constructs the suggester's provider (an llm.Swappable so an in-app
+// selection hot-swaps it with no restart) plus the SystemLLMService that powers
+// /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
+// overlaid on the LLM_* env defaults, so a UI choice survives reboots.
 func buildLLM(ctx context.Context, cfg *config.Config, st store.Store, bus *events.Bus, log *slog.Logger) (llm.Provider, api.SystemLLMService) {
-	if cfg.LLMProvider != "ollama" {
-		// Hosted / non-local: model is named in config, no probe/pull/swap surface.
-		return llm.NewProvider(cfg.LLMProvider, cfg.LLMURL, cfg.LLMModel, cfg.LLMAPIKey), nil
-	}
-
-	// Local ollama: resolve the active model (persisted selection wins over env),
-	// wrap it in a Swappable, and expose the probe/select/pull service.
-	initial := cfg.LLMModel
-	if v, err := st.GetSetting(ctx, llmModelSettingKey); err == nil && v != "" {
-		initial = v
-		log.Info("llm model from settings store", "model", v)
-	}
-	sw := llm.NewSwappable(func(model string) llm.Provider {
-		return llm.NewOllama(cfg.LLMURL, model)
-	}, initial)
+	sel := resolveSelection(ctx, cfg, st, log)
+	sw := llm.NewSwappable(buildProviderFor, sel)
 
 	svc := &systemLLMService{
-		swap:   sw,
-		prober: llm.NewProber(cfg.LLMURL),
-		store:  st,
-		bus:    bus,
-		log:    log,
-		newID:  newID,
+		swap:      sw,
+		prober:    llm.NewProber(cfg.LLMURL), // local probe always targets the Ollama base (LLM_URL for ollama)
+		ollamaURL: ollamaBase(cfg),
+		store:     st,
+		bus:       bus,
+		log:       log,
+		newID:     newID,
 	}
 	return sw, svc
 }
 
-// activeModel returns the model the suggester is currently using, for logging. A
-// Swappable reports its live model; a plain provider falls back to the configured tag.
+// buildProviderFor is the Swappable factory: build the concrete provider for a
+// Selection. Ollama for local, the OpenAI-compatible client for everything else.
+func buildProviderFor(sel llm.Selection) llm.Provider {
+	if sel.Provider == "ollama" || sel.Provider == "" {
+		return llm.NewOllama(sel.URL, sel.Model)
+	}
+	return llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)
+}
+
+// resolveSelection overlays persisted settings on the env defaults (§8.1: settings
+// win). Missing settings fall back to LLM_PROVIDER/LLM_URL/LLM_MODEL/LLM_API_KEY.
+func resolveSelection(ctx context.Context, cfg *config.Config, st store.Store, log *slog.Logger) llm.Selection {
+	sel := llm.Selection{
+		Provider: cfg.LLMProvider,
+		URL:      cfg.LLMURL,
+		Model:    cfg.LLMModel,
+		APIKey:   cfg.LLMAPIKey,
+	}
+	overridden := false
+	if v, err := st.GetSetting(ctx, setLLMProvider); err == nil && v != "" {
+		sel.Provider, overridden = v, true
+	}
+	if v, err := st.GetSetting(ctx, setLLMURL); err == nil && v != "" {
+		sel.URL, overridden = v, true
+	}
+	if v, err := st.GetSetting(ctx, setLLMModel); err == nil && v != "" {
+		sel.Model, overridden = v, true
+	}
+	// The key is stored namespaced per provider (llm.api_key.<provider>) so each
+	// provider keeps its own; read the one for the resolved provider.
+	if sel.Provider != "" && sel.Provider != "ollama" {
+		if v, err := st.GetSetting(ctx, setLLMAPIKey+"."+sel.Provider); err == nil && v != "" {
+			sel.APIKey = v
+		}
+	}
+	if overridden {
+		log.Info("llm selection from settings store", "provider", sel.Provider, "model", sel.Model)
+	}
+	return sel
+}
+
+// ollamaBase is the Ollama base URL for local probes/pulls. It's LLM_URL when the
+// env provider is ollama; otherwise the conventional default (a hosted-by-default
+// install can still probe/manage a local Ollama if one is running).
+func ollamaBase(cfg *config.Config) string {
+	if cfg.LLMProvider == "ollama" && cfg.LLMURL != "" {
+		return cfg.LLMURL
+	}
+	return "http://localhost:11434"
+}
+
+// activeModel returns the model the suggester is currently using, for logging.
 func activeModel(p llm.Provider, cfg *config.Config) string {
 	if sw, ok := p.(*llm.Swappable); ok {
 		return sw.Model()
@@ -59,77 +100,176 @@ func activeModel(p llm.Provider, cfg *config.Config) string {
 	return cfg.LLMModel
 }
 
-// systemLLMService implements api.SystemLLMService over the local Ollama host: it
-// probes the machine, annotates the curated catalog, hot-swaps the active model via
-// the Swappable, persists the choice to the settings store, and streams pulls over
-// the event bus. Only constructed for a local ollama provider (§8.1).
+// systemLLMService implements api.SystemLLMService (§8.1). It probes the local host,
+// serves the hosted catalog with live models, validates hosted keys, hot-swaps the
+// active selection via the Swappable, persists to the settings store, and streams
+// pulls over the event bus.
 type systemLLMService struct {
-	swap   *llm.Swappable
-	prober *llm.Prober
-	store  store.Store
-	bus    *events.Bus
-	log    *slog.Logger
-	newID  func() string
+	swap      *llm.Swappable
+	prober    *llm.Prober
+	ollamaURL string
+	store     store.Store
+	bus       *events.Bus
+	log       *slog.Logger
+	newID     func() string
 }
 
 func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, error) {
-	probe := s.prober.Probe(ctx)
-	entries := s.prober.Catalog(probe)
+	sel := s.swap.Selection()
+	local := sel.Provider == "ollama" || sel.Provider == ""
 
 	out := api.SystemLLMStatus{
-		Provider:  "ollama",
-		Model:     s.swap.Model(),
-		Local:     true,
-		GPUName:   probe.GPUName,
-		VRAMGiB:   probe.VRAMGiB,
-		OllamaVer: probe.OllamaVersion,
-		Reachable: probe.Reachable,
-		Catalog:   make([]api.LLMModelView, 0, len(entries)),
+		Provider: sel.Provider,
+		Model:    sel.Model,
+		Local:    local,
 	}
-	for _, e := range entries {
-		if e.Recommended {
-			out.Recommended = e.Tag
+
+	// Local catalog: only meaningful when the active provider is Ollama (a probe of
+	// a non-local install would just be an idle localhost:11434 poll — skip it).
+	if local {
+		probe := s.prober.Probe(ctx)
+		out.GPUName, out.VRAMGiB, out.OllamaVer, out.Reachable = probe.GPUName, probe.VRAMGiB, probe.OllamaVersion, probe.Reachable
+		for _, e := range s.prober.Catalog(probe) {
+			if e.Recommended {
+				out.Recommended = e.Tag
+			}
+			out.Catalog = append(out.Catalog, api.LLMModelView{
+				Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
+				Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
+				Recommended: e.Recommended, Why: e.Why,
+			})
 		}
-		out.Catalog = append(out.Catalog, api.LLMModelView{
-			Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
-			Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
-			Recommended: e.Recommended, Why: e.Why,
-		})
 	}
+
+	// Hosted catalog: always present so the UI can offer a switch. For a provider
+	// that has a key (stored or the active one), fetch its LIVE model list; else the
+	// curated fallback. Keys are never included in the response.
+	out.Hosted = s.hostedCatalog(ctx, sel)
 	return out, nil
 }
 
-func (s *systemLLMService) Select(ctx context.Context, model string) error {
-	// Guard: only select a model the host has actually pulled — otherwise the next
-	// suggestion job would fail at chat time with an opaque error. Re-probe pulled
-	// models (cheap) rather than trusting a stale catalog.
+// hostedCatalog builds the hosted-provider views, fetching live models where a key
+// is available and flagging the active provider + keyConfigured. Never returns keys.
+func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selection) []api.HostedProviderView {
+	var views []api.HostedProviderView
+	for _, hp := range llm.HostedCatalog() {
+		key := s.storedKeyFor(ctx, hp.Key)
+		isActive := active.Provider == hp.Key
+		// Use the active in-memory key if this is the active provider (covers a
+		// just-selected key not yet re-read from the store).
+		if isActive && active.APIKey != "" {
+			key = active.APIKey
+		}
+		models, live := hp.Models, false
+		if key != "" {
+			models, live = hp.LiveModels(ctx, key)
+		}
+		view := api.HostedProviderView{
+			Key: hp.Key, Label: hp.Label, BaseURL: hp.BaseURL, KeysURL: hp.KeysURL,
+			Note: hp.Note, KeyConfigured: key != "", Active: isActive, ModelsLive: live,
+		}
+		for _, m := range models {
+			view.Models = append(view.Models, api.HostedModelView{ID: m.ID, Label: m.Label, Why: m.Why})
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+// storedKeyFor returns the persisted key for a hosted provider, or "" if none. The
+// key is namespaced per provider so switching providers doesn't reuse the wrong key.
+func (s *systemLLMService) storedKeyFor(ctx context.Context, provider string) string {
+	if v, err := s.store.GetSetting(ctx, setLLMAPIKey+"."+provider); err == nil {
+		return v
+	}
+	return ""
+}
+
+func (s *systemLLMService) Select(ctx context.Context, req api.SelectRequest) error {
+	provider := req.Provider
+	if provider == "" {
+		provider = "ollama"
+	}
+
+	if provider == "ollama" {
+		return s.selectLocal(ctx, req.Model)
+	}
+	return s.selectHosted(ctx, provider, req.Model, req.APIKey)
+}
+
+// selectLocal swaps to a local Ollama model — it must be pulled first.
+func (s *systemLLMService) selectLocal(ctx context.Context, model string) error {
 	probe := s.prober.Probe(ctx)
 	if !containsModel(probe.PulledModels, model) {
 		return api.ErrModelNotPulled
 	}
-	// Persist first, then swap — a crash between the two just means the swap is
-	// re-applied from the setting on next boot (the setting is the source of truth).
-	if err := s.store.SetSetting(ctx, llmModelSettingKey, model); err != nil {
+	sel := llm.Selection{Provider: "ollama", URL: s.ollamaURL, Model: model}
+	if err := s.persist(ctx, sel); err != nil {
 		return err
 	}
-	s.swap.SetModel(model)
-	s.log.Info("llm model selected", "model", model)
+	s.swap.Set(sel)
+	s.log.Info("llm selected", "provider", "ollama", "model", model)
 	return nil
 }
 
+// selectHosted swaps to a hosted provider — the key (given or stored) is validated
+// live before committing, so a bad key fails here, not on the next suggestion job.
+func (s *systemLLMService) selectHosted(ctx context.Context, provider, model, apiKey string) error {
+	hp, ok := llm.HostedProviderByKey(provider)
+	if !ok {
+		return api.ErrUnknownProvider
+	}
+	// Reuse a stored key if the caller didn't supply one (re-selecting a model on an
+	// already-configured provider shouldn't require re-pasting the key).
+	if apiKey == "" {
+		apiKey = s.storedKeyFor(ctx, provider)
+	}
+	if err := llm.ValidateKey(ctx, hp.BaseURL, apiKey); err != nil {
+		s.log.Warn("hosted key validation failed", "provider", provider, "err", err)
+		return api.ErrKeyInvalid
+	}
+	// Default the model to the first recommended one if none was given.
+	if model == "" && len(hp.Models) > 0 {
+		model = hp.Models[0].ID
+	}
+	sel := llm.Selection{Provider: provider, URL: hp.BaseURL, Model: model, APIKey: apiKey}
+	if err := s.persist(ctx, sel); err != nil {
+		return err
+	}
+	// Persist the key namespaced per provider so each provider keeps its own.
+	if apiKey != "" {
+		if err := s.store.SetSetting(ctx, setLLMAPIKey+"."+provider, apiKey); err != nil {
+			return err
+		}
+	}
+	s.swap.Set(sel)
+	s.log.Info("llm selected", "provider", provider, "model", model)
+	return nil
+}
+
+func (s *systemLLMService) Test(ctx context.Context, provider, apiKey string) error {
+	hp, ok := llm.HostedProviderByKey(provider)
+	if !ok {
+		return api.ErrUnknownProvider
+	}
+	if apiKey == "" {
+		apiKey = s.storedKeyFor(ctx, provider)
+	}
+	return llm.ValidateKey(ctx, hp.BaseURL, apiKey)
+}
+
 func (s *systemLLMService) Pull(ctx context.Context, model string) (string, error) {
+	// Pull is local-only — there's nothing to download for a hosted provider.
+	if p := s.swap.Provider(); p != "ollama" && p != "" {
+		return "", api.ErrNotLocal
+	}
 	jobID := s.newID()
-	// Run the pull detached from the request context so it survives the HTTP call;
-	// progress streams over the event bus (a dropped frame is a latency bug — the
-	// UI re-reads Status to see the model appear as pulled). context.Background is
-	// deliberate: the download outlives the request that started it.
 	go func() {
 		bg := context.Background()
 		s.publishPull(jobID, model, "starting", 0, "")
-		err := s.prober.Pull(bg, model, func(status string, percent int) {
+		if err := s.prober.Pull(bg, model, func(status string, percent int) {
 			s.publishPull(jobID, model, status, percent, "")
-		})
-		if err != nil {
+		}); err != nil {
 			s.log.Warn("llm pull failed", "model", model, "err", err)
 			s.publishPull(jobID, model, "error", -1, err.Error())
 			return
@@ -140,8 +280,19 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 	return jobID, nil
 }
 
-// publishPull emits one pull-progress frame on the SSE bus (§7). type=llm_pull so
-// the UI can filter; a dropped frame is a latency bug, never correctness (§8).
+// persist writes the provider/url/model settings (the non-secret trio). The key is
+// stored separately, namespaced per provider (see selectHosted).
+func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error {
+	if err := s.store.SetSetting(ctx, setLLMProvider, sel.Provider); err != nil {
+		return err
+	}
+	if err := s.store.SetSetting(ctx, setLLMURL, sel.URL); err != nil {
+		return err
+	}
+	return s.store.SetSetting(ctx, setLLMModel, sel.Model)
+}
+
+// publishPull emits one pull-progress frame on the SSE bus (§7, type=llm_pull).
 func (s *systemLLMService) publishPull(jobID, model, status string, percent int, errMsg string) {
 	if s.bus == nil {
 		return
@@ -155,9 +306,8 @@ func (s *systemLLMService) publishPull(jobID, model, status string, percent int,
 	})
 }
 
-// containsModel reports whether tag is among the pulled model names. Ollama reports
-// tags verbatim (e.g. "qwen3:8b"); an exact match is what Select needs. A ":latest"
-// convenience: "qwen3" also matches a pulled "qwen3:latest".
+// containsModel reports whether tag is among the pulled model names ("qwen3:8b");
+// a bare "qwen3" also matches a pulled "qwen3:latest".
 func containsModel(pulled []string, tag string) bool {
 	for _, p := range pulled {
 		if p == tag {

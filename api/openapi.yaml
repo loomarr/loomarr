@@ -308,6 +308,60 @@ components:
           format: uri
           type: string
       type: object
+    HostedModelView:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        why:
+          type: string
+      required:
+        - id
+        - label
+        - why
+      type: object
+    HostedProviderView:
+      additionalProperties: false
+      properties:
+        active:
+          description: This is the currently-selected provider
+          type: boolean
+        baseUrl:
+          type: string
+        key:
+          description: Loomarr provider id (openrouter|openai|anthropic|groq|gemini)
+          type: string
+        keyConfigured:
+          description: A key is stored for this provider (value never returned)
+          type: boolean
+        keysUrl:
+          description: Where to obtain an API key
+          type: string
+        label:
+          type: string
+        models:
+          items:
+            $ref: "#/components/schemas/HostedModelView"
+          type:
+            - array
+            - "null"
+        modelsLive:
+          description: Models were fetched live from the provider (false = curated fallback)
+          type: boolean
+        note:
+          type: string
+      required:
+        - key
+        - label
+        - baseUrl
+        - keysUrl
+        - keyConfigured
+        - active
+        - modelsLive
+        - models
+      type: object
     LLMModelView:
       additionalProperties: false
       properties:
@@ -736,6 +790,23 @@ components:
       required:
         - jobId
       type: object
+    System-llm-testResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/System-llm-testResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        error:
+          type: string
+        ok:
+          type: boolean
+      required:
+        - ok
+      type: object
     SystemLLMPullInputBody:
       additionalProperties: false
       properties:
@@ -764,10 +835,20 @@ components:
           format: uri
           readOnly: true
           type: string
-        model:
-          description: Ollama model tag to activate (must be pulled)
+        apiKey:
+          description: Hosted API key (validated live, stored as a secret, never echoed). Omit to reuse a stored key.
           examples:
-            - qwen3:8b
+            - sk-or-v1-…
+          type: string
+        model:
+          description: "Model tag/id to activate. Local: must be pulled. Hosted: any id the provider serves."
+          examples:
+            - openai/gpt-4o-mini
+          type: string
+        provider:
+          description: "Provider: ollama (local) or a hosted key (openrouter|openai|anthropic|groq|gemini). Empty = ollama."
+          examples:
+            - openrouter
           type: string
       required:
         - model
@@ -791,8 +872,15 @@ components:
             - "null"
         gpuName:
           type: string
+        hosted:
+          description: Curated hosted providers + recommended models
+          items:
+            $ref: "#/components/schemas/HostedProviderView"
+          type:
+            - array
+            - "null"
         local:
-          description: True for local Ollama (probe + catalog apply)
+          description: True for local Ollama (probe + local catalog apply)
           type: boolean
         model:
           description: Currently active model tag/id
@@ -806,7 +894,7 @@ components:
           description: LLM host answered the probe
           type: boolean
         recommended:
-          description: Best-fit model tag for this machine
+          description: Best-fit local model tag for this machine
           type: string
         vramGiB:
           description: Detected GPU VRAM (0 = unknown/none)
@@ -818,6 +906,30 @@ components:
         - local
         - reachable
         - catalog
+        - hosted
+      type: object
+    SystemLLMTestInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SystemLLMTestInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        apiKey:
+          description: Key to test; omit to test a stored key
+          examples:
+            - sk-or-v1-…
+          type: string
+        provider:
+          description: Hosted provider key to test (openrouter|openai|anthropic|groq|gemini)
+          examples:
+            - openrouter
+          type: string
+      required:
+        - provider
       type: object
     TagFillerOutputBody:
       additionalProperties: false
@@ -1431,7 +1543,7 @@ paths:
         - suggestions
   /v1/system/llm:
     get:
-      description: Admin only. Active model + provider; for local Ollama, detected VRAM/version, pulled models, and the curated catalog with fit verdicts + a recommended default (§8.1).
+      description: "Admin only. Active provider + model; the local-model catalog (for Ollama: detected VRAM/version, fit verdicts, recommended default, pulled flags); and the hosted-provider catalog (base URLs, live model lists, keyConfigured). API keys are never returned (§8.1)."
       operationId: system-llm-status
       responses:
         "200":
@@ -1451,7 +1563,7 @@ paths:
         - system
   /v1/system/llm/pull:
     post:
-      description: Admin only. Starts an Ollama pull as a background job; percent-complete streams over /v1/events (§8.1). Idempotent.
+      description: Admin only. Local Ollama only (409 on a hosted provider). Starts a pull as a background job; percent-complete streams over /v1/events (§8.1). Idempotent.
       operationId: system-llm-pull
       requestBody:
         content:
@@ -1477,7 +1589,7 @@ paths:
         - system
   /v1/system/llm/select:
     post:
-      description: Admin only. Persists the choice and hot-swaps the running suggester (§8.1). 409 if the model isn't pulled yet, or the provider isn't local Ollama.
+      description: "Admin only. Persists the choice and hot-swaps the running suggester with no restart (§8.1). Local model must be pulled (409 else). Hosted: an optional apiKey is validated live before committing (401 on a bad key) and stored as a secret, never echoed."
       operationId: system-llm-select
       requestBody:
         content:
@@ -1498,7 +1610,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Select the active local model
+      summary: Select the active provider + model
+      tags:
+        - system
+  /v1/system/llm/test:
+    post:
+      description: Admin only. Validates a hosted provider + API key WITHOUT swapping (§8.1). Returns ok + an error hint; a bad key is ok=false (not a 5xx).
+      operationId: system-llm-test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemLLMTestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/System-llm-testResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Test a hosted provider + key
       tags:
         - system
   /v1/titles:

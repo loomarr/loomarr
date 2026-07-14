@@ -5,53 +5,71 @@ import (
 	"sync/atomic"
 )
 
-// Swappable is a Provider whose underlying MODEL can change at runtime without
-// rebuilding the suggester (§8.1 in-app model selection). It wraps a factory that
-// builds a concrete provider for a given model tag, and holds the active tag in an
-// atomic pointer — so a Chat call always uses the currently-selected model, and a
-// Select from the API takes effect on the very next job with no restart.
-//
-// This is the ONE runtime-mutable provider seam. It's used for local Ollama, where
-// swapping models is just naming a different tag on the same host; a hosted openai
-// provider names its model in config and isn't wrapped (nothing local to swap).
-type Swappable struct {
-	// build returns a fresh concrete Provider for a model tag. Building is cheap
-	// (a struct + shared http client), so we rebuild on each swap rather than
-	// mutating a live provider's fields under a lock.
-	build   func(model string) Provider
-	current atomic.Pointer[Provider]
-	model   atomic.Pointer[string]
+// Selection is the full runtime choice of LLM backend (§8.1): which provider, at
+// what base URL, which model, and (for hosted) which API key. A Swappable rebuilds
+// its concrete provider from this on every change — local Ollama and any hosted
+// OpenAI-compatible endpoint are both just a Selection.
+type Selection struct {
+	Provider string // "ollama" | "openai"
+	URL      string // Ollama base, or the OpenAI-compatible base URL
+	Model    string // model tag / id
+	APIKey   string // hosted key; empty for local Ollama
 }
 
-// NewSwappable builds a Swappable around a provider factory, starting on
-// initialModel. build is typically a closure over the provider's base URL + key.
-func NewSwappable(build func(model string) Provider, initialModel string) *Swappable {
+// Swappable is a Provider whose underlying backend can change at runtime without
+// rebuilding the suggester (§8.1 in-app selection). It holds the active Selection
+// in an atomic pointer and rebuilds the concrete provider on each swap — so a Chat
+// call always uses the currently-selected backend, and a Select from the API takes
+// effect on the very next job with no restart.
+//
+// It covers BOTH a local Ollama host (swap the model tag) and a hosted provider
+// (swap provider + base URL + model + key) — the two cases the model picker exposes.
+type Swappable struct {
+	// build returns a fresh concrete Provider for a Selection. Building is cheap (a
+	// struct + shared http client), so we rebuild on each swap rather than mutating
+	// a live provider's fields under a lock.
+	build   func(Selection) Provider
+	current atomic.Pointer[Provider]
+	sel     atomic.Pointer[Selection]
+}
+
+// NewSwappable builds a Swappable around a provider factory, starting on the given
+// initial Selection.
+func NewSwappable(build func(Selection) Provider, initial Selection) *Swappable {
 	s := &Swappable{build: build}
-	s.set(initialModel)
+	s.Set(initial)
 	return s
 }
 
-// set atomically swaps the active provider + model. Safe for concurrent callers;
-// the last writer wins (model selection is admin-only + rare, so no CAS loop needed).
-func (s *Swappable) set(model string) {
-	p := s.build(model)
+// Set atomically swaps the active provider + selection. Safe for concurrent
+// callers; the last writer wins (selection is admin-only + rare, so no CAS loop).
+func (s *Swappable) Set(sel Selection) {
+	p := s.build(sel)
 	s.current.Store(&p)
-	s.model.Store(&model)
+	s.sel.Store(&sel)
 }
 
-// SetModel changes the active model at runtime. Returns the model now in effect.
-func (s *Swappable) SetModel(model string) string {
-	s.set(model)
-	return model
+// SetModel swaps only the model, keeping the current provider/URL/key — the common
+// local case (pick a different Ollama tag on the same host).
+func (s *Swappable) SetModel(model string) {
+	cur := s.Selection()
+	cur.Model = model
+	s.Set(cur)
 }
 
-// Model returns the currently-active model tag.
-func (s *Swappable) Model() string {
-	if m := s.model.Load(); m != nil {
-		return *m
+// Selection returns a copy of the currently-active selection.
+func (s *Swappable) Selection() Selection {
+	if sel := s.sel.Load(); sel != nil {
+		return *sel
 	}
-	return ""
+	return Selection{}
 }
+
+// Model returns the currently-active model tag/id.
+func (s *Swappable) Model() string { return s.Selection().Model }
+
+// Provider returns the currently-active provider kind ("ollama"|"openai").
+func (s *Swappable) Provider() string { return s.Selection().Provider }
 
 // Chat delegates to the currently-active provider.
 func (s *Swappable) Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error) {
@@ -59,8 +77,8 @@ func (s *Swappable) Chat(ctx context.Context, messages []Message, opts ChatOptio
 	return p.Chat(ctx, messages, opts)
 }
 
-// Name delegates to the active provider (stable across swaps for a given provider
-// kind — "ollama").
+// Name delegates to the active provider ("ollama"|"openai"), and thus changes when
+// the provider kind is swapped.
 func (s *Swappable) Name() string {
 	p := *s.current.Load()
 	return p.Name()
