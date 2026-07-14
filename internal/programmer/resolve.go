@@ -26,7 +26,8 @@ type tunarrLibrary struct {
 
 // tunarrMediaSource is one entry from GET /api/media-sources.
 type tunarrMediaSource struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Type string `json:"type"` // emby | jellyfin | plex | local
 }
 
 // persistedProgram is one entry from GET /api/media-libraries/{id}/programs. The
@@ -97,6 +98,16 @@ func (t *Tunarr) buildContentIndex(ctx context.Context) (map[string]string, erro
 	}
 	out := make(map[string]string)
 	for _, src := range sources {
+		// Skip `local` sources (§10 filler): they hold commercials, not program
+		// content — none of their clips carry an emby/jellyfin identifier, so they
+		// contribute nothing to this index. They also don't expose the
+		// `/media-sources/{id}/libraries` sub-path (it 400s for local sources; their
+		// libraries come via GET /media-sources/{id}), so walking them here both
+		// wastes work AND breaks the whole index build. (Caught by the live smoke:
+		// adding the filler local source 400'd every program-slot resolution.)
+		if strings.EqualFold(src.Type, "local") {
+			continue
+		}
 		var libs []tunarrLibrary
 		if err := t.doJSON(ctx, "GET", "/api/media-sources/"+src.ID+"/libraries", nil, &libs); err != nil {
 			return nil, fmt.Errorf("list libraries for %s: %w", src.ID, err)

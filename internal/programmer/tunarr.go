@@ -24,6 +24,19 @@ type Tunarr struct {
 	transcodeConfigID string
 	http              *http.Client
 	resolver          *contentResolver // media-server item id → Tunarr program uuid (§6)
+	// filler-list attach policy (§10/§15): weight = relative draw when a channel has
+	// multiple lists; cooldownSeconds = min seconds before a clip repeats. Zero
+	// values fall back to sane defaults in attachFillerList.
+	fillerWeight   int
+	fillerCooldown int
+}
+
+// WithFillerPolicy sets the filler-list attach knobs (FILLER_WEIGHT /
+// FILLER_COOLDOWN_SECONDS, §15). Returns the client for chaining.
+func (t *Tunarr) WithFillerPolicy(weight, cooldownSeconds int) *Tunarr {
+	t.fillerWeight = weight
+	t.fillerCooldown = cooldownSeconds
+	return t
 }
 
 // New builds a Tunarr client. transcodeConfigID must be a real config id from

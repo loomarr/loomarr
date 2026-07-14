@@ -591,6 +591,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `FILLER_SYNC_EVERY` | no | `15m` (catalog sync from the Tunarr `local` filler source) |
 | `FILLER_AI_TAGGING` | no | `false` (classify clips via the LLM, text signals) |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | no | `4` / `4` (density + pod size) |
+| `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | no | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight when a channel has multiple filler-lists) |
 | `SESSION_SECRET` | yes | *(secret; signs session cookies, §11)* |
 | `API_TOKEN` | no | *(secret; machine access + break-glass admin, §11)* |
 | `USER_SYNC_EVERY` | no | `1h` (user import/sync from the media server) |

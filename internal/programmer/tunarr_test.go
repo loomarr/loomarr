@@ -159,15 +159,22 @@ func mockTunarrWithIndex(t *testing.T, got *capture, index map[string]string) *h
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/media-sources", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/media-sources" {
-			_ = json.NewEncoder(w).Encode([]map[string]string{{"id": "src-1"}})
-			return
-		}
-		// /api/media-sources/src-1/libraries
-		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "lib-A", "name": "Movies", "enabled": true}})
+		// An emby source (src-1) AND a local filler source (src-local). The resolver
+		// must SKIP the local one: its /libraries sub-path 400s (like real Tunarr),
+		// so walking it would break the whole index build (live-smoke bug).
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "src-1", "type": "emby"},
+			{"id": "src-local", "type": "local"},
+		})
 	})
 	mux.HandleFunc("/api/media-sources/src-1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "lib-A", "name": "Movies", "enabled": true}})
+	})
+	// Real Tunarr 400s on a local source's /libraries sub-path — if the resolver
+	// doesn't skip local sources, it hits this and the whole resolution fails.
+	mux.HandleFunc("/api/media-sources/src-local/libraries", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"Bad Request"}`))
 	})
 	mux.HandleFunc("/api/media-libraries/lib-A/programs", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(programs)

@@ -416,7 +416,21 @@ func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) 
 	if listID == "" {
 		ch.FillerColls = []any{}
 	} else {
-		ch.FillerColls = []any{map[string]any{"id": listID}}
+		// Tunarr's channel fillerCollections entry REQUIRES id + weight +
+		// cooldownSeconds (all three; a bare {id} → 400 "Bad Request"). weight =
+		// relative draw, cooldownSeconds = min seconds before a clip repeats — both
+		// configurable (FILLER_WEIGHT / FILLER_COOLDOWN_SECONDS, §15), with defaults
+		// here so a zero-config client still attaches validly. (Caught by the live
+		// smoke: a PUT with only {id} failed validation, so the list never attached.)
+		weight := t.fillerWeight
+		if weight <= 0 {
+			weight = 1
+		}
+		cooldown := t.fillerCooldown
+		if cooldown < 0 {
+			cooldown = 30
+		}
+		ch.FillerColls = []any{map[string]any{"id": listID, "weight": weight, "cooldownSeconds": cooldown}}
 	}
 	if err := t.doJSON(ctx, http.MethodPut, "/api/channels/"+tunarrID, ch, nil); err != nil {
 		return fmt.Errorf("attach filler list to channel %s: %w", tunarrID, err)

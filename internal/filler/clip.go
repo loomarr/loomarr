@@ -11,7 +11,10 @@
 // only decides *what plays in the breaks*.
 package filler
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Kind is what a clip is (§10). A clip is NEVER a program — the scheduler places
 // clips only as SlotFiller, never SlotProgram (the filler-never-a-program gate).
@@ -82,6 +85,39 @@ func KindFromString(s string) Kind {
 	default:
 		return Interstitial
 	}
+}
+
+// KindFromName infers a clip Kind from its filename/folder convention (§10 — the
+// cheapest tagging tier, applied by the sync to Tunarr-`local` clips whose scan
+// reports no kind). It DEFAULTS TO Commercial (the common case) so an unclassified
+// clip is still pod-eligible as an ad — never left as a generic interstitial that
+// the pod assembler can't place. AI tagging (§10) refines era/audience/category.
+func KindFromName(name string) Kind {
+	hay := strings.ToLower(name)
+	switch {
+	case strings.Contains(hay, "bumper"):
+		return Bumper
+	case strings.Contains(hay, "station") || strings.Contains(hay, "ident"):
+		return StationID
+	case strings.Contains(hay, "psa"):
+		return PSA
+	case strings.Contains(hay, "trailer"):
+		return Trailer
+	default:
+		return Commercial
+	}
+}
+
+// EraFromName best-effort extracts a 4-digit year (1930–2035) from a filename
+// ("Total-Cereal 1985.mp4" → 1985), an initial era tag before AI refinement.
+// Returns 0 if none.
+func EraFromName(name string) int {
+	for i := 0; i+4 <= len(name); i++ {
+		if y, err := strconv.Atoi(name[i : i+4]); err == nil && y >= 1930 && y <= 2035 {
+			return y
+		}
+	}
+	return 0
 }
 
 // AudienceFromString parses an Audience; unknown/empty → "" (untagged).

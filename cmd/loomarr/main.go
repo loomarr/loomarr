@@ -132,7 +132,7 @@ func run() error {
 	if st != nil && cfg.TunarrURL != "" && cfg.LibraryFlavor != "" {
 		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
 		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
-		prog := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID)
+		prog := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID).WithFillerPolicy(cfg.FillerWeight, cfg.FillerCooldownSec)
 		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(cfg.TunarrURL))
 		liveTVSvc = liveTVAdapter{connector}
 
@@ -204,7 +204,7 @@ func run() error {
 	// scheduler. Wired when a store, Tunarr, and FILLER_DIR are configured.
 	var fillerSvc api.FillerService
 	if st != nil && cfg.TunarrURL != "" && cfg.FillerDir != "" {
-		fillerProg := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID)
+		fillerProg := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID).WithFillerPolicy(cfg.FillerWeight, cfg.FillerCooldownSec)
 		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, cfg.FillerDir, time.Now, log)
 
 		var tagger *filler.Tagger
@@ -444,11 +444,15 @@ func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawCl
 	}
 	out := make([]filler.RawClip, len(clips))
 	for i, c := range clips {
-		// Kind defaults to interstitial; the filename-era hint + AI tagging refine
-		// the match metadata later. (Tunarr's scan gives id/name/duration only.)
+		// Infer kind + era from the clip name (§10 cheapest tagging tier): Tunarr's
+		// scan gives id/name/duration only, so kind defaults to Commercial (pod-
+		// eligible) unless the name says bumper/station/psa/trailer. Without this a
+		// clip lands as a generic interstitial the pod assembler can never place, so
+		// filler would silently never build unless AI tagging is on. AI tagging (§10)
+		// still refines era/audience/category afterward.
 		out[i] = filler.RawClip{
 			TunarrProgramID: c.ProgramID, Name: c.Name, DurationMs: c.DurationMs,
-			Kind: filler.Interstitial,
+			Kind: filler.KindFromName(c.Name), Era: filler.EraFromName(c.Name),
 		}
 	}
 	return out, nil

@@ -46,3 +46,30 @@ func TestClip_Tagged(t *testing.T) {
 		}
 	}
 }
+
+// KindFromName defaults to Commercial (pod-eligible) so an unclassified Tunarr-
+// local clip is still placeable as an ad, and recognizes the filename convention.
+func TestKindFromName(t *testing.T) {
+	cases := map[string]filler.Kind{
+		"2002 Walgreens Commercial": filler.Commercial, // default
+		"Saturday Morning Bumper":   filler.Bumper,
+		"WKRP Station Ident":        filler.StationID,
+		"Smokey Bear PSA":           filler.PSA,
+		"Jurassic Park Trailer":     filler.Trailer,
+		"random clip":               filler.Commercial, // default, never interstitial
+	}
+	for name, want := range cases {
+		if got := filler.KindFromName(name); got != want {
+			t.Errorf("KindFromName(%q) = %s, want %s", name, got, want)
+		}
+	}
+}
+
+func TestEraFromName(t *testing.T) {
+	if got := filler.EraFromName("Total-Cereal 1985.mp4"); got != 1985 {
+		t.Errorf("EraFromName = %d, want 1985", got)
+	}
+	if got := filler.EraFromName("no year here"); got != 0 {
+		t.Errorf("EraFromName(no year) = %d, want 0", got)
+	}
+}
