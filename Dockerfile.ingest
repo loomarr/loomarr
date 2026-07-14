@@ -27,18 +27,30 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/loomarr-ingest ./
 #   - yt-dlp: the official self-contained `yt-dlp_linux` release binary (bundles
 #     its own Python via PyInstaller — no system Python needed), pinned by version.
 #   - ffmpeg: BtbN's static ffmpeg 7.1 GPL build.
-# Both are pinned to a specific version so builds are reproducible; bump these two
-# ARGs to update (a one-line change, recorded in §14).
+#   - deno: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
+#     YouTube extraction without one ("No supported JavaScript runtime"), so the
+#     YouTube leg fails without it. deno is yt-dlp's default; it auto-detects it
+#     on PATH. (Caught by the live smoke: the YouTube fetch errored without deno.)
+# All pinned so builds are reproducible; bump the ARGs to update (recorded in §14).
 FROM debian:stable-slim
 ARG YTDLP_VERSION=2026.07.04
 ARG FFMPEG_BUILD=ffmpeg-n7.1-latest-linux64-gpl-7.1
+ARG DENO_VERSION=v2.9.2
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+    && apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip \
     && useradd -u 10001 -m -s /usr/sbin/nologin ingest \
     # yt-dlp: latest official self-contained linux binary
     && curl -fsSL -o /usr/local/bin/yt-dlp \
        "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux" \
     && chmod +x /usr/local/bin/yt-dlp \
+    # deno: JS runtime for yt-dlp's YouTube extractor (auto-detected on PATH).
+    # Version-pinned (like yt-dlp/ffmpeg) so a build can't silently pull a changed
+    # `latest` binary — the supply-chain reason the other two are pinned too.
+    && curl -fsSL -o /tmp/deno.zip \
+       "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-x86_64-unknown-linux-gnu.zip" \
+    && unzip -q /tmp/deno.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/deno \
+    && rm -f /tmp/deno.zip \
     # ffmpeg 7.1: static GPL build (extract just ffmpeg + ffprobe)
     && curl -fsSL -o /tmp/ffmpeg.tar.xz \
        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_BUILD}.tar.xz" \
@@ -47,7 +59,7 @@ RUN apt-get update \
     && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
     && rm -rf /tmp/ffmpeg.tar.xz /tmp/${FFMPEG_BUILD} \
     # drop the fetch-only tooling + apt lists to keep the image lean
-    && apt-get purge -y curl xz-utils \
+    && apt-get purge -y curl xz-utils unzip \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/loomarr-ingest /usr/local/bin/loomarr-ingest
