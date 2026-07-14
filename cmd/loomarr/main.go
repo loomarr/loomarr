@@ -50,6 +50,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Validate LLM_PROVIDER up front (§15) so a typo fails fast instead of silently
+	// falling back to Ollama at request time.
+	if _, err := llm.ParseProvider(cfg.LLMProvider); err != nil {
+		return err
+	}
 
 	log := newLogger(cfg.LogLevel)
 	slog.SetDefault(log)
@@ -187,7 +192,9 @@ func run() error {
 		cat := catalog.New(lib, tmdbSearcher, nil) // clip corpus wired in Phase 12
 		searchSvc = searchAdapter{cat}
 
-		provider := llm.NewOllama(cfg.LLMURL, cfg.LLMModel) // Anthropic provider is opt-in (Phase 11 default ollama)
+		// The model is a config choice (§8/§14): ollama (local default) or the
+		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
+		provider := llm.NewProvider(cfg.LLMProvider, cfg.LLMURL, cfg.LLMModel, cfg.LLMAPIKey)
 		sug := suggest.New(provider, cat, validator, cfg.SuggestMaxAcquire)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: cfg.JobWorkers, Timeout: cfg.JobTimeout, CacheTTL: 24 * time.Hour,
@@ -209,7 +216,7 @@ func run() error {
 
 		var tagger *filler.Tagger
 		if cfg.FillerAITagging && cfg.LLMURL != "" {
-			provider := llm.NewOllama(cfg.LLMURL, cfg.LLMModel)
+			provider := llm.NewProvider(cfg.LLMProvider, cfg.LLMURL, cfg.LLMModel, cfg.LLMAPIKey)
 			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, time.Now, log)
 		}
 		fillerSvc = fillerServiceAdapter{syncer: syncer, tagger: tagger}
