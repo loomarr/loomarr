@@ -89,6 +89,103 @@ func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 	}
 }
 
+// countKind counts slots of a given kind (helper for break-insertion tests).
+func countKind(slots []schedule.Slot, k schedule.SlotKind) int {
+	n := 0
+	for _, s := range slots {
+		if s.Kind == k {
+			n++
+		}
+	}
+	return n
+}
+
+// breakChannel is a sequential channel with a break-density set (breaks/hour).
+func breakChannel(breaksPerHour int) schedule.Channel {
+	ch := seqChannel()
+	ch.BreaksPerHour = breaksPerHour
+	return ch
+}
+
+// TestComputeDesired_InsertsBreaksByRuntime: with breaks-per-hour set, the
+// scheduler interleaves SlotFiller break gaps between programs at ~60/N-minute
+// runtime cadence (§10). 4/hr ⇒ a break ~every 15 min of accumulated runtime.
+func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
+	// Four 15-minute programs = 60 min total. At 4 breaks/hour (every 15 min),
+	// breaks fall after prog 1, 2, 3 (not after the last — no trailing break).
+	min15 := int64(15 * 60 * 1000)
+	avail := durAvail{
+		"movie:tmdb:1": {id: "l1", dur: min15},
+		"movie:tmdb:2": {id: "l2", dur: min15},
+		"movie:tmdb:3": {id: "l3", dur: min15},
+		"movie:tmdb:4": {id: "l4", dur: min15},
+	}
+	entries := []schedule.LineupEntry{
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
+		entry("movie:tmdb:3", "C"), entry("movie:tmdb:4", "D"),
+	}
+
+	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+
+	if got.ProgramCount() != 4 {
+		t.Fatalf("want 4 programs, got %d", got.ProgramCount())
+	}
+	breaks := countKind(got.Slots, schedule.SlotFiller)
+	if breaks != 3 {
+		t.Fatalf("want 3 break gaps (after progs 1,2,3 of 4×15min at 4/hr), got %d", breaks)
+	}
+	// A break must never be the last slot (no trailing dead break) and never
+	// adjacent to another break.
+	for i, s := range got.Slots {
+		if s.Kind == schedule.SlotFiller {
+			if i == len(got.Slots)-1 {
+				t.Errorf("break is the last slot (trailing break): %+v", got.Slots)
+			}
+			if i > 0 && got.Slots[i-1].Kind == schedule.SlotFiller {
+				t.Errorf("two breaks back-to-back at %d", i)
+			}
+		}
+	}
+}
+
+// TestComputeDesired_ShortProgramsFewerBreaks: duration-aware — 22-min sitcoms
+// accumulate slower, so 4×22min (88 min) at 4/hr (~every 15 min) yields breaks
+// after progs where the running total crosses 15/30/45/60/75 min → fewer than
+// one-per-program.
+func TestComputeDesired_ShortProgramsFewerBreaks(t *testing.T) {
+	min22 := int64(22 * 60 * 1000)
+	avail := durAvail{
+		"movie:tmdb:1": {id: "l1", dur: min22},
+		"movie:tmdb:2": {id: "l2", dur: min22},
+	}
+	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+
+	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+
+	// After prog1 (22min > 15) → break. After prog2 (would be last) → no trailing.
+	// So exactly 1 break between the two sitcoms.
+	if b := countKind(got.Slots, schedule.SlotFiller); b != 1 {
+		t.Fatalf("2×22min sitcoms at 4/hr → want 1 break, got %d (slots: %+v)", b, got.Slots)
+	}
+}
+
+// TestComputeDesired_NoBreaksWhenDensityZero: breaks-per-hour 0 (or unset) → no
+// break gaps, preserving the old behavior for channels that don't want ads.
+func TestComputeDesired_NoBreaksWhenDensityZero(t *testing.T) {
+	min15 := int64(15 * 60 * 1000)
+	avail := durAvail{"movie:tmdb:1": {id: "l1", dur: min15}, "movie:tmdb:2": {id: "l2", dur: min15}}
+	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+
+	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
+
+	if b := countKind(got.Slots, schedule.SlotFiller); b != 0 {
+		t.Errorf("breaks-per-hour 0 → want 0 breaks, got %d", b)
+	}
+	if len(got.Slots) != 2 {
+		t.Errorf("want 2 slots (no breaks), got %d", len(got.Slots))
+	}
+}
+
 // TestComputeDesired_ProgramCarriesResolvedDuration is the regression test for
 // the smoke bug: a program slot must carry the duration the resolver supplies
 // (Tunarr rejects a program with duration ≤ 0). A lineup entry has no runtime of

@@ -132,6 +132,7 @@ func run() error {
 			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
 			// placement, handled inside the engine, not the placeholder kind.
 			Policy: schedule.PodFill, ReconcileTTL: cfg.ChannelReconcileEvery,
+			BreaksPerHour: cfg.FillerBreaksPerHr, // §10 commercial-break density
 		}, time.Now, log)
 		channelSvc = engine
 

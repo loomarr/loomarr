@@ -47,7 +47,10 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	// 2: recompute desired from the approved lineup + current availability
 	// (pure). ComputeDesired already resolves each entry against the library, so
 	// a title that has vanished simply comes back as a placeholder this pass.
-	desired := schedule.ComputeDesired(ch.Channel, ch.Lineup, e.avail, e.policy)
+	// Apply the global commercial-break density (§10) so breaks are interleaved.
+	chDomain := ch.Channel
+	chDomain.BreaksPerHour = e.breaksPerHour
+	desired := schedule.ComputeDesired(chDomain, ch.Lineup, e.avail, e.policy)
 
 	// 2b: fill filler gaps with matched ad pods (§10) when a PodFiller is wired.
 	// Each SlotFiller with no resolved item is offered to the assembler; the
