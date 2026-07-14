@@ -277,6 +277,10 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | PATCH | `/v1/users/{id}` | Role / quotas / disable (admin). |
 | POST | `/v1/users/sync` | Import/sync users from the media server (admin). |
 | GET | `/v1/setup/status` | Run the connection checklist; structured pass/fail per integration (admin; powers the wizard + Settings troubleshooting, §13). Includes the "Tunarr wired as tuner + guide in the media server" check (§6 Live TV wiring). |
+| POST | `/v1/setup/test` | Run one named check (powers per-block Test buttons; `config-design.md` §8). |
+| GET | `/v1/settings` | Settings registry with per-key provenance; secret values masked (admin, §15). |
+| PATCH | `/v1/settings` | Update settings; validates, persists, hot-applies; env-pinned keys rejected (admin). |
+| POST | `/v1/settings/secrets/{name}/regenerate` | Regenerate a generated secret (admin; SESSION_SECRET regen invalidates sessions). |
 | POST | `/v1/setup/livetv-connect` | One-time wiring of Tunarr as an M3U tuner + XMLTV guide source in Emby/Jellyfin (admin; idempotent — §6). |
 | GET | `/v1/system/llm` | Probe the LLM host + machine and recommend a provider/model (admin, §8.1): active provider + model, the **local** model catalog (for `ollama`: detected VRAM/version, per-model fit + recommended default, pulled flags), and the **hosted** provider catalog (OpenRouter/OpenAI/Anthropic/Groq/Gemini — base URLs, recommended models, `keyConfigured`). API keys are never returned. Read-only. |
 | POST | `/v1/system/llm/select` | Set the active provider + model (admin, §8.1). Persists to the settings store and **hot-swaps** the running suggester (no restart); settings override the §15 env defaults. Local model must be pulled (409 else). Hosted: accepts an optional `apiKey`, **validates** it live before committing (401/502 on a bad key), stores it as a secret (never echoed). |
@@ -333,9 +337,17 @@ An AI that can trigger real downloads must never act on a hallucinated title.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
 
 ### Provider abstraction
-One `Suggester` interface; provider by config. **Ollama** (local, private, no cost) is the homelab default; the **OpenAI-compatible** client is opt-in for stronger hosted reasoning/tool-use — one hand-written client covering OpenAI, Gemini, Groq, OpenRouter, and Ollama's own `/v1` mode, so the model is a config choice, not a per-vendor fork. Both need structured JSON output + tool-use; prompts/tool schemas stay provider-neutral. Because different models present their final JSON differently (some bare, some wrapped in a ```` ```json ```` fence or a sentence of prose even when told "ONLY JSON"), the parser extracts the outermost balanced JSON object from the final turn before validating — presentation never rejects a well-formed, grounded proposal. Grounding is unaffected: extraction only decides whether the picks are *readable*, never which picks survive the surfaced-id chokepoint.
+One `Suggester` interface; provider by config. **Two adapters, both plain `net/http` (no vendor SDK):**
+- **`ollama`** (native `/api/chat` with tools) — the homelab default: local, private, no cost, and its capability/version API gives the §13 wizard + §8.1 model picker a fast pre-check. On a reasoning model (Qwen3-class), thinking mode is disabled on tool turns — with tools present it otherwise returns empty/leaked-marker output that breaks tool-calls (open Ollama bugs).
+- **`openai`** (generic OpenAI-compatible: `/v1/chat/completions` with tools) — **one** adapter that covers the converged ecosystem, so the model is a config choice, not a per-vendor fork: OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, and local runtimes (llama.cpp/vLLM/LocalAI/LM Studio) — **and Ollama's own `/v1` mode**. **Claude is reached through OpenRouter/an OpenAI-compatible gateway, not a native Anthropic SDK** (a deliberate net dependency *reduction* — the dialect is the interface; do not add named per-vendor adapters). The one shape difference it normalizes: OpenAI returns tool-call `arguments` as a JSON *string* (Ollama gives an object).
 
-### 8.1 Model selection & system probe (local Ollama)
+`LLM_PROVIDER` selects the client; the model is `LLM_MODEL` (or an in-app selection, §8.1). Both need structured JSON output + tool-use; prompts/tool schemas stay provider-neutral. **JSON mode is off whenever tools are offered** — forcing `format:json`/`response_format` *and* tools makes some models emit the tool call as a JSON object in `content` instead of the native `tool_calls` array, which the grounding loop then mis-reads as a pick-less final answer. Because different models present their *final* JSON differently (some bare, some wrapped in a ```` ```json ```` fence or a sentence of prose even when told "ONLY JSON"), the parser extracts the outermost balanced JSON object from the final turn before validating — presentation never rejects a well-formed, grounded proposal. Grounding is unaffected: extraction only decides whether the picks are *readable*, never which picks survive the surfaced-id chokepoint.
+
+**The probe is the arbiter of capability:** tool-calling support varies by runtime and model, and generic endpoints expose no uniform capability API — so the §13 wizard check is *behavioral* (send a trivial tool-call request, assert a real tool call returns). Ollama's declared capabilities are a pre-check only. Keep the tool loop to **sequential single tool calls** (no parallel-call dependence — the least-supported corner of the dialect); the grounding pipeline already ensures a weak model degrades to "no valid proposal," never to corruption.
+
+**Honest quality guidance:** ~7–8B-class models are the practical floor for reliable grounded tool use; local inference yields private, free, serviceable proposals, hosted frontier models yield noticeably better curation — the deterministic scoring below exists partly to narrow that gap.
+
+### 8.1 Model selection & system probe (local + hosted)
 
 Picking a local model is a real onboarding hurdle: a household admin shouldn't have to know which Ollama tag fits their GPU or supports tool-calling. Loomarr does that for them.
 
@@ -361,6 +373,7 @@ The grounding rules (above) are untouched — provider/model selection changes *
 - `lineup[]` — library items: external id, library item id, order hint, why-it-fits.
 - `acquisitions[]` — media type, resolved id, seasons, rationale, confidence.
 - `alternates[]` — ranked backup candidates (same shape as acquisitions/lineup items), consumed by the scheduler when a title goes `unavailable` (§9). Same grounding rules — real ids only.
+- `policy` — the **ChannelPolicy**: scope (series/seasons/era/genres), audience ceiling, separation, ordering, seasonal mode — extracted by the LLM, schema-validated, grounded (season ranges verified, ratings from a closed enum), and enforced deterministically by the scheduler. Full design: `programming-design.md`.
 - `scores` — **deterministic** post-scoring (theme fit, runtime/era balance, availability ratio) layered on the LLM output so ranking isn't pure vibes (à la SmarTunarr's multi-criterion scoring; keep criteria configurable). **Theme fit measures the intent's terms against each item's genres + overview** (not the title string — a "90s action" intent rarely appears in a *title*, so title-substring scoring is near-useless); it stays deterministic (same inputs → same score). `Candidate`/`ProposalItem` therefore carry `genres` + `overview` (populated from TMDB and the media server; §7.2 output contract, in the OpenAPI spec).
 
 ### Human-in-the-loop (non-negotiable default)
@@ -405,6 +418,7 @@ Ad pods, bumpers, and station IDs between programs are what make a channel read 
 - On approval: build the channel from currently-available items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative.
 - Subscribe to provisioner availability events (internal). On `available` → place the real title, re-push affected programming. On `unavailable` → substitute permanently: next-ranked candidate from the proposal's `alternates[]` (§8), else the fallback pool. **The fallback pool is defined as** the channel's already-available lineup items (loopable) plus its filler catalog — i.e., "never dead air" concretely means: loop what the channel has, padded with pods.
 - **Default backfill placement is stable:** landed titles fill their pending slots in place; no global reshuffle of a live channel on backfill (`SCHED_BACKFILL=stable|reshuffle`, default `stable`) — viewers shouldn't see the guide scramble every time a download lands.
+- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; a `GET /v1/channels/{id}/pods/preview`-style cycle preview shows the first N slots with separation annotations for proposal review.
 - Reconciliation is **desired-vs-actual and idempotent**: recompute desired lineup, diff against Tunarr's current channel state, apply the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`).
 - **Periodic sweep (correctness):** a channel-reconcile ticker (`CHANNEL_RECONCILE_EVERY`, default `10m`) re-derives every channel's desired lineup from the store and reconciles — so availability **events are a latency optimization, never load-bearing**. This is what makes backfill survive a crash between event and re-push, and what makes Postgres multi-replica correct without cross-instance event delivery (an in-memory event can't reach another replica; the sweep can). The sweep also **revalidates every program slot against the library** (§4 invariant 1): if a scheduled item has vanished (deleted, replaced, re-id'd), the slot is substituted via `alternates[]`/fallback pool and the channel is flagged on the Channels view — an old `available` is never trusted forever. Postgres `LISTEN/NOTIFY` as a faster cross-replica signal is future work (§20).
 - **Ownership semantics:** Loomarr-managed Tunarr channels are **desired-state authoritative** — manual edits made in Tunarr's own UI will be overwritten by the next sweep, by design (that's what idempotent reconcile means). The UI labels these channels "Managed by Loomarr" (§12) so nobody loses an hour of hand-tweaking to the robot. Channels Loomarr didn't create are never touched.
@@ -519,8 +533,15 @@ Sessions and roles per §11; the UI hides admin-only actions from members and su
 
 Two personas with different problems. The **operator** faces an integration problem — five external services must be wired correctly before anything works. The **member** faces a blank-page problem — an NL intent box with no guidance produces bad intents and confusion about what happens after submit. Both get first-class treatment.
 
-### Design decision: the wizard validates, it does not store
-Env vars remain the single source of truth for connections and secrets (§14) — no wizard-written settings table competing with compose files. The first-run wizard is a **live connection checklist**, not a settings form: it tests each configured integration and turns red checks into specific, actionable fixes. This keeps deployments reproducible (compose is the config) and avoids the classic dual-config-source wound. A DB-backed settings UI is explicit future work (§20).
+### Design decision: settings live in the app; the environment pins
+**(Supersedes the earlier "wizard validates, does not store" rule.)** Loomarr follows the *arr-ecosystem convention — connections and integration settings (media server URL + token, Seerr, Tunarr, TMDB, LLM) are configured **in the app**, like Sonarr and Seerr — because fix-in-place beats "edit compose, restart, return." The dual-source-of-truth wound is prevented not by banning a source but by **deterministic precedence with visible provenance**: every setting resolves `env > database > default`, per key, through one typed settings registry (§15). An env var that is set **wins and locks its UI field** with a "set via environment" chip; unset, the field is editable and persisted. GitOps/compose-template users pin what they want and lose nothing. Full mechanics: `config-design.md`.
+
+Consequences, embraced:
+- **Generated secrets:** `SESSION_SECRET`, `API_TOKEN`, and `WEBHOOK_SECRET` are auto-generated at first migration (like the instance id), viewable/regenerable in Settings — the Sonarr API-key model. Env override remains possible, never required.
+- **Zero-required-env first run:** with `DATABASE_URL` defaulting to the SQLite volume path, `docker run -v loomarr-data:/data loomarr` boots straight into the wizard.
+- **The wizard becomes configure → validate → save:** each step is a real settings form with a live test; the checklist still re-runs from Settings for the life of the install.
+- **The LLM provider/model is configured in-app** (§8.1): the AI settings step probes the host, lists a fit-ranked model catalog, tests a hosted key, and hot-swaps — the persisted `llm.*` settings override their env defaults like any other key.
+- **Secrets in the DB** follow ecosystem practice (Sonarr's config, Seerr's settings) with hard redaction rules: masked after save (replace-only), never logged, excluded from `/v1/setup/status` responses — and **backups are secret material** (§16).
 
 ### Operator first-run (wizard)
 On a fresh instance the UI walks the owner through, in order:
@@ -542,11 +563,14 @@ The checklist is backed by `GET /v1/setup/status` (runs all checks, returns stru
 ### Documentation set
 Docs live as markdown in `docs/` in the repo and are **embedded and rendered as an in-app Help section** (same `embed.FS` mechanism as the SPA and `/docs` — works air-gapped, consistent with §7.1's offline rule). A public MkDocs site can be generated from the same files later.
 - **Quickstart** — compose up → wizard → first channel (the 10-minute path).
-- **Integrations** — one page per dependency (media server, Tunarr, Seerr, Sonarr/Radarr webhooks, Ollama/Anthropic, TMDB) with exact setup steps.
-- **Concepts** — the mental model: proposals, approval, provisioning states, backfill, pods. (Aimed at both personas.)
+- **Integrations** — one page per dependency (media server, Tunarr, Seerr, Sonarr/Radarr webhooks, LLM: Ollama or a hosted OpenAI-compatible provider, TMDB) with exact setup steps.
+- **Concepts** — the mental model: proposals, approval, provisioning states, backfill, pods, and the **programming heuristics** extract/enforce principle (`programming-design.md` §1). (Aimed at both personas.)
 - **Member guide** — writing good intents; what happens after submit; reading channel status.
+- **Programming guide** — the ChannelPolicy: scope/audience/separation/ordering/seasonal, and how the relaxation ladder keeps a channel filled (`programming-design.md`).
 - **Filler guide** — drop-folder, MeTube, the ingest sidecar, tagging, pod policy.
 - **Troubleshooting** — organized by checklist item: every red check in the wizard deep-links to its section here. The checklist is executable documentation; this page is its narrative twin.
+
+**Companion design docs** (incorporated in Phase 14; authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
 
 ---
 
@@ -559,7 +583,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | --- | --- | --- |
 | HTTP router | **stdlib `net/http` ServeMux** (Go 1.22 method+path patterns) via Huma's `humago` adapter | No third-party router; the embedded same-origin SPA also means **no CORS layer at all** |
 | API framework | **Huma v2** (code-first OpenAPI 3.1 + validation + docs UI) | §7.1's single-source-of-truth requirement; `oapi-codegen`/`swaggo` rejected (spec-first ceremony / weakest drift guarantee) |
-| Config | `caarlos0/env` (struct tags) | Boring, maintained |
+| Config | `caarlos0/env` (struct tags) for the bootstrap/env layer, feeding one **typed settings registry** (`env > database > default`, hot-apply, `config-design.md`) | Boring, maintained; the registry is the single source of truth (§15) |
 | DB access | **`database/sql` for both backends** — `modernc.org/sqlite` + `pgx` via its stdlib shim | One store code path; dialect differences live only in migrations + `ClaimDue*` |
 | Migrations | **`goose`** with `embed.FS`, per-dialect dirs | Simple embedded-FS story; golang-migrate rejected as heavier for no gain here |
 | Jobs | **hand-rolled jobs table in the Store** + in-process worker | Forced, not preferred: River is Postgres-only, Asynq needs Redis — both break the SQLite promise. Claiming reuses the `SKIP LOCKED` pattern |
@@ -586,44 +610,56 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 
 ---
 
-## 15. Configuration (12-factor)
+## 15. Configuration — layered settings
+
+**Full subsystem design — registry schema, resolution semantics, secrets lifecycle, Settings IA, wizard integration — lives in `config-design.md`.** Every setting resolves **`env > database > default`**, per key, through one **typed settings registry** (backed by the §5 settings store; all subsystems read via the settings service, never `os.Getenv` directly). An env var that is set wins and **locks its UI field** ("set via environment"); unset, the setting is managed in the app (§13). Connection settings **hot-apply** on save (adapters read through the service; intervals re-read per tick; the LLM provider hot-swaps per §8.1) — the rare restart-required keys are exactly the bootstrap set below.
+
+### Bootstrap (env-only — needed before/independent of the DB)
 
 | Env var | Required | Example / default |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | `sqlite:///data/loomarr.db` / `postgres://…` |
+| `DATABASE_URL` | no | **default `sqlite:///data/loomarr.db`** / `postgres://…` |
 | `AUTO_MIGRATE` | no | `true` |
-| `LIBRARY_FLAVOR` | yes | `emby` \| `jellyfin` |
-| `LIBRARY_URL` / `LIBRARY_TOKEN` | yes | `http://emby:8096` / *(secret)* |
-| `SEERR_URL` / `SEERR_API_KEY` | yes* | `http://seerr:5055` / *(secret)* |
-| `TUNARR_URL` / `TUNARR_API_KEY` | yes | `http://tunarr:8000` / *(secret if set)* |
-| `TUNARR_TRANSCODE_CONFIG_ID` | no | Tunarr transcode-config uuid the created channels reference (Phase-0 finding: channel create requires a valid `transcodeConfigId`; empty → the wizard resolves the instance's `Default` via `GET /api/transcode_configs`, §9) |
-| `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | no | `48h` / `12h` / `5m` |
-| `CHANNEL_RECONCILE_EVERY` | no | `10m` (periodic channel sweep, §9) |
-| `TZ` | no | container time zone; time-slot schedules computed here (§9) |
-| `SESSION_TTL` | no | `720h` (sliding; janitor purges expired, §5) |
-| `COOKIE_SECURE` | no | `auto` \| `true` \| `false` (§11) |
-| `JOB_WORKERS` / `JOB_TIMEOUT` | no | `2` / `10m` (§8 worker pool) |
-| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | no | `720h` / `2160h` (§5 janitor) |
-| `WEBHOOK_SECRET` | yes | *(secret; verifies `/hooks/arr`)* |
-| `EVENT_WEBHOOK_URL` | no | optional external event target |
-| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | yes† | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:14b` — use a **Q6_K** quant (stock Q4 degrades tool-calling/JSON). These four are the **initial defaults only**: an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model`/`llm.api_key`) **overrides** them, so a provider/model/key chosen in the UI survives a reboot without editing env. |
-| `LLM_API_KEY` | no | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own key in the settings store, overriding this — §8.1; never echoed by any API.)* |
-| `TMDB_API_KEY` | yes† | *(secret; grounds suggestions)* |
-| `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | no | `false` / `10` |
-| `SEASON_PRECISION` | no | `series` (default) \| `seasons` — what counts as "in library" for a series (§6) |
-| `SCHED_DEFAULT_STRATEGY` | no | `shuffle` \| `ordered` \| `timeslot` |
-| `SCHED_BACKFILL` | no | `stable` (default) \| `reshuffle` (§9) |
-| `FILLER_DIR` | no | drop-folder path Loomarr registers as a Tunarr `local` media source (§10); the core reads the clip catalog from Tunarr, not the media server |
-| `FILLER_SYNC_EVERY` | no | `15m` (catalog sync from the Tunarr `local` filler source) |
-| `FILLER_AI_TAGGING` | no | `false` (classify clips via the LLM, text signals) |
-| `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | no | `4` / `4` (density + pod size) |
-| `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | no | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight when a channel has multiple filler-lists) |
-| `SESSION_SECRET` | yes | *(secret; signs session cookies, §11)* |
-| `API_TOKEN` | no | *(secret; machine access + break-glass admin, §11)* |
-| `USER_SYNC_EVERY` | no | `1h` (user import/sync from the media server) |
 | `LISTEN_ADDR` / `LOG_LEVEL` | no | `:8080` / `info` |
+| `TZ` | no | container time zone; time-slot schedules computed here (§9) |
 
-\* Or the direct Sonarr/Radarr requester (`SONARR_*`/`RADARR_*`). † Only if the suggester is enabled. Secrets via env or mounted files, never baked into the image.
+**Zero required env** for a SQLite first run: `docker run -v loomarr-data:/data loomarr` → wizard.
+
+### Generated secrets (created at first migration; view/regenerate in Settings; env override optional)
+
+| Setting (env override) | Notes |
+| --- | --- |
+| `SESSION_SECRET` | Signs session cookies (§11). Regenerating invalidates all sessions. |
+| `API_TOKEN` | Machine access + break-glass admin (§11) — the Sonarr API-key model. |
+| `WEBHOOK_SECRET` | Verifies `/hooks/arr`; the wizard/Settings display the full webhook URL to paste (§13). |
+
+### Application settings registry (UI-managed; each key's env name pins it)
+
+| Setting (env name) | Default / example |
+| --- | --- |
+| `LIBRARY_FLAVOR` / `LIBRARY_URL` / `LIBRARY_TOKEN` | `emby` \| `jellyfin` / `http://emby:8096` / *(secret)* |
+| `SEERR_URL` / `SEERR_API_KEY` | `http://seerr:5055` / *(secret)* — or `SONARR_*`/`RADARR_*` for the direct requester |
+| `TUNARR_URL` / `TUNARR_API_KEY` | `http://tunarr:8000` / *(secret if set)* |
+| `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
+| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:8b` (or `qwen3:14b` at **Q6_K** — stock Q4 degrades tool-calling/JSON). **Initial defaults only:** an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model` + per-provider secret `llm.api_key.<provider>`) **overrides** them and hot-swaps the running suggester, so a UI choice survives a reboot without editing env. |
+| `LLM_API_KEY` | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own per-provider key in the settings store, overriding this — §8.1; **never echoed** by any API.)* |
+| `TMDB_API_KEY` | *(secret; grounds suggestions — required if the suggester is enabled)* |
+| `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
+| `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
+| `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
+| `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
+| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) |
+| `EVENT_WEBHOOK_URL` | optional external event target |
+| `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | `false` / `10` |
+| `SEASON_PRECISION` | `series` (default) \| `seasons` (§6) |
+| `SCHED_DEFAULT_STRATEGY` / `SCHED_BACKFILL` | `shuffle` / `stable` (§9) |
+| Policy defaults: `SCHED_EPISODE_NOREPEAT` / `SCHED_MOVIE_NOREPEAT` / `SCHED_SERIES_MIN_GAP` / `SCHED_BLOCK_MAX` / `SCHED_ORDERING` / `SEASONAL_MODE` | `168h` / `720h` / `2h` / `2` / `syndication` / `auto` (per-channel overridable — `programming-design.md`) |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | drop-folder Loomarr registers as a Tunarr `local` source / `15m` / `false` (§10) |
+| `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
+| `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
+| `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
+
+**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (CLAUDE.md do-nots). Full mechanics: `config-design.md`.
 
 ---
 
