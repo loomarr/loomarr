@@ -19,14 +19,20 @@ type SearchResult struct {
 	TMDBID        int
 	TVDBID        int
 	IMDBID        string
+	// Genres + Overview enrich the catalog candidate for theme reasoning/scoring
+	// (§8); read from Emby when the Fields param requests them. Display only.
+	Genres   []string
+	Overview string
 }
 
 // searchItem mirrors the slice of an /Items entry we read for search.
 type searchItem struct {
-	ID             string `json:"Id"`
-	Name           string `json:"Name"`
-	ProductionYear int    `json:"ProductionYear"`
-	Type           string `json:"Type"`
+	ID             string   `json:"Id"`
+	Name           string   `json:"Name"`
+	ProductionYear int      `json:"ProductionYear"`
+	Type           string   `json:"Type"`
+	Genres         []string `json:"Genres"`
+	Overview       string   `json:"Overview"`
 	ProviderIds    struct {
 		Tmdb string `json:"Tmdb"`
 		Tvdb string `json:"Tvdb"`
@@ -55,7 +61,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	q.Set("IncludeItemTypes", "Movie,Series")
 	q.Set("SearchTerm", term)
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "ProviderIds,ProductionYear")
+	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview")
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
@@ -77,6 +83,8 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 			TMDBID:        atoiSafe(it.ProviderIds.Tmdb),
 			TVDBID:        atoiSafe(it.ProviderIds.Tvdb),
 			IMDBID:        it.ProviderIds.Imdb,
+			Genres:        it.Genres,
+			Overview:      it.Overview,
 		})
 	}
 	return results, nil

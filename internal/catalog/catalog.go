@@ -51,6 +51,13 @@ type Candidate struct {
 	Year          int                 `json:"year,omitempty"`
 	InLibrary     bool                `json:"inLibrary"`
 	LibraryItemID string              `json:"libraryItemId,omitempty"`
+	// Genres + Overview are DISPLAY/REASONING signals (§8): they let the model
+	// judge theme-fit and feed deterministic theme scoring. They are NEVER part of
+	// identity — Key() and dedupeKey() must not read them, or the grounding gate
+	// and in-library-first ordering would shift. Populated from TMDB (genre_ids→
+	// names, overview) and the media server (Genres field), merged additively.
+	Genres   []string `json:"genres,omitempty"`
+	Overview string   `json:"overview,omitempty"`
 	// Source records which corpus surfaced this candidate first (for debugging
 	// "why did the model see this"); after dedupe it's the merged view.
 	Source Scope `json:"source"`
@@ -76,6 +83,13 @@ type LibrarySearcher interface {
 // TMDBSearcher is the TMDB-scope corpus (implemented by tmdb.Client).
 type TMDBSearcher interface {
 	Search(ctx context.Context, term string, limit int) ([]Candidate, error)
+}
+
+// TMDBDiscoverer is the TMDB discovery corpus — by genre + era rather than title
+// text (§8). Implemented by tmdb.Client. Optional: a nil tmdb ⇒ discovery is a
+// keyword fallback (the caller degrades to Search).
+type TMDBDiscoverer interface {
+	Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error)
 }
 
 // ClipSearcher is the clip-catalog corpus (a name LIKE over the store — §7.2).
@@ -148,6 +162,47 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 		}
 	}
 
+	return dedupeAndOrder(byKey, order, limit), nil
+}
+
+// Discover finds titles by genre + era (§8 discovery path) — the fix for abstract
+// intents that title keyword search can't surface. It is TMDB-only (the media
+// server has no discover endpoint), but merges/orders through the SAME machinery
+// as Search (in-library-first, deduped) so its output is grounding-compatible.
+// A discovered title already in the library still comes back InLibrary=false here;
+// it merges to in-library IF the same run also keyword-surfaced it, and the
+// approve/schedule path re-checks library presence regardless. Returns an error
+// only on a real TMDB failure; a nil/unsupported tmdb yields no discovery results.
+func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres []string, yearFrom, yearTo, limit int) ([]Candidate, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	d, ok := c.tmdb.(TMDBDiscoverer)
+	if !ok || c.tmdb == nil {
+		return nil, nil // no discovery corpus wired
+	}
+	res, err := d.Discover(ctx, mt, genres, yearFrom, yearTo, limit)
+	if err != nil {
+		return nil, err
+	}
+	byKey := map[string]*Candidate{}
+	order := []string{}
+	for _, cand := range res {
+		k := dedupeKey(cand)
+		if existing, ok := byKey[k]; ok {
+			mergeCandidate(existing, cand)
+			continue
+		}
+		cp := cand
+		byKey[k] = &cp
+		order = append(order, k)
+	}
+	return dedupeAndOrder(byKey, order, limit), nil
+}
+
+// dedupeAndOrder flattens the merged candidate map into the deterministic order
+// the tool + UI depend on: in-library first, then by name; truncated to limit.
+func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Candidate {
 	out := make([]Candidate, 0, len(order))
 	for _, k := range order {
 		out = append(out, *byKey[k])
@@ -161,7 +216,7 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	return out, nil
+	return out
 }
 
 func scopeIncludes(scope, want Scope) bool { return scope == ScopeAll || scope == want }
@@ -198,6 +253,15 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 	if dst.Year == 0 && src.Year != 0 {
 		dst.Year = src.Year
 	}
+	// Enrichment is additive: a library row often has genres, a TMDB row has the
+	// overview — take whichever the merged view is still missing. Never part of
+	// identity (see Candidate.Genres/Overview doc).
+	if len(dst.Genres) == 0 && len(src.Genres) > 0 {
+		dst.Genres = src.Genres
+	}
+	if dst.Overview == "" && src.Overview != "" {
+		dst.Overview = src.Overview
+	}
 }
 
 // fromLibrary converts a library search result into a Candidate (in_library=true).
@@ -210,6 +274,8 @@ func fromLibrary(r library.SearchResult) Candidate {
 		Year:          r.Year,
 		InLibrary:     true,
 		LibraryItemID: r.LibraryItemID,
+		Genres:        r.Genres,
+		Overview:      r.Overview,
 		Source:        ScopeLibrary,
 	}
 }

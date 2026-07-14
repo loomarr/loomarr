@@ -232,3 +232,55 @@ func TestSuggest_AllFabricated_ErrNoGroundedTitles(t *testing.T) {
 		t.Fatalf("empty-grounding should return ErrNoGroundedTitles, got: %v", err)
 	}
 }
+
+// T1.2: a THEMED intent — the model discovers by genre+era (no title query) and
+// grounds a proposal from the discovered candidates. Proves discovery flows into
+// the surfaced map exactly like keyword search.
+func TestSuggest_DiscoversByGenre(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		// The model discovers action/sci-fi titles (Speed 100, The Rock 101,
+		// The Matrix 603 all carry genre 28 in the mock) instead of guessing titles.
+		testkit.ToolCallResponse("catalog_search", map[string]any{
+			"genres": []any{"Action"}, "era": "1990s",
+		}),
+		// It grounds two real discovered ids.
+		testkit.FinalResponse(`{"rationale":"90s action","picks":[
+			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
+			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}
+		]}`),
+	)
+	s := buildSuggester(t, llmMock)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "high-energy 90s action", Era: "1990s"})
+	if err != nil {
+		t.Fatalf("discovery should ground a proposal, got: %v", err)
+	}
+	all := append(append([]suggest.ProposalItem{}, prop.Lineup...), prop.Acquisitions...)
+	got := map[int]bool{}
+	for _, it := range all {
+		got[it.TMDBID] = true
+	}
+	if !got[100] || !got[603] {
+		t.Errorf("discovered ids should be grounded into the proposal, got %+v", all)
+	}
+}
+
+// T1.3: themeFit scores against genres/overview, not the title. "90s action" never
+// appears in "Speed"/"The Matrix" titles, but both are genre 28 (Action) in the
+// mock — so a correct action lineup now scores themeFit > 0 (was ~0 before).
+func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"Action"}, "era": "1990s"}),
+		testkit.FinalResponse(`{"rationale":"90s action","picks":[
+			{"mediaType":"movie","tmdbId":100,"name":"Speed"},
+			{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}
+		]}`),
+	)
+	s := buildSuggester(t, llmMock)
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "high-energy action", Era: "1990s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prop.Scores.ThemeFit <= 0 {
+		t.Errorf("themeFit should be > 0 for an action lineup matching an 'action' intent via genres, got %v", prop.Scores.ThemeFit)
+	}
+}

@@ -3,6 +3,8 @@ package suggest
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/provision"
@@ -63,7 +65,16 @@ type toolCandidate struct {
 	Name      string `json:"name"`
 	Year      int    `json:"year,omitempty"`
 	InLibrary bool   `json:"inLibrary"`
+	// Genres + Overview let the model judge theme-fit from real metadata instead of
+	// the title string (§8). Overview is truncated so a long synopsis doesn't blow
+	// the context of a small local model across many candidates.
+	Genres   []string `json:"genres,omitempty"`
+	Overview string   `json:"overview,omitempty"`
 }
+
+// overviewMax caps the per-candidate overview length sent to the model — enough to
+// convey theme, short enough that 24 candidates fit a small model's context.
+const overviewMax = 240
 
 func toolResult(cands []catalog.Candidate) []toolCandidate {
 	out := make([]toolCandidate, 0, len(cands))
@@ -71,7 +82,65 @@ func toolResult(cands []catalog.Candidate) []toolCandidate {
 		out = append(out, toolCandidate{
 			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary,
+			Genres: c.Genres, Overview: truncate(c.Overview, overviewMax),
 		})
 	}
 	return out
+}
+
+// truncate shortens s to at most n runes, appending an ellipsis when cut.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
+// parseEra turns an intent's era phrase into an inclusive year range (0 = open).
+// Accepts a decade ("1990s" → 1990-1999), a range ("1985-1995"), or a single
+// year ("1994" → that year). Returns (0,0) when it can't parse — discovery then
+// applies no date filter.
+func parseEra(era string) (from, to int) {
+	e := strings.TrimSpace(strings.ToLower(era))
+	if e == "" {
+		return 0, 0
+	}
+	// Decade: "1990s" / "90s".
+	if strings.HasSuffix(e, "s") {
+		if y := fourDigitYear(strings.TrimSuffix(e, "s")); y > 0 {
+			return y, y + 9
+		}
+	}
+	// Range: "1985-1995" (also "1985 to 1995").
+	sep := strings.NewReplacer(" to ", "-", "–", "-", "—", "-").Replace(e)
+	if parts := strings.SplitN(sep, "-", 2); len(parts) == 2 {
+		a, b := fourDigitYear(parts[0]), fourDigitYear(parts[1])
+		if a > 0 && b > 0 {
+			if a > b {
+				a, b = b, a
+			}
+			return a, b
+		}
+	}
+	// Single year.
+	if y := fourDigitYear(e); y > 0 {
+		return y, y
+	}
+	return 0, 0
+}
+
+// fourDigitYear extracts a plausible 4-digit year (1900–2099) from s, tolerating
+// a 2-digit decade ("90" → 1990). Returns 0 if none.
+func fourDigitYear(s string) int {
+	s = strings.TrimSpace(s)
+	if n, err := strconv.Atoi(s); err == nil {
+		switch {
+		case n >= 1900 && n <= 2099:
+			return n
+		case n >= 0 && n <= 99: // 2-digit decade → 19xx (filler/broadcast era)
+			return 1900 + n
+		}
+	}
+	return 0
 }

@@ -22,10 +22,12 @@ type TMDB struct {
 }
 
 type tmdbTitle struct {
-	ID   int
-	Name string
-	Year int
-	Date string
+	ID       int
+	Name     string
+	Year     int
+	Date     string
+	GenreIDs []int  // §8 enrichment: TMDB genre ids (28=Action, 878=Sci-Fi, …)
+	Overview string // short synopsis the model reasons about
 }
 
 // NewTMDB starts a mock TMDB with a fixed small catalog (Speed/The Rock movies,
@@ -34,12 +36,12 @@ func NewTMDB(t testing.TB) *TMDB {
 	t.Helper()
 	m := &TMDB{
 		movies: map[int]tmdbTitle{
-			100: {100, "Speed", 1994, "1994-06-10"},
-			101: {101, "The Rock", 1996, "1996-06-07"},
-			603: {603, "The Matrix", 1999, "1999-03-31"},
+			100: {ID: 100, Name: "Speed", Year: 1994, Date: "1994-06-10", GenreIDs: []int{28, 53}, Overview: "A cop must keep a bus above 50mph or a bomb detonates."},
+			101: {ID: 101, Name: "The Rock", Year: 1996, Date: "1996-06-07", GenreIDs: []int{28, 12, 53}, Overview: "A chemist and an ex-con storm Alcatraz to stop a rogue general."},
+			603: {ID: 603, Name: "The Matrix", Year: 1999, Date: "1999-03-31", GenreIDs: []int{28, 878}, Overview: "A hacker learns reality is a simulation and joins a rebellion."},
 		},
 		series: map[int]tmdbTitle{
-			1396: {1396, "Breaking Bad", 2008, "2008-01-20"},
+			1396: {ID: 1396, Name: "Breaking Bad", Year: 2008, Date: "2008-01-20", GenreIDs: []int{18, 80}, Overview: "A chemistry teacher turns to making meth."},
 		},
 	}
 	mux := http.NewServeMux()
@@ -48,20 +50,38 @@ func NewTMDB(t testing.TB) *TMDB {
 		var results []map[string]any
 		for _, mv := range m.movies {
 			if strings.Contains(strings.ToLower(mv.Name), q) {
-				results = append(results, map[string]any{
-					"id": mv.ID, "media_type": "movie", "title": mv.Name, "release_date": mv.Date,
-				})
+				results = append(results, movieRow(mv))
 			}
 		}
 		for _, s := range m.series {
 			if strings.Contains(strings.ToLower(s.Name), q) {
-				results = append(results, map[string]any{
-					"id": s.ID, "media_type": "tv", "name": s.Name, "first_air_date": s.Date,
-				})
+				results = append(results, tvRow(s))
 			}
 		}
 		// Include a person result to prove it's filtered out.
 		results = append(results, map[string]any{"id": 9999, "media_type": "person", "name": "Some Actor"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+	})
+	// /discover/{movie,tv}: filter the catalog by with_genres (§8 discovery path).
+	// A comma/pipe-separated with_genres matches any listed genre id; empty = all.
+	mux.HandleFunc("GET /discover/movie", func(w http.ResponseWriter, r *http.Request) {
+		want := parseGenreParam(r.URL.Query().Get("with_genres"))
+		var results []map[string]any
+		for _, mv := range m.movies {
+			if genreMatch(mv.GenreIDs, want) {
+				results = append(results, movieRow(mv))
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+	})
+	mux.HandleFunc("GET /discover/tv", func(w http.ResponseWriter, r *http.Request) {
+		want := parseGenreParam(r.URL.Query().Get("with_genres"))
+		var results []map[string]any
+		for _, s := range m.series {
+			if genreMatch(s.GenreIDs, want) {
+				results = append(results, tvRow(s))
+			}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
 	mux.HandleFunc("GET /movie/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -92,4 +112,49 @@ func atoiPath(s string) int {
 		n = n*10 + int(r-'0')
 	}
 	return n
+}
+
+// movieRow / tvRow render a title as a /search or /discover result row, now
+// carrying genre_ids + overview (§8 enrichment).
+func movieRow(mv tmdbTitle) map[string]any {
+	return map[string]any{
+		"id": mv.ID, "media_type": "movie", "title": mv.Name, "release_date": mv.Date,
+		"genre_ids": mv.GenreIDs, "overview": mv.Overview,
+	}
+}
+
+func tvRow(s tmdbTitle) map[string]any {
+	return map[string]any{
+		"id": s.ID, "media_type": "tv", "name": s.Name, "first_air_date": s.Date,
+		"genre_ids": s.GenreIDs, "overview": s.Overview,
+	}
+}
+
+// parseGenreParam splits TMDB's with_genres (comma = OR, pipe = OR here) into ids.
+func parseGenreParam(v string) []int {
+	if v == "" {
+		return nil
+	}
+	var out []int
+	for _, part := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '|' }) {
+		if id := atoiPath(strings.TrimSpace(part)); id != 0 {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// genreMatch reports whether have shares any id with want (empty want = match all).
+func genreMatch(have, want []int) bool {
+	if len(want) == 0 {
+		return true
+	}
+	for _, w := range want {
+		for _, h := range have {
+			if h == w {
+				return true
+			}
+		}
+	}
+	return false
 }

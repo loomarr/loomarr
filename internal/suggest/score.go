@@ -27,8 +27,13 @@ func score(intent Intent, lineup, acquisitions []ProposalItem) Scores {
 	return s
 }
 
-// themeFit measures how many items' names contain any intent term (description +
-// must-include terms). A blunt but explainable proxy for "matches the ask".
+// themeFit measures how well the proposal matches the intent — deterministically
+// (§8: "not pure vibes"; same inputs → same score). It scores each item's THEME
+// SIGNALS (genres + overview + the model's why-it-fits rationale, plus the title
+// as a weak fallback) against the intent's terms — NOT the title alone. That fix
+// matters: an intent like "90s action" almost never appears in a *title*, so
+// title-substring scoring returned ~0 even on a perfect lineup; genres/overview
+// carry the actual theme.
 func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 	terms := themeTerms(intent)
 	if len(terms) == 0 {
@@ -40,9 +45,9 @@ func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 	}
 	hits := 0
 	for _, it := range items {
-		name := strings.ToLower(it.Name)
+		hay := themeHaystack(it)
 		for _, term := range terms {
-			if strings.Contains(name, term) {
+			if strings.Contains(hay, term) {
 				hits++
 				break
 			}
@@ -51,11 +56,31 @@ func themeFit(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 	return float64(hits) / float64(len(items))
 }
 
+// themeHaystack is the lowercased text an item is scored against: its genres,
+// overview, the model's rationale, and the name (weakest signal, last).
+func themeHaystack(it ProposalItem) string {
+	var b strings.Builder
+	for _, g := range it.Genres {
+		b.WriteString(strings.ToLower(g))
+		b.WriteByte(' ')
+	}
+	b.WriteString(strings.ToLower(it.Overview))
+	b.WriteByte(' ')
+	b.WriteString(strings.ToLower(it.Rationale))
+	b.WriteByte(' ')
+	b.WriteString(strings.ToLower(it.Name))
+	return b.String()
+}
+
 // themeTerms extracts lowercase significant words from the intent (description +
-// must-include), skipping trivial stopwords so "a channel of" doesn't count.
+// era + tone + must-include), skipping trivial stopwords so "a channel of" doesn't
+// count. Era/tone are included because they're the strongest theme signals for an
+// abstract intent (and now match genres/overview via themeHaystack).
 func themeTerms(intent Intent) []string {
 	var raw []string
 	raw = append(raw, strings.Fields(strings.ToLower(intent.Description))...)
+	raw = append(raw, strings.Fields(strings.ToLower(intent.Era))...)
+	raw = append(raw, strings.Fields(strings.ToLower(intent.Tone))...)
 	for _, m := range intent.MustInclude {
 		raw = append(raw, strings.ToLower(m))
 	}

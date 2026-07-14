@@ -323,7 +323,7 @@ flowchart LR
 
 ### Grounding — the critical correctness rule
 An AI that can trigger real downloads must never act on a hallucinated title.
-- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results.
+- The LLM does **not** invent titles; it proposes candidates via a **catalog tool** (function-calling) that searches the real library + TMDB/TVDB and returns **real external ids**. The model selects from tool results. The tool supports both **keyword search** (by title text) and **discovery** (by genre + era) — so an abstract intent ("high-energy 90s action") surfaces themed content instead of an empty title-match, and each returned candidate carries **genre + a short overview** so the model reasons about theme rather than guessing from the title string alone.
 - Every proposal item resolves to a real id, tagged `in_library: true|false`; unresolvable items are dropped before display.
 - Acquisitions re-validated against TMDB (exists) + library (not present) before actionable.
 - Library/TMDB text in prompts is **untrusted**: it must not steer tools, change quotas, or reach secrets; catalog tools are read-only.
@@ -335,7 +335,7 @@ One `Suggester` interface; provider by config. **Ollama** (local, private, no co
 - `lineup[]` — library items: external id, library item id, order hint, why-it-fits.
 - `acquisitions[]` — media type, resolved id, seasons, rationale, confidence.
 - `alternates[]` — ranked backup candidates (same shape as acquisitions/lineup items), consumed by the scheduler when a title goes `unavailable` (§9). Same grounding rules — real ids only.
-- `scores` — **deterministic** post-scoring (theme fit, runtime/era balance, availability ratio) layered on the LLM output so ranking isn't pure vibes (à la SmarTunarr's multi-criterion scoring; keep criteria configurable).
+- `scores` — **deterministic** post-scoring (theme fit, runtime/era balance, availability ratio) layered on the LLM output so ranking isn't pure vibes (à la SmarTunarr's multi-criterion scoring; keep criteria configurable). **Theme fit measures the intent's terms against each item's genres + overview** (not the title string — a "90s action" intent rarely appears in a *title*, so title-substring scoring is near-useless); it stays deterministic (same inputs → same score). `Candidate`/`ProposalItem` therefore carry `genres` + `overview` (populated from TMDB and the media server; §7.2 output contract, in the OpenAPI spec).
 
 ### Human-in-the-loop (non-negotiable default)
 Proposals are never auto-executed. Members submit; a user with the **approve** permission (`admin`, §11) confirms before anything acquires or schedules, and `approved_by` is recorded. Optional `auto_approve` is a per-user grant hard-gated by quotas (max acquisitions/run, per-user pending cap, in-flight cap).
