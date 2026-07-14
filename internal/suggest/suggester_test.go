@@ -185,8 +185,11 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 	if *llmMock.LastOpts.Temperature > 0.5 {
 		t.Errorf("grounded temperature = %v, want low (<=0.5) for JSON/tool adherence", *llmMock.LastOpts.Temperature)
 	}
-	if !llmMock.LastOpts.JSONMode {
-		t.Error("JSONMode should be set for the grounded turns")
+	// JSONMode is OFF while tools are offered — forcing format:json + tools corrupts
+	// the tool-call channel on some models (they emit the call as content JSON). The
+	// prompt + repair loop enforce final-answer JSON instead.
+	if llmMock.LastOpts.JSONMode {
+		t.Error("JSONMode should be OFF on grounded/tool turns (it corrupts tool-calling)")
 	}
 }
 
