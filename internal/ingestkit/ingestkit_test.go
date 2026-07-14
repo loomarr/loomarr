@@ -78,3 +78,27 @@ func TestRun_ResilientToSourceFailure(t *testing.T) {
 		t.Errorf("the good source should still run: fetched = %d, want 3", res.Fetched)
 	}
 }
+
+// A source that returns no clips AND no error (a nonexistent/typo'd Archive id —
+// Archive serves 200 {} for unknown items — or an empty source) must be counted
+// as Empty, not silently reported as success. Otherwise the operator sees
+// "fetched:0 failed:0" with no reason why nothing landed.
+func TestRun_EmptySourceIsSurfaced(t *testing.T) {
+	empty := &fakeDL{fetched: 0} // no error, nothing fetched — the silent case
+	good := &fakeDL{fetched: 2}
+	ing := ingestkit.New(empty, good, "/drop", discardLog())
+
+	res := ing.Run(context.Background(), []ingestkit.Source{
+		{Kind: ingestkit.YouTube, URL: "https://youtube.com/nonexistent"},
+		{Kind: ingestkit.Archive, URL: "https://archive.org/details/real"},
+	})
+	if res.Empty != 1 {
+		t.Errorf("empty = %d, want 1 (the yield-nothing source surfaced)", res.Empty)
+	}
+	if res.Failed != 0 {
+		t.Errorf("an empty source is not a failure: failed = %d, want 0", res.Failed)
+	}
+	if res.Fetched != 2 {
+		t.Errorf("the good source still runs: fetched = %d, want 2", res.Fetched)
+	}
+}
