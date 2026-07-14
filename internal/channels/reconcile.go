@@ -52,13 +52,11 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	chDomain.BreaksPerHour = e.breaksPerHour
 	desired := schedule.ComputeDesired(chDomain, ch.Lineup, e.avail, e.policy)
 
-	// 2b: fill filler gaps with matched ad pods (§10) when a PodFiller is wired.
-	// Each SlotFiller with no resolved item is offered to the assembler; the
-	// returned clips replace it (a matched pod), else it stays flex. Deterministic
-	// (seeded by channel + slot index) so pods reproduce across reconciles.
-	if e.pods != nil {
-		desired = e.fillPods(ctx, ch, desired)
-	}
+	// NOTE (§10 redesign): filler is no longer inlined into the desired lineup. The
+	// interleaved SlotFiller break gaps (schedule.interleaveBreaks) flow through to
+	// SetLineup as FLEX; the channel's matched clips live in a Tunarr filler-list
+	// (attached below, after the channel exists) that Tunarr plays into that flex.
+	// So `desired` is NOT mutated here — see attachFillerList.
 
 	// 3: drift detection (§9 slot revalidation) is a comparison against what we
 	// *previously* scheduled: a slot that was a real program in the persisted
@@ -87,6 +85,15 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 		ch.TunarrID = tunarrID
 		channelAffecting = true   // created (or recreated after out-of-band delete)
 		channelListChanged = true // the media server must re-scan the tuner to discover it
+	}
+
+	// 4b: build + attach the channel's Tunarr filler-list from the matched clip
+	// pool (§10), now that the channel exists (TunarrID is set). Tunarr plays these
+	// clips into the flex gaps SetLineup leaves between programs. Best-effort: a
+	// filler failure never fails the reconcile (§9 resilience — the channel still
+	// plays, just without commercials this pass; the next sweep retries).
+	if e.pods != nil {
+		e.attachFillerList(ctx, ch)
 	}
 
 	// 5: diff desired lineup vs actual; push only on a difference.
@@ -122,48 +129,37 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	return nil
 }
 
-// fillPods resolves the channel's filler-gap slots into matched ad-pod clips via
-// the assembler (§10). Each SlotFiller with no library item becomes zero-or-more
-// pod entries (matched clips or the bumper card); a slot the assembler declines
-// (empty result) stays as-is (flex). The seed is derived from the channel + slot
-// index so pods reproduce deterministically across reconciles. Program slots are
-// never touched (filler never displaces a program).
-func (e *Engine) fillPods(ctx context.Context, ch store.Channel, d schedule.DesiredLineup) schedule.DesiredLineup {
-	era := podEra(ch)
-	out := make([]schedule.Slot, 0, len(d.Slots))
-	for i, s := range d.Slots {
-		if s.Kind != schedule.SlotFiller || s.LibraryItemID != "" {
-			out = append(out, s) // programs, flex, already-resolved filler pass through
-			continue
-		}
-		gap := s.DurationMs
-		if gap <= 0 {
-			gap = 120000 // default 2-minute break when the gap is unknown
-		}
-		seed := podSeed(ch.ID, i)
-		pod := e.pods.FillGap(ctx, ch.ID, era, gap, seed)
-		if len(pod) == 0 {
-			out = append(out, s) // assembler declined → leave as flex
-			continue
-		}
-		out = append(out, pod...)
+// attachFillerList builds the channel's matched clip pool via the assembler and
+// hands its Tunarr program uuids to the Programmer, which builds + attaches the
+// channel's Tunarr filler-list (§10). Tunarr plays those clips into the flex gaps
+// the scheduler leaves between programs. Best-effort: a filler error is logged,
+// never returned — the channel still plays (§9 resilience), and EnsureFillerList
+// is internally idempotent so a stable pool makes no Tunarr write.
+func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
+	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, podEra(ch), podSeed(ch.ID))
+	if !ok {
+		ids = nil // empty catalog / only-fallback → detach (channel falls back to flex)
 	}
-	return schedule.DesiredLineup{ChannelID: d.ChannelID, Slots: out}
+	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids); err != nil && e.log != nil {
+		e.log.Warn("attach filler list (channel plays without commercials this pass)",
+			"channel", ch.ID, "err", err)
+	}
 }
 
 // podEra derives the block's target era from the channel (v1: unset → 0, any-era
 // matching). A per-block era comes from the time-slot strategy in future work.
 func podEra(ch store.Channel) int { return 0 }
 
-// podSeed derives a deterministic pod seed from the channel id + slot index (§10
-// seeded-deterministic — same channel+slot rebuilds the same pod).
-func podSeed(channelID string, slotIdx int) int64 {
+// podSeed derives a deterministic pod seed from the channel id (§10 seeded-
+// deterministic — same channel rebuilds the same clip pool, so the filler-list
+// attach is idempotent across reconciles).
+func podSeed(channelID string) int64 {
 	var h int64 = 1469598103934665603 // FNV-1a offset basis
 	for _, b := range []byte(channelID) {
 		h ^= int64(b)
 		h *= 1099511628211
 	}
-	return h ^ int64(slotIdx)
+	return h
 }
 
 // ensureChannel creates or updates the Tunarr channel. On create, Tunarr assigns
@@ -268,19 +264,14 @@ func pushEqual(want, got schedule.Slot) bool {
 
 // pushShape returns the (tunarr-type, item-id) a slot renders to, matching
 // programmer.slotToItem's logic. Kept here (not exported from programmer) so the
-// diff is expressed in domain terms.
+// diff is expressed in domain terms. Since the §10 redesign moved filler into a
+// Tunarr filler-list, filler slots are ALWAYS flex in the pushed lineup — only a
+// program is content.
 func pushShape(s schedule.Slot) (string, string) {
-	switch s.Kind {
-	case schedule.SlotProgram:
+	if s.Kind == schedule.SlotProgram {
 		return "content", s.LibraryItemID
-	case schedule.SlotFiller:
-		if s.LibraryItemID != "" {
-			return "content", s.LibraryItemID
-		}
-		return "flex", ""
-	default:
-		return "flex", ""
 	}
+	return "flex", ""
 }
 
 // ErrChannelGone is returned by backfill helpers when the channel was deleted

@@ -94,18 +94,14 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 // reconcile once Tunarr has scanned it.
 func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, error) {
 	dur := float64(s.DurationMs)
-	switch s.Kind {
-	case schedule.SlotProgram:
+	// Only a program is content. Filler is no longer inlined here (§10 redesign):
+	// commercials live in a Tunarr filler-list attached to the channel, which
+	// Tunarr plays into these flex gaps — so SlotFiller, SlotPending, SlotFlex all
+	// render as flex (never dead air, §9).
+	if s.Kind == schedule.SlotProgram {
 		return t.contentItem(ctx, s.LibraryItemID, dur)
-	case schedule.SlotFiller:
-		if s.LibraryItemID != "" {
-			return t.contentItem(ctx, s.LibraryItemID, dur)
-		}
-		// Unresolved pod placeholder → flex padding until §10 fills it.
-		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
-	default: // SlotPending, SlotFlex, and any unknown kind → flex (never dead air)
-		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
 	}
+	return tunarrLineupItem{Type: "flex", Duration: dur}, nil
 }
 
 // contentItem resolves a media-server item id to a Tunarr content entry, or

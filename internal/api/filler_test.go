@@ -47,7 +47,7 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := store.Clip{}
-	c.LibraryItemID = id
+	c.TunarrProgramID = id
 	c.Name = "clip " + id
 	c.Kind = kind
 	c.Era = era
@@ -71,8 +71,8 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	}
 	var body struct {
 		Clips []struct {
-			LibraryItemID, Kind string
-			Tagged              bool
+			TunarrProgramID, Kind string
+			Tagged                bool
 		}
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
@@ -81,7 +81,7 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	}
 	for _, c := range body.Clips {
 		if !c.Tagged {
-			t.Errorf("fully-tagged clip %s reported untagged", c.LibraryItemID)
+			t.Errorf("fully-tagged clip %s reported untagged", c.TunarrProgramID)
 		}
 	}
 }

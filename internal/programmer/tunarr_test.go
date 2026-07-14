@@ -194,8 +194,8 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // → content uuid-1
 		{Kind: schedule.SlotPending, DurationMs: 0},                               // → flex
-		{Kind: schedule.SlotFiller, DurationMs: 30000},                            // no lib id → flex
-		{Kind: schedule.SlotFiller, LibraryItemID: "clip-9", DurationMs: 30000},   // → content uuid-9
+		{Kind: schedule.SlotFiller, DurationMs: 30000},                            // → flex (§10: filler is a Tunarr filler-list, never inline content)
+		{Kind: schedule.SlotFiller, LibraryItemID: "clip-9", DurationMs: 30000},   // → flex (filler never inlines content post-redesign)
 		{Kind: schedule.SlotFlex, DurationMs: 60000},                              // → flex
 		{Kind: schedule.SlotProgram, LibraryItemID: "gone", DurationMs: 1000},     // unindexed → flex
 	}
@@ -231,7 +231,7 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 		{"content", "uuid-1"}, // lib-1 resolved
 		{"flex", ""},
 		{"flex", ""},
-		{"content", "uuid-9"}, // clip-9 resolved
+		{"flex", ""}, // filler slot → flex (§10 redesign: commercials live in a Tunarr filler-list)
 		{"flex", ""},
 		{"flex", ""}, // "gone" not indexed → flex
 	}

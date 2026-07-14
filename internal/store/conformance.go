@@ -537,7 +537,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 
 func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string) Clip {
 	c := Clip{}
-	c.LibraryItemID = id
+	c.TunarrProgramID = id
 	c.Name = name
 	c.Kind = kind
 	c.Era = era
@@ -579,12 +579,12 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Filter by audience + era.
 	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
-	if len(kids92) != 1 || kids92[0].LibraryItemID != "c1" {
+	if len(kids92) != 1 || kids92[0].TunarrProgramID != "c1" {
 		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
 	}
 	// Untagged only.
 	untagged, _ := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
-	if len(untagged) != 1 || untagged[0].LibraryItemID != "u1" {
+	if len(untagged) != 1 || untagged[0].TunarrProgramID != "u1" {
 		t.Errorf("untagged = %+v, want just u1", ids2(untagged))
 	}
 	// Empty filter = all.
@@ -641,7 +641,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 func ids2(clips []Clip) []string {
 	out := make([]string, len(clips))
 	for i, c := range clips {
-		out[i] = c.LibraryItemID
+		out[i] = c.TunarrProgramID
 	}
 	return out
 }

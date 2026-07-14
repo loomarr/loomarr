@@ -8,26 +8,30 @@ import (
 )
 
 // This file is the catalog sync (§10): loomarr syncs its clip catalog FROM the
-// media server's filler library. Item ids + names + DURATION come from the server
-// (the core never downloads or probes media); loomarr owns only the match
-// metadata (era/audience/category), which it PRESERVES across syncs so a re-sync
-// never clobbers hand-edited or AI-assigned tags. `/v1/filler/sync` triggers it;
-// a periodic sync runs alongside the reconciler (FILLER_SYNC_EVERY, §15).
+// Tunarr `local` filler source. Program uuids + names + DURATION come from
+// Tunarr's scan (the core never downloads or probes media); loomarr owns only the
+// match metadata (era/audience/category), which it PRESERVES across syncs so a
+// re-sync never clobbers hand-edited or AI-assigned tags. `/v1/filler/sync`
+// triggers it (ensuring the Tunarr local source on first run); a periodic sync
+// runs alongside the reconciler (FILLER_SYNC_EVERY, §15).
 
-// RawClip is one clip as read from the media server (mirrors library.FillerClip;
-// declared here so the sync doesn't import library, keeping the dependency one-way
-// — library provides the reader, filler consumes it via the Lister port).
+// RawClip is one clip as read from Tunarr's local source (mirrors
+// programmer.LocalClip; declared here so the sync doesn't import programmer —
+// FillerSource provides the reader, filler consumes it via that port).
 type RawClip struct {
-	LibraryItemID string
-	Name          string
-	DurationMs    int64
-	Kind          Kind
-	Era           int // initial era from filename; 0 if none
+	TunarrProgramID string
+	Name            string
+	DurationMs      int64
+	Kind            Kind
+	Era             int // initial era from filename; 0 if none
 }
 
-// Lister reads the media server's filler library (implemented by library.Client).
-type Lister interface {
-	ListFillerClips(ctx context.Context, fillerLibraryID string) ([]RawClip, error)
+// FillerSource reads the Tunarr `local` filler source (implemented by the Tunarr
+// client via a main.go adapter). EnsureLocalSource registers + scans the drop-
+// folder on first run (idempotent); ListLocalClips reads the scanned programs.
+type FillerSource interface {
+	EnsureLocalSource(ctx context.Context, dir string) error
+	ListLocalClips(ctx context.Context) ([]RawClip, error)
 }
 
 // Store is the slice of the store the sync needs.
@@ -44,62 +48,66 @@ type StoreClip struct {
 	UpdatedAt time.Time
 }
 
-// Syncer reconciles the clip catalog against the media server's filler library.
+// Syncer reconciles the clip catalog against the Tunarr `local` filler source.
 type Syncer struct {
-	lister    Lister
-	store     Store
-	libraryID string
-	log       *slog.Logger
-	now       func() time.Time
+	source FillerSource
+	store  Store
+	dir    string // FILLER_DIR (§15) — the drop-folder registered as a Tunarr local source
+	log    *slog.Logger
+	now    func() time.Time
 }
 
-// NewSyncer builds a catalog syncer. libraryID is the media-server filler library
-// id (FILLER_LIBRARY, §15).
-func NewSyncer(lister Lister, store Store, libraryID string, now func() time.Time, log *slog.Logger) *Syncer {
+// NewSyncer builds a catalog syncer. dir is the drop-folder path (FILLER_DIR, §15)
+// registered with Tunarr as a `local` media source.
+func NewSyncer(source FillerSource, store Store, dir string, now func() time.Time, log *slog.Logger) *Syncer {
 	if now == nil {
 		now = time.Now
 	}
-	return &Syncer{lister: lister, store: store, libraryID: libraryID, log: log, now: now}
+	return &Syncer{source: source, store: store, dir: dir, log: log, now: now}
 }
 
 // SyncResult reports what a sync did (for the API + logs).
 type SyncResult struct {
-	Total   int // clips in the media server's filler library
+	Total   int // clips in the Tunarr local filler source
 	Added   int // new clips
 	Updated int // existing clips whose server-derived fields changed
-	Pruned  int // clips removed (gone from the media server)
+	Pruned  int // clips removed (gone from the source)
 }
 
-// Sync reads the filler library and reconciles the catalog (§10):
-//   - upsert every server clip, PRESERVING loomarr-owned tags (era/audience/
-//     category/ai) on clips we already know — the server only owns id/name/
-//     duration/kind-hint;
-//   - prune clips no longer in the library (identity = server item id, §4).
+// Sync ensures the Tunarr local source exists, then reconciles the catalog (§10):
+//   - upsert every scanned clip, PRESERVING loomarr-owned tags (era/audience/
+//     category/ai) on clips we already know — Tunarr only owns id/name/duration/
+//     kind-hint;
+//   - prune clips no longer in the source (identity = Tunarr program uuid).
 //
-// Duration always comes from the server. Idempotent: a no-change re-sync makes no
-// tag edits.
+// Duration always comes from Tunarr's scan. Idempotent: a no-change re-sync makes
+// no tag edits.
 func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
-	if s.libraryID == "" {
-		return SyncResult{}, fmt.Errorf("filler sync: no FILLER_LIBRARY configured")
+	if s.dir == "" {
+		return SyncResult{}, fmt.Errorf("filler sync: no FILLER_DIR configured")
 	}
-	raw, err := s.lister.ListFillerClips(ctx, s.libraryID)
+	// Ensure the Tunarr local filler source exists + is scanned (idempotent, §10).
+	if err := s.source.EnsureLocalSource(ctx, s.dir); err != nil {
+		return SyncResult{}, fmt.Errorf("ensure tunarr local filler source: %w", err)
+	}
+	raw, err := s.source.ListLocalClips(ctx)
 	if err != nil {
-		return SyncResult{}, fmt.Errorf("list filler library: %w", err)
+		return SyncResult{}, fmt.Errorf("list tunarr filler clips: %w", err)
 	}
 
 	res := SyncResult{Total: len(raw)}
 	keep := make([]string, 0, len(raw))
 	for _, rc := range raw {
-		keep = append(keep, rc.LibraryItemID)
+		keep = append(keep, rc.TunarrProgramID)
 
-		existing, found, err := s.store.GetClip(ctx, rc.LibraryItemID)
+		existing, found, err := s.store.GetClip(ctx, rc.TunarrProgramID)
 		if err != nil {
-			return res, fmt.Errorf("get clip %s: %w", rc.LibraryItemID, err)
+			return res, fmt.Errorf("get clip %s: %w", rc.TunarrProgramID, err)
 		}
 
 		merged := StoreClip{UpdatedAt: s.now()}
-		merged.LibraryItemID = rc.LibraryItemID
-		// Server-owned fields (always taken from the server — it's source of truth).
+		merged.TunarrProgramID = rc.TunarrProgramID
+		// Tunarr-owned fields (always taken fresh — Tunarr's scan is source of truth).
 		merged.Name = rc.Name
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
@@ -120,11 +128,11 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// New clip: seed era from the filename hint; leave audience/category
 			// untagged for AI/manual tagging.
 			merged.Era = rc.Era
-			merged.Source = "media-server"
+			merged.Source = "tunarr-local"
 			res.Added++
 		}
 		if err := s.store.UpsertClip(ctx, merged); err != nil {
-			return res, fmt.Errorf("upsert clip %s: %w", rc.LibraryItemID, err)
+			return res, fmt.Errorf("upsert clip %s: %w", rc.TunarrProgramID, err)
 		}
 	}
 
@@ -139,7 +147,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	return res, nil
 }
 
-// serverFieldsUnchanged reports whether the server-owned fields match (so a
+// serverFieldsUnchanged reports whether the Tunarr-owned fields match (so a
 // re-sync is a no-op write). Tags aren't compared — they're loomarr-owned and
 // preserved, not synced.
 func serverFieldsUnchanged(a, b Clip) bool {

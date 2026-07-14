@@ -75,8 +75,8 @@ type Config struct {
 	SuggestAutoApprove bool          `env:"SUGGEST_AUTO_APPROVE" envDefault:"false"`
 	SuggestMaxAcquire  int           `env:"SUGGEST_MAX_ACQUISITIONS" envDefault:"10"`
 
-	// Filler / commercials (Phase 12)
-	FillerLibrary     string        `env:"FILLER_LIBRARY"`
+	// Filler / commercials (Phase 12; §10 redesign — Tunarr-owned)
+	FillerDir         string        `env:"FILLER_DIR"`
 	FillerSyncEvery   time.Duration `env:"FILLER_SYNC_EVERY" envDefault:"15m"`
 	FillerAITagging   bool          `env:"FILLER_AI_TAGGING" envDefault:"false"`
 	FillerBreaksPerHr int           `env:"FILLER_BREAKS_PER_HOUR" envDefault:"4"`

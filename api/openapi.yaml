@@ -121,8 +121,6 @@ components:
             - trailer
             - interstitial
           type: string
-        libraryItemId:
-          type: string
         name:
           type: string
         source:
@@ -130,8 +128,10 @@ components:
         tagged:
           description: Whether the clip has all match tags (era+audience+category)
           type: boolean
+        tunarrProgramId:
+          type: string
       required:
-        - libraryItemId
+        - tunarrProgramId
         - name
         - kind
         - durationMs

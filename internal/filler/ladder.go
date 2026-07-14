@@ -67,7 +67,7 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //   - NO-REPEAT: skip any clip already in `used` (the caller threads `used` across
 //     a window). Don't add to `used` here — Assemble does that as it appends.
 //   - Deterministic: seed all randomness from rng. Sort candidates by
-//     LibraryItemID before any random pick so the input order can't leak in.
+//     TunarrProgramID before any random pick so the input order can't leak in.
 //   - Return ("", nil) if no pool has eligible clips (Assemble then uses the
 //     bumper card).
 func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
@@ -111,7 +111,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if len(out) >= podMax {
 				return
 			}
-			if used[c.LibraryItemID] || contains(out, c.LibraryItemID) {
+			if used[c.TunarrProgramID] || contains(out, c.TunarrProgramID) {
 				continue
 			}
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
@@ -138,7 +138,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 // hasUnused reports whether any clip in the pool isn't already used this window.
 func hasUnused(clips []Clip, used map[string]bool) bool {
 	for _, c := range clips {
-		if !used[c.LibraryItemID] {
+		if !used[c.TunarrProgramID] {
 			return true
 		}
 	}
@@ -148,7 +148,7 @@ func hasUnused(clips []Clip, used map[string]bool) bool {
 // contains reports whether a clip id is already in the pod-in-progress.
 func contains(out []Clip, id string) bool {
 	for _, c := range out {
-		if c.LibraryItemID == id {
+		if c.TunarrProgramID == id {
 			return true
 		}
 	}
@@ -214,6 +214,6 @@ func durationEligible(c Clip, policy Policy) bool {
 func sortByID(clips []Clip) []Clip {
 	out := make([]Clip, len(clips))
 	copy(out, clips)
-	sort.Slice(out, func(i, j int) bool { return out[i].LibraryItemID < out[j].LibraryItemID })
+	sort.Slice(out, func(i, j int) bool { return out[i].TunarrProgramID < out[j].TunarrProgramID })
 	return out
 }

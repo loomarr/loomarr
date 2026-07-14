@@ -11,16 +11,16 @@ import (
 // era/audience/category cycle, plus two bumpers.
 func sampleCatalog() []filler.Clip {
 	c := []filler.Clip{
-		{LibraryItemID: "b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
-		{LibraryItemID: "b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{TunarrProgramID: "b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{TunarrProgramID: "b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
 		// 1992 kids commercials across categories.
-		{LibraryItemID: "c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
-		{LibraryItemID: "c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{LibraryItemID: "c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
-		{LibraryItemID: "c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
+		{TunarrProgramID: "c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
+		{TunarrProgramID: "c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{TunarrProgramID: "c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
+		{TunarrProgramID: "c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
 		// A 1985 (different decade) kids ad + a late-night ad (wrong audience).
-		{LibraryItemID: "c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{LibraryItemID: "c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{TunarrProgramID: "c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{TunarrProgramID: "c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 	return c
 }
@@ -38,8 +38,8 @@ func TestAssemble_Deterministic(t *testing.T) {
 		t.Fatalf("non-deterministic length: %d vs %d", len(p1.Entries), len(p2.Entries))
 	}
 	for i := range p1.Entries {
-		if p1.Entries[i].LibraryItemID != p2.Entries[i].LibraryItemID {
-			t.Fatalf("non-deterministic at %d: %q vs %q", i, p1.Entries[i].LibraryItemID, p2.Entries[i].LibraryItemID)
+		if p1.Entries[i].TunarrProgramID != p2.Entries[i].TunarrProgramID {
+			t.Fatalf("non-deterministic at %d: %q vs %q", i, p1.Entries[i].TunarrProgramID, p2.Entries[i].TunarrProgramID)
 		}
 	}
 	// A different seed should (very likely) reorder.
@@ -47,7 +47,7 @@ func TestAssemble_Deterministic(t *testing.T) {
 	same := len(p3.Entries) == len(p1.Entries)
 	if same {
 		for i := range p1.Entries {
-			if p1.Entries[i].LibraryItemID != p3.Entries[i].LibraryItemID {
+			if p1.Entries[i].TunarrProgramID != p3.Entries[i].TunarrProgramID {
 				same = false
 				break
 			}
@@ -66,10 +66,10 @@ func TestAssemble_EraAudienceMatch(t *testing.T) {
 		t.Fatalf("expected exact match, got %s", p.MatchLevel)
 	}
 	for _, e := range p.Entries {
-		if e.LibraryItemID == "c5" {
+		if e.TunarrProgramID == "c5" {
 			t.Error("1985 clip placed in a strict 1992 pod (wrong era)")
 		}
-		if e.LibraryItemID == "c6" {
+		if e.TunarrProgramID == "c6" {
 			t.Error("late-night clip placed in a kids pod (wrong audience)")
 		}
 	}
@@ -83,14 +83,14 @@ func TestAssemble_CategoryVariety(t *testing.T) {
 	p := filler.Assemble(cat, kidsWindow(7), filler.Policy{}, nil)
 	catByID := map[string]string{}
 	for _, c := range cat {
-		catByID[c.LibraryItemID] = c.Category
+		catByID[c.TunarrProgramID] = c.Category
 	}
 	lastCat := ""
 	for _, e := range p.Entries {
 		if e.Kind != filler.Commercial {
 			continue
 		}
-		c := catByID[e.LibraryItemID]
+		c := catByID[e.TunarrProgramID]
 		if c != "" && c == lastCat {
 			t.Errorf("category %q played back-to-back (variety violated): pod %+v", c, ids(p))
 		}
@@ -108,8 +108,8 @@ func TestAssemble_NoRepeatInWindow(t *testing.T) {
 		w := kidsWindow(int64(100 + i))
 		p := filler.Assemble(cat, w, filler.Policy{}, used)
 		for _, e := range p.Entries {
-			if e.LibraryItemID != "" {
-				seen[e.LibraryItemID]++
+			if e.TunarrProgramID != "" {
+				seen[e.TunarrProgramID]++
 			}
 		}
 	}
@@ -154,10 +154,10 @@ func TestAssemble_FallbackLadder(t *testing.T) {
 func TestAssemble_RespectsPodMax(t *testing.T) {
 	// Many eligible clips, PodMax=2 → at most 2 commercials.
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{LibraryItemID: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{TunarrProgramID: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 10; i++ {
 		cat = append(cat, filler.Clip{
-			LibraryItemID: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
+			TunarrProgramID: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
@@ -179,7 +179,7 @@ func TestAssemble_RespectsPodMax(t *testing.T) {
 func ids(p filler.Pod) []string {
 	out := make([]string, len(p.Entries))
 	for i, e := range p.Entries {
-		out[i] = e.LibraryItemID
+		out[i] = e.TunarrProgramID
 	}
 	return out
 }
@@ -188,7 +188,7 @@ func ids(p filler.Pod) []string {
 // late_night), so a Family window finds nothing and hits the bumper card.
 func catNoFamily() []filler.Clip {
 	return []filler.Clip{
-		{LibraryItemID: "k1", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{LibraryItemID: "l1", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{TunarrProgramID: "k1", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{TunarrProgramID: "l1", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 }
