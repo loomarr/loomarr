@@ -81,6 +81,19 @@ type Store interface {
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 
+	// --- filler clips (§10) ---
+	UpsertClip(ctx context.Context, c Clip) error
+	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
+	// ListClips returns clips matching the filter (any zero-value field is a
+	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
+	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
+	// editor (§10) and the AI-tagging job. Returns ErrNotFound if absent.
+	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
+	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
+	// prune step (a clip removed from the media server's filler library is gone).
+	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
+
 	// --- settings KV (§5): instance id, per-app webhook last-received, etc. ---
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error

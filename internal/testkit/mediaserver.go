@@ -52,6 +52,11 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// to the search fixture; otherwise AnyProviderIdEquals decides present/absent.
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		// Filler-library read (§10): scoped by ParentId → serve the filler fixture.
+		if pid := r.URL.Query().Get("ParentId"); pid != "" {
+			_, _ = w.Write(Fixture(t, "emby/filler_library.json"))
+			return
+		}
 		if term := r.URL.Query().Get("SearchTerm"); term != "" {
 			// The pinned search fixture answers "matrix"; any other term → empty.
 			if strings.EqualFold(term, "matrix") {

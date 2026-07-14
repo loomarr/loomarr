@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
@@ -35,6 +36,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
 	t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
 	t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
+	t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
+	t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -530,6 +533,117 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {
 		t.Errorf("GetProposal(missing) = %v, want ErrNotFound", err)
 	}
+}
+
+func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string) Clip {
+	c := Clip{}
+	c.LibraryItemID = id
+	c.Name = name
+	c.Kind = kind
+	c.Era = era
+	c.Audience = aud
+	c.Category = cat
+	c.DurationMs = 30000
+	c.Source = "archive"
+	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()
+	return c
+}
+
+func testClipFilters(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
+	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
+
+	// Round-trip.
+	got, err := s.GetClip(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Frosted Flakes" || got.Kind != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
+		t.Errorf("clip round-trip mismatch: %+v", got.Clip)
+	}
+	if got.DurationMs != 30000 {
+		t.Errorf("duration lost: %d", got.DurationMs)
+	}
+	if _, err := s.GetClip(ctx, "nope"); err != ErrNotFound {
+		t.Errorf("GetClip(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Filter by kind.
+	comms, _ := s.ListClips(ctx, ClipFilter{Kind: filler.Commercial})
+	if len(comms) != 3 {
+		t.Errorf("kind=commercial = %d, want 3", len(comms))
+	}
+	// Filter by audience + era.
+	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
+	if len(kids92) != 1 || kids92[0].LibraryItemID != "c1" {
+		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
+	}
+	// Untagged only.
+	untagged, _ := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
+	if len(untagged) != 1 || untagged[0].LibraryItemID != "u1" {
+		t.Errorf("untagged = %+v, want just u1", ids2(untagged))
+	}
+	// Empty filter = all.
+	all, _ := s.ListClips(ctx, ClipFilter{})
+	if len(all) != 4 {
+		t.Errorf("no filter = %d, want 4", len(all))
+	}
+}
+
+func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", ""))
+	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
+
+	// Tag the untagged clip (the AI-tagging job path).
+	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", true, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetClip(ctx, "u1")
+	if got.Era != 1994 || got.Audience != filler.Kids || got.Category != "cereal" || !got.AITagged {
+		t.Errorf("tag update didn't persist: %+v", got.Clip)
+	}
+	if !got.Tagged() {
+		t.Error("clip should be Tagged() after update")
+	}
+	// Tagging a missing clip → ErrNotFound.
+	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", false, now); err != ErrNotFound {
+		t.Errorf("UpdateClipTags(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Prune: keep only "keep" — u1 is removed (it left the media server's library).
+	n, err := s.DeleteClipsNotIn(ctx, []string{"keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("prune removed %d, want 1", n)
+	}
+	if _, err := s.GetClip(ctx, "u1"); err != ErrNotFound {
+		t.Error("pruned clip still present")
+	}
+	if _, err := s.GetClip(ctx, "keep"); err != nil {
+		t.Error("kept clip was wrongly pruned")
+	}
+	// Prune with empty keep set deletes all.
+	n, _ = s.DeleteClipsNotIn(ctx, nil)
+	if n != 1 {
+		t.Errorf("prune-all removed %d, want 1", n)
+	}
+}
+
+func ids2(clips []Clip) []string {
+	out := make([]string, len(clips))
+	for i, c := range clips {
+		out[i] = c.LibraryItemID
+	}
+	return out
 }
 
 func testSettings(t *testing.T, newStore NewStoreFunc) {
