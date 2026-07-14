@@ -27,8 +27,10 @@ import (
 //  5. Diff desired lineup vs Tunarr's actual; push only if they differ.
 //  6. Persist the (possibly updated) channel: new TunarrID, desired snapshot,
 //     status, next reconcile deadline.
-//  7. If channel-affecting (created/renamed/lineup changed), poke the guide (§9,
-//     best-effort).
+//  7. Nudge the media server (best-effort, §9): a NEW channel triggers a tuner
+//     re-scan (discover it in the channel list); a lineup-only change triggers a
+//     guide (EPG) refresh. These are distinct operations — a guide refresh alone
+//     won't surface a new channel.
 func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	lock := e.lockFor(channelID)
 	lock.Lock()
@@ -77,9 +79,11 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 	if err != nil {
 		return err
 	}
+	channelListChanged := false // a NEW channel needs a tuner re-scan, not just a guide refresh (§9)
 	if wasNew || tunarrID != ch.TunarrID {
 		ch.TunarrID = tunarrID
-		channelAffecting = true // created (or recreated after out-of-band delete)
+		channelAffecting = true   // created (or recreated after out-of-band delete)
+		channelListChanged = true // the media server must re-scan the tuner to discover it
 	}
 
 	// 5: diff desired lineup vs actual; push only on a difference.
@@ -103,8 +107,13 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 		return fmt.Errorf("persist channel %s: %w", channelID, err)
 	}
 
-	// 7: guide freshness (best-effort; never fails the reconcile).
-	if channelAffecting {
+	// 7: media-server freshness (best-effort; never fails the reconcile). A NEW
+	// channel needs a tuner re-scan so the media server discovers it in its channel
+	// list (a guide refresh alone won't surface it, §9); a lineup-only change needs
+	// just a guide (EPG) refresh.
+	if channelListChanged {
+		e.rescanTuner(ctx, channelID)
+	} else if channelAffecting {
 		e.pokeGuide(ctx, channelID)
 	}
 	return nil
@@ -191,6 +200,18 @@ func (e *Engine) pokeGuide(ctx context.Context, channelID string) {
 	}
 	if err := e.guide.PokeGuideRefresh(ctx); err != nil {
 		e.log.Warn("guide refresh poke failed (freshness degraded, reconcile ok)",
+			"channel", channelID, "err", err)
+	}
+}
+
+// rescanTuner asks the media server to re-read the tuner channel list so a newly
+// created channel is discovered (§9), logging (never returning) failures.
+func (e *Engine) rescanTuner(ctx context.Context, channelID string) {
+	if e.guide == nil {
+		return
+	}
+	if err := e.guide.RescanTuner(ctx); err != nil {
+		e.log.Warn("tuner re-scan failed (new channel may not appear until periodic scan, reconcile ok)",
 			"channel", channelID, "err", err)
 	}
 }

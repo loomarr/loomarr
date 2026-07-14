@@ -102,7 +102,14 @@ func (c *LiveTVConnector) Wired(ctx context.Context) (bool, error) {
 }
 
 // PokeGuideRefresh implements channels.GuidePoker (§9): trigger the media
-// server's guide-refresh task after a channel-affecting reconcile. Best-effort.
+// server's guide-refresh task after an existing channel's lineup changed.
+// Best-effort.
 func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
 	return c.lib.RefreshGuide(ctx)
+}
+
+// RescanTuner implements channels.GuidePoker (§9): make the media server re-read
+// the tuner channel list so a newly-created channel is discovered. Best-effort.
+func (c *LiveTVConnector) RescanTuner(ctx context.Context) error {
+	return c.lib.RescanTuner(ctx, c.urls.M3U)
 }

@@ -202,9 +202,11 @@ func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
 	}
 }
 
-// Guide freshness (§9): a channel-affecting reconcile pokes the guide; an
-// idempotent no-op reconcile does not.
-func TestReconcile_PokesGuideOnlyWhenChannelAffecting(t *testing.T) {
+// Media-server freshness (§9), operation-specific: CREATING a channel triggers a
+// tuner RE-SCAN (so the media server discovers the new channel — a guide refresh
+// alone won't surface it, the bug found in the first live smoke); an idempotent
+// no-op reconcile pokes nothing.
+func TestReconcile_RescansTunerOnCreate(t *testing.T) {
 	st := newStore(t)
 	tun := testkit.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
@@ -212,13 +214,17 @@ func TestReconcile_PokesGuideOnlyWhenChannelAffecting(t *testing.T) {
 	e := newEngine(st, tun, avail, guide)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
 
-	_ = e.Reconcile(context.Background(), "c1")
-	if guide.pokes != 1 {
-		t.Fatalf("create should poke the guide once, got %d", guide.pokes)
+	_ = e.Reconcile(context.Background(), "c1") // create
+	if guide.rescans != 1 {
+		t.Fatalf("create should re-scan the tuner once (discover new channel), got %d", guide.rescans)
 	}
+	if guide.pokes != 0 {
+		t.Errorf("create should re-scan the tuner, not (only) poke the guide: pokes=%d", guide.pokes)
+	}
+
 	_ = e.Reconcile(context.Background(), "c1") // no-op
-	if guide.pokes != 1 {
-		t.Errorf("no-op reconcile poked the guide: %d (want 1)", guide.pokes)
+	if guide.rescans != 1 || guide.pokes != 0 {
+		t.Errorf("no-op reconcile touched the media server: rescans=%d pokes=%d (want 1/0)", guide.rescans, guide.pokes)
 	}
 }
 
@@ -268,12 +274,17 @@ func programCount(ch store.Channel) int {
 // --- fakes ---
 
 type fakeGuide struct {
-	pokes int
-	err   error
+	pokes   int // guide (EPG) refreshes — for existing-channel lineup changes
+	rescans int // tuner re-scans — for new/removed channels (§9)
+	err     error
 }
 
 func (f *fakeGuide) PokeGuideRefresh(context.Context) error {
 	f.pokes++
+	return f.err
+}
+func (f *fakeGuide) RescanTuner(context.Context) error {
+	f.rescans++
 	return f.err
 }
 
