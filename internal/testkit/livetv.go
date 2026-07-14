@@ -16,10 +16,12 @@ type LiveTV struct {
 	tuners    map[string]bool // by M3U url
 	listings  map[string]bool // by XMLTV url
 	Refreshes int
+	Rescans   int // tuner re-scans (§9 new-channel discovery)
 
 	// Injectable failures (nil = success).
 	AddTunerErr error
 	RefreshErr  error
+	RescanErr   error
 }
 
 // NewLiveTV builds an empty in-memory Live TV surface.
@@ -63,6 +65,16 @@ func (l *LiveTV) RefreshGuide(_ context.Context) error {
 		return l.RefreshErr
 	}
 	l.Refreshes++
+	return nil
+}
+
+func (l *LiveTV) RescanTuner(_ context.Context, _ string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.RescanErr != nil {
+		return l.RescanErr
+	}
+	l.Rescans++
 	return nil
 }
 

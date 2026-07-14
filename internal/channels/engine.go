@@ -21,12 +21,15 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// GuidePoker triggers the media server's guide-refresh task after a
-// channel-affecting reconcile (§9 guide freshness). Best-effort: a failure
-// degrades freshness, never the reconcile. Nil disables poking (e.g. Live TV not
-// wired yet).
+// GuidePoker nudges the media server after a channel-affecting reconcile so
+// changes appear promptly (§9). Two operations (they are NOT interchangeable —
+// see §9): PokeGuideRefresh updates EPG for KNOWN channels (an existing channel's
+// lineup changed); RescanTuner re-reads the M3U channel LIST to discover a
+// newly-created or removed channel. Best-effort: a failure degrades freshness,
+// never the reconcile. Nil disables poking (e.g. Live TV not wired yet).
 type GuidePoker interface {
 	PokeGuideRefresh(ctx context.Context) error
+	RescanTuner(ctx context.Context) error
 }
 
 // Availability resolves a provisioning Key to (libraryItemID, available). The

@@ -36,6 +36,10 @@ type LiveTV interface {
 	// RefreshGuide triggers the guide-refresh scheduled task (§9 guide freshness).
 	// Best-effort; the task id is version-fragile (pinned via capture).
 	RefreshGuide(ctx context.Context) error
+	// RescanTuner forces the media server to re-read the M3U tuner's channel list
+	// so a newly-created channel is discovered (§9). RefreshGuide alone won't
+	// surface a new channel. Best-effort; no-op if the tuner isn't registered.
+	RescanTuner(ctx context.Context, tunarrM3U string) error
 }
 
 // --- wire types (pinned to the Phase-10 capture; see fixtures/livetv/) ---
@@ -93,6 +97,38 @@ func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (boo
 		}
 	}
 	return false, nil
+}
+
+// RescanTuner forces the media server to re-read the M3U tuner's channel list so
+// a newly-created (or removed) Loomarr channel is discovered (§6/§9). A guide
+// refresh alone updates EPG for KNOWN channels and won't surface a new one; on
+// Emby/Jellyfin, re-POSTing the existing M3U tuner host triggers the re-read.
+// Best-effort: no matching host (not wired yet) is a no-op, not an error.
+//
+// The full host object is fetched and re-POSTed verbatim (as a generic map, to
+// preserve fields we don't model — Id, DeviceId, etc.) so the media server treats
+// it as an update of the same host rather than a new registration.
+func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
+	req, err := c.newRequest(ctx, http.MethodGet, "/LiveTv/TunerHosts", nil)
+	if err != nil {
+		return err
+	}
+	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	var hosts []map[string]any
+	if err := c.do(req, &hosts); err != nil {
+		return err
+	}
+	for _, h := range hosts {
+		if url, _ := h["Url"].(string); url == tunarrM3U {
+			post, err := c.newJSONRequest(ctx, http.MethodPost, "/LiveTv/TunerHosts", h)
+			if err != nil {
+				return err
+			}
+			c.flavor.applyTokenAuth(post, c.token, c.deviceID)
+			return c.do(post, nil)
+		}
+	}
+	return nil // tuner not registered (not wired) → nothing to re-scan
 }
 
 // AddTuner registers Tunarr as an m3u tuner host (§6 — M3U preferred over
