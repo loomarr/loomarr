@@ -308,6 +308,39 @@ components:
           format: uri
           type: string
       type: object
+    LLMModelView:
+      additionalProperties: false
+      properties:
+        approxVramGiB:
+          format: double
+          type: number
+        fit:
+          description: fits|tight|wont_fit against detected VRAM
+          type: string
+        label:
+          type: string
+        pulled:
+          description: Already present in the local Ollama
+          type: boolean
+        recommended:
+          type: boolean
+        runtimeOk:
+          description: Detected Ollama version supports this model
+          type: boolean
+        tag:
+          type: string
+        why:
+          type: string
+      required:
+        - tag
+        - label
+        - approxVramGiB
+        - fit
+        - pulled
+        - runtimeOk
+        - recommended
+        - why
+      type: object
     ListChannelsOutputBody:
       additionalProperties: false
       properties:
@@ -686,6 +719,105 @@ components:
         - added
         - updated
         - pruned
+      type: object
+    System-llm-pullResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/System-llm-pullResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: Poll progress on /v1/events (type=llm_pull)
+          type: string
+      required:
+        - jobId
+      type: object
+    SystemLLMPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SystemLLMPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        model:
+          description: Ollama model tag to download
+          examples:
+            - qwen3.5:9b
+          type: string
+      required:
+        - model
+      type: object
+    SystemLLMSelectInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SystemLLMSelectInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        model:
+          description: Ollama model tag to activate (must be pulled)
+          examples:
+            - qwen3:8b
+          type: string
+      required:
+        - model
+      type: object
+    SystemLLMStatus:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SystemLLMStatus.json
+          format: uri
+          readOnly: true
+          type: string
+        catalog:
+          description: Curated local models annotated for this machine
+          items:
+            $ref: "#/components/schemas/LLMModelView"
+          type:
+            - array
+            - "null"
+        gpuName:
+          type: string
+        local:
+          description: True for local Ollama (probe + catalog apply)
+          type: boolean
+        model:
+          description: Currently active model tag/id
+          type: string
+        ollamaVersion:
+          type: string
+        provider:
+          description: "Active provider: ollama|openai"
+          type: string
+        reachable:
+          description: LLM host answered the probe
+          type: boolean
+        recommended:
+          description: Best-fit model tag for this machine
+          type: string
+        vramGiB:
+          description: Detected GPU VRAM (0 = unknown/none)
+          format: double
+          type: number
+      required:
+        - provider
+        - model
+        - local
+        - reachable
+        - catalog
       type: object
     TagFillerOutputBody:
       additionalProperties: false
@@ -1297,6 +1429,78 @@ paths:
       summary: Deny a proposal (admin)
       tags:
         - suggestions
+  /v1/system/llm:
+    get:
+      description: Admin only. Active model + provider; for local Ollama, detected VRAM/version, pulled models, and the curated catalog with fit verdicts + a recommended default (§8.1).
+      operationId: system-llm-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemLLMStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: LLM host probe + model catalog
+      tags:
+        - system
+  /v1/system/llm/pull:
+    post:
+      description: Admin only. Starts an Ollama pull as a background job; percent-complete streams over /v1/events (§8.1). Idempotent.
+      operationId: system-llm-pull
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemLLMPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/System-llm-pullResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Download a local model
+      tags:
+        - system
+  /v1/system/llm/select:
+    post:
+      description: Admin only. Persists the choice and hot-swaps the running suggester (§8.1). 409 if the model isn't pulled yet, or the provider isn't local Ollama.
+      operationId: system-llm-select
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemLLMSelectInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemLLMStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Select the active local model
+      tags:
+        - system
   /v1/titles:
     get:
       operationId: list-titles

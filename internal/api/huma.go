@@ -36,6 +36,8 @@ type Server struct {
 	search  SearchService
 	events  EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
 	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
+	systemLLM SystemLLMService
 }
 
 // FillerService backs the filler ingestion routes (§10): catalog sync and the AI
@@ -120,16 +122,17 @@ type Options struct {
 	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ingest       http.Handler   // POST /hooks/arr (Phase 6); mounted outside Huma
 	Ready        ReadyFunc
-	Login        LoginService   // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Sessions     SessionManager // /v1/auth/logout (Phase 9)
-	UserSync     UserSyncer     // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	CookieSecure string         // COOKIE_SECURE: auto|true|false (§11)
-	Channels     ChannelService // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV       LiveTVService  // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	Suggest      SuggestService // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
-	Search       SearchService  // /v1/search (Phase 11); nil ⇒ search route 501
-	Events       EventSource    // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler       FillerService  // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Login        LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Sessions     SessionManager   // /v1/auth/logout (Phase 9)
+	UserSync     UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure string           // COOKIE_SECURE: auto|true|false (§11)
+	Channels     ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV       LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	Suggest      SuggestService   // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
+	Search       SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
+	Events       EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler       FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

@@ -172,6 +172,7 @@ func run() error {
 	// one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
+	var systemLLM api.SystemLLMService
 	if st != nil && cfg.LibraryFlavor != "" && cfg.LLMURL != "" {
 		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
 		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
@@ -196,14 +197,19 @@ func run() error {
 
 		// The model is a config choice (§8/§14): ollama (local default) or the
 		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
-		provider := llm.NewProvider(cfg.LLMProvider, cfg.LLMURL, cfg.LLMModel, cfg.LLMAPIKey)
+		// For LOCAL ollama the active model is runtime-swappable (§8.1): an in-app
+		// selection persisted to the settings store overrides LLM_MODEL and can be
+		// changed without a restart. A hosted openai provider names its model in
+		// config and isn't wrapped (nothing local to swap/probe/pull).
+		provider, systemLLMSvc := buildLLM(rootCtx, cfg, st, eventBus, log)
 		sug := suggest.New(provider, cat, validator, cfg.SuggestMaxAcquire)
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: cfg.JobWorkers, Timeout: cfg.JobTimeout, CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log)
 		suggestSvc = submitAdapter{svc}
+		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
-		log.Info("suggester started", "provider", provider.Name(), "workers", cfg.JobWorkers, "tmdb", tmdbClient != nil)
+		log.Info("suggester started", "provider", provider.Name(), "model", activeModel(provider, cfg), "workers", cfg.JobWorkers, "tmdb", tmdbClient != nil)
 	}
 
 	// Filler & commercials (§10, Phase 12; redesign — Loomarr-owned via Tunarr).
@@ -278,6 +284,7 @@ func run() error {
 			Search:       searchSvc,
 			Events:       eventBus,
 			Filler:       fillerSvc,
+			SystemLLM:    systemLLM,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
