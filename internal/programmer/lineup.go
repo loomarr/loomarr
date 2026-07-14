@@ -92,6 +92,14 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 // isn't in Tunarr's index yet (unscanned / just-landed) degrades to flex rather
 // than failing the whole push — never dead air (§9); it resolves on a later
 // reconcile once Tunarr has scanned it.
+// minFlexMs is the floor for a flex slot's duration. Tunarr's manual-programming
+// API rejects any lineup item with duration ≤ 0 ("Too small: expected number to
+// be >0"), and a pending/unresolved slot often has DurationMs 0 (its runtime isn't
+// known yet). Flooring flex at 30s keeps the push valid — the filler-list fills the
+// gap regardless, and a later reconcile replaces it with the real program once it
+// lands. (Caught by the live smoke: a flex slot with duration 0 → 400.)
+const minFlexMs = 30_000
+
 func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, error) {
 	dur := float64(s.DurationMs)
 	// Only a program is content. Filler is no longer inlined here (§10 redesign):
@@ -101,7 +109,15 @@ func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupI
 	if s.Kind == schedule.SlotProgram {
 		return t.contentItem(ctx, s.LibraryItemID, dur)
 	}
-	return tunarrLineupItem{Type: "flex", Duration: dur}, nil
+	return flexItem(dur), nil
+}
+
+// flexItem builds a flex lineup entry with a duration Tunarr will accept (≥ minFlexMs).
+func flexItem(dur float64) tunarrLineupItem {
+	if dur < minFlexMs {
+		dur = minFlexMs
+	}
+	return tunarrLineupItem{Type: "flex", Duration: dur}
 }
 
 // contentItem resolves a media-server item id to a Tunarr content entry, or
@@ -113,7 +129,7 @@ func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (t
 	}
 	if !ok {
 		// Not in Tunarr's index yet → flex now, resolves on a later reconcile.
-		return tunarrLineupItem{Type: "flex", Duration: dur}, nil
+		return flexItem(dur), nil
 	}
 	return tunarrLineupItem{Type: "content", ID: uuid, Duration: dur}, nil
 }
