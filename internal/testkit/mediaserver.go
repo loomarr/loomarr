@@ -2,6 +2,7 @@ package testkit
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,9 @@ type MediaServer struct {
 	// PresentTMDB, if set, is an additional tmdb id the mock reports present
 	// (beyond the pinned 16153) — lets ingest tests flip a title to confirmed.
 	PresentTMDB string
+	// ItemRunTimeTicks, if set, is the RunTimeTicks a GET /Items?Ids=<id> lookup
+	// returns (§9 ItemDurationMs). 0 ⇒ an empty item list (no runtime).
+	ItemRunTimeTicks int64
 	// Accounts maps username→(password, isAdmin, disabled) for AuthenticateByName.
 	// If nil, GoodUser/GoodPass authenticate as an admin. Lets auth tests model
 	// admin vs member vs disabled logins.
@@ -55,6 +59,20 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		// Filler-library read (§10): scoped by ParentId → serve the filler fixture.
 		if pid := r.URL.Query().Get("ParentId"); pid != "" {
 			_, _ = w.Write(Fixture(t, "emby/filler_library.json"))
+			return
+		}
+		// Single-item runtime lookup (§9 ItemDurationMs): GET /Items?Ids=<id>&
+		// Fields=RunTimeTicks. Emby rejects the bare /Items/<id> path unless user-
+		// scoped, so the adapter uses this Ids-filtered list. A configured
+		// ItemRunTimeTicks answers with that runtime; else an empty list (0 → the
+		// scheduler falls back, never dead air).
+		if ids := r.URL.Query().Get("Ids"); ids != "" {
+			ticks := ms.ItemRunTimeTicks
+			if ticks == 0 {
+				_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"Items":[{"Id":%q,"RunTimeTicks":%d}],"TotalRecordCount":1}`, ids, ticks)
 			return
 		}
 		if term := r.URL.Query().Get("SearchTerm"); term != "" {

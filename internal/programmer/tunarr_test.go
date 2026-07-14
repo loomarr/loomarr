@@ -240,6 +240,15 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 			t.Errorf("item %d = {%s,%s}, want {%s,%s}", i, body.Lineup[i].Type, body.Lineup[i].ID, w.typ, w.id)
 		}
 	}
+	// Every flex item must carry a POSITIVE duration: Tunarr rejects the whole
+	// push with "duration Too small: expected number to be >0" if any is ≤ 0. A
+	// pending/unresolved slot has DurationMs 0, so the adapter floors flex (live-
+	// smoke bug). Slots 1-4 above are all flex, several with input duration 0.
+	for i, item := range body.Lineup {
+		if item.Type == "flex" && item.Dur <= 0 {
+			t.Errorf("flex item %d has duration %v — Tunarr rejects ≤ 0 (must be floored)", i, item.Dur)
+		}
+	}
 }
 
 func TestGetLineup_EmptyChannel400IsEmpty(t *testing.T) {
