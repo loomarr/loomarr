@@ -81,6 +81,8 @@ type Config struct {
 	FillerAITagging   bool          `env:"FILLER_AI_TAGGING" envDefault:"false"`
 	FillerBreaksPerHr int           `env:"FILLER_BREAKS_PER_HOUR" envDefault:"4"`
 	FillerPodMax      int           `env:"FILLER_POD_MAX" envDefault:"4"`
+	FillerCooldownSec int           `env:"FILLER_COOLDOWN_SECONDS" envDefault:"30"`
+	FillerWeight      int           `env:"FILLER_WEIGHT" envDefault:"1"`
 }
 
 // Load reads the environment into a Config, applying §15 defaults. It validates

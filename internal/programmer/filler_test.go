@@ -126,6 +126,18 @@ func (m *fillerMock) server(t *testing.T) *httptest.Server {
 			}
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &body)
+			// Real Tunarr requires each fillerCollections entry to carry id + weight
+			// + cooldownSeconds; a bare {id} → 400. Enforce it so the test catches a
+			// missing-field attach (live-smoke bug).
+			for _, fc := range body.FillerColls {
+				_, hasW := fc["weight"]
+				_, hasC := fc["cooldownSeconds"]
+				if fc["id"] == nil || !hasW || !hasC {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(`{"error":"Bad Request"}`))
+					return
+				}
+			}
 			if len(body.FillerColls) > 0 {
 				m.attachedList, _ = body.FillerColls[0]["id"].(string)
 			}
