@@ -52,21 +52,26 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 }
 
 // ArchiveDownloader fetches an Archive.org item/collection via plain net/http
-// (no special tooling). v1 is a stub of the real HTTP walk — the manual smoke
-// wires the actual Archive metadata API + file fetch; the interface + dispatch
-// are what the core repo needs.
-type ArchiveDownloader struct{}
+// (no special tooling — §10). It walks Archive's public JSON APIs (metadata +
+// advancedsearch), picks the smallest video derivative, and writes the media +
+// an info-JSON sidecar into the drop-folder. The walk logic lives in
+// archiveClient (injectable HTTP + fs → unit-tested against a mock server).
+type ArchiveDownloader struct {
+	client *archiveClient
+}
 
-// NewArchiveDownloader builds the Archive.org downloader.
-func NewArchiveDownloader() *ArchiveDownloader { return &ArchiveDownloader{} }
+// NewArchiveDownloader builds the Archive.org downloader against the real host.
+// preferOriginal keeps full-quality masters instead of the small derivative
+// (default false — the derivative is right for filler; §10).
+func NewArchiveDownloader(preferOriginal bool) *ArchiveDownloader {
+	c := newArchiveClient("https://archive.org", nil, diskSink{})
+	c.preferOriginal = preferOriginal
+	return &ArchiveDownloader{client: c}
+}
 
-// Download fetches an Archive.org source into dropDir. The real implementation
-// walks the item's file list via the Archive metadata API and downloads the
-// video files + writes an info-JSON sidecar; wired in the sidecar's manual smoke.
+// Download fetches an Archive.org source into dropDir (§10).
 func (d *ArchiveDownloader) Download(ctx context.Context, src Source, dropDir string) (int, int, error) {
-	// Placeholder for the manual-smoke wiring — the orchestration + dispatch are
-	// tested; the Archive HTTP walk is exercised live, not in the core gate.
-	return 0, 0, fmt.Errorf("archive downloader not yet wired for %s (manual-smoke)", src.URL)
+	return d.client.walk(ctx, src.URL, dropDir)
 }
 
 var (

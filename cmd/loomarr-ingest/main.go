@@ -37,7 +37,7 @@ func main() {
 	// The real downloaders: yt-dlp (exec) for YouTube, net/http for Archive.
 	ingestor := ingestkit.New(
 		ingestkit.NewYtDlpDownloader(cfg.YtDlpPath, cfg.FfmpegPath),
-		ingestkit.NewArchiveDownloader(),
+		ingestkit.NewArchiveDownloader(cfg.PreferOriginal),
 		cfg.DropDir, log,
 	)
 

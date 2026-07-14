@@ -74,6 +74,7 @@ services:
       INGEST_DROP_DIR: /drop
       INGEST_SOURCES: ${INGEST_SOURCES:-}      # comma-separated YouTube playlist / Archive.org URLs
       INGEST_EVERY: ${INGEST_EVERY:-6h}        # unset for single-shot
+      INGEST_PREFER_ORIGINAL: ${INGEST_PREFER_ORIGINAL:-false}  # true keeps full-quality masters; default takes Archive's small derivative (right for filler)
     volumes:
       # The drop-folder MUST be the same path the media server scans as its
       # filler library (§10); loomarr then syncs the catalog from the server.

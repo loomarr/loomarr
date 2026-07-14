@@ -1,0 +1,35 @@
+{
+  "server": "dn800305.us.archive.org",
+  "dir": "/0/items/warning-cic-logo-paramount-logo-nickelodeon-logo",
+  "metadata": {
+    "mediatype": "movies",
+    "title": "Warning, CIC logo, Paramount logo, Nickelodeon logo",
+    "description": "An Australian copyright warning followed by some logos. This comes from an old pre-recorded VHS tape from my childhood ("
+  },
+  "files": [
+    {
+      "name": "Warning, CIC logo, Paramount logo, Nickelodeon logo.ia.mp4",
+      "format": "h.264 IA",
+      "size": "8993540",
+      "source": "derivative"
+    },
+    {
+      "name": "Warning, CIC logo, Paramount logo, Nickelodeon logo.mp4",
+      "format": "MPEG4",
+      "size": "246275950",
+      "source": "original"
+    },
+    {
+      "name": "warning-cic-logo-paramount-logo-nickelodeon-logo.thumbs/Warning, CIC logo, Paramount logo, Nickelodeon logo_000001.jpg",
+      "format": "Thumbnail",
+      "size": "18307",
+      "source": "derivative"
+    },
+    {
+      "name": "warning-cic-logo-paramount-logo-nickelodeon-logo.thumbs/Warning, CIC logo, Paramount logo, Nickelodeon logo_000014.jpg",
+      "format": "Thumbnail",
+      "size": "44274",
+      "source": "derivative"
+    }
+  ]
+}

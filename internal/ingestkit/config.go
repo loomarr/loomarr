@@ -10,11 +10,12 @@ import (
 // Config is the sidecar's OWN configuration (§10 — the core has no download
 // config). All from the sidecar's environment; not part of the core's §15.
 type Config struct {
-	DropDir    string   // INGEST_DROP_DIR — the media server's filler drop-folder
-	Sources    []Source // INGEST_SOURCES — comma-separated playlist/collection URLs
-	Every      time.Duration
-	YtDlpPath  string // path to the bundled yt-dlp binary
-	FfmpegPath string // path to the bundled ffmpeg binary
+	DropDir        string   // INGEST_DROP_DIR — the media server's filler drop-folder
+	Sources        []Source // INGEST_SOURCES — comma-separated playlist/collection URLs
+	Every          time.Duration
+	YtDlpPath      string // path to the bundled yt-dlp binary
+	FfmpegPath     string // path to the bundled ffmpeg binary
+	PreferOriginal bool   // INGEST_PREFER_ORIGINAL — keep full-quality masters (default: small derivative for filler)
 }
 
 // LoadConfig reads the sidecar env. INGEST_DROP_DIR is required; sources may be
@@ -25,10 +26,11 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("INGEST_DROP_DIR is required")
 	}
 	cfg := Config{
-		DropDir:    drop,
-		Sources:    parseSources(os.Getenv("INGEST_SOURCES")),
-		YtDlpPath:  envOr("YT_DLP_PATH", "yt-dlp"),
-		FfmpegPath: envOr("FFMPEG_PATH", "ffmpeg"),
+		DropDir:        drop,
+		Sources:        parseSources(os.Getenv("INGEST_SOURCES")),
+		YtDlpPath:      envOr("YT_DLP_PATH", "yt-dlp"),
+		FfmpegPath:     envOr("FFMPEG_PATH", "ffmpeg"),
+		PreferOriginal: os.Getenv("INGEST_PREFER_ORIGINAL") == "true",
 	}
 	if v := os.Getenv("INGEST_EVERY"); v != "" {
 		d, err := time.ParseDuration(v)
