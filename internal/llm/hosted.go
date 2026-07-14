@@ -45,9 +45,16 @@ type HostedProvider struct {
 	Note string `json:"note,omitempty"`
 }
 
-// hostedCatalog is the curated truth. Model ids move fast upstream — treat these as
-// sensible defaults, refreshed as the sanctioned update path (like the local list),
-// not a guarantee the id still exists. The user can always type a current id.
+// hostedCatalog is the curated truth. IMPORTANT — the model ids here are NOT an
+// allowlist and NOT the list the user picks from. The pickable list is fetched LIVE
+// from each provider's /models (see LiveModels); these curated entries serve two
+// narrower jobs: (1) ANNOTATION — overlay a human "why"/cost hint + top-of-list
+// ranking onto the live ids we've vetted; (2) FALLBACK — a sensible placeholder list
+// shown before a key is entered (when the live list can't be fetched). A curated id
+// that gets renamed upstream degrades gracefully: the model still appears (from the
+// live list), it just loses its hint until this list is refreshed (the sanctioned
+// update path, like the local catalog). The PROVIDERS (base URLs, keys URLs) are the
+// stable part; the models are live.
 var hostedCatalog = []HostedProvider{
 	{
 		Key: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1",
