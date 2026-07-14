@@ -63,7 +63,7 @@ func TestPostgresConformance(t *testing.T) {
 			// this list in step with the schema — every conformance table.
 			pg := s.(*sqlStore)
 			_, _ = pg.db.ExecContext(context.Background(),
-				"TRUNCATE titles, settings, channels, sessions, users")
+				"TRUNCATE titles, settings, channels, sessions, users, jobs, proposals")
 			_ = s.Close()
 		})
 		return s

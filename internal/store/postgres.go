@@ -44,6 +44,21 @@ RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.fil
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json,
           c.reconcile_deadline, c.updated_at`
 
+// Postgres job claim: FOR UPDATE SKIP LOCKED so replicas never run one job twice
+// (§8/§18). Placeholders: $1=leaseUntil, $2=now, $3=limit.
+const postgresJobClaimSQL = `
+WITH due AS (
+    SELECT id FROM jobs
+    WHERE status = 'queued' AND deadline <= $2 AND deadline > 0
+    ORDER BY deadline
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE jobs j SET deadline = $1
+FROM due WHERE j.id = due.id
+RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error,
+          j.deadline, j.attempts, j.created_at, j.updated_at`
+
 // openPostgres opens a Postgres connection via pgx's stdlib shim and returns a
 // store wired with the SKIP-LOCKED claim SQL and $N placeholder rebinding.
 // Conformance (incl. concurrent claim) is proven in Phase 4 via testcontainers.
@@ -56,7 +71,7 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &sqlStore{db: db, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL}, nil
+	return &sqlStore{db: db, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL}, nil
 }
 
 // pgPlaceholders rewrites `?` markers into Postgres `$1, $2, …` in order.

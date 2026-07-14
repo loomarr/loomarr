@@ -38,6 +38,17 @@ WHERE id IN (
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
           status, shuffle_seed, lineup_json, desired_json, reconcile_deadline, updated_at`
 
+// SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
+const sqliteJobClaimSQL = `
+UPDATE jobs SET deadline = ?1
+WHERE id IN (
+    SELECT id FROM jobs
+    WHERE status = 'queued' AND deadline <= ?2 AND deadline > 0
+    ORDER BY deadline LIMIT ?3
+)
+RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error,
+          deadline, attempts, created_at, updated_at`
+
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
@@ -55,5 +66,5 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL}, nil
+	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL}, nil
 }

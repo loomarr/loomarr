@@ -30,6 +30,11 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
 	t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 	t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
+	t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
+	t.Run("ClaimDueJobs", func(t *testing.T) { testClaimDueJobs(t, newStore) })
+	t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
+	t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
+	t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -359,6 +364,171 @@ func testClaimChannelsConcurrent(t *testing.T, newStore NewStoreFunc) {
 		if c != 1 {
 			t.Errorf("channel %s claimed %d times, want exactly 1", id, c)
 		}
+	}
+}
+
+func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
+	return Job{
+		ID: id, Kind: "suggest", Status: "queued",
+		IntentJSON: `{"description":"90s action"}`, IntentHash: hash,
+		CreatedBy: "user-1", Deadline: deadline, CreatedAt: createdAt, UpdatedAt: createdAt,
+	}
+}
+
+func testJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	want := sampleJob("job-1", "hash-abc", now, now)
+	if err := s.CreateJob(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetJob(ctx, "job-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "queued" || got.IntentHash != "hash-abc" || got.CreatedBy != "user-1" {
+		t.Errorf("job round-trip mismatch: %+v", got)
+	}
+	// Update transitions status.
+	got.Status = "done"
+	got.UpdatedAt = now
+	if err := s.UpdateJob(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := s.GetJob(ctx, "job-1")
+	if after.Status != "done" {
+		t.Errorf("update didn't persist status: %s", after.Status)
+	}
+	if _, err := s.GetJob(ctx, "nope"); err != ErrNotFound {
+		t.Errorf("GetJob(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func testClaimDueJobs(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	_ = s.CreateJob(ctx, sampleJob("due", "h1", now.Add(-time.Hour), now))
+	future := sampleJob("future", "h2", now.Add(time.Hour), now)
+	_ = s.CreateJob(ctx, future)
+	running := sampleJob("running", "h3", now.Add(-time.Hour), now)
+	running.Status = "running"
+	_ = s.CreateJob(ctx, running)
+
+	claimed, err := s.ClaimDueJobs(ctx, now, time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != "due" {
+		t.Fatalf("ClaimDueJobs = %d, want just 'due': %+v", len(claimed), claimed)
+	}
+	// Leased: second claim returns nothing.
+	again, _ := s.ClaimDueJobs(ctx, now, time.Minute, 10)
+	if len(again) != 0 {
+		t.Errorf("re-claim returned %d leased jobs, want 0", len(again))
+	}
+}
+
+func testClaimJobsConcurrent(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	const n = 20
+	for i := 0; i < n; i++ {
+		_ = s.CreateJob(ctx, sampleJob("job-"+string(rune('a'+i)), "h", now.Add(-time.Hour), now))
+	}
+	var mu sync.Mutex
+	seen := map[string]int{}
+	var wg sync.WaitGroup
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				batch, err := s.ClaimDueJobs(ctx, now, time.Minute, 3)
+				if err != nil || len(batch) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, j := range batch {
+					seen[j.ID]++
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if len(seen) != n {
+		t.Errorf("claimed %d distinct jobs, want %d", len(seen), n)
+	}
+	for id, c := range seen {
+		if c != 1 {
+			t.Errorf("job %s claimed %d times, want 1", id, c)
+		}
+	}
+}
+
+func testJobCacheByHash(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	_ = s.CreateJob(ctx, sampleJob("cached", "hash-X", now, now))
+
+	// A search within TTL finds it.
+	got, err := s.FindJobByIntentHash(ctx, "hash-X", now.Add(-24*time.Hour))
+	if err != nil || got.ID != "cached" {
+		t.Fatalf("FindJobByIntentHash = %q,%v want cached", got.ID, err)
+	}
+	// A search with `since` after the job's creation misses (TTL expired).
+	if _, err := s.FindJobByIntentHash(ctx, "hash-X", now.Add(time.Hour)); err != ErrNotFound {
+		t.Errorf("expired cache lookup = %v, want ErrNotFound", err)
+	}
+	// A different hash misses.
+	if _, err := s.FindJobByIntentHash(ctx, "hash-other", now.Add(-24*time.Hour)); err != ErrNotFound {
+		t.Errorf("miss lookup = %v, want ErrNotFound", err)
+	}
+}
+
+func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	mk := func(id, status, creator string) Proposal {
+		return Proposal{ID: id, JobID: "job-1", Status: status, CreatedBy: creator,
+			ProposalJSON: `{"lineup":[]}`, CreatedAt: now, UpdatedAt: now}
+	}
+	_ = s.CreateProposal(ctx, mk("p1", "submitted", "alice"))
+	_ = s.CreateProposal(ctx, mk("p2", "submitted", "bob"))
+	_ = s.CreateProposal(ctx, mk("p3", "approved", "alice"))
+
+	// The approval queue = submitted proposals.
+	sub, err := s.ListProposalsByStatus(ctx, "submitted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sub) != 2 {
+		t.Errorf("submitted queue = %d, want 2", len(sub))
+	}
+	// My proposals = by creator.
+	aliceProps, _ := s.ListProposalsByCreator(ctx, "alice")
+	if len(aliceProps) != 2 {
+		t.Errorf("alice's proposals = %d, want 2", len(aliceProps))
+	}
+	// Approve p1: status + approved_by persist (survives restart — it's in the store).
+	p1, _ := s.GetProposal(ctx, "p1")
+	p1.Status = "approved"
+	p1.ApprovedBy = "admin"
+	p1.UpdatedAt = now
+	if err := s.UpdateProposal(ctx, p1); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := s.GetProposal(ctx, "p1")
+	if after.Status != "approved" || after.ApprovedBy != "admin" {
+		t.Errorf("approve didn't persist: %+v", after)
+	}
+	if _, err := s.GetProposal(ctx, "missing"); err != ErrNotFound {
+		t.Errorf("GetProposal(missing) = %v, want ErrNotFound", err)
 	}
 }
 

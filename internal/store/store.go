@@ -50,6 +50,25 @@ type Store interface {
 	// Postgres: FOR UPDATE SKIP LOCKED. Detached channels are never claimed.
 	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Channel, error)
 
+	// --- suggester jobs & proposals (§8) ---
+	CreateJob(ctx context.Context, j Job) error
+	GetJob(ctx context.Context, id string) (Job, error)
+	UpdateJob(ctx context.Context, j Job) error
+	// ClaimDueJobs atomically claims up to limit queued jobs whose deadline is
+	// at/before now, for the worker pool (§8). Leases each (deadline → now+lease)
+	// so two workers/replicas never run one job twice — SQLite guarded UPDATE,
+	// Postgres FOR UPDATE SKIP LOCKED (§18).
+	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error)
+	// FindJobByIntentHash returns a recent job with the same intent hash (§8
+	// proposal cache), or ErrNotFound. `since` bounds the cache TTL.
+	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error)
+
+	CreateProposal(ctx context.Context, p Proposal) error
+	GetProposal(ctx context.Context, id string) (Proposal, error)
+	UpdateProposal(ctx context.Context, p Proposal) error
+	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+
 	// --- users & sessions (§11) ---
 	GetUser(ctx context.Context, id string) (User, error)
 	UpsertUser(ctx context.Context, u User) error
