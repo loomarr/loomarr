@@ -48,9 +48,19 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	ms := &MediaServer{AdminToken: "test-admin-token", GoodUser: "Matt", GoodPass: "correct-horse"}
 	mux := http.NewServeMux()
 
-	// /Items — presence lookup (§6). AnyProviderIdEquals decides present/absent.
+	// /Items — presence lookup (§6) AND term search (§7.2). SearchTerm branches
+	// to the search fixture; otherwise AnyProviderIdEquals decides present/absent.
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		if term := r.URL.Query().Get("SearchTerm"); term != "" {
+			// The pinned search fixture answers "matrix"; any other term → empty.
+			if strings.EqualFold(term, "matrix") {
+				_, _ = w.Write(Fixture(t, "emby/search_matrix.json"))
+			} else {
+				_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
+			}
+			return
+		}
 		prov := r.URL.Query().Get("AnyProviderIdEquals")
 		// The pinned present fixture is tmdb.16153 (Phase 0); a test may add one
 		// more present id via PresentTMDB. Anything else is absent.
