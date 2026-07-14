@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -80,6 +81,18 @@ func run() error {
 		return true, "ok"
 	}
 
+	// The event bus (§7 SSE) and the domain-event emitter (§4 inv. 2) are built up
+	// front so both the webhook ingest handler and the provisioning reconciler can
+	// fan their terminal transitions to the SAME sink. The emitter routes each
+	// event to (a) the channel scheduler's backfill (OnAvailability → recompute +
+	// push the affected channels) and (b) the bus (→ SSE frame for the UI). The
+	// scheduler engine doesn't exist yet at this point, so the emitter takes it
+	// later via setEngine; until then (and if the scheduler is unconfigured) events
+	// still reach the bus. Events are a latency optimization — the channel sweep
+	// reconciles regardless — so a nil engine is safe, never a correctness gap (§9).
+	eventBus := events.NewBus()
+	emitter := &eventEmitter{bus: eventBus}
+
 	// Wire the ingest webhook handler when the store + library are configured
 	// (§6, Phase 6). Requires a store, the library flavor, and WEBHOOK_SECRET.
 	var ingestHandler http.Handler
@@ -90,7 +103,7 @@ func run() error {
 		}
 		deviceID := instanceDeviceID(context.Background(), st)
 		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, deviceID)
-		ingestHandler = ingest.New(st, lib, cfg.WebhookSecret, cfg.DownloadingTTL, time.Now, log)
+		ingestHandler = ingest.New(st, lib, cfg.WebhookSecret, cfg.DownloadingTTL, emitter, time.Now, log)
 		log.Info("ingest webhook mounted", "path", "/hooks/arr")
 	}
 
@@ -102,7 +115,7 @@ func run() error {
 		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
 		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
 		req := requester.NewSeerr(cfg.SeerrURL, cfg.SeerrAPIKey)
-		rec := reconcile.New(st, req, lib, nil, reconcile.Config{
+		rec := reconcile.New(st, req, lib, emitter, reconcile.Config{
 			RequestTTL: cfg.RequestTTL, DownloadingTTL: cfg.DownloadingTTL,
 		}, time.Now, log)
 		// Janitor sweeps expired sessions (§5, §11); jobs/proposals join in P11.
@@ -136,6 +149,13 @@ func run() error {
 		}, time.Now, log)
 		channelSvc = engine
 
+		// Now that the scheduler engine exists, give the emitter its backfill
+		// handler: provisioning availability events (webhook + reconciler) fan to
+		// OnAvailability, so an acquisition that lands `available` reconciles the
+		// channels referencing it immediately — instead of waiting up to a full
+		// sweep interval. (#10: the emitter was nil before this wire.)
+		emitter.setEngine(engine)
+
 		sweep := channels.NewRunner(engine, st, cfg.ChannelReconcileEvery, 2*cfg.ChannelReconcileEvery, 50, time.Now, log)
 		go sweep.Run(rootCtx)
 		log.Info("channel scheduler started", "tunarr", cfg.TunarrURL, "sweep_every", cfg.ChannelReconcileEvery)
@@ -147,7 +167,6 @@ func run() error {
 	// one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
-	eventBus := events.NewBus()
 	if st != nil && cfg.LibraryFlavor != "" && cfg.LLMURL != "" {
 		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
 		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
@@ -286,6 +305,47 @@ func run() error {
 	}
 	log.Info("loomarr stopped cleanly")
 	return nil
+}
+
+// eventEmitter is the composition-root fan-out for provisioning domain events
+// (§4 inv. 2): the reconciler and the webhook ingest handler both Emit through
+// it, and it routes each event to two sinks —
+//
+//   - the channel scheduler's backfill (OnAvailability): recompute + push the
+//     lineups of every channel referencing the changed key, so an acquisition
+//     that just landed `available` appears without waiting for the next sweep
+//     (#10). The engine is set after it's constructed (setEngine); until then,
+//     and if the scheduler is unconfigured, this sink is skipped.
+//   - the SSE event bus (Publish): a UI-facing `title` state-change frame (#11).
+//
+// Both sinks are latency optimizations, never load-bearing: the channel sweep
+// reconciles every channel regardless, and GET is the source of truth for SSE
+// (§8/§9). engine is read on the hot Emit path from reconciler/HTTP goroutines
+// while setEngine writes it once during setup, so it's an atomic.Pointer (race-
+// free lock-free read; a pre-wire event simply misses the backfill sink).
+type eventEmitter struct {
+	engine atomic.Pointer[channels.Engine]
+	bus    *events.Bus
+}
+
+// setEngine wires the scheduler backfill sink once the engine exists.
+func (e *eventEmitter) setEngine(eng *channels.Engine) { e.engine.Store(eng) }
+
+// Emit fans a terminal provisioning event to the scheduler backfill and the SSE
+// bus. It never blocks on either (OnAvailability logs its own per-channel errors;
+// Publish drops for slow subscribers).
+func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
+	if eng := e.engine.Load(); eng != nil {
+		eng.OnAvailability(ctx, ev)
+	}
+	e.bus.Publish(events.Event{
+		Type: "title",
+		Payload: map[string]string{
+			"key":   string(ev.Key),
+			"state": string(ev.State),
+			"name":  ev.Title.Name,
+		},
+	})
 }
 
 // liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface

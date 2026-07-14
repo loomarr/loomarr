@@ -16,6 +16,16 @@ import (
 // Clock supplies the current time; injected for deterministic tests.
 type Clock func() time.Time
 
+// Emitter receives the terminal domain events a webhook produces (§4 inv. 2),
+// so the scheduler can backfill the affected channels and the UI can reflect the
+// change (§7 SSE). It's a local port (structural typing) so the composition root
+// can hand ingest and the reconciler the SAME fan-out adapter without ingest
+// importing a sibling subsystem. nil is allowed — events are a latency
+// optimization, never load-bearing (the channel sweep recovers regardless, §9).
+type Emitter interface {
+	Emit(ctx context.Context, ev provision.DomainEvent)
+}
+
 // Handler serves POST /hooks/arr (§6). It verifies the shared secret, parses the
 // webhook, and drives the provisioning state machine (§4), confirming library
 // presence before marking a title available (invariant 4).
@@ -24,13 +34,15 @@ type Handler struct {
 	lib            library.Library
 	secret         string
 	downloadingTTL time.Duration
+	emit           Emitter
 	now            Clock
 	log            *slog.Logger
 }
 
-// New builds the ingest handler.
-func New(st store.Store, lib library.Library, secret string, downloadingTTL time.Duration, now Clock, log *slog.Logger) *Handler {
-	return &Handler{store: st, lib: lib, secret: secret, downloadingTTL: downloadingTTL, now: now, log: log}
+// New builds the ingest handler. emit may be nil (events are non-load-bearing);
+// when set, terminal transitions fan out to the scheduler + event bus.
+func New(st store.Store, lib library.Library, secret string, downloadingTTL time.Duration, emit Emitter, now Clock, log *slog.Logger) *Handler {
+	return &Handler{store: st, lib: lib, secret: secret, downloadingTTL: downloadingTTL, emit: emit, now: now, log: log}
 }
 
 // ServeHTTP handles POST /hooks/arr?token=<secret>. Always acks 200 for accepted
@@ -121,7 +133,10 @@ func (h *Handler) handleTracked(ctx context.Context, p parsed) {
 		return
 	}
 	for _, de := range emitted {
-		h.log.Info("provision event", "key", de.Key, "state", de.State) // Phase 7 wires to scheduler
+		h.log.Info("provision event", "key", de.Key, "state", de.State)
+		if h.emit != nil {
+			h.emit.Emit(ctx, de) // → scheduler backfill + SSE (composition root fans out)
+		}
 	}
 }
 
