@@ -72,21 +72,38 @@ func TestLiveModels_FallbackWhenUnreachable(t *testing.T) {
 	}
 }
 
-// ValidateKey maps a 401 to a clear error and a 2xx to success.
+// ValidateKey exercises the KEY via chat/completions (NOT /models, which is public
+// on some providers). 401 → error; 2xx → ok; 400 (key accepted, bad request) → ok.
 func TestValidateKey(t *testing.T) {
-	unauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
+	// Guard against the OpenRouter gotcha: a handler that 200s on /models but 401s on
+	// /chat/completions must be treated as a BAD key (we must hit completions).
+	unauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"x"}]}`)) // public catalog, 200
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized) // completions rejects the bad key
 	}))
 	defer unauth.Close()
 	if err := ValidateKey(context.Background(), unauth.URL, "bad"); err == nil {
-		t.Error("expected error on 401")
+		t.Error("expected error when chat/completions 401s (even though /models 200s)")
 	}
 
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"data":[]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"hi"}}]}`))
 	}))
 	defer ok.Close()
 	if err := ValidateKey(context.Background(), ok.URL, "good"); err != nil {
 		t.Errorf("expected success on 2xx, got %v", err)
+	}
+
+	// 400 = key accepted, request/model rejected → still authorized.
+	badReq := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"unknown model"}}`))
+	}))
+	defer badReq.Close()
+	if err := ValidateKey(context.Background(), badReq.URL, "good"); err != nil {
+		t.Errorf("400 (key accepted, bad model) should be treated as authorized, got %v", err)
 	}
 }

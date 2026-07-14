@@ -192,17 +192,32 @@ func fetchModelIDs(ctx context.Context, baseURL, apiKey string) ([]string, error
 	return ids, nil
 }
 
-// ValidateKey does a cheap live check that a hosted provider + key is reachable and
-// authorized, WITHOUT running a suggestion (§8.1 test / validate-on-select). It GETs
-// {baseURL}/models with the Bearer key — the universal OpenAI-compatible liveness
-// probe. Returns nil if authorized; a descriptive error otherwise (a bad key is a
-// 401 → "unauthorized"). Deliberately lenient on the body: any 2xx is success.
+// ValidateKey does a cheap live check that a hosted provider + key is actually
+// AUTHORIZED, WITHOUT running a suggestion (§8.1 test / validate-on-select).
+//
+// It does NOT use /models: that endpoint is a public catalog on some providers
+// (notably OpenRouter — 200 with any key, even none), so it can't tell a good key
+// from a bad one. Instead it sends a minimal 1-token chat/completions with the
+// Bearer key — an actual inference call is the only thing guaranteed to exercise
+// the key across every OpenAI-compatible provider. A 401/403 ⇒ bad key; a 2xx (or
+// even a 400 "model not found"-style app error, which still means the key was
+// accepted) ⇒ authorized. Costs a fraction of a cent.
 func ValidateKey(ctx context.Context, baseURL, apiKey string) error {
 	base := strings.TrimRight(baseURL, "/")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)
+	body, _ := json.Marshal(map[string]any{
+		// A model that exists on all the catalog providers isn't guaranteed, so we
+		// don't assert a specific one — we only care whether the KEY is accepted.
+		// Providers reject a bad key at auth (401) BEFORE resolving the model, so a
+		// bad model id can't mask a bad key.
+		"model":      "gpt-4o-mini",
+		"messages":   []map[string]string{{"role": "user", "content": "hi"}},
+		"max_tokens": 1,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/chat/completions", strings.NewReader(string(body)))
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
@@ -213,12 +228,15 @@ func ValidateKey(ctx context.Context, baseURL, apiKey string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		return nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return fmt.Errorf("key rejected (%d) — check the API key", resp.StatusCode)
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return nil // authorized
+	case resp.StatusCode == http.StatusBadRequest:
+		// A 400 means the key was ACCEPTED but the request/model was rejected — the
+		// key is valid (auth happens before request validation). Treat as authorized.
+		return nil
 	default:
-		// Some gateways don't expose /models; decode an error body if present.
 		var e struct {
 			Error struct {
 				Message string `json:"message"`
@@ -228,6 +246,6 @@ func ValidateKey(ctx context.Context, baseURL, apiKey string) error {
 		if e.Error.Message != "" {
 			return fmt.Errorf("provider returned %d: %s", resp.StatusCode, e.Error.Message)
 		}
-		return fmt.Errorf("provider returned %d from %s/models", resp.StatusCode, base)
+		return fmt.Errorf("provider returned %d", resp.StatusCode)
 	}
 }
