@@ -167,6 +167,58 @@ func parsePrice(s string) float64 {
 	return v
 }
 
+// familyTier maps a model FAMILY (substring of the id, provider-prefix-agnostic) to
+// a quality tier for GROUNDED TOOL-CALLING — the one thing /models metadata can't
+// tell us. Higher = better for picking themed titles reliably. We curate FAMILIES,
+// not exact ids: "gpt-4o", "claude-sonnet" etc. survive across dated snapshots
+// (gpt-4o-mini-2026-xx, …) and provider prefixes (openai/gpt-4o-mini on OpenRouter),
+// so this barely rots — far slower than an exact-id list. This encodes JUDGMENT
+// (these families reason well); availability + capability + cost stay live.
+//
+// Matched by case-insensitive substring so both "openai/gpt-4o-mini" (OpenRouter)
+// and "gpt-4o-mini" (OpenAI direct) hit the same tier. Ordered most-specific first
+// so "claude-sonnet" wins over a hypothetical bare "claude" entry.
+type familyTier struct {
+	family string // lowercase substring to match in the model id
+	tier   int    // higher = better grounded tool-caller
+	label  string // human family name for the rationale
+}
+
+var familyTiers = []familyTier{
+	// Tier 3 — top grounded reasoners.
+	{"gpt-4o", 3, "GPT-4o"},
+	{"gpt-4.1", 3, "GPT-4.1"},
+	{"claude-sonnet", 3, "Claude Sonnet"},
+	{"claude-3.5-sonnet", 3, "Claude 3.5 Sonnet"},
+	{"gemini-2.5-pro", 3, "Gemini 2.5 Pro"},
+	{"gemini-1.5-pro", 3, "Gemini 1.5 Pro"},
+	// Tier 2 — strong, cheaper workhorses (the sweet spot for a per-job suggester).
+	{"claude-haiku", 2, "Claude Haiku"},
+	{"claude-3.5-haiku", 2, "Claude 3.5 Haiku"},
+	{"gemini-2.5-flash", 2, "Gemini 2.5 Flash"},
+	{"gemini-1.5-flash", 2, "Gemini Flash"},
+	{"llama-3.3", 2, "Llama 3.3"},
+	{"llama-3.1", 2, "Llama 3.1"},
+	{"qwen3", 2, "Qwen3"},
+	{"qwen-2.5", 2, "Qwen 2.5"},
+	{"mistral-large", 2, "Mistral Large"},
+	// Tier 1 — capable but less proven for grounded JSON tool-use.
+	{"mixtral", 1, "Mixtral"},
+	{"gemma", 1, "Gemma"},
+}
+
+// tierOf returns the curated quality tier + family label for a model id (0 / "" if
+// the family isn't tiered — such a model is still shown, just unranked).
+func tierOf(id string) (int, string) {
+	lid := strings.ToLower(id)
+	for _, ft := range familyTiers {
+		if strings.Contains(lid, ft.family) {
+			return ft.tier, ft.label
+		}
+	}
+	return 0, ""
+}
+
 // LiveModels fetches the provider's CURRENT models from {baseURL}/models and RANKS
 // them by rules derived from the live metadata (§8.1) — NOT from hardcoded ids, so
 // recommendations stay good as the catalog turns over:
@@ -207,7 +259,13 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		return models, live
 	}
 
-	// Rich provider: filter to tool-capable, then rank cheapest→biggest-context.
+	// Rich provider: keep tool-capable models, then rank for the USE CASE — best
+	// grounded tool-caller first, not merely cheapest:
+	//   1. quality TIER (curated by family) descending — the durable judgment,
+	//   2. cost ascending within a tier — cheaper of two equally-good families,
+	//   3. bigger context as a final tie-break.
+	// A tool-capable model with no tier (tier 0) sorts AFTER all tiered ones, so the
+	// recommended set is always quality-first; untiered models remain selectable.
 	var capable []modelMeta
 	for _, m := range metas {
 		if m.supportsTools() {
@@ -219,33 +277,47 @@ func (hp HostedProvider) LiveModels(ctx context.Context, apiKey string) (models 
 		capable = metas
 	}
 	slices.SortStableFunc(capable, func(a, b modelMeta) int {
+		ta, _ := tierOf(a.ID)
+		tb, _ := tierOf(b.ID)
+		if ta != tb {
+			return tb - ta // higher tier first
+		}
 		if ca, cb := a.costPerMTok(), b.costPerMTok(); ca != cb {
 			if ca < cb {
 				return -1
 			}
 			return 1
 		}
-		return b.Context - a.Context // bigger context first on a price tie
+		return b.Context - a.Context
 	})
 
-	const recommendCount = 3 // top-N cheapest tool-callers get the "recommended" star
-	for i, m := range capable {
-		hm := HostedModel{
-			ID: m.ID, Label: labelOf(m), Tools: m.supportsTools(),
-		}
-		if i < recommendCount {
+	// Recommend the top-N — but ONLY tiered models (tier > 0). We never star an
+	// untiered model just because it floated up: "recommended" must mean "a family
+	// we vouch for for grounding", not "cheapest capable-looking".
+	const recommendCount = 3
+	recommended := 0
+	for _, m := range capable {
+		tier, fam := tierOf(m.ID)
+		hm := HostedModel{ID: m.ID, Label: labelOf(m), Tools: m.supportsTools()}
+		if tier > 0 && recommended < recommendCount {
 			hm.Recommended = true
-			hm.Why = whyFor(m)
+			hm.Why = whyFor(m, fam)
+			recommended++
 		}
 		models = append(models, hm)
 	}
 	return models, live
 }
 
-// whyFor builds a rule-derived rationale from the live metadata (no hardcoded text
-// per id, so it can't go stale).
-func whyFor(m modelMeta) string {
-	parts := []string{"tool-calling"}
+// whyFor builds a rationale: the curated family (the quality signal) + live cost /
+// context. The family is the durable "why this is good"; cost/context are live.
+func whyFor(m modelMeta, family string) string {
+	var parts []string
+	if family != "" {
+		parts = append(parts, family+" — strong grounded tool-caller")
+	} else {
+		parts = append(parts, "tool-calling")
+	}
 	if cost := m.costPerMTok(); !math.IsInf(cost, 1) {
 		parts = append(parts, fmt.Sprintf("~$%.2f/1M tokens", cost))
 	}
