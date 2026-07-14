@@ -4,7 +4,9 @@
 # The Node FE build stage is added in Phase 13 (web/ embedded at /).
 
 # ---- build ----
-FROM golang:1.26-alpine AS build
+# Debian-based build stage (consistent with the sidecar image); CGO_ENABLED=0
+# still yields a fully static binary, so the distroless runtime below is unaffected.
+FROM golang:1.26-bookworm AS build
 WORKDIR /src
 # Cache modules first.
 COPY go.mod go.sum ./

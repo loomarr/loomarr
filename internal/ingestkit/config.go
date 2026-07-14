@@ -10,7 +10,7 @@ import (
 // Config is the sidecar's OWN configuration (§10 — the core has no download
 // config). All from the sidecar's environment; not part of the core's §15.
 type Config struct {
-	DropDir        string   // INGEST_DROP_DIR — the media server's filler drop-folder
+	DropDir        string   // INGEST_DROP_DIR — the filler drop-folder Tunarr scans as a `local` source (§10)
 	Sources        []Source // INGEST_SOURCES — comma-separated playlist/collection URLs
 	Every          time.Duration
 	YtDlpPath      string // path to the bundled yt-dlp binary
