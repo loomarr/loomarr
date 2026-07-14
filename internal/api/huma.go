@@ -30,6 +30,37 @@ type Server struct {
 	// Phase 10 is configured.
 	channels ChannelService
 	livetv   LiveTVService
+	// suggest/search wire /v1/suggestions*, /v1/search (§7.2/§8); nil until
+	// Phase 11 is configured.
+	suggest SuggestService
+	search  SearchService
+	events  EventSource // /v1/events SSE (Phase 11); nil ⇒ route 501
+}
+
+// SuggestService is the suggestion surface the API depends on (§8). Implemented
+// by suggest.Service + the store; abstracted so the API doesn't couple to the
+// worker internals.
+type SuggestService interface {
+	// Submit enqueues a suggestion job for an intent and returns the job id.
+	Submit(ctx context.Context, description, era, tone string, mustInclude, mustExclude []string, maxAcquire int, createdBy string) (jobID string, err error)
+}
+
+// SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
+// grounding tool. Returns candidates as generic maps so the API layer needn't
+// import the catalog types (kept dependency-light).
+type SearchService interface {
+	Search(ctx context.Context, query, scope string, limit int) ([]SearchCandidate, error)
+}
+
+// SearchCandidate is the API view of a catalog candidate (§7.2).
+type SearchCandidate struct {
+	MediaType     string `json:"mediaType"`
+	TMDBID        int    `json:"tmdbId,omitempty"`
+	TVDBID        int    `json:"tvdbId,omitempty"`
+	Name          string `json:"name"`
+	Year          int    `json:"year,omitempty"`
+	InLibrary     bool   `json:"inLibrary"`
+	LibraryItemID string `json:"libraryItemId,omitempty"`
 }
 
 // ChannelService is the channel-management surface the API depends on (§9).
@@ -84,6 +115,9 @@ type Options struct {
 	CookieSecure string         // COOKIE_SECURE: auto|true|false (§11)
 	Channels     ChannelService // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV       LiveTVService  // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	Suggest      SuggestService // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
+	Search       SearchService  // /v1/search (Phase 11); nil ⇒ search route 501
+	Events       EventSource    // /v1/events SSE (Phase 11); nil ⇒ route 501
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

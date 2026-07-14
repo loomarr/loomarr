@@ -49,6 +49,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV,
+		suggest: opts.Suggest, search: opts.Search, events: opts.Events,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
@@ -56,10 +57,16 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerUsers(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerSetup(humaAPI)
+	srv.registerSuggestions(humaAPI)
+	srv.registerSearch(humaAPI)
 
 	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
 	// (not a typed Huma op — §16). Auth checked inline.
 	mux.HandleFunc("GET /v1/backup", srv.backupHandler)
+
+	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
+	// bodies). Auth checked inline via the same authorizer.
+	mux.HandleFunc("GET /v1/events", srv.eventsHandler)
 
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)

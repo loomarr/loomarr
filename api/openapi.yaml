@@ -1,5 +1,25 @@
 components:
   schemas:
+    ApproveOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ApproveOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enqueued:
+          description: Acquisitions enqueued as wanted titles
+          format: int64
+          type: integer
+        status:
+          type: string
+      required:
+        - status
+        - enqueued
+      type: object
     ChannelDTO:
       additionalProperties: false
       properties:
@@ -108,6 +128,34 @@ components:
         - name
         - number
         - strategy
+      type: object
+    DenyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DenyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          type: string
+      type: object
+    DenyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DenyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        status:
+          type: string
+      required:
+        - status
       type: object
     EnqueueInputBody:
       additionalProperties: false
@@ -242,6 +290,25 @@ components:
       required:
         - titles
       type: object
+    ListProposalsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListProposalsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        proposals:
+          items:
+            $ref: "#/components/schemas/ProposalDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - proposals
+      type: object
     ListUsersOutputBody:
       additionalProperties: false
       properties:
@@ -308,6 +375,83 @@ components:
             - member
           type: string
       type: object
+    ProposalDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ProposalDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        approvedBy:
+          type: string
+        createdBy:
+          type: string
+        denyReason:
+          type: string
+        id:
+          type: string
+        jobId:
+          type: string
+        proposal: {}
+        status:
+          enum:
+            - submitted
+            - approved
+            - denied
+          type: string
+      required:
+        - id
+        - jobId
+        - status
+        - proposal
+      type: object
+    SearchCandidate:
+      additionalProperties: false
+      properties:
+        inLibrary:
+          type: boolean
+        libraryItemId:
+          type: string
+        mediaType:
+          type: string
+        name:
+          type: string
+        tmdbId:
+          format: int64
+          type: integer
+        tvdbId:
+          format: int64
+          type: integer
+        year:
+          format: int64
+          type: integer
+      required:
+        - mediaType
+        - name
+        - inLibrary
+      type: object
+    SearchOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SearchOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        candidates:
+          items:
+            $ref: "#/components/schemas/SearchCandidate"
+          type:
+            - array
+            - "null"
+      required:
+        - candidates
+      type: object
     SetupCheck:
       additionalProperties: false
       properties:
@@ -343,6 +487,57 @@ components:
             - "null"
       required:
         - checks
+      type: object
+    SubmitInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SubmitInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          examples:
+            - 90s action movies
+          type: string
+        era:
+          type: string
+        maxAcquisitions:
+          format: int64
+          type: integer
+        mustExclude:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        mustInclude:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        tone:
+          type: string
+      required:
+        - description
+      type: object
+    SubmitOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SubmitOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          type: string
+      required:
+        - jobId
       type: object
     TitleDTO:
       additionalProperties: false
@@ -566,6 +761,53 @@ paths:
       summary: Force desired→Tunarr reconciliation
       tags:
         - channels
+  /v1/search:
+    get:
+      operationId: search
+      parameters:
+        - description: Search terms
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Search terms
+            type: string
+        - description: Corpus to search (default all)
+          explode: false
+          in: query
+          name: scope
+          schema:
+            description: Corpus to search (default all)
+            enum:
+              - library
+              - tmdb
+              - clips
+              - all
+            type: string
+        - description: Max results (default 20)
+          explode: false
+          in: query
+          name: limit
+          schema:
+            description: Max results (default 20)
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Federated search (library + TMDB + clips)
+      tags:
+        - search
   /v1/setup/livetv-connect:
     post:
       description: Admin only. One-time, idempotent (§6).
@@ -606,6 +848,146 @@ paths:
       summary: Connection checklist
       tags:
         - setup
+  /v1/suggestions:
+    get:
+      description: status=submitted is the approval queue.
+      operationId: list-proposals
+      parameters:
+        - description: Filter by status; submitted = the approval queue
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Filter by status; submitted = the approval queue
+            enum:
+              - submitted
+              - approved
+              - denied
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProposalsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List proposals by status
+      tags:
+        - suggestions
+    post:
+      description: Any authenticated user (§8).
+      operationId: submit-suggestion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Start a suggestion job from an intent
+      tags:
+        - suggestions
+  /v1/suggestions/{id}:
+    get:
+      operationId: get-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a proposal + its job status
+      tags:
+        - suggestions
+  /v1/suggestions/{id}/approve:
+    post:
+      description: Admin only. Enqueues acquisitions through the approval gate (§8).
+      operationId: approve-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a proposal (admin)
+      tags:
+        - suggestions
+  /v1/suggestions/{id}/deny:
+    post:
+      description: Admin only.
+      operationId: deny-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DenyInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DenyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Deny a proposal (admin)
+      tags:
+        - suggestions
   /v1/titles:
     get:
       operationId: list-titles

@@ -3,11 +3,13 @@
 .env
 *.local
 
-# Build output
+# Build output — anchor to repo root so these ignore ONLY the compiled binaries,
+# not the cmd/loomarr and cmd/loomarr-ingest source directories (a bare pattern
+# matches at any depth).
 /bin/
 /dist/
-loomarr
-loomarr-ingest
+/loomarr
+/loomarr-ingest
 
 # SQLite dev databases
 *.db
