@@ -34,8 +34,17 @@ var groundedTemp = 0.2
 
 // chatOpts builds the per-turn ChatOptions with the tools + grounded sampling.
 // temp lets the repair loop lower it further on a retry.
+//
+// JSONMode is deliberately OFF while tools are offered. Forcing format:json AND
+// giving tools corrupts the tool-call channel on some models (e.g. Qwen3): they
+// satisfy "output JSON" by emitting the tool call as a JSON OBJECT in the content
+// field instead of using the native tool_calls array — so the grounding loop sees
+// no tool call and mis-parses it as a (pick-less) final answer, yielding an empty
+// proposal. The system prompt already mandates "reply with ONLY JSON" for the
+// FINAL turn, and the repair loop backstops any stray prose. (Caught live: qwen3:8b
+// on a themed intent — correct genres, but the call landed in content, not tool_calls.)
 func chatOpts(tools []llm.ToolSchema, temp float64) llm.ChatOptions {
-	return llm.ChatOptions{Tools: tools, JSONMode: true, Temperature: &temp}
+	return llm.ChatOptions{Tools: tools, JSONMode: len(tools) == 0, Temperature: &temp}
 }
 
 // Validator re-checks a proposed acquisition against reality before it's
