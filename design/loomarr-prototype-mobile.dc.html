@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;}
+*{box-sizing:border-box;}
+a{color:#4CC9E8;text-decoration:none;} a:hover{color:#7FD9EF;}
+@keyframes lmPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</helmet>
+<div style="width:390px;height:844px;margin:0 auto;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;font-size:14px;line-height:1.5;display:flex;flex-direction:column;overflow:hidden;border-left:1px solid #1B1E24;border-right:1px solid #1B1E24;position:relative;">
+
+  <!-- Top bar -->
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #2A2E37;flex-shrink:0;">
+    <div style="display:flex;width:26px;height:8px;border-radius:2px;overflow:hidden;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div></div>
+    <div style="font-weight:700;font-size:14px;letter-spacing:.06em;">LOOMARR</div>
+    <div style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">{{ topStatus }}</div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10px;color:#FFB020;">AL</div>
+  </div>
+
+  <!-- Content -->
+  <div style="flex:1;overflow-y:auto;min-height:0;">
+
+    <!-- CHANNELS -->
+    <sc-if value="{{ rChannels }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Mobile · Channels" style="padding:20px 18px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:20px;font-weight:600;">Channels</div>
+      <sc-for list="{{ channels }}" as="ch" hint-placeholder-count="1">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;align-items:flex-start;gap:12px;">
+            <div style="font-family:'Geist Mono',monospace;font-size:26px;font-weight:600;color:#FFB020;font-variant-numeric:tabular-nums;line-height:1;">{{ ch.num }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:14.5px;">{{ ch.name }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;margin-top:2px;">Managed by Loomarr</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div style="width:7px;height:7px;border-radius:50%;background:{{ ch.dotColor }};animation:lmPulse 2s ease-in-out infinite;"></div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ ch.dotColor }};">{{ ch.statusLabel }}</div>
+            </div>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8B93A3;background:#0B0C0E;border:1px solid #1B1E24;border-radius:4px;padding:8px 10px;line-height:1.6;">{{ ch.nowNext }}</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="flex:1;height:5px;background:#1B1E24;border-radius:999px;overflow:hidden;"><div style="height:100%;width:{{ ch.pct }}%;background:{{ ch.barColor }};border-radius:999px;transition:width .5s ease-out;"></div></div>
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;white-space:nowrap;">{{ ch.slots }}</div>
+          </div>
+        </div>
+      </sc-for>
+      <div style="font-size:12.5px;color:#5A6170;text-align:center;padding:8px;">Creation flows live on desktop — mobile is for watching and approving.</div>
+    </div>
+    </sc-if>
+
+    <!-- BOARD -->
+    <sc-if value="{{ rBoard }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Board" style="padding:20px 18px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:20px;font-weight:600;">Board</div>
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">My proposals</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-weight:600;font-size:14px;">90s Saturday Morning</div>
+          <div style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10px;color:{{ propColor }};background:{{ propBg }};border-radius:999px;padding:3px 10px;">{{ propStatus }}</div>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8B93A3;">{{ propJourney }}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <sc-for list="{{ titles }}" as="t" hint-placeholder-count="4">
+          <div style="background:#131519;border:1px solid #1B1E24;border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;min-height:44px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13.5px;font-weight:500;text-decoration:{{ t.deco }};color:{{ t.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ t.name }} <span style="color:#5A6170;font-weight:400;">({{ t.year }})</span></div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;">{{ t.key }}</div>
+            </div>
+            <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ t.badgeColor }};background:{{ t.badgeBg }};border-radius:4px;padding:3px 9px;white-space:nowrap;">{{ t.state }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- APPROVALS -->
+    <sc-if value="{{ rApprovals }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Approvals" style="padding:20px 18px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:20px;font-weight:600;">Approvals</div>
+      <sc-if value="{{ queueEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+          <div style="font-size:14px;font-weight:600;">Queue's clear</div>
+          <div style="color:#8B93A3;font-size:12.5px;">Nothing awaiting approval.</div>
+        </div>
+      </sc-if>
+      <sc-for list="{{ queue }}" as="q" hint-placeholder-count="1">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="font-weight:600;font-size:14.5px;">{{ q.name }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;margin-top:3px;">by {{ q.by }} · {{ q.summary }}</div>
+          </div>
+          <div style="font-size:12.5px;color:#8B93A3;background:#0B0C0E;border:1px solid #1B1E24;border-radius:8px;padding:10px 12px;line-height:1.5;">"{{ q.intent }}"</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <sc-for list="{{ q.chips }}" as="c" hint-placeholder-count="7">
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ c.color }};border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;">{{ c.label }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ q.pending }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:10px;">
+              <button onClick="{{ q.deny }}" style="flex:1;background:transparent;color:#E5484D;border:1px solid rgba(229,72,77,.4);border-radius:8px;padding:13px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Deny</button>
+              <button onClick="{{ q.approve }}" style="flex:2;background:#3DD68C;color:#0B0C0E;border:none;border-radius:8px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Approve</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ q.approved }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#3DD68C;background:rgba(61,214,140,.12);border-radius:999px;padding:5px 12px;text-align:center;">APPROVED · by alex</div></sc-if>
+          <sc-if value="{{ q.denied }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#E5484D;background:rgba(229,72,77,.12);border-radius:999px;padding:5px 12px;text-align:center;">DENIED</div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+  </div>
+
+  <!-- Bottom tabs -->
+  <div style="display:flex;border-top:1px solid #2A2E37;flex-shrink:0;background:#0B0C0E;padding-bottom:8px;">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+      <button onClick="{{ tb.go }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:transparent;border:none;padding:12px 0 6px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;position:relative;">
+        <span style="font-family:'Geist Mono',monospace;font-size:14px;color:{{ tb.iconColor }};">{{ tb.icon }}</span>
+        <span style="font-size:10.5px;color:{{ tb.color }};font-weight:{{ tb.weight }};">{{ tb.label }}</span>
+        <sc-if value="{{ tb.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;right:calc(50% - 20px);width:14px;height:14px;border-radius:50%;background:#D6409F;color:#fff;font-family:'Geist Mono',monospace;font-size:9px;display:flex;align-items:center;justify-content:center;">{{ tb.badge }}</span></sc-if>
+      </button>
+    </sc-for>
+  </div>
+
+  <!-- Toast -->
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;bottom:88px;left:16px;right:16px;background:#1B1E24;border:1px solid {{ toastBorder }};border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:50;">
+    <div style="width:7px;height:7px;border-radius:50%;background:{{ toastColor }};flex-shrink:0;"></div>
+    <div style="font-size:12.5px;">{{ toastMsg }}</div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844}}">
+class Component extends DCLogic {
+  state = {
+    route: 'approvals',
+    propStatus: 'pending',
+    channels: [],
+    titles: [],
+    approved: false, denied: false,
+    toast: null,
+  };
+  ACQS = [
+    { name: 'Animaniacs', year: 1993, key: 'series:tvdb:72879' },
+    { name: 'Darkwing Duck', year: 1991, key: 'series:tvdb:75648' },
+    { name: 'Gargoyles', year: 1994, key: 'series:tvdb:75765' },
+    { name: 'Sonic the Hedgehog (SatAM)', year: 1993, key: 'series:tvdb:76804' },
+  ];
+  timers = [];
+  later(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+  toast(msg, color) {
+    this.setState({ toast: { msg, color: color || '#3DD68C' } });
+    this.later(3000, () => this.setState({ toast: null }));
+  }
+  approve() {
+    this.setState({
+      approved: true, propStatus: 'approved',
+      titles: this.ACQS.map(t => ({ ...t, state: 'requested' })),
+      channels: [{ num: '42', name: '90s Saturday Morning', status: 'creating', filled: 3, total: 7 }],
+    });
+    this.toast('Approved · approved_by: alex — creating CH 42…');
+    this.later(1500, () => { this.patchChannel({ status: 'live' }); this.setState({ propStatus: 'live' }); this.toast("You're on the air. CH 42 is live."); });
+    const seq = [
+      [2800, 'Animaniacs', 'downloading'], [4800, 'Animaniacs', 'available'],
+      [6200, 'Darkwing Duck', 'downloading'], [8400, 'Darkwing Duck', 'available'],
+      [9800, 'Gargoyles', 'downloading'],
+      [12000, 'Sonic the Hedgehog (SatAM)', 'unavailable'],
+    ];
+    seq.forEach(([ms, name, st]) => this.later(ms, () => {
+      this.setState({ titles: this.state.titles.map(t => t.name === name ? { ...t, state: st } : t) });
+      if (st === 'available') { this.patchChannel({ filled: this.state.channels[0].filled + 1 }); this.toast(name + ' landed — backfilled in place.'); }
+      if (st === 'unavailable') this.toast('Sonic (SatAM) gave up — substituting Captain Planet (1990).', '#F5D90A');
+    }));
+  }
+  patchChannel(p) { this.setState({ channels: this.state.channels.map(c => ({ ...c, ...p })) }); }
+  badge(st) {
+    return {
+      requested: ['#8B93A3', 'rgba(139,147,163,.12)'], downloading: ['#4CC9E8', 'rgba(76,201,232,.12)'],
+      available: ['#3DD68C', 'rgba(61,214,140,.12)'], unavailable: ['#8B93A3', 'rgba(139,147,163,.12)'],
+    }[st] || ['#8B93A3', 'rgba(139,147,163,.12)'];
+  }
+  renderVals() {
+    const s = this.state;
+    const pending = !s.approved && !s.denied;
+    const channels = s.channels.length ? s.channels.map(ch => ({
+      ...ch,
+      dotColor: ch.status === 'live' ? '#E5484D' : '#4CC9E8',
+      statusLabel: ch.status === 'live' ? 'ON AIR' : 'CREATING',
+      nowNext: ch.status === 'live' ? 'Now: X-Men “Night of the Sentinels”\nNext: pod (1:40) → Batman: TAS' : 'Pushing lineup to Tunarr…',
+      pct: Math.round(ch.filled / ch.total * 100),
+      barColor: ch.filled < ch.total ? '#4CC9E8' : '#3DD68C',
+      slots: ch.filled + '/' + ch.total + ' slots',
+    })) : [{ num: '—', name: 'No channels yet', status: '', dotColor: '#5A6170', statusLabel: 'DEAD AIR', nowNext: 'Approve the pending proposal to put CH 42 on the air.', pct: 0, barColor: '#1B1E24', slots: '0/0' }];
+    const titles = s.titles.map(t => {
+      const [badgeColor, badgeBg] = this.badge(t.state);
+      return { ...t, badgeColor, badgeBg, deco: t.state === 'unavailable' ? 'line-through' : 'none', nameColor: t.state === 'unavailable' ? '#8B93A3' : '#E7EAF0' };
+    });
+    const avail = titles.filter(t => t.state === 'available').length;
+    const journeys = {
+      pending: 'submitted → pending approval',
+      approved: 'approved → acquiring ' + avail + '/' + titles.length + ' titles…',
+      live: 'approved → acquiring ' + avail + '/' + titles.length + ' → live on channel 42',
+      denied: 'denied by admin',
+    };
+    const propMeta = {
+      pending: ['#D6409F', 'rgba(214,64,159,.12)', 'PENDING'],
+      approved: ['#4CC9E8', 'rgba(76,201,232,.12)', 'ACQUIRING'],
+      live: ['#3DD68C', 'rgba(61,214,140,.12)', 'ON AIR · CH 42'],
+      denied: ['#E5484D', 'rgba(229,72,77,.12)', 'DENIED'],
+    }[s.propStatus];
+    const queue = [{
+      name: '90s Saturday Morning', by: 'alex',
+      summary: '3 in library · 4 acquisitions · timeslot AM',
+      intent: 'A Saturday-morning cartoon channel: early-90s animation (1990–1994), with era-matched toy and cereal commercials in the breaks. Must include X-Men.',
+      chips: [
+        { label: 'X-Men: TAS', color: '#3DD68C' }, { label: 'Batman: TAS', color: '#3DD68C' }, { label: 'Rugrats', color: '#3DD68C' },
+        { label: '+ Animaniacs', color: '#4CC9E8' }, { label: '+ Darkwing Duck', color: '#4CC9E8' }, { label: '+ Gargoyles', color: '#4CC9E8' }, { label: '+ Sonic (SatAM)', color: '#4CC9E8' },
+      ],
+      pending, approved: s.approved, denied: s.denied,
+      approve: () => this.approve(),
+      deny: () => { this.setState({ denied: true, propStatus: 'denied' }); this.toast('Denied. The member sees this in My proposals.', '#E5484D'); },
+    }];
+    const tabDefs = [['channels', 'Channels', '⏸'], ['board', 'Board', '≡'], ['approvals', 'Approvals', '✓']];
+    const tabs = tabDefs.map(([r, label, icon]) => ({
+      label, icon, go: () => this.setState({ route: r }),
+      color: s.route === r ? '#E7EAF0' : '#5A6170',
+      iconColor: s.route === r ? '#FFB020' : '#5A6170',
+      weight: s.route === r ? '600' : '400',
+      hasBadge: r === 'approvals' && pending, badge: '1',
+    }));
+    return {
+      rChannels: s.route === 'channels', rBoard: s.route === 'board', rApprovals: s.route === 'approvals',
+      channels, titles, queue, queueEmpty: false, tabs,
+      topStatus: s.channels.length && s.channels[0].status === 'live' ? '1 CH ON AIR' : pending ? '1 AWAITING APPROVAL' : 'STANDBY',
+      propColor: propMeta[0], propBg: propMeta[1], propStatus: propMeta[2],
+      propJourney: journeys[s.propStatus],
+      hasToast: !!s.toast, toastMsg: s.toast ? s.toast.msg : '',
+      toastColor: s.toast ? s.toast.color : '#3DD68C',
+      toastBorder: s.toast ? s.toast.color + '55' : '#2A2E37',
+    };
+  }
+}
+</script>
+</body>
+</html>

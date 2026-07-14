@@ -11,6 +11,7 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 3. **Never weaken safety for convenience.** Specifically: the grounding rules (§8), the approval gate / authorization model (§7, §11), and forward-only migrations (§16) are not negotiable, including in tests and seed data.
 4. **Generated files are never hand-edited**: `api/openapi.yaml` (regenerate via `make openapi`), orval output, goose-applied schemas.
 5. **No new dependencies** beyond design doc §14 without updating §14 in the same PR, with a one-line rationale.
+6. **All application code is Go** (design doc §14 language policy). The only non-Go allowed: FE libraries that compile to embedded static assets, and the vendored `yt-dlp` binary invoked via exec. Never introduce a Python/Node/shell *service* or script as application code — if a task seems to need one, that's a §14 conversation first.
 
 ## Session start ritual
 
@@ -35,7 +36,7 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 | 10 Scheduler + Tunarr | §9, §6 (Programmer + resilience), §18 |
 | 11 Suggester + search | §8, §7.2 |
 | 12 Commercials & filler | §10 |
-| 13 Web UI + onboarding | §12, §13, §14 (FE) |
+| 13 Web UI + onboarding | §12, §13, §14 (FE) + `loomarr-frontend-design.md` (all of it) |
 | 14 Docs & ship | §13 (docs set), §16 |
 
 ## PROGRESS.md format
@@ -51,6 +52,9 @@ make test-pg        # store conformance vs Postgres (testcontainers; requires Do
 make openapi        # export api/openapi.yaml from the running definitions
 make openapi-verify # regenerated spec must match committed (CI red on drift)
 make fe             # orval typegen + tsc + vitest
+make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
+make fe-visual      # Playwright visual suite over the /__gallery registry
+make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
 make e2e            # Playwright smoke vs mocked backend
 make dev            # dev compose stack
 make seed           # populate a dev store (fake users/titles/channels/clips via testkit)
@@ -88,7 +92,12 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 
 ## Seed docs
 
-`docs-livetv-integration.md` ships alongside this repo pre-written. During **phase 14**, incorporate it as `docs/integrations/media-server-livetv.md` (update any section references if the design doc has moved) and fold its "Troubleshooting hooks" into the Troubleshooting page. It is a summary — where it and the design doc disagree, the design doc wins and the seed gets corrected.
+Three design artifacts ship alongside this repo pre-written:
+- **`design/loomarr-prototype-{desktop,mobile}.dc.html`** — the Claude Design mock: the authoritative visual reference for phase 13. Recreate pixel-perfectly (per `design/README.md`) with the two deltas noted in `loomarr-frontend-design.md` §7 (badge `-300` text stops; `static-500` disabled-only). These are `.dc.html` prototypes (a design-tool format + `support.js` runtime), NOT the shippable frontend — phase 13 builds the real Vite/React app to match their rendered output.
+- **`loomarr-frontend-design.md`** — authoritative for how the frontend looks and is built (tokens, palette, component library, visual testing, mobile-readiness). Phases 1 and 13 build against it; incorporate as `docs/frontend-design.md` during phase 14.
+- **`docs-livetv-integration.md`** — summary of the media-server Live TV wiring. Incorporate as `docs/integrations/media-server-livetv.md` during **phase 14** (update section references if the design doc has moved) and fold its "Troubleshooting hooks" into the Troubleshooting page. It is a summary — where it and the design doc disagree, the design doc wins and the seed gets corrected.
+
+Precedence for all three: `docs/design.md` wins on *behavior* (endpoints, flows, auth, phases); the seeds win on their own domain (look/onboarding). A seed that contradicts the design doc gets corrected, not followed.
 
 ## Definition of done
 

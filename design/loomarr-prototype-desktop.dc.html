@@ -1,0 +1,1669 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;}
+*{box-sizing:border-box;}
+a{color:#4CC9E8;text-decoration:none;} a:hover{color:#7FD9EF;text-decoration:underline;}
+input::placeholder,textarea::placeholder{color:#5A6170;}
+@keyframes lmPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@keyframes lmShimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+@keyframes lmScan{0%{opacity:.045;}50%{opacity:.07;}100%{opacity:.045;}}
+@keyframes lmStatic{0%{background-position:0 0,0 0;}20%{background-position:-34px 12px,0 0;}40%{background-position:22px -28px,0 0;}60%{background-position:-16px -12px,0 0;}80%{background-position:28px 20px,0 0;}100%{background-position:8px -6px,0 0;}}
+@keyframes lmSpin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;font-size:14px;line-height:1.5;">
+
+<!-- ============ LOGIN ============ -->
+<sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Login" style="min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22300%22%20height=%22300%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22300%22%20height=%22300%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E'),repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#ffffff 2px,#ffffff 3px);opacity:.09;animation:lmStatic .35s steps(5) infinite;pointer-events:none;"></div>
+  <div style="width:400px;display:flex;flex-direction:column;gap:24px;position:relative;">
+    <div style="display:flex;flex-direction:column;gap:14px;align-items:center;">
+      <div style="display:flex;width:200px;height:14px;border-radius:3px;overflow:hidden;">
+        <div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#F5D90A;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div><div style="flex:1;background:#E5484D;"></div><div style="flex:1;background:#8B93A3;"></div>
+      </div>
+      <div style="font-size:32px;font-weight:700;letter-spacing:.08em;">LOOMARR</div>
+      <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;">always something on</div>
+    </div>
+    <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:28px;display:flex;flex-direction:column;gap:16px;">
+      <div style="font-size:16px;font-weight:600;">Create the owner account</div>
+      <div style="font-size:13px;color:#8B93A3;">Fresh install. Set up your own admin account first — you'll connect {{ msName }} during setup, then link this account and import everyone else's.</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <label style="font-size:12px;color:#8B93A3;">Username</label>
+        <input value="{{ loginUser }}" onInput="{{ setLoginUser }}" placeholder="pick a username" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:10px 12px;color:#E7EAF0;font-size:14px;outline:none;" style-focus="border-color:#FFB020;" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <label style="font-size:12px;color:#8B93A3;">Password</label>
+        <input type="password" value="{{ loginPw }}" onInput="{{ setLoginPw }}" placeholder="••••••••" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:10px 12px;color:#E7EAF0;font-size:14px;outline:none;" style-focus="border-color:#FFB020;" />
+      </div>
+      <button onClick="{{ doLogin }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">Create account &amp; start setup</button>
+      <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-align:center;">local owner account · once {{ msLower }} is connected, everyone signs in with their {{ msLower }} account</div>
+    </div>
+    <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-align:center;">PROTOTYPE — any credentials work</div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ WIZARD ============ -->
+<sc-if value="{{ isWizard }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="First-run wizard" style="min-height:100vh;display:flex;">
+  <div style="width:280px;border-right:1px solid #2A2E37;padding:32px 24px;display:flex;flex-direction:column;gap:28px;flex-shrink:0;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;width:36px;height:10px;border-radius:2px;overflow:hidden;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div></div>
+      <div style="font-weight:700;letter-spacing:.06em;">LOOMARR</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <div style="font-size:16px;font-weight:600;">Let's get you on the air</div>
+      <div style="font-size:13px;color:#8B93A3;">First-run setup · saved as you go</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      <sc-for list="{{ wizSteps }}" as="ws" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:{{ ws.bg }};">
+          <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:11px;flex-shrink:0;border:1px solid {{ ws.ringColor }};color:{{ ws.numColor }};background:{{ ws.numBg }};">{{ ws.mark }}</div>
+          <div style="font-size:13px;color:{{ ws.labelColor }};font-weight:{{ ws.weight }};">{{ ws.label }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top:auto;font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">owner: {{ ownerName }} · claimed</div>
+  </div>
+  <div style="flex:1;padding:48px 56px;max-width:860px;">
+
+    <sc-if value="{{ wizIsChecklist }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div>
+          <div style="font-size:24px;font-weight:600;line-height:1.2;">Connect &amp; validate</div>
+          <div style="color:#8B93A3;margin-top:8px;">Each integration is a real settings form with a live test — configure → validate → save. Precedence is <span style="font-family:'Geist Mono',monospace;font-size:13px;">env &gt; database &gt; default</span>: fields pinned in your compose file render locked.</div>
+        </div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+          <sc-for list="{{ checks }}" as="c" hint-placeholder-count="7">
+            <div style="border-bottom:1px solid #1B1E24;">
+              <button onClick="{{ c.toggle }}" style="display:flex;align-items:center;gap:14px;padding:14px 18px;width:100%;background:{{ c.headBg }};border:none;cursor:pointer;text-align:left;font-family:'Geist',sans-serif;color:#E7EAF0;">
+                <div style="width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                  <sc-if value="{{ c.isPending }}" hint-placeholder-val="{{ true }}"><div style="width:10px;height:10px;border-radius:50%;border:1.5px solid #2A2E37;"></div></sc-if>
+                  <sc-if value="{{ c.isRunning }}" hint-placeholder-val="{{ false }}"><div style="width:12px;height:12px;border-radius:50%;border:2px solid #2A2E37;border-top-color:#4CC9E8;animation:lmSpin .7s linear infinite;"></div></sc-if>
+                  <sc-if value="{{ c.isPass }}" hint-placeholder-val="{{ false }}"><div style="width:16px;height:16px;border-radius:50%;background:rgba(61,214,140,.15);color:#3DD68C;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">✓</div></sc-if>
+                  <sc-if value="{{ c.isFail }}" hint-placeholder-val="{{ false }}"><div style="width:16px;height:16px;border-radius:50%;background:rgba(229,72,77,.15);color:#E5484D;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">✕</div></sc-if>
+                </div>
+                <div style="font-weight:500;font-size:14px;">{{ c.name }}</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ c.target }}</div>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+                  <sc-if value="{{ c.hasDetail }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ c.detailColor }};">{{ c.shortDetail }}</div></sc-if>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ c.chev }}</span>
+                </div>
+              </button>
+              <sc-if value="{{ c.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:4px 18px 18px 52px;display:flex;flex-direction:column;gap:12px;">
+                  <div style="font-size:13px;color:#8B93A3;line-height:1.55;">{{ c.guide }}</div>
+                  <sc-if value="{{ c.hasFields }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                      <sc-for list="{{ c.fields }}" as="f">
+                        <div style="display:flex;flex-direction:column;gap:5px;">
+                          <label style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">{{ f.label }}</label>
+                          <sc-if value="{{ f.locked }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;align-items:center;gap:8px;background:#0B0C0E;border:1px solid #1B1E24;border-radius:4px;padding:9px 12px;">
+                              <span style="font-family:'Geist Mono',monospace;font-size:13px;color:#8B93A3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.val }}</span>
+                              <span title="env > database > default" style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;border:1px solid #2A2E37;border-radius:4px;padding:1px 6px;white-space:nowrap;">SET VIA ENV</span>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+                            <select value="{{ f.val }}" onChange="{{ f.set }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:9px 12px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;">
+                              <sc-for list="{{ f.options }}" as="o"><option value="{{ o.v }}">{{ o.v }}</option></sc-for>
+                            </select>
+                          </sc-if>
+                          <sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}">
+                            <input value="{{ f.val }}" onInput="{{ f.set }}" placeholder="{{ f.ph }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:9px 12px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;" style-focus="border-color:#FFB020;" />
+                          </sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ c.source }}</div>
+                  <sc-if value="{{ c.isPass }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:12px;color:#3DD68C;">✓ {{ c.detail }}</div></sc-if>
+                  <sc-if value="{{ c.isFail }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:rgba(229,72,77,.07);border:1px solid rgba(229,72,77,.25);border-radius:4px;padding:8px 12px;font-size:13px;color:#E7EAF0;">{{ c.hint }} <a href="#" onClick="{{ noop }}">Troubleshooting → Live TV wiring</a></div>
+                  </sc-if>
+                  <div style="display:flex;gap:10px;">
+                    <button onClick="{{ c.test }}" style="background:{{ c.testBg }};color:{{ c.testColor }};border:1px solid {{ c.testBorder }};border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;align-self:flex-start;">{{ c.testLabel }}</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <sc-if value="{{ checksDone }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ wizNext }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">Continue — we'll fix the red one in step 4 →</button>
+          </sc-if>
+          <sc-if value="{{ checksNotDone }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#5A6170;">{{ checkProgress }}</div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ wizIsWebhooks }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div>
+          <div style="font-size:24px;font-weight:600;line-height:1.2;">Webhook handshake</div>
+          <div style="color:#8B93A3;margin-top:8px;">Paste this webhook into Sonarr and Radarr (Settings → Connect → Webhook, on <span style="font-family:'Geist Mono',monospace;font-size:13px;">On Grab</span> + <span style="font-family:'Geist Mono',monospace;font-size:13px;">On Import</span>), then click Test in each app. Loomarr is listening.</div>
+        </div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:12px;color:#8B93A3;">Webhook URL</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <div style="flex:1;font-family:'Geist Mono',monospace;font-size:13px;background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:10px 12px;color:#4CC9E8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">http://loomarr:8080/hooks/arr?token=whk_9f2•••••••</div>
+            <button onClick="{{ copyHook }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:4px;padding:10px 14px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">{{ copyLabel }}</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <sc-for list="{{ hookApps }}" as="h" hint-placeholder-count="2">
+            <div style="background:#131519;border:1px solid {{ h.border }};border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="font-weight:600;">{{ h.name }}</div>
+                <sc-if value="{{ h.done }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:11px;color:#3DD68C;background:rgba(61,214,140,.12);border-radius:999px;padding:3px 10px;">TEST RECEIVED</div></sc-if>
+                <sc-if value="{{ h.waiting }}" hint-placeholder-val="{{ true }}"><div style="font-family:'Geist Mono',monospace;font-size:11px;color:#4CC9E8;animation:lmPulse 1.6s ease-in-out infinite;">listening…</div></sc-if>
+              </div>
+              <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#5A6170;">{{ h.detail }}</div>
+              <sc-if value="{{ h.waiting }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ h.simulate }}" style="background:transparent;color:#8B93A3;border:1px dashed #2A2E37;border-radius:4px;padding:8px;font-size:12px;cursor:pointer;font-family:'Geist Mono',monospace;" style-hover="color:#E7EAF0;border-color:#8B93A3;">▶ prototype: simulate Test from {{ h.name }}</button>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;">
+          <sc-if value="{{ hooksDone }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ wizNext }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">Continue →</button>
+          </sc-if>
+          <sc-if value="{{ hooksNotDone }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ wizNext }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:8px;padding:11px 20px;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;color:#E7EAF0;">Skip for now →</button>
+            <div style="font-size:12.5px;color:#5A6170;max-width:380px;">Optional — without webhooks, downloads are picked up by the periodic library re-check (~5 min) instead of instantly. Finish anytime from Settings.</div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ wizIsLivetv }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div>
+          <div style="font-size:24px;font-weight:600;line-height:1.2;">Connect Live TV</div>
+          <div style="color:#8B93A3;margin-top:8px;">Tunarr isn't registered in Jellyfin yet — the red check from step 2. This one-time wiring registers Tunarr as an M3U tuner and its XMLTV as the guide source. Loomarr never modifies Jellyfin silently; this is your explicit go-ahead.</div>
+        </div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:18px;">
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;font-family:'Geist Mono',monospace;font-size:13px;">
+              <span style="color:{{ tunerColor }};">{{ tunerMark }}</span><span style="color:#E7EAF0;">POST /LiveTv/TunerHosts</span><span style="color:#5A6170;">— Tunarr M3U → jellyfin tuner</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;font-family:'Geist Mono',monospace;font-size:13px;">
+              <span style="color:{{ guideColor }};">{{ guideMark }}</span><span style="color:#E7EAF0;">POST /LiveTv/ListingProviders</span><span style="color:#5A6170;">— Tunarr XMLTV → guide source</span>
+            </div>
+          </div>
+          <sc-if value="{{ livetvUnwired }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:14px;align-items:center;">
+              <button onClick="{{ connectLivetv }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">Connect Tunarr to Jellyfin</button>
+              <button onClick="{{ wizNext }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:8px;padding:11px 20px;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;color:#E7EAF0;">Skip for now →</button>
+              <div style="font-size:12.5px;color:#5A6170;max-width:300px;">Optional — channels still play in Tunarr; they just won't show in Jellyfin's TV guide until wired.</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ livetvWiring }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:13px;color:#4CC9E8;animation:lmPulse 1.2s ease-in-out infinite;">wiring…</div></sc-if>
+          <sc-if value="{{ livetvWired }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div style="color:#3DD68C;font-weight:500;">Signal locked. Every channel Loomarr creates now appears in Jellyfin's guide automatically.</div>
+              <button onClick="{{ wizNext }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;align-self:flex-start;" style-hover="background:#FFC14D;">Continue →</button>
+            </div>
+          </sc-if>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">idempotent — re-running never duplicates a tuner</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ wizIsFirstChannel }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div>
+          <div style="font-size:24px;font-weight:600;line-height:1.2;">Your first channel</div>
+          <div style="color:#8B93A3;margin-top:8px;">All signals green. Describe a channel in a sentence and watch the whole pipeline run: proposal → approval → acquisition → on the air. Start from a template — you can edit everything.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <sc-for list="{{ templates }}" as="t" hint-placeholder-count="4">
+            <button onClick="{{ t.pick }}" style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;text-align:left;cursor:pointer;color:#E7EAF0;font-family:'Geist',sans-serif;display:flex;flex-direction:column;gap:8px;" style-hover="border-color:#D6409F;">
+              <div style="font-weight:600;font-size:14px;">{{ t.name }}</div>
+              <div style="font-size:12.5px;color:#8B93A3;line-height:1.45;">{{ t.blurb }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;">{{ t.constraints }}</div>
+            </button>
+          </sc-for>
+        </div>
+        <button onClick="{{ skipToApp }}" style="background:transparent;border:none;color:#8B93A3;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;align-self:flex-start;padding:0;" style-hover="color:#E7EAF0;">Skip — I'll write my own intent</button>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ APP ============ -->
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;min-height:100vh;">
+  <!-- Nav rail -->
+  <div style="width:{{ navW }};border-right:1px solid #2A2E37;display:flex;flex-direction:column;padding:20px 12px;gap:20px;flex-shrink:0;position:sticky;top:0;height:100vh;transition:width .2s ease-out;overflow-x:hidden;overflow-y:auto;">
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;align-items:center;gap:10px;padding:0 10px;min-height:22px;justify-content:{{ navJustify }};">
+        <div style="display:flex;width:30px;height:9px;border-radius:2px;overflow:hidden;flex-shrink:0;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div></div>
+        <sc-if value="{{ navExpanded }}" hint-placeholder-val="{{ true }}">
+          <div style="font-weight:700;font-size:15px;letter-spacing:.06em;">LOOMARR</div>
+          <span onClick="{{ toggleNav }}" title="Collapse menu" style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:14px;color:#5A6170;cursor:pointer;padding:2px 4px;line-height:1;" style-hover="color:#E7EAF0;">‹</span>
+        </sc-if>
+      </div>
+      <sc-if value="{{ navCollapsedFlag }}" hint-placeholder-val="{{ false }}">
+        <span onClick="{{ toggleNav }}" title="Expand menu" style="font-family:'Geist Mono',monospace;font-size:14px;color:#5A6170;cursor:pointer;text-align:center;padding:2px 0;line-height:1;" style-hover="color:#E7EAF0;">›</span>
+      </sc-if>
+    </div>
+    <button onClick="{{ openCmdk }}" title="Search (⌘K)" style="display:flex;align-items:center;justify-content:{{ navJustify }};gap:8px;background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:8px 12px;color:#5A6170;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;color:#8B93A3;">
+      <sc-if value="{{ navExpanded }}" hint-placeholder-val="{{ true }}"><span>Search…</span></sc-if>
+      <span style="font-family:'Geist Mono',monospace;font-size:11px;border:1px solid #2A2E37;border-radius:4px;padding:1px 5px;">⌘K</span>
+    </button>
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="8">
+        <button onClick="{{ n.go }}" title="{{ n.label }}" style="display:flex;align-items:center;justify-content:{{ navJustify }};gap:10px;background:{{ n.bg }};border:none;border-radius:8px;padding:9px 12px;color:{{ n.color }};font-size:13.5px;font-weight:{{ n.weight }};cursor:pointer;font-family:'Geist',sans-serif;text-align:left;width:100%;position:relative;" style-hover="background:#1B1E24;">
+          <span style="font-family:'Geist Mono',monospace;font-size:{{ navIconSize }};width:18px;color:{{ n.iconColor }};flex-shrink:0;text-align:center;line-height:1;">{{ n.icon }}</span>
+          <sc-if value="{{ n.expanded }}" hint-placeholder-val="{{ true }}">
+            <span>{{ n.label }}</span>
+            <sc-if value="{{ n.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:11px;background:rgba(214,64,159,.15);color:#D6409F;border-radius:999px;padding:1px 8px;">{{ n.badge }}</span></sc-if>
+          </sc-if>
+          <sc-if value="{{ n.collapsedBadge }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:6px;right:8px;width:7px;height:7px;border-radius:50%;background:#D6409F;"></span></sc-if>
+        </button>
+      </sc-for>
+    </div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:10px 10px 0;border-top:1px solid #1B1E24;">
+      <div style="display:flex;align-items:center;gap:10px;justify-content:{{ navJustify }};">
+        <div title="{{ ownerName }}" style="width:28px;height:28px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:11px;color:{{ roleColor }};flex-shrink:0;">{{ ownerInitials }}</div>
+        <sc-if value="{{ navExpanded }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;">
+            <div style="font-size:13px;font-weight:500;">{{ ownerName }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ roleColor }};">{{ roleLabel }}</div>
+          </div>
+        </sc-if>
+      </div>
+      <sc-if value="{{ navExpanded }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ toggleRole }}" style="background:transparent;color:#5A6170;border:1px dashed #2A2E37;border-radius:6px;padding:6px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;" style-hover="color:#8B93A3;border-color:#8B93A3;">▶ {{ roleToggleLabel }}</button>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div style="flex:1;min-width:0;">
+
+    <!-- CHANNELS -->
+    <sc-if value="{{ rChannels }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Channels" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:24px;font-weight:600;">Channels</div>
+        <button onClick="{{ goSuggest }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">+ New channel</button>
+      </div>
+      <sc-if value="{{ noChannels }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:80px 40px;display:flex;flex-direction:column;align-items:center;gap:14px;position:relative;overflow:hidden;">
+          <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22300%22%20height=%22300%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22300%22%20height=%22300%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E'),repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#ffffff 2px,#ffffff 3px);opacity:.07;animation:lmStatic .35s steps(5) infinite;pointer-events:none;"></div>
+          <div style="display:flex;width:120px;height:10px;border-radius:2px;overflow:hidden;opacity:.5;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#F5D90A;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div><div style="flex:1;background:#E5484D;"></div></div>
+          <div style="font-size:16px;font-weight:600;">Dead air</div>
+          <div style="color:#8B93A3;font-size:13.5px;">No channels yet. Describe one in a sentence and Loomarr builds it end to end.</div>
+          <button onClick="{{ goSuggest }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;margin-top:6px;" style-hover="background:#FFC14D;">Create your first channel</button>
+        </div>
+      </sc-if>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
+        <sc-for list="{{ channels }}" as="ch" hint-placeholder-count="0">
+          <div onClick="{{ ch.open }}" style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;cursor:pointer;" style-hover="border-color:#8B93A3;">
+            <div style="display:flex;align-items:flex-start;gap:14px;">
+              <div style="font-family:'Geist Mono',monospace;font-size:28px;font-weight:600;color:#FFB020;font-variant-numeric:tabular-nums;line-height:1;">{{ ch.num }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:15px;">{{ ch.name }}</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;margin-top:2px;">Managed by Loomarr · {{ ch.strategy }}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="width:8px;height:8px;border-radius:50%;background:{{ ch.dotColor }};animation:{{ ch.dotAnim }};"></div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ ch.dotColor }};">{{ ch.statusLabel }}</div>
+              </div>
+            </div>
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;background:#0B0C0E;border:1px solid #1B1E24;border-radius:4px;padding:8px 12px;">{{ ch.nowNext }}</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;height:5px;background:#1B1E24;border-radius:999px;overflow:hidden;"><div style="height:100%;width:{{ ch.pct }}%;background:{{ ch.barColor }};border-radius:999px;transition:width .5s ease-out;"></div></div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;white-space:nowrap;">{{ ch.slots }}</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button onClick="{{ ch.reconcile }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:4px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">{{ ch.reconcileLabel }}</button>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;align-self:center;">pods: era-matched · {{ ch.podNote }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- CHANNEL DETAIL -->
+    <sc-if value="{{ rChDetail }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Channel detail" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;max-width:1100px;">
+      <button onClick="{{ backToChannels }}" style="background:none;border:none;color:#8B93A3;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;padding:0;text-align:left;" style-hover="color:#E7EAF0;">← Channels</button>
+      <sc-if value="{{ hasChannel }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:flex-start;gap:18px;">
+        <div style="font-family:'Geist Mono',monospace;font-size:44px;font-weight:600;color:#FFB020;font-variant-numeric:tabular-nums;line-height:1;">{{ chDetail.num }}</div>
+        <div style="flex:1;">
+          <div style="font-size:22px;font-weight:600;">{{ chDetail.name }}</div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#5A6170;margin-top:4px;">Managed by Loomarr · {{ chDetail.strategy }} · TZ container</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:9px;height:9px;border-radius:50%;background:{{ chDetail.dotColor }};animation:lmPulse 2s ease-in-out infinite;"></div>
+          <div style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ chDetail.dotColor }};">{{ chDetail.statusLabel }}</div>
+        </div>
+        <button onClick="{{ detailReconcile }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">Reconcile now</button>
+      </div>
+      <sc-if value="{{ drifted }}" hint-placeholder-val="{{ false }}">
+        <div style="background:rgba(245,217,10,.06);border:1px solid rgba(245,217,10,.3);border-radius:8px;padding:12px 16px;font-size:13px;color:#E7EAF0;display:flex;gap:10px;align-items:baseline;">
+          <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#F5D90A;">DRIFT</span>
+          <span>Slot 03 (Rugrats) vanished from the library — substituted from the fallback pool. An old <span style="font-family:'Geist Mono',monospace;font-size:12px;">available</span> is never trusted forever.</span>
+        </div>
+      </sc-if>
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <div style="font-weight:600;font-size:13.5px;">Today's guide — Saturday AM block</div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">07:00 – 12:00 · pods in amber</div>
+        </div>
+        <div style="display:flex;gap:2px;height:56px;align-items:stretch;">
+          <sc-for list="{{ epg }}" as="e" hint-placeholder-count="13">
+            <div style="flex:{{ e.flex }};background:{{ e.bg }};border:1px solid {{ e.border }};border-radius:4px;display:flex;flex-direction:column;justify-content:center;padding:4px 8px;min-width:0;overflow:hidden;">
+              <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;white-space:nowrap;">{{ e.time }}</div>
+              <div style="font-size:11px;color:{{ e.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.name }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">dimmed programs are pod-filled pending slots — they backfill in place, no guide scramble</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start;">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+          <div style="padding:12px 18px;border-bottom:1px solid #2A2E37;display:flex;justify-content:space-between;align-items:baseline;">
+            <div style="font-weight:600;font-size:13.5px;">Desired lineup — slots</div>
+            <sc-if value="{{ notDrifted }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ simulateDrift }}" style="background:transparent;color:#5A6170;border:1px dashed #2A2E37;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;" style-hover="color:#F5D90A;border-color:#F5D90A;">▶ prototype: simulate library drift</button>
+            </sc-if>
+          </div>
+          <sc-for list="{{ chSlots }}" as="sl" hint-placeholder-count="7">
+            <div style="padding:11px 18px;border-bottom:1px solid #1B1E24;display:flex;flex-direction:column;gap:3px;">
+              <div style="display:flex;align-items:baseline;gap:10px;">
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ sl.ord }}</span>
+                <span style="font-weight:500;font-size:13.5px;color:{{ sl.nameColor }};">{{ sl.name }} <span style="color:#5A6170;font-weight:400;">({{ sl.year }})</span></span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;">{{ sl.key }}</span>
+                <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ sl.badgeColor }};background:{{ sl.badgeBg }};border-radius:4px;padding:2px 8px;">{{ sl.state }}</span>
+              </div>
+              <sc-if value="{{ sl.hasNote }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:#8B93A3;padding-left:26px;">{{ sl.note }}</div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;">
+            <div style="font-weight:600;font-size:13.5px;">Pod policy</div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;width:110px;">breaks / hour</div>
+                <div style="display:flex;gap:6px;"><sc-for list="{{ podBreaksChips }}" as="p"><button onClick="{{ p.pick }}" style="background:{{ p.bg }};color:{{ p.color }};border:1px solid {{ p.border }};border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ p.label }}</button></sc-for></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;width:110px;">ads / pod max</div>
+                <div style="display:flex;gap:6px;"><sc-for list="{{ podMaxChips }}" as="p"><button onClick="{{ p.pick }}" style="background:{{ p.bg }};color:{{ p.color }};border:1px solid {{ p.border }};border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ p.label }}</button></sc-for></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;width:110px;">era matching</div>
+                <div style="display:flex;gap:6px;"><sc-for list="{{ podEraChips }}" as="p"><button onClick="{{ p.pick }}" style="background:{{ p.bg }};color:{{ p.color }};border:1px solid {{ p.border }};border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ p.label }}</button></sc-for></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;width:110px;">audience</div>
+                <div style="display:flex;gap:6px;"><sc-for list="{{ podAudChips }}" as="p"><button onClick="{{ p.pick }}" style="background:{{ p.bg }};color:{{ p.color }};border:1px solid {{ p.border }};border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ p.label }}</button></sc-for></div>
+              </div>
+            </div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">fallback ladder: exact era → widen → any {{ chDetail.name }}-appropriate → bumper card · never dead air</div>
+          </div>
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-weight:600;font-size:13.5px;">Reconcile log</div>
+            <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;">
+              <sc-for list="{{ recLog }}" as="r" hint-placeholder-count="3">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;line-height:1.5;"><span style="color:#5A6170;">{{ r.t }}</span> {{ r.msg }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- BOARD -->
+    <sc-if value="{{ rBoard }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Board" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;">
+      <div>
+        <div style="font-size:24px;font-weight:600;">Board</div>
+        <div style="color:#8B93A3;margin-top:6px;font-size:13.5px;">Every title Loomarr is tracking, by provisioning state. Library is the source of truth.</div>
+      </div>
+      <sc-if value="{{ noTitles }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:64px 40px;display:flex;flex-direction:column;align-items:center;gap:10px;position:relative;overflow:hidden;">
+          <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22300%22%20height=%22300%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22300%22%20height=%22300%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E'),repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#ffffff 2px,#ffffff 3px);opacity:.07;animation:lmStatic .35s steps(5) infinite;pointer-events:none;"></div>
+          <div style="font-size:15px;font-weight:600;">Nothing in flight</div>
+          <div style="color:#8B93A3;font-size:13.5px;">Titles appear here when a proposal is approved and acquisitions start.</div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasProposalJourney }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:16px 20px;display:flex;flex-direction:column;gap:6px;">
+          <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">My proposals</div>
+          <div style="display:flex;align-items:baseline;gap:12px;">
+            <div style="font-weight:600;font-size:14px;">90s Saturday Morning</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#D6409F;">{{ journeyStatus }}</div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasTitles }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:1fr 200px 140px 120px;gap:12px;padding:10px 18px;border-bottom:1px solid #2A2E37;font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">
+            <div>Title</div><div>Key</div><div>State</div><div>Deadline</div>
+          </div>
+          <sc-for list="{{ titles }}" as="t" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:1fr 200px 140px 120px;gap:12px;padding:11px 18px;border-bottom:1px solid #1B1E24;align-items:center;min-height:40px;">
+              <div style="font-size:13.5px;font-weight:500;text-decoration:{{ t.deco }};color:{{ t.nameColor }};">{{ t.name }} <span style="color:#5A6170;font-weight:400;">({{ t.year }})</span></div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;overflow:hidden;text-overflow:ellipsis;">{{ t.key }}</div>
+              <div><span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ t.badgeColor }};background:{{ t.badgeBg }};border-radius:4px;padding:3px 9px;">{{ t.state }}</span></div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ t.deadline }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;">{{ boardSummary }}</div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- SUGGEST -->
+    <sc-if value="{{ rSuggest }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Suggestion workspace" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;max-width:1060px;">
+
+      <sc-if value="{{ sIdle }}" hint-placeholder-val="{{ true }}">
+        <!-- Layout A: centered hero -->
+        <sc-if value="{{ heroCentered }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:24px;padding:56px 0 24px;">
+            <div style="text-align:center;display:flex;flex-direction:column;gap:8px;">
+              <div style="font-size:32px;font-weight:600;line-height:1.2;">What should be on TV?</div>
+              <div style="color:#8B93A3;font-size:14px;">Describe a channel. Loomarr proposes a lineup from your library and finds what's missing.</div>
+            </div>
+            <div style="width:100%;max-width:720px;display:flex;flex-direction:column;gap:14px;">
+              <div style="position:relative;">
+                <textarea value="{{ intent }}" onInput="{{ setIntent }}" rows="3" placeholder="e.g. Saturday-morning cartoons from the early 90s, with period toy and cereal ads in the breaks…" style="width:100%;background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px 18px 46px;color:#E7EAF0;font-size:15px;font-family:'Geist',sans-serif;resize:none;outline:none;line-height:1.5;" style-focus="border-color:#D6409F;box-shadow:0 0 0 3px rgba(214,64,159,.15);"></textarea>
+                <button onClick="{{ startGen }}" style="position:absolute;right:12px;bottom:12px;background:#D6409F;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#E45CB0;">Suggest</button>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+                <sc-for list="{{ templates }}" as="t" hint-placeholder-count="4">
+                  <button onClick="{{ t.pickChip }}" style="background:transparent;border:1px solid #2A2E37;border-radius:999px;padding:6px 14px;color:#8B93A3;font-size:12.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#D6409F;color:#D6409F;">{{ t.name }}</button>
+                </sc-for>
+              </div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#5A6170;text-align:center;">good intents name an era, a tone, and a runtime target · must-include/exclude works too</div>
+            </div>
+          </div>
+        </sc-if>
+        <!-- Layout B: split workspace -->
+        <sc-if value="{{ heroSplit }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:24px;align-items:start;padding-top:12px;">
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div style="font-size:24px;font-weight:600;">New channel</div>
+              <div style="position:relative;">
+                <textarea value="{{ intent }}" onInput="{{ setIntent }}" rows="5" placeholder="Describe the channel you want…" style="width:100%;background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px 18px 46px;color:#E7EAF0;font-size:15px;font-family:'Geist',sans-serif;resize:none;outline:none;line-height:1.5;" style-focus="border-color:#D6409F;box-shadow:0 0 0 3px rgba(214,64,159,.15);"></textarea>
+                <button onClick="{{ startGen }}" style="position:absolute;right:12px;bottom:12px;background:#D6409F;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#E45CB0;">Suggest</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">Templates</div>
+                <sc-for list="{{ templates }}" as="t" hint-placeholder-count="4">
+                  <button onClick="{{ t.pickChip }}" style="background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:12px 14px;text-align:left;cursor:pointer;color:#E7EAF0;font-family:'Geist',sans-serif;display:flex;justify-content:space-between;gap:10px;align-items:baseline;" style-hover="border-color:#D6409F;">
+                    <span style="font-size:13.5px;font-weight:500;">{{ t.name }}</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;">{{ t.constraints }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;position:sticky;top:24px;">
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">How it works</div>
+              <sc-for list="{{ howItWorks }}" as="s" hint-placeholder-count="5">
+                <div style="display:flex;gap:12px;align-items:baseline;">
+                  <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;width:14px;">{{ s.n }}</div>
+                  <div style="font-size:13px;color:#8B93A3;line-height:1.5;">{{ s.text }}</div>
+                </div>
+              </sc-for>
+              <div style="border-top:1px solid #1B1E24;padding-top:12px;font-size:12.5px;color:#5A6170;">Channels may start filler-heavy and improve as content lands. Grounded proposals only — no hallucinated titles, ever.</div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ sGenerating }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:24px;max-width:720px;margin:24px auto 0;width:100%;">
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;font-size:14.5px;color:#E7EAF0;line-height:1.5;">{{ intent }}</div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#D6409F;margin-bottom:10px;animation:lmPulse 1.6s ease-in-out infinite;">Tuning…</div>
+            <sc-for list="{{ genSteps }}" as="g" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:14px;padding:10px 0;">
+                <div style="width:18px;display:flex;justify-content:center;">
+                  <sc-if value="{{ g.done }}" hint-placeholder-val="{{ false }}"><span style="color:#3DD68C;font-size:12px;font-weight:700;">✓</span></sc-if>
+                  <sc-if value="{{ g.active }}" hint-placeholder-val="{{ false }}"><div style="width:11px;height:11px;border-radius:50%;border:2px solid #2A2E37;border-top-color:#D6409F;animation:lmSpin .7s linear infinite;"></div></sc-if>
+                  <sc-if value="{{ g.pending }}" hint-placeholder-val="{{ true }}"><div style="width:8px;height:8px;border-radius:50%;border:1.5px solid #2A2E37;"></div></sc-if>
+                </div>
+                <div style="font-size:14px;color:{{ g.color }};">{{ g.label }}</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#5A6170;margin-left:auto;">{{ g.meta }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="height:4px;border-radius:999px;background:linear-gradient(90deg,#1B1E24 25%,rgba(214,64,159,.5) 50%,#1B1E24 75%);background-size:200% 100%;animation:lmShimmer 1.4s linear infinite;"></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sReview }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
+            <div>
+              <div style="font-size:22px;font-weight:600;">Proposal — {{ proposalName }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;margin-top:6px;">theme fit <span style="color:#D6409F;">0.91</span> · era balance <span style="color:#D6409F;">0.88</span> · availability <span style="color:#F5D90A;">0.43</span> · grounded, 0 dropped</div>
+            </div>
+            <sc-if value="{{ notSubmitted }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ submitProposal }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;white-space:nowrap;" style-hover="background:#FFC14D;">Submit for approval</button>
+            </sc-if>
+            <sc-if value="{{ submittedAdmin }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;background:rgba(214,64,159,.12);border-radius:999px;padding:4px 12px;">SUBMITTED · PENDING APPROVAL</div>
+                <button onClick="{{ goApprovals }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">Open approval queue →</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ submittedMember }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;background:rgba(214,64,159,.12);border-radius:999px;padding:4px 12px;">SUBMITTED · PENDING APPROVAL</div>
+                <div style="font-size:12.5px;color:#8B93A3;max-width:260px;text-align:right;">An admin will review it. Track the journey on your Board.</div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+              <div style="padding:12px 18px;border-bottom:1px solid #2A2E37;display:flex;justify-content:space-between;align-items:baseline;">
+                <div style="font-weight:600;font-size:13.5px;">Lineup — in your library</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#3DD68C;">{{ lineupCount }} ready</div>
+              </div>
+              <sc-for list="{{ lineup }}" as="li" hint-placeholder-count="3">
+                <div style="padding:12px 18px;border-bottom:1px solid #1B1E24;display:flex;flex-direction:column;gap:4px;">
+                  <div style="display:flex;align-items:baseline;gap:10px;">
+                    <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">{{ li.ord }}</span>
+                    <span style="font-weight:500;font-size:13.5px;">{{ li.name }} <span style="color:#5A6170;font-weight:400;">({{ li.year }})</span></span>
+                    <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:#3DD68C;background:rgba(61,214,140,.1);border-radius:4px;padding:2px 7px;">IN LIBRARY</span>
+                  </div>
+                  <div style="font-size:12.5px;color:#8B93A3;padding-left:26px;">{{ li.why }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+              <div style="padding:12px 18px;border-bottom:1px solid #2A2E37;display:flex;justify-content:space-between;align-items:baseline;">
+                <div style="font-weight:600;font-size:13.5px;">Acquisitions — missing</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#4CC9E8;">{{ acqCount }} to acquire</div>
+              </div>
+              <sc-for list="{{ acquisitions }}" as="aq" hint-placeholder-count="4">
+                <div style="padding:12px 18px;border-bottom:1px solid #1B1E24;display:flex;flex-direction:column;gap:4px;opacity:{{ aq.opacity }};">
+                  <div style="display:flex;align-items:baseline;gap:10px;">
+                    <span style="font-weight:500;font-size:13.5px;">{{ aq.name }} <span style="color:#5A6170;font-weight:400;">({{ aq.year }})</span></span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;">{{ aq.key }}</span>
+                    <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:#D6409F;">conf {{ aq.conf }}</span>
+                    <sc-if value="{{ aq.removable }}" hint-placeholder-val="{{ true }}"><button onClick="{{ aq.remove }}" style="background:none;border:none;color:#5A6170;cursor:pointer;font-size:13px;padding:0 2px;font-family:'Geist',sans-serif;" style-hover="color:#E5484D;">✕</button></sc-if>
+                  </div>
+                  <div style="font-size:12.5px;color:#8B93A3;">{{ aq.why }}</div>
+                </div>
+              </sc-for>
+              <div style="padding:12px 18px;font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">alternates on file: Captain Planet (1990) · ReBoot (1994) — used if a title goes unavailable</div>
+            </div>
+          </div>
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:8px;overflow:hidden;">
+            <div style="display:flex;gap:10px;align-items:center;padding:10px 14px;">
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">EDIT VIA SEARCH</span>
+              <input value="{{ editQ }}" onInput="{{ setEditQ }}" placeholder="Add or replace a title — searches your library + TMDB" style="flex:1;background:transparent;border:none;color:#E7EAF0;font-size:13px;outline:none;font-family:'Geist',sans-serif;" />
+            </div>
+            <sc-if value="{{ hasEditResults }}" hint-placeholder-val="{{ false }}">
+              <div style="border-top:1px solid #1B1E24;padding:6px;">
+                <sc-for list="{{ editResults }}" as="er">
+                  <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;" style-hover="background:#1B1E24;">
+                    <span style="font-size:13px;">{{ er.name }} <span style="color:#5A6170;">({{ er.year }})</span></span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ er.tagColor }};">{{ er.tag }}</span>
+                    <button onClick="{{ er.add }}" style="margin-left:auto;background:transparent;color:#4CC9E8;border:1px solid rgba(76,201,232,.35);border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:rgba(76,201,232,.1);">{{ er.addLabel }}</button>
+                  </div>
+                </sc-for>
+                <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;padding:6px 10px;">missing titles become acquisitions — same approval gate, no new privilege surface</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- APPROVALS -->
+    <sc-if value="{{ rApprovals }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Approval queue" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;max-width:900px;">
+      <div>
+        <div style="font-size:24px;font-weight:600;">Approval queue</div>
+        <div style="color:#8B93A3;margin-top:6px;font-size:13.5px;">Nothing acquires or schedules without a human yes. Approvals are audited.</div>
+      </div>
+      <sc-if value="{{ queueEmpty }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:64px 40px;display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div style="font-size:15px;font-weight:600;">Queue's clear</div>
+          <div style="color:#8B93A3;font-size:13.5px;">Nothing awaiting approval.</div>
+        </div>
+      </sc-if>
+      <sc-for list="{{ queue }}" as="q" hint-placeholder-count="0">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:16px;">
+          <div style="display:flex;align-items:flex-start;gap:16px;">
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:15px;">{{ q.name }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#5A6170;margin-top:4px;">by {{ q.by }} · {{ q.summary }}</div>
+            </div>
+            <sc-if value="{{ q.pending }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:10px;">
+                <button onClick="{{ q.deny }}" style="background:transparent;color:#E5484D;border:1px solid rgba(229,72,77,.4);border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:rgba(229,72,77,.1);">Deny</button>
+                <button onClick="{{ q.approve }}" style="background:#3DD68C;color:#0B0C0E;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#5CDf9F;">Approve</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ q.approved }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:11px;color:#3DD68C;background:rgba(61,214,140,.12);border-radius:999px;padding:4px 12px;">APPROVED · by {{ q.approvedBy }}</div></sc-if>
+            <sc-if value="{{ q.denied }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:11px;color:#E5484D;background:rgba(229,72,77,.12);border-radius:999px;padding:4px 12px;">DENIED</div></sc-if>
+          </div>
+          <div style="font-size:13px;color:#8B93A3;background:#0B0C0E;border:1px solid #1B1E24;border-radius:8px;padding:12px 14px;line-height:1.5;">"{{ q.intent }}"</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <sc-for list="{{ q.chips }}" as="c" hint-placeholder-count="7">
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ c.color }};border:1px solid #2A2E37;border-radius:4px;padding:3px 9px;">{{ c.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- FILLER -->
+    <sc-if value="{{ rFiller }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Filler library" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:24px;font-weight:600;">Filler library</div>
+          <div style="color:#8B93A3;margin-top:6px;font-size:13.5px;">Commercials, bumpers, and station IDs — synced from {{ msName }}'s '{{ fillerLibName }}' library.</div>
+        </div>
+        <button onClick="{{ syncClips }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:10px 18px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">{{ syncLabel }}</button>
+      </div>
+      <sc-if value="{{ noClips }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:72px 40px;display:flex;flex-direction:column;align-items:center;gap:12px;position:relative;overflow:hidden;">
+          <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22300%22%20height=%22300%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22300%22%20height=%22300%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E'),repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#ffffff 2px,#ffffff 3px);opacity:.07;animation:lmStatic .35s steps(5) infinite;pointer-events:none;"></div>
+          <div style="font-size:15px;font-weight:600;">No clips yet</div>
+          <div style="color:#8B93A3;font-size:13.5px;text-align:center;max-width:440px;">Drop files in the filler folder, point MeTube at a playlist, or enable the loomarr-ingest sidecar — then sync.</div>
+          <button onClick="{{ syncClips }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;margin-top:4px;" style-hover="background:#FFC14D;">Sync from media server</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <div style="font-weight:600;font-size:13.5px;">Ingestion sources</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">loomarr-ingest sidecar · reads via API_TOKEN</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ sources }}" as="src" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:12px;background:#0B0C0E;border:1px solid #1B1E24;border-radius:6px;padding:9px 12px;">
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ src.kindColor }};text-transform:uppercase;width:56px;">{{ src.kind }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#E7EAF0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ src.url }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;white-space:nowrap;">{{ src.status }}</span>
+                <button onClick="{{ src.remove }}" style="background:none;border:none;color:#5A6170;cursor:pointer;font-size:13px;padding:0 2px;font-family:'Geist',sans-serif;" style-hover="color:#E5484D;">✕</button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <input value="{{ newSource }}" onInput="{{ setNewSource }}" placeholder="Paste a YouTube playlist or Archive.org collection URL…" style="flex:1;background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:9px 12px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;" style-focus="border-color:#FFB020;" />
+            <button onClick="{{ addSource }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:4px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">+ Add source</button>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">sidecar downloads → drop-folder → {{ msName }} scans the filler library → catalog sync · the core never downloads media</div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasClips }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+              <div style="font-weight:600;font-size:13.5px;">Pod preview — CH 42 · Saturday-morning break</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#3DD68C;">MATCHED · era 1991–94 · audience kids</div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:stretch;height:52px;">
+              <sc-for list="{{ pod }}" as="p" hint-placeholder-count="5">
+                <div style="flex:{{ p.flex }};background:{{ p.bg }};border:1px solid {{ p.border }};border-radius:4px;display:flex;flex-direction:column;justify-content:center;padding:6px 10px;min-width:0;">
+                  <div style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ p.kindColor }};text-transform:uppercase;">{{ p.kind }}</div>
+                  <div style="font-size:11.5px;color:#E7EAF0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;">pod 1:40 of 2:00 flex gap · category variety enforced · no repeats in window · seed ch42-0800</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">
+            <sc-for list="{{ clips }}" as="cl" hint-placeholder-count="8">
+              <div style="background:#131519;border:1px solid {{ cl.cardBorder }};border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                  <div style="font-weight:500;font-size:13.5px;line-height:1.35;">{{ cl.name }}</div>
+                  <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;white-space:nowrap;">{{ cl.dur }}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ cl.kindColor }};border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;">{{ cl.kind }}</span>
+                  <button onClick="{{ cl.cycleEra }}" title="click to retag" style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;background:transparent;cursor:pointer;" style-hover="border-color:#FFB020;color:#FFB020;">{{ cl.era }}</button>
+                  <button onClick="{{ cl.cycleAud }}" title="click to retag" style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;background:transparent;cursor:pointer;" style-hover="border-color:#FFB020;color:#FFB020;">{{ cl.audience }}</button>
+                  <button onClick="{{ cl.cycleCat }}" title="click to retag" style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;background:transparent;cursor:pointer;" style-hover="border-color:#FFB020;color:#FFB020;">{{ cl.category }}</button>
+                  <sc-if value="{{ cl.ai }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#D6409F;border:1px solid rgba(214,64,159,.35);border-radius:4px;padding:2px 8px;">AI-TAGGED</span></sc-if>
+                </div>
+                <sc-if value="{{ cl.untagged }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:10px;background:rgba(214,64,159,.06);border:1px solid rgba(214,64,159,.25);border-radius:6px;padding:8px 10px;">
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#D6409F;">AI SUGGESTS</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#E7EAF0;">{{ cl.suggestLabel }}</span>
+                    <button onClick="{{ cl.accept }}" style="margin-left:auto;background:#D6409F;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#E45CB0;">Accept</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- USERS -->
+    <sc-if value="{{ rUsers }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Users" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;max-width:900px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:24px;font-weight:600;">Users</div>
+          <div style="color:#8B93A3;margin-top:6px;font-size:13.5px;">Sync to import {{ msName }} accounts — everyone (including you) can then sign in with them. Loomarr stores no media-server passwords.</div>
+        </div>
+        <button onClick="{{ syncUsers }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:10px 18px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">{{ userSyncLabel }}</button>
+      </div>
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+        <div style="display:grid;grid-template-columns:1fr 120px 160px 120px;gap:12px;padding:10px 18px;border-bottom:1px solid #2A2E37;font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">
+          <div>User</div><div>Role</div><div>Pending cap</div><div>Auto-approve</div>
+        </div>
+        <sc-for list="{{ users }}" as="u" hint-placeholder-count="1">
+          <div onClick="{{ u.openDrawer }}" style="display:grid;grid-template-columns:1fr 120px 160px 120px;gap:12px;padding:12px 18px;border-bottom:1px solid #1B1E24;align-items:center;cursor:pointer;opacity:{{ u.rowOpacity }};" style-hover="background:#16181D;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:26px;height:26px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10px;color:{{ u.color }};">{{ u.initials }}</div>
+              <div style="font-size:13.5px;font-weight:500;">{{ u.name }}</div>
+              <sc-if value="{{ u.isOwner }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:10px;color:#FFB020;">OWNER</span></sc-if>
+            </div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ u.color }};">{{ u.role }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8B93A3;">{{ u.cap }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8B93A3;">{{ u.auto }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;line-height:1.6;">{{ usersApiNote }}</div>
+    </div>
+    </sc-if>
+
+    <!-- SETTINGS -->
+    <sc-if value="{{ rSettings }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Settings" style="padding:36px 44px;display:flex;flex-direction:column;gap:28px;max-width:860px;">
+      <div style="font-size:24px;font-weight:600;">Settings</div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:16px;font-weight:600;">Connections</div>
+          <button onClick="{{ rerunChecks }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">{{ rerunLabel }}</button>
+        </div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+          <sc-for list="{{ checks }}" as="c" hint-placeholder-count="7">
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #1B1E24;">
+              <div style="width:18px;display:flex;justify-content:center;">
+                <sc-if value="{{ c.isPass }}" hint-placeholder-val="{{ true }}"><span style="color:#3DD68C;font-size:12px;font-weight:700;">✓</span></sc-if>
+                <sc-if value="{{ c.isFail }}" hint-placeholder-val="{{ false }}"><span style="color:#E5484D;font-size:12px;font-weight:700;">✕</span></sc-if>
+                <sc-if value="{{ c.isRunning }}" hint-placeholder-val="{{ false }}"><div style="width:11px;height:11px;border-radius:50%;border:2px solid #2A2E37;border-top-color:#4CC9E8;animation:lmSpin .7s linear infinite;"></div></sc-if>
+                <sc-if value="{{ c.isPending }}" hint-placeholder-val="{{ false }}"><div style="width:8px;height:8px;border-radius:50%;border:1.5px solid #2A2E37;"></div></sc-if>
+              </div>
+              <div style="font-size:13.5px;font-weight:500;width:180px;">{{ c.name }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#5A6170;flex:1;">{{ c.detail }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <sc-for list="{{ cfgFields }}" as="f" hint-placeholder-count="8">
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <label style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">{{ f.label }}</label>
+                <sc-if value="{{ f.locked }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:8px;background:#0B0C0E;border:1px solid #1B1E24;border-radius:4px;padding:9px 12px;">
+                    <span style="font-family:'Geist Mono',monospace;font-size:13px;color:#8B93A3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.val }}</span>
+                    <span title="env > database > default" style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;border:1px solid #2A2E37;border-radius:4px;padding:1px 6px;white-space:nowrap;">SET VIA ENV</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+                  <select value="{{ f.val }}" onChange="{{ f.set }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:9px 12px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;">
+                    <sc-for list="{{ f.options }}" as="o"><option value="{{ o.v }}">{{ o.v }}</option></sc-for>
+                  </select>
+                </sc-if>
+                <sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}">
+                  <input value="{{ f.val }}" onInput="{{ f.set }}" placeholder="{{ f.ph }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:4px;padding:9px 12px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;" style-focus="border-color:#FFB020;" />
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <button onClick="{{ saveCfg }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;align-self:flex-start;" style-hover="background:#FFC14D;">Save & test connections</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;text-transform:uppercase;letter-spacing:.06em;">Secrets &amp; provenance</div>
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+            <sc-for list="{{ envRows }}" as="e" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid #1B1E24;">
+                <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;width:180px;">{{ e.k }}</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#E7EAF0;flex:1;">{{ e.v }}</div>
+                <div title="env > database > default" style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ e.chipColor }};border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;">{{ e.chip }}</div>
+                <sc-if value="{{ e.canRegen }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ e.regen }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;color:#E7EAF0;">Regenerate</button>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:12.5px;color:#5A6170;">Secrets are auto-generated at first migration (Sonarr's API-key model) — masked after save, never logged, and backups contain them. Every setting resolves <span style="font-family:'Geist Mono',monospace;">env &gt; database &gt; default</span>.</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:16px;font-weight:600;">Channels &amp; Playback</div>
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;font-family:'Geist Mono',monospace;font-size:12px;color:#8B93A3;">
+          <div>SCHED_DEFAULT_STRATEGY=shuffle · SCHED_BACKFILL=stable · CHANNEL_RECONCILE_EVERY=10m</div>
+          <div>FILLER_BREAKS_PER_HOUR=4 · FILLER_POD_MAX=4 · pending-slot policy: pod-fill</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:16px;font-weight:600;color:#E5484D;">Danger zone</div>
+        <div style="background:rgba(229,72,77,.05);border:1px solid rgba(229,72,77,.3);border-radius:12px;padding:18px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <div>
+            <div style="font-size:13.5px;font-weight:500;">Delete a channel and purge it from Tunarr</div>
+            <div style="font-size:12.5px;color:#8B93A3;margin-top:2px;">Requires typed confirmation. Default delete detaches only.</div>
+          </div>
+          <button onClick="{{ noop }}" style="background:transparent;color:#E5484D;border:1px solid rgba(229,72,77,.4);border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:rgba(229,72,77,.1);">Purge…</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- HELP -->
+    <sc-if value="{{ rHelp }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Help" style="padding:36px 44px;display:flex;flex-direction:column;gap:24px;max-width:860px;">
+      <div>
+        <div style="font-size:24px;font-weight:600;">Help</div>
+        <div style="color:#8B93A3;margin-top:6px;font-size:13.5px;">Embedded docs — rendered offline, searched client-side (or via ⌘K).</div>
+      </div>
+      <sc-if value="{{ helpDocOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:680px;">
+          <button onClick="{{ closeHelpDoc }}" style="background:none;border:none;color:#8B93A3;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;padding:0;text-align:left;" style-hover="color:#E7EAF0;">← All docs</button>
+          <div style="font-size:20px;font-weight:600;">{{ helpDocTitle }}</div>
+          <sc-for list="{{ helpDocParas }}" as="pp" hint-placeholder-count="3">
+            <div style="font-size:14px;color:#B8BEC9;line-height:1.7;">{{ pp.p }}</div>
+          </sc-for>
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;border-top:1px solid #1B1E24;padding-top:12px;">rendered from embedded docs/ markdown · works air-gapped</div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ helpGridVisible }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <sc-for list="{{ helpPages }}" as="hp" hint-placeholder-count="6">
+          <div onClick="{{ hp.open }}" style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:6px;cursor:pointer;" style-hover="border-color:#8B93A3;">
+            <div style="font-weight:600;font-size:14px;">{{ hp.name }}</div>
+            <div style="font-size:12.5px;color:#8B93A3;line-height:1.45;">{{ hp.blurb }}</div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ MEMBER INTRO ============ -->
+<sc-if value="{{ memberIntroOpen }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Member intro" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:120;display:flex;align-items:center;justify-content:center;">
+  <div style="width:480px;background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:32px;display:flex;flex-direction:column;gap:20px;position:relative;overflow:hidden;">
+    <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22300%22%20height=%22300%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22300%22%20height=%22300%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E'),repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#ffffff 2px,#ffffff 3px);opacity:.06;animation:lmStatic .35s steps(5) infinite;pointer-events:none;"></div>
+    <div style="display:flex;width:120px;height:10px;border-radius:2px;overflow:hidden;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#F5D90A;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div><div style="flex:1;background:#E5484D;"></div></div>
+    <div style="font-size:20px;font-weight:600;">Welcome to the station</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <sc-for list="{{ introSteps }}" as="st" hint-placeholder-count="6">
+        <div style="display:flex;gap:12px;align-items:baseline;">
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#D6409F;width:14px;flex-shrink:0;">{{ st.n }}</div>
+          <div style="font-size:13.5px;color:#B8BEC9;line-height:1.5;">{{ st.text }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:12.5px;color:#5A6170;">Channels may start filler-heavy and improve as content lands — that's the backfill working.</div>
+    <button onClick="{{ closeMemberIntro }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:#FFC14D;">Got it — let's make TV</button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ USER DRAWER ============ -->
+<sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ drawer.close }}" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:105;display:flex;justify-content:flex-end;">
+  <div onClick="{{ stopProp }}" data-screen-label="User drawer" style="width:380px;height:100%;background:#131519;border-left:1px solid #2A2E37;padding:28px;display:flex;flex-direction:column;gap:22px;box-shadow:-24px 0 64px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:36px;height:36px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:12px;color:{{ drawer.color }};">{{ drawer.initials }}</div>
+      <div style="flex:1;">
+        <div style="font-size:16px;font-weight:600;">{{ drawer.name }}</div>
+        <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;">{{ msLower }} account · synced</div>
+      </div>
+      <span onClick="{{ drawer.close }}" style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;border:1px solid #2A2E37;border-radius:4px;padding:2px 6px;cursor:pointer;">ESC</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">Role</div>
+      <div style="display:flex;gap:8px;">
+        <sc-for list="{{ drawer.roleChips }}" as="rc"><button onClick="{{ rc.pick }}" style="background:{{ rc.bg }};color:{{ rc.color }};border:1px solid {{ rc.border }};border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ rc.label }}</button></sc-for>
+      </div>
+      <sc-if value="{{ drawer.isOwner }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:#5A6170;">Owner — role can't be demoted from the UI.</div></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">Pending-acquisition cap</div>
+      <div style="display:flex;gap:8px;">
+        <sc-for list="{{ drawer.capChips }}" as="cc"><button onClick="{{ cc.pick }}" style="background:{{ cc.bg }};color:{{ cc.color }};border:1px solid {{ cc.border }};border-radius:6px;padding:7px 18px;font-size:13px;cursor:pointer;font-family:'Geist Mono',monospace;">{{ cc.label }}</button></sc-for>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">Auto-approve</div>
+        <div style="font-size:12px;color:#5A6170;margin-top:2px;">Hard-gated by the quota above.</div>
+      </div>
+      <button onClick="{{ drawer.toggleAuto }}" style="width:44px;height:24px;border-radius:999px;border:1px solid {{ drawerAutoBorder }};background:{{ drawerAutoBg }};cursor:pointer;position:relative;padding:0;">
+        <div style="position:absolute;top:2px;left:{{ drawerAutoKnob }}px;width:18px;height:18px;border-radius:50%;background:{{ drawerAutoKnobColor }};transition:left .15s ease-out;"></div>
+      </button>
+    </div>
+    <div style="margin-top:auto;border-top:1px solid rgba(229,72,77,.2);padding-top:18px;display:flex;flex-direction:column;gap:8px;">
+      <button onClick="{{ drawer.toggleDisable }}" style="background:transparent;color:#E5484D;border:1px solid rgba(229,72,77,.4);border-radius:8px;padding:10px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="background:rgba(229,72,77,.1);">{{ drawer.disableLabel }}</button>
+      <div style="font-size:11.5px;color:#5A6170;">Disabling revokes all sessions immediately.</div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ ⌘K PALETTE ============ -->
+<sc-if value="{{ cmdkOpen }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Command palette" onClick="{{ closeCmdk }}" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;justify-content:center;padding-top:12vh;">
+  <div onClick="{{ stopProp }}" style="width:600px;max-height:60vh;background:#131519;border:1px solid #2A2E37;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;align-self:flex-start;">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #2A2E37;">
+      <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#5A6170;">⌘K</span>
+      <input value="{{ query }}" onInput="{{ setQuery }}" placeholder="Search library, TMDB, clips, channels, help…" autoFocus="{{ true }}" style="flex:1;background:transparent;border:none;color:#E7EAF0;font-size:15px;outline:none;font-family:'Geist',sans-serif;" />
+      <span onClick="{{ closeCmdk }}" style="font-family:'Geist Mono',monospace;font-size:11px;color:#5A6170;border:1px solid #2A2E37;border-radius:4px;padding:2px 6px;cursor:pointer;">ESC</span>
+    </div>
+    <div style="overflow-y:auto;padding:8px;">
+      <sc-if value="{{ searchEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:32px;text-align:center;color:#5A6170;font-size:13.5px;">No signal on that frequency. Try a title, a clip, or a doc page.</div>
+      </sc-if>
+      <sc-for list="{{ searchGroups }}" as="grp" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;">
+          <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;text-transform:uppercase;letter-spacing:.08em;padding:10px 12px 4px;">{{ grp.label }}</div>
+          <sc-for list="{{ grp.items }}" as="r">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;cursor:pointer;" style-hover="background:#1B1E24;">
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ r.iconColor }};width:16px;">{{ r.icon }}</span>
+              <span style="font-size:13.5px;">{{ r.name }}</span>
+              <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ r.tagColor }};">{{ r.tag }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ TOAST ============ -->
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;bottom:24px;right:24px;z-index:110;background:#1B1E24;border:1px solid {{ toastBorder }};border-radius:8px;padding:13px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:420px;">
+  <div style="width:8px;height:8px;border-radius:50%;background:{{ toastColor }};flex-shrink:0;"></div>
+  <div style="font-size:13.5px;">{{ toastMsg }}</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;mediaServer&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;jellyfin&quot;,&quot;emby&quot;],&quot;default&quot;:&quot;emby&quot;,&quot;tsType&quot;:&quot;'jellyfin' | 'emby'&quot;,&quot;section&quot;:&quot;Integrations&quot;},&quot;heroLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;centered&quot;,&quot;split&quot;],&quot;default&quot;:&quot;centered&quot;,&quot;tsType&quot;:&quot;'centered' | 'split'&quot;,&quot;section&quot;:&quot;Suggestion workspace&quot;},&quot;skipToApp&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'login', loginUser: '', loginPw: '',
+    wizStep: 2, checks: this.initChecks(), checksRun: 0, checksRunning: false, expandedIdx: 0,
+    cfg: { libraryFlavor: 'jellyfin', libraryUrl: 'http://jellyfin:8096', libraryToken: '', fillerLib: 'Commercials', seerrUrl: 'http://seerr:5055', seerrKey: '', tunarrUrl: 'http://tunarr:8000', tunarrKey: '', llmProvider: 'ollama', llmUrl: 'http://ollama:11434', llmModel: 'qwen2.5:14b', tmdbKey: '' },
+    sonarr: false, radarr: false, copied: false,
+    livetv: 'unwired',
+    route: 'channels',
+    intent: '', phase: 'idle', genStep: -1, submitted: false,
+    removedAcq: {},
+    proposals: [], channels: [], titles: [],
+    clipsSynced: false, clipSyncing: false,
+    users: [{ name: 'alex', role: 'admin', isOwner: true, cap: '10', auto: 'yes (quota 10)', color: '#FFB020' }],
+    userSyncing: false, usersSynced: false,
+    cmdk: false, query: '',
+    toast: null,
+    role: 'admin', memberIntro: false,
+    editQ: '', addedLineup: [], addedAcq: [],
+    clips: [], drifted: false, recLog: [],
+    sources: [
+      { url: 'youtube.com/playlist?list=PL90sSaturdayToyAds', kind: 'youtube', status: 'last fetch 2h ago · 41 clips' },
+      { url: 'archive.org/details/classic-tv-commercials-1990s', kind: 'archive', status: 'last fetch 1d ago · 122 clips' },
+    ],
+    newSource: '',
+    userDrawer: -1, helpDoc: null, navCollapsed: false,
+    podCfg: { breaks: 4, podMax: 4, era: 'strict', audience: 'kids' },
+  };
+  initChecks() {
+    return [
+      { name: 'Media server', target: 'jellyfin @ http://jellyfin:8096', pass: 'token valid · 48,112 items · flavor: jellyfin', st: 'pending',
+        guide: 'Create an API key in Jellyfin (Dashboard → Advanced → API Keys) and paste it below. Saved to Loomarr\u2019s database on test.',
+        fields: [{ label: 'Flavor', key: 'libraryFlavor', ph: 'jellyfin | emby' }, { label: 'URL — pinned in compose', key: 'libraryUrl', ph: 'http://jellyfin:8096', locked: true }, { label: 'API key', key: 'libraryToken', ph: 'paste key' }],
+        source: 'jellyfin → dashboard → advanced → api keys' },
+      { name: 'Filler library', target: 'library: Commercials', pass: "library found · 0 items (that's fine — sync later)", st: 'pending',
+        guide: 'Create a dedicated library on your media server pointed at your filler drop-folder (commercials, bumpers, station IDs), then pick it below — the list comes from the server\u2019s actual libraries. Keep it separate from your shows so filler never leaks into a lineup.',
+        fields: [{ label: 'Filler library', key: 'fillerLib', select: ['Commercials', 'Movies', 'TV Shows', 'Home Videos', '(none)'] }],
+        source: 'jellyfin → dashboard → libraries → add media library · optional — skip if you don\u2019t want ad pods yet' },
+      { name: 'Seerr', target: 'http://seerr:5055', pass: 'v2.0.1 · key valid · loomarr user has auto-approve ✓', st: 'pending',
+        guide: 'Copy the API key from Seerr (Settings → General) and paste it below. Important: grant the Loomarr service user auto-approve in Seerr, or every approved acquisition stalls in a second pending queue.',
+        fields: [{ label: 'URL', key: 'seerrUrl', ph: 'http://seerr:5055' }, { label: 'API key', key: 'seerrKey', ph: 'paste key' }],
+        source: 'seerr → settings → general → api key · users → loomarr → auto-approve ✓' },
+      { name: 'Tunarr', target: 'http://tunarr:8000', pass: 'v0.15.2 · media source matches LIBRARY_URL ✓', st: 'pending',
+        guide: 'Tunarr must have the same Jellyfin configured as its media source — that\u2019s how Loomarr and Tunarr agree on titles. Add it in Tunarr under Settings → Media Sources first, then point Loomarr at Tunarr below.',
+        fields: [{ label: 'URL', key: 'tunarrUrl', ph: 'http://tunarr:8000' }, { label: 'API key (optional)', key: 'tunarrKey', ph: 'leave blank if unset' }],
+        source: 'tunarr → settings → media sources → add jellyfin (same URL as the media server above)' },
+      { name: 'Live TV wiring', target: 'jellyfin ← tunarr tuner + guide', pass: 'M3U tuner + XMLTV guide registered', fail: 'Tunarr is not registered as a tuner in Jellyfin. The wizard can wire it for you in step 4 — one click, idempotent.', st: 'pending', failsFirst: true,
+        guide: 'Jellyfin needs Tunarr registered as an M3U tuner + XMLTV guide source so channels appear in the TV guide. Nothing to fill in — this is one-time wiring in Jellyfin, and the wizard does it for you in step 4.',
+        fields: [],
+        source: 'expected to be red on a fresh install — continue and use the one-click connect' },
+      { name: 'LLM', target: 'ollama @ http://ollama:11434', pass: 'qwen2.5:14b present · tool-calling supported ✓', st: 'pending',
+        guide: 'Pull a tool-calling-capable model into Ollama first (`ollama pull qwen2.5:14b`) — a model without tool support fails grounding silently. Or set provider to anthropic with an API key.',
+        fields: [{ label: 'Provider', key: 'llmProvider', ph: 'ollama | anthropic' }, { label: 'URL', key: 'llmUrl', ph: 'http://ollama:11434' }, { label: 'Model', key: 'llmModel', ph: 'qwen2.5:14b' }],
+        source: 'ollama pull qwen2.5:14b · model must support tool-calling' },
+      { name: 'TMDB', target: 'api.themoviedb.org', pass: 'key valid · grounding ready', st: 'pending',
+        guide: 'Get a free API key from themoviedb.org (Settings → API) and paste it below. TMDB grounds every suggestion — the model can only propose titles that resolve to real ids.',
+        fields: [{ label: 'API key', key: 'tmdbKey', ph: 'paste key' }],
+        source: 'themoviedb.org → account settings → api → create key' },
+    ];
+  }
+  testOne(i) {
+    const cs = this.state.checks.slice();
+    if (cs[i].st === 'running') return;
+    cs[i] = { ...cs[i], st: 'running' };
+    this.setState({ checks: cs });
+    this.later(900, () => {
+      const cs2 = this.state.checks.slice();
+      const failed = cs2[i].failsFirst && this.state.livetv !== 'wired';
+      cs2[i] = { ...cs2[i], st: failed ? 'fail' : 'pass' };
+      const next = cs2.findIndex((c, j) => j !== i && c.st !== 'pass' && c.st !== 'fail');
+      this.setState({ checks: cs2, expandedIdx: next, checksRun: this.state.checksRun + 1 });
+      if (failed) this.toast('Live TV wiring is red — expected. Step 4 fixes it in one click.', '#F5D90A');
+    });
+  }
+  LIB = [
+    { name: 'X-Men: The Animated Series', year: 1992, key: 'series:tvdb:76115', inLib: true, why: 'Flagship 90s Saturday-morning action — exact era and tone match.' },
+    { name: 'Batman: The Animated Series', year: 1992, key: 'series:tvdb:76168', inLib: true, why: 'Defines the era; balances the block with a darker palette.' },
+    { name: 'Rugrats', year: 1991, key: 'series:tvdb:76602', inLib: true, why: 'Younger-skew anchor for the early slots.' },
+    { name: 'Animaniacs', year: 1993, key: 'series:tvdb:72879', inLib: false, conf: '0.94', why: 'Canonical 90s variety cartoon; fills the comedy gap in the lineup.' },
+    { name: 'Darkwing Duck', year: 1991, key: 'series:tvdb:75648', inLib: false, conf: '0.91', why: 'Disney Afternoon staple, era-perfect.' },
+    { name: 'Gargoyles', year: 1994, key: 'series:tvdb:75765', inLib: false, conf: '0.87', why: 'Later-block serial drama; stretches the era to \u201994.' },
+    { name: 'Sonic the Hedgehog (SatAM)', year: 1993, key: 'series:tvdb:76804', inLib: false, conf: '0.82', why: 'Deep-cut pick for authenticity; short seasons keep acquisition light.' },
+  ];
+  CLIPS = [
+    { name: "Kellogg's Frosted Flakes — 'They're Gr-r-reat!'", dur: '0:30', kind: 'commercial', era: '1992', audience: 'kids', category: 'cereal', ai: true },
+    { name: 'TMNT action figures — Playmates', dur: '0:30', kind: 'commercial', era: '1994', audience: 'kids', category: 'toys', ai: true },
+    { name: 'Sega Genesis — Welcome to the Next Level', dur: '0:30', kind: 'commercial', era: '1993', audience: 'kids', category: 'tech', ai: true },
+    { name: 'Capri Sun — mountain climbing', dur: '0:15', kind: 'commercial', era: '1991', audience: 'kids', category: 'fast_food', ai: true },
+    { name: "Saturday bumper — 'We'll be right back'", dur: '0:05', kind: 'bumper', era: '1992', audience: 'general', category: 'bumper', ai: false },
+    { name: "Saturday bumper — 'And now, back to the show'", dur: '0:05', kind: 'bumper', era: '1992', audience: 'general', category: 'bumper', ai: false },
+    { name: 'Station ID — WLMR 42', dur: '0:10', kind: 'station_id', era: '1993', audience: 'general', category: 'ident', ai: false },
+    { name: 'PSA — The More You Know', dur: '0:20', kind: 'psa', era: '1994', audience: 'family', category: 'psa', ai: true },
+    { name: 'clip_1994_ovaltine_ad.mp4', dur: '0:30', kind: 'commercial', era: '—', audience: '—', category: '—', ai: false, untagged: true, suggest: { era: '1994', audience: 'kids', category: 'cereal' } },
+  ];
+  EXTRA = [
+    { name: 'Captain Planet and the Planeteers', year: 1990, key: 'series:tvdb:78957', inLib: false },
+    { name: 'ReBoot', year: 1994, key: 'series:tvdb:76173', inLib: false },
+    { name: 'TaleSpin', year: 1990, key: 'series:tvdb:77163', inLib: false },
+    { name: "Bobby's World", year: 1990, key: 'series:tvdb:76788', inLib: false },
+  ];
+  TAGOPTS = {
+    era: ['1991', '1992', '1993', '1994'],
+    audience: ['kids', 'family', 'general', 'late_night'],
+    category: ['toys', 'cereal', 'tech', 'fast_food', 'psa', 'ident', 'bumper'],
+  };
+  HELPDOCS = {
+    Quickstart: ['Bring the stack up with `docker compose up -d`, open Loomarr at :8080, and sign in with your Jellyfin account — the first admin to sign in becomes the owner.', 'The wizard walks each integration: media server, Seerr, Tunarr, LLM, TMDB. Fill in each panel, save & test. Skip the webhook handshake and Live TV wiring if you want — both are optional and re-runnable from Settings.', 'Finish with the guided first channel: pick a template intent, review the proposal, approve it, and watch CH 42 go on the air with pod-filled gaps that backfill as titles land.'],
+    Integrations: ['One page per dependency: Jellyfin/Emby (API key, flavor auth), Tunarr (media source must match your library), Seerr (grant the loomarr user auto-approve or acquisitions stall), Sonarr/Radarr webhooks, Ollama/Anthropic, TMDB.'],
+    Concepts: ['Intent → proposal → approval → acquisition → schedule → backfill. Proposals are grounded: the model can only pick titles that resolve to real library or TMDB ids.', 'A channel is desired-state authoritative: Loomarr recomputes the lineup and reconciles Tunarr to match. Manual Tunarr edits to managed channels are overwritten by design.'],
+    'Member guide': ['Write intents that name an era, a tone, and a runtime target. After you submit, an admin approves; track your proposal on the Board: pending → acquiring (3/7) → live on channel 42.'],
+    'Filler guide': ['Drop clips in the filler folder (manually, via MeTube, or the ingest sidecar). Jellyfin scans it; Loomarr syncs the catalog and tags clips by era/audience/category — AI tagging uses text signals only.'],
+    Troubleshooting: ['Organized by checklist item. Everything stuck in `requested`? Check the Seerr auto-approve grant. Channels missing from the guide? Re-run Live TV wiring from Settings.'],
+  };
+  TEMPLATES = [
+    { name: '90s Saturday Morning Cartoons', blurb: 'Early-90s animation block with period toy and cereal ads in the breaks.', constraints: 'era 1990–94 · kids · timeslot AM', intent: 'A Saturday-morning cartoon channel: early-90s animation (1990–1994), airing in a morning block, with era-matched toy and cereal commercials in the breaks. Must include X-Men. Nothing past 1995.' },
+    { name: 'Cozy Mystery Nights', blurb: 'Gentle whodunits for the evening — Poirot energy, nothing gory.', constraints: 'tone cozy · evenings · ordered', intent: 'Cozy evening mysteries — gentle whodunits, nothing gory, ordered episodes.' },
+    { name: 'Late-Night Sci-Fi', blurb: 'Atmospheric sci-fi after midnight, trailers as filler.', constraints: 'late_night · shuffle', intent: 'Atmospheric sci-fi for after midnight, shuffled, with movie trailers as filler.' },
+    { name: 'Action Movie Marathon', blurb: 'Wall-to-wall 80s/90s action features, weekend-long.', constraints: 'movies · era 1985–99', intent: 'A weekend action-movie marathon channel, 1985–1999 features, shuffled.' },
+  ];
+  HELP = [
+    { name: 'Quickstart', blurb: 'compose up → wizard → first channel. The 10-minute path.' },
+    { name: 'Integrations', blurb: 'One page per dependency: Jellyfin, Tunarr, Seerr, Sonarr/Radarr, Ollama, TMDB.' },
+    { name: 'Concepts', blurb: 'Proposals, approval, provisioning states, backfill, pods — the mental model.' },
+    { name: 'Member guide', blurb: 'Writing good intents; what happens after you submit.' },
+    { name: 'Filler guide', blurb: 'Drop-folder, MeTube, the ingest sidecar, tagging, pod policy.' },
+    { name: 'Troubleshooting', blurb: 'Organized by checklist item — every red check deep-links here.' },
+  ];
+  timers = [];
+  later(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+  componentDidMount() {
+    this.keyHandler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.setState(s => ({ cmdk: !s.cmdk, query: '' })); }
+      if (e.key === 'Escape') this.setState({ cmdk: false });
+    };
+    window.addEventListener('keydown', this.keyHandler);
+    if (this.props.skipToApp) this.setState({ screen: 'app' });
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.keyHandler); this.timers.forEach(clearTimeout); }
+  toast(msg, color) {
+    this.setState({ toast: { msg, color: color || '#3DD68C' } });
+    this.later(3500, () => this.setState({ toast: null }));
+  }
+  runChecks() {
+    if (this.state.checksRunning) return;
+    const secondRun = this.state.checksRun > 0;
+    const checks = this.state.checks.map(c => ({ ...c, st: 'pending' }));
+    this.setState({ checks, checksRunning: true });
+    checks.forEach((c, i) => {
+      this.later(350 + i * 550, () => {
+        const cs = this.state.checks.slice(); cs[i] = { ...cs[i], st: 'running' }; this.setState({ checks: cs });
+      });
+      this.later(350 + i * 550 + 480, () => {
+        const cs = this.state.checks.slice();
+        const failed = cs[i].failsFirst && !(this.state.livetv === 'wired');
+        cs[i] = { ...cs[i], st: failed ? 'fail' : 'pass' };
+        const done = i === checks.length - 1;
+        this.setState({ checks: cs, checksRunning: done ? false : true, checksRun: this.state.checksRun + (done ? 1 : 0) });
+      });
+    });
+  }
+  connectLivetv() {
+    this.setState({ livetv: 'wiring' });
+    this.later(1400, () => {
+      this.setState({ livetv: 'wired', checks: this.state.checks.map(c => c.failsFirst ? { ...c, st: 'pass' } : c) });
+      this.toast('Tunarr wired into Jellyfin — tuner + guide registered.');
+    });
+  }
+  startGen() {
+    if (!this.state.intent.trim()) { this.toast('Write an intent first — or pick a template.', '#F5D90A'); return; }
+    this.setState({ phase: 'generating', genStep: 0, submitted: false, removedAcq: {} });
+    [1, 2, 3, 4].forEach(n => this.later(1100 * n, () => {
+      if (n === 4) { this.setState({ phase: 'review', genStep: 4 }); this.toast('Proposal ready — grounded, 0 unresolvable titles dropped.', '#D6409F'); }
+      else this.setState({ genStep: n });
+    }));
+  }
+  submitProposal() {
+    const acqs = this.LIB.filter(t => !t.inLib && !this.state.removedAcq[t.key]);
+    const prop = {
+      id: 'prop-001', name: '90s Saturday Morning', by: 'alex', status: 'pending',
+      intent: this.state.intent,
+      lineup: this.LIB.filter(t => t.inLib), acqs,
+    };
+    this.setState({ submitted: true, proposals: [prop] });
+    this.toast('Submitted. As an admin you can approve it yourself in the queue.', '#D6409F');
+  }
+  approve(id) {
+    const prop = this.state.proposals.find(p => p.id === id);
+    const titles = prop.acqs.map(t => ({ ...t, state: 'requested', deadline: '48h' }));
+    const inLib = prop.lineup.length, total = inLib + titles.length;
+    this.setState({
+      proposals: this.state.proposals.map(p => p.id === id ? { ...p, status: 'approved', approvedBy: 'alex' } : p),
+      titles,
+      channels: [{ num: '42', name: '90s Saturday Morning', strategy: 'timeslot · AM block', status: 'creating', filled: inLib, total }],
+    });
+    this.toast('Approved · approved_by: alex — creating channel 42 in Tunarr…');
+    this.log('approve: proposal prop-001 · approved_by alex');
+    this.log('reconcile: POST /channels + PUT programming (3 programs, 4 pod-filled slots)');
+    this.later(1600, () => {
+      this.setChannel({ status: 'live' });
+      this.log('reconcile: guide-refresh task poked · channel live');
+      this.toast("You're on the air. CH 42 is live — pod-filled where titles are pending.");
+    });
+    const seq = [
+      [3000, 'Animaniacs', 'downloading', 'Sonarr grabbed Animaniacs — Grab webhook received.', '#4CC9E8'],
+      [5200, 'Animaniacs', 'available', 'Animaniacs is in the library — backfilling CH 42.', '#3DD68C'],
+      [6800, 'Darkwing Duck', 'downloading', 'Radarr… Sonarr grabbed Darkwing Duck.', '#4CC9E8'],
+      [9200, 'Darkwing Duck', 'available', 'Darkwing Duck landed — slot filled in place, no reshuffle.', '#3DD68C'],
+      [11000, 'Gargoyles', 'downloading', null, null],
+      [13500, 'Sonic the Hedgehog (SatAM)', 'unavailable', 'Sonic (SatAM): deadline exceeded → unavailable. Substituting alternate: Captain Planet (1990).', '#F5D90A'],
+    ];
+    seq.forEach(([ms, name, st, msg, color]) => this.later(ms, () => {
+      this.setState({ titles: this.state.titles.map(t => t.name === name ? { ...t, state: st } : t) });
+      if (st === 'available') { this.setChannel({ filled: this.state.channels[0].filled + 1 }); this.log('backfill: ' + name + ' available → slot filled in place · re-push'); }
+      if (st === 'unavailable') this.log('give-up: ' + name + ' deadline exceeded → substitute alternate Captain Planet (1990)');
+      if (msg) this.toast(msg, color);
+    }));
+  }
+  setChannel(patch) { this.setState({ channels: this.state.channels.map(c => ({ ...c, ...patch })) }); }
+  deny(id) {
+    this.setState({ proposals: this.state.proposals.map(p => p.id === id ? { ...p, status: 'denied' } : p) });
+    this.toast('Denied. The member sees this in My proposals.', '#E5484D');
+  }
+  syncClips() {
+    if (this.state.clipsSynced || this.state.clipSyncing) return;
+    this.setState({ clipSyncing: true });
+    this.later(1300, () => { this.setState({ clipsSynced: true, clipSyncing: false, clips: this.CLIPS.map(c => ({ ...c })) }); this.toast('Synced 9 clips from Jellyfin · 5 AI-tagged, 1 needs review.'); });
+  }
+  cycleTag(i, field) {
+    const clips = this.state.clips.slice();
+    const opts = this.TAGOPTS[field];
+    const cur = opts.indexOf(clips[i][field]);
+    clips[i] = { ...clips[i], [field]: opts[(cur + 1) % opts.length] };
+    this.setState({ clips });
+    this.toast('Tag saved — PATCH /v1/filler/' + (i + 1), '#4CC9E8');
+  }
+  acceptAI(i) {
+    const clips = this.state.clips.slice();
+    clips[i] = { ...clips[i], ...clips[i].suggest, ai: true, untagged: false };
+    this.setState({ clips });
+    this.toast('AI tags accepted — clip is now matchable.', '#D6409F');
+  }
+  log(msg) { this.setState({ recLog: [...this.state.recLog, { t: new Date().toTimeString().slice(0, 5), msg }] }); }
+  simulateDrift() {
+    if (this.state.drifted) return;
+    this.setState({ drifted: true });
+    this.log('sweep: slot 03 Rugrats — bulk Ids= lookup returned empty (item deleted)');
+    this.log('drift: substituting from fallback pool → loop X-Men · flag channel');
+    this.toast('Drift detected: Rugrats vanished from the library. Slot substituted from the fallback pool; channel flagged.', '#F5D90A');
+  }
+  syncUsers() {
+    if (this.state.usersSynced || this.state.userSyncing) return;
+    this.setState({ userSyncing: true });
+    this.later(1100, () => {
+      this.setState({
+        userSyncing: true, usersSynced: true, userSyncing: false,
+        users: [...this.state.users,
+          { name: 'sam', role: 'member', cap: '10', auto: 'no', color: '#4CC9E8' },
+          { name: 'jordan', role: 'member', cap: '10', auto: 'no', color: '#D6409F' },
+          { name: 'kiddo', role: 'member', cap: '3', auto: 'no', color: '#3DD68C' }],
+      });
+      this.toast('Synced 4 users from ' + (this.props.mediaServer === 'emby' ? 'Emby' : 'Jellyfin') + ' — your owner account is linked to "alex". Admins map from Policy.IsAdministrator.');
+    });
+  }
+  badge(st) {
+    return {
+      requested: ['#8B93A3', 'rgba(139,147,163,.12)'], wanted: ['#8B93A3', 'rgba(139,147,163,.12)'],
+      downloading: ['#4CC9E8', 'rgba(76,201,232,.12)'], available: ['#3DD68C', 'rgba(61,214,140,.12)'],
+      unavailable: ['#8B93A3', 'rgba(139,147,163,.12)'],
+    }[st] || ['#8B93A3', 'rgba(139,147,163,.12)'];
+  }
+  renderVals() {
+    const s = this.state, P = this.props;
+    const heroLayout = P.heroLayout ?? 'centered';
+    const ms = P.mediaServer ?? 'jellyfin';
+    const msName = ms === 'emby' ? 'Emby' : 'Jellyfin';
+    const msAuth = ms === 'emby' ? 'X-Emby-Authorization' : 'Authorization: MediaBrowser';
+    const msPort = ms === 'emby' ? 'http://emby:8096' : 'http://jellyfin:8096';
+    const pick = (t) => () => { this.setState({ screen: 'app', route: 'suggest', intent: t.intent, phase: 'idle' }); };
+    const templates = this.TEMPLATES.map(t => ({ ...t, pick: pick(t), pickChip: () => this.setState({ intent: t.intent }) }));
+    const wizLabels = ['Owner account', 'Connect & validate', 'Webhook handshake', 'Connect Live TV', 'First channel'];
+    const wizSteps = wizLabels.map((label, i) => {
+      const n = i + 1, cur = n === s.wizStep, done = n < s.wizStep;
+      return {
+        label, mark: done ? '✓' : String(n),
+        bg: cur ? '#1B1E24' : 'transparent',
+        ringColor: done ? '#3DD68C' : cur ? '#FFB020' : '#2A2E37',
+        numColor: done ? '#3DD68C' : cur ? '#FFB020' : '#5A6170',
+        numBg: done ? 'rgba(61,214,140,.1)' : 'transparent',
+        labelColor: cur ? '#E7EAF0' : done ? '#8B93A3' : '#5A6170',
+        weight: cur ? '600' : '400',
+      };
+    });
+    const checks = s.checks.map((c, i) => {
+      const expanded = s.expandedIdx === i;
+      return {
+        ...c,
+        isPending: c.st === 'pending', isRunning: c.st === 'running', isPass: c.st === 'pass', isFail: c.st === 'fail',
+        hasDetail: c.st === 'pass' || c.st === 'fail',
+        detail: c.st === 'pass' ? c.pass : c.st === 'fail' ? 'not wired' : '',
+        shortDetail: c.st === 'pass' ? 'OK' : c.st === 'fail' ? 'not wired' : '',
+        detailColor: c.st === 'fail' ? '#E5484D' : '#3DD68C',
+        hint: c.fail,
+        expanded, chev: expanded ? '▾' : '▸',
+        headBg: expanded ? '#16181D' : 'transparent',
+        toggle: () => this.setState({ expandedIdx: expanded ? -1 : i }),
+        test: () => this.testOne(i),
+        hasFields: (c.fields || []).length > 0,
+        fields: (c.fields || []).map(f => ({
+          ...f, val: s.cfg[f.key], locked: !!f.locked,
+          isSelect: !f.locked && !!f.select, isInput: !f.locked && !f.select,
+          options: (f.select || []).map(v => ({ v })),
+          set: e => this.setState({ cfg: { ...this.state.cfg, [f.key]: e.target.value } }),
+        })),
+        testLabel: c.st === 'running' ? 'Saving & testing…' : c.st === 'pass' ? 'Save & re-test' : c.st === 'fail' ? 'Re-test' : (c.fields || []).length ? 'Save & test' : 'Test',
+        testBg: c.st === 'pending' ? '#FFB020' : 'transparent',
+        testColor: c.st === 'pending' ? '#0B0C0E' : '#E7EAF0',
+        testBorder: c.st === 'pending' ? '#FFB020' : '#2A2E37',
+      };
+    });
+    const testedCount = s.checks.filter(c => c.st === 'pass' || c.st === 'fail').length;
+    const allChecked = testedCount === s.checks.length && !s.checksRunning;
+    const hookApps = [
+      { name: 'Sonarr', done: s.sonarr, waiting: !s.sonarr, detail: s.sonarr ? 'eventType: Test · received just now' : 'On Grab + On Import · awaiting Test…', simulate: () => { this.setState({ sonarr: true }); this.toast('Sonarr Test webhook received — handshake green.'); } },
+      { name: 'Radarr', done: s.radarr, waiting: !s.radarr, detail: s.radarr ? 'eventType: Test · received just now' : 'On Grab + On Import · awaiting Test…', simulate: () => { this.setState({ radarr: true }); this.toast('Radarr Test webhook received — handshake green.'); } },
+    ];
+    const gLabels = [
+      ['Searching your library', '/Items?SearchTerm= · 14 candidates'],
+      ['Grounding against TMDB', 'catalog tool · real ids only'],
+      ['Reasoning about the lineup', 'qwen2.5:14b · tool-calling'],
+      ['Scoring', 'theme fit · era balance · availability'],
+    ];
+    const genSteps = gLabels.map(([label, meta], i) => ({
+      label, meta, done: s.genStep > i, active: s.genStep === i, pending: s.genStep < i,
+      color: s.genStep >= i ? '#E7EAF0' : '#5A6170',
+    }));
+    const lineup = [...this.LIB.filter(t => t.inLib), ...s.addedLineup].map((t, i) => ({ ...t, ord: String(i + 1).padStart(2, '0'), why: t.why || 'added by you via search' }));
+    const editCorpus = [...this.LIB, ...this.EXTRA];
+    const eq = s.editQ.trim().toLowerCase();
+    const inProposal = (k) => this.LIB.some(t => t.key === k && !t.inLib) || s.addedAcq.some(t => t.key === k) || s.addedLineup.some(t => t.key === k);
+    const editResults = eq ? editCorpus.filter(t => t.name.toLowerCase().includes(eq)).slice(0, 5).map(t => ({
+      ...t,
+      tag: t.inLib ? 'IN LIBRARY' : 'TMDB', tagColor: t.inLib ? '#3DD68C' : '#4CC9E8',
+      already: inProposal(t.key) && !t.inLib,
+      addLabel: t.inLib ? '+ Add to lineup' : inProposal(t.key) ? 'in proposal' : '+ Add acquisition',
+      add: () => {
+        if (inProposal(t.key) && !t.inLib) return;
+        if (t.inLib) { if (!s.addedLineup.some(x => x.key === t.key)) this.setState({ addedLineup: [...s.addedLineup, t], editQ: '' }); this.toast('Added to lineup — it\u2019s already in your library.'); }
+        else { this.setState({ addedAcq: [...s.addedAcq, { ...t, conf: '—', why: 'added by you via search — flows through the same approval gate' }], editQ: '' }); this.toast('Added as an acquisition — no new privilege surface; it rides the approval.', '#4CC9E8'); }
+      },
+    })) : [];
+    const acquisitions = [...this.LIB.filter(t => !t.inLib), ...s.addedAcq].map(t => ({
+      ...t, conf: t.conf, removable: !s.submitted && !s.removedAcq[t.key],
+      opacity: s.removedAcq[t.key] ? '0.35' : '1',
+      remove: () => this.setState({ removedAcq: { ...s.removedAcq, [t.key]: true } }),
+    }));
+    const acqCount = acquisitions.filter(a => !s.removedAcq[a.key]).length;
+    const queue = s.proposals.map(q => ({
+      ...q, pending: q.status === 'pending', approved: q.status === 'approved', denied: q.status === 'denied',
+      summary: q.lineup.length + ' in library · ' + q.acqs.length + ' acquisitions · timeslot AM',
+      approve: () => this.approve(q.id), deny: () => this.deny(q.id),
+      chips: [...q.lineup.map(t => ({ label: t.name, color: '#3DD68C' })), ...q.acqs.map(t => ({ label: '+ ' + t.name, color: '#4CC9E8' }))],
+    }));
+    const pendingCount = s.proposals.filter(p => p.status === 'pending').length;
+    const channels = s.channels.map(ch => {
+      const live = ch.status === 'live', pending = ch.total - ch.filled;
+      return {
+        ...ch,
+        dotColor: s.drifted ? '#F5D90A' : live ? '#E5484D' : '#4CC9E8',
+        dotAnim: live ? 'lmPulse 2s ease-in-out infinite' : 'lmPulse 1s ease-in-out infinite',
+        statusLabel: s.drifted ? 'DRIFT' : live ? 'ON AIR' : 'CREATING',
+        nowNext: live ? 'Now: X-Men \u201cNight of the Sentinels\u201d · Next: pod (1:40) → Batman: TAS' : 'Pushing lineup to Tunarr…',
+        pct: Math.round(ch.filled / ch.total * 100),
+        barColor: pending > 0 ? '#4CC9E8' : '#3DD68C',
+        slots: ch.filled + '/' + ch.total + ' slots' + (pending > 0 ? ' · pod-filled' : ''),
+        reconcileLabel: 'Reconcile now', reconcile: () => this.toast('Reconcile: desired vs actual diffed — no changes needed (idempotent).', '#4CC9E8'),
+        podNote: s.podCfg.breaks + ' breaks/hr',
+        open: () => this.setState({ route: 'chdetail' }),
+      };
+    });
+    // --- channel detail ---
+    const stOf = (name) => { const t = s.titles.find(x => x.name === name); return t ? t.state : null; };
+    const slots = this.LIB.map((t, i) => {
+      const st = t.inLib ? 'available' : (stOf(t.name) || 'requested');
+      const drift = s.drifted && t.name === 'Rugrats';
+      const sub = st === 'unavailable';
+      const [bc, bb] = this.badge(drift ? 'requested' : st);
+      return {
+        ord: String(i + 1).padStart(2, '0'),
+        name: sub ? 'Captain Planet and the Planeteers' : t.name, year: sub ? 1990 : t.year,
+        key: sub ? 'series:tvdb:78957' : t.key,
+        state: drift ? 'drift' : st === 'available' ? 'program' : st,
+        badgeColor: drift ? '#F5D90A' : bc, badgeBg: drift ? 'rgba(245,217,10,.1)' : bb,
+        note: drift ? 'item vanished from library — substituted from fallback pool (loop X-Men)' : sub ? 'substituted alternate — Sonic (SatAM) gave up' : st === 'available' ? '' : 'pod-filled until it lands',
+        hasNote: drift || sub || st !== 'available',
+        nameColor: drift ? '#F5D90A' : '#E7EAF0',
+      };
+    });
+    const epgDefs = [['07:00', 'X-Men: TAS', 60, true], ['', 'pod', 2, null], ['08:00', 'Batman: TAS', 30, true], ['', 'pod', 2, null], ['08:30', 'Rugrats', 30, true], ['', 'pod', 2, null], ['09:00', 'Animaniacs', 60, stOf('Animaniacs') === 'available'], ['', 'pod', 2, null], ['10:00', 'Darkwing Duck', 30, stOf('Darkwing Duck') === 'available'], ['', 'pod', 2, null], ['10:30', 'Gargoyles', 60, stOf('Gargoyles') === 'available'], ['', 'pod', 2, null], ['11:30', 'Capt. Planet', 30, false]];
+    const epg = epgDefs.map(([time, name, min, avail]) => name === 'pod'
+      ? { name: '', time: '', flex: min, bg: 'rgba(255,176,32,.25)', border: 'transparent', color: '#FFB020', isPod: true }
+      : { name, time, flex: min, bg: avail ? 'rgba(61,214,140,.08)' : 'rgba(76,201,232,.06)', border: avail ? 'rgba(61,214,140,.3)' : 'rgba(76,201,232,.25)', color: avail ? '#E7EAF0' : '#8B93A3', isPod: false });
+    const pc = s.podCfg;
+    const setPod = (k, v) => () => { this.setState({ podCfg: { ...this.state.podCfg, [k]: v } }); this.toast('Pod policy saved — next sweep rebuilds pods (seeded, deterministic).', '#4CC9E8'); };
+    const podChips = (k, opts) => opts.map(o => ({
+      label: String(o), pick: setPod(k, o),
+      bg: pc[k] === o ? 'rgba(255,176,32,.15)' : 'transparent',
+      color: pc[k] === o ? '#FFB020' : '#8B93A3',
+      border: pc[k] === o ? 'rgba(255,176,32,.4)' : '#2A2E37',
+    }));
+    const recLog = s.recLog.length ? s.recLog : [{ t: '—', msg: 'no reconciles yet' }];
+    const titles = s.titles.map(t => {
+      const [badgeColor, badgeBg] = this.badge(t.state);
+      return {
+        ...t, badgeColor, badgeBg, state: t.state,
+        deco: t.state === 'unavailable' ? 'line-through' : 'none',
+        nameColor: t.state === 'unavailable' ? '#8B93A3' : '#E7EAF0',
+        deadline: t.state === 'available' ? '—' : t.state === 'unavailable' ? 'expired' : t.state === 'downloading' ? '12h TTL' : '48h TTL',
+      };
+    });
+    const avail = titles.filter(t => t.state === 'available').length;
+    const clips = s.clips.map((c, i) => ({
+      ...c, kindColor: { commercial: '#FFB020', bumper: '#4CC9E8', station_id: '#D6409F', psa: '#3DD68C' }[c.kind] || '#8B93A3',
+      cycleEra: () => this.cycleTag(i, 'era'), cycleAud: () => this.cycleTag(i, 'audience'), cycleCat: () => this.cycleTag(i, 'category'),
+      accept: () => this.acceptAI(i),
+      suggestLabel: c.untagged ? c.suggest.era + ' · ' + c.suggest.audience + ' · ' + c.suggest.category : '',
+      cardBorder: c.untagged ? 'rgba(214,64,159,.45)' : '#2A2E37',
+    }));
+    const pod = s.clipsSynced ? [
+      { kind: 'bumper', name: "We'll be right back", flex: 1, bg: 'rgba(76,201,232,.08)', border: 'rgba(76,201,232,.3)', kindColor: '#4CC9E8' },
+      { kind: 'ad · cereal', name: 'Frosted Flakes', flex: 3, bg: 'rgba(255,176,32,.08)', border: 'rgba(255,176,32,.3)', kindColor: '#FFB020' },
+      { kind: 'ad · toys', name: 'TMNT figures', flex: 3, bg: 'rgba(255,176,32,.08)', border: 'rgba(255,176,32,.3)', kindColor: '#FFB020' },
+      { kind: 'ad · tech', name: 'Sega Genesis', flex: 3, bg: 'rgba(255,176,32,.08)', border: 'rgba(255,176,32,.3)', kindColor: '#FFB020' },
+      { kind: 'bumper', name: 'Back to the show', flex: 1, bg: 'rgba(76,201,232,.08)', border: 'rgba(76,201,232,.3)', kindColor: '#4CC9E8' },
+    ] : [];
+    const users = s.users.map((u, i) => ({
+      ...u, initials: u.name.slice(0, 2).toUpperCase(),
+      openDrawer: () => this.setState({ userDrawer: i }),
+      rowOpacity: u.disabled ? '0.45' : '1',
+      role: u.disabled ? 'disabled' : u.role,
+    }));
+    const du = s.users[s.userDrawer];
+    const patchUser = (patch) => this.setState({ users: s.users.map((u, i) => i === s.userDrawer ? { ...u, ...patch } : u) });
+    const drawer = du ? {
+      name: du.name, initials: du.name.slice(0, 2).toUpperCase(), color: du.color,
+      isOwner: !!du.isOwner, cap: du.cap, disabled: !!du.disabled,
+      roleChips: ['admin', 'member'].map(r => ({
+        label: r, pick: () => { patchUser({ role: r }); this.toast(du.name + ' is now ' + r + '.'); },
+        bg: du.role === r ? 'rgba(255,176,32,.15)' : 'transparent',
+        color: du.role === r ? '#FFB020' : '#8B93A3',
+        border: du.role === r ? 'rgba(255,176,32,.4)' : '#2A2E37',
+      })),
+      capChips: ['3', '10', '25'].map(c => ({
+        label: c, pick: () => { patchUser({ cap: c }); this.toast('Pending-acquisition cap: ' + c + '.'); },
+        bg: du.cap === c ? 'rgba(255,176,32,.15)' : 'transparent',
+        color: du.cap === c ? '#FFB020' : '#8B93A3',
+        border: du.cap === c ? 'rgba(255,176,32,.4)' : '#2A2E37',
+      })),
+      autoOn: du.auto.startsWith('yes'),
+      toggleAuto: () => { const on = du.auto.startsWith('yes'); patchUser({ auto: on ? 'no' : 'yes (quota ' + du.cap + ')' }); this.toast('Auto-approve ' + (on ? 'revoked' : 'granted — hard-gated by quota') + '.'); },
+      toggleDisable: () => { patchUser({ disabled: !du.disabled }); this.toast(du.disabled ? du.name + ' re-enabled.' : du.name + ' disabled — sessions revoked immediately.', du.disabled ? '#3DD68C' : '#E5484D'); },
+      disableLabel: du.disabled ? 'Re-enable user' : 'Disable user',
+      close: () => this.setState({ userDrawer: -1 }),
+    } : null;
+    const isMember = s.role === 'member';
+    const navDefs = [
+      ['channels', 'Channels', '▶'], ['board', 'Board', '☰'], ['suggest', 'Suggest', '✦'],
+      ['filler', 'Filler', '▦'], ['approvals', 'Approvals', '✓'], ['users', 'Users', '◎'],
+      ['settings', 'Settings', '⚙'], ['help', 'Help', '?'],
+    ].filter(([r]) => !isMember || !['approvals', 'users', 'settings'].includes(r));
+    const navItems = navDefs.map(([r, label, icon]) => ({
+      label, icon, go: () => this.setState({ route: r, cmdk: false }),
+      bg: s.route === r ? '#1B1E24' : 'transparent',
+      color: s.route === r ? '#E7EAF0' : '#8B93A3',
+      iconColor: s.route === r ? '#FFB020' : '#5A6170',
+      weight: s.route === r ? '600' : '400',
+      hasBadge: r === 'approvals' && pendingCount > 0, badge: String(pendingCount),
+      expanded: !s.navCollapsed,
+      collapsedBadge: s.navCollapsed && r === 'approvals' && pendingCount > 0,
+    }));
+    const q = s.query.trim().toLowerCase();
+    const match = (n) => !q || n.toLowerCase().includes(q);
+    const libResults = this.LIB.filter(t => match(t.name)).slice(0, 5).map(t => ({
+      name: t.name + ' (' + t.year + ')', icon: '▸', iconColor: '#8B93A3',
+      tag: t.inLib ? 'IN LIBRARY' : 'TMDB', tagColor: t.inLib ? '#3DD68C' : '#4CC9E8',
+    }));
+    const clipResults = (s.clipsSynced ? this.CLIPS : []).filter(c => match(c.name)).slice(0, 3).map(c => ({ name: c.name, icon: '▪', iconColor: '#FFB020', tag: c.kind.toUpperCase(), tagColor: '#8B93A3' }));
+    const chResults = s.channels.filter(c => match(c.name)).map(c => ({ name: 'CH ' + c.num + ' · ' + c.name, icon: '◉', iconColor: '#E5484D', tag: 'ON AIR', tagColor: '#E5484D' }));
+    const helpResults = this.HELP.filter(h => match(h.name)).slice(0, 3).map(h => ({ name: h.name, icon: '?', iconColor: '#4CC9E8', tag: 'HELP', tagColor: '#5A6170' }));
+    const searchGroups = [
+      { label: 'Channels', items: chResults }, { label: 'Library + TMDB', items: libResults },
+      { label: 'Clips', items: clipResults }, { label: 'Help', items: helpResults },
+    ].filter(g => g.items.length > 0);
+    return {
+      isLogin: s.screen === 'login', isWizard: s.screen === 'wizard', isApp: s.screen === 'app',
+      loginUser: s.loginUser, loginPw: s.loginPw,
+      setLoginUser: e => this.setState({ loginUser: e.target.value }),
+      setLoginPw: e => this.setState({ loginPw: e.target.value }),
+      doLogin: () => { this.setState({ screen: 'wizard' }); this.toast('Owner account created — you own this instance. Link it to ' + msName + ' after connecting.', '#FFB020'); },
+      ownerName: s.loginUser || 'alex', ownerInitials: (s.loginUser || 'alex').slice(0, 2).toUpperCase(),
+      wizSteps, wizIsChecklist: s.wizStep === 2, wizIsWebhooks: s.wizStep === 3, wizIsLivetv: s.wizStep === 4, wizIsFirstChannel: s.wizStep === 5,
+      wizNext: () => this.setState({ wizStep: s.wizStep + 1 }),
+      checks, checksDone: allChecked, checksNotDone: !allChecked,
+      checkProgress: testedCount + '/' + s.checks.length + ' tested — open the next item and follow the steps',
+      rerunChecks: () => this.runChecks(),
+      rerunLabel: s.checksRunning ? 'Running…' : 'Re-run checklist',
+      hookApps, hooksDone: s.sonarr && s.radarr, hooksNotDone: !(s.sonarr && s.radarr),
+      copyHook: () => { this.setState({ copied: true }); this.later(2000, () => this.setState({ copied: false })); },
+      copyLabel: s.copied ? 'Copied ✓' : 'Copy',
+      livetvUnwired: s.livetv === 'unwired', livetvWiring: s.livetv === 'wiring', livetvWired: s.livetv === 'wired',
+      tunerColor: s.livetv === 'wired' ? '#3DD68C' : '#5A6170', tunerMark: s.livetv === 'wired' ? '✓' : '○',
+      guideColor: s.livetv === 'wired' ? '#3DD68C' : '#5A6170', guideMark: s.livetv === 'wired' ? '✓' : '○',
+      connectLivetv: () => this.connectLivetv(),
+      templates,
+      skipToApp: () => this.setState({ screen: 'app', route: 'suggest' }),
+      rChannels: s.route === 'channels', rBoard: s.route === 'board', rSuggest: s.route === 'suggest',
+      rFiller: s.route === 'filler', rApprovals: s.route === 'approvals', rUsers: s.route === 'users',
+      rSettings: s.route === 'settings', rHelp: s.route === 'help',
+      navItems,
+      navW: s.navCollapsed ? '64px' : '224px',
+      navExpanded: !s.navCollapsed, navCollapsedFlag: s.navCollapsed,
+      navJustify: s.navCollapsed ? 'center' : 'flex-start',
+      navIconSize: s.navCollapsed ? '17px' : '13px',
+      toggleNav: () => this.setState({ navCollapsed: !s.navCollapsed }),
+      goSuggest: () => this.setState({ route: 'suggest' }),
+      goApprovals: () => this.setState({ route: 'approvals' }),
+      channels, noChannels: s.channels.length === 0,
+      titles, noTitles: s.titles.length === 0, hasTitles: s.titles.length > 0,
+      boardSummary: 'acquiring ' + avail + '/' + s.titles.length + ' · CH 42 backfills each title in place as it lands',
+      sIdle: s.phase === 'idle', sGenerating: s.phase === 'generating', sReview: s.phase === 'review',
+      heroCentered: heroLayout === 'centered', heroSplit: heroLayout === 'split',
+      intent: s.intent, setIntent: e => this.setState({ intent: e.target.value }),
+      startGen: () => this.startGen(), genSteps,
+      proposalName: '90s Saturday Morning', lineup, lineupCount: String(lineup.length),
+      acquisitions, acqCount: String(acqCount),
+      notSubmitted: !s.submitted, isSubmitted: s.submitted,
+      submitProposal: () => this.submitProposal(),
+      queue, queueEmpty: s.proposals.length === 0,
+      clips, noClips: !s.clipsSynced, hasClips: s.clipsSynced, pod,
+      sources: s.sources.map((src, i) => ({
+        ...src,
+        kindColor: src.kind === 'youtube' ? '#E5484D' : '#4CC9E8',
+        remove: () => { this.setState({ sources: s.sources.filter((_, j) => j !== i) }); this.toast('Source removed — PUT /v1/filler/sources', '#4CC9E8'); },
+      })),
+      newSource: s.newSource, setNewSource: e => this.setState({ newSource: e.target.value }),
+      addSource: () => {
+        const url = s.newSource.trim(); if (!url) return;
+        this.setState({ sources: [...s.sources, { url, kind: url.includes('archive.org') ? 'archive' : 'youtube', status: 'queued — sidecar picks it up next cycle' }], newSource: '' });
+        this.toast('Source saved — PUT /v1/filler/sources. The ingest sidecar reads it via API_TOKEN.', '#FFB020');
+      },
+      syncClips: () => this.syncClips(),
+      syncLabel: s.clipSyncing ? 'Syncing…' : s.clipsSynced ? 'Synced · 8 clips' : 'Sync from media server',
+      users, syncUsers: () => this.syncUsers(),
+      userSyncLabel: s.userSyncing ? 'Syncing…' : s.usersSynced ? 'Synced · 4 users' : 'Sync from ' + msName,
+      msName, msLower: ms, msAuth, msPort, fillerLibName: s.cfg.fillerLib,
+      usersApiNote: 'GET ' + msPort + '/Users · ' + msAuth + ' Token="<LIBRARY_TOKEN>" · admins map from Policy.IsAdministrator · disabled server-side → disabled here, sessions revoked',
+      cfgFields: [
+        ['Media server flavor', 'libraryFlavor', 'jellyfin | emby'], ['Media server URL', 'libraryUrl', 'http://jellyfin:8096', true],
+        ['Media server API key', 'libraryToken', 'paste key'], ['Filler library', 'fillerLib', 'Commercials', false, ['Commercials', 'Movies', 'TV Shows', 'Home Videos', '(none)']],
+        ['Seerr URL', 'seerrUrl', 'http://seerr:5055'], ['Seerr API key', 'seerrKey', 'paste key'],
+        ['Tunarr URL', 'tunarrUrl', 'http://tunarr:8000'], ['Tunarr API key (optional)', 'tunarrKey', 'leave blank if unset'],
+        ['LLM provider', 'llmProvider', 'ollama | anthropic'], ['LLM URL', 'llmUrl', 'http://ollama:11434'],
+        ['LLM model', 'llmModel', 'qwen2.5:14b'], ['TMDB API key', 'tmdbKey', 'paste key'],
+      ].map(([label, key, ph, locked, select]) => ({
+        label, key, ph, val: s.cfg[key], locked: !!locked,
+        isSelect: !locked && !!select, isInput: !locked && !select,
+        options: (select || []).map(v => ({ v })),
+        set: e => this.setState({ cfg: { ...this.state.cfg, [key]: e.target.value } }),
+      })),
+      saveCfg: () => { this.toast('Saved to the settings registry — re-testing connections…', '#FFB020'); this.runChecks(); },
+      envRows: [
+        { k: 'API_TOKEN', v: 'loom_9f2k••••••••••••', chip: 'GENERATED', chipColor: '#3DD68C', canRegen: true, regen: () => this.toast('API_TOKEN regenerated — old token revoked immediately.', '#FFB020') },
+        { k: 'WEBHOOK_SECRET', v: 'whk_9f2•••••••', chip: 'GENERATED', chipColor: '#3DD68C', canRegen: true, regen: () => this.toast('WEBHOOK_SECRET regenerated — update Sonarr & Radarr webhooks.', '#F5D90A') },
+        { k: 'SESSION_SECRET', v: '••••••••••••••••', chip: 'GENERATED', chipColor: '#3DD68C', canRegen: false },
+        { k: 'DATABASE_URL', v: 'sqlite:///data/loomarr.db', chip: 'DEFAULT', chipColor: '#8B93A3', canRegen: false },
+        { k: 'LIBRARY_URL', v: 'http://jellyfin:8096', chip: 'SET VIA ENV', chipColor: '#4CC9E8', canRegen: false },
+      ],
+      helpPages: this.HELP.map(h => ({ ...h, open: () => this.setState({ helpDoc: h.name }) })),
+      helpDocOpen: !!s.helpDoc, helpDocTitle: s.helpDoc || '',
+      helpDocParas: s.helpDoc ? (this.HELPDOCS[s.helpDoc] || []).map(p => ({ p })) : [],
+      closeHelpDoc: () => this.setState({ helpDoc: null }),
+      rChDetail: s.route === 'chdetail',
+      backToChannels: () => this.setState({ route: 'channels' }),
+      chDetail: channels[0] || null, hasChannel: channels.length > 0,
+      chSlots: slots, epg,
+      podBreaksChips: podChips('breaks', [2, 4, 6]), podMaxChips: podChips('podMax', [2, 3, 4]),
+      podEraChips: podChips('era', ['strict', 'widen']), podAudChips: podChips('audience', ['kids', 'family', 'general']),
+      recLog, drifted: s.drifted, notDrifted: !s.drifted,
+      simulateDrift: () => this.simulateDrift(),
+      detailReconcile: () => { this.log('manual reconcile: diff desired vs actual — no changes'); this.toast('Reconcile: no diff. Desired state already live (idempotent).', '#4CC9E8'); },
+      editQ: s.editQ, setEditQ: e => this.setState({ editQ: e.target.value }),
+      editResults, hasEditResults: editResults.length > 0,
+      isMember, isAdmin: !isMember,
+      roleToggleLabel: isMember ? 'View as admin' : 'View as member',
+      toggleRole: () => {
+        const toMember = s.role === 'admin';
+        const patch = { role: toMember ? 'member' : 'admin' };
+        if (toMember && !s.memberIntroSeen) { patch.memberIntro = true; patch.memberIntroSeen = true; }
+        if (toMember && ['approvals', 'users', 'settings', 'chdetail'].includes(s.route)) patch.route = 'suggest';
+        this.setState(patch);
+      },
+      memberIntroOpen: !!s.memberIntro,
+      closeMemberIntro: () => this.setState({ memberIntro: false }),
+      submittedAdmin: s.submitted && !isMember, submittedMember: s.submitted && isMember,
+      hasProposalJourney: s.proposals.length > 0,
+      journeyStatus: s.proposals.length ? (s.proposals[0].status === 'pending' ? 'submitted → pending approval' : s.proposals[0].status === 'denied' ? 'denied by admin' : s.channels.length && s.channels[0].status === 'live' ? 'approved → acquiring ' + avail + '/' + s.titles.length + ' → live on channel 42' : 'approved → acquiring…') : '',
+      drawerOpen: s.userDrawer >= 0, drawer,
+      drawerAutoBorder: drawer && drawer.autoOn ? '#FFB020' : '#2A2E37',
+      drawerAutoBg: drawer && drawer.autoOn ? 'rgba(255,176,32,.2)' : '#0B0C0E',
+      drawerAutoKnob: drawer && drawer.autoOn ? 22 : 2,
+      drawerAutoKnobColor: drawer && drawer.autoOn ? '#FFB020' : '#5A6170',
+      helpGridVisible: !s.helpDoc,
+      roleColor: isMember ? '#4CC9E8' : '#FFB020',
+      roleLabel: isMember ? 'MEMBER' : 'ADMIN · OWNER',
+      introSteps: [
+        { n: '1', text: 'Describe a channel in a sentence — an intent. Era, tone, and must-includes all help.' },
+        { n: '2', text: 'Loomarr proposes a lineup from the real library + TMDB. It can\u2019t invent titles.' },
+        { n: '3', text: 'You review and submit. An admin approves before anything is acquired.' },
+        { n: '4', text: 'Missing titles are acquired automatically; you can track every one on the Board.' },
+        { n: '5', text: 'Your channel appears in the TV guide — and keeps itself filled.' },
+      ],
+      howItWorks: [
+        { n: '1', text: 'You describe the channel — era, tone, runtime, must-includes.' },
+        { n: '2', text: 'The suggester searches your real library + TMDB. Grounded — it can only pick real titles.' },
+        { n: '3', text: 'You review the proposal: lineup, acquisitions, rationale, scores. Edit via search.' },
+        { n: '4', text: 'An admin approves. Missing titles are acquired via Seerr.' },
+        { n: '5', text: 'The channel goes live immediately — pods fill gaps, titles backfill as they land.' },
+      ],
+      cmdkOpen: s.cmdk, openCmdk: () => this.setState({ cmdk: true, query: '' }),
+      closeCmdk: () => this.setState({ cmdk: false }),
+      stopProp: e => e.stopPropagation(),
+      query: s.query, setQuery: e => this.setState({ query: e.target.value }),
+      searchGroups, searchEmpty: searchGroups.length === 0,
+      hasToast: !!s.toast, toastMsg: s.toast ? s.toast.msg : '',
+      toastColor: s.toast ? s.toast.color : '#3DD68C',
+      toastBorder: s.toast ? s.toast.color + '55' : '#2A2E37',
+      noop: e => e.preventDefault(),
+    };
+  }
+}
+</script>
+</body>
+</html>
