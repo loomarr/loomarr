@@ -540,7 +540,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Sessions | hand-rolled in the Store (random 256-bit token, **SHA-256-hashed at rest**, HttpOnly cookie) | We need revocation-by-user + dual-backend anyway; `scs`/`gorilla` add a dependency for no gain |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
-| LLM clients | official `anthropics/anthropic-sdk-go`; **Ollama via plain HTTP** (`/api/chat` with tools) | Ollama's API is small; keep deps light |
+| LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Backend tests | stdlib `testing` + `testcontainers-go` (Postgres) | Already specified |
 
@@ -580,8 +580,8 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | no | `720h` / `2160h` (§5 janitor) |
 | `WEBHOOK_SECRET` | yes | *(secret; verifies `/hooks/arr`)* |
 | `EVENT_WEBHOOK_URL` | no | optional external event target |
-| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | yes† | `ollama` / `http://ollama:11434` / model id |
-| `LLM_API_KEY` | no | *(secret; required for `anthropic`)* |
+| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | yes† | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:14b` — use a **Q6_K** quant (stock Q4 degrades tool-calling/JSON). |
+| `LLM_API_KEY` | no | *(secret; read for `LLM_PROVIDER=openai`)* |
 | `TMDB_API_KEY` | yes† | *(secret; grounds suggestions)* |
 | `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | no | `false` / `10` |
 | `SEASON_PRECISION` | no | `series` (default) \| `seasons` — what counts as "in library" for a series (§6) |
