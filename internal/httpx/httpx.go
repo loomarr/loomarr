@@ -20,6 +20,7 @@ const (
 	TimeoutArr     = 10 * time.Second // Sonarr/Radarr
 	TimeoutTunarr  = 20 * time.Second // lineup pushes are chunky
 	TimeoutLLM     = 120 * time.Second
+	TimeoutProbe   = 5 * time.Second // quick LLM-host probes (version/tags, §8.1)
 )
 
 // New returns an *http.Client with the given hard timeout. The timeout is a

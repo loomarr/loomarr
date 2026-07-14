@@ -50,6 +50,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV,
 		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler,
+		systemLLM: opts.SystemLLM,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
@@ -60,6 +61,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSuggestions(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerFiller(humaAPI)
+	srv.registerSystemLLM(humaAPI)
 
 	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
 	// (not a typed Huma op — §16). Auth checked inline.
