@@ -154,6 +154,12 @@ func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
 	if rec.State != "wanted" {
 		t.Errorf("enqueued title state = %s, want wanted", rec.State)
 	}
+	// The wanted title must be DUE (deadline set, not zero) — else the reconciler's
+	// ClaimDueTitles (deadline <= now AND deadline > 0) never claims it and it's
+	// never submitted to Seerr (live-smoke bug: approved acquisitions sat forever).
+	if rec.Deadline.IsZero() {
+		t.Error("enqueued acquisition has a zero deadline — reconciler will never claim it")
+	}
 	// The proposal is approved + audited.
 	p, _ := st.GetProposal(context.Background(), "p1")
 	if p.Status != "approved" {
