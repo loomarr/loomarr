@@ -68,6 +68,9 @@ type Result struct {
 	Fetched int
 	Skipped int
 	Failed  int
+	// Empty counts sources that returned no clips and no error — a
+	// nonexistent/typo'd id or empty source (surfaced so it isn't silent).
+	Empty int
 }
 
 // Run ingests every source once. A failed source is logged and counted, never
@@ -91,6 +94,15 @@ func (i *Ingestor) Run(ctx context.Context, sources []Source) Result {
 			i.logf("ingest %s failed: %v", src.URL, err)
 			res.Failed++
 			continue
+		}
+		if fetched == 0 && skipped == 0 {
+			// A source that yielded no clips AND no error is almost always operator
+			// error — a typo'd/nonexistent Archive id (Archive returns 200 {} for an
+			// unknown item, so it's not a download failure), an empty collection, or a
+			// YouTube source with no downloadable video. Without this the operator sees
+			// "fetched:0 failed:0" and no reason why. Warn + count it so it's not silent.
+			i.logf("ingest %s yielded no clips (nonexistent id / empty source?)", src.URL)
+			res.Empty++
 		}
 		res.Fetched += fetched
 		res.Skipped += skipped

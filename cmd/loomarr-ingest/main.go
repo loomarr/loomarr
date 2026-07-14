@@ -67,5 +67,5 @@ func main() {
 
 func runOnce(ctx context.Context, ing *ingestkit.Ingestor, sources []ingestkit.Source, log *slog.Logger) {
 	res := ing.Run(ctx, sources)
-	log.Info("ingest pass complete", "fetched", res.Fetched, "skipped", res.Skipped, "failed", res.Failed)
+	log.Info("ingest pass complete", "fetched", res.Fetched, "skipped", res.Skipped, "failed", res.Failed, "empty", res.Empty)
 }
