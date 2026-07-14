@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -269,7 +270,12 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 		} else if !errors.Is(gerr, store.ErrNotFound) {
 			return nil, gerr
 		}
-		rec := provision.Record{Key: key, Title: title, State: provision.Wanted}
+		// Deadline = now so the acquisition is DUE IMMEDIATELY: the provisioning
+		// reconciler's ClaimDueTitles only claims rows with `deadline <= now AND
+		// deadline > 0`, so a zero-deadline wanted title is never claimed and never
+		// submitted to Seerr. (Caught by the live smoke: approved acquisitions sat in
+		// `wanted` forever because the deadline was unset.)
+		rec := provision.Record{Key: key, Title: title, State: provision.Wanted, Deadline: time.Now()}
 		if err := s.store.UpsertTitle(ctx, rec); err != nil {
 			return nil, err
 		}
