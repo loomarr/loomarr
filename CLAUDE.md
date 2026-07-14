@@ -24,19 +24,19 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 | Phase | Read sections |
 | --- | --- |
 | 0 Contract spikes | §6, §9, §21 phase 0 |
-| 1 Scaffold + harness | §14, §15, §16 (Dockerfile/compose), §21 |
+| 1 Scaffold + harness | §14, §15, §16 (Dockerfile/compose), §21 + `docs/config-design.md` §2–§4 |
 | 2 Provisioner domain | §3, §4 |
 | 3 Store + SQLite | §5 |
 | 4 Postgres | §5 (esp. concurrency), §18 |
 | 5 Library adapter | §6 (Library + auth), §11 (flavor login header) |
 | 6 Requester + ingest | §6 (Requester, Ingest), §4 |
 | 7 Reconciler + janitor | §4, §5 (retention), §18 |
-| 8 API + OpenAPI + backup | §7, §7.1, §16 (backup) |
-| 9 Users & auth | §11, §7 (authorization model) |
-| 10 Scheduler + Tunarr | §9, §6 (Programmer + resilience), §18 |
-| 11 Suggester + search | §8, §7.2 |
+| 8 API + OpenAPI + backup | §7, §7.1, §16 (backup) + `docs/config-design.md` §8 |
+| 9 Users & auth | §11, §7 (authorization model) + `docs/config-design.md` §4 (secrets) |
+| 10 Scheduler + Tunarr | §9, §6 (Programmer + resilience), §18 + `docs/programming-design.md` §2–§8 |
+| 11 Suggester + search | §8, §8.1 (model selection), §7.2 + `docs/programming-design.md` §2, §8 |
 | 12 Commercials & filler | §10 |
-| 13 Web UI + onboarding | §12, §13, §14 (FE) + `loomarr-frontend-design.md` (all of it) |
+| 13 Web UI + onboarding | §12, §13, §14 (FE) + `loomarr-frontend-design.md` (all of it) + `docs/config-design.md` §5–§7 |
 | 14 Docs & ship | §13 (docs set), §16 |
 
 ## PROGRESS.md format
@@ -50,6 +50,7 @@ make check          # fmt + vet + golangci-lint + unit tests (the default gate)
 make test           # unit tests only
 make test-pg        # store conformance vs Postgres (testcontainers; requires Docker)
 make openapi        # export api/openapi.yaml from the running definitions
+make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
 make openapi-verify # regenerated spec must match committed (CI red on drift)
 make fe             # orval typegen + tsc + vitest
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
@@ -90,14 +91,18 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 - Go module path, license, and name availability (§20) before anything is published.
 - Any gate that seems to require weakening a prime directive — that's a design conversation, not a workaround.
 
-## Seed docs
+## Companion & seed docs
 
-Three design artifacts ship alongside this repo pre-written:
+**Companion design docs — already in `docs/`, authoritative for their own domains:**
+- **`docs/programming-design.md`** — the ChannelPolicy heuristics: extract-vs-enforce split, scope/audience/separation/ordering/seasonality, the relaxation ladder, the extensibility checklist. Phases 10, 11, and 13 build against it.
+- **`docs/config-design.md`** — the settings subsystem mechanics: the typed registry, `env > database > default` resolution, hot-apply, secrets lifecycle, Settings IA, wizard-as-settings. Phases 1, 8, 9, and 13 build against it.
+
+**Seed artifacts (not yet in `docs/`; incorporated in later phases):**
 - **`design/loomarr-prototype-{desktop,mobile}.dc.html`** — the Claude Design mock: the authoritative visual reference for phase 13. Recreate pixel-perfectly (per `design/README.md`) with the two deltas noted in `loomarr-frontend-design.md` §7 (badge `-300` text stops; `static-500` disabled-only). These are `.dc.html` prototypes (a design-tool format + `support.js` runtime), NOT the shippable frontend — phase 13 builds the real Vite/React app to match their rendered output.
 - **`loomarr-frontend-design.md`** — authoritative for how the frontend looks and is built (tokens, palette, component library, visual testing, mobile-readiness). Phases 1 and 13 build against it; incorporate as `docs/frontend-design.md` during phase 14.
 - **`docs-livetv-integration.md`** — summary of the media-server Live TV wiring. Incorporate as `docs/integrations/media-server-livetv.md` during **phase 14** (update section references if the design doc has moved) and fold its "Troubleshooting hooks" into the Troubleshooting page. It is a summary — where it and the design doc disagree, the design doc wins and the seed gets corrected.
 
-Precedence for all three: `docs/design.md` wins on *behavior* (endpoints, flows, auth, phases); the seeds win on their own domain (look/onboarding). A seed that contradicts the design doc gets corrected, not followed.
+Precedence for all of them: `docs/design.md` wins on *behavior* (endpoints, flows, auth, phases); each companion/seed wins on its own domain (programming heuristics, config mechanics, look/onboarding). A companion or seed that contradicts the design doc gets corrected, not followed.
 
 ## Definition of done
 
