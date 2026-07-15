@@ -26,6 +26,11 @@ type ChannelDTO struct {
 	IntentRef    string `json:"intentRef,omitempty"`
 	ProgramCount int    `json:"programCount" doc:"Real playable programs in the desired lineup"`
 	SlotCount    int    `json:"slotCount" doc:"Total slots incl. filler/flex placeholders"`
+	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
+	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
+	// reconcile applied (policy.applied) — the UI renders these as policy chips and
+	// relaxation banners. Empty ⇒ the channel runs on built-in defaults.
+	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations"`
 }
 
 func channelToDTO(ch store.Channel) ChannelDTO {
@@ -35,6 +40,7 @@ func channelToDTO(ch store.Channel) ChannelDTO {
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
+		Policy: ch.Policy,
 	}
 }
 
