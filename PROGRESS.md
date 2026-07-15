@@ -4,6 +4,27 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Auth/identity rework (§11) — COMPLETE (2026-07-15).** On branch `feat/auth-rework` (commits
+`4879470`..`4af00e2`), NOT yet merged to `main`. Replaced the claim-on-login / lazy-self-provision
+model with **Loomarr-owned identity**: the `users` table is the source of truth + allowlist. Gate:
+`make check` (`-race`, lint 0) + `make test-pg` (migration `00009` on both dialects) + `openapi-verify`
++ `config-docs-verify`, **plus a live boot smoke with ZERO media-server config** — `POST /v1/setup/bootstrap`
+created the owning admin, a 2nd call 409'd, local admin login returned an HttpOnly/SameSite=Strict session
+cookie, wrong password 401'd, and the users table held exactly one row (admin, bcrypt hash set). Delivered:
+migration `00009` (nullable `users.password_hash` — set ⇒ local/bcrypt user, null ⇒ imported media-server
+user, the credential-path discriminator); `login.go` enforces the allowlist (a name+hash verifies in-app,
+else verify vs the media server AND confirm the id is imported — an un-imported user is **rejected even with
+valid Emby creds**, no lazy provision; all failures return one `ErrInvalidCredentials`, no user enumeration;
+works with a nil media server = local-only); `Provisioner.Bootstrap` (first local admin, once via
+`CountAdmins()==0`) + `Provisioner.Import` (explicit media-server ids, admin-only, the ONLY add path);
+`POST /v1/setup/bootstrap` (unauthenticated, self-gated) + `POST /v1/users/import` (admin-only);
+`store.GetUserByName`. **Closed BOTH lazy-provision hatches:** login (`syncUser` add-branch removed) AND
+periodic sync (`UserSync.Sync` now skips un-imported users — it refreshes, never adds, else a sync would
+silently re-import everyone). `bcrypt` promoted to a direct dep (§14 updated). Existing auth/flow tests
+updated to seed the allowlist first (a stricter contract, not weakened). Reworked doc §11 + reconciled
+§13 wizard (Claim→Bootstrap + Import steps), §16, §19 test spec, §21 phase-9/13 gate text. Supersedes the
+deferred `loomarr-auth-rework` memory item. Unblocks Phase 13's wizard "Bootstrap" + "Import users" steps.
+
 **Settings subsystem — cross-phase config retrofit — COMPLETE (2026-07-15).** Built `config-design.md`
 for real (the deferred Phase-1/8/9 config work) on branch `feat/settings-subsystem` (commits
 `7aa3fcc`..`17fe3cb`). Gate: `make check` (`-race`, lint 0) + `make test-pg` (settings audit columns on
