@@ -1,0 +1,401 @@
+package schedule
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/provision"
+)
+
+// ChannelPolicy is the per-channel programming contract (programming-design.md §2):
+// the suggester EXTRACTS it from intent; this package ENFORCES it deterministically.
+// It is the *sparse* form — every field optional, the zero value meaning "use the
+// built-in default" — so it round-trips small and an LLM only emits what it means.
+// Enforcement never reads this directly; it goes through Resolved(), which fills
+// every default exactly once. Stored as policy_json on the channel row.
+type ChannelPolicy struct {
+	Scope      ScopePolicy      `json:"scope,omitempty"`      // WHAT is allowed (§2)
+	Audience   AudiencePolicy   `json:"audience,omitempty"`   // WHO it's for — safety-critical (§4)
+	Separation SeparationPolicy `json:"separation,omitempty"` // HOW OFTEN things recur (§3)
+	Ordering   OrderingMode     `json:"ordering,omitempty"`   // "" = inherit Channel.Strategy (§5)
+	Seasonal   SeasonalPolicy   `json:"seasonal,omitempty"`   // WHEN in the year (§6)
+	// Applied records the relaxation-ladder steps taken at the last reconcile (§7).
+	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
+	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
+	Applied []AppliedRelaxation `json:"applied,omitempty"`
+}
+
+// ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
+// resolved provisioning keys, never names.
+type ScopePolicy struct {
+	Series      []provision.Key `json:"series,omitempty"`      // restrict to these series (resolved ids)
+	Collections []string        `json:"collections,omitempty"` // media-server collections
+	Seasons     *Range          `json:"seasons,omitempty"`     // per-series season window
+	Era         *Range          `json:"era,omitempty"`         // by first-air/release year
+	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
+	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
+}
+
+// GenreFilter is an include/exclude pair over genre names (§2). Include empty =
+// any genre allowed; Exclude always subtracts.
+type GenreFilter struct {
+	Include []string `json:"include,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
+}
+
+// Range is an inclusive [From, To] window; 0 means unbounded on that end (§2).
+// Used for both season ranges and eras.
+type Range struct {
+	From int `json:"from,omitempty"`
+	To   int `json:"to,omitempty"`
+}
+
+// Contains reports whether v falls within the range, treating a 0 bound as
+// unbounded on that end. A nil range contains everything (no constraint).
+func (r *Range) Contains(v int) bool {
+	if r == nil {
+		return true
+	}
+	if r.From > 0 && v < r.From {
+		return false
+	}
+	if r.To > 0 && v > r.To {
+		return false
+	}
+	return true
+}
+
+// AudiencePolicy is the fail-closed content-rating gate (§4) — the one heuristic
+// where an error is a *harm*, not an aesthetic bug.
+type AudiencePolicy struct {
+	Ceiling Rating        `json:"ceiling,omitempty"` // closed enum ladder; "" = no ceiling (adult/general)
+	Unrated UnratedPolicy `json:"unrated,omitempty"` // "" resolves by ceiling (kids ⇒ exclude)
+}
+
+// SeparationPolicy governs how often the same content may recur (§3). Durations
+// serialize as Go-duration strings ("168h") to match the §2 schema.
+type SeparationPolicy struct {
+	EpisodeNoRepeat Duration `json:"episodeNoRepeat,omitempty"` // same episode once per window
+	MovieNoRepeat   Duration `json:"movieNoRepeat,omitempty"`
+	SeriesMinGap    Duration `json:"seriesMinGap,omitempty"` // same series on MIXED channels
+	BlockMax        int      `json:"blockMax,omitempty"`     // max consecutive slots from one series
+}
+
+// SeasonalPolicy controls holiday-aware programming (§6).
+type SeasonalPolicy struct {
+	Mode      SeasonalMode `json:"mode,omitempty"`      // off | auto | exclusive; "" = auto
+	Holidays  []string     `json:"holidays,omitempty"`  // subset of the built-in calendar ids
+	OffSeason OffSeason    `json:"offSeason,omitempty"` // exclusive-mode fallback; "" = loop
+}
+
+// AppliedRelaxation records one step the relaxation ladder took (§7), surfaced in
+// the UI ("policy relaxed: repeat window 7d → 3d"). Kind is a stable slug; From/To
+// are human-readable values for display.
+type AppliedRelaxation struct {
+	Kind string `json:"kind"` // "episodeNoRepeat" | "seriesMinGap" | "era" | ...
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// --- closed enums (Validate rejects unknown non-empty values) -------------------
+
+// OrderingMode is how the eligible pool is laid onto the cycle (§5).
+type OrderingMode string
+
+const (
+	// OrderInherit ("") defers to the channel's Strategy — a policy-less channel
+	// keeps its existing sequential/shuffle behavior (the locked non-breaking default).
+	OrderInherit     OrderingMode = ""
+	OrderSequential  OrderingMode = "sequential"
+	OrderShuffle     OrderingMode = "shuffle"
+	OrderSyndication OrderingMode = "syndication" // deck-deal (default for a policy that omits ordering intent)
+)
+
+func (o OrderingMode) valid() bool {
+	switch o {
+	case OrderInherit, OrderSequential, OrderShuffle, OrderSyndication:
+		return true
+	}
+	return false
+}
+
+// UnratedPolicy decides what happens to an item with missing/unmappable rating (§4).
+type UnratedPolicy string
+
+const (
+	UnratedDefault UnratedPolicy = ""        // resolves by ceiling: kids ⇒ exclude, else allow
+	UnratedExclude UnratedPolicy = "exclude" // fail-closed
+	UnratedAllow   UnratedPolicy = "allow"
+)
+
+func (u UnratedPolicy) valid() bool {
+	switch u {
+	case UnratedDefault, UnratedExclude, UnratedAllow:
+		return true
+	}
+	return false
+}
+
+// SeasonalMode is the holiday behavior (§6).
+type SeasonalMode string
+
+const (
+	SeasonalDefault   SeasonalMode = ""          // resolves to auto
+	SeasonalOff       SeasonalMode = "off"       // no detection, no bench
+	SeasonalAuto      SeasonalMode = "auto"      // boost in-window, bench out-of-window
+	SeasonalExclusive SeasonalMode = "exclusive" // the channel IS the holiday
+)
+
+func (m SeasonalMode) valid() bool {
+	switch m {
+	case SeasonalDefault, SeasonalOff, SeasonalAuto, SeasonalExclusive:
+		return true
+	}
+	return false
+}
+
+// OffSeason is what an exclusive-mode channel does out of its holiday window (§6).
+type OffSeason string
+
+const (
+	OffSeasonDefault OffSeason = ""     // resolves to loop
+	OffSeasonLoop    OffSeason = "loop" // loop the scope without the seasonal filter
+	OffSeasonDark    OffSeason = "dark" // go dark
+)
+
+func (o OffSeason) valid() bool {
+	switch o {
+	case OffSeasonDefault, OffSeasonLoop, OffSeasonDark:
+		return true
+	}
+	return false
+}
+
+// --- audience rating ladder (§4) ------------------------------------------------
+
+// Rating is a content rating from either the TV or film system (§4). Comparison
+// is by ladderRank; an unmappable/empty value is treated as *unrated* (no rank).
+type Rating string
+
+// ladderRank maps both rating systems onto one ordered ladder (§4):
+// TV-Y < TV-Y7 < TV-G/G < TV-PG/PG < TV-14/PG-13 < TV-MA/R/NC-17.
+// A rating absent from this map is unrated (handled fail-closed).
+var ladderRank = map[Rating]int{
+	"TV-Y":  0,
+	"TV-Y7": 1,
+	"TV-G":  2, "G": 2,
+	"TV-PG": 3, "PG": 3,
+	"TV-14": 4, "PG-13": 4,
+	"TV-MA": 5, "R": 5, "NC-17": 5,
+}
+
+// kidsCeilingRank is the highest ladder rank still considered a "kids" ceiling
+// (TV-PG). At or below it, the default unrated policy is exclude (§4).
+const kidsCeilingRank = 3
+
+// normalizeRating maps a raw media-server OfficialRating string into a ladder
+// Rating. It upper-cases, trims, and normalizes the common Emby/Jellyfin variants
+// ("TV_Y7", "tv-14", "Rated R" → …); anything not on the ladder returns "" (unrated).
+func normalizeRating(raw string) Rating {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	s = strings.ReplaceAll(s, "_", "-")
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.TrimPrefix(s, "RATED")
+	if _, ok := ladderRank[Rating(s)]; ok {
+		return Rating(s)
+	}
+	return "" // unmappable → unrated (fail-closed at the enforcement site)
+}
+
+// mapped reports whether r is a known ladder rating (not unrated).
+func (r Rating) mapped() bool { _, ok := ladderRank[r]; return ok }
+
+// atOrBelow reports whether r is at or below the ceiling on the ladder. Both must
+// be mapped; an unrated item is never "at or below" — it's decided by UnratedPolicy.
+func (r Rating) atOrBelow(ceiling Rating) bool {
+	rr, rok := ladderRank[r]
+	cc, cok := ladderRank[ceiling]
+	return rok && cok && rr <= cc
+}
+
+// --- Duration newtype (JSON as "168h", not nanoseconds) -------------------------
+
+// Duration wraps time.Duration so it (un)marshals as a Go-duration STRING ("168h")
+// — matching the programming-design §2 schema and staying human/LLM-authorable.
+// stdlib time.Duration would marshal as an integer nanosecond count.
+type Duration time.Duration
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	// Accept a string ("168h"); tolerate a bare number as nanoseconds for robustness.
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		parsed, err := time.ParseDuration(s)
+		if err != nil {
+			return fmt.Errorf("policy duration %q: %w", s, err)
+		}
+		*d = Duration(parsed)
+		return nil
+	}
+	var n int64
+	if err := json.Unmarshal(b, &n); err != nil {
+		return fmt.Errorf("policy duration: want a duration string like \"168h\", got %s", b)
+	}
+	*d = Duration(n)
+	return nil
+}
+
+// Std returns the underlying time.Duration.
+func (d Duration) Std() time.Duration { return time.Duration(d) }
+
+// --- built-in defaults (design §15; the two-tier `channel-policy > built-in`) ---
+// The registry-default middle tier (config-design.md) is deferred until the
+// settings registry lands; these constants are the v1 default source of truth.
+const (
+	defaultEpisodeNoRepeat = 168 * time.Hour // 7d
+	defaultMovieNoRepeat   = 720 * time.Hour // 30d
+	defaultSeriesMinGap    = 2 * time.Hour
+	defaultBlockMax        = 2
+	defaultOrdering        = OrderSyndication
+	defaultSeasonalMode    = SeasonalAuto
+	defaultOffSeason       = OffSeasonLoop
+)
+
+// ResolvedPolicy is the fully-populated form enforcement consumes: every default
+// filled, no zero-means-default ambiguity, so slotting/filter code never repeats
+// "if unset use default". Produced once per reconcile by ChannelPolicy.Resolved().
+type ResolvedPolicy struct {
+	Scope    ScopePolicy
+	Ceiling  Rating
+	Unrated  UnratedPolicy // resolved to exclude|allow (never "")
+	Sep      ResolvedSeparation
+	Ordering OrderingMode // resolved to a concrete mode (never OrderInherit)
+	Seasonal ResolvedSeasonal
+}
+
+// ResolvedSeparation is the separation policy with every window/limit filled.
+type ResolvedSeparation struct {
+	EpisodeNoRepeat time.Duration
+	MovieNoRepeat   time.Duration
+	SeriesMinGap    time.Duration
+	BlockMax        int // 0 = unbounded (single-series auto-relax)
+}
+
+// ResolvedSeasonal is the seasonal policy with mode/off-season concrete.
+type ResolvedSeasonal struct {
+	Mode      SeasonalMode
+	Holidays  []string
+	OffSeason OffSeason
+}
+
+// Resolved fills every default and applies the single-series auto-relax (§2).
+//
+//   - strategy: the channel's Strategy — an omitted policy Ordering inherits it
+//     (a policy-less channel keeps its existing behavior, the locked decision).
+//   - singleSeries: true when the eligible entry set is exactly one series and no
+//     movies; separation there is EPISODE spacing, so SeriesMinGap/BlockMax relax
+//     (rule-based, not LLM judgment).
+func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPolicy {
+	sep := ResolvedSeparation{
+		EpisodeNoRepeat: orDur(p.Separation.EpisodeNoRepeat, defaultEpisodeNoRepeat),
+		MovieNoRepeat:   orDur(p.Separation.MovieNoRepeat, defaultMovieNoRepeat),
+		SeriesMinGap:    orDur(p.Separation.SeriesMinGap, defaultSeriesMinGap),
+		BlockMax:        orInt(p.Separation.BlockMax, defaultBlockMax),
+	}
+	if singleSeries {
+		// Separation is episode spacing here, not series spacing — relax both.
+		sep.SeriesMinGap = 0
+		sep.BlockMax = 0 // unbounded
+	}
+
+	ordering := p.Ordering
+	if ordering == OrderInherit {
+		ordering = orderingFromStrategy(strategy)
+	}
+
+	mode := p.Seasonal.Mode
+	if mode == SeasonalDefault {
+		mode = defaultSeasonalMode
+	}
+	off := p.Seasonal.OffSeason
+	if off == OffSeasonDefault {
+		off = defaultOffSeason
+	}
+
+	return ResolvedPolicy{
+		Scope:    p.Scope,
+		Ceiling:  p.Audience.Ceiling,
+		Unrated:  resolveUnrated(p.Audience),
+		Sep:      sep,
+		Ordering: ordering,
+		Seasonal: ResolvedSeasonal{Mode: mode, Holidays: p.Seasonal.Holidays, OffSeason: off},
+	}
+}
+
+// resolveUnrated fills the unrated policy: explicit value wins; otherwise a kids
+// ceiling (TV-Y..TV-PG) defaults to exclude (fail-closed) and any other ceiling
+// (including none) defaults to allow (§4).
+func resolveUnrated(a AudiencePolicy) UnratedPolicy {
+	if a.Unrated != UnratedDefault {
+		return a.Unrated
+	}
+	if a.Ceiling != "" && ladderRank[a.Ceiling] <= kidsCeilingRank {
+		return UnratedExclude
+	}
+	return UnratedAllow
+}
+
+// orderingFromStrategy maps the channel's Strategy onto an OrderingMode for the
+// inherit case. TimeSlot has no separate ordering yet → sequential (its block
+// mapping happens at push time, matching lineup.go's TimeSlot handling).
+func orderingFromStrategy(s Strategy) OrderingMode {
+	switch s {
+	case Shuffle:
+		return OrderShuffle
+	case Sequential, TimeSlot:
+		return OrderSequential
+	default:
+		return defaultOrdering
+	}
+}
+
+func orDur(d Duration, def time.Duration) time.Duration {
+	if d == 0 {
+		return def
+	}
+	return d.Std()
+}
+
+func orInt(v, def int) int {
+	if v == 0 {
+		return def
+	}
+	return v
+}
+
+// Validate rejects a policy with an unknown non-empty enum value or an unmappable
+// audience ceiling (grounding: the suggester must never emit a ceiling outside the
+// closed ladder). Empty/omitted fields are always valid (they resolve to defaults).
+func (p ChannelPolicy) Validate() error {
+	if !p.Ordering.valid() {
+		return fmt.Errorf("channel policy: unknown ordering %q", p.Ordering)
+	}
+	if !p.Audience.Unrated.valid() {
+		return fmt.Errorf("channel policy: unknown unrated policy %q", p.Audience.Unrated)
+	}
+	if p.Audience.Ceiling != "" && !p.Audience.Ceiling.mapped() {
+		return fmt.Errorf("channel policy: ceiling %q is not on the rating ladder", p.Audience.Ceiling)
+	}
+	if !p.Seasonal.Mode.valid() {
+		return fmt.Errorf("channel policy: unknown seasonal mode %q", p.Seasonal.Mode)
+	}
+	if !p.Seasonal.OffSeason.valid() {
+		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
+	}
+	return nil
+}

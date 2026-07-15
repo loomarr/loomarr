@@ -23,6 +23,10 @@ type Channel struct {
 	// sweep can diff without recomputing when nothing changed, and so a restart
 	// resumes from the known desired state.
 	Desired []schedule.Slot
+	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
+	// separation/ordering/seasonal + the last reconcile's applied relaxations.
+	// Stored as policy_json, sparse (omitted fields resolve to built-in defaults).
+	Policy schedule.ChannelPolicy
 	// ReconcileDeadline: the channel is due for a sweep reconcile at/before this
 	// time. Leased forward on claim (§9/§18).
 	ReconcileDeadline time.Time
@@ -47,21 +51,28 @@ func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
 	if err != nil {
 		return fmt.Errorf("marshal desired: %w", err)
 	}
+	// Policy is a single object (not a slice), so it serializes to "{}" when zero —
+	// the DDL default — never "null"; json.Marshal of a struct already yields "{}".
+	policyBlob, err := json.Marshal(ch.Policy)
+	if err != nil {
+		return fmt.Errorf("marshal policy: %w", err)
+	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO channels
 		   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-		    status, shuffle_seed, lineup_json, desired_json, reconcile_deadline, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		    status, shuffle_seed, lineup_json, desired_json, policy_json, reconcile_deadline, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   intent_ref=excluded.intent_ref, name=excluded.name, number=excluded.number,
 		   grp=excluded.grp, logo=excluded.logo, strategy=excluded.strategy,
 		   filler_ref=excluded.filler_ref, tunarr_id=excluded.tunarr_id, status=excluded.status,
 		   shuffle_seed=excluded.shuffle_seed, lineup_json=excluded.lineup_json,
-		   desired_json=excluded.desired_json, reconcile_deadline=excluded.reconcile_deadline,
-		   updated_at=excluded.updated_at`),
+		   desired_json=excluded.desired_json, policy_json=excluded.policy_json,
+		   reconcile_deadline=excluded.reconcile_deadline, updated_at=excluded.updated_at`),
 		ch.ID, ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
 		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
-		string(lineupBlob), string(desiredBlob), epoch(ch.ReconcileDeadline), ch.UpdatedAt)
+		string(lineupBlob), string(desiredBlob), string(policyBlob),
+		epoch(ch.ReconcileDeadline), ch.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert channel %s: %w", ch.ID, err)
 	}
@@ -99,19 +110,19 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // channelSelect is the shared column list; claim SQL RETURNs the same columns in
 // this order so scanChannel serves both paths (mirrors scanTitle).
 const channelSelect = `SELECT id, intent_ref, name, number, grp, logo, strategy, filler_ref,
-	tunarr_id, status, shuffle_seed, lineup_json, desired_json, reconcile_deadline, updated_at
+	tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, reconcile_deadline, updated_at
 	FROM channels`
 
 func scanChannel(sc scannable) (Channel, error) {
 	var (
-		ch                        Channel
-		strategy, status          string
-		lineupBlob, desiredBlob   string
-		seed, deadline, updatedAt int64
+		ch                                  Channel
+		strategy, status                    string
+		lineupBlob, desiredBlob, policyBlob string
+		seed, deadline, updatedAt           int64
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
-		&lineupBlob, &desiredBlob, &deadline, &updatedAt)
+		&lineupBlob, &desiredBlob, &policyBlob, &deadline, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Channel{}, ErrNotFound
 	}
@@ -126,6 +137,9 @@ func scanChannel(sc scannable) (Channel, error) {
 	}
 	if err := json.Unmarshal([]byte(desiredBlob), &ch.Desired); err != nil {
 		return Channel{}, fmt.Errorf("unmarshal desired %s: %w", ch.ID, err)
+	}
+	if err := json.Unmarshal([]byte(policyBlob), &ch.Policy); err != nil {
+		return Channel{}, fmt.Errorf("unmarshal policy %s: %w", ch.ID, err)
 	}
 	ch.ReconcileDeadline = fromEpoch(deadline)
 	ch.UpdatedAt = updatedAt

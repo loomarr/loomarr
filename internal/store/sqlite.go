@@ -36,7 +36,7 @@ WHERE id IN (
     ORDER BY reconcile_deadline LIMIT ?3
 )
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-          status, shuffle_seed, lineup_json, desired_json, reconcile_deadline, updated_at`
+          status, shuffle_seed, lineup_json, desired_json, policy_json, reconcile_deadline, updated_at`
 
 // SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteJobClaimSQL = `

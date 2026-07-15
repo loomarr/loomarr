@@ -212,6 +212,16 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
 		{Kind: schedule.SlotFiller, Key: "movie:tmdb:2", Title: "B"},
 	}
+	// A non-empty policy exercises the policy_json round-trip: an audience ceiling,
+	// a separation window (Duration → "168h" JSON), an era range, and an applied
+	// relaxation (the enforcement-written field). Every column path must preserve it.
+	ch.Policy = schedule.ChannelPolicy{
+		Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y7"},
+		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(168 * time.Hour)},
+		Scope:      schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+		Ordering:   schedule.OrderSyndication,
+		Applied:    []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
+	}
 	ch.ReconcileDeadline = deadline
 	return ch
 }
@@ -235,6 +245,20 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(got.Desired) != 2 || got.Desired[0].Kind != schedule.SlotProgram || got.Desired[1].Kind != schedule.SlotFiller {
 		t.Errorf("desired JSON round-trip lost data: %+v", got.Desired)
+	}
+	// Policy round-trip: ceiling, the Duration ("168h") window, the era range, and
+	// the applied-relaxation entry must all survive policy_json.
+	if got.Policy.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("policy ceiling round-trip: got %q", got.Policy.Audience.Ceiling)
+	}
+	if got.Policy.Separation.EpisodeNoRepeat.Std() != 168*time.Hour {
+		t.Errorf("policy duration round-trip: got %v", got.Policy.Separation.EpisodeNoRepeat.Std())
+	}
+	if got.Policy.Scope.Era == nil || got.Policy.Scope.Era.From != 1990 || got.Policy.Scope.Era.To != 1999 {
+		t.Errorf("policy era round-trip: got %+v", got.Policy.Scope.Era)
+	}
+	if len(got.Policy.Applied) != 1 || got.Policy.Applied[0].Kind != "episodeNoRepeat" {
+		t.Errorf("policy applied-relaxation round-trip: got %+v", got.Policy.Applied)
 	}
 	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
 		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)
