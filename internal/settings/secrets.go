@@ -135,9 +135,9 @@ func (s *Secrets) Regenerate(ctx context.Context, g GeneratedSecret) (string, er
 	return fresh, nil
 }
 
-// redactionValues returns the current secret values for the Redactor (§4). A
+// RedactionValues returns the current secret values for the Redactor (§4). A
 // separate method so the Redactor gets a snapshot without exposing the map.
-func (s *Secrets) redactionValues() []string {
+func (s *Secrets) RedactionValues() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]string, 0, len(s.values))

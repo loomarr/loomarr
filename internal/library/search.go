@@ -72,7 +72,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out searchResponse
 	if err := c.do(req, &out); err != nil {

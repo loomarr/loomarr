@@ -57,7 +57,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out episodesResponse
 	if err := c.do(req, &out); err != nil {

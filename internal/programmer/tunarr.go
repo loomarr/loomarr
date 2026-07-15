@@ -16,8 +16,9 @@ import (
 // for 1.3.8 (Phase-0 finding: empty securitySchemes) — if set, it's sent as a
 // bearer token so a future key-requiring version works without code change.
 type Tunarr struct {
-	baseURL string
-	apiKey  string // optional; "" = no auth header (valid for 1.3.8)
+	// conn resolves base URL + optional api key per request (config-design §3
+	// hot-apply): a Tunarr URL saved in Settings takes effect on the next push.
+	conn func() (baseURL, apiKey string)
 	// transcodeConfigID references a real Tunarr transcode config (Phase-0
 	// finding 3: must be a valid uuid; the instance ships a "Default"). Supplied
 	// at construction from GET /api/transcode_configs (or config).
@@ -42,15 +43,25 @@ func (t *Tunarr) WithFillerPolicy(weight, cooldownSeconds int) *Tunarr {
 // New builds a Tunarr client. transcodeConfigID must be a real config id from
 // the target instance (§6 / Phase-0 finding 3).
 func New(baseURL, apiKey, transcodeConfigID string) *Tunarr {
+	base := strings.TrimRight(baseURL, "/")
+	return NewDynamic(func() (string, string) { return base, apiKey }, transcodeConfigID)
+}
+
+// NewDynamic builds a Tunarr client whose base URL + api key resolve per request
+// via conn (config-design §3 hot-apply). The composition root passes a closure
+// over the settings snapshot.
+func NewDynamic(conn func() (baseURL, apiKey string), transcodeConfigID string) *Tunarr {
 	t := &Tunarr{
-		baseURL:           strings.TrimRight(baseURL, "/"),
-		apiKey:            apiKey,
+		conn:              conn,
 		transcodeConfigID: transcodeConfigID,
 		http:              httpx.New(httpx.TimeoutTunarr),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t
 }
+
+func (t *Tunarr) baseURL() string { u, _ := t.conn(); return strings.TrimRight(u, "/") }
+func (t *Tunarr) apiKey() string  { _, k := t.conn(); return k }
 
 // --- wire types (pinned to the Phase-0 fixtures, not remembered field names) ---
 
@@ -204,9 +215,9 @@ func (t *Tunarr) doStatus(ctx context.Context, method, path string, in, out any)
 	var req *http.Request
 	var err error
 	if reader != nil {
-		req, err = http.NewRequestWithContext(ctx, method, t.baseURL+path, reader)
+		req, err = http.NewRequestWithContext(ctx, method, t.baseURL()+path, reader)
 	} else {
-		req, err = http.NewRequestWithContext(ctx, method, t.baseURL+path, nil)
+		req, err = http.NewRequestWithContext(ctx, method, t.baseURL()+path, nil)
 	}
 	if err != nil {
 		return 0, err
@@ -214,8 +225,8 @@ func (t *Tunarr) doStatus(ctx context.Context, method, path string, in, out any)
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if t.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+t.apiKey)
+	if t.apiKey() != "" {
+		req.Header.Set("Authorization", "Bearer "+t.apiKey())
 	}
 	resp, err := t.http.Do(req)
 	if err != nil {

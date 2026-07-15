@@ -153,6 +153,23 @@ func (s *Service) Watch(keys ...string) <-chan Change {
 	return ch
 }
 
+// LoadRaw returns the raw stored value for a key from the snapshot, whether or
+// not it is a declared registry setting. Used for namespaced keys the registry
+// doesn't declare (e.g. the per-provider llm.api_key.<provider>, §8.1). Returns
+// ("", ErrNoValue) when unset. The env tier does NOT apply to raw keys — they are
+// pure db values.
+func (s *Service) LoadRaw(key string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if v, ok := s.db[key]; ok {
+		return v, nil
+	}
+	return "", ErrNoValue
+}
+
+// ErrNoValue is returned by LoadRaw when a raw key has no stored value.
+var ErrNoValue = fmt.Errorf("settings: no stored value")
+
 func changedKeys(prev, next map[string]string) []string {
 	var out []string
 	for k, v := range next {

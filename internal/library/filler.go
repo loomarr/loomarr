@@ -64,7 +64,7 @@ func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, erro
 	if err != nil {
 		return 0, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var resp fillerItemsResponse
 	if err := c.do(req, &resp); err != nil {
@@ -95,7 +95,7 @@ func (c *Client) ListFillerClips(ctx context.Context, fillerLibraryID string) ([
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out fillerItemsResponse
 	if err := c.do(req, &out); err != nil {

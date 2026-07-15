@@ -66,7 +66,7 @@ func (c *Client) TunerRegistered(ctx context.Context, tunarrM3U string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	var hosts []tunerHost
 	if err := c.do(req, &hosts); err != nil {
 		return false, err
@@ -86,7 +86,7 @@ func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (boo
 	if err != nil {
 		return false, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	var providers []listingProvider
 	if err := c.do(req, &providers); err != nil {
 		return false, err
@@ -113,7 +113,7 @@ func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	var hosts []map[string]any
 	if err := c.do(req, &hosts); err != nil {
 		return err
@@ -124,7 +124,7 @@ func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
 			if err != nil {
 				return err
 			}
-			c.flavor.applyTokenAuth(post, c.token, c.deviceID)
+			c.flavor.applyTokenAuth(post, c.token(), c.deviceID)
 			return c.do(post, nil)
 		}
 	}
@@ -139,7 +139,7 @@ func (c *Client) AddTuner(ctx context.Context, tunarrM3U string) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
@@ -150,7 +150,7 @@ func (c *Client) AddListingProvider(ctx context.Context, tunarrXMLTV string) err
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
@@ -184,7 +184,7 @@ func (c *Client) RefreshGuide(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
 }
 
@@ -195,7 +195,7 @@ func (c *Client) guideRefreshTaskID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	var tasks []scheduledTask
 	if err := c.do(req, &tasks); err != nil {
 		return "", err
