@@ -146,6 +146,14 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity("resolve intent lineup", err)
 	}
+	// Bind the proposal's grounded ChannelPolicy (programming-design §8) onto the
+	// channel so enforcement (scope/audience/separation/seasonal) applies from the
+	// first reconcile. A hand-made channel / policy-less proposal → built-in defaults.
+	policy, err := s.policyFromIntent(ctx, in.Body.IntentRef)
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity("resolve intent policy", err)
+	}
+	ch.Policy = policy
 	// Hand-made single-series channel (§7 "or hand-made"): one series entry with an
 	// optional season range (§9 expansion). Only when no proposal intent is given.
 	if in.Body.IntentRef == "" && in.Body.Series != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee
@@ -108,9 +109,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		if err != nil {
 			return Proposal{}, err
 		}
-		picks, rationale, perr := parsePicks(final)
+		out, perr := parsePicks(final)
 		if perr == nil {
-			return s.buildProposal(ctx, intent, picks, rationale, surfaced)
+			return s.buildProposal(ctx, intent, out, surfaced)
 		}
 		if repair >= maxRepairs {
 			return Proposal{}, fmt.Errorf("suggester: model output not valid after %d repairs: %w", maxRepairs, perr)
@@ -237,8 +238,9 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate the tool actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, picks []pick, rationale string, surfaced map[provision.Key]catalog.Candidate) (Proposal, error) {
-	prop := Proposal{Intent: intent, Rationale: rationale}
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate) (Proposal, error) {
+	prop := Proposal{Intent: intent, Rationale: out.Rationale}
+	picks := out.Picks
 	acqCount := 0
 	maxAcq := s.maxAcq
 	if intent.MaxAcquire > 0 && intent.MaxAcquire < maxAcq {
@@ -286,8 +288,68 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, picks []pi
 		return Proposal{}, ErrNoGroundedTitles
 	}
 
+	// Ground the extracted policy (programming-design §8): the model proposed rule
+	// VALUES; we validate + clamp them (off-ladder ceiling dropped, era bounded,
+	// series intersected with grounded ids) before they become a ChannelPolicy. A
+	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
+	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions)
+
 	prop.Scores = score(intent, prop.Lineup, prop.Acquisitions)
 	return prop, nil
+}
+
+// groundPolicy converts the model's untrusted pickPolicy into a validated
+// schedule.ChannelPolicy (programming-design §1 extract-vs-enforce). Every value is
+// machine-checked: the ceiling must be on the closed rating ladder (else dropped),
+// enums must be known (else dropped), the era is taken as-is (the enforcer clamps),
+// and any series allowlist is intersected with the actually-grounded picks so the
+// model can't scope to a series that never surfaced. Returns an empty policy (⇒
+// built-in defaults) when raw is nil or nothing survives validation.
+func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem) schedule.ChannelPolicy {
+	if raw == nil {
+		return schedule.ChannelPolicy{}
+	}
+	var p schedule.ChannelPolicy
+
+	// Audience ceiling: keep only a value on the closed ladder (NormalizeRating
+	// returns "" for anything off-ladder — a hallucinated rating is silently dropped,
+	// never passed through to enforcement).
+	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" {
+		p.Audience.Ceiling = c
+	}
+	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
+	case schedule.UnratedExclude, schedule.UnratedAllow:
+		p.Audience.Unrated = schedule.UnratedPolicy(raw.Audience.Unrated)
+	}
+
+	// Era: accept a sane year window (the enforcer treats 0 as unbounded).
+	if raw.Era.From > 0 || raw.Era.To > 0 {
+		p.Scope.Era = &schedule.Range{From: raw.Era.From, To: raw.Era.To}
+	}
+
+	// Genres: pass through include/exclude names (matched case-insensitively at
+	// enforcement; unknown names simply never match, which is harmless).
+	p.Scope.Genres = schedule.GenreFilter{Include: raw.Genres.Include, Exclude: raw.Genres.Exclude}
+
+	// Ordering: keep only a known mode.
+	switch schedule.OrderingMode(raw.Ordering) {
+	case schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication:
+		p.Ordering = schedule.OrderingMode(raw.Ordering)
+	}
+
+	// Seasonal: keep only a known mode + holiday ids.
+	switch schedule.SeasonalMode(raw.Seasonal.Mode) {
+	case schedule.SeasonalOff, schedule.SeasonalAuto, schedule.SeasonalExclusive:
+		p.Seasonal.Mode = schedule.SeasonalMode(raw.Seasonal.Mode)
+		p.Seasonal.Holidays = raw.Seasonal.Holidays
+	}
+
+	// Final safety net: if anything slipped through that Validate rejects, drop the
+	// whole policy to defaults rather than persist an invalid one.
+	if err := p.Validate(); err != nil {
+		return schedule.ChannelPolicy{}
+	}
+	return p
 }
 
 // ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
@@ -310,8 +372,14 @@ RULES:
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.
 - Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.
 - Prefer titles already in the library (inLibrary:true) for the lineup; propose missing ones as acquisitions.
+- Also infer a "policy" describing HOW the channel should behave, from the intent. Only include a field you can justify from the intent; omit the rest.
+  - audience.ceiling: the maturity ceiling ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; adult/no mention -> omit). Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
+  - era.from/era.to: year range if the intent names one ("90s" -> from 1990 to 1999).
+  - genres.include/exclude: genre names implied by the intent.
+  - ordering: "syndication" (rerun feel), "sequential" (in order), or "shuffle".
+  - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
 When finished, reply with ONLY this JSON (no prose):
-{"rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>}]}`
+{"rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
