@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -36,6 +37,89 @@ type MediaServer struct {
 	// If nil, GoodUser/GoodPass authenticate as an admin. Lets auth tests model
 	// admin vs member vs disabled logins.
 	Accounts map[string]Account
+	// SearchItems, when set, makes the /Items SearchTerm search RETURN these items
+	// (matched case-insensitively by term substring against a stub's Terms) instead
+	// of the pinned matrix fixture. Each stub carries the real /Items shape incl.
+	// OfficialRating/Genres, so a test can drive a themed intent through the real
+	// library→catalog→proposal→policy path with in-library titles that have ratings.
+	// The same stubs answer the AnyProviderIdEquals presence check (by tmdb id), so
+	// in-library backfill is consistent. Pinned fixtures still serve when unset.
+	SearchItems []SearchStub
+}
+
+// SearchStub is one in-library item the scriptable search returns. Terms are the
+// query substrings it matches (case-insensitive); the rest is the /Items item shape
+// the library adapter parses.
+type SearchStub struct {
+	Terms          []string // query substrings this item answers (e.g. "cartoon", "90s")
+	LibraryItemID  string
+	Name           string
+	Type           string // "Movie" | "Series"
+	Year           int
+	TMDBID         int
+	Genres         []string
+	OfficialRating string
+	// RunTimeTicks is the item's runtime (Emby ticks; 1 tick = 100ns) returned by
+	// the by-id lookup the scheduler uses for program duration (§9). Lets a test give
+	// each in-library title a real, distinct runtime so the break interleave fires.
+	RunTimeTicks int64
+}
+
+// stubRuntime returns the RunTimeTicks a scripted stub declares for a library item
+// id (the Ids-filtered duration lookup), or 0 if none.
+func (ms *MediaServer) stubRuntime(libraryItemID string) int64 {
+	for _, s := range ms.SearchItems {
+		if s.LibraryItemID == libraryItemID {
+			return s.RunTimeTicks
+		}
+	}
+	return 0
+}
+
+// stubPresent reports whether an AnyProviderIdEquals value (e.g. "tmdb.100")
+// matches a scripted stub's tmdb id — so a discovered title the catalog also owns
+// backfills as in-library consistently with what the search returned.
+func (ms *MediaServer) stubPresent(prov string) bool {
+	for _, s := range ms.SearchItems {
+		if s.TMDBID > 0 && strings.EqualFold(prov, "tmdb."+strconv.Itoa(s.TMDBID)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s SearchStub) matches(term string) bool {
+	lt := strings.ToLower(term)
+	for _, t := range s.Terms {
+		if strings.Contains(lt, strings.ToLower(t)) || strings.Contains(strings.ToLower(t), lt) {
+			return true
+		}
+	}
+	return false
+}
+
+// itemJSON renders the stub as one /Items entry (the real Emby item shape the
+// search adapter parses: Id/Name/Type/ProductionYear/Genres/Overview/OfficialRating/
+// ProviderIds).
+func (s SearchStub) itemJSON() string {
+	b, _ := json.Marshal(struct {
+		Id             string   `json:"Id"`
+		Name           string   `json:"Name"`
+		Type           string   `json:"Type"`
+		ProductionYear int      `json:"ProductionYear"`
+		Genres         []string `json:"Genres"`
+		OfficialRating string   `json:"OfficialRating"`
+		ProviderIds    struct {
+			Tmdb string `json:"Tmdb"`
+		} `json:"ProviderIds"`
+	}{
+		Id: s.LibraryItemID, Name: s.Name, Type: s.Type, ProductionYear: s.Year,
+		Genres: s.Genres, OfficialRating: s.OfficialRating,
+		ProviderIds: struct {
+			Tmdb string `json:"Tmdb"`
+		}{Tmdb: strconv.Itoa(s.TMDBID)},
+	})
+	return string(b)
 }
 
 // Account is a media-server login the mock accepts.
@@ -67,7 +151,13 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		// ItemRunTimeTicks answers with that runtime; else an empty list (0 → the
 		// scheduler falls back, never dead air).
 		if ids := r.URL.Query().Get("Ids"); ids != "" {
+			// A scripted stub's runtime (per library item id) takes precedence, so a
+			// test can give each title a distinct real runtime; else the global
+			// ItemRunTimeTicks; else an empty item list.
 			ticks := ms.ItemRunTimeTicks
+			if t := ms.stubRuntime(ids); t > 0 {
+				ticks = t
+			}
 			if ticks == 0 {
 				_, _ = w.Write([]byte(`{"Items":[],"TotalRecordCount":0}`))
 				return
@@ -76,6 +166,18 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			return
 		}
 		if term := r.URL.Query().Get("SearchTerm"); term != "" {
+			// Scriptable stubs (with OfficialRating/genres) take precedence when set,
+			// so a test can drive a themed intent through real in-library titles.
+			if len(ms.SearchItems) > 0 {
+				var items []string
+				for _, s := range ms.SearchItems {
+					if s.matches(term) {
+						items = append(items, s.itemJSON())
+					}
+				}
+				_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":%d}`, strings.Join(items, ","), len(items))
+				return
+			}
 			// The pinned search fixture answers "matrix"; any other term → empty.
 			if strings.EqualFold(term, "matrix") {
 				_, _ = w.Write(Fixture(t, "emby/search_matrix.json"))
@@ -86,9 +188,11 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		}
 		prov := r.URL.Query().Get("AnyProviderIdEquals")
 		// The pinned present fixture is tmdb.16153 (Phase 0); a test may add one
-		// more present id via PresentTMDB. Anything else is absent.
+		// more present id via PresentTMDB. A scripted SearchStub's tmdb id also
+		// reports present (so in-library backfill on discovery is consistent).
 		present := strings.EqualFold(prov, "tmdb.16153") ||
-			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB))
+			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB)) ||
+			ms.stubPresent(prov)
 		if present {
 			_, _ = w.Write(Fixture(t, "emby/lookup_present.json"))
 			return

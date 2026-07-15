@@ -1,15 +1,25 @@
-// Package integration holds the Phase-12.5 end-to-end gate: it wires the REAL
-// domain objects (store, channel engine, reconciler, programmer, filler pod
-// assembler, approval path) and drives the whole chain through the real HTTP API,
-// faking only the external boundary (Tunarr via the testkit double). This is the
-// test whose ABSENCE let the live smoke find unwired seams — each per-phase unit
-// gate passed while the composition was never exercised together. The gate
-// (design §21 phase 12.5): intent → approve → create → reconcile → a pushed Tunarr
-// lineup with real programs AND commercial pod breaks.
+// Package integration holds the end-to-end gate: it wires the REAL domain objects
+// (the suggester + its grounding loop, the worker pool, the store, the channel
+// engine, the reconciler, the programmer, the filler pod assembler, the approval
+// path) and drives the WHOLE chain — a natural-language intent all the way to a
+// pushed Tunarr lineup — through the real HTTP API, faking only the two true
+// external boundaries: the LLM (scripted testkit double) and Tunarr (testkit
+// double). Nothing about Loomarr's own logic is stubbed or hand-rolled.
+//
+// This is the test whose ABSENCE let the live smoke find unwired seams. It proves,
+// in one run:
+//   - intent → the REAL suggester grounds picks + extracts a ChannelPolicy;
+//   - approve (the real gate) → in-library picks become `available`, acquisitions `wanted`;
+//   - create(intentRef) → the channel binds the grounded lineup AND policy;
+//   - reconcile → the pushed lineup ENFORCES the policy (an over-ceiling title is
+//     excluded, in-scope titles air) with commercial pod breaks;
+//   - a second reconcile is a no-op.
 package integration_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -18,11 +28,16 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
+	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 const adminToken = "admin-integration-token"
@@ -43,16 +58,26 @@ func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
 	return out, nil
 }
 
+// libDurationResolver adapts library.Client's ItemDurationMs to the engine's
+// DurationResolver (mirrors main.go), so a program slot gets its real runtime from
+// the media server — which is what makes the commercial-break interleave fire.
+func libDurationResolver(lib *library.Client) channels.DurationResolver {
+	return func(ctx context.Context, itemID string) (int64, error) { return lib.ItemDurationMs(ctx, itemID) }
+}
+
 // rig is the fully-wired system under test: a real API server backed by the real
-// channel engine (real availability + real filler pod assembler), with the
-// external Tunarr faked by the testkit double.
+// suggester (over the scriptable LLM + media server + TMDB), the real worker pool,
+// and the real channel engine + filler assembler. External boundaries faked: LLM
+// and Tunarr.
 type rig struct {
 	srv   *httptest.Server
 	store store.Store
 	tun   *testkit.Tunarr
+	llm   *testkit.LLM
+	clock func() time.Time
 }
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Helper()
 	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
 	if err != nil {
@@ -63,28 +88,58 @@ func newRig(t *testing.T) *rig {
 	tun := testkit.NewTunarr()
 	clock := func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }
 
-	// Real availability over the store's title records (production path): approve
-	// writes `available` records, and this resolves them — no mapAvail fake.
-	avail := channels.NewStoreAvailability(context.Background(), st, nil, nil)
+	// The REAL suggester over the real catalog (real library search against the
+	// scriptable media server + real TMDB double) and the scripted LLM. This is the
+	// actual grounding path — the LLM can only pick ids the catalog surfaced.
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	cat := catalog.New(lib, tm, nil)
+	suggester := suggest.New(llmMock, cat, tm, 10)
 
-	// Real channel engine with the real filler pod assembler wired in, plus the
-	// commercial-break density so ComputeDesired interleaves break gaps (§10).
+	// The REAL worker service that runs jobs → persists proposals.
+	ids := newIDGen()
+	svc := suggest.NewService(st, suggester, suggest.Config{Workers: 1, Timeout: 30 * time.Second}, ids, clock, testkit.Logger())
+
+	// Real availability (over the store's title records) WITH a real duration
+	// resolver, so program slots carry runtime and the break interleave fires.
+	avail := channels.NewStoreAvailability(context.Background(), st, libDurationResolver(lib), nil)
+
 	engine := channels.New(st, tun, avail, nil, channels.Config{
-		Policy:        schedule.PodFill,
-		ReconcileTTL:  10 * time.Minute,
-		BreaksPerHour: 4, // ~every 15 min of program runtime (§10)
+		Policy: schedule.PodFill, ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 	}, clock, testkit.Logger())
 	engine.WithPods(filler.NewPodAdapter(clipCatalog{st}, filler.Policy{}, testkit.Logger()))
+
+	// Run the worker pool for the life of the test (real async path).
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go svc.Run(ctx)
 
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:    st,
 		Auth:     api.NewTokenAuthorizer(adminToken),
 		Log:      slog.New(slog.DiscardHandler),
-		Channels: engine, // the REAL engine — createChannel drives a real reconcile
+		Channels: engine,
+		Suggest:  submitAdapter{svc},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &rig{srv: srv, store: st, tun: tun}
+	return &rig{srv: srv, store: st, tun: tun, llm: llmMock, clock: clock}
+}
+
+// submitAdapter mirrors main.go's: maps the API's flat Submit args to an Intent.
+type submitAdapter struct{ svc *suggest.Service }
+
+func (a submitAdapter) Submit(ctx context.Context, desc, era, tone string, inc, exc []string, max int, createdBy string) (string, error) {
+	return a.svc.Submit(ctx, suggest.Intent{
+		Description: desc, Era: era, Tone: tone, MustInclude: inc, MustExclude: exc, MaxAcquire: max,
+	}, createdBy)
+}
+
+// newIDGen returns a deterministic sequential id generator (job/proposal ids).
+func newIDGen() func() string {
+	n := 0
+	return func() string { n++; return fmt.Sprintf("id-%d", n) }
 }
 
 func (r *rig) do(t *testing.T, method, path, body string) *http.Response {
@@ -102,16 +157,64 @@ func (r *rig) do(t *testing.T, method, path, body string) *http.Response {
 	return resp
 }
 
-// seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr
-// sync would (identity = Tunarr program uuid). Enough for a pod (bumpers +
-// era/audience-matched commercials of varied categories).
+// getJSON does a GET and decodes the JSON body into v.
+func (r *rig) getJSON(t *testing.T, path string, v any) {
+	t.Helper()
+	resp := r.do(t, http.MethodGet, path, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s → %d", path, resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+}
+
+// awaitProposal polls the submitted-proposals queue until the job's proposal
+// appears (the worker ran) or the deadline passes. Returns the proposal id + the
+// decoded proposal. A worker failure (no proposal) fails the test with the job's
+// last error, so a broken suggester surfaces clearly rather than as a timeout.
+func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposal) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var list struct {
+			Proposals []struct {
+				ID       string          `json:"id"`
+				JobID    string          `json:"jobId"`
+				Proposal json.RawMessage `json:"proposal"`
+			} `json:"proposals"`
+		}
+		r.getJSON(t, "/v1/suggestions?status=submitted", &list)
+		for _, p := range list.Proposals {
+			if p.JobID == jobID {
+				var prop suggest.Proposal
+				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
+					t.Fatalf("decode proposal body: %v", err)
+				}
+				return p.ID, prop
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// No proposal — surface the job's failure reason if there is one.
+	job, err := r.store.GetJob(context.Background(), jobID)
+	if err == nil {
+		t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
+	}
+	t.Fatalf("proposal never appeared for job %s (job lookup failed: %v)", jobID, err)
+	return "", suggest.Proposal{}
+}
+
+// seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync
+// would (identity = Tunarr program uuid) — 90s, general/kids audience.
 func seedFillerClips(t *testing.T, st store.Store) {
 	t.Helper()
 	clips := []filler.Clip{
-		{TunarrProgramID: "bump-1", Name: "Bumper", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-1", Name: "Cereal ad", Kind: filler.Commercial, Era: 1992, Audience: filler.General, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-2", Name: "Toy ad", Kind: filler.Commercial, Era: 1992, Audience: filler.General, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
-		{TunarrProgramID: "ad-3", Name: "Tech ad", Kind: filler.Commercial, Era: 1992, Audience: filler.General, Category: "tech", DurationMs: 30000, Source: "tunarr-local"},
+		{TunarrProgramID: "bump-1", Name: "Bumper", Kind: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
+		{TunarrProgramID: "ad-1", Name: "Cereal ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
+		{TunarrProgramID: "ad-2", Name: "Toy ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
+		{TunarrProgramID: "ad-3", Name: "Snack ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
@@ -120,116 +223,158 @@ func seedFillerClips(t *testing.T, st store.Store) {
 	}
 }
 
-// seedSubmittedProposal writes a grounded, SUBMITTED proposal (as the suggester +
-// approval gate would persist it) with several in-library picks (enough program
-// runtime that the break interleave fires) and one acquisition. The maintainer
-// decision was to seed here rather than drive the live LLM: the suggester's own
-// grounding is covered by phase-11 gates; this test is about the composition seams.
-func seedSubmittedProposal(t *testing.T, st store.Store, jobID, propID string) {
-	t.Helper()
-	// Three in-library movies (long runtimes → the 4/hr break cadence interleaves
-	// break gaps between them) + one acquisition (not yet in library).
-	proposalJSON := `{
-		"intent": {"description":"90s movie marathon"},
-		"lineup": [
-			{"mediaType":"movie","tmdbId":1,"name":"Movie One","year":1992,"inLibrary":true,"libraryItemId":"lib-1"},
-			{"mediaType":"movie","tmdbId":2,"name":"Movie Two","year":1994,"inLibrary":true,"libraryItemId":"lib-2"},
-			{"mediaType":"movie","tmdbId":3,"name":"Movie Three","year":1995,"inLibrary":true,"libraryItemId":"lib-3"}
-		],
-		"acquisitions": [
-			{"mediaType":"movie","tmdbId":9,"name":"Missing Movie","year":1993,"inLibrary":false}
-		]
-	}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: propID, JobID: jobID, Status: "submitted", ProposalJSON: proposalJSON,
-	}); err != nil {
-		t.Fatal(err)
+const hourTicks = int64(3600) * 10_000_000 // 1h in Emby RunTimeTicks (100ns units)
+
+// TestPipeline_KidsChannel_EndToEnd is the iron-clad gate. It drives a "90s
+// Saturday morning cartoons for kids" intent through the ENTIRE real stack and
+// proves the ChannelPolicy actually protects the channel:
+//
+//   - three kids-rated cartoons are in the library (TV-Y7/TV-G);
+//   - one TV-MA "adult cartoon" is ALSO in the library and matches the theme;
+//   - the real suggester grounds all four (they're real surfaced ids) and extracts
+//     a TV-Y7 policy from the intent;
+//   - enforcement puts the three kids titles on the channel and EXCLUDES the TV-MA
+//     one — proving fail-closed audience runs end to end, not just in unit tests.
+func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	// Real in-library titles with real ratings + runtimes. All four match the theme
+	// term "cartoon" so the model sees them all — enforcement, not search, is what
+	// must keep the adult one off a kids channel.
+	ms.SearchItems = []testkit.SearchStub{
+		{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 5001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 5002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
+		{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 5003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
+		{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 5004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
 	}
-}
 
-// TestPipeline_ApproveToChannelWithProgramsAndPodBreaks is the Phase-12.5 gate:
-// drive approve → create(intentRef) → reconcile through the REAL API + engine and
-// assert the pushed Tunarr lineup has real programs AND commercial pod breaks (a
-// filler-list attached), then that a second reconcile is a no-op.
-func TestPipeline_ApproveToChannelWithProgramsAndPodBreaks(t *testing.T) {
-	r := newRig(t)
+	// The scripted LLM: turn 1 searches the catalog by term (grounding it to the real
+	// library results — the stubs answer "cartoon"); turn 2 returns picks for ALL
+	// FOUR real ids it saw + a policy that a kids-cartoon intent implies (TV-Y7
+	// ceiling). The model proposes the adult toon too — the ENFORCER must be what
+	// drops it, not the model's discretion.
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "cartoon"}),
+		testkit.FinalResponse(`{
+			"rationale":"90s Saturday morning cartoons",
+			"picks":[
+				{"mediaType":"movie","tmdbId":5001,"name":"Sunny Toon Hour"},
+				{"mediaType":"movie","tmdbId":5002,"name":"Robo Rangers"},
+				{"mediaType":"movie","tmdbId":5003,"name":"Critter Club"},
+				{"mediaType":"movie","tmdbId":5004,"name":"Midnight Mayhem Toons"}
+			],
+			"policy":{"audience":{"ceiling":"TV-Y7"},"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]},"ordering":"syndication"}
+		}`),
+	)
+
+	r := newRig(t, ms, llmMock)
 	seedFillerClips(t, r.store)
-	seedSubmittedProposal(t, r.store, "job-1", "prop-1")
 
-	// 1. Approve (admin, real gate): in-library picks → `available` records, the
-	//    acquisition → a `wanted` title. This is the only proposal→titles path.
-	if resp := r.do(t, http.MethodPost, "/v1/suggestions/prop-1/approve", ""); resp.StatusCode != http.StatusOK {
+	// 1. SUBMIT the intent → the real worker runs the real suggester.
+	resp := r.do(t, http.MethodPost, "/v1/suggestions",
+		`{"description":"90s Saturday morning cartoons for kids"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit → %d, want 200", resp.StatusCode)
+	}
+	var submitted struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&submitted); err != nil {
+		t.Fatalf("decode submit response: %v", err)
+	}
+	_ = resp.Body.Close()
+	jobID := submitted.JobID
+	if jobID == "" {
+		t.Fatal("submit returned no jobId")
+	}
+
+	// 2. The worker generated a GROUNDED proposal (the real grounding loop ran).
+	propID, prop := r.awaitProposal(t, jobID)
+
+	// The suggester grounded all four real cartoons into the lineup (they're all
+	// in-library) — grounding surfaced them; the model didn't invent them.
+	if len(prop.Lineup) != 4 {
+		t.Fatalf("expected 4 grounded in-library picks, got %d: %+v", len(prop.Lineup), prop.Lineup)
+	}
+	// The suggester EXTRACTED + grounded the policy (TV-Y7 ceiling from the intent).
+	if prop.Policy.Audience.Ceiling != "TV-Y7" {
+		t.Fatalf("suggester should have extracted a TV-Y7 ceiling, got %q", prop.Policy.Audience.Ceiling)
+	}
+
+	// 3. APPROVE (the real gate) → in-library picks become `available` titles.
+	if resp := r.do(t, http.MethodPost, "/v1/suggestions/"+propID+"/approve", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
-	// The in-library picks are now available (the real approve path wrote them).
-	if rec, err := r.store.GetTitle(context.Background(), "movie:tmdb:1"); err != nil || rec.State != "available" {
-		t.Fatalf("approve should mark in-library pick available, got %v/%v", rec.State, err)
-	}
-	// The acquisition is a wanted title (the approval gate's only titles output).
-	if rec, err := r.store.GetTitle(context.Background(), "movie:tmdb:9"); err != nil || rec.State != "wanted" {
-		t.Fatalf("approve should enqueue the acquisition as wanted, got %v/%v", rec.State, err)
+	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003", "movie:tmdb:5004"} {
+		if rec, err := r.store.GetTitle(context.Background(), provision.Key(key)); err != nil || rec.State != "available" {
+			t.Fatalf("approve should mark %s available, got %v/%v", key, rec.State, err)
+		}
 	}
 
-	// 2. Create the channel from the approved intent → the real createChannel binds
-	//    the lineup AND kicks a real reconcile (→ real engine → testkit Tunarr).
-	body := `{"id":"marathon","name":"90s Marathon","number":42,"strategy":"sequential","intentRef":"job-1"}`
+	// 4. CREATE the channel from the approved intent → binds lineup AND policy, kicks
+	//    a real reconcile through the real engine → the testkit Tunarr.
+	body := `{"id":"cartoons","name":"Saturday Cartoons","number":42,"strategy":"shuffle","intentRef":"` + jobID + `"}`
 	if resp := r.do(t, http.MethodPost, "/v1/channels", body); resp.StatusCode != http.StatusOK {
 		t.Fatalf("create channel → %d, want 200", resp.StatusCode)
 	}
 
-	// 3. The reconcile ran end-to-end: Tunarr has the channel + a pushed lineup.
-	if r.tun.Creates != 1 {
-		t.Fatalf("Tunarr channel not created: creates=%d", r.tun.Creates)
+	// The grounded policy landed on the channel row (enforcement input).
+	ch, _ := r.store.GetChannel(context.Background(), "cartoons")
+	if ch.Policy.Audience.Ceiling != "TV-Y7" {
+		t.Fatalf("channel should carry the TV-Y7 policy, got %q", ch.Policy.Audience.Ceiling)
 	}
-	if r.tun.Pushes == 0 {
-		t.Fatal("no lineup pushed to Tunarr")
-	}
-	ch, _ := r.store.GetChannel(context.Background(), "marathon")
-	tunarrID := ch.TunarrID
-	if tunarrID == "" {
+	if ch.TunarrID == "" {
 		t.Fatal("server-assigned TunarrID not persisted")
 	}
 
-	// 4a. PROGRAMS: the pushed lineup has real program slots (the in-library picks),
-	//     not all-flex.
-	lineup, err := r.tun.GetLineup(context.Background(), tunarrID)
+	// 5. THE IRON-CLAD ASSERTION: the pushed Tunarr lineup ENFORCES the policy.
+	lineup, err := r.tun.GetLineup(context.Background(), ch.TunarrID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	programItems := map[string]bool{}
 	programs, flex := 0, 0
 	for _, s := range lineup {
 		switch s.Kind {
 		case schedule.SlotProgram:
 			programs++
+			programItems[s.LibraryItemID] = true
 		case schedule.SlotFlex:
 			flex++
 		}
 	}
-	if programs < 3 {
-		t.Errorf("want ≥3 real program slots (the in-library picks), got %d in %+v", programs, lineup)
+	// The three KIDS cartoons air...
+	for _, want := range []string{"lib-1", "lib-2", "lib-3"} {
+		if !programItems[want] {
+			t.Errorf("kids cartoon %s should be on the channel, got programs=%v", want, programItems)
+		}
+	}
+	// ...and the TV-MA "adult" cartoon is EXCLUDED — fail-closed audience, end to end.
+	if programItems["lib-4"] {
+		t.Fatal("TV-MA 'Midnight Mayhem Toons' reached a TV-Y7 kids channel — audience enforcement was violated end-to-end")
+	}
+	if programs != 3 {
+		t.Errorf("expected exactly 3 program slots (the 3 kids cartoons), got %d", programs)
 	}
 
-	// 4b. POD BREAKS: the break interleave inserted flex gaps between programs...
+	// 6. COMMERCIAL POD BREAKS: the interleave inserted flex gaps (real runtimes drove
+	//    the cadence), and a grounded filler-list is attached for Tunarr to fill them.
 	if flex == 0 {
-		t.Error("no flex break gaps between programs — the commercial-break interleave didn't run")
+		t.Error("no flex break gaps — the commercial-break interleave didn't run (durations missing?)")
 	}
-	// ...and the commercials themselves are a Tunarr filler-list attached to the
-	// channel (the §10 redesign: Tunarr plays the list INTO those flex gaps).
-	pool := r.tun.FillerListFor(tunarrID)
+	pool := r.tun.FillerListFor(ch.TunarrID)
 	if len(pool) == 0 {
-		t.Error("no filler-list attached — commercials (pod breaks) never reached Tunarr")
+		t.Error("no filler-list attached — commercials never reached Tunarr")
 	}
-	// The pool is drawn from the seeded catalog (real clip uuids, grounded).
 	for _, id := range pool {
 		if !strings.HasPrefix(id, "ad-") && !strings.HasPrefix(id, "bump-") {
-			t.Errorf("filler-list has an ungrounded clip id %q (not from the catalog)", id)
+			t.Errorf("filler-list has an ungrounded clip id %q", id)
 		}
 	}
 
-	// 5. IDEMPOTENCY: a second reconcile with nothing changed makes no new Tunarr
-	//    writes — neither lineup pushes nor filler-list writes (§9/§10).
+	// 7. IDEMPOTENCY: a second reconcile with nothing changed makes no new Tunarr
+	//    writes (§9/§10) — the enforced lineup is stable, not re-shuffled each sweep.
 	pushesBefore, fillerBefore := r.tun.Pushes, r.tun.FillerWrites
-	if resp := r.do(t, http.MethodPost, "/v1/channels/marathon/reconcile", ""); resp.StatusCode != http.StatusOK {
+	if resp := r.do(t, http.MethodPost, "/v1/channels/cartoons/reconcile", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("reconcile → %d, want 200", resp.StatusCode)
 	}
 	if r.tun.Pushes != pushesBefore {
