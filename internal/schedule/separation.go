@@ -1,6 +1,8 @@
 package schedule
 
 import (
+	"sort"
+
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
@@ -24,30 +26,152 @@ func syndicationDeck(programs []Slot, rp ResolvedPolicy, seed int64) []Slot {
 }
 
 // separationRepair reorders a program sequence to satisfy the block/gap
-// constraints (§3) as far as the pool allows. It never drops a slot — if a
-// constraint can't be satisfied (pool too small), it places the least-bad candidate
-// and moves on (the relaxation ladder, §7, records that the window couldn't be met).
+// constraints across the CYCLE (§3, §8 "greedy with backtracking"). It never drops
+// a slot; when a genuinely-unsatisfiable pool can't be arranged (too small ∩ too
+// constrained — a §7 relaxation-ladder case), it returns the greedy least-bad order.
 //
-// Placement is MOST-CONSTRAINED-FIRST: among the candidates that don't break the
-// trailing run/gap, it picks the one whose SERIES has the most remaining slots —
-// spending down the scarce (most-frequent) series first. A plain earliest-acceptable
-// greedy defers the frequent series and then has to stack it at the end; picking the
-// most-remaining series provably avoids that whenever a valid arrangement exists.
-// Deterministic: ties break by the incoming order, no randomness of its own.
+// It is GREEDY-ORDERED BACKTRACKING: at each position it tries candidates in the
+// most-constrained-first / anti-clustering order (pickOrder) so the FIRST path is
+// usually the answer, but it BACKTRACKS when a placement dead-ends — a plain
+// single-pass greedy strands a series' last copy with no gap-satisfying slot left
+// (the defect the oracle-gated property test caught: blockMax>2 ∧ SeriesMinGap>0).
+// The search is cycle-aware: it prunes on interior violations as it builds AND
+// validates the last→first seam on completion, so a valid result needs no separate
+// healSeam. Bounded by backtrackBudget so a pathological pool can't blow up — on
+// exhaustion it falls back to the greedy order (the ladder handles the shortfall).
 func separationRepair(programs []Slot, rp ResolvedPolicy) []Slot {
 	n := len(programs)
 	if n <= 1 {
 		return programs
 	}
+	// No texture constraints (both relaxed to 0, e.g. single-series) → nothing to
+	// repair; keep the deck order.
+	if rp.Sep.BlockMax <= 0 && rp.Sep.SeriesMinGap <= 0 {
+		return programs
+	}
+
+	if solved, ok := backtrackArrange(programs, rp); ok {
+		return solved
+	}
+	// Unsatisfiable within the budget → greedy least-bad (ladder records the miss).
+	return greedyArrange(programs, rp)
+}
+
+// backtrackBudget bounds the number of placement attempts so a pathological pool
+// can't make the search exponential. Envelope-scale cycles (tens of slots) resolve
+// in far fewer; beyond the budget we fall back to greedy + let the ladder relax.
+const backtrackBudget = 50_000
+
+// backtrackArrange searches for a full cyclic arrangement with zero interior/seam
+// separation violations, trying candidates in greedy-heuristic order at each step.
+// Returns (arrangement, true) on success, (nil, false) if the budget is exhausted
+// or no valid arrangement exists.
+func backtrackArrange(programs []Slot, rp ResolvedPolicy) ([]Slot, bool) {
+	n := len(programs)
+	used := make([]bool, n)
+	out := make([]Slot, 0, n)
+	budget := backtrackBudget
+
+	var rec func() bool
+	rec = func() bool {
+		if len(out) == n {
+			// Full arrangement — accept iff the cycle (incl. the last→first seam) is clean.
+			return len(checkWrapSeparation(out, rp)) == 0
+		}
+		// Try remaining candidates in greedy priority order (most-constrained-first,
+		// anti-clustering) so the first descent usually succeeds.
+		for _, idx := range pickOrder(out, programs, used, rp) {
+			if budget <= 0 {
+				return false // out of budget — abandon (caller falls back to greedy)
+			}
+			budget--
+			// Prune: only extend with a candidate that keeps the PARTIAL sequence
+			// interior-clean (blockMax run + gap since the last same-series slot).
+			if !separationOK(out, programs[idx], rp) {
+				continue
+			}
+			used[idx] = true
+			out = append(out, programs[idx])
+			if rec() {
+				return true
+			}
+			out = out[:len(out)-1]
+			used[idx] = false
+		}
+		return false
+	}
+	if rec() {
+		return append([]Slot(nil), out...), true
+	}
+	return nil, false
+}
+
+// greedyArrange is the single-pass most-constrained-first placement used as the
+// fallback when backtracking can't satisfy the pool (a genuine ladder case). It
+// never drops a slot — the least-bad candidate is placed when none fully fits.
+func greedyArrange(programs []Slot, rp ResolvedPolicy) []Slot {
+	n := len(programs)
 	remaining := append([]Slot(nil), programs...)
 	out := make([]Slot, 0, n)
-
 	for len(remaining) > 0 {
 		idx := pickNext(out, remaining, rp)
 		out = append(out, remaining[idx])
 		remaining = append(remaining[:idx], remaining[idx+1:]...)
 	}
 	return out
+}
+
+// pickOrder returns the indices of not-yet-used candidates in the greedy priority
+// order (the same most-constrained-first / anti-clustering ranking pickNext uses),
+// so backtracking explores the most promising placements first. Deterministic.
+func pickOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) []int {
+	type cand struct {
+		idx      int
+		tier     int // 0 = OK+switch series, 1 = OK same series, 2 = not OK (fallback)
+		rem      int // remaining count of this candidate's series (most-first)
+		posOrder int // stable tiebreak
+	}
+	counts := map[provision.Key]int{}
+	for i, s := range programs {
+		if !used[i] {
+			counts[seriesKeyOf(s)]++
+		}
+	}
+	var prevKey provision.Key
+	if len(out) > 0 {
+		prevKey = seriesKeyOf(out[len(out)-1])
+	}
+	var cands []cand
+	for i, s := range programs {
+		if used[i] {
+			continue
+		}
+		key := seriesKeyOf(s)
+		tier := 2
+		if separationOK(out, s, rp) {
+			if key != prevKey {
+				tier = 0
+			} else {
+				tier = 1
+			}
+		}
+		cands = append(cands, cand{idx: i, tier: tier, rem: counts[key], posOrder: i})
+	}
+	// Sort: lower tier first, then higher remaining count, then stable position.
+	sort.SliceStable(cands, func(i, j int) bool {
+		if cands[i].tier != cands[j].tier {
+			return cands[i].tier < cands[j].tier
+		}
+		if cands[i].rem != cands[j].rem {
+			return cands[i].rem > cands[j].rem
+		}
+		return cands[i].posOrder < cands[j].posOrder
+	})
+	out2 := make([]int, len(cands))
+	for i, c := range cands {
+		out2[i] = c.idx
+	}
+	return out2
 }
 
 // remainingCounts tallies how many slots per series key are left to place.
