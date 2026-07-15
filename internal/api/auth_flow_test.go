@@ -217,16 +217,23 @@ func TestCSRFRequiredForCookieMutations(t *testing.T) {
 
 // POST /v1/users/sync imports media-server users (admin only); the mock /Users
 // fixture has 10 users, so a synced admin can then list them.
+// §11 rework: sync REFRESHES imported users but NEVER adds. The fixture lists 10
+// media-server users, but only the 2 seeded (imported) ones exist locally; sync
+// must leave the count at 2, not balloon it to 10.
 func TestUserSyncAdmin(t *testing.T) {
 	srv, st, _ := authServer(t)
+	before, _ := st.ListUsers(context.Background())
 	admin := login(t, srv, "boss", "pw")
 	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/sync", admin, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("sync → %d, want 200", resp.StatusCode)
 	}
-	users, _ := st.ListUsers(context.Background())
-	if len(users) < 10 {
-		t.Errorf("after sync, %d users; expected ≥10 from the /Users fixture", len(users))
+	after, _ := st.ListUsers(context.Background())
+	if len(after) != len(before) {
+		t.Errorf("sync added users (%d → %d); it must refresh imported users only, never add", len(before), len(after))
+	}
+	if len(after) != 2 {
+		t.Errorf("expected exactly the 2 seeded users, got %d", len(after))
 	}
 }
 
