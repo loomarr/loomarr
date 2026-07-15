@@ -1,0 +1,139 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// ErrBootstrapClosed is returned when bootstrap is attempted after an admin
+// already exists (§11: first-run only, exactly once).
+var ErrBootstrapClosed = errors.New("bootstrap already completed")
+
+// ErrInvalidBootstrap is returned for an empty username/password.
+var ErrInvalidBootstrap = errors.New("username and password are required")
+
+// bootstrapCost is the bcrypt cost for stored passwords. DefaultCost (10) is the
+// right balance for a homelab; a constant so tests and prod agree.
+const bootstrapCost = bcrypt.DefaultCost
+
+// IDGen mints a unique id for a local user (a Loomarr-owned id space, distinct
+// from media-server ids). Injected for determinism in tests.
+type IDGen func() string
+
+// Provisioner owns local-admin bootstrap and explicit media-server import (§11).
+// It is the ONLY path that creates users — login never does (the allowlist).
+type Provisioner struct {
+	store store.Store
+	lib   UserLister // may be nil (import unavailable without a media server)
+	newID IDGen
+	now   func() time.Time
+}
+
+// NewProvisioner builds the bootstrap+import service (lib is the media-server
+// user lister shared with UserSync; nil disables import).
+func NewProvisioner(st store.Store, lib UserLister, newID IDGen, now func() time.Time) *Provisioner {
+	if now == nil {
+		now = time.Now
+	}
+	return &Provisioner{store: st, lib: lib, newID: newID, now: now}
+}
+
+// Bootstrap creates the first local admin (§11), succeeding only while no admin
+// exists — the first success closes the door (a later call → ErrBootstrapClosed).
+// The password is bcrypt-hashed; a local id is minted (never a media-server id).
+func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) (store.User, error) {
+	username = strings.TrimSpace(username)
+	if username == "" || password == "" {
+		return store.User{}, ErrInvalidBootstrap
+	}
+	// Gate on "no admin exists yet". This is a check-then-act; a UNIQUE-less users
+	// table can't enforce single-bootstrap at the DB, but bootstrap is a rare
+	// first-run action — the CountAdmins gate + the first-writer-wins on the id
+	// PK is sufficient (two concurrent bootstraps both pass the gate only in a
+	// race window measured in ms on a fresh install; the second's distinct id
+	// would create a second admin, acceptable and visible in the users list).
+	n, err := p.store.CountAdmins(ctx)
+	if err != nil {
+		return store.User{}, err
+	}
+	if n > 0 {
+		return store.User{}, ErrBootstrapClosed
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bootstrapCost)
+	if err != nil {
+		return store.User{}, fmt.Errorf("hash password: %w", err)
+	}
+	now := p.now()
+	u := store.User{
+		ID:           p.newID(),
+		Name:         username,
+		Role:         store.RoleAdmin,
+		PasswordHash: string(hash),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := p.store.UpsertUser(ctx, u); err != nil {
+		return store.User{}, err
+	}
+	return u, nil
+}
+
+// Import upserts the named media-server users as allowlisted rows (§11), the ONLY
+// way a media-server user gains access. ids are media-server user ids; makeAdmin
+// grants admin to those that are media-server admins (else member). Returns the
+// count imported. Un-listed ids are skipped (not invented). Existing local users
+// are never touched (import only concerns media-server ids).
+func (p *Provisioner) Import(ctx context.Context, ids []string, makeAdmin bool) (int, error) {
+	if p.lib == nil {
+		return 0, errors.New("no media server configured for import")
+	}
+	serverUsers, err := p.lib.ListUsers(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list media-server users: %w", err)
+	}
+	byID := make(map[string]library.User, len(serverUsers))
+	for _, su := range serverUsers {
+		byID[su.ID] = su
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	now := p.now()
+	imported := 0
+	for id := range want {
+		su, ok := byID[id]
+		if !ok {
+			continue // asked to import an id the server doesn't have — skip, never invent
+		}
+		role := store.RoleMember
+		if makeAdmin && su.IsAdmin {
+			role = store.RoleAdmin
+		}
+		// Preserve an existing row's Loomarr-owned role/quota; only (re)assert
+		// identity + disabled. A brand-new import creates the row.
+		u := store.User{
+			ID: su.ID, Name: su.Name, Role: role, Disabled: su.Disabled,
+			CreatedAt: now, UpdatedAt: now,
+		}
+		if existing, gerr := p.store.GetUser(ctx, su.ID); gerr == nil {
+			u.Role = existing.Role // keep the admin's earlier role decision
+			u.Quota = existing.Quota
+			u.AutoApprove = existing.AutoApprove
+			u.CreatedAt = existing.CreatedAt
+		}
+		if err := p.store.UpsertUser(ctx, u); err != nil {
+			return imported, err
+		}
+		imported++
+	}
+	return imported, nil
+}

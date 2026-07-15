@@ -25,5 +25,9 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	srv.registerFiller(humaAPI)
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSettings(humaAPI)
+	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
+	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
+	// spec, matching how /v1/auth/* is handled. Documented via §11.
+	srv.registerProvisioning(humaAPI)
 	return humaAPI.OpenAPI().YAML()
 }

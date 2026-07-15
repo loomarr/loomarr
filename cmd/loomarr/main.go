@@ -283,14 +283,30 @@ func run() error {
 	var loginSvc api.LoginService
 	var sessMgr api.SessionManager
 	var userSync api.UserSyncer
-	if st != nil && set.str("library.flavor") != "" {
-		flavor, _ := library.ParseFlavor(set.str("library.flavor"))
-		lib := library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
+	var provisionSvc api.Provisioner
+	if st != nil {
+		// Auth wires on the STORE alone (§11 rework): identity is Loomarr-owned, so
+		// bootstrap + local login work with zero media-server config. The library
+		// (media-server verifier + user lister) is optional — nil ⇒ import is
+		// unavailable and only local users can sign in.
+		var lib *library.Client
+		if set.str("library.flavor") != "" {
+			flavor, _ := library.ParseFlavor(set.str("library.flavor"))
+			lib = library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
+		}
 		mgr := auth.NewManager(st, set.dur("session.ttl"), time.Now)
 		limiter := auth.NewRateLimiter(0.2, 5) // ~5 attempts, refill 1/5s (§11)
-		loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
+		// NewLoginService takes the Authenticator interface; a nil *library.Client
+		// would be a non-nil interface, so pass nil explicitly when unconfigured.
+		if lib != nil {
+			loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
+			userSync = auth.NewUserSync(lib, st, time.Now)
+			provisionSvc = auth.NewProvisioner(st, lib, newID, time.Now)
+		} else {
+			loginSvc = auth.NewLoginService(nil, st, mgr, limiter, time.Now)
+			provisionSvc = auth.NewProvisioner(st, nil, newID, time.Now)
+		}
 		sessMgr = mgr
-		userSync = auth.NewUserSync(lib, st, time.Now)
 		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
 	}
 
@@ -326,6 +342,7 @@ func run() error {
 			Filler:       fillerSvc,
 			SystemLLM:    systemLLM,
 			Settings:     settingsSvc,
+			Provision:    provisionSvc,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
