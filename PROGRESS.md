@@ -4,20 +4,32 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**Settings subsystem — cross-phase config retrofit (IN PROGRESS, 2026-07-15).** Builds `config-design.md`
-for real (the deferred Phase-1/8/9 config work): a typed settings **registry** (single source of truth),
-`env > database > default` resolution with asymmetric errors (bad env → boot fail; bad db → self-heal +
-warn), `_FILE` secret loading, an in-memory snapshot + `Watch` for **hot-apply**, the secrets lifecycle
-(idempotent generation, `Redactor` into slog, masked reads, regen side-effects), feature gating from
-`RequiredFor` completeness, the `/v1/settings` + `/v1/setup/test` + secrets-regenerate API, and the missing
-`make config-docs` target (→ `docs/configuration.md`, CI drift gate). New `internal/settings` package;
-`config.Config` shrinks to the env-only bootstrap set (§1 classification: `DATABASE_URL`/`AUTO_MIGRATE`/
-`LISTEN_ADDR`/`LOG_LEVEL`/`TZ`). **Full rewire this PR** — every consumer reads through the snapshot so
-hot-apply is live at merge (library URL/token per-call, tickers per-tick, LLM `Watch`-rebuild). Migration
-`00008` adds settings `updated_at`/`updated_by`. Closes the ChannelPolicy registry-default deferral: the
-`SCHED_*`/`SEASONAL_MODE` policy defaults (§15) now resolve through the registry, not Go constants. Like
-ChannelPolicy, this is a **cross-phase retrofit** (deepens Phase 1/8/9), not a new phase-table row. Unblocks
-Phase 13's wizard-as-settings (`config-design.md` §5–§7).
+**Settings subsystem — cross-phase config retrofit — COMPLETE (2026-07-15).** Built `config-design.md`
+for real (the deferred Phase-1/8/9 config work) on branch `feat/settings-subsystem` (commits
+`7aa3fcc`..`17fe3cb`). Gate: `make check` (`-race`, lint 0) + `make test-pg` (settings audit columns on
+both dialects) + `make openapi-verify` + `make config-docs-verify` all green, **plus a live boot smoke**
+(temp SQLite): `/healthz` 200, `/readyz` ready, three generated secrets minted + persisted with audit
+stamp, `GET /v1/settings` 403 unauth / 47 settings with the API_TOKEN break-glass (secrets **masked**,
+value withheld), env-pin reported + **refused** on PATCH ("set via environment"), `job.workers` hot-applied
+to db, and the feature gate flipped `acquisition` true the instant `seerr.url` was saved — all with **no
+restart**. Delivered: a typed **registry** (single source of truth, ~45 keys transcribed from §15),
+`env > database > default` resolution with **asymmetric errors** (bad env → boot fail; bad db → self-heal +
+caution), `_FILE` secret loading + `<VAR>`+`_FILE` ambiguity boot-error, in-memory snapshot + `Watch`
+**hot-apply**, the secrets lifecycle (idempotent gen, `Redactor` into slog — the **log-grep gate** proves
+no secret is ever logged, masked reads, regen side-effects), feature gating from `RequiredFor` (the
+requester OR-gate is the one explicit case), the `/v1/settings` + `/v1/setup/test` + secrets-regenerate
+API, and `make config-docs` (→ `docs/configuration.md`, drift-gated in `make check` too). New
+`internal/settings` package; `config.Config` shrunk to the env-only bootstrap set (§1: `DATABASE_URL`/
+`AUTO_MIGRATE`/`LISTEN_ADDR`/`LOG_LEVEL`/`TZ`). **Full read-through rewire** — every consumer resolves via
+the snapshot (library/requester/Tunarr connection providers read PER CALL; `reconcile`/`channels` runners
+gained `WithInterval` re-tune; the LLM `Watch(llm.*)`-rebuilds). Migration `00008` adds settings
+`updated_at`/`updated_by` (2nd real ALTER after `00007`). Closes the ChannelPolicy registry-default
+deferral: the `SCHED_*`/`SEASONAL_MODE` policy defaults (§15) now resolve through the registry, not Go
+constants. Like ChannelPolicy, a **cross-phase retrofit** (deepens Phase 1/8/9), not a new phase-table row.
+**Unblocks Phase 13's wizard-as-settings** (`config-design.md` §5–§7). NOT yet merged to `main` (branch
+awaits review). Known small follow-up: `Router`/`ExportOpenAPI` still duplicate the route-registration
+list (a shared `registerAll` is the real fix); the media-server/tunarr connection Test probes are shallow
+reachability checks.
 
 **Phase 12.5 — End-to-end integration (the seams) — COMPLETE (2026-07-14).** All live-smoke seams
 closed: #6/#7/#8/#12/#13 (earlier), then #9 (acquisitions→`ch.Lineup` pending), #10 (provisioner→
