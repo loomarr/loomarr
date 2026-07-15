@@ -755,6 +755,24 @@ components:
         offSeason:
           type: string
       type: object
+    SecretRegenerateOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SecretRegenerateOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        displayable:
+          description: Whether the new value is returned (config-design §4).
+          type: boolean
+        value:
+          type: string
+      required:
+        - displayable
+      type: object
     SeparationPolicy:
       additionalProperties: false
       properties:
@@ -791,6 +809,177 @@ components:
           type: string
       required:
         - key
+      type: object
+    SettingEntry:
+      additionalProperties: false
+      properties:
+        advanced:
+          type: boolean
+        caution:
+          description: A stored value self-healed to default (§3).
+          type: boolean
+        doc:
+          type: string
+        enum:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        group:
+          type: string
+        key:
+          type: string
+        kind:
+          type: string
+        preview:
+          description: "For secrets: masked '…a1b2' tail (§4)."
+          type: string
+        provenance:
+          description: env locks the UI field (§3).
+          enum:
+            - env
+            - db
+            - default
+          type: string
+        requiredFor:
+          type: string
+        secret:
+          type: boolean
+        set:
+          description: "For secrets: whether a value is stored."
+          type: boolean
+        updatedAt:
+          description: RFC3339; empty for env/system writes.
+          type: string
+        updatedBy:
+          type: string
+        value:
+          description: Resolved value (non-secret). Empty for secrets.
+          type: string
+      required:
+        - key
+        - group
+        - kind
+        - set
+        - provenance
+        - advanced
+        - secret
+        - doc
+      type: object
+    SettingResult:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        problem:
+          description: Validation message when status=invalid (never echoes a secret, §4).
+          type: string
+        status:
+          description: saved | invalid(problem) | pinned (§8).
+          enum:
+            - saved
+            - invalid
+            - pinned
+          type: string
+      required:
+        - key
+        - status
+      type: object
+    SettingsListOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsListOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        features:
+          additionalProperties:
+            type: boolean
+          description: Computed feature availability (config-design §7).
+          type: object
+        settings:
+          items:
+            $ref: "#/components/schemas/SettingEntry"
+          type:
+            - array
+            - "null"
+      required:
+        - settings
+        - features
+      type: object
+    SettingsPatchInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsPatchInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        edits:
+          additionalProperties:
+            type: string
+          description: key → new value; empty clears an optional key.
+          type: object
+      required:
+        - edits
+      type: object
+    SettingsPatchOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsPatchOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        results:
+          items:
+            $ref: "#/components/schemas/SettingResult"
+          type:
+            - array
+            - "null"
+      required:
+        - results
+      type: object
+    SettingsTestInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsTestInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        check:
+          description: Named connection check (e.g. media_server, tunarr, requester).
+          type: string
+      required:
+        - check
+      type: object
+    SettingsTestOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsTestOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hint:
+          type: string
+        ok:
+          type: boolean
+      required:
+        - ok
       type: object
     SetupCheck:
       additionalProperties: false
@@ -1494,6 +1683,83 @@ paths:
       summary: Federated search (library + TMDB + clips)
       tags:
         - search
+  /v1/settings:
+    get:
+      description: Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).
+      operationId: settings-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsListOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List settings
+      tags:
+        - settings
+    patch:
+      description: Admin only. Per-key results (saved | invalid | pinned); hot-applies on success (config-design §8).
+      operationId: settings-patch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsPatchInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsPatchOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update settings
+      tags:
+        - settings
+  /v1/settings/secrets/{name}/regenerate:
+    post:
+      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | WEBHOOK_SECRET with the §4 side-effects; the new value is returned only if displayable.
+      operationId: secret-regenerate
+      parameters:
+        - description: Which generated secret to rotate.
+          in: path
+          name: name
+          required: true
+          schema:
+            description: Which generated secret to rotate.
+            enum:
+              - session_secret
+              - api_token
+              - webhook_secret
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretRegenerateOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Regenerate a generated secret
+      tags:
+        - settings
   /v1/setup/livetv-connect:
     post:
       description: Admin only. One-time, idempotent (§6).
@@ -1534,6 +1800,32 @@ paths:
       summary: Connection checklist
       tags:
         - setup
+  /v1/setup/test:
+    post:
+      description: Admin only. Powers the per-block Test buttons (config-design §8).
+      operationId: setup-test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsTestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsTestOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Run one connection check
+      tags:
+        - settings
   /v1/suggestions:
     get:
       description: status=submitted is the approval queue.
