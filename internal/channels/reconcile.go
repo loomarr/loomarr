@@ -44,13 +44,20 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 		return nil // no longer managed (§9 ownership)
 	}
 
-	// 2: recompute desired from the approved lineup + current availability
-	// (pure). ComputeDesired already resolves each entry against the library, so
-	// a title that has vanished simply comes back as a placeholder this pass.
-	// Apply the global commercial-break density (§10) so breaks are interleaved.
+	// 2: recompute desired from the approved lineup + current availability under the
+	// channel's ChannelPolicy (programming-design §3–§7). ComputeDesiredAt resolves
+	// each entry against the library (a vanished title comes back a placeholder),
+	// applies the audience/scope/seasonal filters, and orders with separation. Apply
+	// the global commercial-break density (§10) so breaks are interleaved, and pass
+	// the wall-clock so seasonality (§6) evaluates against the container TZ.
 	chDomain := ch.Channel
 	chDomain.BreaksPerHour = e.breaksPerHour
-	desired := schedule.ComputeDesired(chDomain, ch.Lineup, e.avail, e.policy)
+	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+
+	// Record the relaxation-ladder steps this pass applied (§7) back onto the
+	// channel's policy so the UI surfaces them; recomputed from scratch each
+	// reconcile, so a recovered pool automatically un-relaxes to an empty list.
+	ch.Policy.Applied = desired.Applied
 
 	// NOTE (§10 redesign): filler is no longer inlined into the desired lineup. The
 	// interleaved SlotFiller break gaps (schedule.interleaveBreaks) flow through to

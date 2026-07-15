@@ -1,7 +1,7 @@
 package schedule
 
 import (
-	"math/rand"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
 )
@@ -13,6 +13,14 @@ import (
 type DesiredLineup struct {
 	ChannelID string
 	Slots     []Slot
+	// Excluded reports what the audience/scope hard filters dropped (§4), surfaced
+	// at reconcile + proposal so a metadata gap is visible. Empty when nothing was
+	// filtered (or no policy is set).
+	Excluded ExclusionReport
+	// Applied records the relaxation-ladder steps taken this computation (§7),
+	// written back onto the channel's policy by the reconcile engine and surfaced in
+	// the UI. Empty when the eligible pool satisfied the policy with no relaxation.
+	Applied []AppliedRelaxation
 }
 
 // ProgramCount returns how many slots are real playable programs (§9: a channel
@@ -126,20 +134,52 @@ func (e LineupEntry) inSeasonRange(season int) bool {
 //   - available            → SlotProgram (LibraryItemID set)
 //   - not available, PodFill → SlotFiller (pod-fill placeholder; §10 fills it)
 //   - not available, ComingSoon → SlotPending (explicit gap)
+//
+// ComputeDesired is the policy-free entry point (an empty ChannelPolicy + zero
+// clock): existing callers and tests get byte-identical behavior to the old blind
+// ordering. Reconcile calls ComputeDesiredAt with the channel's policy + a clock.
 func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, policy PendingPolicy) DesiredLineup {
-	// Resolve each entry to its program slot(s) FIRST — a movie → one slot, a
-	// series → one slot per episode (§9 expansion) — then order the whole slot
-	// list by strategy. Ordering after expansion means `shuffle` shuffles episodes
-	// with everything else, and `sequential` keeps them in season/episode order.
-	slots := make([]Slot, 0, len(entries))
-	for _, e := range entries {
-		slots = append(slots, resolveEntry(e, avail, policy)...)
+	return ComputeDesiredAt(ch, entries, avail, policy, ChannelPolicy{}, time.Time{})
+}
+
+// ComputeDesiredAt is the ChannelPolicy-aware desired-lineup builder (programming-
+// design §3–§7). It is PURE — same inputs (channel seed + policy + clock) always
+// yield the same slots — so reconcile output is reproducible and tests need no mock
+// Tunarr. `now` drives seasonality (§6); a zero `now` disables it (seasonal mode
+// treated as off), which is why the policy-free wrapper passes time.Time{}.
+//
+// Pipeline: filter entries (scope + audience §4, never-relaxed) → seasonal bench
+// (§6) → resolve each entry to slot(s) → policy-aware slotting (ordering §5 +
+// separation-with-wrap §3) → relaxation ladder on shortfall (§7) → interleave
+// breaks (§10, unchanged). The channel's Strategy supplies the ordering when the
+// policy omits it (a policy-less channel keeps its existing behavior).
+func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pending PendingPolicy, policy ChannelPolicy, now time.Time) DesiredLineup {
+	rp := policy.Resolved(ch.Strategy, singleSeriesEntries(entries))
+
+	// Hard filters first (§4 audience fail-closed + scope) — the never-relaxed gate.
+	eligible, report := filterEntries(entries, rp)
+	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
+	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
+	eligible, seasonalReport := applySeasonal(eligible, rp, now)
+	report.merge(seasonalReport)
+
+	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
+	// per in-range episode (§9 expansion).
+	slots := make([]Slot, 0, len(eligible))
+	for _, e := range eligible {
+		slots = append(slots, resolveEntry(e, avail, pending)...)
 	}
-	ordered := orderSlots(ch, slots)
-	// Interleave commercial-break gaps between programs at the channel's density
-	// (§10). Empty SlotFiller gaps here are filled with matched pods by the
-	// reconcile's assembler (fillPods), or stay flex if the catalog is empty.
-	return DesiredLineup{ChannelID: ch.ID, Slots: interleaveBreaks(ch, ordered)}
+
+	// Policy-aware ordering + separation (§3/§5), then the relaxation ladder (§7)
+	// records any windows it had to loosen to fill the cycle.
+	ordered, applied := slotWithRelaxation(slots, rp, ch.Shuffle.Seed)
+
+	return DesiredLineup{
+		ChannelID: ch.ID,
+		Slots:     interleaveBreaks(ch, ordered),
+		Excluded:  report,
+		Applied:   applied,
+	}
 }
 
 // breakGapMs is the placeholder duration for an inserted commercial break — the
@@ -223,27 +263,4 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slo
 		}}
 	}
 	return []Slot{pendingSlot(e, policy)}
-}
-
-// orderSlots applies the channel's strategy to the desired slot order (§9). It
-// runs AFTER series expansion, so `shuffle` shuffles episodes together with
-// everything else and `sequential` preserves season/episode (and lineup) order.
-// Copies rather than mutating the caller's slice.
-func orderSlots(ch Channel, slots []Slot) []Slot {
-	out := make([]Slot, len(slots))
-	copy(out, slots)
-
-	switch ch.Strategy {
-	case Shuffle:
-		// Deterministic permutation from the channel's seed (§9/§10). rand with
-		// a fixed source is reproducible across runs and platforms.
-		r := rand.New(rand.NewSource(ch.Shuffle.Seed))
-		r.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
-	case Sequential, TimeSlot:
-		// Keep resolved order. TimeSlot block mapping happens at push time.
-	default:
-		// Unknown strategy: preserve order (Validate rejects these upstream, but
-		// ComputeDesired must never panic on bad data).
-	}
-	return out
 }

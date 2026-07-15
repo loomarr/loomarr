@@ -57,6 +57,16 @@ func (s seriesAvail) ResolveEpisodes(k provision.Key) ([]schedule.ResolvedProgra
 	return eps, ok && len(eps) > 0
 }
 
+// newSeriesAvail builds a seriesAvail from a string-keyed episode map (convenience
+// for policy tests that only exercise series expansion).
+func newSeriesAvail(episodes map[string][]schedule.ResolvedProgram) seriesAvail {
+	m := make(map[provision.Key][]schedule.ResolvedProgram, len(episodes))
+	for k, v := range episodes {
+		m[provision.Key(k)] = v
+	}
+	return seriesAvail{episodes: m}
+}
+
 func entry(key, title string) schedule.LineupEntry {
 	return schedule.LineupEntry{Key: provision.Key(key), Title: title}
 }
