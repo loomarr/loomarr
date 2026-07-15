@@ -35,6 +35,10 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 test: ## unit tests only (never touch the network — §19)
 	$(GO) test -race $(PKG)
 
+.PHONY: eval
+eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
+	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
+
 ## ---- build / run ---------------------------------------------------------
 
 .PHONY: build
