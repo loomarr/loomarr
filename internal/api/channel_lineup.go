@@ -93,6 +93,14 @@ func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
 				// DurationMs is left 0 (unknown) here; the reconciler resolves real
 				// runtime from the library when it computes desired slots (§9). An
 				// acquisition not yet in the library resolves to a pending slot.
+				//
+				// Policy-enforcement metadata is stamped from the grounded pick
+				// (programming-design §4): the full ProposalItem is in hand here and
+				// currently the only place it is, so the audience/era/genre filters
+				// enforce off the entry without a per-reconcile library hit.
+				OfficialRating: schedule.NormalizeRating(it.OfficialRating),
+				Genres:         it.Genres,
+				Year:           it.Year,
 			})
 		}
 	}

@@ -42,6 +42,11 @@ type ProposalItem struct {
 	// only — never identity (Key ignores them).
 	Genres   []string `json:"genres,omitempty"`
 	Overview string   `json:"overview,omitempty"`
+	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
+	// enforcement (programming-design §4): it's stamped onto the channel's lineup
+	// entry at create time so enforcement filters without a library hit. Display/
+	// enforcement only — never identity.
+	OfficialRating string `json:"officialRating,omitempty"`
 }
 
 // Key derives the provisioning key (§3), enforcing the grounding guarantee: a
@@ -60,7 +65,7 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		MediaType: c.MediaType, TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
 		Rationale: rationale, Confidence: confidence,
-		Genres: c.Genres, Overview: c.Overview,
+		Genres: c.Genres, Overview: c.Overview, OfficialRating: c.OfficialRating,
 	}
 }
 

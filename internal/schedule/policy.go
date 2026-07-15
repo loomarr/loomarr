@@ -195,6 +195,12 @@ var ladderRank = map[Rating]int{
 // (TV-PG). At or below it, the default unrated policy is exclude (§4).
 const kidsCeilingRank = 3
 
+// NormalizeRating maps a raw media-server OfficialRating string into a ladder
+// Rating, for callers stamping the rating onto a lineup entry at create time. An
+// unmappable value normalizes to "" (unrated) — enforcement handles that
+// fail-closed under a kids ceiling.
+func NormalizeRating(raw string) Rating { return normalizeRating(raw) }
+
 // normalizeRating maps a raw media-server OfficialRating string into a ladder
 // Rating. It upper-cases, trims, and normalizes the common Emby/Jellyfin variants
 // ("TV_Y7", "tv-14", "Rated R" → …); anything not on the ladder returns "" (unrated).
