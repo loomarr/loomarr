@@ -46,21 +46,21 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			picks, rat, err := parsePicks(tt.content)
+			out, err := parsePicks(tt.content)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("expected error, got picks=%v rat=%q", picks, rat)
+					t.Fatalf("expected error, got picks=%v rat=%q", out.Picks, out.Rationale)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if len(picks) != tt.wantPicks {
-				t.Errorf("picks = %d, want %d", len(picks), tt.wantPicks)
+			if len(out.Picks) != tt.wantPicks {
+				t.Errorf("picks = %d, want %d", len(out.Picks), tt.wantPicks)
 			}
-			if rat != tt.wantRat {
-				t.Errorf("rationale = %q, want %q", rat, tt.wantRat)
+			if out.Rationale != tt.wantRat {
+				t.Errorf("rationale = %q, want %q", out.Rationale, tt.wantRat)
 			}
 		})
 	}

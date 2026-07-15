@@ -36,12 +36,38 @@ func (p pick) key() string {
 	return string(k)
 }
 
-// finalOutput is the model's final JSON shape (§8 output contract, simplified to
-// picks + rationale; the suggester classifies picks into lineup/acquisitions by
-// their in_library flag, so the model needn't).
+// pickPolicy is the UNTRUSTED ChannelPolicy the model proposes (programming-design
+// §8: the LLM extracts, deterministic code enforces). Every field is loose/optional;
+// groundPolicy validates + clamps it (off-ladder ceiling dropped, era bounded,
+// series intersected with grounded ids) before it becomes a schedule.ChannelPolicy.
+// The model never places a program — it only proposes rules, each machine-checked.
+type pickPolicy struct {
+	Audience struct {
+		Ceiling string `json:"ceiling"` // e.g. "TV-Y7"; dropped if off the closed ladder
+		Unrated string `json:"unrated"` // "exclude" | "allow"; ignored otherwise
+	} `json:"audience"`
+	Era struct {
+		From int `json:"from"`
+		To   int `json:"to"`
+	} `json:"era"`
+	Genres struct {
+		Include []string `json:"include"`
+		Exclude []string `json:"exclude"`
+	} `json:"genres"`
+	Ordering string `json:"ordering"` // "sequential" | "shuffle" | "syndication"
+	Seasonal struct {
+		Mode     string   `json:"mode"` // "off" | "auto" | "exclusive"
+		Holidays []string `json:"holidays"`
+	} `json:"seasonal"`
+}
+
+// finalOutput is the model's final JSON shape (§8 output contract): picks +
+// rationale + an optional policy. The suggester classifies picks into lineup/
+// acquisitions by their in_library flag, so the model needn't.
 type finalOutput struct {
-	Rationale string `json:"rationale"`
-	Picks     []pick `json:"picks"`
+	Rationale string      `json:"rationale"`
+	Picks     []pick      `json:"picks"`
+	Policy    *pickPolicy `json:"policy,omitempty"`
 }
 
 // parsePicks parses the model's final JSON. A malformed final output is an error
@@ -53,12 +79,12 @@ type finalOutput struct {
 // a well-formed proposal isn't rejected over presentation. Grounding is unaffected:
 // this only decides whether we can READ the picks, never which picks survive — the
 // surfaced-map chokepoint downstream is the actual grounding gate.
-func parsePicks(content string) ([]pick, string, error) {
+func parsePicks(content string) (finalOutput, error) {
 	var out finalOutput
 	if err := json.Unmarshal([]byte(extractJSONObject(content)), &out); err != nil {
-		return nil, "", fmt.Errorf("suggester: model final output is not valid JSON: %w", err)
+		return finalOutput{}, fmt.Errorf("suggester: model final output is not valid JSON: %w", err)
 	}
-	return out.Picks, out.Rationale, nil
+	return out, nil
 }
 
 // extractJSONObject returns the outermost {...} span in s, or s unchanged if there

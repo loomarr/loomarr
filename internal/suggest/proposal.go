@@ -10,6 +10,7 @@ package suggest
 import (
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 )
 
 // Intent is a channel request: an NL description plus optional constraints (§8).
@@ -80,6 +81,11 @@ type Proposal struct {
 	Alternates   []ProposalItem `json:"alternates"`   // ranked backups (§9 substitution)
 	Scores       Scores         `json:"scores"`       // deterministic post-scoring
 	Rationale    string         `json:"rationale,omitempty"`
+	// Policy is the grounded ChannelPolicy the suggester extracted (programming-
+	// design §8): scope/audience/ordering/seasonal, validated + clamped (off-ladder
+	// ceilings dropped, era bounded). It rides the proposal into channel-create,
+	// where it lands on the channel row. Empty = the channel uses built-in defaults.
+	Policy schedule.ChannelPolicy `json:"policy,omitempty"`
 }
 
 // Scores is the deterministic post-scoring layered on the LLM output (§8) so

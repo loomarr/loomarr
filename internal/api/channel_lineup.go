@@ -34,6 +34,26 @@ func (s *Server) lineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	return lineupEntries(p)
 }
 
+// policyFromIntent resolves the approved proposal's grounded ChannelPolicy
+// (programming-design §8) so it lands on the channel row at create time. Returns a
+// zero policy (⇒ built-in defaults) for a hand-made channel (empty intentRef) or a
+// proposal that carried no policy. Mirrors lineupFromIntent — same approved-proposal
+// gate, so an unapproved intent never brings a policy onto a live channel.
+func (s *Server) policyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error) {
+	if intentRef == "" {
+		return schedule.ChannelPolicy{}, nil
+	}
+	prop, err := s.approvedProposalForJob(ctx, intentRef)
+	if err != nil {
+		return schedule.ChannelPolicy{}, err
+	}
+	var p suggest.Proposal
+	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
+		return schedule.ChannelPolicy{}, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
+	}
+	return p.Policy, nil
+}
+
 // approvedProposalForJob finds the proposal for a suggestion job.
 //
 // DECISION (business logic — see the TODO): which proposal counts, and must it
