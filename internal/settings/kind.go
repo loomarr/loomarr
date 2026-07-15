@@ -84,6 +84,28 @@ func normalizeURL(key, raw string) (string, error) {
 	return u.String(), nil
 }
 
+// ValueString renders a resolved typed value back to its canonical string form
+// for transport (the API/docs). It mirrors parse: durations as "168h", lists
+// comma-joined, ints/bools plainly. A nil value (unset) → empty string.
+func ValueString(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case int:
+		return strconv.Itoa(t)
+	case bool:
+		return strconv.FormatBool(t)
+	case time.Duration:
+		return t.String()
+	case []string:
+		return strings.Join(t, ",")
+	default:
+		return fmt.Sprintf("%v", t)
+	}
+}
+
 // parseList splits a comma-separated string_list into trimmed, non-empty items.
 func parseList(raw string) []string {
 	parts := strings.Split(raw, ",")

@@ -48,9 +48,10 @@ type Change struct {
 // snapshot resolved env > db > default, refreshed on write, and answers reads
 // without touching the DB on the hot path. Safe for concurrent use.
 type Service struct {
-	reg *Registry
-	env func(string) (string, bool) // injectable for tests; defaults to os.LookupEnv
-	log *slog.Logger
+	reg    *Registry
+	env    func(string) (string, bool) // injectable for tests; defaults to os.LookupEnv
+	log    *slog.Logger
+	loader Loader // kept for the post-write snapshot refresh (Patch hot-apply)
 
 	mu       sync.RWMutex
 	db       map[string]string // persisted overrides (raw strings)
@@ -68,6 +69,7 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 		reg:      reg,
 		env:      os.LookupEnv,
 		log:      log,
+		loader:   loader,
 		watchers: make(map[string][]chan Change),
 	}
 	// Validate every env pin at boot — an operator typo must fail here, not lurk.

@@ -38,6 +38,56 @@ type Server struct {
 	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
 	systemLLM SystemLLMService
+	// settings wires /v1/settings* + secrets regeneration (config-design §8);
+	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
+	settings SettingsService
+}
+
+// SettingsService is the settings surface the API depends on (config-design §8).
+// Implemented by a settings.Service adapter in the composition root; abstracted
+// so the API package needn't import internal/settings. Secrets are masked here —
+// a value never crosses this boundary (§4).
+type SettingsService interface {
+	// List returns every registry setting with its resolved value (secrets
+	// masked) + provenance + audit metadata (config-design §8).
+	List(ctx context.Context) []SettingEntry
+	// Patch applies per-key edits, returning a per-key result (saved | invalid |
+	// pinned). Hot-applies on success. updatedBy is the admin's id (§3 audit).
+	Patch(ctx context.Context, edits map[string]string, updatedBy string) []SettingResult
+	// Features returns the computed feature availability (config-design §7).
+	Features(ctx context.Context) map[string]bool
+	// RegenerateSecret rotates a generated secret and returns the new value if it
+	// is displayable (config-design §4); displayable=false ⇒ value withheld.
+	RegenerateSecret(ctx context.Context, name string) (value string, displayable bool, err error)
+	// Test runs one named connection check (config-design §8, powers Test buttons).
+	Test(ctx context.Context, check string) (ok bool, hint string)
+}
+
+// SettingEntry is the API view of one setting (config-design §8). For a secret,
+// Value is empty and Set/Preview carry the masked state — the value never appears.
+type SettingEntry struct {
+	Key         string   `json:"key"`
+	Group       string   `json:"group"`
+	Kind        string   `json:"kind"`
+	Value       string   `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set         bool     `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview     string   `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance  string   `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution     bool     `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	Advanced    bool     `json:"advanced"`
+	Secret      bool     `json:"secret"`
+	Enum        []string `json:"enum,omitempty"`
+	RequiredFor string   `json:"requiredFor,omitempty"`
+	Doc         string   `json:"doc"`
+	UpdatedBy   string   `json:"updatedBy,omitempty"`
+	UpdatedAt   string   `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+}
+
+// SettingResult is one key's PATCH outcome (config-design §8).
+type SettingResult struct {
+	Key     string `json:"key"`
+	Status  string `json:"status" enum:"saved,invalid,pinned" doc:"saved | invalid(problem) | pinned (§8)."`
+	Problem string `json:"problem,omitempty" doc:"Validation message when status=invalid (never echoes a secret, §4)."`
 }
 
 // FillerService backs the filler ingestion routes (§10): catalog sync and the AI
@@ -133,6 +183,7 @@ type Options struct {
 	Events       EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Filler       FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Settings     SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).
