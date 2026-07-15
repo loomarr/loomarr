@@ -85,6 +85,9 @@ func TestDisableRevokesSessions(t *testing.T) {
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
+	// §11 rework: bob must be imported (allowlisted) before login works.
+	importOne(t, st, "u-bob", "bob", false)
+
 	token, _, _, err := svc.Login(ctx, "bob", "pw", "ip|bob")
 	if err != nil {
 		t.Fatal(err)
@@ -101,9 +104,9 @@ func TestDisableRevokesSessions(t *testing.T) {
 	}
 }
 
-// First-admin bootstrap: a media-server admin becomes a Loomarr admin; a
-// non-admin becomes a member.
-func TestBootstrapRoles(t *testing.T) {
+// §11 rework: an IMPORTED media-server user can log in; an UN-IMPORTED one is
+// rejected even with valid credentials (the allowlist — no lazy self-provision).
+func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
 	ms := testkit.NewMediaServer(t)
@@ -116,12 +119,98 @@ func TestBootstrapRoles(t *testing.T) {
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
+	// boss is imported (as admin); kid is NOT imported.
+	importOne(t, st, "u-boss", "boss", true)
+
 	if _, _, u, err := svc.Login(ctx, "boss", "pw", "ip|boss"); err != nil || u.Role != store.RoleAdmin {
-		t.Errorf("media-server admin → %v (%v), want admin", u.Role, err)
+		t.Errorf("imported admin → %v (%v), want admin login", u.Role, err)
 	}
-	if _, _, u, err := svc.Login(ctx, "kid", "pw", "ip|kid"); err != nil || u.Role != store.RoleMember {
-		t.Errorf("non-admin → %v (%v), want member", u.Role, err)
+	// kid has VALID media-server creds but is not on the allowlist → denied.
+	if _, _, _, err := svc.Login(ctx, "kid", "pw", "ip|kid"); err != ErrInvalidCredentials {
+		t.Errorf("un-imported user login → %v, want ErrInvalidCredentials", err)
 	}
+	// And no row was created for kid (no lazy self-provision).
+	if _, err := st.GetUser(ctx, "u-kid"); err != store.ErrNotFound {
+		t.Errorf("un-imported login must not create a row: %v", err)
+	}
+}
+
+// Import assigns admin to media-server admins only when makeAdmin is set (§11).
+// Uses the pinned users_list fixture ids: Matt (admin) + Chris (member).
+func TestImport_RoleAssignment(t *testing.T) {
+	const (
+		mattID  = "c9c1815f5b7e46308169209bf320e196" // IsAdministrator: true
+		chrisID = "b1df9e921c8f4ddb85f5b032f93ebdf4" // member
+	)
+	st := newStore(t)
+	ctx := context.Background()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	prov := NewProvisioner(st, lib, seqID(), func() time.Time { return now })
+
+	n, err := prov.Import(ctx, []string{mattID, chrisID}, true)
+	if err != nil || n != 2 {
+		t.Fatalf("import → %d,%v want 2,nil", n, err)
+	}
+	if u, _ := st.GetUser(ctx, mattID); u.Role != store.RoleAdmin {
+		t.Errorf("media-server admin imported with makeAdmin → %v, want admin", u.Role)
+	}
+	if u, _ := st.GetUser(ctx, chrisID); u.Role != store.RoleMember {
+		t.Errorf("non-admin imported → %v, want member", u.Role)
+	}
+	// An id the server doesn't list is skipped, never invented.
+	n2, _ := prov.Import(ctx, []string{"ghost-id"}, true)
+	if n2 != 0 {
+		t.Errorf("importing an unknown id → %d, want 0 (never invent)", n2)
+	}
+}
+
+// Bootstrap creates the first local admin, once (§11).
+func TestBootstrap_OnceOnly(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	prov := NewProvisioner(st, nil, seqID(), func() time.Time { return now })
+
+	u, err := prov.Bootstrap(ctx, "owner", "s3cret-pw")
+	if err != nil || u.Role != store.RoleAdmin || u.PasswordHash == "" {
+		t.Fatalf("bootstrap → %+v, %v (want admin with a hash)", u, err)
+	}
+	// A local admin can now log in against the bcrypt hash (no media server).
+	mgr := NewManager(st, time.Hour, func() time.Time { return now })
+	svc := NewLoginService(nil, st, mgr, nil, func() time.Time { return now })
+	if _, _, lu, lerr := svc.Login(ctx, "owner", "s3cret-pw", "ip|owner"); lerr != nil || lu.ID != u.ID {
+		t.Errorf("local admin login → %v (%v), want success", lu.ID, lerr)
+	}
+	// A wrong password is rejected.
+	if _, _, _, lerr := svc.Login(ctx, "owner", "wrong", "ip|owner2"); lerr != ErrInvalidCredentials {
+		t.Errorf("wrong local password → %v, want ErrInvalidCredentials", lerr)
+	}
+	// A second bootstrap is closed.
+	if _, err := prov.Bootstrap(ctx, "other", "pw2"); err != ErrBootstrapClosed {
+		t.Errorf("second bootstrap → %v, want ErrBootstrapClosed", err)
+	}
+}
+
+// importOne allowlists a single media-server user id for the login tests. It
+// writes the row directly (the store IS the allowlist) — equivalent to what
+// Provisioner.Import does, without needing the media-server list fixture.
+func importOne(t *testing.T, st store.Store, id, name string, admin bool) {
+	t.Helper()
+	role := store.RoleMember
+	if admin {
+		role = store.RoleAdmin
+	}
+	u := store.User{ID: id, Name: name, Role: role, CreatedAt: now, UpdatedAt: now}
+	if err := st.UpsertUser(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seqID returns a deterministic id generator for tests (local-user ids).
+func seqID() IDGen {
+	n := 0
+	return func() string { n++; return "local-" + string(rune('a'+n-1)) }
 }
 
 // Bad credentials → ErrInvalidCredentials (§11 negative path).

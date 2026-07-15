@@ -41,6 +41,9 @@ type Server struct {
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
+	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
+	// absent. Implemented by auth.Provisioner.
+	provision Provisioner
 }
 
 // SettingsService is the settings surface the API depends on (config-design §8).
@@ -142,9 +145,19 @@ type LiveTVService interface {
 	Wired(ctx context.Context) (bool, error)
 }
 
-// UserSyncer imports users from the media server (§11). Returns the count synced.
+// UserSyncer refreshes already-imported users from the media server (§11).
+// Returns the count synced. It never ADDS users (import defines the allowlist).
 type UserSyncer interface {
 	Sync(ctx context.Context) (int, error)
+}
+
+// Provisioner owns first-run bootstrap + explicit import (§11) — the only paths
+// that create users. Implemented by auth.Provisioner.
+type Provisioner interface {
+	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
+	Bootstrap(ctx context.Context, username, password string) (store.User, error)
+	// Import allowlists the named media-server user ids (admin-only).
+	Import(ctx context.Context, ids []string, makeAdmin bool) (int, error)
 }
 
 // LoginService verifies credentials and issues a session (Phase 9, §11).
@@ -184,6 +197,7 @@ type Options struct {
 	Filler       FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	Settings     SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Provision    Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

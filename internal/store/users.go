@@ -14,8 +14,9 @@ const (
 	RoleMember Role = "member"
 )
 
-// User is a media-server-derived account with local role/quota (§11). Keyed by
-// media-server user id.
+// User is a Loomarr account with local role/quota (§11). Loomarr owns identity:
+// the row IS the allowlist. Keyed by user id — the media-server user id for an
+// imported user, a Loomarr-minted id for a local one.
 type User struct {
 	ID          string
 	Name        string
@@ -23,8 +24,12 @@ type User struct {
 	Disabled    bool
 	Quota       int // pending-acquisition cap; 0 = default
 	AutoApprove bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// PasswordHash is the bcrypt hash for a LOCAL user (§11). Empty ⇒ an IMPORTED
+	// media-server user (credentials verified against the media server, not here).
+	// The empty-vs-set state is the credential-path discriminator.
+	PasswordHash string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Session is a revocable session row (§11); the token is SHA-256-hashed at rest.
@@ -39,26 +44,46 @@ type Session struct {
 
 func (s *sqlStore) GetUser(ctx context.Context, id string) (User, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
 		 FROM users WHERE id = ?`), id)
 	return scanUser(row)
 }
 
+// UpsertUser writes a user. A sync of an imported user passes an empty
+// PasswordHash; COALESCE preserves any existing hash so a re-sync never wipes a
+// local user's credentials (defense in depth — imported and local users are
+// distinct rows, but the COALESCE makes the invariant structural).
+// GetUserByName returns a user by name (§11: local login resolves the username to
+// the allowlist row). Names are unique per install by convention; the first match
+// wins deterministically (ORDER BY id). ErrNotFound when absent.
+func (s *sqlStore) GetUserByName(ctx context.Context, name string) (User, error) {
+	row := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
+		 FROM users WHERE name = ? ORDER BY id LIMIT 1`), name)
+	return scanUser(row)
+}
+
 func (s *sqlStore) UpsertUser(ctx context.Context, u User) error {
+	var hash any
+	if u.PasswordHash != "" {
+		hash = u.PasswordHash
+	}
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO users (id, name, role, disabled, quota, auto_approve, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO users (id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, role=excluded.role, disabled=excluded.disabled,
-		   quota=excluded.quota, auto_approve=excluded.auto_approve, updated_at=excluded.updated_at`),
-		u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove,
+		   quota=excluded.quota, auto_approve=excluded.auto_approve,
+		   password_hash=COALESCE(excluded.password_hash, users.password_hash),
+		   updated_at=excluded.updated_at`),
+		u.ID, u.Name, string(u.Role), u.Disabled, u.Quota, u.AutoApprove, hash,
 		epoch(u.CreatedAt), epoch(u.UpdatedAt))
 	return err
 }
 
 func (s *sqlStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, created_at, updated_at
+		`SELECT id, name, role, disabled, quota, auto_approve, password_hash, created_at, updated_at
 		 FROM users ORDER BY name`))
 	if err != nil {
 		return nil, err
@@ -147,8 +172,9 @@ func (s *sqlStore) PurgeExpiredSessions(ctx context.Context, now time.Time) (int
 func scanUser(sc scannable) (User, error) {
 	var u User
 	var role string
+	var hash sql.NullString
 	var created, updated int64
-	err := sc.Scan(&u.ID, &u.Name, &role, &u.Disabled, &u.Quota, &u.AutoApprove, &created, &updated)
+	err := sc.Scan(&u.ID, &u.Name, &role, &u.Disabled, &u.Quota, &u.AutoApprove, &hash, &created, &updated)
 	if err == sql.ErrNoRows {
 		return User{}, ErrNotFound
 	}
@@ -156,6 +182,7 @@ func scanUser(sc scannable) (User, error) {
 		return User{}, err
 	}
 	u.Role = Role(role)
+	u.PasswordHash = hash.String
 	u.CreatedAt = fromEpoch(created)
 	u.UpdatedAt = fromEpoch(updated)
 	return u, nil

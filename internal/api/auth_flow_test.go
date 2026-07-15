@@ -38,6 +38,11 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 	loginSvc := auth.NewLoginService(lib, st, mgr, nil, time.Now)
 	userSync := auth.NewUserSync(lib, st, time.Now)
 
+	// §11 rework: identity is the allowlist — users must be imported before they
+	// can log in (no lazy self-provision). Seed boss (admin) + kid (member).
+	seedImported(t, st, "u-boss", "boss", store.RoleAdmin)
+	seedImported(t, st, "u-kid", "kid", store.RoleMember)
+
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
 		Auth:         api.NewSessionAuthorizer(mgr, "break-glass-token"),
@@ -50,6 +55,16 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv, st, ms
+}
+
+// seedImported allowlists a media-server user directly (§11: the store IS the
+// allowlist), so the flow tests can log in as an imported user.
+func seedImported(t *testing.T, st store.Store, id, name string, role store.Role) {
+	t.Helper()
+	u := store.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := st.UpsertUser(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // login performs a login and returns the session cookie.

@@ -71,6 +71,8 @@ type Store interface {
 
 	// --- users & sessions (§11) ---
 	GetUser(ctx context.Context, id string) (User, error)
+	// GetUserByName resolves a username to its allowlist row (§11 local login).
+	GetUserByName(ctx context.Context, name string) (User, error)
 	UpsertUser(ctx context.Context, u User) error
 	ListUsers(ctx context.Context) ([]User, error)
 	CountAdmins(ctx context.Context) (int, error)
