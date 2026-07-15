@@ -1,5 +1,19 @@
 components:
   schemas:
+    AppliedRelaxation:
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+        kind:
+          type: string
+        to:
+          type: string
+      required:
+        - kind
+        - from
+        - to
+      type: object
     ApproveOutputBody:
       additionalProperties: false
       properties:
@@ -19,6 +33,14 @@ components:
       required:
         - status
         - enqueued
+      type: object
+    AudiencePolicy:
+      additionalProperties: false
+      properties:
+        ceiling:
+          type: string
+        unrated:
+          type: string
       type: object
     ChannelDTO:
       additionalProperties: false
@@ -50,6 +72,9 @@ components:
             - 42
           format: int64
           type: integer
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+          description: Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations
         programCount:
           description: Real playable programs in the desired lineup
           format: int64
@@ -83,6 +108,27 @@ components:
         - status
         - programCount
         - slotCount
+        - policy
+      type: object
+    ChannelPolicy:
+      additionalProperties: false
+      properties:
+        applied:
+          items:
+            $ref: "#/components/schemas/AppliedRelaxation"
+          type:
+            - array
+            - "null"
+        audience:
+          $ref: "#/components/schemas/AudiencePolicy"
+        ordering:
+          type: string
+        scope:
+          $ref: "#/components/schemas/ScopePolicy"
+        seasonal:
+          $ref: "#/components/schemas/SeasonalPolicy"
+        separation:
+          $ref: "#/components/schemas/SeparationPolicy"
       type: object
     ClipDTO:
       additionalProperties: false
@@ -307,6 +353,22 @@ components:
             - https://example.com/errors/example
           format: uri
           type: string
+      type: object
+    GenreFilter:
+      additionalProperties: false
+      properties:
+        exclude:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        include:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
       type: object
     HostedModelView:
       additionalProperties: false
@@ -600,6 +662,41 @@ components:
         - status
         - proposal
       type: object
+    Range:
+      additionalProperties: false
+      properties:
+        from:
+          format: int64
+          type: integer
+        to:
+          format: int64
+          type: integer
+      type: object
+    ScopePolicy:
+      additionalProperties: false
+      properties:
+        collections:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        era:
+          $ref: "#/components/schemas/Range"
+        genres:
+          $ref: "#/components/schemas/GenreFilter"
+        runtimeMax:
+          format: int64
+          type: integer
+        seasons:
+          $ref: "#/components/schemas/Range"
+        series:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      type: object
     SearchCandidate:
       additionalProperties: false
       properties:
@@ -643,6 +740,36 @@ components:
             - "null"
       required:
         - candidates
+      type: object
+    SeasonalPolicy:
+      additionalProperties: false
+      properties:
+        holidays:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        mode:
+          type: string
+        offSeason:
+          type: string
+      type: object
+    SeparationPolicy:
+      additionalProperties: false
+      properties:
+        blockMax:
+          format: int64
+          type: integer
+        episodeNoRepeat:
+          format: int64
+          type: integer
+        movieNoRepeat:
+          format: int64
+          type: integer
+        seriesMinGap:
+          format: int64
+          type: integer
       type: object
     SeriesStruct:
       additionalProperties: false
