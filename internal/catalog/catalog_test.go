@@ -171,6 +171,19 @@ func TestCandidateKey(t *testing.T) {
 	}
 }
 
+// OfficialRating is ADDITIVE metadata: it must never enter identity, or the
+// grounding gate / in-library-first ordering could shift. Two otherwise-identical
+// candidates that differ ONLY in OfficialRating must produce the same Key.
+func TestCandidateKey_IgnoresOfficialRating(t *testing.T) {
+	rated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", OfficialRating: "R"}
+	unrated := catalog.Candidate{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}
+	rk, _ := rated.Key()
+	uk, _ := unrated.Key()
+	if rk != uk {
+		t.Errorf("OfficialRating leaked into identity: %q != %q", rk, uk)
+	}
+}
+
 // fakePresence marks a fixed set of tmdb ids as in-library.
 type fakePresence struct{ owned map[int]string }
 

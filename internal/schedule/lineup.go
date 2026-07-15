@@ -84,6 +84,15 @@ type LineupEntry struct {
 	// "old-school Simpsons" (§9 series expansion). Ignored for movies.
 	SeasonMin int
 	SeasonMax int
+	// Policy-enforcement metadata, stamped from the grounded ProposalItem at
+	// channel-create time (programming-design §4): the audience filter, era/genre
+	// scope, and runtime cap read these off the entry so enforcement stays a pure
+	// entry-set filter with no per-reconcile library I/O. For a series these are the
+	// SERIES' values (v1 series-level ceiling; episodes carry no per-episode rating).
+	OfficialRating Rating   // media-server content rating, normalized at enforcement
+	Genres         []string // for genre scope + seasonal keyword matching
+	Year           int      // for era scope + seasonal windowing
+	RuntimeSec     int      // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
 }
 
 // inSeasonRange reports whether an episode season falls within the entry's

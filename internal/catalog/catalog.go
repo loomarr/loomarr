@@ -58,6 +58,12 @@ type Candidate struct {
 	// names, overview) and the media server (Genres field), merged additively.
 	Genres   []string `json:"genres,omitempty"`
 	Overview string   `json:"overview,omitempty"`
+	// OfficialRating is the media server's content rating ("TV-Y7", "PG-13", …),
+	// the input to ChannelPolicy audience enforcement (programming-design §4). Like
+	// Genres/Overview it is DISPLAY/ENFORCEMENT metadata only — never identity
+	// (Key()/dedupeKey() must not read it). Populated from the media server; TMDB
+	// search/discover leaves it empty (audience enforcement is library-first).
+	OfficialRating string `json:"officialRating,omitempty"`
 	// Source records which corpus surfaced this candidate first (for debugging
 	// "why did the model see this"); after dedupe it's the merged view.
 	Source Scope `json:"source"`
@@ -307,21 +313,27 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 	if dst.Overview == "" && src.Overview != "" {
 		dst.Overview = src.Overview
 	}
+	// OfficialRating comes from the library (TMDB search/discover leaves it empty),
+	// so the merged view keeps whichever side actually has it.
+	if dst.OfficialRating == "" && src.OfficialRating != "" {
+		dst.OfficialRating = src.OfficialRating
+	}
 }
 
 // fromLibrary converts a library search result into a Candidate (in_library=true).
 func fromLibrary(r library.SearchResult) Candidate {
 	return Candidate{
-		MediaType:     mediaType(r.MediaType),
-		TMDBID:        r.TMDBID,
-		TVDBID:        r.TVDBID,
-		Name:          r.Name,
-		Year:          r.Year,
-		InLibrary:     true,
-		LibraryItemID: r.LibraryItemID,
-		Genres:        r.Genres,
-		Overview:      r.Overview,
-		Source:        ScopeLibrary,
+		MediaType:      mediaType(r.MediaType),
+		TMDBID:         r.TMDBID,
+		TVDBID:         r.TVDBID,
+		Name:           r.Name,
+		Year:           r.Year,
+		InLibrary:      true,
+		LibraryItemID:  r.LibraryItemID,
+		Genres:         r.Genres,
+		Overview:       r.Overview,
+		OfficialRating: r.OfficialRating,
+		Source:         ScopeLibrary,
 	}
 }
 

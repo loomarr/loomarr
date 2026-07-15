@@ -23,6 +23,10 @@ type SearchResult struct {
 	// (§8); read from Emby when the Fields param requests them. Display only.
 	Genres   []string
 	Overview string
+	// OfficialRating is the media server's content rating ("TV-Y7", "PG-13", …),
+	// the input to ChannelPolicy audience enforcement (programming-design §4).
+	// Display/enforcement metadata only — never identity.
+	OfficialRating string
 }
 
 // searchItem mirrors the slice of an /Items entry we read for search.
@@ -33,6 +37,7 @@ type searchItem struct {
 	Type           string   `json:"Type"`
 	Genres         []string `json:"Genres"`
 	Overview       string   `json:"Overview"`
+	OfficialRating string   `json:"OfficialRating"`
 	ProviderIds    struct {
 		Tmdb string `json:"Tmdb"`
 		Tvdb string `json:"Tvdb"`
@@ -61,7 +66,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	q.Set("IncludeItemTypes", "Movie,Series")
 	q.Set("SearchTerm", term)
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview")
+	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview,OfficialRating")
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
@@ -76,15 +81,16 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	results := make([]SearchResult, 0, len(out.Items))
 	for _, it := range out.Items {
 		results = append(results, SearchResult{
-			LibraryItemID: it.ID,
-			Name:          it.Name,
-			Year:          it.ProductionYear,
-			MediaType:     mediaTypeFromEmby(it.Type),
-			TMDBID:        atoiSafe(it.ProviderIds.Tmdb),
-			TVDBID:        atoiSafe(it.ProviderIds.Tvdb),
-			IMDBID:        it.ProviderIds.Imdb,
-			Genres:        it.Genres,
-			Overview:      it.Overview,
+			LibraryItemID:  it.ID,
+			Name:           it.Name,
+			Year:           it.ProductionYear,
+			MediaType:      mediaTypeFromEmby(it.Type),
+			TMDBID:         atoiSafe(it.ProviderIds.Tmdb),
+			TVDBID:         atoiSafe(it.ProviderIds.Tvdb),
+			IMDBID:         it.ProviderIds.Imdb,
+			Genres:         it.Genres,
+			Overview:       it.Overview,
+			OfficialRating: it.OfficialRating,
 		})
 	}
 	return results, nil
