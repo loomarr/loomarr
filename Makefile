@@ -65,6 +65,16 @@ openapi: ## export api/openapi.yaml from the running definitions
 openapi-verify: openapi ## regenerated spec must match committed (CI red on drift)
 	@git diff --exit-code api/openapi.yaml
 
+## ---- config docs (settings registry) ------------------------------------
+
+.PHONY: config-docs
+config-docs: ## generate docs/configuration.md from the settings registry
+	$(GO) run ./cmd/config-docs docs/configuration.md
+
+.PHONY: config-docs-verify
+config-docs-verify: config-docs ## regenerated config docs must match committed (CI red on drift)
+	@git diff --exit-code docs/configuration.md
+
 ## ---- frontend (Phase 13) -------------------------------------------------
 
 .PHONY: fe
