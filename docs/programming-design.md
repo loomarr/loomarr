@@ -62,6 +62,7 @@ Tunarr lineups are **cycles** — an ordered list that loops. So separation is e
 The one heuristic where an error is a *harm*, not an aesthetic bug — so it fails closed:
 
 - `ceiling` is a **closed ordered ladder** spanning both TV and film systems: `TV-Y < TV-Y7 < TV-G/G < TV-PG/PG < TV-14/PG-13 < TV-MA/R/NC-17`. Enforcement compares the item's `OfficialRating` (same field name on Emby and Jellyfin) mapped into the ladder; unmappable strings are treated as unrated.
+- **v1 scope — series-level ceiling.** The current library adapter surfaces `OfficialRating` on movies/series but **not per-episode** (episodes carry only id/name/duration/season). So a series is gated at its *series* rating: a mixed-rating series clears or fails as a whole. This is a small, deliberate safety *narrowing* (a series never sneaks over the ceiling; at worst a below-ceiling series with an occasional harder episode is admitted). Per-episode ceilings are future work — add `OfficialRating` to `library.Episode` + `ResolvedProgram`, then filter at episode expansion. The rating/genres/year an item is filtered on are **stamped onto the channel's approved lineup entry at create time** (when the full grounded candidate is in hand), so enforcement is a pure entry-set filter with no per-reconcile library I/O.
 - **Kids ceilings (`TV-Y`…`TV-PG`) default `unrated: "exclude"`** — an item with missing or unmappable rating metadata is *excluded*, never guessed at. Metadata gaps are the real-world failure mode; a kids' channel must be safe against them by construction. Adult/general channels default `allow`.
 - **Transparency at review:** the proposal shows the policy's effect — "14 items excluded: 11 over ceiling, 3 unrated" — so gaps are visible *before* approval, and the fix (rate your media, or relax the policy) is a human decision.
 - The LLM's job is only to *infer* the ceiling from intent ("cartoons," "Saturday morning," "for the kids" → `TV-Y7`); the inferred value is shown as an editable chip in review, and enforcement is the ladder comparison, nothing else.
@@ -70,13 +71,15 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 
 - `sequential` — S1E1 onward, loops at the end (binge/marathon channels).
 - `shuffle` — seeded random, separation-constrained.
-- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure.
+- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
+- **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 
 ## 6. Seasonality ("holiday episodes at holiday time — and only then")
 
 Two symmetric behaviors, because knowing what October wants implies knowing what July doesn't:
 
 - **Detection** (deterministic, at catalog/proposal time — not the LLM): an item is *seasonal* for holiday H if it matches H's keyword set against episode/movie title, media-server tags/keywords, or TMDB keywords ("halloween," "christmas," "thanksgiving," …). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and keyword sets ship as data, not code; custom holidays/regions are future work.
+  - **v1 scope — entry-level detection.** Detection matches keywords against the fields stamped on the lineup entry (title + genres). Per-episode tag/keyword matching (and TMDB-keyword lookups) is future work — it needs per-episode metadata the library adapter doesn't yet surface. So in v1 a seasonal *series* is benched/boosted as a whole rather than episode-by-episode.
 - **`mode: "auto"` (default):** in-window, seasonal items get a scheduling **boost** (weighted up, tasteful — not wall-to-wall); out-of-window, detected-seasonal items are **benched** (excluded). The bench is the half everyone forgets and the one viewers notice: *Christmas episodes in July break the spell.*
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
@@ -103,7 +106,7 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
 
 Every future heuristic is added the same way; a heuristic is *done* when all five exist:
 
-1. **Policy field** — schema + default + per-channel override (config doc tier).
+1. **Policy field** — schema + default + per-channel override (config doc tier). **v1 substrate:** built-in Go constants supply the default and `policy_json` on the channel row holds the per-channel override — a two-tier `channel-policy > built-in`. The `config-design.md` registry-*default* middle tier (the third tier) is deferred until the settings registry lands; it slots into the policy resolver later without touching enforcement. Omitted fields resolve to the built-in constant; an omitted `ordering` resolves to the channel's `Strategy`.
 2. **Extractor hint** — one line in the suggester's system prompt + template updates, if the LLM should infer it.
 3. **Deterministic enforcer** — filter or slotting constraint in the lineup builder; ladder position if relaxable (or listed never-relaxed).
 4. **Proposal surface** — chip + effect visibility in review.
