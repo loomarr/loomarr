@@ -4,6 +4,21 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Settings subsystem — cross-phase config retrofit (IN PROGRESS, 2026-07-15).** Builds `config-design.md`
+for real (the deferred Phase-1/8/9 config work): a typed settings **registry** (single source of truth),
+`env > database > default` resolution with asymmetric errors (bad env → boot fail; bad db → self-heal +
+warn), `_FILE` secret loading, an in-memory snapshot + `Watch` for **hot-apply**, the secrets lifecycle
+(idempotent generation, `Redactor` into slog, masked reads, regen side-effects), feature gating from
+`RequiredFor` completeness, the `/v1/settings` + `/v1/setup/test` + secrets-regenerate API, and the missing
+`make config-docs` target (→ `docs/configuration.md`, CI drift gate). New `internal/settings` package;
+`config.Config` shrinks to the env-only bootstrap set (§1 classification: `DATABASE_URL`/`AUTO_MIGRATE`/
+`LISTEN_ADDR`/`LOG_LEVEL`/`TZ`). **Full rewire this PR** — every consumer reads through the snapshot so
+hot-apply is live at merge (library URL/token per-call, tickers per-tick, LLM `Watch`-rebuild). Migration
+`00008` adds settings `updated_at`/`updated_by`. Closes the ChannelPolicy registry-default deferral: the
+`SCHED_*`/`SEASONAL_MODE` policy defaults (§15) now resolve through the registry, not Go constants. Like
+ChannelPolicy, this is a **cross-phase retrofit** (deepens Phase 1/8/9), not a new phase-table row. Unblocks
+Phase 13's wizard-as-settings (`config-design.md` §5–§7).
+
 **Phase 12.5 — End-to-end integration (the seams) — COMPLETE (2026-07-14).** All live-smoke seams
 closed: #6/#7/#8/#12/#13 (earlier), then #9 (acquisitions→`ch.Lineup` pending), #10 (provisioner→
 scheduler `eventEmitter`), #11 (`/v1/events` SSE), and the §10 filler redesign (Loomarr-owned

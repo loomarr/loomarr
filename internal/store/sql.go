@@ -92,10 +92,72 @@ func (s *sqlStore) GetSetting(ctx context.Context, key string) (string, error) {
 	return v, err
 }
 
+// SetSetting is the un-audited system write path (instance id, webhook
+// timestamps, the §8.1 model selection). It stamps updated_at but leaves
+// updated_by NULL — these writes have no human author. The audited admin path is
+// UpsertSetting.
 func (s *sqlStore) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO settings (key, value) VALUES (?, ?)
-		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`), key, value)
+		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`),
+		key, value, time.Now().Unix())
+	return err
+}
+
+// SettingRow is a persisted override plus its audit metadata (config-design §3).
+// UpdatedBy is empty for env/migration/system writes (stored as NULL).
+type SettingRow struct {
+	Key       string
+	Value     string
+	UpdatedAt time.Time
+	UpdatedBy string // "" ⇒ NULL (no human author)
+}
+
+func (s *sqlStore) ListSettings(ctx context.Context) ([]SettingRow, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value, updated_at, updated_by FROM settings`)
+	if err != nil {
+		return nil, fmt.Errorf("list settings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []SettingRow
+	for rows.Next() {
+		var (
+			r     SettingRow
+			epoch int64
+			by    sql.NullString
+		)
+		if err := rows.Scan(&r.Key, &r.Value, &epoch, &by); err != nil {
+			return nil, fmt.Errorf("scan setting: %w", err)
+		}
+		if epoch > 0 {
+			r.UpdatedAt = time.Unix(epoch, 0).UTC()
+		}
+		r.UpdatedBy = by.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// UpsertSetting is the audited admin write path (config-design §3, §8). It stamps
+// updated_at from the row's time and updated_by (empty ⇒ NULL).
+func (s *sqlStore) UpsertSetting(ctx context.Context, row SettingRow) error {
+	var by any
+	if row.UpdatedBy != "" {
+		by = row.UpdatedBy
+	}
+	at := row.UpdatedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
+		row.Key, row.Value, at.Unix(), by)
+	return err
+}
+
+func (s *sqlStore) DeleteSetting(ctx context.Context, key string) error {
+	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM settings WHERE key = ?`), key)
 	return err
 }
 

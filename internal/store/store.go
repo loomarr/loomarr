@@ -100,6 +100,18 @@ type Store interface {
 	// --- settings KV (§5): instance id, per-app webhook last-received, etc. ---
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
+	// ListSettings returns every persisted override with its audit metadata
+	// (config-design §3). The settings service loads this into its snapshot; the
+	// API surfaces updatedBy/updatedAt per field.
+	ListSettings(ctx context.Context) ([]SettingRow, error)
+	// UpsertSetting writes an override, stamping updated_at (epoch) and updated_by
+	// (the admin who changed it; empty ⇒ NULL for env/migration/system writes).
+	// This is the audited write path; SetSetting stays the un-audited system path
+	// (instance id, webhook timestamps, the §8.1 model selection).
+	UpsertSetting(ctx context.Context, row SettingRow) error
+	// DeleteSetting removes an override so the key reverts to env/default
+	// (config-design §9: an empty PATCH on an optional key clears it).
+	DeleteSetting(ctx context.Context, key string) error
 
 	// Close releases the underlying database handle.
 	Close() error
