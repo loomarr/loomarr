@@ -686,4 +686,47 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || v != "def456" {
 		t.Errorf("GetSetting = %q,%v want def456,nil", v, err)
 	}
+
+	// --- audited overrides (config-design §3): ListSettings + UpsertSetting +
+	// DeleteSetting round-trip with audit metadata, one suite both backends. ---
+	when := time.Unix(1_700_000_000, 0).UTC()
+	if err := s.UpsertSetting(ctx, SettingRow{Key: "library.url", Value: "http://emby:8096", UpdatedAt: when, UpdatedBy: "matt"}); err != nil {
+		t.Fatal(err)
+	}
+	// A system write (SetSetting) leaves updated_by NULL — surfaced as "".
+	if err := s.SetSetting(ctx, "llm.model", "qwen3:8b"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.ListSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]SettingRow{}
+	for _, r := range rows {
+		got[r.Key] = r
+	}
+	if r := got["library.url"]; r.Value != "http://emby:8096" || r.UpdatedBy != "matt" || !r.UpdatedAt.Equal(when) {
+		t.Errorf("audited override: %+v want value/matt/%v", r, when)
+	}
+	if r := got["llm.model"]; r.Value != "qwen3:8b" || r.UpdatedBy != "" {
+		t.Errorf("system write should have empty updated_by: %+v", r)
+	}
+	// Upsert overwrites value + audit.
+	later := time.Unix(1_700_000_100, 0).UTC()
+	if err := s.UpsertSetting(ctx, SettingRow{Key: "library.url", Value: "http://emby:9096", UpdatedAt: later, UpdatedBy: "ana"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = s.ListSettings(ctx)
+	for _, r := range rows {
+		if r.Key == "library.url" && (r.Value != "http://emby:9096" || r.UpdatedBy != "ana") {
+			t.Errorf("upsert did not overwrite audit: %+v", r)
+		}
+	}
+	// Delete reverts the key (config-design §9).
+	if err := s.DeleteSetting(ctx, "library.url"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSetting(ctx, "library.url"); err != ErrNotFound {
+		t.Errorf("after delete, GetSetting = %v want ErrNotFound", err)
+	}
 }

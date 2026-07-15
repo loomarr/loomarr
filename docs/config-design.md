@@ -1,6 +1,6 @@
 # Loomarr Configuration — Subsystem Design
 
-**Status:** Draft for implementation · companion to `design.md`
+**Status:** Implemented (settings subsystem PR, 2026-07-15) · companion to `design.md`
 **Precedence:** the main doc (§13, §15) is authoritative for the *decision* — settings live in the app, the environment pins, `env > database > default`. This doc is authoritative for the configuration subsystem's *design*: the registry, resolution semantics, secrets lifecycle, Settings UI, and onboarding integration. Conflicts → main doc wins on policy, this doc on mechanics; fix the loser in the same PR.
 
 ---
@@ -171,7 +171,7 @@ The checklist, the tab states, and the API gating all read the *same* computed f
 
 ## 11. Build integration
 
-- **Phase 1:** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target.
+- **Phase 1 (built as a cross-phase retrofit, 2026-07-15):** registry + resolution + env/`_FILE` loading + snapshot/Watch + redactor into slog. `make config-docs` target. The settings table gains its `updated_at`/`updated_by` audit columns (§3) via **forward-only migration `00008`** (an `ALTER TABLE settings ADD COLUMN …`, the second real ALTER after `00007`'s `policy_json`; the bare `(key,value)` KV from `00001` never drops). Registry defaults become the middle tier of the ChannelPolicy precedence (`channel policy > registry default > built-in`) that `programming-design.md` §9 recorded as deferred — the `SCHED_*`/`SEASONAL_MODE` policy-default keys (main doc §15) now resolve through the registry instead of Go constants.
 - **Phase 8:** the §8 API surface.
 - **Phase 9:** generated secrets + regeneration side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
