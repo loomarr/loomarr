@@ -106,14 +106,19 @@ func (r Result) Passed() bool { return len(r.Failures) == 0 }
 func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []string {
 	var f []string
 
-	// The unsatisfiable case expects a clean failure (ErrNoGroundedTitles), never
-	// fabricated content.
-	if c.MinLineup == 0 && c.MinAcquisitions == 0 {
-		if groundErr == nil && len(prop.Lineup)+len(prop.Acquisitions) > 0 {
-			f = append(f, fmt.Sprintf("expected a clean empty/failed result, got %d lineup + %d acquisitions (fabrication?)",
-				len(prop.Lineup), len(prop.Acquisitions)))
+	// No-fabrication case: the grounded set may be any size (even 0), but EVERY item
+	// must have a real, resolvable id — the grounding guarantee. A clean empty/failed
+	// result also satisfies it (nothing fabricated).
+	if c.NoFabrication {
+		if groundErr != nil {
+			return nil // a clean grounding failure fabricated nothing → passes
 		}
-		return f // nothing else to assert on a deliberately-empty case
+		for _, it := range allItems(prop) {
+			if _, err := it.Key(); err != nil {
+				f = append(f, fmt.Sprintf("FABRICATION: grounded item %q has no resolvable id: %v", it.Name, err))
+			}
+		}
+		return f
 	}
 	if groundErr != nil {
 		return []string{fmt.Sprintf("grounding failed: %v", groundErr)}
