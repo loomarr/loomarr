@@ -1,93 +1,37 @@
-// Package config loads Loomarr's 12-factor configuration (design §15) from the
-// environment. Config is parsed once in main and passed explicitly to subsystems;
-// nothing here reads os.Getenv at call time, which keeps subsystems testable.
+// Package config loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design
+// §1): the handful of keys needed before the database opens or that describe
+// process topology. Everything else is an app-managed *setting* (the typed
+// registry in internal/settings), resolved env > database > default at runtime —
+// NOT here. The classification rule (config-design §1): a key is env-only iff it
+// is needed before the DB opens or describes process topology. Adding an
+// app-managed knob here instead of the registry is the drift CLAUDE.md forbids.
 package config
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/caarlos0/env/v11"
 )
 
-// Config is the full §15 environment surface. Fields are grouped by subsystem.
-// Only the always-required knobs are validated at startup (see Load); the rest
-// are validated by the subsystem that consumes them, so a single missing/broken
-// dependency degrades one feature rather than refusing to boot (§6).
+// Config is the env-only bootstrap surface (config-design §1). These keys are read
+// once in main before the store opens; the settings registry cannot resolve them
+// (it needs the DB) and they never appear in the Settings UI. Everything the app
+// manages — connections, AI, channels, filler, timings, secrets — lives in the
+// settings registry, not here.
 type Config struct {
-	// Core / harness (Phase 1)
+	// Core / harness — process topology, needed before anything else.
 	ListenAddr string `env:"LISTEN_ADDR" envDefault:":8080"`
 	LogLevel   string `env:"LOG_LEVEL" envDefault:"info"`
 	TZ         string `env:"TZ"`
 
-	// Store (Phase 3/4)
+	// Store — needed to OPEN the database, so necessarily pre-registry.
 	DatabaseURL string `env:"DATABASE_URL"`
 	AutoMigrate bool   `env:"AUTO_MIGRATE" envDefault:"true"`
-
-	// Library — Emby/Jellyfin (Phase 5)
-	LibraryFlavor   string `env:"LIBRARY_FLAVOR"`
-	LibraryURL      string `env:"LIBRARY_URL"`
-	LibraryToken    string `env:"LIBRARY_TOKEN"`
-	SeasonPrecision string `env:"SEASON_PRECISION" envDefault:"series"`
-
-	// Requester — Seerr (or direct arr) (Phase 6)
-	SeerrURL    string `env:"SEERR_URL"`
-	SeerrAPIKey string `env:"SEERR_API_KEY"`
-	SonarrURL   string `env:"SONARR_URL"`
-	SonarrKey   string `env:"SONARR_API_KEY"`
-	RadarrURL   string `env:"RADARR_URL"`
-	RadarrKey   string `env:"RADARR_API_KEY"`
-
-	// Ingest webhooks (Phase 6)
-	WebhookSecret   string `env:"WEBHOOK_SECRET"`
-	EventWebhookURL string `env:"EVENT_WEBHOOK_URL"`
-
-	// Programmer — Tunarr (Phase 10)
-	TunarrURL         string `env:"TUNARR_URL"`
-	TunarrAPIKey      string `env:"TUNARR_API_KEY"`
-	TunarrTranscodeID string `env:"TUNARR_TRANSCODE_CONFIG_ID"` // channel-create transcodeConfigId (§9, §15)
-
-	// Provisioning / scheduling timing (Phases 7, 10)
-	RequestTTL            time.Duration `env:"REQUEST_TTL" envDefault:"48h"`
-	DownloadingTTL        time.Duration `env:"DOWNLOADING_TTL" envDefault:"12h"`
-	ReconcileEvery        time.Duration `env:"RECONCILE_EVERY" envDefault:"5m"`
-	ChannelReconcileEvery time.Duration `env:"CHANNEL_RECONCILE_EVERY" envDefault:"10m"`
-	SchedDefaultStrategy  string        `env:"SCHED_DEFAULT_STRATEGY" envDefault:"shuffle"`
-	SchedBackfill         string        `env:"SCHED_BACKFILL" envDefault:"stable"`
-
-	// Users, auth, sessions (Phase 9)
-	SessionSecret string        `env:"SESSION_SECRET"`
-	SessionTTL    time.Duration `env:"SESSION_TTL" envDefault:"720h"`
-	CookieSecure  string        `env:"COOKIE_SECURE" envDefault:"auto"`
-	APIToken      string        `env:"API_TOKEN"`
-	UserSyncEvery time.Duration `env:"USER_SYNC_EVERY" envDefault:"1h"`
-
-	// Jobs / suggester (Phase 11)
-	JobWorkers         int           `env:"JOB_WORKERS" envDefault:"2"`
-	JobTimeout         time.Duration `env:"JOB_TIMEOUT" envDefault:"10m"`
-	JobsRetention      time.Duration `env:"JOBS_RETENTION" envDefault:"720h"`
-	ProposalsRetention time.Duration `env:"PROPOSALS_RETENTION" envDefault:"2160h"`
-	LLMProvider        string        `env:"LLM_PROVIDER" envDefault:"ollama"`
-	LLMURL             string        `env:"LLM_URL"`
-	LLMModel           string        `env:"LLM_MODEL"`
-	LLMAPIKey          string        `env:"LLM_API_KEY"`
-	TMDBAPIKey         string        `env:"TMDB_API_KEY"`
-	SuggestAutoApprove bool          `env:"SUGGEST_AUTO_APPROVE" envDefault:"false"`
-	SuggestMaxAcquire  int           `env:"SUGGEST_MAX_ACQUISITIONS" envDefault:"10"`
-
-	// Filler / commercials (Phase 12; §10 redesign — Tunarr-owned)
-	FillerDir         string        `env:"FILLER_DIR"`
-	FillerSyncEvery   time.Duration `env:"FILLER_SYNC_EVERY" envDefault:"15m"`
-	FillerAITagging   bool          `env:"FILLER_AI_TAGGING" envDefault:"false"`
-	FillerBreaksPerHr int           `env:"FILLER_BREAKS_PER_HOUR" envDefault:"4"`
-	FillerPodMax      int           `env:"FILLER_POD_MAX" envDefault:"4"`
-	FillerCooldownSec int           `env:"FILLER_COOLDOWN_SECONDS" envDefault:"30"`
-	FillerWeight      int           `env:"FILLER_WEIGHT" envDefault:"1"`
 }
 
-// Load reads the environment into a Config, applying §15 defaults. It validates
-// only the knobs the process cannot start without; subsystem-specific config is
-// checked lazily by each subsystem (§6 degrade-don't-wedge).
+// Load reads the bootstrap environment into a Config, applying §1 defaults. Only
+// the process cannot start without these; every other knob is validated by the
+// settings service at boot (an invalid env pin fails there, config-design §3).
 func Load() (*Config, error) {
 	var c Config
 	if err := env.Parse(&c); err != nil {

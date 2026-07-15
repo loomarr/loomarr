@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/store"
@@ -25,14 +24,30 @@ const (
 // selection hot-swaps it with no restart) plus the SystemLLMService that powers
 // /v1/system/llm* (§8.1). The active selection is the persisted settings (if any)
 // overlaid on the LLM_* env defaults, so a UI choice survives reboots.
-func buildLLM(ctx context.Context, cfg *config.Config, st store.Store, bus *events.Bus, log *slog.Logger) (llm.Provider, api.SystemLLMService) {
-	sel := resolveSelection(ctx, cfg, st, log)
+func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus, log *slog.Logger) (llm.Provider, api.SystemLLMService) {
+	sel := resolveSelection(set)
 	sw := llm.NewSwappable(buildProviderFor, sel)
+
+	// Hot-swap on a persisted llm.* change (config-design §3 hot-apply, §8.1): the
+	// in-app model picker writes the settings store; the Watch fires and the
+	// Swappable rebuilds the live provider with no restart. Runs until ctx is done.
+	go func() {
+		ch := set.svc.Watch(setLLMProvider, setLLMURL, setLLMModel, setLLMAPIKey)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ch:
+				sw.Set(resolveSelection(set))
+				log.Info("llm provider hot-swapped from a settings change")
+			}
+		}
+	}()
 
 	svc := &systemLLMService{
 		swap:      sw,
-		prober:    llm.NewProber(cfg.LLMURL), // local probe always targets the Ollama base (LLM_URL for ollama)
-		ollamaURL: ollamaBase(cfg),
+		prober:    llm.NewProber(set.str(setLLMURL)), // local probe targets the Ollama base (llm.url for ollama)
+		ollamaURL: ollamaBase(set),
 		store:     st,
 		bus:       bus,
 		log:       log,
@@ -50,54 +65,34 @@ func buildProviderFor(sel llm.Selection) llm.Provider {
 	return llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)
 }
 
-// resolveSelection overlays persisted settings on the env defaults (§8.1: settings
-// win). Missing settings fall back to LLM_PROVIDER/LLM_URL/LLM_MODEL/LLM_API_KEY.
-func resolveSelection(ctx context.Context, cfg *config.Config, st store.Store, log *slog.Logger) llm.Selection {
+// resolveSelection reads the active LLM selection from the settings service
+// (§8.1). The registry already resolves llm.provider/url/model as env > db >
+// default; the per-provider api key is a namespaced key (llm.api_key.<provider>)
+// the registry doesn't declare, so it's read from the store directly, falling
+// back to the registry's base llm.api_key (the LLM_API_KEY env pin).
+func resolveSelection(set resolved) llm.Selection {
 	sel := llm.Selection{
-		Provider: cfg.LLMProvider,
-		URL:      cfg.LLMURL,
-		Model:    cfg.LLMModel,
-		APIKey:   cfg.LLMAPIKey,
+		Provider: set.str(setLLMProvider),
+		URL:      set.str(setLLMURL),
+		Model:    set.str(setLLMModel),
+		APIKey:   set.str(setLLMAPIKey),
 	}
-	overridden := false
-	if v, err := st.GetSetting(ctx, setLLMProvider); err == nil && v != "" {
-		sel.Provider, overridden = v, true
-	}
-	if v, err := st.GetSetting(ctx, setLLMURL); err == nil && v != "" {
-		sel.URL, overridden = v, true
-	}
-	if v, err := st.GetSetting(ctx, setLLMModel); err == nil && v != "" {
-		sel.Model, overridden = v, true
-	}
-	// The key is stored namespaced per provider (llm.api_key.<provider>) so each
-	// provider keeps its own; read the one for the resolved provider.
 	if sel.Provider != "" && sel.Provider != "ollama" {
-		if v, err := st.GetSetting(ctx, setLLMAPIKey+"."+sel.Provider); err == nil && v != "" {
+		if v, err := set.svc.LoadRaw(setLLMAPIKey + "." + sel.Provider); err == nil && v != "" {
 			sel.APIKey = v
 		}
-	}
-	if overridden {
-		log.Info("llm selection from settings store", "provider", sel.Provider, "model", sel.Model)
 	}
 	return sel
 }
 
-// ollamaBase is the Ollama base URL for local probes/pulls. It's LLM_URL when the
-// env provider is ollama; otherwise the conventional default (a hosted-by-default
+// ollamaBase is the Ollama base URL for local probes/pulls. It's llm.url when the
+// provider is ollama; otherwise the conventional default (a hosted-by-default
 // install can still probe/manage a local Ollama if one is running).
-func ollamaBase(cfg *config.Config) string {
-	if cfg.LLMProvider == "ollama" && cfg.LLMURL != "" {
-		return cfg.LLMURL
+func ollamaBase(set resolved) string {
+	if set.str(setLLMProvider) == "ollama" && set.str(setLLMURL) != "" {
+		return set.str(setLLMURL)
 	}
 	return "http://localhost:11434"
-}
-
-// activeModel returns the model the suggester is currently using, for logging.
-func activeModel(p llm.Provider, cfg *config.Config) string {
-	if sw, ok := p.(*llm.Swappable); ok {
-		return sw.Model()
-	}
-	return cfg.LLMModel
 }
 
 // systemLLMService implements api.SystemLLMService (§8.1). It probes the local host,

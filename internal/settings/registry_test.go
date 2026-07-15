@@ -64,6 +64,32 @@ func TestRegistry_LLMKeysMatchModelSelection(t *testing.T) {
 	}
 }
 
+// The defaults that MOVED from config.Config to the registry (config-design §1
+// shrink) resolve to their design.md §15 values — coverage that used to live in
+// config_test.go, preserved here where the keys now live.
+func TestRegistry_MovedDefaults(t *testing.T) {
+	r := NewRegistry()
+	cases := map[string]string{
+		"request.ttl":      "48h",
+		"session.ttl":      "720h",
+		"reconcile.every":  "5m",
+		"job.workers":      "2",
+		"season.precision": "series",
+		"llm.provider":     "ollama",
+		"sched.ordering":   "syndication",
+	}
+	for key, want := range cases {
+		s, ok := r.Get(key)
+		if !ok {
+			t.Errorf("registry missing moved key %q", key)
+			continue
+		}
+		if got := defaultRaw(t, s); got != want {
+			t.Errorf("%s default = %q, want %q", key, got, want)
+		}
+	}
+}
+
 // A duplicate key must panic — the contract can't silently shadow a key.
 func TestRegistry_DuplicateKeyPanics(t *testing.T) {
 	defer func() {

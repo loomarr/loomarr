@@ -21,6 +21,16 @@ type Runner struct {
 	lease  time.Duration
 	log    *slog.Logger
 	now    func() time.Time
+	// intervalFn, when set, is re-read after each tick so a changed
+	// CHANNEL_RECONCILE_EVERY setting hot-applies next cycle (config-design §3).
+	intervalFn func() time.Duration
+}
+
+// WithInterval sets a provider read after every sweep so the interval hot-applies
+// (config-design §3). Returns the runner for chaining.
+func (r *Runner) WithInterval(fn func() time.Duration) *Runner {
+	r.intervalFn = fn
+	return r
 }
 
 // claimer is the slice of the store the sweep needs (ClaimDueChannels). Narrowed
@@ -60,6 +70,13 @@ func (r *Runner) Run(ctx context.Context) {
 			return
 		case <-t.C:
 			r.Sweep(ctx)
+			if r.intervalFn != nil {
+				if next := r.intervalFn(); next > 0 && next != r.every {
+					r.every = next
+					t.Reset(next)
+					r.log.Info("channel sweep interval changed", "every", next)
+				}
+			}
 		}
 	}
 }

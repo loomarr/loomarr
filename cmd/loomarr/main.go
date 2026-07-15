@@ -32,6 +32,7 @@ import (
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -50,11 +51,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Validate LLM_PROVIDER up front (§15) so a typo fails fast instead of silently
-	// falling back to Ollama at request time.
-	if _, err := llm.ParseProvider(cfg.LLMProvider); err != nil {
-		return err
-	}
+	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
+	// boot (an invalid enum fails there, config-design §3) — no separate check here.
 
 	log := newLogger(cfg.LogLevel)
 	slog.SetDefault(log)
@@ -86,6 +84,25 @@ func run() error {
 		return true, "ok"
 	}
 
+	// Settings subsystem (config-design §3): once the store is open, build the
+	// registry + resolution service (env pins validated → boot error), the
+	// generated secrets, and the redactor. Every subsystem below reads config
+	// through `set` (env > db > default, hot-applying) instead of raw cfg fields,
+	// and connection adapters take snapshot-backed closures so a saved URL/token
+	// takes effect on the next call with no restart. Without a store we can't
+	// resolve DB overrides, so fall back to env-only defaults via a store-less
+	// service is out of scope here — the app already isn't ready without a store.
+	var set resolved
+	var secrets *settings.Secrets
+	if st != nil {
+		r, sec, _, slog2, serr := bootSettings(context.Background(), st, log)
+		if serr != nil {
+			return serr // invalid env pin / ambiguous <VAR>+<VAR>_FILE — fail fast (§3)
+		}
+		set, secrets, log = r, sec, slog2
+		slog.SetDefault(log)
+	}
+
 	// The event bus (§7 SSE) and the domain-event emitter (§4 inv. 2) are built up
 	// front so both the webhook ingest handler and the provisioning reconciler can
 	// fan their terminal transitions to the SAME sink. The emitter routes each
@@ -101,14 +118,18 @@ func run() error {
 	// Wire the ingest webhook handler when the store + library are configured
 	// (§6, Phase 6). Requires a store, the library flavor, and WEBHOOK_SECRET.
 	var ingestHandler http.Handler
-	if st != nil && cfg.LibraryFlavor != "" && cfg.WebhookSecret != "" {
-		flavor, ferr := library.ParseFlavor(cfg.LibraryFlavor)
+	webhookSecret := ""
+	if secrets != nil {
+		webhookSecret = secrets.Value(settings.SecretWebhook)
+	}
+	if st != nil && set.str("library.flavor") != "" && webhookSecret != "" {
+		flavor, ferr := library.ParseFlavor(set.str("library.flavor"))
 		if ferr != nil {
 			return ferr
 		}
 		deviceID := instanceDeviceID(context.Background(), st)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, deviceID)
-		ingestHandler = ingest.New(st, lib, cfg.WebhookSecret, cfg.DownloadingTTL, emitter, time.Now, log)
+		lib := library.NewDynamic(flavor, set.libraryConn(), deviceID)
+		ingestHandler = ingest.New(st, lib, webhookSecret, set.dur("downloading.ttl"), emitter, time.Now, log)
 		log.Info("ingest webhook mounted", "path", "/hooks/arr")
 	}
 
@@ -116,16 +137,17 @@ func run() error {
 	// requester/library are configured. It runs until ctx (shutdown) is done.
 	rootCtx, cancelRoot := context.WithCancel(context.Background())
 	defer cancelRoot()
-	if st != nil && cfg.LibraryFlavor != "" && cfg.SeerrURL != "" {
-		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
-		req := requester.NewSeerr(cfg.SeerrURL, cfg.SeerrAPIKey)
+	if st != nil && set.str("library.flavor") != "" && set.str("seerr.url") != "" {
+		flavor, _ := library.ParseFlavor(set.str("library.flavor"))
+		lib := library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
+		req := requester.NewSeerrDynamic(set.seerrConn())
 		rec := reconcile.New(st, req, lib, emitter, reconcile.Config{
-			RequestTTL: cfg.RequestTTL, DownloadingTTL: cfg.DownloadingTTL,
+			RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
 		}, time.Now, log)
 		// Janitor sweeps expired sessions (§5, §11); jobs/proposals join in P11.
 		janitor := reconcile.NewJanitor(log, time.Now, auth.NewSessionSweeper(st))
-		runner := reconcile.NewRunner(rec, janitor, cfg.ReconcileEvery, log)
+		runner := reconcile.NewRunner(rec, janitor, set.dur("reconcile.every"), log).
+			WithInterval(func() time.Duration { return set.dur("reconcile.every") })
 		go runner.Run(rootCtx)
 	}
 
@@ -134,11 +156,11 @@ func run() error {
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
-	if st != nil && cfg.TunarrURL != "" && cfg.LibraryFlavor != "" {
-		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
-		prog := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID).WithFillerPolicy(cfg.FillerWeight, cfg.FillerCooldownSec)
-		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(cfg.TunarrURL))
+	if st != nil && set.str("tunarr.url") != "" && set.str("library.flavor") != "" {
+		flavor, _ := library.ParseFlavor(set.str("library.flavor"))
+		lib := library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
+		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(set.str("tunarr.url")))
 		liveTVSvc = liveTVAdapter{connector}
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
@@ -149,8 +171,8 @@ func run() error {
 			// Pending-slot policy defaults to pod-fill (§9); the interstitial-card
 			// alternative is future config. SCHED_BACKFILL gates reshuffle-vs-stable
 			// placement, handled inside the engine, not the placeholder kind.
-			Policy: schedule.PodFill, ReconcileTTL: cfg.ChannelReconcileEvery,
-			BreaksPerHour: cfg.FillerBreaksPerHr, // §10 commercial-break density
+			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
+			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density
 		}, time.Now, log)
 		channelSvc = engine
 
@@ -161,9 +183,11 @@ func run() error {
 		// sweep interval. (#10: the emitter was nil before this wire.)
 		emitter.setEngine(engine)
 
-		sweep := channels.NewRunner(engine, st, cfg.ChannelReconcileEvery, 2*cfg.ChannelReconcileEvery, 50, time.Now, log)
+		chEvery := set.dur("channel.reconcile_every")
+		sweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log).
+			WithInterval(func() time.Duration { return set.dur("channel.reconcile_every") })
 		go sweep.Run(rootCtx)
-		log.Info("channel scheduler started", "tunarr", cfg.TunarrURL, "sweep_every", cfg.ChannelReconcileEvery)
+		log.Info("channel scheduler started", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
@@ -173,12 +197,12 @@ func run() error {
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
 	var systemLLM api.SystemLLMService
-	if st != nil && cfg.LibraryFlavor != "" && cfg.LLMURL != "" {
-		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
+	if st != nil && set.str("library.flavor") != "" && set.str("llm.url") != "" {
+		flavor, _ := library.ParseFlavor(set.str("library.flavor"))
+		lib := library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
-		if cfg.TMDBAPIKey != "" {
-			tmdbClient = tmdb.New(cfg.TMDBAPIKey)
+		if k := set.str("tmdb.api_key"); k != "" {
+			tmdbClient = tmdb.New(k)
 		}
 		// catalog.New accepts nil corpora; a nil *tmdb.Client would be a non-nil
 		// interface, so pass the concrete nil only when configured.
@@ -201,15 +225,15 @@ func run() error {
 		// selection persisted to the settings store overrides LLM_MODEL and can be
 		// changed without a restart. A hosted openai provider names its model in
 		// config and isn't wrapped (nothing local to swap/probe/pull).
-		provider, systemLLMSvc := buildLLM(rootCtx, cfg, st, eventBus, log)
-		sug := suggest.New(provider, cat, validator, cfg.SuggestMaxAcquire)
+		provider, systemLLMSvc := buildLLM(rootCtx, set, st, eventBus, log)
+		sug := suggest.New(provider, cat, validator, set.intv("suggest.max_acquisitions"))
 		svc := suggest.NewService(st, sug, suggest.Config{
-			Workers: cfg.JobWorkers, Timeout: cfg.JobTimeout, CacheTTL: 24 * time.Hour,
+			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log)
 		suggestSvc = submitAdapter{svc}
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
-		log.Info("suggester started", "provider", provider.Name(), "model", activeModel(provider, cfg), "workers", cfg.JobWorkers, "tmdb", tmdbClient != nil)
+		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb", tmdbClient != nil)
 	}
 
 	// Filler & commercials (§10, Phase 12; redesign — Loomarr-owned via Tunarr).
@@ -218,13 +242,13 @@ func run() error {
 	// filler path), plus the AI-tagging job and the pod assembler wired into the
 	// scheduler. Wired when a store, Tunarr, and FILLER_DIR are configured.
 	var fillerSvc api.FillerService
-	if st != nil && cfg.TunarrURL != "" && cfg.FillerDir != "" {
-		fillerProg := programmer.New(cfg.TunarrURL, cfg.TunarrAPIKey, cfg.TunarrTranscodeID).WithFillerPolicy(cfg.FillerWeight, cfg.FillerCooldownSec)
-		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, cfg.FillerDir, time.Now, log)
+	if st != nil && set.str("tunarr.url") != "" && set.str("filler.dir") != "" {
+		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
+		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log)
 
 		var tagger *filler.Tagger
-		if cfg.FillerAITagging && cfg.LLMURL != "" {
-			provider := llm.NewProvider(cfg.LLMProvider, cfg.LLMURL, cfg.LLMModel, cfg.LLMAPIKey)
+		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
+			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
 			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, time.Now, log)
 		}
 		fillerSvc = fillerServiceAdapter{syncer: syncer, tagger: tagger}
@@ -238,8 +262,8 @@ func run() error {
 		}
 
 		// Periodic filler catalog sync alongside the reconciler (§10).
-		go runFillerSync(rootCtx, syncer, cfg.FillerSyncEvery, log)
-		log.Info("filler catalog sync started", "dir", cfg.FillerDir, "every", cfg.FillerSyncEvery, "ai_tagging", cfg.FillerAITagging)
+		go runFillerSync(rootCtx, syncer, set.dur("filler.sync_every"), log)
+		log.Info("filler catalog sync started", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	}
 
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
@@ -251,19 +275,35 @@ func run() error {
 			backup = b
 		}
 	}
-	authorizer := api.Authorizer(api.NewTokenAuthorizer(cfg.APIToken))
+	apiToken := ""
+	if secrets != nil {
+		apiToken = secrets.Value(settings.SecretAPI)
+	}
+	authorizer := api.Authorizer(api.NewTokenAuthorizer(apiToken))
 	var loginSvc api.LoginService
 	var sessMgr api.SessionManager
 	var userSync api.UserSyncer
-	if st != nil && cfg.LibraryFlavor != "" {
-		flavor, _ := library.ParseFlavor(cfg.LibraryFlavor)
-		lib := library.New(flavor, cfg.LibraryURL, cfg.LibraryToken, instanceDeviceID(rootCtx, st))
-		mgr := auth.NewManager(st, cfg.SessionTTL, time.Now)
+	if st != nil && set.str("library.flavor") != "" {
+		flavor, _ := library.ParseFlavor(set.str("library.flavor"))
+		lib := library.NewDynamic(flavor, set.libraryConn(), instanceDeviceID(rootCtx, st))
+		mgr := auth.NewManager(st, set.dur("session.ttl"), time.Now)
 		limiter := auth.NewRateLimiter(0.2, 5) // ~5 attempts, refill 1/5s (§11)
 		loginSvc = auth.NewLoginService(lib, st, mgr, limiter, time.Now)
 		sessMgr = mgr
 		userSync = auth.NewUserSync(lib, st, time.Now)
-		authorizer = api.NewSessionAuthorizer(mgr, cfg.APIToken)
+		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
+	}
+
+	// The settings API surface (config-design §8): wired when the store (hence the
+	// settings service) is up. Connection Test probes reuse the live adapters.
+	var settingsSvc api.SettingsService
+	if st != nil && secrets != nil {
+		settingsSvc = settingsAdapter{
+			svc:     set.svc,
+			secrets: secrets,
+			store:   st,
+			tests:   connectionTests(set),
+		}
 	}
 	srv := &http.Server{
 		Addr: cfg.ListenAddr,
@@ -277,7 +317,7 @@ func run() error {
 			Login:        loginSvc,
 			Sessions:     sessMgr,
 			UserSync:     userSync,
-			CookieSecure: cfg.CookieSecure,
+			CookieSecure: set.str("cookie.secure"),
 			Channels:     channelSvc,
 			LiveTV:       liveTVSvc,
 			Suggest:      suggestSvc,
@@ -285,6 +325,7 @@ func run() error {
 			Events:       eventBus,
 			Filler:       fillerSvc,
 			SystemLLM:    systemLLM,
+			Settings:     settingsSvc,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

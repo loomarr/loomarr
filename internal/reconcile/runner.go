@@ -12,7 +12,11 @@ type Runner struct {
 	rec     *Reconciler
 	janitor *Janitor
 	every   time.Duration
-	log     *slog.Logger
+	// intervalFn, when set, is re-read after each tick so a changed RECONCILE_EVERY
+	// setting hot-applies next cycle (config-design §3 "intervals re-read per tick").
+	// nil ⇒ the fixed `every`. The result is floored to avoid a hot-spin.
+	intervalFn func() time.Duration
+	log        *slog.Logger
 }
 
 // NewRunner wires the loop. janitor may be nil (no retention targets yet).
@@ -23,9 +27,18 @@ func NewRunner(rec *Reconciler, janitor *Janitor, every time.Duration, log *slog
 	return &Runner{rec: rec, janitor: janitor, every: every, log: log}
 }
 
+// WithInterval sets a provider read after every tick so the interval hot-applies
+// (config-design §3). Returns the runner for chaining. A provider returning ≤0
+// keeps the last good interval.
+func (r *Runner) WithInterval(fn func() time.Duration) *Runner {
+	r.intervalFn = fn
+	return r
+}
+
 // Run blocks, ticking every `every` until ctx is done. Each tick runs one
 // reconcile pass then a janitor sweep. Errors are logged, never fatal — a
-// down dependency degrades the loop, never wedges the process (§6).
+// down dependency degrades the loop, never wedges the process (§6). If an
+// interval provider is set, the ticker is re-tuned per cycle (hot-apply).
 func (r *Runner) Run(ctx context.Context) {
 	t := time.NewTicker(r.every)
 	defer t.Stop()
@@ -40,7 +53,22 @@ func (r *Runner) Run(ctx context.Context) {
 			return
 		case <-t.C:
 			r.once(ctx)
+			r.retune(t)
 		}
+	}
+}
+
+// retune adjusts the ticker to the current interval setting (config-design §3
+// hot-apply). No-op when no provider is set or the value is unchanged/invalid.
+func (r *Runner) retune(t *time.Ticker) {
+	if r.intervalFn == nil {
+		return
+	}
+	next := r.intervalFn()
+	if next > 0 && next != r.every {
+		r.every = next
+		t.Reset(next)
+		r.log.Info("reconciler interval changed", "every", next)
 	}
 }
 

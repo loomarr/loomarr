@@ -13,25 +13,50 @@ import (
 
 // Client is the shared Emby/Jellyfin adapter. One code path; the flavor only
 // changes header construction (auth.go).
+//
+// Connection (base URL + token) is resolved through a provider at CALL time, not
+// captured at construction (config-design §3 hot-apply): saving a new Emby token
+// in Settings means the next Lookup uses it, with no restart. New() supplies a
+// static provider (fixed config / tests); NewDynamic() reads the live settings
+// snapshot per call.
 type Client struct {
 	flavor   Flavor
-	baseURL  string
-	token    string // admin LIBRARY_TOKEN
-	deviceID string // stable per install (§11)
+	conn     func() (baseURL, token string) // resolved per request (hot-apply)
+	deviceID string                         // stable per install (§11)
 	http     *http.Client
 }
 
-// New builds a Library client. deviceID should be the stable per-install id
-// (§11, derived from the instance id at first migration); tests may pass a fixed
-// value.
+// New builds a Library client with a FIXED connection (tests + static config).
+// deviceID should be the stable per-install id (§11, derived from the instance
+// id at first migration); tests may pass a fixed value.
 func New(flavor Flavor, baseURL, token, deviceID string) *Client {
+	base := strings.TrimRight(baseURL, "/")
+	return NewDynamic(flavor, func() (string, string) { return base, token }, deviceID)
+}
+
+// NewDynamic builds a Library client whose connection is resolved per call via
+// conn (config-design §3 hot-apply). The composition root passes a closure over
+// the settings snapshot; the base URL is normalized (trailing slash stripped) on
+// each read so a saved "http://emby:8096/" and "http://emby:8096" are one value.
+func NewDynamic(flavor Flavor, conn func() (baseURL, token string), deviceID string) *Client {
 	return &Client{
 		flavor:   flavor,
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		token:    token,
+		conn:     conn,
 		deviceID: deviceID,
 		http:     httpx.New(httpx.TimeoutLibrary),
 	}
+}
+
+// baseURL resolves the current media-server base URL (trailing slash stripped).
+func (c *Client) baseURL() string {
+	u, _ := c.conn()
+	return strings.TrimRight(u, "/")
+}
+
+// token resolves the current media-server token.
+func (c *Client) token() string {
+	_, t := c.conn()
+	return t
 }
 
 // item is the slice of the media server's /Items response we need (§6).
@@ -62,7 +87,7 @@ func (c *Client) Lookup(ctx context.Context, kind ProviderKind, providerID strin
 	if err != nil {
 		return "", false, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out itemsResponse
 	if err := c.do(req, &out); err != nil {
@@ -129,7 +154,7 @@ func (c *Client) ListUsers(ctx context.Context) ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.flavor.applyTokenAuth(req, c.token, c.deviceID)
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var dtos []userDTO
 	if err := c.do(req, &dtos); err != nil {
@@ -177,9 +202,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body []byt
 	var rdr *strings.Reader
 	if body != nil {
 		rdr = strings.NewReader(string(body))
-		return http.NewRequestWithContext(ctx, method, c.baseURL+path, rdr)
+		return http.NewRequestWithContext(ctx, method, c.baseURL()+path, rdr)
 	}
-	return http.NewRequestWithContext(ctx, method, c.baseURL+path, nil)
+	return http.NewRequestWithContext(ctx, method, c.baseURL()+path, nil)
 }
 
 // do executes a request and decodes a JSON body into out. Non-2xx is an error

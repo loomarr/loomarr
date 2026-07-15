@@ -17,19 +17,26 @@ import (
 // already-available/duplicate title returns 201 with the existing media (not
 // 409). We treat any 2xx AND 409 as success (§6 idempotency).
 type Seerr struct {
-	baseURL string
-	apiKey  string
-	http    *http.Client
+	conn func() (baseURL, apiKey string) // resolved per request (config-design §3 hot-apply)
+	http *http.Client
 }
 
-// NewSeerr builds the Seerr requester.
+// NewSeerr builds the Seerr requester with a FIXED connection (tests / static
+// config). The base URL is normalized (trailing slash stripped).
 func NewSeerr(baseURL, apiKey string) *Seerr {
-	return &Seerr{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		http:    httpx.New(httpx.TimeoutSeerr),
-	}
+	base := strings.TrimRight(baseURL, "/")
+	return NewSeerrDynamic(func() (string, string) { return base, apiKey })
 }
+
+// NewSeerrDynamic builds a Seerr requester whose connection is resolved per call
+// via conn (config-design §3 hot-apply). The composition root passes a closure
+// over the settings snapshot.
+func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
+	return &Seerr{conn: conn, http: httpx.New(httpx.TimeoutSeerr)}
+}
+
+func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }
+func (s *Seerr) apiKey() string  { _, k := s.conn(); return k }
 
 // seerrRequest is the POST body (§6): {mediaType, mediaId=TMDBID, seasons?}.
 type seerrRequest struct {
@@ -59,12 +66,12 @@ func (s *Seerr) Request(ctx context.Context, t provision.Title) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/v1/request", bytes.NewReader(buf))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL()+"/api/v1/request", bytes.NewReader(buf))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Api-Key", s.apiKey)
+	req.Header.Set("X-Api-Key", s.apiKey())
 
 	resp, err := s.http.Do(req)
 	if err != nil {

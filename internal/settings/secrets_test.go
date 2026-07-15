@@ -142,13 +142,13 @@ func TestRedactor_SecretNeverInLogs(t *testing.T) {
 }
 
 // The generated secrets feed the Redactor (config-design §4): a minted
-// SESSION_SECRET/API_TOKEN/WEBHOOK_SECRET is scrubbed from logs via redactionValues.
+// SESSION_SECRET/API_TOKEN/WEBHOOK_SECRET is scrubbed from logs via RedactionValues.
 func TestSecrets_FeedRedactor(t *testing.T) {
 	s, err := NewSecrets(context.Background(), newMemSecretStore(), noEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	vals := s.redactionValues()
+	vals := s.RedactionValues()
 	if len(vals) != len(allGenerated()) {
 		t.Fatalf("expected %d generated secret values, got %d", len(allGenerated()), len(vals))
 	}
