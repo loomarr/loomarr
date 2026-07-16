@@ -155,6 +155,11 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 		if isActive && active.APIKey != "" {
 			key = active.APIKey
 		}
+		// The custom template carries no base URL; when it's the active provider the
+		// live base lives on the selection, so surface it (and enable live models).
+		if hp.Key == llm.CustomProviderKey && isActive {
+			hp.BaseURL = active.URL
+		}
 		models, live := hp.Fallback, false
 		if key != "" {
 			models, live = hp.LiveModels(ctx, key)
@@ -191,7 +196,23 @@ func (s *systemLLMService) Select(ctx context.Context, req api.SelectRequest) er
 	if provider == "ollama" {
 		return s.selectLocal(ctx, req.Model)
 	}
-	return s.selectHosted(ctx, provider, req.Model, req.APIKey)
+	return s.selectHosted(ctx, provider, req.BaseURL, req.Model, req.APIKey)
+}
+
+// hostedBase returns the curated provider with its BaseURL resolved to what we
+// should actually drive: the caller's supplied URL for "custom" (the catalog entry
+// has none), else the curated base. ok=false for an unknown provider or a custom
+// select with no base URL. The returned hp is a value copy — safe to mutate.
+func hostedBase(provider, suppliedBase string) (hp llm.HostedProvider, ok bool) {
+	hp, found := llm.HostedProviderByKey(provider)
+	if !found {
+		return hp, false
+	}
+	if provider == llm.CustomProviderKey {
+		hp.BaseURL = strings.TrimRight(suppliedBase, "/")
+		return hp, hp.BaseURL != ""
+	}
+	return hp, true
 }
 
 // selectLocal swaps to a local Ollama model — it must be pulled first.
@@ -211,8 +232,8 @@ func (s *systemLLMService) selectLocal(ctx context.Context, model string) error 
 
 // selectHosted swaps to a hosted provider — the key (given or stored) is validated
 // live before committing, so a bad key fails here, not on the next suggestion job.
-func (s *systemLLMService) selectHosted(ctx context.Context, provider, model, apiKey string) error {
-	hp, ok := llm.HostedProviderByKey(provider)
+func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, model, apiKey string) error {
+	hp, ok := hostedBase(provider, baseURL)
 	if !ok {
 		return api.ErrUnknownProvider
 	}
@@ -253,8 +274,8 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, model, ap
 	return nil
 }
 
-func (s *systemLLMService) Test(ctx context.Context, provider, apiKey string) error {
-	hp, ok := llm.HostedProviderByKey(provider)
+func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey string) error {
+	hp, ok := hostedBase(provider, baseURL)
 	if !ok {
 		return api.ErrUnknownProvider
 	}
@@ -272,16 +293,16 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 	jobID := s.newID()
 	go func() {
 		bg := context.Background()
-		s.publishPull(jobID, model, "starting", 0, "")
-		if err := s.prober.Pull(bg, model, func(status string, percent int) {
-			s.publishPull(jobID, model, status, percent, "")
+		s.publishPull(jobID, model, "starting", 0, 0, 0, "")
+		if err := s.prober.Pull(bg, model, func(pp llm.PullProgress) {
+			s.publishPull(jobID, model, pp.Status, pp.Percent(), pp.Completed, pp.Total, "")
 		}); err != nil {
 			s.log.Warn("llm pull failed", "model", model, "err", err)
-			s.publishPull(jobID, model, "error", -1, err.Error())
+			s.publishPull(jobID, model, "error", -1, 0, 0, err.Error())
 			return
 		}
 		s.log.Info("llm pull complete", "model", model)
-		s.publishPull(jobID, model, "success", 100, "")
+		s.publishPull(jobID, model, "success", 100, 0, 0, "")
 	}()
 	return jobID, nil
 }
@@ -299,7 +320,9 @@ func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error
 }
 
 // publishPull emits one pull-progress frame on the SSE bus (§7, type=llm_pull).
-func (s *systemLLMService) publishPull(jobID, model, status string, percent int, errMsg string) {
+// completed/total are bytes for the layer downloading (0 when unknown); the FE
+// shows "X of Y GB" and derives rate/ETA from successive frames (§8.1).
+func (s *systemLLMService) publishPull(jobID, model, status string, percent int, completed, total int64, errMsg string) {
 	if s.bus == nil {
 		return
 	}
@@ -307,7 +330,7 @@ func (s *systemLLMService) publishPull(jobID, model, status string, percent int,
 		Type: "llm_pull",
 		Payload: map[string]any{
 			"jobId": jobID, "model": model, "status": status,
-			"percent": percent, "error": errMsg,
+			"percent": percent, "completed": completed, "total": total, "error": errMsg,
 		},
 	})
 }

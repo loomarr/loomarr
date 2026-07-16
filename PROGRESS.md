@@ -4,6 +4,23 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**LLM provider surface + pull-path fixes + Mac/Linux dev portability (2026-07-16).** Live dev
+bring-up on an Apple-Silicon Mac surfaced two §8.1 pull bugs and drove a provider-surface decision
+(all `make check` green). **Fixed:** (1) a model **pull aborted at 120s** — `Prober.Pull` used a
+whole-request `http.Client.Timeout` (`TimeoutLLM`) that kills a multi-GB stream mid-body; added
+`httpx.NewStreaming()` (no whole-request budget, ctx-governed; connect/TLS/header stages still
+bounded) + regression test. (2) **pull progress now surfaces raw bytes** — exported
+`llm.PullProgress{Status,Completed,Total}`; the `/v1/events` `llm_pull` SSE frame carries
+`completed`/`total` so the FE renders "X of Y GB" + derives ETA (was percent-only). **Design
+decision (doc-first, §8/§8.1):** the hosted LLM surface narrows to **OpenRouter** (the blessed
+aggregator — one key → every frontier family) + **Custom** (a user-supplied OpenAI-compatible base
+URL, gated by live validation, not an allowlist); the curated openai/anthropic/groq/gemini entries
+are dropped (reachable via OpenRouter or Custom). Family-tier ranking unchanged. **Dev:**
+`compose.dev.yaml` is host-agnostic now (`platform: linux/amd64`, `MEDIA_SERVER_IP` override); NVIDIA
+transcode is an opt-in `compose.dev.gpu.yaml` overlay (`make dev-gpu`). Verified live: app native vs
+Emby+Seerr+TMDB (Matrix grounding), Ollama on Metal, the §8.1 picker (probe→pull→select). A
+cross-cutting fix/refinement, **not a phase** — Phase 13 (Web UI) is still next.
+
 **Auth/identity rework (§11) — COMPLETE (2026-07-15).** On branch `feat/auth-rework` (commits
 `4879470`..`4af00e2`), NOT yet merged to `main`. Replaced the claim-on-login / lazy-self-provision
 model with **Loomarr-owned identity**: the `users` table is the source of truth + allowlist. Gate:

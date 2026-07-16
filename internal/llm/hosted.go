@@ -67,40 +67,33 @@ type HostedProvider struct {
 // live list), it just loses its hint until this list is refreshed (the sanctioned
 // update path, like the local catalog). The PROVIDERS (base URLs, keys URLs) are the
 // stable part; the models are live.
+// The hosted surface is deliberately two entries (design §8.1): OpenRouter — the
+// one blessed aggregator whose single key reaches every frontier family (OpenAI,
+// Anthropic, Gemini, Llama, Qwen) with the richest live /models metadata — and
+// Custom, a user-supplied OpenAI-compatible base URL for a direct vendor endpoint
+// or a self-hosted runtime (vLLM/LM Studio/LocalAI/a gateway). We do NOT curate
+// per-vendor entries: OpenRouter fronts them, and Custom reaches whatever it
+// doesn't. CustomProviderKey has an empty BaseURL — the caller supplies it on
+// select/test and it's gated by live validation, not by this list.
 var hostedCatalog = []HostedProvider{
 	{
 		Key: "openrouter", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api/v1",
 		KeysURL: "https://openrouter.ai/keys",
-		Note:    "One key → many providers (OpenAI, Anthropic, Gemini, Llama, Qwen). Most flexible.",
+		Note:    "One key → every frontier family (OpenAI, Anthropic, Gemini, Llama, Qwen). The blessed hosted path.",
 		// Fallback: shown only before a key is set (no live metadata). Live ranking
 		// supersedes this. Kept short + obvious; not an allowlist.
 		Fallback: []HostedModel{{ID: "openai/gpt-4o-mini", Label: "GPT-4o mini"}},
 	},
 	{
-		Key: "openai", Label: "OpenAI", BaseURL: "https://api.openai.com/v1",
-		KeysURL:  "https://platform.openai.com/api-keys",
-		Note:     "The reference OpenAI-compatible endpoint.",
-		Fallback: []HostedModel{{ID: "gpt-4o-mini", Label: "GPT-4o mini"}},
-	},
-	{
-		Key: "anthropic", Label: "Anthropic (Claude)", BaseURL: "https://api.anthropic.com/v1",
-		KeysURL:  "https://console.anthropic.com/settings/keys",
-		Note:     "Claude via its OpenAI-compatible endpoint. Strong grounding.",
-		Fallback: []HostedModel{{ID: "claude-haiku-4-5", Label: "Claude Haiku 4.5"}},
-	},
-	{
-		Key: "groq", Label: "Groq", BaseURL: "https://api.groq.com/openai/v1",
-		KeysURL:  "https://console.groq.com/keys",
-		Note:     "Free tier, very fast inference. Good for a no-cost trial.",
-		Fallback: []HostedModel{{ID: "llama-3.3-70b-versatile", Label: "Llama 3.3 70B"}},
-	},
-	{
-		Key: "gemini", Label: "Google Gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-		KeysURL:  "https://aistudio.google.com/apikey",
-		Note:     "Free tier available; very cheap paid.",
-		Fallback: []HostedModel{{ID: "gemini-2.5-flash", Label: "Gemini 2.5 Flash"}},
+		Key: CustomProviderKey, Label: "Custom (OpenAI-compatible)", BaseURL: "",
+		KeysURL: "",
+		Note:    "Any OpenAI-compatible /v1 endpoint you supply — a direct vendor, or self-hosted (vLLM, LM Studio, LocalAI, a gateway). Validated live before it's committed.",
 	},
 }
+
+// CustomProviderKey is the pseudo-provider whose base URL the user supplies on
+// select/test (rather than reading it from the curated catalog, §8.1).
+const CustomProviderKey = "custom"
 
 // HostedCatalog returns the curated hosted-provider catalog (§8.1).
 func HostedCatalog() []HostedProvider { return hostedCatalog }
