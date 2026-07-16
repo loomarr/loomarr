@@ -1,0 +1,27 @@
+# NVIDIA GPU transcode overlay for the dev Tunarr — Linux + nvidia-container-toolkit ONLY.
+#
+#   make dev-gpu
+#   docker compose -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d
+#
+# Do NOT use on a Mac: Apple Silicon has no NVIDIA passthrough and requesting the `nvidia`
+# device driver makes `docker compose up` fail ("could not select device driver"). The base
+# compose.dev.yaml stays host-agnostic; this overlay is the only GPU-specific piece.
+#
+# The nvidia-container-toolkit injects driver-matched userspace libs + device nodes at runtime;
+# we DON'T bind-mount /dev/nvidia* by hand. The `video` capability is what pulls in
+# libnvidia-encode (NVENC) — `compute,utility` alone omits it, so h264_nvenc fails to init.
+# Verified: h264_nvenc encodes a test pattern at ~6x realtime inside this exact image
+# (RTX 3080 Ti: h264_nvenc/hevc_nvenc, NVDEC).
+
+services:
+  tunarr:
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, video, utility]
