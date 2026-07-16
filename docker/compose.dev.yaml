@@ -1,18 +1,29 @@
-# Loomarr dev dependencies (not the app itself — that's added in Phase 1).
-# Brings up a persistent local Tunarr to develop the Programmer adapter (§9/§10) against.
+# Loomarr dev dependencies (not the app itself). Brings up a persistent local Tunarr
+# to develop the Programmer adapter (§9/§10) and filler pipeline (§12) against.
 #
+#   make dev                                             # portable (Mac or Linux, CPU transcode)
+#   make dev-gpu                                          # Linux + NVIDIA (adds compose.dev.gpu.yaml)
 #   docker compose -f docker/compose.dev.yaml up -d
 #   docker compose -f docker/compose.dev.yaml logs -f tunarr
 #
 # Tunarr owns transcoding/streaming/EPG; loomarr owns lineup + filler (§6). Its media source
 # (Emby) is configured via Tunarr's API after first start — see docker/tunarr-dev-setup.md.
 # Pinned to the version our vendored spec (api/vendor/tunarr-openapi.json) was captured against.
+#
+# This base file is host-agnostic (Mac/Apple-Silicon or Linux). NVIDIA GPU transcode is an
+# opt-in overlay (docker/compose.dev.gpu.yaml) since it only applies on a Linux NVIDIA host —
+# on a Mac there is no GPU passthrough and the image runs under emulation (see below).
 
 services:
   tunarr:
     # 1.3.8 — matches api/vendor/tunarr-openapi.json. Digest-pinned so :latest drift can't
     # silently invalidate the vendored spec (design §6: "pin and record the version tested").
     image: chrisbenincasa/tunarr:1.3.8@sha256:88122a21c21e62c3786db786cb2725f2b94da538ea613d08febb67bf3d912e3e
+    # The 1.3.8 image is amd64-only (no arm64 tag). Pinning the platform makes Apple Silicon
+    # run it under emulation deterministically instead of failing to resolve a manifest.
+    # Transcoding under emulation is slow — fine for developing the adapter/API against; for
+    # real playback use the Linux GPU host (compose.dev.gpu.yaml).
+    platform: linux/amd64
     container_name: tunarr-dev
     restart: unless-stopped
     ports:
@@ -24,26 +35,10 @@ services:
       # Tunarr scans it. Same path inside Loomarr's FILLER_DIR and here.
       - ${FILLER_DROP_DIR:-../.filler-drop}:/filler
     # Tunarr streams the underlying files, so it must reach the same Emby as loomarr (§6).
-    # Emby is on the maintainer's Tailscale host; extra_hosts lets the container resolve it
-    # by name in the media-source config regardless of the container's own network.
+    # Emby is on a Tailscale host; extra_hosts maps a stable name → its IP so the media-source
+    # config is portable. Override the IP per-host with MEDIA_SERVER_IP in your .env.
     extra_hosts:
-      - "emby-media:100.75.125.45"
-    # --- NVIDIA GPU for transcoding (RTX 3080 Ti: h264_nvenc/hevc_nvenc, NVDEC) ---
-    # The nvidia-container-toolkit injects driver-matched userspace libs + device
-    # nodes at runtime; we DON'T bind-mount /dev/nvidia* by hand. `video` capability
-    # is what pulls in libnvidia-encode (NVENC) — `compute,utility` alone omits it,
-    # so Tunarr's h264_nvenc would fail to initialise. Verified: h264_nvenc encodes
-    # a test pattern at ~6x realtime inside this exact image.
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, compute, video, utility]
+      - "emby-media:${MEDIA_SERVER_IP:-100.75.125.45}"
 
 volumes:
   tunarr-dev-config:

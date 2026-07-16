@@ -46,8 +46,12 @@ build: ## build the loomarr binary (static, cgo-free — §16)
 	CGO_ENABLED=0 $(GO) build -o $(BIN_DIR)/loomarr ./cmd/loomarr
 
 .PHONY: dev
-dev: ## dev compose stack (external deps: tunarr-dev wired to Emby)
+dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
 	docker compose -f docker/compose.dev.yaml up -d
+
+.PHONY: dev-gpu
+dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
+	docker compose -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d
 
 ## ---- store conformance (Phase 3/4) --------------------------------------
 

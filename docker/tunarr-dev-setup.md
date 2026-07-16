@@ -6,7 +6,8 @@ A persistent local Tunarr for developing the Programmer adapter (§9/§10) and f
 ## Start / stop
 
 ```bash
-docker compose -f docker/compose.dev.yaml up -d      # start
+make dev                                             # portable (Mac or Linux, CPU transcode)
+make dev-gpu                                          # Linux + NVIDIA (adds compose.dev.gpu.yaml)
 docker compose -f docker/compose.dev.yaml logs -f tunarr
 docker compose -f docker/compose.dev.yaml down       # stop (keeps the volume)
 ```
@@ -15,6 +16,14 @@ docker compose -f docker/compose.dev.yaml down       # stop (keeps the volume)
   If you bump it, re-vendor the spec and update `docs/engineering/phase-0-findings.md`.
 - Config persists in the named volume `tunarr-dev-config`. `restart: unless-stopped`.
 - UI/API at http://localhost:8000 · version probe: `curl -s localhost:8000/api/version`.
+
+### Mac (Apple Silicon) vs Linux
+
+The base `compose.dev.yaml` is host-agnostic. The 1.3.8 image is **amd64-only**, so on Apple
+Silicon it runs under emulation (`platform: linux/amd64` is pinned so the manifest resolves).
+That's fine for developing the adapter/API against; **transcoding under emulation is slow**, so
+for real playback smoke use the Linux GPU host. NVIDIA transcode is opt-in via `make dev-gpu`
+(the `compose.dev.gpu.yaml` overlay) — never use it on a Mac (no GPU passthrough → `up` fails).
 
 ## Wire the Emby media source (§6: Tunarr streams the same library loomarr resolves against)
 
@@ -52,8 +61,9 @@ curl -s "http://localhost:8000/api/media-sources/$MSID/status"
 returns `{accessToken,userId}`. Creating the source is a separate `POST /api/media-sources`
 carrying that token. The Programmer adapter must do both.
 
-The `extra_hosts` entry in the compose file (`emby-media:100.75.125.45`) lets the container
-resolve Emby by name regardless of its own network.
+The `extra_hosts` entry in the compose file (`emby-media:${MEDIA_SERVER_IP:-100.75.125.45}`)
+maps a stable name → the media-server IP so the config is portable; override the IP per host
+by setting `MEDIA_SERVER_IP` in your `.env`.
 
 ## Relation to the app compose (Phase 1)
 
