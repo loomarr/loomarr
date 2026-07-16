@@ -36,19 +36,21 @@ type SystemLLMService interface {
 	Select(ctx context.Context, sel SelectRequest) error
 	// Test validates a hosted provider + key WITHOUT swapping (the "test my key"
 	// button). Returns nil if reachable + authorized, else a descriptive error.
-	Test(ctx context.Context, provider, apiKey string) error
+	Test(ctx context.Context, provider, baseURL, apiKey string) error
 	// Pull starts a background Ollama pull of a catalog model, streaming progress
 	// over the event bus. Returns a job id. ErrNotLocal if not a local provider.
 	Pull(ctx context.Context, model string) (jobID string, err error)
 }
 
 // SelectRequest is a provider/model/key selection (§8.1). Provider "ollama" (or
-// empty, back-compat) selects a local model; any other value names a curated hosted
-// provider. APIKey is used only for hosted providers and is stored, never echoed.
+// empty, back-compat) selects a local model; "openrouter" the blessed aggregator;
+// "custom" a user-supplied OpenAI-compatible endpoint (BaseURL then required).
+// APIKey is used only for hosted providers and is stored, never echoed.
 type SelectRequest struct {
 	Provider string
 	Model    string
 	APIKey   string
+	BaseURL  string // required for the "custom" provider; ignored otherwise
 }
 
 // SystemLLMStatus is the API view of the LLM host + selection (§8.1).
@@ -70,7 +72,7 @@ type SystemLLMStatus struct {
 
 // HostedProviderView is the API view of one curated hosted provider (§8.1). No key.
 type HostedProviderView struct {
-	Key           string            `json:"key" doc:"Loomarr provider id (openrouter|openai|anthropic|groq|gemini)"`
+	Key           string            `json:"key" doc:"Loomarr provider id (openrouter|custom)"`
 	Label         string            `json:"label"`
 	BaseURL       string            `json:"baseUrl"`
 	KeysURL       string            `json:"keysUrl" doc:"Where to obtain an API key"`
@@ -158,9 +160,10 @@ func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
 
 type systemLLMSelectInput struct {
 	Body struct {
-		Provider string `json:"provider,omitempty" doc:"Provider: ollama (local) or a hosted key (openrouter|openai|anthropic|groq|gemini). Empty = ollama." example:"openrouter"`
+		Provider string `json:"provider,omitempty" doc:"Provider: ollama (local), openrouter, or custom. Empty = ollama." example:"openrouter"`
 		Model    string `json:"model" doc:"Model tag/id to activate. Local: must be pulled. Hosted: any id the provider serves." example:"openai/gpt-4o-mini"`
 		APIKey   string `json:"apiKey,omitempty" doc:"Hosted API key (validated live, stored as a secret, never echoed). Omit to reuse a stored key." example:"sk-or-v1-…"`
+		BaseURL  string `json:"baseUrl,omitempty" doc:"Required for provider=custom: an OpenAI-compatible base URL (…/v1). Ignored otherwise." example:"http://localhost:8000/v1"`
 	}
 }
 
@@ -176,7 +179,10 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 	if in.Body.Model == "" {
 		return nil, huma.Error422UnprocessableEntity("model is required")
 	}
-	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey}
+	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
+		return nil, huma.Error422UnprocessableEntity("baseUrl is required for a custom endpoint")
+	}
+	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL}
 	switch err := s.systemLLM.Select(ctx, req); err {
 	case nil:
 	case ErrModelNotPulled:
@@ -198,8 +204,9 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 
 type systemLLMTestInput struct {
 	Body struct {
-		Provider string `json:"provider" doc:"Hosted provider key to test (openrouter|openai|anthropic|groq|gemini)" example:"openrouter"`
+		Provider string `json:"provider" doc:"Hosted provider key to test: openrouter or custom" example:"openrouter"`
 		APIKey   string `json:"apiKey,omitempty" doc:"Key to test; omit to test a stored key" example:"sk-or-v1-…"`
+		BaseURL  string `json:"baseUrl,omitempty" doc:"Required for provider=custom: an OpenAI-compatible base URL (…/v1)." example:"http://localhost:8000/v1"`
 	}
 }
 
@@ -219,13 +226,16 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 	if in.Body.Provider == "" {
 		return nil, huma.Error422UnprocessableEntity("provider is required")
 	}
+	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
+		return nil, huma.Error422UnprocessableEntity("baseUrl is required for a custom endpoint")
+	}
 	out := &struct {
 		Body struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error,omitempty"`
 		}
 	}{}
-	switch err := s.systemLLM.Test(ctx, in.Body.Provider, in.Body.APIKey); err {
+	switch err := s.systemLLM.Test(ctx, in.Body.Provider, in.Body.BaseURL, in.Body.APIKey); err {
 	case nil:
 		out.Body.OK = true
 	case ErrUnknownProvider:

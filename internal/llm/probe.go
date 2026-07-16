@@ -181,7 +181,7 @@ func splitVersion(v string) []int {
 	return out
 }
 
-// pullProgress is one Ollama /api/pull streaming line.
+// pullProgress is one raw Ollama /api/pull streaming line.
 type pullProgress struct {
 	Status    string `json:"status"`
 	Total     int64  `json:"total"`
@@ -189,8 +189,18 @@ type pullProgress struct {
 	Error     string `json:"error"`
 }
 
-// Percent returns 0..100 for this progress line, or -1 if unknown (no totals yet).
-func (pp pullProgress) Percent() int {
+// PullProgress is one pull update handed to the Pull callback. Completed/Total are
+// bytes for the layer currently downloading (both 0 before totals are known, e.g.
+// "pulling manifest"). Raw bytes are surfaced — not just Percent — so a UI can show
+// "X of Y GB" and derive rate/ETA from successive frames (§8.1 download bar).
+type PullProgress struct {
+	Status    string
+	Completed int64
+	Total     int64
+}
+
+// Percent returns 0..100 for this update, or -1 if unknown (no totals yet).
+func (pp PullProgress) Percent() int {
 	if pp.Total <= 0 {
 		return -1
 	}
@@ -206,15 +216,17 @@ func (pp pullProgress) Percent() int {
 // blocks until the pull completes, errors, or ctx is cancelled. A stream line
 // carrying an "error" field fails the pull. Idempotent at the Ollama layer: pulling
 // a present model streams a quick "success".
-func (p *Prober) Pull(ctx context.Context, tag string, onProgress func(status string, percent int)) error {
+func (p *Prober) Pull(ctx context.Context, tag string, onProgress func(PullProgress)) error {
 	body, _ := json.Marshal(map[string]any{"model": tag, "stream": true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/pull", strings.NewReader(string(body)))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// A pull can take minutes — use the long LLM timeout, not the default.
-	client := httpx.New(httpx.TimeoutLLM)
+	// A pull streams for minutes over a multi-GB body — a fixed whole-request
+	// timeout (even TimeoutLLM) would abort it mid-download. Use a streaming client
+	// with no whole-request budget; ctx governs cancellation.
+	client := httpx.NewStreaming()
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("ollama pull: %w", err)
@@ -238,7 +250,7 @@ func (p *Prober) Pull(ctx context.Context, tag string, onProgress func(status st
 			return fmt.Errorf("ollama pull: %s", pp.Error)
 		}
 		if onProgress != nil {
-			onProgress(pp.Status, pp.Percent())
+			onProgress(PullProgress{Status: pp.Status, Completed: pp.Completed, Total: pp.Total})
 		}
 	}
 	if err := sc.Err(); err != nil {

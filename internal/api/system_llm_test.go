@@ -36,7 +36,7 @@ func (f *fakeSystemLLM) Select(_ context.Context, req api.SelectRequest) error {
 	}
 	return nil
 }
-func (f *fakeSystemLLM) Test(_ context.Context, provider, _ string) error {
+func (f *fakeSystemLLM) Test(_ context.Context, provider, _, _ string) error {
 	f.tested = provider
 	return f.testErr
 }
@@ -159,6 +159,34 @@ func TestSystemLLM_SelectBadKey401(t *testing.T) {
 		`{"provider":"openrouter","model":"x","apiKey":"bad"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("bad hosted key → %d, want 401", resp.StatusCode)
+	}
+}
+
+// A custom endpoint threads its baseUrl through to the service.
+func TestSystemLLM_SelectCustomPassesBaseURL(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"custom","model":"my-model","apiKey":"k","baseUrl":"http://localhost:8000/v1"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("custom select → %d, want 200", resp.StatusCode)
+	}
+	if svc.selected.Provider != "custom" || svc.selected.BaseURL != "http://localhost:8000/v1" {
+		t.Errorf("service saw %+v, want provider=custom baseUrl=http://localhost:8000/v1", svc.selected)
+	}
+}
+
+// A custom select with no baseUrl is rejected at the boundary (422) before the service.
+func TestSystemLLM_SelectCustomWithoutBaseURL422(t *testing.T) {
+	svc := &fakeSystemLLM{status: api.SystemLLMStatus{Provider: "ollama"}}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodPost, "/v1/system/llm/select", adminToken,
+		`{"provider":"custom","model":"my-model","apiKey":"k"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("custom select w/o baseUrl → %d, want 422", resp.StatusCode)
+	}
+	if svc.selected.Provider != "" {
+		t.Errorf("service should NOT have been called, but saw %+v", svc.selected)
 	}
 }
 

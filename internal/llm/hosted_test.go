@@ -38,6 +38,29 @@ func TestHostedProviderByKey(t *testing.T) {
 	}
 }
 
+// The hosted surface is exactly two entries (§8.1): OpenRouter (curated base) and
+// Custom (empty base — the user supplies it). The former per-vendor entries
+// (openai/anthropic/groq/gemini) are NOT curated providers anymore — they're
+// reached via OpenRouter or a Custom base, so they must not resolve as providers.
+func TestHostedCatalog_OpenRouterAndCustomOnly(t *testing.T) {
+	cat := HostedCatalog()
+	if len(cat) != 2 {
+		t.Fatalf("want exactly 2 hosted entries (openrouter, custom), got %d: %+v", len(cat), cat)
+	}
+	cp, ok := HostedProviderByKey(CustomProviderKey)
+	if !ok {
+		t.Fatal("custom must be in the catalog as a template")
+	}
+	if cp.BaseURL != "" {
+		t.Errorf("custom template must carry no base URL (the user supplies it), got %q", cp.BaseURL)
+	}
+	for _, dropped := range []string{"openai", "anthropic", "groq", "gemini"} {
+		if _, ok := HostedProviderByKey(dropped); ok {
+			t.Errorf("%q must NOT be a curated provider anymore (reach it via OpenRouter or Custom)", dropped)
+		}
+	}
+}
+
 // RICH provider (OpenRouter-shape): LiveModels ranks for the USE CASE — a curated
 // quality FAMILY tier beats a cheaper-but-lower-tier model, and an untiered model
 // (even if cheapest + tool-capable) is shown but NOT recommended. This is the

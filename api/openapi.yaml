@@ -399,7 +399,7 @@ components:
         baseUrl:
           type: string
         key:
-          description: Loomarr provider id (openrouter|openai|anthropic|groq|gemini)
+          description: Loomarr provider id (openrouter|custom)
           type: string
         keyConfigured:
           description: A key is stored for this provider (value never returned)
@@ -1162,13 +1162,18 @@ components:
           examples:
             - sk-or-v1-…
           type: string
+        baseUrl:
+          description: "Required for provider=custom: an OpenAI-compatible base URL (…/v1). Ignored otherwise."
+          examples:
+            - http://localhost:8000/v1
+          type: string
         model:
           description: "Model tag/id to activate. Local: must be pulled. Hosted: any id the provider serves."
           examples:
             - openai/gpt-4o-mini
           type: string
         provider:
-          description: "Provider: ollama (local) or a hosted key (openrouter|openai|anthropic|groq|gemini). Empty = ollama."
+          description: "Provider: ollama (local), openrouter, or custom. Empty = ollama."
           examples:
             - openrouter
           type: string
@@ -1245,8 +1250,13 @@ components:
           examples:
             - sk-or-v1-…
           type: string
+        baseUrl:
+          description: "Required for provider=custom: an OpenAI-compatible base URL (…/v1)."
+          examples:
+            - http://localhost:8000/v1
+          type: string
         provider:
-          description: Hosted provider key to test (openrouter|openai|anthropic|groq|gemini)
+          description: "Hosted provider key to test: openrouter or custom"
           examples:
             - openrouter
           type: string
