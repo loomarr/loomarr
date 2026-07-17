@@ -1346,6 +1346,27 @@ components:
         - mediaType
         - state
       type: object
+    TunarrConnectOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TunarrConnectOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        librariesEnabled:
+          description: Movie/show libraries now enabled + scanning
+          format: int64
+          type: integer
+        sourceId:
+          description: Tunarr media-source id (existing or newly created)
+          type: string
+      required:
+        - sourceId
+        - librariesEnabled
+      type: object
     UserBody:
       additionalProperties: false
       properties:
@@ -1836,6 +1857,26 @@ paths:
       summary: Run one connection check
       tags:
         - settings
+  /v1/setup/tunarr-connect:
+    post:
+      description: Admin only. Ensures Tunarr's Emby/Jellyfin source (Loomarr's admin token) + enables/scans the movie/show libraries. One-time, idempotent (§6).
+      operationId: tunarr-connect
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TunarrConnectOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Wire the library as Tunarr's media source
+      tags:
+        - setup
   /v1/suggestions:
     get:
       description: status=submitted is the approval queue.
