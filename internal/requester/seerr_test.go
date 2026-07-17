@@ -23,6 +23,23 @@ func TestSeerrRequestMovie(t *testing.T) {
 	}
 }
 
+// Reachable is the "test my Seerr" probe: ok with a key, error without (bad key),
+// error on an unreachable host (§8 setup).
+func TestSeerrReachable(t *testing.T) {
+	ms := testkit.NewSeerr(t)
+	t.Cleanup(ms.Close)
+
+	if err := NewSeerr(ms.URL, "secret-key").Reachable(context.Background()); err != nil {
+		t.Errorf("Reachable with a key → %v, want ok", err)
+	}
+	if err := NewSeerr(ms.URL, "").Reachable(context.Background()); err == nil {
+		t.Error("Reachable with no key → ok, want a rejected-key error")
+	}
+	if err := NewSeerr("http://127.0.0.1:0", "k").Reachable(context.Background()); err == nil {
+		t.Error("Reachable against an unreachable host → ok, want a transport error")
+	}
+}
+
 // §6 idempotency: both 201 and 409 are success.
 func TestSeerrIdempotentStatuses(t *testing.T) {
 	for _, code := range []int{http.StatusCreated, http.StatusOK, http.StatusConflict} {

@@ -196,7 +196,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	// Kick an initial reconcile so the channel goes live immediately (§9 "live
 	// immediately — never dead air"). Best-effort: a reconcile failure leaves the
 	// channel in `building` for the sweep to pick up, it doesn't fail creation.
-	if s.channels != nil {
+	if s.channels != nil && !s.unconfigured("tunarr.url") {
 		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
 			s.log.Warn("initial channel reconcile failed (sweep will retry)", "channel", ch.ID, "err", err)
 		}
@@ -214,7 +214,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if s.channels == nil {
+	if s.channels == nil || s.unconfigured("tunarr.url") {
 		return nil, huma.Error501NotImplemented("scheduler not configured")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {

@@ -30,7 +30,7 @@ type searchOutput struct {
 }
 
 func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, error) {
-	if s.search == nil {
+	if s.search == nil || s.unconfigured("library.url") {
 		return nil, huma.Error501NotImplemented("search not configured")
 	}
 	if in.Q == "" {

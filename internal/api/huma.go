@@ -44,6 +44,33 @@ type Server struct {
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
+	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
+	// The composition root always-constructs the feature services and passes this so
+	// a route gates on the CURRENT config (a saved connection enables it with no
+	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
+	// check alone gates, preserving the old contract.
+	liveConfig func(key string) string
+}
+
+// featureOff reports whether a named feature (config-design §7) is configured-off
+// right now. Safe when settings is unset (unit tests) — reports false so a wired
+// dep still serves.
+func (s *Server) featureOff(ctx context.Context, feature string) bool {
+	return s.settings != nil && !s.settings.Features(ctx)[feature]
+}
+
+// unconfigured reports whether a required setting is empty right now. Safe when
+// liveConfig is unset (unit tests) — reports false so a wired dep still serves.
+func (s *Server) unconfigured(keys ...string) bool {
+	if s.liveConfig == nil {
+		return false
+	}
+	for _, k := range keys {
+		if s.liveConfig(k) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // SettingsService is the settings surface the API depends on (config-design §8).
@@ -198,6 +225,10 @@ type Options struct {
 	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	Settings     SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	Provision    Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	// LiveConfig reads a setting's live resolved value so feature routes gate on the
+	// CURRENT config (a saved connection enables the route with no restart, §8.1).
+	// The composition root passes settings.Service.String; unit tests omit it.
+	LiveConfig func(key string) string
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

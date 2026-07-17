@@ -31,6 +31,15 @@ func NewSeerr(t testing.TB) *Seerr {
 		// The real body carries the media record (Phase 0); a minimal stub suffices.
 		_, _ = w.Write([]byte(`{"type":"movie","media":{"status":5}}`))
 	})
+	// Admin-authed endpoint the "test my Seerr" probe hits (Seerr.Reachable): 200 with
+	// a key, 403 without — so the connection test validates the key, not just reachability.
+	mux.HandleFunc("GET /api/v1/settings/main", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") == "" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"apiKey":"ok"}`))
+	})
 	s.Server = httptest.NewServer(mux)
 	return s
 }
