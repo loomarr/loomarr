@@ -105,4 +105,16 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code == http.StatusNotImplemented {
 		t.Error("reconcile still 501 after saving tunarr.url — scheduler not live-enabled")
 	}
+
+	// The model-picker probe ALSO goes live — it reads the saved llm.url with no
+	// restart. Regression for a live-smoke find: the picker's Prober was frozen at
+	// boot, so after configuring Ollama through the wizard it still reported
+	// unreachable until a restart.
+	var sys struct {
+		Reachable bool `json:"reachable"`
+	}
+	h.getJSON("/v1/system/llm", admin, &sys)
+	if !sys.Reachable {
+		t.Error("GET /v1/system/llm unreachable after saving llm.url — picker Prober not live (frozen at boot)")
+	}
 }
