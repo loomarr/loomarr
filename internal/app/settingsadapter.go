@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -134,6 +135,21 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			// transport error means unreachable; a clean (not-found) answer means up.
 			if _, _, err := prog.GetChannel(ctx, "loomarr-probe"); err != nil {
 				return false, "could not reach Tunarr: " + err.Error()
+			}
+			return true, ""
+		},
+		// requester (§6): Seerr is the implemented requester; the probe validates the
+		// URL + API key. Direct Sonarr/Radarr is a separate requester (not yet a Test
+		// target) — guide the user to Seerr when only that pair is set.
+		"requester": func(ctx context.Context) (bool, string) {
+			if set.str("seerr.url") == "" {
+				if set.str("sonarr.url") != "" || set.str("radarr.url") != "" {
+					return false, "connection testing is available for Seerr; set the Seerr URL"
+				}
+				return false, "set the Seerr URL"
+			}
+			if err := requester.NewSeerrDynamic(set.seerrConn()).Reachable(ctx); err != nil {
+				return false, "could not reach Seerr: " + err.Error()
 			}
 			return true, ""
 		},
