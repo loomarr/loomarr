@@ -14,7 +14,7 @@ import (
 // bootstrap (unauthenticated, self-gating) and explicit media-server import
 // (admin-only). These are the ONLY routes that create users.
 func (s *Server) registerProvisioning(api huma.API) {
-	if s.provision == nil {
+	if s.provision == nil && !s.schemaOnly {
 		return
 	}
 	huma.Register(api, huma.Operation{

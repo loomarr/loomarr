@@ -246,7 +246,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		sug := suggest.New(provider, cat, validator, set.intv("suggest.max_acquisitions"))
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-		}, newID, time.Now, log)
+		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
 		suggestSvc = submitAdapter{svc}
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)

@@ -4,6 +4,49 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.0 — BE contract closed for the FE (2026-07-17).** Branch `feat/be-contract-13.0`. The
+prerequisite before any FE code (see `docs/frontend-build-plan.md`): make every route the FE calls
+present + typed and every wizard/workspace surface fully BE-backed. Doc-first §7/§8/§13 updated, then:
+**(1) OpenAPI coverage** — the 6 routes orval couldn't type (`auth/login|logout|me`, `setup/bootstrap`,
+`users/import`, `users/sync`) were absent from the exported spec because `ExportOpenAPI` builds a bare
+`Server{}` and the `register*` funcs nil-guard; added a `schemaOnly` flag (set only by export) so their
+SCHEMAS emit into `api/openapi.yaml` while runtime nil-guarding is untouched (+296 lines, all additive).
+**(2) setup/status completed** — was only `livetv` + `tunarr_library` (its own handler admitted "added by
+their phases"); now aggregates the connection probes (`media_server`, `requester`, `tunarr`, `llm` incl.
+local reachable+pulled / hosted key-present, `tmdb` via a cheap known-id lookup, `filler` when
+configured) reusing the §8 `setup/test` registry, plus the `webhook` handshake check carrying per-app
+`sonarr`/`radarr` `lastReceived` (read from the KV the ingest handler writes), each with a `docHref`
+Troubleshooting deep-link. Added `llm`+`tmdb` probes to `connectionTests`. **(3) Suggester progress
+events** (maintainer chose real per-step over indeterminate) — the worker published nothing intermediate;
+now `Suggest` reports `searching`→`reasoning`→`scoring` via a **context-threaded** `ProgressFunc` (zero
+signature churn across 13 call sites; a bare ctx = no-op), and the worker emits `done`/`failed` around it
+through a narrow `ProgressEmitter` wired in the composition root to publish SSE `type=suggestion` frames
+`{jobId, phase}` (parallel to `llm_pull`; the `eventEmitter` gained `SuggestionPhase`). Tests:
+`TestProgress_ReportsOrderedPhases` (unit — clean run emits exactly searching→reasoning→scoring),
+`TestSetupStatus_FullChecklist` (integration — connection checks carry docHref, webhook check waits with
+empty lastReceived). `make check` GREEN; `make openapi` regenerated (commit makes `openapi-verify` green).
+Closes findings 1–4 of the FE↔BE audit; finding 5 (coarse drop-tolerant SSE) is a documented property.
+
+**Phase-13 FE plan reviewed vs the live BE — 5 seams found, plan written (2026-07-17).** Before writing any
+FE, audited `frontend-design.md` + `design/` prototypes against the real BE contract (32 typed ops + 8
+raw routes + the 3-type `title`/`channel`/`job` SSE bus). Found **5 FE↔BE seams**: (1) 6 core routes —
+`auth/login|logout|me`, `setup/bootstrap`, `users/import`, `users/sync` — are **not in the exported
+`openapi.yaml`** so orval can't type them; (2) `GET /v1/setup/status` returns only `livetv` +
+`tunarr_library`, **not the full §13 checklist** (its own handler comment admits "added by their
+phases" — they weren't); (3) **no read surface for webhook handshake timestamps** though the store
+tracks them (`store.go:102,112`); (4) the **suggester emits no per-step progress** (worker publishes
+nothing intermediate) so the mock's `GenerationProgress` steps are unbacked; (5) SSE is coarse +
+drop-tolerant (a design property, not a bug — FE must invalidate-and-refetch). Also confirmed the design
+is **already mobile/Expo-aware** (`frontend-design.md` §2.5/§4.2: shared `packages/{tokens,api,core}` +
+token→NativeWind preset bridge; Expo+NativeWind+RN-Reusables pre-decided). **Maintainer decisions:**
+(a) close the contract **first** as a **13.0 PR**; (b) mobile **ready now, build web only** (Expo app is
+a future phase + a §14 update); (c) **add real per-step suggester progress events**
+(`searching/reasoning/scoring/done/failed`). Full sequenced plan (13.0 close-contract → 13.1 monorepo +
+tokens → 13.2 gallery + visual harness → 13.3 wizard → 13.4 surfaces → 13.5 gate), the page→endpoint→SSE
+coverage map, and the mobile-auth flag (**native app needs CORS + per-user bearer tokens — a §11/§14
+conversation, out of scope for 13**) live in **`docs/frontend-build-plan.md`**. No code yet; next action
+is the 13.0 BE PR (doc-first §13/§8).
+
 **Tunarr media-source auto-wiring (tunarr-connect) — onboarding gap closed (2026-07-16).** Branch
 `feat/tunarr-autoconnect`. A live-smoke question ("is the Tunarr↔Emby wiring in onboarding?") found
 a real gap: the design *required* Tunarr to have the media server as *its* source, enabled+scanned
