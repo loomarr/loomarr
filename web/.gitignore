@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output (the app's dist is synced into internal/web/dist by `make fe`)
+apps/web/dist/
+*.tsbuildinfo
+
+# Test / tooling
+coverage/
+playwright-report/
+test-results/
+.vite/
+
+# packages/tokens/generated/ is COMMITTED on purpose — `make fe-tokens` regenerates
+# it and CI fails on drift (committed-artifact discipline, §2.5).
+# packages/api/generated/ is orval output regenerated deterministically from
+# api/openapi.yaml by `make fe` (pnpm codegen) — gitignored to keep the tree clean;
+# there's nothing to drift against since the spec is the single source of truth.
+packages/api/generated/

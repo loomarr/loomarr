@@ -47,11 +47,23 @@ func TestWiring_FreshInstall(t *testing.T) {
 	}
 
 	// A dep that's ABSENT (no library ⇒ no user-sync route registered) is NOT a 501:
-	// the POST is unhandled and the /v1/users/{id} pattern shadows the path, so the
-	// router answers 405. A different contract than 501, which the FE must not treat
-	// as "configured but broken."
-	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusMethodNotAllowed {
-		t.Errorf("fresh install: POST /v1/users/sync → %d, want 405 (route absent)", code)
+	// the route simply doesn't exist. With the embedded SPA mounted as the "/"
+	// catch-all (§12), an unhandled /v1 path is guarded to a uniform 404 (never
+	// index.html) rather than the ServeMux method-shadow 405 it returned before the
+	// FE landed. Either way the contract the FE relies on holds — route absent ≠ 501
+	// ("configured but broken"), so the FE must not treat this as a feature that's on.
+	if code := h.status(http.MethodPost, "/v1/users/sync", "", admin); code != http.StatusNotFound {
+		t.Errorf("fresh install: POST /v1/users/sync → %d, want 404 (route absent, SPA-guarded)", code)
+	}
+
+	// The embedded SPA (§12) is served at / and client routes fall back to it —
+	// PUBLIC (no cookie): the shell loads, then calls /v1/auth/me to decide login.
+	// (In the test binary the embed is the .gitkeep placeholder or a real build;
+	// either way the mount answers 200.)
+	for _, path := range []string{"/", "/channels", "/settings"} {
+		if code := h.status(http.MethodGet, path, "", nil); code != http.StatusOK {
+			t.Errorf("SPA: GET %s → %d, want 200 (served shell, unauthenticated)", path, code)
+		}
 	}
 }
 

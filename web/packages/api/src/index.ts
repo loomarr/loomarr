@@ -1,0 +1,19 @@
+// Barrel for @loomarr/api: orval-generated TanStack Query hooks (namespaced per
+// domain so the fetch-client helper enums orval repeats in every tag file don't
+// collide), plus the flat model types and the shared transport mutator.
+//
+//   import { setupApi, type SetupCheck, ApiError } from "@loomarr/api";
+//   const { data } = setupApi.useSetupStatus();
+export * as authApi from "../generated/endpoints/auth/auth";
+export * as channelsApi from "../generated/endpoints/channels/channels";
+export * as fillerApi from "../generated/endpoints/filler/filler";
+export * as searchApi from "../generated/endpoints/search/search";
+export * as settingsApi from "../generated/endpoints/settings/settings";
+export * as setupApi from "../generated/endpoints/setup/setup";
+export * as suggestionsApi from "../generated/endpoints/suggestions/suggestions";
+export * as systemApi from "../generated/endpoints/system/system";
+export * as titlesApi from "../generated/endpoints/titles/titles";
+export * as usersApi from "../generated/endpoints/users/users";
+export * from "../generated/model";
+export { ApiError, customFetch } from "./mutator";
+export type { ProblemDetail } from "./mutator";

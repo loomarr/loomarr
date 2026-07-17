@@ -1,0 +1,20 @@
+{
+  "name": "loomarr-web-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Loomarr frontend workspace (Test Card design system). Web now; Expo bolt-on later shares packages/{tokens,api,core}.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.13.1",
+  "scripts": {
+    "tokens": "pnpm --filter @loomarr/tokens generate",
+    "api": "pnpm --filter @loomarr/api generate",
+    "codegen": "pnpm tokens && pnpm api",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "pnpm -r --parallel test",
+    "build": "pnpm codegen && pnpm --filter @loomarr/web build",
+    "dev": "pnpm --filter @loomarr/web dev"
+  }
+}
