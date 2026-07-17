@@ -45,13 +45,12 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	}()
 
 	svc := &systemLLMService{
-		swap:      sw,
-		prober:    llm.NewProber(set.str(setLLMURL)), // local probe targets the Ollama base (llm.url for ollama)
-		ollamaURL: ollamaBase(set),
-		store:     st,
-		bus:       bus,
-		log:       log,
-		newID:     newID,
+		swap:       sw,
+		ollamaBase: func() string { return ollamaBase(set) }, // resolved live per probe/pull
+		store:      st,
+		bus:        bus,
+		log:        log,
+		newID:      newID,
 	}
 	return sw, svc
 }
@@ -100,14 +99,21 @@ func ollamaBase(set resolved) string {
 // active selection via the Swappable, persists to the settings store, and streams
 // pulls over the event bus.
 type systemLLMService struct {
-	swap      *llm.Swappable
-	prober    *llm.Prober
-	ollamaURL string
-	store     store.Store
-	bus       *events.Bus
-	log       *slog.Logger
-	newID     func() string
+	swap *llm.Swappable
+	// ollamaBase resolves the Ollama host URL LIVE (llm.url via the settings
+	// snapshot). The picker probe/pull must read the CURRENT url so configuring it
+	// through the wizard takes effect with no restart (§8.1 / config-design §3) —
+	// exactly like the suggester's Swappable hot-swaps. A frozen base URL was the
+	// live-smoke bug: after PATCHing llm.url the picker still reported unreachable.
+	ollamaBase func() string
+	store      store.Store
+	bus        *events.Bus
+	log        *slog.Logger
+	newID      func() string
 }
+
+// prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
+func (s *systemLLMService) prober() *llm.Prober { return llm.NewProber(s.ollamaBase()) }
 
 func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, error) {
 	sel := s.swap.Selection()
@@ -122,9 +128,10 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 	// Local catalog: only meaningful when the active provider is Ollama (a probe of
 	// a non-local install would just be an idle localhost:11434 poll — skip it).
 	if local {
-		probe := s.prober.Probe(ctx)
+		p := s.prober()
+		probe := p.Probe(ctx)
 		out.GPUName, out.VRAMGiB, out.OllamaVer, out.Reachable = probe.GPUName, probe.VRAMGiB, probe.OllamaVersion, probe.Reachable
-		for _, e := range s.prober.Catalog(probe) {
+		for _, e := range p.Catalog(probe) {
 			if e.Recommended {
 				out.Recommended = e.Tag
 			}
@@ -217,11 +224,11 @@ func hostedBase(provider, suppliedBase string) (hp llm.HostedProvider, ok bool) 
 
 // selectLocal swaps to a local Ollama model — it must be pulled first.
 func (s *systemLLMService) selectLocal(ctx context.Context, model string) error {
-	probe := s.prober.Probe(ctx)
+	probe := s.prober().Probe(ctx)
 	if !containsModel(probe.PulledModels, model) {
 		return api.ErrModelNotPulled
 	}
-	sel := llm.Selection{Provider: "ollama", URL: s.ollamaURL, Model: model}
+	sel := llm.Selection{Provider: "ollama", URL: s.ollamaBase(), Model: model}
 	if err := s.persist(ctx, sel); err != nil {
 		return err
 	}
@@ -294,7 +301,7 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 	go func() {
 		bg := context.Background()
 		s.publishPull(jobID, model, "starting", 0, 0, 0, "")
-		if err := s.prober.Pull(bg, model, func(pp llm.PullProgress) {
+		if err := s.prober().Pull(bg, model, func(pp llm.PullProgress) {
 			s.publishPull(jobID, model, pp.Status, pp.Percent(), pp.Completed, pp.Total, "")
 		}); err != nil {
 			s.log.Warn("llm pull failed", "model", model, "err", err)
