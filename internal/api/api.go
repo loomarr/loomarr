@@ -9,8 +9,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+
+	"github.com/mantonx/loomarr/internal/web"
 )
 
 // ReadyFunc reports readiness (DB + migrations; soft Tunarr) — §17.
@@ -76,6 +79,22 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)
+
+	// The embedded SPA at / (§12): the catch-all. Guard the prefix-based API
+	// surfaces so an unknown /v1 or /hooks path 404s as an API error rather than
+	// silently serving index.html. Exact ops routes (/healthz, /docs, …) already
+	// win by ServeMux specificity and never reach here.
+	spa := web.Handler()
+	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics"}
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, p := range apiPrefixes {
+			if strings.HasPrefix(r.URL.Path, p) {
+				http.Error(w, `{"title":"Not Found"}`, http.StatusNotFound)
+				return
+			}
+		}
+		spa.ServeHTTP(w, r)
+	}))
 
 	return logRequests(log, mux)
 }

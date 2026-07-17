@@ -1,0 +1,40 @@
+{
+  "name": "@loomarr/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Loomarr web app — Vite + React 18 + Tailwind v4 + shadcn (Test Card).",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@loomarr/api": "workspace:*",
+    "@loomarr/core": "workspace:*",
+    "@loomarr/tokens": "workspace:*",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@tanstack/react-query": "^5.62.7",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "sonner": "^1.7.1",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

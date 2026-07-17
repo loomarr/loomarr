@@ -24,7 +24,12 @@ coverage.*
 
 # Node / FE (web/ added in Phase 13)
 node_modules/
-web/dist/
+web/apps/web/dist/
+
+# The embedded SPA build output — `make fe` fills this; only .gitkeep is tracked
+# so `//go:embed all:dist` compiles on a Go-only checkout (internal/web/embed.go).
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
 
 # Editor / OS
 .DS_Store

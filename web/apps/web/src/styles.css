@@ -1,0 +1,93 @@
+@import "tailwindcss";
+@import "@loomarr/tokens/theme.css";
+
+/* Self-hosted Geist + Geist Mono (§2.2) land in 13.2 with the visual harness (they
+   only matter for deterministic screenshots); the token font-stack falls back to
+   ui-sans-serif/ui-monospace until then. */
+
+/* Dark class drives the (v1 dark-only) theme; a light token-set slots in later. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The shadcn semantic layer, mapped onto the Test Card tokens (§2.1). The raw
+   palette lives in theme.css; these names are what shadcn/ui primitives consume,
+   so primitives restyle via tokens without edits. */
+:root {
+  --background: var(--color-static-950);
+  --foreground: var(--color-static-100);
+  --card: var(--color-static-900);
+  --card-foreground: var(--color-static-100);
+  --popover: var(--color-static-900);
+  --popover-foreground: var(--color-static-100);
+  --primary: var(--color-signal);
+  --primary-foreground: var(--color-static-950);
+  --secondary: var(--color-static-800);
+  --secondary-foreground: var(--color-static-100);
+  --muted: var(--color-static-800);
+  --muted-foreground: var(--color-static-400);
+  --accent: var(--color-static-800);
+  --accent-foreground: var(--color-static-100);
+  --destructive: var(--color-onair);
+  --destructive-foreground: var(--color-static-0);
+  --border: var(--color-static-700);
+  --input: var(--color-border-control);
+  --ring: var(--color-signal);
+  --radius: 8px;
+}
+
+/* Expose the semantic layer to Tailwind so bg-card / text-muted-foreground / etc.
+   resolve (Tailwind v4 @theme inline convention). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-DEFAULT: var(--radius);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The onair pulse — the one live-motion signature (§2.4); off under reduced-motion. */
+@keyframes onair-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

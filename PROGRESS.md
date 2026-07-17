@@ -4,6 +4,30 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.1 — FE workspace skeleton + token pipeline (2026-07-17).** Branch `feat/fe-scaffold-13.1`.
+The greenfield frontend foundation (`frontend-design.md` §2.5/§4, §7 "Phase 1"): a pnpm monorepo under
+`web/` with the shared packages the future Expo app bolts onto. **packages/tokens** — the Test Card
+palette as the TS source of truth + a deterministic generator emitting `theme.css` (Tailwind v4 @theme),
+a NativeWind-ready `tailwind-preset.cjs`, and `tokens.json`; its **contrast gate reproduces the design's
+published WCAG ratios to the decimal** (onair base 4.01→-300 4.53, suggest 3.86→4.65) and fails the build
+on any on-tint regression (§2.1). **packages/api** — orval generates typed TanStack Query hooks from
+`api/openapi.yaml` (incl. the 6 routes 13.0 rescued — `useLogin`/`useMe`/`useBootstrap` now exist),
+namespaced per tag, over a shared fetch mutator (same-origin, cookie creds, `X-Loomarr-Csrf`, RFC7807 →
+`ApiError`). **packages/core** — the SSE invalidation bus (maps the BE's `title`/`channel`/`suggestion`/
+`llm_pull` frames → coarse query invalidation, the §8 "GET is truth on reconnect" contract), zod schemas
+(intent/bootstrap/login — reused by RN later), formatters. **apps/web** — Vite + React 18 + Tailwind v4 +
+shadcn (new-york) with the AppShell nav rail, react-router skeleton, QueryClient + SSE providers, sonner.
+The build embeds into the Go binary: **internal/web/embed.go** (`//go:embed all:dist`) serves the SPA at
+`/` (SPA fallback for client routes; API prefixes guarded to 404, never HTML) with a committed
+`.gitkeep` so `go build` works Go-only (serves a "run make fe" notice). Makefile gained
+`fe`/`fe-tokens`/`fe-tokens-verify`/`fe-codegen`/`fe-install`. **Verified:** `make check` GREEN (added
+SPA-served + guard assertions to `TestWiring_FreshInstall`; the absent-route contract shifted 405→**404**
+uniformly via the SPA guard — invariant "absent ≠ 501" preserved), `make fe` GREEN (codegen + typecheck
+4 pkgs + tokens/core unit tests + build), `fe-tokens-verify` GREEN. Toolchain decision recorded: **Node
+20+/pnpm/Vite** (not bun/deno) — §14-decided, keeps the Expo bridge + CI determinism. Self-hosted Geist
+deferred to 13.2 (visual-determinism concern; token font-stack falls back meanwhile). orval output is
+gitignored (regenerated from the spec by `make fe`); token artifacts are committed (drift-checked).
+
 **Phase 13.0 — BE contract closed for the FE (2026-07-17).** Branch `feat/be-contract-13.0`. The
 prerequisite before any FE code (see `docs/frontend-build-plan.md`): make every route the FE calls
 present + typed and every wizard/workspace surface fully BE-backed. Doc-first §7/§8/§13 updated, then:
