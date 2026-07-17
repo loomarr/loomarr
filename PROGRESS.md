@@ -4,6 +4,28 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Live BE smoke on the Mac — 2 findings (2026-07-16).** Branch `fix/picker-prober-live`. First
+real drive of THIS session's changes against the homelab: native Ollama (qwen3.5:9b) + Emby/Seerr
+over Tailscale, a FRESH app boot configured through the settings API (the wizard path, not env
+pins). **Proven live:** the live-enable fix (fresh install `POST /v1/suggestions` → 501; PATCH
+connections → **200 with no restart**); the real connection probes (`media_server` ListUsers +
+the NEW `requester` `Seerr.Reachable`, both ok over Tailscale); features flip live. **Finding 1
+(FIXED):** the model-picker's Prober base URL was **frozen at boot** (`llm.NewProber(set.str("llm.url"))`),
+so configuring `llm.url` via the wizard left the picker reporting `reachable:false` / `pulled:false`
+until a restart — the same class as the live-enable gap, and the integration harness missed it
+because it seeds `llm.url` BEFORE build. Fix: `systemLLMService` builds the Prober per-call from a
+live `ollamaBase()` resolver (like the suggester's Swappable hot-swap); regression added to
+`TestWiring_ConfigEnablesLive` (picker reachable after PATCH); **verified live** (reachable=true,
+qwen3.5:9b pulled=true after the PATCH). **Finding 2 (model-quality, documented — NOT a code/seam
+bug):** qwen3.5:9b (the catalog's top-recommended local model) emits conversational prose instead
+of the final JSON proposal (`invalid character 'C'`), so a real grounded job fails the JSON-repair
+loop. `Think:false` is already applied on tool turns and the job failed **cleanly** (the graceful
+"no valid proposal" path, which is unit-tested) — the SYSTEM operated as designed; the MODEL is the
+weak link. Actionable: prefer a known-good local model (qwen3:8b / qwen3:14b Q6_K / llama3.1:8b) or
+a hosted model; the catalog's qwen3.5:9b recommendation warrants review; a possible follow-up is a
+final-turn `format:json` (tools dropped) to coerce weak models (doc-first, §8 grounding — separate).
+**Phase 2 (a real Tunarr channel) not yet run** — needs the dev Tunarr wired to Emby (maintainer creds).
+
 **E2E integration seams + composition-root testability + live-enable fix (2026-07-16).**
 On branch `feat/e2e-integration-seams`. Pre-FE hardening: drive the WHOLE app (real composition,
 not a hand-wired subset) through every FE-facing flow so the frontend meets a seam-free backend.
