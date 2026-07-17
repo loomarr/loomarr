@@ -21,6 +21,12 @@ func (s *Server) registerSetup(api huma.API) {
 		Summary: "Wire Tunarr as a tuner + guide", Description: "Admin only. One-time, idempotent (§6).",
 		Tags: []string{"setup"},
 	}, s.livetvConnect)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "tunarr-connect", Method: http.MethodPost, Path: "/v1/setup/tunarr-connect",
+		Summary: "Wire the library as Tunarr's media source", Description: "Admin only. Ensures Tunarr's Emby/Jellyfin source (Loomarr's admin token) + enables/scans the movie/show libraries. One-time, idempotent (§6).",
+		Tags: []string{"setup"},
+	}, s.tunarrConnectHandler)
 }
 
 // SetupCheck is one integration's checklist result (§13).
@@ -54,6 +60,42 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 		}
 		out.Body.Checks = append(out.Body.Checks, check)
 	}
+	if s.tunarrConnect != nil {
+		ready, err := s.tunarrConnect.LibrariesReady(ctx)
+		check := SetupCheck{Name: "tunarr_library", OK: ready}
+		if err != nil {
+			check.OK = false
+			check.Hint = "could not reach Tunarr: " + err.Error()
+		} else if !ready {
+			check.Hint = "Tunarr can't see your library yet — run Connect (POST /v1/setup/tunarr-connect); otherwise channels air flex/dead-air"
+		}
+		out.Body.Checks = append(out.Body.Checks, check)
+	}
+	return out, nil
+}
+
+type tunarrConnectOutput struct {
+	Body struct {
+		SourceID         string `json:"sourceId" doc:"Tunarr media-source id (existing or newly created)"`
+		LibrariesEnabled int    `json:"librariesEnabled" doc:"Movie/show libraries now enabled + scanning"`
+	}
+}
+
+// tunarrConnectHandler wires the media server as Tunarr's media source + scans it
+// (§6). Idempotent — re-running reuses the source and skips already-enabled libraries.
+func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarrConnectOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.tunarrConnect == nil || s.unconfigured("tunarr.url", "library.url") {
+		return nil, huma.Error501NotImplemented("Tunarr + media server must be configured first")
+	}
+	sourceID, enabled, err := s.tunarrConnect.Connect(ctx)
+	if err != nil {
+		return nil, huma.Error502BadGateway("wiring Tunarr's media source failed", err)
+	}
+	out := &tunarrConnectOutput{}
+	out.Body.SourceID, out.Body.LibrariesEnabled = sourceID, enabled
 	return out, nil
 }
 

@@ -142,11 +142,30 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// store, Tunarr, and the media-server library are configured.
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
+	var tunarrConnectSvc api.TunarrConnector
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
 		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(set.str("tunarr.url")))
 		liveTVSvc = liveTVAdapter{connector}
+
+		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):
+		// uses the concrete Tunarr client's media-source methods (prog), or the injected
+		// double in tests when it implements them. Library flavor/url/token resolved live.
+		var msProg setup.MediaSourceProgrammer = prog
+		if ov.Programmer != nil {
+			if msp, ok := ov.Programmer.(setup.MediaSourceProgrammer); ok {
+				msProg = msp
+			}
+		}
+		tunarrConnectSvc = setup.NewMediaSourceConnector(lib, msProg, func() (string, string, string) {
+			u, tk := set.libraryConn()()
+			fl := set.str("library.flavor")
+			if fl == "" {
+				fl = "emby"
+			}
+			return fl, u, tk
+		})
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
@@ -328,25 +347,26 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		liveConfig = set.str
 	}
 	return api.Router(log, api.Options{
-		Store:        st,
-		Auth:         authorizer,
-		Log:          log,
-		BackupSQLite: backup,
-		Ingest:       ingestHandler,
-		Ready:        ready,
-		Login:        loginSvc,
-		Sessions:     sessMgr,
-		UserSync:     userSync,
-		CookieSecure: set.str("cookie.secure"),
-		Channels:     channelSvc,
-		LiveTV:       liveTVSvc,
-		Suggest:      suggestSvc,
-		Search:       searchSvc,
-		Events:       eventBus,
-		Filler:       fillerSvc,
-		SystemLLM:    systemLLM,
-		Settings:     settingsSvc,
-		Provision:    provisionSvc,
-		LiveConfig:   liveConfig,
+		Store:         st,
+		Auth:          authorizer,
+		Log:           log,
+		BackupSQLite:  backup,
+		Ingest:        ingestHandler,
+		Ready:         ready,
+		Login:         loginSvc,
+		Sessions:      sessMgr,
+		UserSync:      userSync,
+		CookieSecure:  set.str("cookie.secure"),
+		Channels:      channelSvc,
+		LiveTV:        liveTVSvc,
+		TunarrConnect: tunarrConnectSvc,
+		Suggest:       suggestSvc,
+		Search:        searchSvc,
+		Events:        eventBus,
+		Filler:        fillerSvc,
+		SystemLLM:     systemLLM,
+		Settings:      settingsSvc,
+		Provision:     provisionSvc,
+		LiveConfig:    liveConfig,
 	}), nil
 }

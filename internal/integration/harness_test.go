@@ -267,6 +267,24 @@ func (h *harness) features(admin *http.Cookie) map[string]bool {
 	return out.Features
 }
 
+// setupCheckOK returns whether the named /v1/setup/status check reports OK.
+func (h *harness) setupCheckOK(admin *http.Cookie, name string) bool {
+	h.t.Helper()
+	var out struct {
+		Checks []struct {
+			Name string `json:"name"`
+			OK   bool   `json:"ok"`
+		} `json:"checks"`
+	}
+	h.getJSON("/v1/setup/status", admin, &out)
+	for _, c := range out.Checks {
+		if c.Name == name {
+			return c.OK
+		}
+	}
+	return false
+}
+
 // patchSettings applies a settings edit as admin and returns the status.
 func (h *harness) patchSettings(admin *http.Cookie, edits map[string]string) int {
 	h.t.Helper()
