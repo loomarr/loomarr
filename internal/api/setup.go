@@ -71,7 +71,7 @@ func (s *Server) livetvConnect(ctx context.Context, _ *struct{}) (*livetvConnect
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if s.livetv == nil {
+	if s.livetv == nil || s.unconfigured("tunarr.url") {
 		return nil, huma.Error501NotImplemented("Live TV wiring not configured")
 	}
 	tunerAdded, listingAdded, err := s.livetv.Connect(ctx)

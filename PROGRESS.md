@@ -4,6 +4,44 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**E2E integration seams + composition-root testability + live-enable fix (2026-07-16).**
+On branch `feat/e2e-integration-seams`. Pre-FE hardening: drive the WHOLE app (real composition,
+not a hand-wired subset) through every FE-facing flow so the frontend meets a seam-free backend.
+**Composition seam:** extracted `run()`'s 260-line wiring body into an importable `internal/app`
+package — `app.BuildHandler(ctx, st, log, Overrides) (http.Handler, error)` — that both `run()`
+(production) and the tests call, so tests exercise the REAL `api.Options` wiring. `cmd/loomarr/main.go`
+shrank 710→133 lines (thin entrypoint); the package is split by concern (`app`/`systemllm`/
+`settingsadapter`/`settingsboot`/`filler`/`adapters`/`emitter`/`ids`). `Overrides` injects the two
+in-process boundaries (Tunarr `programmer.Programmer`, scripted `llm.Provider`) + a TMDB base override;
+library/seerr are real adapters over testkit HTTP doubles via seeded settings. **New testkit
+`Ollama`** HTTP double (`/api/version`,`/api/tags`,`/api/pull` stream) so the §8.1 picker
+(probe→select→pull + SSE) runs through the real `systemLLMService`+`Prober`. **New E2E suite**
+(`internal/integration`, real `app.BuildHandler`, testkit-only, in `make check`): a **new-admin
+journey** (bootstrap→409-on-2nd→**local bcrypt login**→settings/feature-gates→`/setup/test` real
+probe→picker probe/select(409-unpulled)/pull→intent→approve→channel-with-policy-enforcement→reconcile-
+idempotent), a **member journey** (real import→media-server login→allowed set→**403 across the FULL
+admin matrix** incl. settings/system-llm/setup/filler/backup that the old §19 test omitted→disable-
+kills-session), and a **wiring** file (fresh-install 501/405 nil-dep matrix + the hot-apply proof), plus an **SSE
+E2E** test (authenticated subscribe → pull → assert an `llm_pull` frame arrives — the FE's
+live-update channel, previously only 401-tested). **Two pre-FE gaps a self-audit found, closed:**
+(a) the wizard's "Test Seerr" button had NO backend — added `Seerr.Reachable` (validates URL+key,
+no side effects) + the `requester` check in `connectionTests` + a testkit `/settings/main`
+endpoint; the admin journey now drives all three probes (media_server/tunarr/requester); (b) the
+SSE delivery test above.
+**Live-enable fix (honors config-design §3 / §8.1 "no restart"):** the audit-flagged gap — a saved
+connection flipped the `features` map but its route stayed **501 until restart** (services were
+nil-wired at boot). Fixed by **always-constructing** the feature services (reconciler/channels/
+suggester/filler, given a store) with the existing dynamic per-call providers, and moving each
+handler gate from `s.X == nil` to a live check — `featureOff(ctx, feature)` (Features() snapshot) for
+suggestions/filler, `unconfigured(key)` (live `set.str`) for search/channels/livetv, picker always-on.
+The gate is **additive** (`nil OR live-off`), so the api-package unit tests (which wire deps directly,
+no live source) are untouched. `TestWiring_ConfigEnablesLive` PROVES a PATCH to `/v1/settings` enables
+`/v1/suggestions`+`/v1/search`+reconcile **with no restart**. **Known caveat:** the library *flavor*
+is fixed at construction (defaults to Emby), so switching to Jellyfin still needs a restart — url/token
+hot-apply; follow-up is a live flavor closure (~15 auth call sites). Gates: `make check` (`-race`, lint
+0, config-docs) + `make test-pg` + boot smoke (fresh-install bootstrap 200, `/readyz` ready, clean
+shutdown) all green. NOT a phase — pre-Phase-13 hardening; unblocks the FE build on a proven backend.
+
 **LLM provider surface + pull-path fixes + Mac/Linux dev portability (2026-07-16).** Live dev
 bring-up on an Apple-Silicon Mac surfaced two §8.1 pull bugs and drove a provider-surface decision
 (all `make check` green). **Fixed:** (1) a model **pull aborted at 120s** — `Prober.Pull` used a
