@@ -81,13 +81,32 @@ config-docs-verify: config-docs ## regenerated config docs must match committed 
 
 ## ---- frontend (Phase 13) -------------------------------------------------
 
+WEB := web
+
+.PHONY: fe-install
+fe-install: ## install the web workspace (pnpm)
+	cd $(WEB) && pnpm install --frozen-lockfile
+
+.PHONY: fe-tokens
+fe-tokens: ## regenerate design-token artifacts from packages/tokens (CI diff must be empty)
+	cd $(WEB) && pnpm --filter @loomarr/tokens generate
+
+.PHONY: fe-tokens-verify
+fe-tokens-verify: fe-tokens ## regenerated token artifacts must match committed
+	@git diff --exit-code web/packages/tokens/generated
+
+.PHONY: fe-codegen
+fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
+	cd $(WEB) && pnpm codegen
+
 .PHONY: fe
-fe: ## orval typegen + tsc + vitest
-	@echo "fe: implemented in Phase 13"; exit 1
+fe: ## codegen + typecheck + unit tests + build the embedded SPA (into internal/web/dist)
+	cd $(WEB) && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build
+	@touch internal/web/dist/.gitkeep
 
 .PHONY: e2e
 e2e: ## Playwright smoke vs mocked backend
-	@echo "e2e: implemented in Phase 13"; exit 1
+	@echo "e2e: implemented in Phase 13.4"; exit 1
 
 .PHONY: seed
 seed: ## populate a dev store via the testkit (admin path only — CLAUDE.md)

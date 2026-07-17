@@ -1,0 +1,13 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+allowBuilds:
+  esbuild: true
+  # @scarf/scarf is analytics/telemetry pulled in transitively — deny its build.
+  "@scarf/scarf": false
+
+# esbuild (used by tsx + vitest + vite) ships a platform binary via a postinstall
+# build script; pnpm blocks build scripts by default. Approve exactly this one.
+onlyBuiltDependencies:
+  - esbuild
