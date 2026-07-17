@@ -76,7 +76,7 @@ type submitOutput struct {
 }
 
 func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submitOutput, error) {
-	if s.suggest == nil {
+	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
 		return nil, huma.Error501NotImplemented("suggester not configured")
 	}
 	if in.Body.Description == "" {

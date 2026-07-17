@@ -86,6 +86,30 @@ func (s *Seerr) Request(ctx context.Context, t provision.Title) error {
 	return fmt.Errorf("seerr request: unexpected status %d", resp.StatusCode)
 }
 
+// Reachable is a cheap, side-effect-free connection probe for the "test my Seerr"
+// button (§8 setup): a GET on an admin-authed endpoint validates BOTH reachability
+// and the API key — a dead host is a transport error, a bad key is 401/403. Unlike
+// Request it adds/changes nothing.
+func (s *Seerr) Reachable(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL()+"/api/v1/settings/main", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Api-Key", s.apiKey())
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("seerr rejected the API key (status %d)", resp.StatusCode)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("seerr unexpected status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Cancel is a best-effort no-op for Seerr (§4/§6): Loomarr doesn't persist the
 // Seerr request id, and Seerr owns its own request queue. Giving up on a title
 // simply stops Loomarr tracking it; any stale Seerr request ages out under

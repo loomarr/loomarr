@@ -136,7 +136,7 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if s.filler == nil {
+	if s.filler == nil || s.featureOff(ctx, "filler") {
 		return nil, huma.Error501NotImplemented("filler not configured")
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
@@ -161,7 +161,7 @@ func (s *Server) tagFiller(ctx context.Context, _ *struct{}) (*tagFillerOutput, 
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if s.filler == nil {
+	if s.filler == nil || s.featureOff(ctx, "filler") {
 		return nil, huma.Error501NotImplemented("filler not configured")
 	}
 	considered, tagged, partial, skipped, err := s.filler.Tag(ctx)
