@@ -53,6 +53,13 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
+	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
+	// emit every operation's SCHEMA into the spec even when its live service is nil,
+	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
+	// and orval can type the whole surface. Handlers are never invoked during export,
+	// so a nil service behind a registered op is harmless. Runtime nil-guarding is
+	// unchanged — at runtime schemaOnly is false and an absent service still 404s.
+	schemaOnly bool
 }
 
 // featureOff reports whether a named feature (config-design §7) is configured-off

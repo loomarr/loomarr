@@ -287,3 +287,35 @@ func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 		t.Errorf("themeFit should be > 0 for an action lineup matching an 'action' intent via genres, got %v", prop.Scores.ThemeFit)
 	}
 }
+
+// PROGRESS (§8): a clean grounded run reports its phases in order over the SSE
+// progress hook — searching → reasoning → scoring — so the workspace's
+// GenerationProgress advances live. (done/failed are the worker's to emit around
+// Suggest.) A bare context makes reporting a no-op, which every other test relies
+// on; here we thread a capturing ProgressFunc via WithProgress.
+func TestProgress_ReportsOrderedPhases(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "speed"}),
+		testkit.FinalResponse(`{"rationale":"90s action","picks":[
+			{"mediaType":"movie","tmdbId":100,"name":"Speed"}
+		]}`),
+	)
+	s := buildSuggester(t, llmMock)
+
+	var phases []suggest.Phase
+	ctx := suggest.WithProgress(context.Background(), func(p suggest.Phase) { phases = append(phases, p) })
+	if _, err := s.Suggest(ctx, suggest.Intent{Description: "90s action"}); err != nil {
+		t.Fatal(err)
+	}
+	// A run whose first final turn parses cleanly (no repair) emits exactly these
+	// three, in this order.
+	want := []suggest.Phase{suggest.PhaseSearching, suggest.PhaseReasoning, suggest.PhaseScoring}
+	if len(phases) != len(want) {
+		t.Fatalf("phases = %v, want %v", phases, want)
+	}
+	for i := range want {
+		if phases[i] != want[i] {
+			t.Fatalf("phase[%d] = %q, want %q (full: %v)", i, phases[i], want[i], phases)
+		}
+	}
+}

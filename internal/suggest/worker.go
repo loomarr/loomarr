@@ -43,6 +43,30 @@ type Service struct {
 	cacheTTL  time.Duration
 	newID     func() string
 	now       func() time.Time
+	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
+}
+
+// ProgressEmitter publishes a job's generation-progress frames to the SSE bus
+// (§7, type=suggestion). Optional and best-effort: a dropped frame is a latency
+// bug, never a correctness bug — GET /v1/suggestions/{id} stays the source of
+// truth. The composition root implements it over events.Bus; unit tests leave it
+// nil. Kept as a narrow interface so the suggest package doesn't import events.
+type ProgressEmitter interface {
+	SuggestionPhase(jobID, phase string)
+}
+
+// WithProgressEmitter wires the SSE progress emitter and returns the service for
+// chaining (matches the runners' WithInterval style). Nil is fine — no frames.
+func (s *Service) WithProgressEmitter(e ProgressEmitter) *Service {
+	s.emit = e
+	return s
+}
+
+// emitPhase publishes one phase frame if an emitter is wired.
+func (s *Service) emitPhase(jobID string, p Phase) {
+	if s.emit != nil {
+		s.emit.SuggestionPhase(jobID, string(p))
+	}
 }
 
 // Config parameterizes the service (from §15).
@@ -148,6 +172,10 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	jobCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
+	// Thread live progress (§8) into the pipeline: the suggester reports
+	// searching→reasoning→scoring off this context; done/failed are emitted here.
+	jobCtx = WithProgress(jobCtx, func(p Phase) { s.emitPhase(job.ID, p) })
+
 	var intent Intent
 	if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
 		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err))
@@ -182,6 +210,7 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	job.Status = "done"
 	job.UpdatedAt = now
 	_ = s.store.UpdateJob(ctx, job)
+	s.emitPhase(job.ID, PhaseDone)
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
@@ -191,6 +220,7 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	job.Attempts++
 	job.UpdatedAt = s.now()
 	_ = s.store.UpdateJob(ctx, job)
+	s.emitPhase(job.ID, PhaseFailed)
 }
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field

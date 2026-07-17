@@ -6,10 +6,13 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // settingsAdapter maps the settings subsystem (settings.Service + settings.Secrets
@@ -150,6 +153,52 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			}
 			if err := requester.NewSeerrDynamic(set.seerrConn()).Reachable(ctx); err != nil {
 				return false, "could not reach Seerr: " + err.Error()
+			}
+			return true, ""
+		},
+		// llm (§8/§8.1): local Ollama is probed live (reachable + the selected model
+		// pulled). Hosted providers (openrouter/custom) aren't reachability-probed
+		// here — their key is validated via POST /v1/system/llm/test; the checklist
+		// only confirms a provider + key are configured, and points at the picker.
+		"llm": func(ctx context.Context) (bool, string) {
+			provider := set.str("llm.provider")
+			if provider != "" && provider != "ollama" {
+				if set.str("llm.api_key") == "" {
+					return false, "set the " + provider + " API key (AI settings), then Test it"
+				}
+				if set.str("llm.model") == "" {
+					return false, "choose a model for " + provider + " (AI settings)"
+				}
+				return true, "" // key present; live validation is the §8.1 Test button
+			}
+			base := set.str("llm.url")
+			if base == "" {
+				return false, "set the Ollama URL, or configure a hosted provider in AI settings"
+			}
+			probe := llm.NewProber(base).Probe(ctx)
+			if !probe.Reachable {
+				return false, "could not reach the LLM host at " + base
+			}
+			model := set.str("llm.model")
+			if model == "" {
+				return false, "select a model in AI settings (the model picker, §8.1)"
+			}
+			for _, m := range probe.PulledModels {
+				if m == model {
+					return true, ""
+				}
+			}
+			return false, "model " + model + " is not pulled yet — pull it in AI settings"
+		},
+		// tmdb (§7.2): validate the key with a cheap lookup of a stable known id
+		// (The Matrix, tmdb 603). A rejected key surfaces as a non-2xx error.
+		"tmdb": func(ctx context.Context) (bool, string) {
+			key := set.str("tmdb.api_key")
+			if key == "" {
+				return false, "set your TMDB API key"
+			}
+			if _, err := tmdb.New(key).Exists(ctx, provision.Movie, 603); err != nil {
+				return false, "TMDB rejected the key or was unreachable: " + err.Error()
 			}
 			return true, ""
 		},
