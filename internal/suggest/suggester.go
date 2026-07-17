@@ -100,6 +100,10 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	surfaced := map[provision.Key]catalog.Candidate{}
 	temp := groundedTemp
 
+	// Surface progress (§8): searching now (the model is about to ground via the
+	// catalog tool), reasoning once it returns a final turn, scoring at assembly.
+	reportProgress(ctx, PhaseSearching)
+
 	// Generate → parse, with a bounded repair loop: if the model's final turn is
 	// empty or malformed JSON, append a corrective nudge and re-ask at a lower
 	// temperature. maxToolRounds bounds each generation; maxRepairs bounds the
@@ -109,8 +113,10 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		if err != nil {
 			return Proposal{}, err
 		}
+		reportProgress(ctx, PhaseReasoning)
 		out, perr := parsePicks(final)
 		if perr == nil {
+			reportProgress(ctx, PhaseScoring)
 			return s.buildProposal(ctx, intent, out, surfaced)
 		}
 		if repair >= maxRepairs {

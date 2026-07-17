@@ -49,3 +49,15 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 		},
 	})
 }
+
+// SuggestionPhase publishes one generation-progress frame (§8, type=suggestion)
+// so the workspace's GenerationProgress advances searching→reasoning→scoring→
+// done/failed live. Satisfies suggest.ProgressEmitter. Best-effort like the
+// title sink: a dropped frame is a latency bug, never a correctness bug — GET
+// /v1/suggestions/{id} is the source of truth on reconnect.
+func (e *eventEmitter) SuggestionPhase(jobID, phase string) {
+	e.bus.Publish(events.Event{
+		Type:    "suggestion",
+		Payload: map[string]string{"jobId": jobID, "phase": phase},
+	})
+}

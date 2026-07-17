@@ -13,7 +13,12 @@ import (
 func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, humaConfig())
-	srv := &Server{log: log} // handlers aren't invoked; only their schemas are read
+	// schemaOnly makes the nil-guarded register* funcs (auth, provisioning, users
+	// sync) emit their operation schemas into the spec despite the bare Server —
+	// handlers aren't invoked; only their schemas are read. Without it the exported
+	// spec would omit /v1/auth/*, /v1/setup/bootstrap, /v1/users/{import,sync} and
+	// orval couldn't type them (the FE↔BE seam that 13.0 closes).
+	srv := &Server{log: log, schemaOnly: true}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
 	srv.registerAuth(humaAPI)

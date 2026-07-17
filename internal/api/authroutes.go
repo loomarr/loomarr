@@ -15,7 +15,7 @@ import (
 // registerAuth mounts /v1/auth/* (§11). login and logout manage the session
 // cookie; me reports the current user. Absent if no LoginService is configured.
 func (s *Server) registerAuth(api huma.API) {
-	if s.login == nil {
+	if s.login == nil && !s.schemaOnly {
 		return
 	}
 	huma.Register(api, huma.Operation{

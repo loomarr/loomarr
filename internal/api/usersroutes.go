@@ -22,7 +22,7 @@ func (s *Server) registerUsers(api huma.API) {
 		Summary: "Update a user's role/quota/disabled (admin)", Tags: []string{"users"},
 	}, s.patchUser)
 
-	if s.userSync != nil {
+	if s.userSync != nil || s.schemaOnly {
 		huma.Register(api, huma.Operation{
 			OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
 			Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
