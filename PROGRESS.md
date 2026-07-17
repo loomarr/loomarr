@@ -4,6 +4,25 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Tunarr media-source auto-wiring (tunarr-connect) — onboarding gap closed (2026-07-16).** Branch
+`feat/tunarr-autoconnect`. A live-smoke question ("is the Tunarr↔Emby wiring in onboarding?") found
+a real gap: the design *required* Tunarr to have the media server as *its* source, enabled+scanned
+(§6, Phase-0 #12), but nothing in the wizard did it — an operator could finish all-green yet get
+**dead-air channels** (empty Tunarr program table). Maintainer chose **full automation**. **Design
+win proven live:** Tunarr accepts Loomarr's **admin API key** as the source access token (verified
+vs Tunarr 1.3.8 + Emby 4.10) — so **no Emby user login, no new credential, no §15 expansion**.
+Delivered (doc-first §6/§7/§13): `programmer` gains `EnsureEmbySource`/`ConnectLibraries`/
+`MediaLibrariesReady` (media-source CRUD + enable/scan of the movie+show libraries, idempotent);
+`setup.MediaSourceConnector` orchestrates (resolves the admin userId via `library.ListUsers`, live
+flavor/url/token); `POST /v1/setup/tunarr-connect` (admin, idempotent) + a `tunarr_library` check in
+`/v1/setup/status`; wired in `internal/app` (the connector uses the same programmer the tests inject,
+via a media-source interface type-assert); testkit Tunarr double implements the interface. Tests:
+programmer unit (create-then-reuse idempotent, movies+shows-only enable, ready-gate), integration
+`TestJourney_TunarrConnect` (real connector → double: connect → 2 libs → `tunarr_library` flips →
+idempotent re-run), member-403 matrix + fresh-install 501 extended. **Dogfooded LIVE:** POST
+tunarr-connect against real Tunarr returned the existing source **idempotently** (librariesEnabled=2)
+and `/v1/setup/status` flipped `tunarr_library: ok=true`. `make check` green.
+
 **Live BE smoke on the Mac — 2 findings (2026-07-16).** Branch `fix/picker-prober-live`. First
 real drive of THIS session's changes against the homelab: native Ollama (qwen3.5:9b) + Emby/Seerr
 over Tailscale, a FRESH app boot configured through the settings API (the wizard path, not env

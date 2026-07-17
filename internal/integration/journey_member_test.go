@@ -58,6 +58,7 @@ func TestJourney_Member(t *testing.T) {
 		{http.MethodGet, "/v1/setup/status", ""},
 		{http.MethodPost, "/v1/setup/test", `{"check":"media_server"}`},
 		{http.MethodPost, "/v1/setup/livetv-connect", ""},
+		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
 		{http.MethodGet, "/v1/system/llm", ""},
 		{http.MethodPost, "/v1/system/llm/select", `{"provider":"ollama","model":"x"}`},
 		{http.MethodPost, "/v1/system/llm/test", `{"provider":"openrouter"}`},

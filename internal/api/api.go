@@ -48,7 +48,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
-		channels: opts.Channels, livetv: opts.LiveTV,
+		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision,
 		liveConfig: opts.LiveConfig,

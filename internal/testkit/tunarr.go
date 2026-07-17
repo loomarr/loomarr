@@ -31,6 +31,18 @@ type Tunarr struct {
 	// models EnsureFillerList's internal idempotency (a second identical call is a
 	// no-op → FillerWrites unchanged), mirroring the real adapter (§10).
 	fillerLists map[string][]string
+	// Media-source state for tunarr-connect (§6): the Emby source Loomarr wires so
+	// Tunarr can index the library. sourceID is empty until EnsureEmbySource.
+	sourceID         string
+	msLibs           []*msLibrary
+	MediaSourceToken string // captures the access token used (assert: the admin key, no user login)
+	Scans            int    // library scans triggered
+}
+
+// msLibrary models one of Tunarr's enumerated media-server libraries (movies/shows/…).
+type msLibrary struct {
+	mediaType string
+	enabled   bool
 }
 
 type tunarrChan struct {

@@ -30,6 +30,9 @@ type Server struct {
 	// Phase 10 is configured.
 	channels ChannelService
 	livetv   LiveTVService
+	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
+	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
+	tunarrConnect TunarrConnector
 	// suggest/search wire /v1/suggestions*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
 	suggest SuggestService
@@ -172,6 +175,14 @@ type LiveTVService interface {
 	Wired(ctx context.Context) (bool, error)
 }
 
+// TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
+// can stream + index the library — backs POST /v1/setup/tunarr-connect and the
+// tunarr_library setup check. Idempotent. Implemented by setup.MediaSourceConnector.
+type TunarrConnector interface {
+	Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error)
+	LibrariesReady(ctx context.Context) (bool, error)
+}
+
 // UserSyncer refreshes already-imported users from the media server (§11).
 // Returns the count synced. It never ADDS users (import defines the allowlist).
 type UserSyncer interface {
@@ -206,25 +217,26 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store        store.Store
-	Auth         Authorizer
-	Log          *slog.Logger
-	BackupSQLite BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ingest       http.Handler   // POST /hooks/arr (Phase 6); mounted outside Huma
-	Ready        ReadyFunc
-	Login        LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Sessions     SessionManager   // /v1/auth/logout (Phase 9)
-	UserSync     UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	CookieSecure string           // COOKIE_SECURE: auto|true|false (§11)
-	Channels     ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV       LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	Suggest      SuggestService   // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
-	Search       SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
-	Events       EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler       FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	SystemLLM    SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
-	Settings     SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Provision    Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Store         store.Store
+	Auth          Authorizer
+	Log           *slog.Logger
+	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
+	Ingest        http.Handler   // POST /hooks/arr (Phase 6); mounted outside Huma
+	Ready         ReadyFunc
+	Login         LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Sessions      SessionManager   // /v1/auth/logout (Phase 9)
+	UserSync      UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure  string           // COOKIE_SECURE: auto|true|false (§11)
+	Channels      ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV        LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunarrConnect TunarrConnector  // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest       SuggestService   // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
+	Search        SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
+	Events        EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
