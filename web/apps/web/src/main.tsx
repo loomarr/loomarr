@@ -1,9 +1,12 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { Toaster } from "sonner";
 import { router } from "@/router";
+// Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "@/styles.css";
 
 // Server state is TanStack Query, SSE-invalidated (no global store, §4.3). Retries

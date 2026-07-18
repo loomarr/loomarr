@@ -4,6 +4,37 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.2a — design-system foundation: components, conventions, Biome (2026-07-17).** Branch
+`feat/fe-design-system-13.2`. The Layer-2 component vocabulary + the codebase conventions + linting that
+everything downstream (wizard, surfaces) builds on. **Self-hosted Geist** (@fontsource-variable, bundled
+by Vite — visual-test determinism, §2.2). **shadcn primitives** (Button/Card/Input/Label, restyled via
+tokens only). **Layer-2 components** (frontend-design §3): StateBadge, OnAirIndicator, NowNextStrip,
+ChannelCard, EmptyState, ErrorState (RFC7807 renderer), ChecklistItem, AppShell — each with CVA/tokens,
+all states, a11y (sr-only status, sentence-case DOM text so SR reads words not letter-spaced shouting).
+**Maintainer conventions established mid-build (saved to auto-memory [[fe-code-conventions]])** and applied
+across the WHOLE tree (app + packages, orval-generated excepted): (1) arrow-function expressions, (2)
+exports in a single block at end of file, (3) folder-per-component/module with `name.tsx` + `name.type.ts`
++ `name.test.tsx` + `index.ts` barrel, (4) types isolated in `*.type.ts`, (5) barrel imports, (6) a
+Vitest+Testing-Library test per module. **Biome** (maintainer's call over ESLint) for lint+format with
+sensible settings, wired into `make fe` + new `fe-lint`/`fe-lint-fix` targets; Tailwind-v4 CSS excluded
+(Biome's CSS parser can't read @theme/@custom-variant), `noLabelWithoutControl` off (false-positive on the
+Label primitive), `useSortedClasses` on (Tailwind class sort in cn/cva/clsx — kills visual-diff churn).
+**Two custom Biome GritQL plugins** (maintainer chose the Biome-native path over ESLint-hybrid/ts-morph;
+current API verified via web docs since training predates the stable release) enforce the rules Biome
+lacks built-ins for: `no-function-declaration.grit` (arrow expressions only) and `no-inline-export.grit`
+(declare-then-export-block — catches `export const|let|var` + `export type X =`; `export function` falls
+to the first plugin). Known GritQL gap (documented in-plugin): Biome 2.5 doesn't match TS
+`export interface|class|enum` nodes, but the `*.type.ts` convention already routes types into export
+blocks. A `no-raw-hex-color` plugin (enforce the §2 token layer) was prototyped but dropped — GritQL
+regex doesn't reliably scan string-literal contents; noted as a follow-up. **Toolchain fix:**
+`vitest@2→3` to dedupe `vite` to v6 (the v5/v6 skew broke the config types). Tests: **28 app + package
+tests, all green** (StateBadge/OnAir/ChannelCard/EmptyState/ErrorState/ChecklistItem/AppShell + button/
+card/input/label + Layout; core events/format/schemas; api mutator; tokens palette/contrast). `make fe`
+GREEN (biome + codegen + typecheck 4 pkgs + tests + embedded build), `make check` GREEN. **Deferred to the
+next PR (13.2b–d):** the remaining Layer-2 (IntentInput, GenerationProgress, ProposalReview, PodTimeline,
+ClipCard, ApprovalQueueItem, SearchCommand), the `/__gallery` registry, and the Playwright visual + axe
+harness.
+
 **Phase 13.1 — FE workspace skeleton + token pipeline (2026-07-17).** Branch `feat/fe-scaffold-13.1`.
 The greenfield frontend foundation (`frontend-design.md` §2.5/§4, §7 "Phase 1"): a pnpm monorepo under
 `web/` with the shared packages the future Expo app bolts onto. **packages/tokens** — the Test Card

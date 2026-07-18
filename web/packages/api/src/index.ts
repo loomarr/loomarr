@@ -15,5 +15,4 @@ export * as systemApi from "../generated/endpoints/system/system";
 export * as titlesApi from "../generated/endpoints/titles/titles";
 export * as usersApi from "../generated/endpoints/users/users";
 export * from "../generated/model";
-export { ApiError, customFetch } from "./mutator";
-export type { ProblemDetail } from "./mutator";
+export * from "./mutator";
