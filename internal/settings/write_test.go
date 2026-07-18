@@ -96,6 +96,74 @@ func TestPatch_EmptyClears(t *testing.T) {
 	}
 }
 
+// An empty value must NEVER clear a secret (config-design §9): secrets are
+// replace-only, and a GET returns no value for them (§4) — so a client that writes
+// the settings list back would otherwise wipe every stored key.
+func TestPatch_EmptyOnSecretIsRejected(t *testing.T) {
+	s, p := patchService(t, nil)
+	p.m["library.token"] = "super-secret"
+	s.SetDB(map[string]string{"library.token": "super-secret"})
+
+	res, _ := s.Patch(context.Background(), p, map[string]string{"library.token": ""}, "matt")
+	if res[0].Status != PatchInvalid {
+		t.Errorf("empty secret: %+v want invalid", res[0])
+	}
+	if got := p.m["library.token"]; got != "super-secret" {
+		t.Errorf("stored secret = %q; an empty PATCH must not clear it", got)
+	}
+	if res[0].Problem == "" {
+		t.Error("rejection must explain how to proceed (replace, or DELETE to clear)")
+	}
+}
+
+// The regression this guards: GET returns no value for a secret, so writing the whole
+// settings list back submits "" for it. That round-trip must leave secrets intact.
+func TestPatch_ListRoundTripDoesNotWipeSecrets(t *testing.T) {
+	s, p := patchService(t, nil)
+	p.m["library.token"] = "super-secret"
+	p.m["library.url"] = "http://emby:8096"
+	s.SetDB(map[string]string{"library.token": "super-secret", "library.url": "http://emby:8096"})
+
+	// What a naive client sends back after reading the list: secrets come back empty.
+	roundTrip := map[string]string{"library.url": "http://emby:8096", "library.token": ""}
+	if _, err := s.Patch(context.Background(), p, roundTrip, "matt"); err != nil {
+		t.Fatalf("patch: %v", err)
+	}
+	if got := p.m["library.token"]; got != "super-secret" {
+		t.Errorf("secret survived round-trip? got %q want it untouched", got)
+	}
+}
+
+// Clear is the explicit unset — the only way to drop a secret (config-design §8).
+func TestClear(t *testing.T) {
+	s, p := patchService(t, nil)
+	p.m["library.token"] = "super-secret"
+	s.SetDB(map[string]string{"library.token": "super-secret"})
+
+	res, err := s.Clear(context.Background(), p, "library.token")
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if res.Status != PatchSaved {
+		t.Errorf("clear: %+v want saved", res)
+	}
+	if _, ok := p.m["library.token"]; ok {
+		t.Error("clear should delete the stored secret")
+	}
+}
+
+func TestClear_UnknownKeyAndEnvPin(t *testing.T) {
+	s, p := patchService(t, map[string]string{"JOB_WORKERS": "4"})
+
+	if res, _ := s.Clear(context.Background(), p, "nope.missing"); res.Status != PatchInvalid {
+		t.Errorf("unknown key: %+v want invalid", res)
+	}
+	// The environment wins — clearing can't override a pin (§3).
+	if res, _ := s.Clear(context.Background(), p, "job.workers"); res.Status != PatchPinned {
+		t.Errorf("env-pinned clear: %+v want pinned", res)
+	}
+}
+
 // A bad SECRET value's problem message never echoes the value (config-design §4).
 func TestPatch_SecretProblemRedacted(t *testing.T) {
 	s := Setting{Key: "library.token", Kind: KindSecret}
