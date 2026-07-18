@@ -8,6 +8,7 @@
       "!**/node_modules",
       "!**/dist",
       "!**/generated",
+      "!**/routeTree.gen.ts",
       "!**/storybook-static",
       "!**/playwright-report",
       "!**/test-results",

@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import {
   Clapperboard,
   LayoutGrid,
   ListChecks,
+  LogOut,
   Radio,
   Search,
   Settings,
@@ -9,8 +11,6 @@ import {
   Tv,
   Users,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import { cn } from "@/lib";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
@@ -27,7 +27,13 @@ const NAV: NavItem[] = [
   { to: "/help", label: "Help", icon: ListChecks },
 ];
 
-const AppShell = ({ children, isAdmin = true, userName = "Operator", onOpenCommand }: AppShellProps) => (
+const AppShell = ({
+  children,
+  isAdmin = true,
+  userName = "Operator",
+  onOpenCommand,
+  onLogout,
+}: AppShellProps) => (
   <div className="grid min-h-screen grid-cols-[auto_1fr] bg-background text-foreground">
     <nav aria-label="Primary" className="flex w-56 flex-col gap-1 border-border border-r bg-card px-3 py-4">
       <div className="mb-4 flex items-center gap-2 px-2">
@@ -46,21 +52,17 @@ const AppShell = ({ children, isAdmin = true, userName = "Operator", onOpenComma
       </button>
 
       {NAV.filter((i) => !i.admin || isAdmin).map(({ to, label, icon: Icon }) => (
-        <NavLink
+        // TanStack Link marks the matched route with data-status="active" — style the
+        // active state off that attribute (higher specificity wins over the base), so
+        // AppShell stays a pure-className component (no isActive render-prop).
+        <Link
           key={to}
           to={to}
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-              isActive
-                ? "bg-signal-tint-15 text-signal"
-                : "text-static-400 hover:bg-accent hover:text-foreground",
-            )
-          }
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
         >
           <Icon className="size-4" aria-hidden />
           {label}
-        </NavLink>
+        </Link>
       ))}
 
       <div className="mt-auto flex items-center gap-2 border-border border-t px-2 pt-3 text-sm">
@@ -68,6 +70,16 @@ const AppShell = ({ children, isAdmin = true, userName = "Operator", onOpenComma
           {userName.slice(0, 2).toUpperCase()}
         </div>
         <span className="truncate text-muted-foreground">{userName}</span>
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Sign out"
+            className="ml-auto rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <LogOut className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
     </nav>
 

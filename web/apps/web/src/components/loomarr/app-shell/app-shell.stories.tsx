@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MemoryRouter } from "react-router-dom";
+import { withRouter } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
 
 const noop = () => {};
@@ -17,14 +17,8 @@ const meta = {
   title: "Loomarr/AppShell",
   component: AppShell,
   parameters: { layout: "fullscreen" },
-  decorators: [
-    (Story) => (
-      <MemoryRouter initialEntries={["/channels"]}>
-        <Story />
-      </MemoryRouter>
-    ),
-  ],
-  args: { onOpenCommand: noop, children: body },
+  decorators: [withRouter("/channels")],
+  args: { onOpenCommand: noop, onLogout: noop, children: body },
 } satisfies Meta<typeof AppShell>;
 
 type Story = StoryObj<typeof meta>;
