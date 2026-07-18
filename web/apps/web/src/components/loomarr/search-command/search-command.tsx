@@ -2,13 +2,13 @@ import { Search } from "lucide-react";
 import { Fragment } from "react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib";
-import type { SearchCommandProps, SearchScope } from "./search-command.type";
+import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 
 // SearchCommand — the ⌘K palette (§3, §7.2) over library/TMDB/clips + channels + help.
 // In-library results wear a `lock` flag so you see at a glance what's ready now vs.
 // what would be an acquisition (§8). Presentational + controlled; the global ⌘K
 // trigger and cmdk keyboard/listbox semantics wrap this in 13.4 (dependency-free here).
-const SCOPE_LABEL: Record<SearchScope, string> = {
+const SCOPE_LABEL: Record<PaletteScope, string> = {
   channels: "Channels",
   library: "In your library",
   tmdb: "Discover (TMDB)",
@@ -16,7 +16,7 @@ const SCOPE_LABEL: Record<SearchScope, string> = {
   help: "Help",
 };
 
-const SCOPE_ORDER: SearchScope[] = ["channels", "library", "tmdb", "clips", "help"];
+const SCOPE_ORDER: PaletteScope[] = ["channels", "library", "tmdb", "clips", "help"];
 
 const SearchCommand = ({
   query,

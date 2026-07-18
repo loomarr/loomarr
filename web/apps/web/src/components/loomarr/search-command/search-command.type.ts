@@ -1,8 +1,8 @@
-import type { SearchResult, SearchScope } from "@loomarr/core";
+import type { PaletteScope, SearchResult } from "@loomarr/core";
 
-// SearchResult/SearchScope data contracts live in @loomarr/core — shared with
-// packages/fixtures and the future mobile app (§4.2). The palette's prop interface
-// (controlled + handlers) stays here; the data types are re-exported for consumers.
+// SearchResult / PaletteScope are FE view models (the ⌘K palette merges API candidates +
+// channels + help — a superset of the generated SearchScope), so they live in core, not
+// the generated client. The palette's prop interface (controlled + handlers) stays here.
 interface SearchCommandProps {
   query: string;
   onQueryChange: (query: string) => void;
@@ -12,4 +12,4 @@ interface SearchCommandProps {
   className?: string;
 }
 
-export type { SearchCommandProps, SearchResult, SearchScope };
+export type { PaletteScope, SearchCommandProps, SearchResult };

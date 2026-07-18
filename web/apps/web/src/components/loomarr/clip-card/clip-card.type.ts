@@ -1,13 +1,12 @@
-import type { Clip, ClipAudience, ClipKind } from "@loomarr/core";
+import type { ClipDTO } from "@loomarr/api";
 
-// The Clip data contract lives in @loomarr/core — shared with packages/fixtures and
-// the future mobile app (§4.2). ClipCardProps is web-specific (handlers, className)
-// and stays here; the data types are re-exported so siblings keep their barrel imports.
+// The clip data is the orval-generated ClipDTO (§12) — no hand-written mirror.
+// ClipCardProps is web-specific (handlers, className).
 interface ClipCardProps {
-  clip: Clip;
+  clip: ClipDTO;
   onConfirmTags?: () => void;
   onTag?: () => void;
   className?: string;
 }
 
-export type { Clip, ClipAudience, ClipCardProps, ClipKind };
+export type { ClipCardProps };
