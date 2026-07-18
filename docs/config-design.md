@@ -119,7 +119,7 @@ No parallel form system. Each wizard step renders the relevant **settings group'
 
 - **Step → group mapping:** claim (auth, pre-settings) → Connections/media-server → Connections/Tunarr (+ media-source check + one-click Live TV connect) → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; library dropdown + optional starter sources) → guided first channel.
 - **Skippable steps are neutral, not red:** checklist states are `pass | fail | skipped | pinned`. Skipping AI doesn't shame you with a red X — it shows a neutral "not configured" that links back here.
-- **First-run detection:** a `setup_completed` flag in the registry; until set, `/` routes to the wizard. "Re-run setup" lives in Settings forever.
+- **First-run detection:** the `setup.completed` registry key (bool, `SETUP_COMPLETED`, Advanced — dotted to match every other key); until set, `/` routes to the wizard. The wizard's final step sets it through the ordinary `PATCH /v1/settings` path, so it is a setting like any other. "Re-run setup" lives in Settings forever.
 - **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is media server + Tunarr; Seerr adds acquisitions; AI adds suggestions.
 
 ---

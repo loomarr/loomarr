@@ -96,4 +96,5 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long completed jobs are kept before the janitor prunes them (§5). |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long proposals are kept before pruning (§5). |
 | `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional external event target (fired on terminal title transitions). |
+| `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | First-run wizard completed; until set, / routes to the wizard (config-design §6). _(advanced)_ |
 
