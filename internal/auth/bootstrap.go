@@ -86,6 +86,39 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 	return u, nil
 }
 
+// Candidate is a media-server account an admin may import (§11), with whether it
+// is already allowlisted so a picker can show it as done rather than hiding it.
+type Candidate struct {
+	ID       string
+	Name     string
+	IsAdmin  bool
+	Disabled bool
+	Imported bool
+}
+
+// Candidates lists the media-server accounts available to import, flagged against
+// the local allowlist (§11). This is the read side of explicit import: without it an
+// admin would have to know raw media-server user ids to call Import at all. It never
+// creates anything — listing is not provisioning.
+func (p *Provisioner) Candidates(ctx context.Context) ([]Candidate, error) {
+	if p.lib == nil {
+		return nil, errors.New("no media server configured")
+	}
+	serverUsers, err := p.lib.ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list media-server users: %w", err)
+	}
+	out := make([]Candidate, 0, len(serverUsers))
+	for _, su := range serverUsers {
+		c := Candidate{ID: su.ID, Name: su.Name, IsAdmin: su.IsAdmin, Disabled: su.Disabled}
+		if _, err := p.store.GetUser(ctx, su.ID); err == nil {
+			c.Imported = true
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
 // Import upserts the named media-server users as allowlisted rows (§11), the ONLY
 // way a media-server user gains access. ids are media-server user ids; makeAdmin
 // grants admin to those that are media-server admins (else member). Returns the

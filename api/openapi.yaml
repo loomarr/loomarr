@@ -471,6 +471,49 @@ components:
         - modelsLive
         - models
       type: object
+    ImportCandidate:
+      additionalProperties: false
+      properties:
+        disabled:
+          description: Disabled on the media server.
+          type: boolean
+        id:
+          description: Media-server user id — the value POST /v1/users/import takes.
+          type: string
+        imported:
+          description: Already allowlisted in Loomarr.
+          type: boolean
+        isAdmin:
+          description: Admin on the media server; import may map this to a Loomarr admin.
+          type: boolean
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - isAdmin
+        - disabled
+        - imported
+      type: object
+    ImportCandidatesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ImportCandidatesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        candidates:
+          items:
+            $ref: "#/components/schemas/ImportCandidate"
+          type:
+            - array
+            - "null"
+      required:
+        - candidates
+      type: object
     ImportUsersInputBody:
       additionalProperties: false
       properties:
@@ -1036,6 +1079,24 @@ components:
           type: string
         displayable:
           description: Whether the new value is returned (config-design §4).
+          type: boolean
+        value:
+          type: string
+      required:
+        - displayable
+      type: object
+    SecretRevealOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SecretRevealOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        displayable:
+          description: Whether the value is returned (config-design §4).
           type: boolean
         value:
           type: string
@@ -2119,6 +2180,38 @@ paths:
       summary: Update settings
       tags:
         - settings
+  /v1/settings/secrets/{name}:
+    get:
+      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN, WEBHOOK_SECRET — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
+      operationId: secret-reveal
+      parameters:
+        - description: Which generated secret to reveal.
+          in: path
+          name: name
+          required: true
+          schema:
+            description: Which generated secret to reveal.
+            enum:
+              - session_secret
+              - api_token
+              - webhook_secret
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretRevealOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Reveal a generated secret
+      tags:
+        - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
       description: Admin only. Rotates SESSION_SECRET | API_TOKEN | WEBHOOK_SECRET with the §4 side-effects; the new value is returned only if displayable.
@@ -2650,6 +2743,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List users (admin)
+      tags:
+        - users
+  /v1/users/candidates:
+    get:
+      description: Admin only. The media-server accounts available to import, each flagged whether it is already allowlisted (§11). Read-only — listing never provisions.
+      operationId: import-candidates
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportCandidatesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List importable media-server accounts
       tags:
         - users
   /v1/users/import:

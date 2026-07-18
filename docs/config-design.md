@@ -144,6 +144,7 @@ The checklist, the tab states, and the API gating all read the *same* computed f
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
+- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `WEBHOOK_SECRET` would be to *rotate* it, which breaks every webhook already configured; the §13 handshake step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.

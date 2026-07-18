@@ -8,8 +8,13 @@ import {
   BootstrapStep,
   ChecklistStep,
   deriveStepStatuses,
+  FirstChannelStep,
   firstIncompleteStep,
   isStepDone,
+  LiveTvStep,
+  TunarrLibraryStep,
+  UsersStep,
+  WebhookStep,
   WIZARD_STEPS,
 } from "@/wizard";
 
@@ -27,7 +32,31 @@ const COPY: Record<string, { title: string; description: string }> = {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
   },
+  guide: {
+    title: "Put your channels in the TV guide",
+    description: "The step that makes Loomarr show up on the family's TV, not just in this app.",
+  },
+  webhooks: {
+    title: "Tell Sonarr and Radarr where to report",
+    description: "So Loomarr knows the moment a download lands, instead of polling and guessing.",
+  },
+  library: {
+    title: "Give Tunarr your library",
+    description: "Without this, channels schedule slots that have no program to play.",
+  },
+  users: {
+    title: "Import media-server users",
+    description: "Only the accounts you pick can sign in. Skippable — a solo install needs no one else.",
+  },
+  channel: {
+    title: "Your first channel",
+    description: "Pick a starting point. You can edit it before Loomarr builds anything.",
+  },
 };
+
+// A step the operator may pass on: webhooks (an install with no *arr apps can never go
+// green) and users (§13 marks it optional). Skipped reads neutral, never red (§6).
+const SKIPPABLE = new Set(["webhooks", "users"]);
 
 const WizardScreen = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -35,6 +64,7 @@ const WizardScreen = () => {
   const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
 
   const [visited, setVisited] = useState<string | undefined>();
+  const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
 
   // Land on the right step the FIRST time. The resume point is derived from server truth,
   // so computing it before `me` / `setup/status` settle would briefly show the wrong step
@@ -46,27 +76,42 @@ const WizardScreen = () => {
       </main>
     );
   }
+
   const currentId = visited ?? firstIncompleteStep({ checks, isAuthenticated });
-  const statusById = deriveStepStatuses({ checks, isAuthenticated, currentId });
+  const statusById = deriveStepStatuses({ checks, isAuthenticated, currentId, skipped });
   const index = WIZARD_STEPS.findIndex((s) => s.id === currentId);
   const step = WIZARD_STEPS[index];
   const copy = COPY[currentId];
+  const checkFor = (name: string) => checks.find((c) => c.name === name);
+  const goTo = (id: string | undefined) => setVisited(id);
 
-  // Steps 3–7 land in 13.3c; the rail already shows the whole road so the operator can
-  // see what's left rather than being surprised by it.
   const body = () => {
-    if (currentId === "bootstrap") return <BootstrapStep onDone={() => setVisited("checklist")} />;
-    if (currentId === "checklist") return <ChecklistStep />;
-    return (
-      <p className="text-muted-foreground text-sm">
-        This step lands in the next release — the rail shows where it fits in the setup.
-      </p>
-    );
+    switch (currentId) {
+      case "bootstrap":
+        return <BootstrapStep onDone={() => goTo("checklist")} />;
+      case "checklist":
+        return <ChecklistStep />;
+      case "guide":
+        return <LiveTvStep check={checkFor("livetv")} />;
+      case "webhooks":
+        return <WebhookStep />;
+      case "library":
+        return <TunarrLibraryStep check={checkFor("tunarr_library")} />;
+      case "users":
+        return <UsersStep />;
+      default:
+        return <FirstChannelStep />;
+    }
   };
 
-  // Bootstrap advances itself (it owns its "Create admin" submit); every later step uses
-  // the shell's generic Continue, gated on that step's server-derived completion.
+  // Bootstrap advances itself (it owns its "Create admin" submit) and the final step
+  // finishes the wizard rather than advancing; everything between uses the shell's
+  // Continue, gated on that step's server-derived completion.
   const advances = currentId !== "bootstrap" && index < WIZARD_STEPS.length - 1;
+  const skip = () => {
+    setSkipped((prev) => new Set(prev).add(currentId));
+    goTo(WIZARD_STEPS[index + 1]?.id);
+  };
 
   return (
     <WizardShell
@@ -75,8 +120,9 @@ const WizardScreen = () => {
       statusById={statusById}
       title={copy?.title ?? step?.title ?? "Setup"}
       description={copy?.description}
-      onBack={index > 0 ? () => setVisited(WIZARD_STEPS[index - 1]?.id) : undefined}
-      onNext={advances ? () => setVisited(WIZARD_STEPS[index + 1]?.id) : undefined}
+      onBack={index > 0 ? () => goTo(WIZARD_STEPS[index - 1]?.id) : undefined}
+      onNext={advances ? () => goTo(WIZARD_STEPS[index + 1]?.id) : undefined}
+      onSkip={advances && SKIPPABLE.has(currentId) ? skip : undefined}
       nextDisabled={advances && !isStepDone(currentId, { checks, isAuthenticated })}
       busy={status.isFetching}
     >
