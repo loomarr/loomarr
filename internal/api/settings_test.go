@@ -14,10 +14,11 @@ import (
 
 // fakeSettings is a scripted api.SettingsService for the route tests.
 type fakeSettings struct {
-	patched map[string]string
-	patchBy string
-	regen   string // last regenerated secret name
-	cleared string // last key passed to Clear
+	patched  map[string]string
+	patchBy  string
+	regen    string // last regenerated secret name
+	revealed string // last revealed secret name
+	cleared  string // last key passed to Clear
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
@@ -67,6 +68,15 @@ func (f *fakeSettings) RegenerateSecret(_ context.Context, name string) (string,
 	return "brand-new-token-value", true, nil
 }
 
+// RevealSecret mirrors the display policy: session_secret is never displayable.
+func (f *fakeSettings) RevealSecret(_ context.Context, name string) (string, bool, error) {
+	f.revealed = name
+	if name == "session_secret" {
+		return "", false, nil
+	}
+	return "current-secret-value", true, nil
+}
+
 func (f *fakeSettings) Test(_ context.Context, check string) (bool, string) {
 	if check == "media_server" {
 		return true, ""
@@ -103,6 +113,7 @@ func TestSettings_RequireAdmin(t *testing.T) {
 		{http.MethodPatch, "/v1/settings", `{"edits":{"library.url":"http://x:1"}}`},
 		{http.MethodPost, "/v1/setup/test", `{"check":"media_server"}`},
 		{http.MethodDelete, "/v1/settings/library.token", ""},
+		{http.MethodGet, "/v1/settings/secrets/api_token", ""},
 		{http.MethodPost, "/v1/settings/secrets/api_token/regenerate", ""},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // empty token → not admin
@@ -217,5 +228,42 @@ func TestSettings_ClearOutcomes(t *testing.T) {
 				t.Errorf("service saw key %q, want %q", fs.cleared, tc.key)
 			}
 		})
+	}
+}
+
+// GET /v1/settings/secrets/{name} is §4's eye toggle: a displayable secret returns
+// its CURRENT value, SESSION_SECRET withholds — and crucially, reading never rotates
+// (the alternative was "regenerate to see it", which breaks live webhooks).
+func TestSettings_SecretReveal(t *testing.T) {
+	srv, fs := newSettingsServer(t)
+
+	// Displayable → value returned.
+	resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/webhook_secret", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reveal webhook_secret → %d", resp.StatusCode)
+	}
+	var w struct {
+		Value       string `json:"value"`
+		Displayable bool   `json:"displayable"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&w)
+	if !w.Displayable || w.Value == "" {
+		t.Errorf("webhook_secret should be revealable: %+v", w)
+	}
+
+	// SESSION_SECRET has nothing to paste anywhere — withheld (§4).
+	resp = do(t, srv, http.MethodGet, "/v1/settings/secrets/session_secret", adminToken, "")
+	var s struct {
+		Value       string `json:"value"`
+		Displayable bool   `json:"displayable"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&s)
+	if s.Displayable || s.Value != "" {
+		t.Errorf("session_secret must stay withheld: %+v", s)
+	}
+
+	// The point of the route: revealing must NOT rotate.
+	if fs.regen != "" {
+		t.Errorf("reveal rotated %q — reading a secret must never change it", fs.regen)
 	}
 }

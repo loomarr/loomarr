@@ -112,6 +112,17 @@ func (a settingsAdapter) RegenerateSecret(ctx context.Context, name string) (str
 	return value, true, nil
 }
 
+// RevealSecret returns a displayable generated secret's current value (§4 eye
+// toggle). Reading never rotates — that distinction is the whole point of this
+// route: the §13 webhook panel shows the URL already pasted into Sonarr/Radarr.
+func (a settingsAdapter) RevealSecret(_ context.Context, name string) (string, bool, error) {
+	g := settings.GeneratedSecret(name)
+	if !g.Displayable() {
+		return "", false, nil // SESSION_SECRET: nothing to paste anywhere (§4)
+	}
+	return a.secrets.Value(g), true, nil
+}
+
 func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) {
 	if fn, ok := a.tests[check]; ok && fn != nil {
 		return fn(ctx)

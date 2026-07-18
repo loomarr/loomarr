@@ -36,6 +36,12 @@ func (s *Server) registerSettings(api huma.API) {
 	}, s.settingsTest)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
+		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN, WEBHOOK_SECRET — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
+		Tags: []string{"settings"},
+	}, s.secretReveal)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
 		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN | WEBHOOK_SECRET with the §4 side-effects; the new value is returned only if displayable.",
 		Tags: []string{"settings"},
@@ -145,6 +151,42 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 	out := &settingsTestOutput{}
 	out.Body.OK = ok
 	out.Body.Hint = hint
+	return out, nil
+}
+
+type secretRevealInput struct {
+	Name string `path:"name" enum:"session_secret,api_token,webhook_secret" doc:"Which generated secret to reveal."`
+}
+
+type secretRevealOutput struct {
+	Body struct {
+		// Value is present only for a displayable secret (API_TOKEN, WEBHOOK_SECRET).
+		// SESSION_SECRET has nothing to paste anywhere, so it is never returned (§4).
+		Value       string `json:"value,omitempty"`
+		Displayable bool   `json:"displayable" doc:"Whether the value is returned (config-design §4)."`
+	}
+}
+
+// secretReveal is the read half of §4's "viewable on demand" — the eye toggle, and
+// what the §13 webhook handshake shows. It must never rotate: an operator revealing
+// the webhook URL is looking at what they already pasted into Sonarr/Radarr, and
+// rotating would silently break those hooks.
+func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.settings == nil {
+		return nil, huma.Error501NotImplemented("settings service not configured")
+	}
+	value, displayable, err := s.settings.RevealSecret(ctx, in.Name)
+	if err != nil {
+		return nil, huma.Error422UnprocessableEntity("cannot reveal secret", err)
+	}
+	out := &secretRevealOutput{}
+	out.Body.Displayable = displayable
+	if displayable {
+		out.Body.Value = value
+	}
 	return out, nil
 }
 

@@ -28,6 +28,50 @@ func (s *Server) registerProvisioning(api huma.API) {
 		Summary: "Import media-server users", Description: "Admin only. Allowlists the named media-server user ids — the only way a media-server user gains access (§11).",
 		Tags: []string{"users"},
 	}, s.importUsers)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "import-candidates", Method: http.MethodGet, Path: "/v1/users/candidates",
+		Summary: "List importable media-server accounts", Description: "Admin only. The media-server accounts available to import, each flagged whether it is already allowlisted (§11). Read-only — listing never provisions.",
+		Tags: []string{"users"},
+	}, s.importCandidates)
+}
+
+// ImportCandidate is one media-server account an admin may allowlist (§11).
+type ImportCandidate struct {
+	ID       string `json:"id" doc:"Media-server user id — the value POST /v1/users/import takes."`
+	Name     string `json:"name"`
+	IsAdmin  bool   `json:"isAdmin" doc:"Admin on the media server; import may map this to a Loomarr admin."`
+	Disabled bool   `json:"disabled" doc:"Disabled on the media server."`
+	Imported bool   `json:"imported" doc:"Already allowlisted in Loomarr."`
+}
+
+type importCandidatesOutput struct {
+	Body struct {
+		Candidates []ImportCandidate `json:"candidates"`
+	}
+}
+
+// importCandidates gives the UI something real to pick from. Without it, importing
+// would require knowing raw media-server user ids (§11 read side).
+func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCandidatesOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.provision == nil {
+		return nil, huma.Error501NotImplemented("provisioning not configured")
+	}
+	found, err := s.provision.Candidates(ctx)
+	if err != nil {
+		return nil, huma.Error502BadGateway("could not list media-server users", err)
+	}
+	out := &importCandidatesOutput{}
+	out.Body.Candidates = make([]ImportCandidate, 0, len(found))
+	for _, c := range found {
+		out.Body.Candidates = append(out.Body.Candidates, ImportCandidate{
+			ID: c.ID, Name: c.Name, IsAdmin: c.IsAdmin, Disabled: c.Disabled, Imported: c.Imported,
+		})
+	}
+	return out, nil
 }
 
 type bootstrapInput struct {
