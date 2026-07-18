@@ -151,7 +151,7 @@ web/
 
 ### 4.3 Forms & state
 
-- **react-hook-form + zod** (the shadcn convention). Zod schemas live in `packages/core` so mobile reuses validation verbatim.
+- **TanStack Form + zod**, the zod schema passed straight to the form as a **Standard Schema** validator — no resolver adapter. Zod schemas live in `packages/core` so mobile reuses validation verbatim, and `@tanstack/form-core` lets it reuse the form logic too. (Not shadcn's `<Form>`: that wrapper is react-hook-form-bound and Loomarr hand-composes `Label`+`Input`, so there was nothing to inherit.)
 - **No global state library.** TanStack Query owns server state (SSE-invalidated, main doc §12); local UI state is React state. Introducing zustand/jotai requires updating this doc first.
 
 ---
@@ -202,7 +202,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 
 ### Empty, error, loading
 - **Every list has an empty state with exactly one next action.** "Dead air — create your first channel." · "No clips yet — drop files in the filler folder or point MeTube at a playlist." · "Queue's clear — nothing awaiting approval."
-- Errors: RFC 7807 `title` in a toast (sonner) for mutations, inline field errors via RHF for forms; retry offered only where the operation is idempotent.
+- Errors: RFC 7807 `title` in a toast (sonner) for mutations, inline field errors via TanStack Form for forms; retry offered only where the operation is idempotent.
 - Loading: **skeletons, not spinners**, for anything list-shaped; the word "Tuning…" is reserved for suggester generation. SSE keeps surfaces live so loading states are rare after first paint.
 
 ### Responsive posture

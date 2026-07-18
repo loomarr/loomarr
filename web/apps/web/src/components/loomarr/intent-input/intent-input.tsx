@@ -5,7 +5,7 @@ import type { IntentInputProps } from "./intent-input.type";
 
 // IntentInput — the hero (§3). A natural-language channel intent wearing the
 // `suggest` magenta focus ring (§2.1, the AI color), with template chips that kill
-// the blank page (§6). Controlled, so a page wraps it in react-hook-form against
+// the blank page (§6). Controlled, so a page wraps it in TanStack Form against
 // intentSchema (packages/core) and the gallery drives every state deterministically.
 // ⌘/Ctrl-Enter submits; the button stays disabled until there's a describable intent.
 const IntentInput = ({

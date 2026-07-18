@@ -7,7 +7,7 @@ import type { ErrorStateProps } from "./error-state.type";
 // ErrorState — the RFC 7807 renderer (§3). Every failure surfaces the problem's
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
-// react-hook-form instead (this is the block/list-level error).
+// TanStack Form instead (this is the block/list-level error).
 const toProblem = (err: unknown): ErrorModel => {
   if (err instanceof ApiError) return err.problem;
   if (err instanceof Error) return { title: err.message };

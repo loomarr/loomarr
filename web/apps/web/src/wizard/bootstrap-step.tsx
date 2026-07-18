@@ -1,11 +1,10 @@
-import { zodResolver } from "@hookform/resolvers/zod";
 import { ApiError, authApi, setupApi } from "@loomarr/api";
 import { bootstrapSchema } from "@loomarr/core";
+import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
 import { ErrorState } from "@/components/loomarr";
 import { Button, Input, Label } from "@/components/ui";
 import type { BootstrapStepProps } from "./bootstrap-step.type";
@@ -13,18 +12,12 @@ import type { BootstrapStepProps } from "./bootstrap-step.type";
 // Wizard step 1 — create the owning admin (§11, §13). Unauthenticated *because* it is
 // gated on "no admin exists yet"; the first success closes the door (a second call 409s).
 // Bootstrap issues no session, so on success we immediately sign the new admin in with
-// the same credentials — the operator types their password once, not twice.
+// the same credentials — the operator types their password once, not twice. Validation is
+// bootstrapSchema from packages/core as a Standard Schema validator (§14); its cross-field
+// refine carries path ["confirm"], so a mismatch renders on that field.
 const BootstrapStep = ({ onDone }: BootstrapStepProps) => {
   const queryClient = useQueryClient();
   const [taken, setTaken] = useState(false);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm({
-    resolver: zodResolver(bootstrapSchema),
-    defaultValues: { username: "", password: "", confirm: "" },
-  });
 
   const login = authApi.useLogin({
     mutation: {
@@ -48,6 +41,14 @@ const BootstrapStep = ({ onDone }: BootstrapStepProps) => {
     },
   });
 
+  const form = useForm({
+    defaultValues: { username: "", password: "", confirm: "" },
+    validators: { onSubmit: bootstrapSchema },
+    onSubmit: ({ value }) => {
+      bootstrap.mutate({ data: { username: value.username, password: value.password } });
+    },
+  });
+
   const busy = bootstrap.isPending || login.isPending;
   const blockingError = taken ? undefined : (bootstrap.error ?? login.error);
 
@@ -64,49 +65,79 @@ const BootstrapStep = ({ onDone }: BootstrapStepProps) => {
 
   return (
     <form
-      id="wizard-bootstrap"
       noValidate
-      onSubmit={handleSubmit((v) =>
-        bootstrap.mutate({ data: { username: v.username, password: v.password } }),
-      )}
+      onSubmit={(e) => {
+        e.preventDefault();
+        form.handleSubmit();
+      }}
       className="flex flex-col gap-4"
     >
       {blockingError != null && <ErrorState error={blockingError} />}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="bootstrap-username">Username</Label>
-        <Input id="bootstrap-username" autoComplete="username" {...register("username")} />
-        {errors.username && (
-          <p role="alert" className="text-onair-300 text-sm">
-            {errors.username.message}
-          </p>
+      <form.Field name="username">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bootstrap-username">Username</Label>
+            <Input
+              id="bootstrap-username"
+              name={field.name}
+              autoComplete="username"
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+            {field.state.meta.errors[0] && (
+              <p role="alert" className="text-onair-300 text-sm">
+                {field.state.meta.errors[0].message}
+              </p>
+            )}
+          </div>
         )}
-      </div>
+      </form.Field>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="bootstrap-password">Password</Label>
-        <Input
-          id="bootstrap-password"
-          type="password"
-          autoComplete="new-password"
-          {...register("password")}
-        />
-        {errors.password && (
-          <p role="alert" className="text-onair-300 text-sm">
-            {errors.password.message}
-          </p>
+      <form.Field name="password">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bootstrap-password">Password</Label>
+            <Input
+              id="bootstrap-password"
+              name={field.name}
+              type="password"
+              autoComplete="new-password"
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+            {field.state.meta.errors[0] && (
+              <p role="alert" className="text-onair-300 text-sm">
+                {field.state.meta.errors[0].message}
+              </p>
+            )}
+          </div>
         )}
-      </div>
+      </form.Field>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="bootstrap-confirm">Confirm password</Label>
-        <Input id="bootstrap-confirm" type="password" autoComplete="new-password" {...register("confirm")} />
-        {errors.confirm && (
-          <p role="alert" className="text-onair-300 text-sm">
-            {errors.confirm.message}
-          </p>
+      <form.Field name="confirm">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bootstrap-confirm">Confirm password</Label>
+            <Input
+              id="bootstrap-confirm"
+              name={field.name}
+              type="password"
+              autoComplete="new-password"
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+            {field.state.meta.errors[0] && (
+              <p role="alert" className="text-onair-300 text-sm">
+                {field.state.meta.errors[0].message}
+              </p>
+            )}
+          </div>
         )}
-      </div>
+      </form.Field>
 
       <Button type="submit" disabled={busy} className="w-fit">
         {busy && <Loader2 className="animate-spin" aria-hidden />}

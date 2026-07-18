@@ -102,7 +102,7 @@ Every screen maps to existing endpoints + the 3 SSE types (see §8 coverage map)
 - **Help** — embedded `docs/` markdown (`react-markdown` + `remark-gfm`), client-side search, offline.
 - **⌘K `SearchCommand`** — over `GET /v1/search` scopes + channels + help.
 
-Cross-cutting (`frontend-design.md` §6): every list has an `EmptyState` with exactly one next action; RFC 7807 `title` → sonner toast for mutations, inline RHF field errors for forms; skeletons not spinners; one polite `aria-live` announcer for SSE state changes; badges pair mono text with a sentence-case `aria-label`.
+Cross-cutting (`frontend-design.md` §6): every list has an `EmptyState` with exactly one next action; RFC 7807 `title` → sonner toast for mutations, inline TanStack Form field errors for forms; skeletons not spinners; one polite `aria-live` announcer for SSE state changes; badges pair mono text with a sentence-case `aria-label`.
 
 **Gate (13.4):** page snapshots for Channels / Suggest / Settings; e2e approve-flow smoke (member submit → admin approve → title enqueued); axe clean.
 
