@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider } from "react-router-dom";
 import { Toaster } from "sonner";
-import { router } from "@/router";
+import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
@@ -17,6 +17,17 @@ const queryClient = new QueryClient({
     mutations: { retry: 0 },
   },
 });
+
+// The router shares the Query client via context so route guards (the _authed gate,
+// login) can ensureQueryData without prop-drilling (design §14). Register makes every
+// Link/navigate across the app type-safe against this route tree.
+const router = createRouter({ routeTree, context: { queryClient } });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
