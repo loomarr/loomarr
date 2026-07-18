@@ -30,3 +30,7 @@ apps/web/tests/visual/**/*-win32.png
 # api/openapi.yaml by `make fe` (pnpm codegen) — gitignored to keep the tree clean;
 # there's nothing to drift against since the spec is the single source of truth.
 packages/api/generated/
+
+# TanStack Router's generated route tree — `tsr generate` (pnpm codegen) rebuilds it
+# from the file-based routes in src/routes; gitignored like orval output, never hand-edited.
+apps/web/src/routeTree.gen.ts

@@ -129,7 +129,7 @@ web/
   packages/api/         # orval output: types + TanStack Query hooks (platform-agnostic)
   packages/core/        # SSE bus, zod schemas, formatters, shared data contracts
   packages/fixtures/    # deterministic "test card" story/test data (web + future mobile)
-  apps/web/             # Vite + React 18 + react-router + Tailwind v4 + shadcn
+  apps/web/             # Vite + React 18 + TanStack Router + Tailwind v4 + shadcn
   apps/web/.storybook/  # Storybook 10 (react-vite): main, preview, vitest wiring
   apps/mobile/          # FUTURE: Expo + NativeWind + RN Reusables + @storybook/react-native
 ```
@@ -141,7 +141,7 @@ web/
 | Shared across platforms | Per-platform |
 | --- | --- |
 | Design tokens + Tailwind preset (§2.5) | Component implementations (shadcn web ↔ React Native Reusables native) |
-| `packages/api` (orval types + query hooks — TanStack Query runs on RN) | Navigation (react-router ↔ Expo Router) |
+| `packages/api` (orval types + query hooks — TanStack Query runs on RN) | Navigation (TanStack Router ↔ Expo Router) |
 | `packages/core` (zod validation, SSE handling, domain logic, formatters, **shared data contracts**) | Gesture/touch interactions, portals (`PortalHost` on native) |
 | CVA variant definitions & component *contracts* (names, props, states) | Styling details where RN lacks cascade (each `Text` styled directly) |
 | **Storybook story *contracts*** (CSF states) + `packages/fixtures` "test card" args | Story *implementations* (`*.stories.tsx`: web shadcn ↔ RN Reusables) |

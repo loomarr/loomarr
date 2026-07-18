@@ -11,7 +11,8 @@
   "scripts": {
     "tokens": "pnpm --filter @loomarr/tokens generate",
     "api": "pnpm --filter @loomarr/api generate",
-    "codegen": "pnpm tokens && pnpm api",
+    "routes": "pnpm --filter @loomarr/web generate:routes",
+    "codegen": "pnpm tokens && pnpm api && pnpm routes",
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "pnpm -r --parallel test",
     "build": "pnpm codegen && pnpm --filter @loomarr/web build",
