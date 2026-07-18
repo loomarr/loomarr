@@ -4,6 +4,45 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.3d — the phase gate: wizard flow suite + page snapshots (2026-07-18).** Branch `feat/fe-wizard-13.3d`.
+Closes Phase 13.3 (frontend-build-plan §5 gate: "wizard e2e smoke vs mocked BE green; page-level snapshot per
+wizard step"). `make e2e` was a stub that exited 1; it is now real.
+
+**What it drives.** The REAL embedded SPA build (`internal/web/dist`, served with history fallback so `/wizard`
+resolves exactly as it does from the Go binary's embed), against a **mocked `/v1` via Playwright route
+interception** — no MSW dependency and no stub server, so there is no second API implementation to drift from
+`openapi.yaml`. The mock is deliberately **stateful**: signing in flips `me`, each one-click wiring turns its own
+check green, importing marks the candidate imported. A first-run flow that can't progress proves nothing.
+
+**The smoke walks a fresh install end to end** — bootstrap → auto-login → checklist → Live TV → webhook handshake
+(asserting the URL is built from the *revealed* secret and that both apps read as listening, neither as failed) →
+skip → Tunarr library → import users → guided first channel → lands on `/suggest?intent=…` with `setup.completed`
+flipped. Plus both halves of first-run routing: a completed setup opens Channels, an unfinished one is sent back.
+**Seven page-level snapshots**, one per step, with a `mask()` for the relative-timestamp region (real behaviour we
+want rendering, just not diffing).
+
+**The gate immediately earned its keep — a bug no unit test had caught.** On the optional **users** step, Continue
+was permanently disabled: `isStepDone` returns false for any step without a server check, so an operator who
+*did* import users was stranded behind a button that could never enable — only Skip worked. Optional steps must
+never block; they now gate on skippability rather than completion. Only walking the whole flow as a user surfaces
+that. A page snapshot also caught duplicated copy (the shell's step description and the step's own paragraph said
+the same sentence), now deduped to the §11 point that actually surprises people.
+
+**Two Playwright configs, one determinism kit.** A maintainer question ("why two configs?") exposed real
+duplication: the diff ratio, launch flags, reduced-motion and retries were copy-pasted, so tuning one gate would
+silently diverge from the other. They now share `playwright.shared.ts`. The configs stay separate for a concrete
+reason recorded there: Playwright boots **every** configured `webServer` regardless of project filter, and the
+suites have different build prerequisites (`storybook-static` vs `internal/web/dist`) — merging would force both
+builds to run either gate. `make e2e` mounts the repo ROOT (not `web/`) because the SPA build lands outside `web/`,
+and serves via pure-JS `http-server` for the same reason the visual suite does: the bind-mounted `node_modules`
+holds the HOST's native binaries, so vite/rollup cannot run inside the Linux image.
+
+**Proven to fail:** renaming the Live TV CTA breaks the flow and the suite goes red on all three attempts, then
+green again on revert. Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN (165 tests);
+Docker visual GREEN (144, 0 baseline diffs); **`make e2e` GREEN (3 specs, 7 committed page baselines)**. CLAUDE.md's
+command contract updated (`make e2e` / `make e2e-update`). **Phase 13.3 COMPLETE — next: 13.4, the core product
+surfaces**, which inherits the Suggest workspace the wizard now hands off to.
+
 **Phase 13.3c — wizard steps 3–7 + the conventions guard (2026-07-18).** Branch `feat/fe-wizard-13.3c`.
 Completes the operator first-run flow, and makes the FE conventions self-enforcing after they were broken twice.
 
