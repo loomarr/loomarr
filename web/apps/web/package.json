@@ -16,6 +16,7 @@
     "test:visual:update": "playwright test --update-snapshots"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
     "@loomarr/api": "workspace:*",
     "@loomarr/core": "workspace:*",
     "@loomarr/fixtures": "workspace:*",
@@ -27,6 +28,7 @@
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.81.0",
     "react-router-dom": "^6.28.0",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.6.0"

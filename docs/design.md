@@ -613,6 +613,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Routing | `react-router` v6 | Standard SPA routing |
 | Styling / components | **Tailwind CSS + shadcn/ui** | Fast, decent defaults, copy-in components (no runtime component dep) |
 | Live updates | native `EventSource` wrapped in a small hook | SSE, cookie-authed same-origin |
+| Forms | **react-hook-form** + **@hookform/resolvers** (zod) | The shadcn form convention (frontend-design §4.3); the zod schemas live in `packages/core` so mobile reuses validation verbatim. Used by Login + the wizard's Bootstrap step (13.3) |
 | Help rendering | `react-markdown` + `remark-gfm` over the embedded `docs/` markdown | Offline, consistent with §7.1 |
 | Component workshop + gallery | **Storybook 10** (`@storybook/react-vite`) + `@storybook/addon-a11y` (axe, in the workshop) | The component gallery/contract *and* dev workshop (frontend-design §5); carries to the future mobile app via `@storybook/react-native` (Expo, on-device). Replaces the hand-rolled `/__gallery` registry. The CI gate (visual + a11y) is **one Playwright pass** over the offline `storybook-static` build. **Chromatic rejected** — hosted SaaS visual-diff, breaks the offline/self-hosted rule (§16) |
 | FE tests | Vitest + Testing Library (jsdom units) + a story-coverage test; **Playwright** over `storybook-static` for the visual suite (`toHaveScreenshot`) **and** a11y (`@axe-core/playwright`), plus the e2e approve-flow smoke | Matches §19 |
