@@ -4,6 +4,47 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.3b — wizard foundation + steps 1–2 (2026-07-18).** Branch `feat/fe-wizard-13.3b`. The settings-driven
+wizard machinery, built on config-design §6's rule that **the wizard IS the settings system** — no parallel form
+system; each step renders a registry group's form through the same `PATCH /v1/settings` path Settings (13.4) will use.
+
+**Doc↔code gap closed (doc-first):** config-design §6 specified *"a `setup_completed` flag in the registry"* but no
+such key existed (checked all 47). Added **`setup.completed`** (bool, `SETUP_COMPLETED`, Advanced, GroupAdvanced) to
+`internal/settings/declared.go`, and amended §6 to name the key exactly + note it's written through the ordinary PATCH.
+`api/openapi.yaml` unchanged (registry keys are data, not schema — `openapi-verify` clean); `docs/configuration.md`
+regenerated (+1 row).
+
+**Built — the reusable half (all Layer-2, story + test each):** `SettingField` — ONE `SettingEntry` as a control,
+everything from contract data: `kind` picks the widget (bool→Checkbox, enum→Select, int/url/string→Input,
+secret→password), `enum` fills options, `doc` is help text, **`provenance:"env"` locks the field** with a "set via
+environment" chip (§3 visible provenance), a stored secret shows its masked `preview` tail with **replace-only**
+editing (§4 — never echoed), `caution` explains a self-healed value, and a `SettingResult` renders `invalid(problem)`
+inline / `pinned` as a badge. `SettingsGroupForm` — a group's fields + the per-group **Show advanced (n)** toggle (§5)
++ inline live-test result + Save. Two new **dependency-free ui primitives** (`Checkbox`, `Select`) as native elements —
+deliberately not Radix, so no §14 dep conversation for a checkbox and a 2-option list. `humanizeSettingKey` added to
+`packages/core` (`library.url` → "Library URL") because the settings API ships `doc` but **no display label**; derived
+once so wizard + Settings can't drift, and it doubles as the checklist's check-name humanizer.
+
+**Built — the wizard:** `WizardShell` (rail + card + nav; step states `done|current|pending|skipped` — a **skipped
+optional step renders neutral, never red**, §6). `src/wizard/steps.ts` holds the **resume-safe derivation as pure,
+tested functions**: completion comes from server truth (`GET /v1/setup/status` + whether a session exists), never from
+client progress, so a refresh — or finishing from another browser — lands correctly. Required = **media_server +
+tunarr** only (§6 "shortest honest path"); Seerr/AI/TMDB/filler report but never block. The three wiring checks
+(`livetv`/`webhook`/`tunarr_library`) each belong to their own later step, so Connections doesn't double-count them.
+**Step 1 Bootstrap** — `POST /v1/setup/bootstrap` with `bootstrapSchema` (already in core), then **auto-signs in with
+the same credentials** (bootstrap issues no session) so the operator types the password once; a 409 isn't an error to
+explain away, it's "this instance is past bootstrap → sign in". **Step 2 Checklist** — reuses the 13.2 `ChecklistItem`,
+driven by `setup/status`, failures shown as the BE's plain-language hint + doc deep-link (no stack traces, ever).
+**First-run routing:** `/` reads `setup.completed` and routes to `/wizard` until set — and **fails open** (a member's
+403, a 500, a missing key ⇒ "completed"), so a non-admin is never trapped in operator-only setup.
+
+**A real bug the tests caught:** the wizard computed its resume step before `me`/`setup-status` settled, so it painted
+the wrong step and then yanked the operator forward (checklist → TV guide). Now it holds the paint until both settle
+and lands right the first time. Gates: `make check` + `openapi-verify` GREEN; `make fe` GREEN (**129 tests**, +27 this
+phase); Docker visual GREEN — **143 passing, 32 new baselines** (16 stories × 2 viewports), a11y clean on every new
+component. **Next: 13.3c** (steps 3–7: livetv-connect, webhook handshake, tunarr-connect, user import, first channel)
+then **13.3d** (gate: wizard e2e smoke vs mocked BE + a page snapshot per step).
+
 **Phase 13.3a — auth foundation on TanStack Router (2026-07-18).** Branch `feat/fe-auth-13.3a`. The FE identity
 layer the wizard + product surfaces sit behind (§11, §12) — built, then **the router was swapped react-router →
 TanStack Router** mid-branch (maintainer call, doc-first) before more surfaces land, so 13.3a arrives already on

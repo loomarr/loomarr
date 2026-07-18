@@ -265,5 +265,10 @@ func declared() []Setting {
 			Kind: KindURL, Default: "",
 			Doc: "Optional external event target (fired on terminal title transitions).",
 		},
+		{
+			Key: "setup.completed", EnvVar: "SETUP_COMPLETED", Group: GroupAdvanced,
+			Kind: KindBool, Default: false, Advanced: true,
+			Doc: "First-run wizard completed; until set, / routes to the wizard (config-design §6).",
+		},
 	}
 }
