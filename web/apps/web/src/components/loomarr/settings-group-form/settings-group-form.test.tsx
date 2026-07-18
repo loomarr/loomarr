@@ -2,7 +2,7 @@ import type { SettingEntry } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { SettingsGroupForm } from "./settings-group-form";
+import { changedEntries, SettingsGroupForm } from "./settings-group-form";
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind">): SettingEntry => ({
   group: "connections.media_server",
@@ -15,19 +15,41 @@ const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind">)
 });
 
 const entries = [
-  entry({ key: "library.url", kind: "url" }),
-  entry({ key: "season.precision", kind: "enum", enum: ["series", "season"], advanced: true }),
+  entry({ key: "library.url", kind: "url", value: "http://x" }),
+  entry({ key: "library.token", kind: "secret", secret: true, preview: "…9f3c", value: "" }),
+  entry({
+    key: "season.precision",
+    kind: "enum",
+    enum: ["series", "season"],
+    value: "series",
+    advanced: true,
+  }),
 ];
 
 const renderForm = (props: Partial<Parameters<typeof SettingsGroupForm>[0]> = {}) =>
-  render(
-    <SettingsGroupForm
-      entries={entries}
-      values={{ "library.url": "http://x", "season.precision": "series" }}
-      onChange={vi.fn()}
-      {...props}
-    />,
-  );
+  render(<SettingsGroupForm entries={entries} onSave={vi.fn()} {...props} />);
+
+describe("changedEntries", () => {
+  it("maps positional values back to their dotted keys, keeping only what changed", () => {
+    // Values are positional because a dot in a TanStack Form field name means a nested
+    // path — and every registry key is dotted.
+    expect(changedEntries(["http://x", "", "series"], entries)).toEqual({});
+    expect(changedEntries(["http://y", "", "series"], entries)).toEqual({ "library.url": "http://y" });
+  });
+
+  it("omits an untouched secret, which would otherwise CLEAR it", () => {
+    // A stored secret reads back as "" (§4 never echoes it). Submitting that "" would be
+    // an empty-string PATCH, which clears an optional key (§9) — silently wiping it.
+    const submitted = changedEntries(["http://y", "", "series"], entries);
+    expect(submitted).not.toHaveProperty("library.token");
+  });
+
+  it("includes a secret the operator actually replaced", () => {
+    expect(changedEntries(["http://x", "new-token", "series"], entries)).toEqual({
+      "library.token": "new-token",
+    });
+  });
+});
 
 describe("SettingsGroupForm", () => {
   it("hides advanced keys until asked, then reveals them", async () => {
@@ -38,23 +60,46 @@ describe("SettingsGroupForm", () => {
     expect(screen.getByLabelText("Season precision")).toBeInTheDocument();
   });
 
-  it("routes a field edit to onChange keyed by setting", async () => {
-    const onChange = vi.fn();
-    renderForm({ onChange });
+  it("saves only the fields the operator changed", async () => {
+    const onSave = vi.fn();
+    renderForm({ onSave });
+
     await userEvent.type(screen.getByLabelText("Library URL"), "y");
-    expect(onChange).toHaveBeenCalledWith("library.url", "http://xy");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledWith({ "library.url": "http://xy" });
+  });
+
+  it("never submits an untouched secret (it would clear the stored value)", async () => {
+    const onSave = vi.fn();
+    renderForm({ onSave });
+
+    await userEvent.type(screen.getByLabelText("Library URL"), "z");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("library.token");
+  });
+
+  it("submits nothing when the operator changed nothing", async () => {
+    const onSave = vi.fn();
+    renderForm({ onSave });
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith({});
   });
 
   it("runs the group's live check and reports a failure as words", async () => {
     const onTest = vi.fn();
     renderForm({ onTest, testOk: false, testHint: "Emby refused the token." });
+
     await userEvent.click(screen.getByRole("button", { name: /test connection/i }));
     expect(onTest).toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("Emby refused the token.");
   });
 
   it("disables the actions while saving", () => {
-    renderForm({ onSave: vi.fn(), onTest: vi.fn(), saving: true });
+    renderForm({ onTest: vi.fn(), saving: true });
     expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /test connection/i })).toBeDisabled();
   });

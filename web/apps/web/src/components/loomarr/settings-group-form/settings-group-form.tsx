@@ -1,3 +1,5 @@
+import type { SettingEntry } from "@loomarr/api";
+import { useForm } from "@tanstack/react-form";
 import { CircleCheck, CircleX, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { SettingField } from "@/components/loomarr/setting-field";
@@ -5,15 +7,36 @@ import { Button } from "@/components/ui";
 import { cn } from "@/lib";
 import type { SettingsGroupFormProps } from "./settings-group-form.type";
 
+// Only the fields the operator actually changed belong in a PATCH. This is a CORRECTNESS
+// rule, not an optimization: a stored secret always reads back as "" (config-design §4 —
+// never echoed), and an empty-string PATCH *clears* an optional key (§9). Submitting every
+// field would therefore wipe every stored secret on save.
+//
+// Values are carried positionally (aligned with `entries`) rather than in a key→value map
+// because TanStack Form reads a dot in a field name as a NESTED PATH — and every registry
+// key is dotted ("library.url"), so `name="library.url"` would write {library:{url}} and
+// never match the flat key the API expects. Indices keep the form agnostic to key shape.
+const changedEntries = (values: string[], entries: SettingEntry[]): Record<string, string> => {
+  const edits: Record<string, string> = {};
+  entries.forEach((entry, i) => {
+    const next = values[i] ?? "";
+    if (next !== (entry.value ?? "")) edits[entry.key] = next;
+  });
+  return edits;
+};
+
 // SettingsGroupForm — one settings group as a form (config-design §5, §6). This is the
-// ONLY settings form in the app: the wizard renders a group per step and Settings
-// renders a group per page, both writing through the same PATCH /v1/settings path —
-// "no parallel form system". Advanced keys hide behind a per-group toggle (§5), and the
-// group's live check runs inline so the flow is configure → validate → save.
+// ONLY settings form in the app: the wizard renders a group per step and Settings renders
+// a group per page, both writing through the same PATCH /v1/settings path — "no parallel
+// form system". Advanced keys hide behind a per-group toggle (§5), and the group's live
+// check runs inline so the flow is configure → validate → save.
+//
+// The form owns its edit state (TanStack Form, §14) and hands `onSave` only the changed
+// keys. It deliberately does NOT re-seed itself when `entries` change: a background
+// refetch must never overwrite what the operator is typing. A caller that wants a fresh
+// baseline after a successful save remounts it with a `key` derived from the saved entries.
 const SettingsGroupForm = ({
   entries,
-  values,
-  onChange,
   onSave,
   saving = false,
   results,
@@ -25,21 +48,39 @@ const SettingsGroupForm = ({
 }: SettingsGroupFormProps) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const advancedCount = entries.filter((e) => e.advanced).length;
-  const visible = entries.filter((e) => !e.advanced || showAdvanced);
   const resultFor = (key: string) => results?.find((r) => r.key === key);
 
+  const form = useForm({
+    defaultValues: { values: entries.map((entry) => entry.value ?? "") },
+    onSubmit: ({ value }) => onSave(changedEntries(value.values, entries)),
+  });
+
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    <form
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        form.handleSubmit();
+      }}
+      className={cn("flex flex-col gap-5", className)}
+    >
       <div className="flex flex-col gap-5">
-        {visible.map((entry) => (
-          <SettingField
-            key={entry.key}
-            entry={entry}
-            value={values[entry.key] ?? ""}
-            onChange={(v) => onChange(entry.key, v)}
-            result={resultFor(entry.key)}
-          />
-        ))}
+        {/* Iterate ALL entries so indices stay stable — a hidden advanced key keeps its
+            value in form state and is still compared on save. */}
+        {entries.map((entry, i) =>
+          entry.advanced && !showAdvanced ? null : (
+            <form.Field key={entry.key} name={`values[${i}]`}>
+              {(field) => (
+                <SettingField
+                  entry={entry}
+                  value={field.state.value ?? ""}
+                  onChange={(v) => field.handleChange(v)}
+                  result={resultFor(entry.key)}
+                />
+              )}
+            </form.Field>
+          ),
+        )}
       </div>
 
       {advancedCount > 0 && (
@@ -68,20 +109,18 @@ const SettingsGroupForm = ({
 
       <div className="flex items-center gap-2">
         {onTest && (
-          <Button variant="outline" onClick={onTest} disabled={testing || saving}>
+          <Button type="button" variant="outline" onClick={onTest} disabled={testing || saving}>
             {testing && <Loader2 className="animate-spin" aria-hidden />}
             {testing ? "Testing…" : "Test connection"}
           </Button>
         )}
-        {onSave && (
-          <Button onClick={onSave} disabled={saving || testing}>
-            {saving && <Loader2 className="animate-spin" aria-hidden />}
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        )}
+        <Button type="submit" disabled={saving || testing}>
+          {saving && <Loader2 className="animate-spin" aria-hidden />}
+          {saving ? "Saving…" : "Save"}
+        </Button>
       </div>
-    </div>
+    </form>
   );
 };
 
-export { SettingsGroupForm };
+export { changedEntries, SettingsGroupForm };

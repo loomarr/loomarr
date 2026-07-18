@@ -1,5 +1,5 @@
 // Zod validation schemas (frontend-design §4.3). They live in packages/core so the
-// web app (react-hook-form) and the future Expo app reuse the exact same
+// web app (TanStack Form, via Standard Schema) and the future Expo app reuse the exact same
 // validation. Field shapes mirror the BE suggest.Intent (internal/suggest).
 
 import { z } from "zod";
