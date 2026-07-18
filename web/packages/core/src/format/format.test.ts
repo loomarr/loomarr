@@ -6,6 +6,7 @@ import {
   formatEpgTime,
   formatRelative,
   formatRuntime,
+  humanizeSettingKey,
 } from "./format";
 
 describe("formatters", () => {
@@ -38,5 +39,13 @@ describe("formatters", () => {
     expect(formatRelative("2026-07-17T11:57:00Z", now)).toBe("3m ago");
     expect(formatRelative("2026-07-17T10:00:00Z", now)).toBe("2h ago");
     expect(formatRelative("2026-07-12T12:00:00Z", now)).toBe("5d ago");
+  });
+
+  it("humanizes settings keys, upper-casing acronyms", () => {
+    expect(humanizeSettingKey("library.url")).toBe("Library URL");
+    expect(humanizeSettingKey("seerr.api_key")).toBe("Seerr API key");
+    expect(humanizeSettingKey("llm.provider")).toBe("LLM provider");
+    expect(humanizeSettingKey("filler.breaks_per_hour")).toBe("Filler breaks per hour");
+    expect(humanizeSettingKey("tunarr.transcode_config_id")).toBe("Tunarr transcode config ID");
   });
 });

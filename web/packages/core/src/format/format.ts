@@ -50,4 +50,27 @@ const formatRelative = (iso: string, now: number = Date.now()): string => {
   return `${Math.round(hrs / 24)}d ago`;
 };
 
-export { channelNumber, formatClipDuration, formatDuration, formatEpgTime, formatRelative, formatRuntime };
+// A settings registry key as a human label: "library.url" → "Library URL",
+// "seerr.api_key" → "Seerr API key". The settings API ships `doc` (help text) but no
+// display label (config-design §8), so the label is *derived* — defined once here so
+// the wizard (13.3) and Settings (13.4) can never drift, and mobile reuses it.
+const KEY_ACRONYMS = new Set(["url", "api", "ai", "llm", "ttl", "tmdb", "id", "m3u", "xmltv"]);
+
+const humanizeSettingKey = (key: string): string =>
+  key
+    .split(/[._]/)
+    .map((word, i) => {
+      if (KEY_ACRONYMS.has(word)) return word.toUpperCase();
+      return i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word;
+    })
+    .join(" ");
+
+export {
+  channelNumber,
+  formatClipDuration,
+  formatDuration,
+  formatEpgTime,
+  formatRelative,
+  formatRuntime,
+  humanizeSettingKey,
+};
