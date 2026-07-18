@@ -19,7 +19,7 @@ export default defineConfig({
       prettier: false,
       override: {
         mutator: {
-          path: "./src/mutator.ts",
+          path: "./src/mutator/mutator.ts",
           name: "customFetch",
         },
         query: {
