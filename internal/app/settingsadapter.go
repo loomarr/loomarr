@@ -79,6 +79,16 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 	return out
 }
 
+// Clear is the explicit unset (config-design §8) — the only way to drop a secret,
+// since an empty-string PATCH on one is rejected as replace-only (§9).
+func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResult {
+	res, err := a.svc.Clear(ctx, storePersister{st: a.store}, key)
+	if err != nil {
+		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
+	}
+	return api.SettingResult{Key: res.Key, Status: string(res.Status), Problem: res.Problem}
+}
+
 func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 	f := a.svc.Features()
 	return map[string]bool{

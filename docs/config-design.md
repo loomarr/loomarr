@@ -141,7 +141,8 @@ The checklist, the tab states, and the API gating all read the *same* computed f
 ## 8. API contract (extends main doc §7)
 
 - `GET /v1/settings` → grouped entries: `{key, group, kind, value | {set, preview}, provenance, advanced, doc, enum, requiredFor, testable, updatedBy, updatedAt}`.
-- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success.
+- `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
+- `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
@@ -154,7 +155,7 @@ The checklist, the tab states, and the API gating all read the *same* computed f
 - **Concurrent edits:** last-write-wins per key (`updated_at`); the save bar refreshes provenance/values on conflict rather than silently clobbering the whole page.
 - **URL normalization** in `Validate` (scheme required, trailing slash stripped) so `http://emby:8096/` and `http://emby:8096` are one value.
 - **Unknown keys in the DB** (only reachable if the downgrade guard were bypassed): ignored with a warning, never fatal.
-- **Empty-string PATCH** on an optional key clears it (reverts to default); on a required-shape key it's `invalid`.
+- **Empty-string PATCH** on an optional key clears it (reverts to default); on a required-shape key it's `invalid`. **A secret is the exception: an empty-string PATCH on a `secret` key is `invalid` ("replace-only"), never a clear.** Reason: `GET /v1/settings` deliberately returns no value for a secret (§4), so a client that reads settings and writes them back would submit `""` for every secret — silently destroying the stored Emby token, Seerr/TMDB/LLM keys. Making the round-trip *loud and harmless* rather than quietly destructive is worth more than the convenience of clear-by-empty, and §4 already calls secrets replace-only. Clearing a secret is an explicit act: `DELETE /v1/settings/{key}` (§8).
 
 ---
 

@@ -94,6 +94,10 @@ type SettingsService interface {
 	// Patch applies per-key edits, returning a per-key result (saved | invalid |
 	// pinned). Hot-applies on success. updatedBy is the admin's id (§3 audit).
 	Patch(ctx context.Context, edits map[string]string, updatedBy string) []SettingResult
+	// Clear drops one key's stored override (reverts to env/default) — the explicit
+	// clear, and the only way to unset a secret (config-design §8/§9). The result
+	// status maps to HTTP: invalid → 404, pinned → 409, saved → 204.
+	Clear(ctx context.Context, key string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
 	// RegenerateSecret rotates a generated secret and returns the new value if it
