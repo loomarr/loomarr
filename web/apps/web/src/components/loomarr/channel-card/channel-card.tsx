@@ -33,7 +33,7 @@ const ChannelCard = ({
           <div>
             <p className="font-medium leading-tight">{name}</p>
             {managed && (
-              <p className="font-mono text-[11px] text-static-500 uppercase tracking-wide">
+              <p className="font-mono text-[11px] text-static-400 uppercase tracking-wide">
                 Managed by Loomarr
               </p>
             )}

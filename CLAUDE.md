@@ -52,9 +52,11 @@ make test-pg        # store conformance vs Postgres (testcontainers; requires Do
 make openapi        # export api/openapi.yaml from the running definitions
 make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
 make openapi-verify # regenerated spec must match committed (CI red on drift)
-make fe             # orval typegen + tsc + vitest
+make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
-make fe-visual      # Playwright visual suite over the /__gallery registry
+make storybook      # Storybook dev workshop (the component gallery/contract)
+make storybook-build # offline storybook-static build (what fe-visual snapshots)
+make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
 make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
 make e2e            # Playwright smoke vs mocked backend
 make dev            # dev compose stack

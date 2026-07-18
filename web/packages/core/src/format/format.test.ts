@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { channelNumber, formatDuration, formatEpgTime, formatRelative, formatRuntime } from "./format";
+import {
+  channelNumber,
+  formatClipDuration,
+  formatDuration,
+  formatEpgTime,
+  formatRelative,
+  formatRuntime,
+} from "./format";
 
 describe("formatters", () => {
   it("formats durations", () => {
@@ -7,6 +14,13 @@ describe("formatters", () => {
     expect(formatDuration(42 * 60000)).toBe("42m");
     expect(formatDuration(102 * 60000)).toBe("1h 42m");
     expect(formatRuntime(133)).toBe("2h 13m");
+  });
+
+  it("formats sub-minute clip durations without collapsing to 1m", () => {
+    expect(formatClipDuration(5000)).toBe("5s");
+    expect(formatClipDuration(30000)).toBe("30s");
+    expect(formatClipDuration(60000)).toBe("1m");
+    expect(formatClipDuration(90000)).toBe("1m 30s");
   });
 
   it("channel numbers are bare", () => {

@@ -14,6 +14,17 @@ const formatDuration = (ms: number): string => {
 // Runtime given in minutes (TMDB/Emby convention).
 const formatRuntime = (minutes: number): string => formatDuration(minutes * 60000);
 
+// Sub-minute-aware duration for filler clips (a ":30 spot", a ":05 bumper"), where
+// the minute rounding above would collapse a 15s bumper and a 45s ad to the same
+// "1m". "45s" · "1m 30s" · "2m" — from a millisecond duration.
+const formatClipDuration = (ms: number): string => {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+};
+
 // Channel number as displayed — mono, never localized.
 const channelNumber = (n: number): string => String(n);
 
@@ -39,4 +50,4 @@ const formatRelative = (iso: string, now: number = Date.now()): string => {
   return `${Math.round(hrs / 24)}d ago`;
 };
 
-export { channelNumber, formatDuration, formatEpgTime, formatRelative, formatRuntime };
+export { channelNumber, formatClipDuration, formatDuration, formatEpgTime, formatRelative, formatRuntime };

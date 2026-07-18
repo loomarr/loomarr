@@ -4,6 +4,41 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.2b/c/d — remaining components + Storybook adoption (2026-07-17).** Branch
+`feat/fe-gallery-visual-13.2`. **13.2b DONE:** the remaining Layer-2 components (IntentInput,
+GenerationProgress, ProposalReview, PodTimeline, ClipCard, ApprovalQueueItem, SearchCommand) + a shared
+`Badge` primitive + `formatClipDuration` (sub-minute-aware) — all with CVA/tokens, states, a11y, tests;
+`make fe` + `make check` were GREEN before the Storybook pivot.
+**DECISION (maintainer, doc-first): adopt Storybook 10 for the component gallery/workshop AND
+visual/a11y testing, replacing the hand-rolled `/__gallery` registry.** This reverses frontend-design §5's
+original mechanism, so the docs were updated FIRST (per prime directive #1): frontend-design §3/§4.1/§4.2/
+§5/§7, design §14 (new dep row + rationale; **Chromatic rejected** — hosted SaaS breaks the offline rule),
+frontend-build-plan §4/§9/§10, CLAUDE.md command contract. **Rationale:** CSF is the industry-standard
+component contract + a real dev workshop (controls/autodocs/a11y panel), and it carries to the future
+mobile app via `@storybook/react-native` (Expo, on-device). **Every §5 guarantee preserved:** offline
+(`storybook-static`), deterministic (Playwright Docker, `document.fonts.ready`, `prefers-reduced-motion`
++ `animations:'disabled'`, frozen clock), committed baselines (`toHaveScreenshot` `maxDiffPixelRatio 0.001`),
+and 100%-coverage-enforced (a test maps the component barrel → stories). a11y: `@storybook/addon-a11y` in
+the workshop + `@axe-core/playwright` in the *same* Playwright pass over `storybook-static` (one browser
+layer for pixels + axe; `addon-vitest` deferred as an optional future for play/interaction tests).
+**Mobile-ready:** deterministic fixtures move to
+a shared `packages/fixtures`, data contracts to `packages/core`, so web + future RN stories share args.
+**Built:** Storybook 10 + addon-a11y; the hand-rolled registry replaced by 52 co-located CSF stories across
+15 components (exports-at-end — the maintainer rejected exempting stories from the `no-inline-export` plugin,
+and Storybook 10 indexes `export { … }` + `export default meta` fine); `packages/fixtures` + core contracts;
+the story-coverage test. **The a11y gate immediately caught + fixed three real WCAG bugs** the earlier
+components shipped: informational `text-static-500` (2.94:1, §2.1 says decorative-only) → `static-400`;
+`opacity-70` on a denied approval card compositing all its text below AA → removed; a `<li role="alert">`
+breaking the `<ol>` list structure → moved to a sibling `<p role="alert">`. **Visual determinism (the hard
+part):** `make fe-visual`/`-update` now run Playwright **inside the pinned `mcr.microsoft.com/playwright`
+image** (the reference rasterizer, §5.2) — Chromatic still rejected — reusing the host's JS-only node_modules
++ the image's browsers (no in-container install, host binaries untouched). Getting a stable green took three
+fixes beyond the doc's kit: `animation: none` (reduced-motion only fast-forwards, leaving infinite spinners
+on a random frame), **element-scoped** snapshots (`#storybook-root`, not the centered page whose fractional
+margins shift text AA), and **retries** for residual sub-pixel jitter (a real diff still fails every attempt).
+**104 `*-linux.png` baselines committed** (non-Linux suffixes gitignored). `make fe` + `make check` GREEN;
+the Docker visual suite passes (flaky-on-retry ≤2/104). frontend-design §5.1/§5.2 updated to match.
+
 **Phase 13.2a — design-system foundation: components, conventions, Biome (2026-07-17).** Branch
 `feat/fe-design-system-13.2`. The Layer-2 component vocabulary + the codebase conventions + linting that
 everything downstream (wizard, surfaces) builds on. **Self-hosted Geist** (@fontsource-variable, bundled
