@@ -96,7 +96,7 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 
 **Layer 0 — tokens** (§2).
 **Layer 1 — primitives:** shadcn/ui (new-york style, Tailwind v4), copy-in per its philosophy. Restyled **only** via tokens/CSS variables — never fork primitive logic. Radix underneath gives focus management and a11y for free.
-**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, registered in the gallery (§5) with all states enumerated, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
+**Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: CVA variants, typed props from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
 ### Signature components (the vocabulary of the app)
 
@@ -123,13 +123,15 @@ CI fails if generated artifacts drift from source (`make fe-tokens` regenerates;
 
 ### 4.1 Workspace layout (pnpm, inside `web/`)
 
-```
+```text
 web/
   packages/tokens/      # §2.5 — source of truth + generators
   packages/api/         # orval output: types + TanStack Query hooks (platform-agnostic)
-  packages/core/        # SSE invalidation bus, domain hooks, zod schemas, formatting
+  packages/core/        # SSE bus, zod schemas, formatters, shared data contracts
+  packages/fixtures/    # deterministic "test card" story/test data (web + future mobile)
   apps/web/             # Vite + React 18 + react-router + Tailwind v4 + shadcn
-  apps/mobile/          # FUTURE: Expo + NativeWind + React Native Reusables
+  apps/web/.storybook/  # Storybook 10 (react-vite): main, preview, vitest wiring
+  apps/mobile/          # FUTURE: Expo + NativeWind + RN Reusables + @storybook/react-native
 ```
 
 ### 4.2 The sharing decision (explicit)
@@ -140,11 +142,12 @@ web/
 | --- | --- |
 | Design tokens + Tailwind preset (§2.5) | Component implementations (shadcn web ↔ React Native Reusables native) |
 | `packages/api` (orval types + query hooks — TanStack Query runs on RN) | Navigation (react-router ↔ Expo Router) |
-| `packages/core` (zod validation, SSE handling, domain logic, formatters) | Gesture/touch interactions, portals (`PortalHost` on native) |
+| `packages/core` (zod validation, SSE handling, domain logic, formatters, **shared data contracts**) | Gesture/touch interactions, portals (`PortalHost` on native) |
 | CVA variant definitions & component *contracts* (names, props, states) | Styling details where RN lacks cascade (each `Text` styled directly) |
+| **Storybook story *contracts*** (CSF states) + `packages/fixtures` "test card" args | Story *implementations* (`*.stories.tsx`: web shadcn ↔ RN Reusables) |
 | Icon vocabulary (lucide ↔ lucide-react-native, same names) | Visual-test baselines |
 
-**Rejected alternatives, on the record:** `react-native-web` (would forfeit shadcn/Radix and the decided web stack to render RN primitives on the web); universal kits like Tamagui/gluestack (different styling philosophy, heavier lock-in — our bridge is the token/preset layer, which NativeWind consumes natively). The future mobile app is Expo + NativeWind + React Native Reusables — the shadcn-philosophy port built on rn-primitives — consuming the same preset, tokens, and `packages/{api,core}`.
+**Rejected alternatives, on the record:** `react-native-web` (would forfeit shadcn/Radix and the decided web stack to render RN primitives on the web); universal kits like Tamagui/gluestack (different styling philosophy, heavier lock-in — our bridge is the token/preset layer, which NativeWind consumes natively). The future mobile app is Expo + NativeWind + React Native Reusables — the shadcn-philosophy port built on rn-primitives — consuming the same preset, tokens, and `packages/{api,core,fixtures}`. Its component workshop is **`@storybook/react-native`** (v10, on-device via the `withStorybook` Expo wrapper), authored in the same CSF format and reusing the same `packages/fixtures` args — so a component's *states* are defined once and rendered by each platform's own implementation. Consistent with the `react-native-web` rejection above, the mobile Storybook runs on-device, not by rendering RN primitives in a browser.
 
 ### 4.3 Forms & state
 
@@ -153,27 +156,31 @@ web/
 
 ---
 
-## 5. Pixel-perfect testing (Playwright)
+## 5. Component workshop + pixel-perfect testing (Storybook + Playwright)
 
-The visual suite is the transmitted test card: if the picture drifts, the build fails.
+The component library lives in **Storybook** — the workshop for building and reviewing components in isolation — and the visual suite is the transmitted test card: if the picture drifts, the build fails. **Stories are the contract; Playwright is the camera.**
 
-### 5.1 The gallery is the contract
-- `/__gallery` — a route compiled **only** into dev/test builds (build flag), driven by a **component registry**: every Layer-2 component × every registered state × two viewports (1280×800 desktop, 390×844 mobile-web). Unregistered components are a lint error.
-- `make fe-visual` runs `toHaveScreenshot()` across the registry with `maxDiffPixelRatio: 0.001`. Baselines are committed; **the only sanctioned update path is `make fe-visual-update`**, and baseline diffs are reviewed as images in the PR.
+**Why Storybook over a hand-rolled `/__gallery`:** stories are the industry-standard component contract (CSF), they double as the dev workshop (controls, autodocs, the a11y panel), and they carry to the future mobile app (§4.2) via `@storybook/react-native`. The mechanics below preserve **every guarantee** of the earlier registry plan — offline, deterministic, committed baselines, 100%-coverage-enforced. **Chromatic is rejected on the record:** it is a hosted SaaS visual-diff service that would send our UI off-box and break the offline/self-hosted rule (§2.2, main doc §16); visual regression stays self-hosted Playwright against the offline `storybook-static` build.
+
+### 5.1 Stories are the contract
+- **Co-located CSF stories** — every Layer-2 component has a `*.stories.tsx` beside it (folder-per-component), enumerating **every registered state**. Storybook 10 (`@storybook/react-vite`) indexes them; the built `storybook-static/` is the offline gallery. **A component without a story fails the build** — a coverage test enumerates the component barrel against the story index (the successor to "unregistered components are a lint error").
+- **`make fe-visual`** builds `storybook-static` on the host, then runs Playwright **inside the pinned official Playwright Docker image** (the reference rasterizer, §5.2) over every story at **two viewports** (1280×800 desktop, 390×844 mobile-web) with `maxDiffPixelRatio: 0.001`. The committed baselines are the `*-linux.png` that image produces; **the only sanctioned update path is `make fe-visual-update`** (same image), and baseline diffs are reviewed as images in the PR. The container reuses the host's JS-only `node_modules` and the browsers baked into the image — no in-container install, so a dev's native binaries are untouched.
+- **`make storybook`** runs the dev workshop; **`make storybook-build`** produces the static gallery.
 - Page-level snapshots cover key screens (each wizard step, Channels, Suggest workspace, Settings) with a shared `mask()` helper for dynamic regions.
 
 ### 5.2 Determinism kit (what makes pixel-perfect honest)
-- CI runs in the **official Playwright Docker image** — one rasterizer, one font stack.
-- Self-hosted Geist (§2.2); tests await `document.fonts.ready`.
-- Visual-test mode: emulates `prefers-reduced-motion`, plus a test class that zeroes all transitions/animations and freezes the CRT flourishes.
-- **Injected fixed clock** (all times render from a frozen date) and `make seed` fixture data — the same seed the backend testkit uses.
+- **`make fe-visual` and CI both run in the official Playwright Docker image** — one rasterizer, one font stack — against the static `storybook-static` build (no dev server, no HMR). macOS/GPU rendering is *not* the reference and is expected to drift; the image is. Launch flags pin the rest: `--disable-gpu` (software GL), `--force-color-profile=srgb`, `--disable-lcd-text` (grayscale, non-subpixel text AA).
+- Self-hosted Geist (§2.2), loaded in `.storybook/preview`; each test waits for the story to render, then awaits `document.fonts.ready`.
+- Visual-test mode: Playwright forces `prefers-reduced-motion: reduce`, and each test injects `animation: none` before the shot — reduced-motion only *fast-forwards* (`duration: 0.001ms`), which leaves an **infinite** spinner frozen at a random frame; `animation: none` freezes it at its initial state. Snapshots target the **component element** (`#storybook-root`), not the centered page, whose fractional margins shift text AA run-to-run.
+- A rare residual sub-pixel AA jitter is de-flaked by **test retries** — a real visual diff (or an a11y violation) reproduces and still fails every attempt, so retries never mask a regression.
+- **Injected fixed clock** (all times render from a frozen date) and shared `packages/fixtures` data — the same "test card" fixtures the web and future mobile stories use; no `Date.now`/random.
 
 ### 5.3 Accessibility gate
-- `@axe-core/playwright` sweeps every gallery entry: zero serious/critical violations, WCAG AA contrast — this exact class of failure is what the gate exists to catch.
+- **a11y is enforced from both sides:** `@storybook/addon-a11y` (axe-core) surfaces violations live in the workshop as you author, and the CI gate runs **`@axe-core/playwright`** over every story in `storybook-static` — the *same* Playwright pass as the visual suite, so pixels and axe share one browser layer. Zero serious/critical violations, WCAG AA contrast — this exact class of failure is what the gate exists to catch.
 - **Contrast is enforced twice:** the token generator (§2.5) recomputes every published fg/bg pairing at build time and fails CI on regression; axe verifies the rendered result.
 - **Live regions:** SSE-driven state changes that matter to a person — a channel flipping ON AIR, a checklist item locking, a proposal completing — are announced via a single polite `aria-live` announcer (never one per component; a chorus of live regions is its own accessibility bug).
 - **Badges:** stylized uppercase mono text pairs with a sentence-case `aria-label` ("On air", "Backfilling 4 of 7") so screen readers speak words, not letter-spaced shouting.
-- **Forced colors:** one gallery smoke pass under `forced-colors: active` (Windows High Contrast) — layouts must survive; the CRT flourishes must vanish.
+- **Forced colors:** one story smoke pass under `forced-colors: active` (Windows High Contrast) — layouts must survive; the CRT flourishes must vanish.
 
 These suites join **phase 13's gate** in the main doc's build plan.
 
@@ -206,7 +213,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 ## 7. Deliverables & integration with the build plan
 
 - **Phase 1** (main doc; also add the `web/packages` layout to its repo-layout block): `web/` workspace skeleton + `packages/tokens` with generators + self-hosted fonts + the `fe-tokens` make target.
-- **Phase 13**: everything else here. **Gate additions:** gallery coverage = 100% of the component registry; visual baselines committed for all entries at both viewports; axe clean; `fe-visual` green in the Playwright Docker image.
-- **Makefile additions:** `fe-tokens`, `fe-visual`, `fe-visual-update` (join the CLAUDE.md command contract).
+- **Phase 13**: everything else here. **Gate additions:** story coverage = 100% of Layer-2 components (each has a co-located `*.stories.tsx`); visual baselines committed for all stories at both viewports; axe clean (`addon-a11y` `test: 'error'`); `fe-visual` green in the Playwright Docker image.
+- **Makefile additions:** `fe-tokens`, `storybook`, `storybook-build`, `fe-visual`, `fe-visual-update` (join the CLAUDE.md command contract).
 - This doc is a **seed doc**: incorporate as `docs/frontend-design.md` during phase 14; the palette table also feeds the docs site's own styling.
 - **Visual reference (authoritative for look):** the Claude Design prototypes ship in-repo at `design/loomarr-prototype-desktop.dc.html` and `design/loomarr-prototype-mobile.dc.html` — recreate them pixel-perfectly per the handoff README (match visual output, not internal structure). Two reconciliation deltas apply on top of the prototypes: badge text on tints uses the `-300` stops (the prototypes predate the contrast calibration), and `static-500` text is demoted to disabled/decorative. Gallery baselines (§5) are judged against the prototypes-plus-deltas.

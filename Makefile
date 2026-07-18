@@ -108,9 +108,35 @@ fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
 .PHONY: fe
-fe: ## biome + codegen + typecheck + unit tests + build the embedded SPA (into internal/web/dist)
-	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build
+fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
+	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/web/dist/.gitkeep
+
+.PHONY: storybook
+storybook: ## Storybook dev workshop (the component gallery/contract) on :6006
+	cd $(WEB) && pnpm --filter @loomarr/web storybook
+
+.PHONY: storybook-build
+storybook-build: ## offline storybook-static build (what fe-visual snapshots)
+	cd $(WEB) && pnpm --filter @loomarr/web build-storybook
+
+# Playwright Docker image = the reference rasterizer (§5.2): Linux + software rendering,
+# deterministic and identical to CI. Baselines are the *-linux.png it writes. Keep the
+# tag pinned to the @playwright/test version in web/apps/web/package.json so the image's
+# browsers match exactly. The container reuses the host's (JS-only) node_modules read
+# through the bind mount and the browsers baked into the image — no in-container install,
+# so the host's macOS binaries are never touched.
+PW_IMAGE := mcr.microsoft.com/playwright:v1.61.1-noble
+
+.PHONY: fe-visual
+fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
+	docker run --rm --ipc=host -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test
+
+.PHONY: fe-visual-update
+fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
+	docker run --rm --ipc=host -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test --update-snapshots
 
 .PHONY: e2e
 e2e: ## Playwright smoke vs mocked backend
