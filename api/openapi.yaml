@@ -2151,6 +2151,30 @@ paths:
       summary: Regenerate a generated secret
       tags:
         - settings
+  /v1/settings/{key}:
+    delete:
+      description: Admin only. Drops the stored override so the key reverts to env/default — the explicit clear, and the only way to unset a secret (config-design §8/§9).
+      operationId: settings-clear
+      parameters:
+        - description: Registry key to clear, e.g. seerr.api_key.
+          in: path
+          name: key
+          required: true
+          schema:
+            description: Registry key to clear, e.g. seerr.api_key.
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Clear a setting
+      tags:
+        - settings
   /v1/setup/bootstrap:
     post:
       description: "First-run only: creates the owning local admin. Succeeds exactly once (409 once an admin exists). Unauthenticated by design — it is functional only while no admin exists (§11)."

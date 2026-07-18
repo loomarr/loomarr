@@ -17,6 +17,7 @@ type fakeSettings struct {
 	patched map[string]string
 	patchBy string
 	regen   string // last regenerated secret name
+	cleared string // last key passed to Clear
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
@@ -25,6 +26,19 @@ func (f *fakeSettings) List(context.Context) []api.SettingEntry {
 		{Key: "library.token", Group: "connections.media_server", Kind: "secret", Secret: true, Set: true, Preview: "…a1b2", Provenance: "db", Doc: "x"},
 		{Key: "job.workers", Group: "advanced", Kind: "int", Value: "2", Provenance: "env", Doc: "x"},
 	}
+}
+
+// Clear scripts the three outcomes the route maps to HTTP: unknown → invalid (404),
+// env-pinned → pinned (409), anything else → saved (204).
+func (f *fakeSettings) Clear(_ context.Context, key string) api.SettingResult {
+	f.cleared = key
+	switch key {
+	case "nope.missing":
+		return api.SettingResult{Key: key, Status: "invalid", Problem: "unknown setting"}
+	case "job.workers":
+		return api.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
+	}
+	return api.SettingResult{Key: key, Status: "saved"}
 }
 
 func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by string) []api.SettingResult {
@@ -88,6 +102,7 @@ func TestSettings_RequireAdmin(t *testing.T) {
 		{http.MethodGet, "/v1/settings", ""},
 		{http.MethodPatch, "/v1/settings", `{"edits":{"library.url":"http://x:1"}}`},
 		{http.MethodPost, "/v1/setup/test", `{"check":"media_server"}`},
+		{http.MethodDelete, "/v1/settings/library.token", ""},
 		{http.MethodPost, "/v1/settings/secrets/api_token/regenerate", ""},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // empty token → not admin
@@ -177,5 +192,30 @@ func TestSettings_SecretRegenerationDisplayPolicy(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&a)
 	if !a.Displayable || a.Value == "" {
 		t.Errorf("api_token should return the new value: %+v", a)
+	}
+}
+
+// DELETE /v1/settings/{key} is the explicit clear (config-design §8) — the only way
+// to unset a secret, since an empty-string PATCH on one is rejected (§9). Its three
+// outcomes map to distinct statuses so a client can tell them apart.
+func TestSettings_ClearOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name, key string
+		want      int
+	}{
+		{"clears a stored secret", "library.token", http.StatusNoContent},
+		{"unknown key", "nope.missing", http.StatusNotFound},
+		{"env-pinned key wins", "job.workers", http.StatusConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, fs := newSettingsServer(t)
+			resp := do(t, srv, http.MethodDelete, "/v1/settings/"+tc.key, adminToken, "")
+			if resp.StatusCode != tc.want {
+				t.Errorf("DELETE %s → %d, want %d", tc.key, resp.StatusCode, tc.want)
+			}
+			if fs.cleared != tc.key {
+				t.Errorf("service saw key %q, want %q", fs.cleared, tc.key)
+			}
+		})
 	}
 }

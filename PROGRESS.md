@@ -4,6 +4,31 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Fix: an empty-string PATCH could silently wipe every stored secret (2026-07-18).** Branch
+`fix/settings-secret-clear` (BE-only; independent of the 13.3b/form PRs). Found while hardening the FE settings form:
+the FE guard I'd added only protected *our* client, so the hole was still open in the API itself.
+
+**The hazard.** `GET /v1/settings` deliberately returns **no value** for a secret (`internal/settings/list.go` — only
+`set`/`preview`, per §4 "never echoed"), while `PATCH /v1/settings` treated `""` as **delete** for *any* key
+(`write.go`). So **a GET → PATCH round-trip destroyed every stored secret** — Emby token, Seerr/TMDB/LLM keys. Any
+script, the break-glass `API_TOKEN` path, or a future client (mobile, a second FE) would hit it; nothing in the API
+prevented it. Non-secrets were never at risk (GET returns their real values, so their round-trip is idempotent).
+
+**The fix (doc-first, maintainer-chosen "reject + explicit DELETE").** An empty-string PATCH on a `secret` key is now
+**`invalid`** ("replace-only; send a new value, or DELETE the key to clear it") — making the round-trip *loud and
+harmless* rather than quietly destructive, and matching §4's own replace-only language. Clearing keeps working through
+a new explicit verb: **`DELETE /v1/settings/{key}`** (admin) drops the stored override so the key reverts to
+env/default — `204` cleared · `404` unknown · `409` env-pinned (the environment wins; unset the variable to manage it
+in-app). Hot-applies like any write. Docs first: config-design §9 carve-out + §8 route, design §7 endpoint table.
+Nothing reachable was lost — the FE already couldn't clear a secret (a secret's baseline is `""`, so the changed-only
+PATCH never included it).
+
+**Tests are the point here:** a direct regression test reproduces the naive round-trip (`library.token: ""` alongside a
+real edit) and asserts the stored secret **survives**, plus the rejection carries actionable text; `Clear` is covered
+for success/unknown/env-pinned, and the route test asserts the three HTTP mappings and that DELETE is admin-only (§19).
+`make check` + `make openapi-verify` GREEN; `make fe` GREEN (orval picked up the route — `useSettingsClear` is ready
+for 13.4 Settings' "remove this integration").
+
 **Forms: react-hook-form → TanStack Form (2026-07-18).** Branch `refactor/fe-tanstack-form` (stacked on 13.3b).
 Maintainer call, done doc-first — the third and final leg of the deliberate TanStack consolidation (Query 13.1,
 Router 13.3a, Form now).

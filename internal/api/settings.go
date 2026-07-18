@@ -24,6 +24,12 @@ func (s *Server) registerSettings(api huma.API) {
 	}, s.settingsPatch)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "settings-clear", Method: http.MethodDelete, Path: "/v1/settings/{key}",
+		Summary: "Clear a setting", Description: "Admin only. Drops the stored override so the key reverts to env/default — the explicit clear, and the only way to unset a secret (config-design §8/§9).",
+		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
+	}, s.settingsClear)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "setup-test", Method: http.MethodPost, Path: "/v1/setup/test",
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
 		Tags: []string{"settings"},
@@ -80,6 +86,29 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 	out := &settingsPatchOutput{}
 	out.Body.Results = s.settings.Patch(ctx, in.Body.Edits, auditActor(ctx))
 	return out, nil
+}
+
+type settingsClearInput struct {
+	Key string `path:"key" doc:"Registry key to clear, e.g. seerr.api_key."`
+}
+
+// settingsClear is the explicit clear (config-design §8). It exists because an
+// empty-string PATCH on a secret is rejected (§9, replace-only) — so unsetting one
+// has to be a deliberate act rather than a side effect of writing settings back.
+func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*struct{}, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.settings == nil {
+		return nil, huma.Error501NotImplemented("settings service not configured")
+	}
+	switch res := s.settings.Clear(ctx, in.Key); res.Status {
+	case "invalid":
+		return nil, huma.Error404NotFound("unknown setting")
+	case "pinned":
+		return nil, huma.Error409Conflict("set via environment; unset the variable to manage this key in the app")
+	}
+	return nil, nil
 }
 
 // auditActor is the admin's user id for the §3 audit trail (updated_by). The
