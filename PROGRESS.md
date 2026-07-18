@@ -4,6 +4,37 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Forms: react-hook-form → TanStack Form (2026-07-18).** Branch `refactor/fe-tanstack-form` (stacked on 13.3b).
+Maintainer call, done doc-first — the third and final leg of the deliberate TanStack consolidation (Query 13.1,
+Router 13.3a, Form now).
+
+**Doc-first (§14 Forms row + frontend-design §4.3/§6 + frontend-build-plan):** the old row justified RHF as *"the
+shadcn form convention"* — a justification that was already moot, since Loomarr never adopted shadcn's RHF-bound
+`<Form>` wrapper (every form hand-composes `Label`+`Input`). New rationale: `zod@^3.24` implements **Standard Schema**,
+which TanStack Form consumes natively, so the `packages/core` schemas pass straight in and **`@hookform/resolvers`
+disappears entirely** — two deps collapse to one; field types infer from `defaultValues` (the same end-to-end typing
+as orval DTOs + typed router links); `@tanstack/form-core` is framework-agnostic so mobile shares form *logic*, not
+just the schemas.
+
+**Behavior-neutral by construction:** validators run `onSubmit` (as RHF did), not `onChange` — errors stay out of the
+operator's way while typing. **`LoginForm` and the bootstrap-step tests passed completely unchanged**, which was the
+intended signal that neither DOM nor UX drifted; the Docker visual suite agrees (**143 passing, 0 baseline diffs**).
+The open question from the plan resolved cleanly: `bootstrapSchema`'s cross-field `.refine(…, {path:["confirm"]})`
+does surface on the `confirm` field through Standard Schema.
+
+**`SettingsGroupForm` converted from controlled-props to owning its state** (maintainer chose the wider scope), which
+surfaced **two real findings**. (1) **TanStack Form reads a dot in a field name as a nested path** — and every registry
+key is dotted, so `name="library.url"` wrote `{library:{url}}` instead of the flat key the API expects. Values are now
+carried **positionally** (aligned with `entries`), keeping the form agnostic to key shape; the mapping back to dotted
+keys lives in one tested helper. (2) Because the form now produces the PATCH body, it must submit **only changed**
+fields: a stored secret always reads back as `""` (§4 never echoes it) and an empty-string PATCH **clears** an optional
+key (§9) — so submitting every field would have silently wiped every stored secret on save. `changedEntries` enforces
+that, with a dedicated test asserting an untouched secret is absent from the body. The form deliberately does **not**
+re-seed on `entries` change (a background refetch must never overwrite typing); a caller wanting a fresh baseline
+remounts with a `key`.
+
+Gates: `make fe` GREEN (**134 tests**), Docker visual GREEN (143, **0 diffs**), `make check` GREEN (no Go changes).
+
 **Phase 13.3b — wizard foundation + steps 1–2 (2026-07-18).** Branch `feat/fe-wizard-13.3b`. The settings-driven
 wizard machinery, built on config-design §6's rule that **the wizard IS the settings system** — no parallel form
 system; each step renders a registry group's form through the same `PATCH /v1/settings` path Settings (13.4) will use.
