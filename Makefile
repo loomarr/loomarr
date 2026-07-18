@@ -99,9 +99,17 @@ fe-tokens-verify: fe-tokens ## regenerated token artifacts must match committed
 fe-codegen: ## regenerate tokens + orval api client from api/openapi.yaml
 	cd $(WEB) && pnpm codegen
 
+.PHONY: fe-lint
+fe-lint: ## Biome lint + format check (web/)
+	cd $(WEB) && pnpm biome check
+
+.PHONY: fe-lint-fix
+fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
+	cd $(WEB) && pnpm biome check --write
+
 .PHONY: fe
-fe: ## codegen + typecheck + unit tests + build the embedded SPA (into internal/web/dist)
-	cd $(WEB) && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build
+fe: ## biome + codegen + typecheck + unit tests + build the embedded SPA (into internal/web/dist)
+	cd $(WEB) && pnpm biome check && pnpm codegen && pnpm -r --parallel typecheck && pnpm -r --parallel test && pnpm --filter @loomarr/web build
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: e2e

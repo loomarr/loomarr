@@ -1,0 +1,10 @@
+// Convention (fe-code-conventions): arrow-function expressions only — no
+// `function` declarations. Biome has no built-in func-style rule, so this GritQL
+// plugin enforces it (the maintainer's chosen single-tool path over ESLint).
+`function $name($args) { $body }` where {
+  register_diagnostic(
+    span = $name,
+    message = "Use an arrow-function expression (`const fn = (…) => …`), not a `function` declaration.",
+    severity = "error"
+  )
+}
