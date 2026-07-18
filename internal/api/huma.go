@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -103,6 +104,10 @@ type SettingsService interface {
 	// RegenerateSecret rotates a generated secret and returns the new value if it
 	// is displayable (config-design §4); displayable=false ⇒ value withheld.
 	RegenerateSecret(ctx context.Context, name string) (value string, displayable bool, err error)
+	// RevealSecret returns a generated secret's CURRENT value if it is displayable
+	// (config-design §4's eye-toggle). Reading must never rotate — the §13 webhook
+	// panel shows the URL an operator already pasted into Sonarr/Radarr.
+	RevealSecret(ctx context.Context, name string) (value string, displayable bool, err error)
 	// Test runs one named connection check (config-design §8, powers Test buttons).
 	Test(ctx context.Context, check string) (ok bool, hint string)
 }
@@ -207,6 +212,9 @@ type Provisioner interface {
 	Bootstrap(ctx context.Context, username, password string) (store.User, error)
 	// Import allowlists the named media-server user ids (admin-only).
 	Import(ctx context.Context, ids []string, makeAdmin bool) (int, error)
+	// Candidates lists media-server accounts available to import, each flagged with
+	// whether it is already allowlisted (§11). Read-only — listing never provisions.
+	Candidates(ctx context.Context) ([]auth.Candidate, error)
 }
 
 // LoginService verifies credentials and issues a session (Phase 9, §11).
