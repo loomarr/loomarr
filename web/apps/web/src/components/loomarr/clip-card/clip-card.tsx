@@ -1,14 +1,15 @@
+import type { ClipDTO } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Sparkles, Tag } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
-import type { Clip, ClipCardProps } from "./clip-card.type";
+import type { ClipCardProps } from "./clip-card.type";
 
 // ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category
 // chips + a mono, sub-minute-aware duration. tagged clips are pod-ready; untagged
 // clips flag caution with a "Tag" action; aiTagged clips wear a `suggest` marker
 // (§2.1) and offer a one-click confirm — the human still gates the AI's guess (§8).
-const KIND_LABEL: Record<Clip["kind"], string> = {
+const KIND_LABEL: Record<ClipDTO["kind"], string> = {
   commercial: "Commercial",
   bumper: "Bumper",
   station_id: "Station ID",
@@ -17,7 +18,8 @@ const KIND_LABEL: Record<Clip["kind"], string> = {
   interstitial: "Interstitial",
 };
 
-const AUDIENCE_LABEL: Record<NonNullable<Clip["audience"]>, string> = {
+// Keyed loosely because ClipDTO's audience includes "" (unset); the guard below skips it.
+const AUDIENCE_LABEL: Record<string, string> = {
   kids: "Kids",
   family: "Family",
   general: "General",

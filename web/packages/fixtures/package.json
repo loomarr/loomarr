@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@loomarr/api": "workspace:*",
     "@loomarr/core": "workspace:*"
   },
   "devDependencies": {

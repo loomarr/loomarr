@@ -1,6 +1,9 @@
 import type { NowNext } from "../now-next-strip";
 import type { OnAirState } from "../on-air-indicator";
 
+// ChannelHealth is a FE-derived *rollup*, NOT a mirror of the generated `channelDTOStatus`
+// (building/live/drifted/detached): a page maps the API status + slot-fill + error signals
+// into this presentational health. It has no 1:1 API enum, so it stays hand-written (§4.2).
 type ChannelHealth = "healthy" | "pending-slots" | "drift" | "error" | "creating";
 
 interface ChannelCardProps {

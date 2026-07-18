@@ -1,9 +1,9 @@
+import type { ClipDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ClipCard } from "./clip-card";
-import type { Clip } from "./clip-card.type";
 
-const base: Clip = {
+const base: ClipDTO = {
   name: "Sunny D — Dude!",
   kind: "commercial",
   durationMs: 30000,
@@ -12,6 +12,7 @@ const base: Clip = {
   category: "food",
   tagged: true,
   aiTagged: false,
+  tunarrProgramId: "clip-test",
 };
 
 describe("ClipCard", () => {

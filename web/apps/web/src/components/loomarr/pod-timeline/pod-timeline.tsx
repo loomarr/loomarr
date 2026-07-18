@@ -1,7 +1,7 @@
+import type { ClipDTO } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib";
-import type { Clip } from "../clip-card";
 import type { PodMatch, PodTimelineProps } from "./pod-timeline.type";
 
 // PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper,
@@ -15,7 +15,7 @@ const MATCH: Record<PodMatch, { label: string; variant: "caution" | "neutral" } 
   "bumper-card-only": { label: "Bumper only", variant: "neutral" },
 };
 
-const SEGMENT_FILL: Record<Clip["kind"], string> = {
+const SEGMENT_FILL: Record<ClipDTO["kind"], string> = {
   bumper: "bg-tune-tint-30",
   station_id: "bg-tune-tint-30",
   commercial: "bg-suggest-tint-30",
@@ -24,7 +24,7 @@ const SEGMENT_FILL: Record<Clip["kind"], string> = {
   interstitial: "bg-static-700",
 };
 
-const SEGMENT_ABBR: Record<Clip["kind"], string> = {
+const SEGMENT_ABBR: Record<ClipDTO["kind"], string> = {
   bumper: "BMP",
   station_id: "ID",
   commercial: "AD",

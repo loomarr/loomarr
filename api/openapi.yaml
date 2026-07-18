@@ -511,6 +511,36 @@ components:
       required:
         - imported
       type: object
+    Intent:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        era:
+          type: string
+        maxAcquisitions:
+          format: int64
+          type: integer
+        mustExclude:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        mustInclude:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        runtimeTargetMin:
+          format: int64
+          type: integer
+        tone:
+          type: string
+      required:
+        - description
+      type: object
     LLMModelView:
       additionalProperties: false
       properties:
@@ -763,6 +793,42 @@ components:
             - member
           type: string
       type: object
+    Proposal:
+      additionalProperties: false
+      properties:
+        acquisitions:
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type:
+            - array
+            - "null"
+        alternates:
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type:
+            - array
+            - "null"
+        intent:
+          $ref: "#/components/schemas/Intent"
+        lineup:
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type:
+            - array
+            - "null"
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+        rationale:
+          type: string
+        scores:
+          $ref: "#/components/schemas/Scores"
+      required:
+        - intent
+        - lineup
+        - acquisitions
+        - alternates
+        - scores
+      type: object
     ProposalDTO:
       additionalProperties: false
       properties:
@@ -783,7 +849,8 @@ components:
           type: string
         jobId:
           type: string
-        proposal: {}
+        proposal:
+          $ref: "#/components/schemas/Proposal"
         status:
           enum:
             - submitted
@@ -795,6 +862,53 @@ components:
         - jobId
         - status
         - proposal
+      type: object
+    ProposalItem:
+      additionalProperties: false
+      properties:
+        confidence:
+          format: double
+          type: number
+        genres:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        inLibrary:
+          type: boolean
+        libraryItemId:
+          type: string
+        mediaType:
+          type: string
+        name:
+          type: string
+        officialRating:
+          type: string
+        overview:
+          type: string
+        rationale:
+          type: string
+        seasons:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        tmdbId:
+          format: int64
+          type: integer
+        tvdbId:
+          format: int64
+          type: integer
+        year:
+          format: int64
+          type: integer
+      required:
+        - mediaType
+        - name
+        - inLibrary
       type: object
     Range:
       additionalProperties: false
@@ -830,6 +944,27 @@ components:
           type:
             - array
             - "null"
+      type: object
+    Scores:
+      additionalProperties: false
+      properties:
+        availabilityRatio:
+          format: double
+          type: number
+        eraBalance:
+          format: double
+          type: number
+        overall:
+          format: double
+          type: number
+        themeFit:
+          format: double
+          type: number
+      required:
+        - themeFit
+        - availabilityRatio
+        - eraBalance
+        - overall
       type: object
     SearchCandidate:
       additionalProperties: false

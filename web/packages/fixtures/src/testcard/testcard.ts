@@ -1,12 +1,11 @@
-import type { Clip, ProposalView, SearchResult } from "@loomarr/core";
+import type { ClipDTO, Proposal } from "@loomarr/api";
+import type { SearchResult } from "@loomarr/core";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
-// both web and the future mobile app (§4.2, §5.2). No `Date.now` / random anywhere, so
-// the visual suite's frozen clock stays honest. The data channels the prototypes' 90s
-// action block so baselines read like the real product, not lorem ipsum.
+// both web and the future mobile app (§4.2, §5.2). Typed against the orval-generated
+// DTOs (ClipDTO, Proposal) so the fixtures track the real contract 1:1 (§12). No
+// `Date.now` / random anywhere, so the visual suite's frozen clock stays honest.
 
-// A filled intent (the value behind the first template), named so stories reference it
-// without array-indexing (keeps `noUncheckedIndexedAccess` honest).
 const sampleIntent = "90s action movies, high energy, keep it PG-13";
 
 const intentTemplates = [
@@ -15,7 +14,7 @@ const intentTemplates = [
   { label: "Saturday cartoons", value: "saturday-morning cartoons for the kids" },
 ];
 
-const bumperClip: Clip = {
+const bumperClip: ClipDTO = {
   name: "Channel bumper",
   kind: "bumper",
   durationMs: 5000,
@@ -23,9 +22,10 @@ const bumperClip: Clip = {
   audience: "kids",
   tagged: true,
   aiTagged: false,
+  tunarrProgramId: "clip-bumper-open",
 };
 
-const podClips: Clip[] = [
+const podClips: ClipDTO[] = [
   bumperClip,
   {
     name: "Sunny D — Dude!",
@@ -35,6 +35,7 @@ const podClips: Clip[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    tunarrProgramId: "clip-sunnyd",
   },
   {
     name: "Gushers — Fruit by the Foot",
@@ -44,6 +45,7 @@ const podClips: Clip[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    tunarrProgramId: "clip-gushers",
   },
   {
     name: "Back after these",
@@ -53,10 +55,11 @@ const podClips: Clip[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    tunarrProgramId: "clip-bumper-close",
   },
 ];
 
-const taggedClip: Clip = {
+const taggedClip: ClipDTO = {
   name: "Sunny D — Dude!",
   kind: "commercial",
   durationMs: 30000,
@@ -65,19 +68,22 @@ const taggedClip: Clip = {
   category: "food & drink",
   tagged: true,
   aiTagged: false,
+  tunarrProgramId: "clip-sunnyd-tagged",
 };
 
-const untaggedClip: Clip = {
+const untaggedClip: ClipDTO = {
   name: "Unlabeled 30s spot",
   kind: "commercial",
   durationMs: 30000,
   tagged: false,
   aiTagged: false,
+  tunarrProgramId: "clip-unlabeled",
 };
 
-const aiTaggedClip: Clip = { ...taggedClip, tagged: false, aiTagged: true };
+const aiTaggedClip: ClipDTO = { ...taggedClip, tagged: false, aiTagged: true, tunarrProgramId: "clip-ai" };
 
-const proposal: ProposalView = {
+const proposal: Proposal = {
+  intent: { description: sampleIntent },
   rationale: "A high-energy 90s action block, front-loaded with the crowd-pleasers you already own.",
   lineup: [
     {
@@ -111,7 +117,7 @@ const proposal: ProposalView = {
     { name: "Face/Off", year: 1997, mediaType: "movie", inLibrary: false },
     { name: "The Rock", year: 1996, mediaType: "movie", inLibrary: false },
   ],
-  scores: { themeFit: 0.88, availabilityRatio: 0.67 },
+  scores: { themeFit: 0.88, availabilityRatio: 0.67, eraBalance: 0.71, overall: 0.82 },
 };
 
 const searchResults: SearchResult[] = [

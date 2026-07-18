@@ -1,25 +1,18 @@
-import type { ProposalItemView, ProposalMediaType, ProposalScores, ProposalView } from "@loomarr/core";
+import type { Proposal, ProposalItem } from "@loomarr/api";
 
-// The proposal data contracts (ProposalView/ProposalItemView/…) live in @loomarr/core —
-// shared with packages/fixtures and the future mobile app (§4.2). The UI status and the
-// web prop interface stay here; the data types are re-exported for barrel consumers.
+// The proposal shape is the orval-generated `Proposal` (from the BE's typed
+// suggest.Proposal — 1:1, §12). Only the review UI's own status and prop interface
+// live here.
 type ProposalStatus = "draft" | "submitted" | "approved" | "denied" | "partially-edited";
 
 interface ProposalReviewProps {
-  proposal: ProposalView;
+  proposal: Proposal;
   status?: ProposalStatus;
   busy?: boolean;
   onApprove?: () => void;
   onDeny?: () => void;
-  onEditItem?: (item: ProposalItemView) => void;
+  onEditItem?: (item: ProposalItem) => void;
   className?: string;
 }
 
-export type {
-  ProposalItemView,
-  ProposalMediaType,
-  ProposalReviewProps,
-  ProposalScores,
-  ProposalStatus,
-  ProposalView,
-};
+export type { ProposalReviewProps, ProposalStatus };

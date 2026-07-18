@@ -1,9 +1,10 @@
+import type { Proposal } from "@loomarr/api";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProposalReview } from "./proposal-review";
-import type { ProposalView } from "./proposal-review.type";
 
-const proposal: ProposalView = {
+const proposal: Proposal = {
+  intent: { description: "90s action movies" },
   rationale: "A high-energy 90s action block, front-loaded with the crowd-pleasers.",
   lineup: [
     {
@@ -17,7 +18,7 @@ const proposal: ProposalView = {
   ],
   acquisitions: [{ name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false, confidence: 0.81 }],
   alternates: [{ name: "Face/Off", mediaType: "movie", inLibrary: false }],
-  scores: { themeFit: 0.88, availabilityRatio: 0.5 },
+  scores: { themeFit: 0.88, availabilityRatio: 0.5, eraBalance: 0.6, overall: 0.75 },
 };
 
 describe("ProposalReview", () => {
@@ -40,7 +41,7 @@ describe("ProposalReview", () => {
     const onEditItem = vi.fn();
     render(<ProposalReview proposal={proposal} onEditItem={onEditItem} />);
     fireEvent.click(screen.getByRole("button", { name: /swap heat/i }));
-    expect(onEditItem).toHaveBeenCalledWith(proposal.lineup[0]);
+    expect(onEditItem).toHaveBeenCalledWith(proposal.lineup?.[0]);
   });
 
   it("retires the actions once approved", () => {

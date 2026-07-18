@@ -4,6 +4,21 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Contract 1:1 hardening — BE proposal typing + FE de-duplication (2026-07-18).** Branch
+`feat/fe-contract-1to1`. A maintainer catch ("is anything hand-written that shouldn't be?") — audited the
+FE against the generated client and found several hand-mirrored types (design §12 = no hand-written glue).
+**BE:** `ProposalDTO.proposal` was `json.RawMessage` (→ OpenAPI `unknown`); now typed as `suggest.Proposal`
+directly (imported the domain struct, dropping the old local `proposalBody`/`lineupItem`/`acqItem` mirrors),
+so orval generates the full `Proposal`/`ProposalItem`/`Scores`/`ChannelPolicy` schema — true 1:1. **FE:**
+deleted the mirrors — `Clip`/`ClipKind`/`ClipAudience` → `ClipDTO*`, `ProposalView`/`ProposalItemView` →
+generated `Proposal`/`ProposalItem`, `ProblemDetail` → `ErrorModel` (deleted `mutator.type.ts`),
+`ProvisioningState` → `TitleDTOState | "drift"` (5 states from the generated union + the one FE-only state).
+Kept the genuine FE view models — the ⌘K `PaletteScope` (renamed from the colliding `SearchScope`) and the
+derived `ChannelHealth` rollup — now documented as such. Forced a real honesty fix: generated
+`ProposalItem[]` is `| null` (nil Go slice), so ProposalReview now null-guards. `make check` (BE incl. the
+policy round-trip integration test) + `make fe` + the Docker visual suite (104/104, renders unchanged) all
+GREEN; `api/openapi.yaml` regenerated + committed. Docs: frontend-build-plan §3 corrected.
+
 **Phase 13.2b/c/d — remaining components + Storybook adoption (2026-07-17).** Branch
 `feat/fe-gallery-visual-13.2`. **13.2b DONE:** the remaining Layer-2 components (IntentInput,
 GenerationProgress, ProposalReview, PodTimeline, ClipCard, ApprovalQueueItem, SearchCommand) + a shared

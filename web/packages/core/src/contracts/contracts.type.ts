@@ -1,71 +1,19 @@
-// Shared component *data contracts* (frontend-design §4.2). These are the platform-
-// agnostic shapes the UI renders — mirrors of the API DTOs (internal/*), kept here so
-// the web components, the `packages/fixtures` "test card" data, and the future Expo/RN
-// components all type against ONE definition. Component *prop* interfaces (with
-// handlers/className) stay per-platform; only the data shapes are shared.
-
-// Filler clip — mirrors @loomarr/api ClipDTO (internal/provision, §10).
-type ClipKind = "commercial" | "bumper" | "station_id" | "psa" | "trailer" | "interstitial";
-type ClipAudience = "kids" | "family" | "general" | "late_night";
-
-interface Clip {
-  name: string;
-  kind: ClipKind;
-  durationMs: number;
-  era?: number;
-  audience?: ClipAudience;
-  category?: string;
-  tagged: boolean;
-  aiTagged: boolean;
-  source?: string;
-}
-
-// Suggester proposal — mirrors suggest.Proposal (internal/suggest/proposal.go); the API
-// ships it as opaque JSON, so this is the view shape the UI reasons about (§8).
-type ProposalMediaType = "movie" | "series";
-
-interface ProposalItemView {
-  name: string;
-  year?: number;
-  mediaType: ProposalMediaType;
-  inLibrary: boolean;
-  rationale?: string;
-  confidence?: number;
-  seasons?: number[];
-}
-
-interface ProposalScores {
-  themeFit: number;
-  availabilityRatio: number;
-}
-
-interface ProposalView {
-  rationale?: string;
-  lineup: ProposalItemView[];
-  acquisitions: ProposalItemView[];
-  alternates: ProposalItemView[];
-  scores?: ProposalScores;
-}
-
-// ⌘K search — mirrors @loomarr/api SearchCandidate + the palette scopes (§7.2).
-type SearchScope = "library" | "tmdb" | "clips" | "channels" | "help";
+// FE-only view models with NO 1:1 API equivalent. Everything that used to mirror a DTO
+// here (Clip, the proposal shapes, media/state enums) now uses the orval-generated type
+// from @loomarr/api directly (§12) — mirroring a generated type is drift-risk for no gain
+// (packages/api runs on RN too, §4.2).
+//
+// The ⌘K palette merges API search candidates + local channels + help links into one
+// list, so its scope is a *superset* of the API's SearchScope — named PaletteScope to
+// avoid colliding with the generated one.
+type PaletteScope = "library" | "tmdb" | "clips" | "channels" | "help";
 
 interface SearchResult {
   id: string;
-  scope: SearchScope;
+  scope: PaletteScope;
   name: string;
   meta?: string;
   inLibrary?: boolean;
 }
 
-export type {
-  Clip,
-  ClipAudience,
-  ClipKind,
-  ProposalItemView,
-  ProposalMediaType,
-  ProposalScores,
-  ProposalView,
-  SearchResult,
-  SearchScope,
-};
+export type { PaletteScope, SearchResult };

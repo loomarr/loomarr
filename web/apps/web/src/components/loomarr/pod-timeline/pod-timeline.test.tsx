@@ -1,14 +1,15 @@
+import type { ClipDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Clip } from "../clip-card";
 import { PodTimeline } from "./pod-timeline";
 
-const clip = (name: string, kind: Clip["kind"], durationMs: number): Clip => ({
+const clip = (name: string, kind: ClipDTO["kind"], durationMs: number): ClipDTO => ({
   name,
   kind,
   durationMs,
   tagged: true,
   aiTagged: false,
+  tunarrProgramId: name,
 });
 
 describe("PodTimeline", () => {
