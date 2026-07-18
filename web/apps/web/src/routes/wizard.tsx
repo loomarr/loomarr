@@ -123,7 +123,13 @@ const WizardScreen = () => {
       onBack={index > 0 ? () => goTo(WIZARD_STEPS[index - 1]?.id) : undefined}
       onNext={advances ? () => goTo(WIZARD_STEPS[index + 1]?.id) : undefined}
       onSkip={advances && SKIPPABLE.has(currentId) ? skip : undefined}
-      nextDisabled={advances && !isStepDone(currentId, { checks, isAuthenticated })}
+      // A skippable step has no server check to satisfy, so it must never BLOCK: gating
+      // Continue on `isStepDone` there would strand an operator who did the optional work
+      // (imported users) behind a button that can never enable. Skip stays, to record the
+      // deliberate pass as `skipped` rather than merely unfinished.
+      nextDisabled={
+        advances && !SKIPPABLE.has(currentId) && !isStepDone(currentId, { checks, isAuthenticated })
+      }
       busy={status.isFetching}
     >
       {body()}

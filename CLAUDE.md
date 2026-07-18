@@ -58,7 +58,8 @@ make storybook      # Storybook dev workshop (the component gallery/contract)
 make storybook-build # offline storybook-static build (what fe-visual snapshots)
 make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
 make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
-make e2e            # Playwright smoke vs mocked backend
+make e2e            # wizard flow smoke + page snapshots vs a mocked backend (Docker)
+make e2e-update     # sanctioned e2e page-snapshot baseline update (reviewed in PR)
 make dev            # dev compose stack
 make seed           # populate a dev store (fake users/titles/channels/clips via testkit)
 ```

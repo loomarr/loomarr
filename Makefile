@@ -138,9 +138,24 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 	docker run --rm --ipc=host -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --update-snapshots
 
+# The e2e suite drives the REAL embedded SPA build, which Vite writes to
+# internal/web/dist — OUTSIDE web/. So unlike fe-visual it mounts the repo ROOT, and
+# runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
-e2e: ## Playwright smoke vs mocked backend
-	@echo "e2e: implemented in Phase 13.4"; exit 1
+e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
+	docker run --rm --ipc=host -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
+
+.PHONY: e2e-update
+e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
+	docker run --rm --ipc=host -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
+
+# Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't
+# rebuild Storybook or re-run the unit suite to check a flow).
+.PHONY: fe-build
+fe-build:
+	cd $(WEB) && pnpm codegen && pnpm --filter @loomarr/web build
 
 .PHONY: seed
 seed: ## populate a dev store via the testkit (admin path only — CLAUDE.md)
