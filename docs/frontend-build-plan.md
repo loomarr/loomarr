@@ -61,14 +61,14 @@ Corresponds to the `frontend-design.md` §7 "Phase 1" deliverables, done now at 
 
 ## 4. Phase 13.2 — Design system + gallery + visual harness
 
-- **Layer-2 components** (`frontend-design.md` §3 table) in `apps/web/src/components/loomarr/`: `AppShell`, `StateBadge`, `OnAirIndicator`, `ChannelCard`, `NowNextStrip`, `IntentInput`, `GenerationProgress`, `ProposalReview`, `PodTimeline`, `ClipCard`, `ChecklistItem`, `ApprovalQueueItem`, `SearchCommand`, `EmptyState`/`ErrorState`. Each: CVA variants, typed props from the orval client where applicable, all states enumerated, RFC 7807 rendered via the shared error patterns (never raw JSON).
-- **`/__gallery`** — dev/test-only route (build flag), driven by a component registry: every Layer-2 component × every registered state × two viewports (1280×800, 390×844). Unregistered component = lint error.
-- **Playwright visual suite** — `make fe-visual` / `make fe-visual-update`, `toHaveScreenshot()` `maxDiffPixelRatio: 0.001`, in the **official Playwright Docker image**. Determinism kit: injected fixed clock, `document.fonts.ready`, forced `prefers-reduced-motion` + frozen CRT flourishes, `make seed` fixture data (same seed as the backend testkit).
-- **a11y gate** — `@axe-core/playwright` over every gallery entry (zero serious/critical, WCAG AA). The token generator recomputes every fg/bg pairing at build time (contrast enforced twice).
+- **Layer-2 components** (`frontend-design.md` §3 table) in `apps/web/src/components/loomarr/`: `AppShell`, `StateBadge`, `OnAirIndicator`, `ChannelCard`, `NowNextStrip`, `IntentInput`, `GenerationProgress`, `ProposalReview`, `PodTimeline`, `ClipCard`, `ChecklistItem`, `ApprovalQueueItem`, `SearchCommand`, `EmptyState`/`ErrorState`. Each: CVA variants, typed props from the orval client where applicable, a co-located `*.stories.tsx` enumerating all states, RFC 7807 rendered via the shared error patterns (never raw JSON).
+- **Storybook 10** (`@storybook/react-vite`) — the component workshop *and* the gallery/contract. Co-located `*.stories.tsx` per component (CSF), every registered state. `make storybook` (dev workshop), `make storybook-build` (offline `storybook-static`). A story-coverage test enumerates the component barrel → **a component without a story = red build** (successor to "unregistered component = lint error"). Carries to the future mobile app via `@storybook/react-native` (§8).
+- **Playwright visual suite** — `make fe-visual` / `make fe-visual-update` over `storybook-static`, `toHaveScreenshot()` `maxDiffPixelRatio: 0.001`, two viewports (1280×800, 390×844), in the **official Playwright Docker image**. Determinism kit: injected fixed clock, `document.fonts.ready`, forced `prefers-reduced-motion` + `animations:'disabled'`, shared `packages/fixtures` data (the same "test card" data the stories use). **Chromatic rejected** (hosted SaaS — offline/self-hosted rule).
+- **a11y gate** — `@storybook/addon-a11y` (axe) in the workshop for authoring feedback; the CI gate runs `@axe-core/playwright` over every story in `storybook-static` (the same Playwright pass as visual — one browser layer). Zero serious/critical, WCAG AA. The token generator recomputes every fg/bg pairing at build time (contrast enforced twice).
 
 **Baselines** are judged against **prototypes + the two reconciliation deltas** (`design/README.md`): badge text on tints uses the `-300` stops; `static-500` is disabled/decorative only.
 
-**Gate (13.2):** gallery = 100% of the registry; visual baselines committed at both viewports; axe clean; `fe-visual` green in the Docker image.
+**Gate (13.2):** story coverage = 100% of Layer-2 components; visual baselines committed at both viewports; axe clean (`addon-a11y` `test:'error'`); `fe-visual` green in the Docker image.
 
 ---
 
@@ -143,12 +143,12 @@ All present after 13.0. `events` + `backup` are hand-written FE clients by desig
 ## 9. Mobile-readiness (now) and the future Expo app (later)
 
 **Now — the discipline that makes mobile a bolt-on (`frontend-design.md` §4.2):**
-- Shared across platforms: `packages/tokens` (+ preset NativeWind consumes), `packages/api` (orval types + TanStack Query hooks — runs on RN), `packages/core` (zod, SSE handling, domain logic, formatters, the hand-written auth/bootstrap client), CVA variant *contracts*, the lucide icon vocabulary.
-- Per-platform (never shared): component implementations (shadcn/Radix web ↔ React Native Reusables native), navigation (react-router ↔ Expo Router), gestures/portals, styling where RN lacks the cascade, visual baselines.
-- **Enforcement:** no DOM/web-only import may appear in `packages/{tokens,api,core}`. A lint boundary (e.g. an import-restriction rule) fails CI if it does — this is the single rule that keeps "ready" honest.
+- Shared across platforms: `packages/tokens` (+ preset NativeWind consumes), `packages/api` (orval types + TanStack Query hooks — runs on RN), `packages/core` (zod, SSE handling, domain logic, formatters, shared data contracts, the hand-written auth/bootstrap client), `packages/fixtures` (deterministic "test card" story/test data), CVA variant *contracts*, Storybook story *contracts* (CSF states), the lucide icon vocabulary.
+- Per-platform (never shared): component implementations (shadcn/Radix web ↔ React Native Reusables native), navigation (react-router ↔ Expo Router), gestures/portals, styling where RN lacks the cascade, story *implementations* (`*.stories.tsx`), visual baselines.
+- **Enforcement:** no DOM/web-only import may appear in `packages/{tokens,api,core,fixtures}`. A lint boundary (e.g. an import-restriction rule) fails CI if it does — this is the single rule that keeps "ready" honest.
 
 **Later — the future Expo phase (own PR, needs a §14 update):**
-- `apps/mobile`: Expo + NativeWind (shared preset) + React Native Reusables (rn-primitives), Expo Router, `PortalHost`, reusing `packages/{api,core}`.
+- `apps/mobile`: Expo + NativeWind (shared preset) + React Native Reusables (rn-primitives), Expo Router, `PortalHost`, reusing `packages/{api,core,fixtures}`, with `@storybook/react-native` (on-device, via the `withStorybook` Expo wrapper) as its component workshop — same CSF, same fixtures.
 - Scope: **read-and-approve** — Channels, Board, Approvals (matches `design/loomarr-prototype-mobile.dc.html`). Creation flows stay desktop-web.
 
 **⚠ The one lurking surprise — mobile auth is a §11 + §14 conversation, not a UI task.** The web SPA is **same-origin, embedded, cookie-session, no CORS** (design §14). A native Expo app is a **different origin over the network** → it needs:
@@ -162,10 +162,11 @@ This is the biggest gap between "mobile-ready" and "mobile-shipped," and it is i
 ## 10. Makefile / CI additions (join the CLAUDE.md command contract)
 
 - `make fe-tokens` — regenerate token artifacts from `packages/tokens`; CI diff must be empty.
-- `make fe-visual` / `make fe-visual-update` — Playwright visual suite over `/__gallery`; sanctioned baseline-update path.
-- `make fe` — orval typegen + tsc + vitest (already in the contract; wire it to the monorepo).
+- `make storybook` / `make storybook-build` — Storybook dev workshop / offline `storybook-static` build.
+- `make fe-visual` / `make fe-visual-update` — Playwright visual suite over `storybook-static`; sanctioned baseline-update path.
+- `make fe` — orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests) (already in the contract; wire it to the monorepo).
 - `make e2e` — Playwright smoke vs mocked backend (approve-flow).
-- CI mirrors: `make check` + `openapi-verify` + `test-pg` + `fe` + `fe-tokens` diff + `fe-visual` (Docker) + `e2e`.
+- CI mirrors: `make check` + `openapi-verify` + `test-pg` + `fe` + `fe-tokens` diff + `storybook-build` + `fe-visual` (Docker) + `e2e`.
 
 ---
 

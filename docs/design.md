@@ -614,11 +614,12 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Styling / components | **Tailwind CSS + shadcn/ui** | Fast, decent defaults, copy-in components (no runtime component dep) |
 | Live updates | native `EventSource` wrapped in a small hook | SSE, cookie-authed same-origin |
 | Help rendering | `react-markdown` + `remark-gfm` over the embedded `docs/` markdown | Offline, consistent with §7.1 |
-| FE tests | Vitest + Testing Library; **Playwright** for the e2e approve-flow smoke | Matches §19 |
+| Component workshop + gallery | **Storybook 10** (`@storybook/react-vite`) + `@storybook/addon-a11y` (axe, in the workshop) | The component gallery/contract *and* dev workshop (frontend-design §5); carries to the future mobile app via `@storybook/react-native` (Expo, on-device). Replaces the hand-rolled `/__gallery` registry. The CI gate (visual + a11y) is **one Playwright pass** over the offline `storybook-static` build. **Chromatic rejected** — hosted SaaS visual-diff, breaks the offline/self-hosted rule (§16) |
+| FE tests | Vitest + Testing Library (jsdom units) + a story-coverage test; **Playwright** over `storybook-static` for the visual suite (`toHaveScreenshot`) **and** a11y (`@axe-core/playwright`), plus the e2e approve-flow smoke | Matches §19 |
 
 ### Sidecar & CI
 - `loomarr-ingest`: **Go**, shelling out to the bundled **`yt-dlp`** + **`ffmpeg`** binaries (CLI) for YouTube, plain `net/http` for Archive.org; writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Written in Go for repo consistency (shares the module/types/testkit with the core); shipped as a **separate** image so the ~170MB of yt-dlp+ffmpeg tooling never touches the core (§16). Only the `filler` compose profile pulls it.
-- CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE typegen + `tsc` + Vitest; Playwright smoke.
+- CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 
 ---
 

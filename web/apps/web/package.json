@@ -9,11 +9,16 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@loomarr/api": "workspace:*",
     "@loomarr/core": "workspace:*",
+    "@loomarr/fixtures": "workspace:*",
     "@loomarr/tokens": "workspace:*",
     "@radix-ui/react-slot": "^1.1.1",
     "@tanstack/react-query": "^5.62.7",
@@ -27,8 +32,12 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/geist-mono": "^5.2.8",
+    "@playwright/test": "1.61.1",
+    "@storybook/addon-a11y": "^10.5.2",
+    "@storybook/react-vite": "^10.5.2",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -37,7 +46,9 @@
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "http-server": "^14.1.1",
     "jsdom": "^29.1.1",
+    "storybook": "^10.5.2",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",

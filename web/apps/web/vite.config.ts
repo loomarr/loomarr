@@ -42,6 +42,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // jsdom units only — Playwright visual specs (tests/visual/*.spec.ts) run under
+    // Playwright, not vitest, and Storybook stories are exercised by the visual suite.
+    include: ["src/**/*.test.{ts,tsx}"],
+    exclude: ["node_modules", "dist", "storybook-static", "tests/visual/**"],
     passWithNoTests: true,
   },
 });
