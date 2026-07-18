@@ -4,6 +4,46 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.3c — wizard steps 3–7 + the conventions guard (2026-07-18).** Branch `feat/fe-wizard-13.3c`.
+Completes the operator first-run flow, and makes the FE conventions self-enforcing after they were broken twice.
+
+**Two more doc↔code gaps closed (BE prerequisite, doc-first).** Scoping the steps surfaced two read surfaces the
+docs promise but nothing implemented — the same class as `setup.completed` in 13.3b. (1) §4 says `API_TOKEN` and
+`WEBHOOK_SECRET` are "viewable on demand by admins (eye toggle + copy button)", and `secrets.go` even comments that
+webhook_secret is "viewable (as URL)" — but the only route returning a generated secret's value was
+`POST …/regenerate`, so an operator could see the webhook secret **only by rotating it**, breaking every webhook
+already configured. Added **`GET /v1/settings/secrets/{name}`** (`{value, displayable}`; SESSION_SECRET withheld),
+with a test asserting **reading never rotates**. (2) §11/§13 say the admin "picks which Emby/Jellyfin accounts get
+in", but `POST /v1/users/import` takes raw media-server ids and nothing listed candidates — an admin would have
+needed GUIDs. Added **`GET /v1/users/candidates`** (accounts + `imported` flag), tested through the REAL provisioner
+against the testkit media server, asserting the flag flips after an import.
+
+**Steps built.** 3 **Live TV** + 5 **Tunarr library** share a `ConnectStep`: both are idempotent one-click wirings
+where **the BE check, not the click, reports success** (§6 "never silent"), so the button stays available once green.
+4 **Webhook handshake** shows the paste-able `/hooks/arr?token=…` URL built from the revealed secret and **polls
+`setup/status` per app**, so Sonarr and Radarr flip independently while the operator is in the other tab. 6 **Import
+users** renders the candidates picker — already-imported accounts stay **visible but locked** ("where did they go?"
+is worse than a disabled row), and a missing media server reads as a reason to skip, not a wall. 7 **First channel**
+**hands off** rather than duplicating 13.4: it flips `setup.completed` through the ordinary PATCH and drops the
+operator into Suggest with the intent prefilled. Channel templates moved from `packages/fixtures` (story data) to
+**`packages/core` as product data** — §13 says they ship in the bundle — with a test asserting every template is a
+valid `intentSchema` intent.
+
+**A maintainer catch worth more than the feature work.** `src/wizard/` (15 loose files) and `src/auth/` (4) both
+violated the standing folder-per-module rule — which was *already written down in memory* and broken anyway, twice.
+Both are now folder-per-module with co-located `.type.ts` + `index.ts`, and the shared `wiring-step.type.ts` was
+dissolved so each step owns its props. The durable fix isn't better recall, it's **`src/test/structure.test.ts`**:
+a conformance test that fails on a loose file, a missing barrel, or a misnamed implementation file — the same move
+`story-coverage.test.ts` makes for stories and the GritQL plugins make for arrow-functions/exports. **Proven to
+fail** (drop a stray `.ts` in `src/wizard/` → red). The conventions memory now records which check enforces which
+rule, so a future rule change ships with its check.
+
+Also fixed en route: `ChecklistItem` renders `hint` only on `fail`, so the webhook step's "Listening — press Test"
+silently vanished; the per-app status line now lives in the step rather than bending a shared component (and its
+baselines) for one caller. Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN (**165
+tests**, +31); Docker visual GREEN (144 passing, **0 baseline diffs**). **Next: 13.3d** — the phase gate (wizard e2e
+smoke vs a mocked BE + a page-level snapshot per step).
+
 **Fix: an empty-string PATCH could silently wipe every stored secret (2026-07-18).** Branch
 `fix/settings-secret-clear` (BE-only; independent of the 13.3b/form PRs). Found while hardening the FE settings form:
 the FE guard I'd added only protected *our* client, so the hole was still open in the API itself.

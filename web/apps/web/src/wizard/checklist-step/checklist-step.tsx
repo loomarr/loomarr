@@ -3,7 +3,7 @@ import { humanizeSettingKey } from "@loomarr/core";
 import { RefreshCw } from "lucide-react";
 import { ChecklistItem, ErrorState } from "@/components/loomarr";
 import { Button } from "@/components/ui";
-import { REQUIRED_CHECKS } from "./steps";
+import { REQUIRED_CHECKS } from "../steps";
 
 // Wizard step 2 — the live connection checklist (§13). Backed by GET /v1/setup/status,
 // which runs every probe server-side and returns {name, ok, hint, docHref} per check.

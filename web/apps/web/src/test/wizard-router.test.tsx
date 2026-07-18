@@ -154,6 +154,8 @@ describe("wizard", () => {
     stubFetch({ authed: true, setupCompleted: false });
     renderAt("/wizard");
 
-    expect(await screen.findByRole("heading", { name: "TV guide" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /put your channels in the tv guide/i }),
+    ).toBeInTheDocument();
   });
 });

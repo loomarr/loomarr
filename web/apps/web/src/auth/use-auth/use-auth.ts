@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { meQueryOptions } from "./me-query";
+import { meQueryOptions } from "../me-query";
 import type { AuthState } from "./use-auth.type";
 
 // useAuth — the one interpreter of GET /v1/auth/me (§11). AppShell, the Layout, and
