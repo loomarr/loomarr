@@ -34,7 +34,11 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   if (!res.ok) {
     throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status });
   }
-  return body as T;
+  // orval's fetch client expects the response ENVELOPE (like axios's response), not the
+  // bare body — the generated hooks type `data` as `{ status, data }`, so a caller reads
+  // `useX().data?.data`. Returning the raw body here typechecks (via the cast) but is
+  // undefined at runtime; return the envelope.
+  return { status: res.status, data: body, headers: res.headers } as T;
 };
 
 export { ApiError, customFetch };

@@ -37,9 +37,20 @@ describe("customFetch", () => {
     });
   });
 
-  it("returns undefined for an empty (204) body", async () => {
+  it("returns the { status, data } envelope orval's fetch client expects", async () => {
+    vi.stubGlobal("fetch", mockFetch(200, { id: "u1", name: "Ada" }));
+    await expect(customFetch("/v1/auth/me")).resolves.toMatchObject({
+      status: 200,
+      data: { id: "u1", name: "Ada" },
+    });
+  });
+
+  it("carries an undefined data for an empty (204) body", async () => {
     vi.stubGlobal("fetch", mockFetch(204, undefined));
-    await expect(customFetch("/v1/auth/logout", { method: "POST" })).resolves.toBeUndefined();
+    await expect(customFetch("/v1/auth/logout", { method: "POST" })).resolves.toMatchObject({
+      status: 204,
+      data: undefined,
+    });
   });
 
   it("ApiError is an Error subclass with the problem attached", () => {
