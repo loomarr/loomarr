@@ -1,8 +1,9 @@
+import type { ProposalItem } from "@loomarr/api";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
-import type { ProposalItemView, ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
+import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
 // ProposalReview — the human-in-the-loop review that fronts the approval gate (§3,
 // §8). It shows the grounded lineup (in-library, ready now), the acquisitions it
@@ -28,9 +29,9 @@ const ItemRow = ({
   kind,
   onEdit,
 }: {
-  item: ProposalItemView;
+  item: ProposalItem;
   kind: "lineup" | "acquire";
-  onEdit?: (item: ProposalItemView) => void;
+  onEdit?: (item: ProposalItem) => void;
 }) => (
   <li className="flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5">
     <div className="min-w-0 flex-1">
@@ -79,6 +80,10 @@ const ProposalReview = ({
 }: ProposalReviewProps) => {
   const s = STATUS[status];
   const actionable = status === "draft" || status === "submitted" || status === "partially-edited";
+  // The generated arrays are `ProposalItem[] | null` (a nil Go slice marshals as null).
+  const lineup = proposal.lineup ?? [];
+  const acquisitions = proposal.acquisitions ?? [];
+  const alternates = proposal.alternates ?? [];
   return (
     <Card className={cn("flex flex-col gap-5 p-5", className)}>
       <header className="flex items-start justify-between gap-4">
@@ -105,26 +110,24 @@ const ProposalReview = ({
         )}
       </header>
 
-      <Section title="Lineup" count={proposal.lineup.length}>
-        {proposal.lineup.map((item) => (
+      <Section title="Lineup" count={lineup.length}>
+        {lineup.map((item) => (
           <ItemRow key={item.name} item={item} kind="lineup" onEdit={onEditItem} />
         ))}
       </Section>
 
-      <Section title="Acquisitions" count={proposal.acquisitions.length}>
-        {proposal.acquisitions.map((item) => (
+      <Section title="Acquisitions" count={acquisitions.length}>
+        {acquisitions.map((item) => (
           <ItemRow key={item.name} item={item} kind="acquire" onEdit={onEditItem} />
         ))}
       </Section>
 
-      {proposal.alternates.length > 0 && (
+      {alternates.length > 0 && (
         <section className="flex flex-col gap-1.5">
           <h3 className="font-mono text-static-400 text-xs uppercase tracking-wide">
-            {`Alternates · ${proposal.alternates.length}`}
+            {`Alternates · ${alternates.length}`}
           </h3>
-          <p className="text-muted-foreground text-sm">
-            {proposal.alternates.map((a) => a.name).join(" · ")}
-          </p>
+          <p className="text-muted-foreground text-sm">{alternates.map((a) => a.name).join(" · ")}</p>
         </section>
       )}
 

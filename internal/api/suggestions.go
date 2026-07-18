@@ -11,6 +11,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // userIDFromHuma returns the authenticated user's id, or "" for a token
@@ -95,25 +96,29 @@ func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submit
 
 // --- list / get ---
 
-// ProposalDTO is the API view of a persisted proposal (§8).
+// ProposalDTO is the API view of a persisted proposal (§8). Proposal is the FULL typed
+// suggest.Proposal (lineup, acquisitions, alternates, scores, rationale, policy) — typed
+// straight from the domain struct so orval generates the FE's proposal types 1:1 (§12),
+// with zero hand-written mirror on either side and no fidelity lost through the wire.
 type ProposalDTO struct {
-	ID         string          `json:"id"`
-	JobID      string          `json:"jobId"`
-	Status     string          `json:"status" enum:"submitted,approved,denied"`
-	CreatedBy  string          `json:"createdBy,omitempty"`
-	ApprovedBy string          `json:"approvedBy,omitempty"`
-	DenyReason string          `json:"denyReason,omitempty"`
-	Proposal   json.RawMessage `json:"proposal"`
+	ID         string           `json:"id"`
+	JobID      string           `json:"jobId"`
+	Status     string           `json:"status" enum:"submitted,approved,denied"`
+	CreatedBy  string           `json:"createdBy,omitempty"`
+	ApprovedBy string           `json:"approvedBy,omitempty"`
+	DenyReason string           `json:"denyReason,omitempty"`
+	Proposal   suggest.Proposal `json:"proposal"`
 }
 
 func proposalToDTO(p store.Proposal) ProposalDTO {
-	body := json.RawMessage(p.ProposalJSON)
-	if len(body) == 0 {
-		body = json.RawMessage("{}")
+	var payload suggest.Proposal
+	// A malformed stored proposal shouldn't 500 a list; leave the payload zero-valued.
+	if len(p.ProposalJSON) > 0 {
+		_ = json.Unmarshal([]byte(p.ProposalJSON), &payload)
 	}
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
-		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason, Proposal: body,
+		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason, Proposal: payload,
 	}
 }
 
@@ -161,35 +166,8 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 
 // --- approve / deny (the approval gate — §8/§11) ---
 
-// proposalBody mirrors the acquisitions slice of a stored suggest.Proposal — the
-// only part approve needs to read to enqueue titles. Kept local so the API layer
-// doesn't import the suggest package (dependency-light).
-type proposalBody struct {
-	Lineup       []lineupItem `json:"lineup"`
-	Acquisitions []acqItem    `json:"acquisitions"`
-}
-type acqItem struct {
-	MediaType string `json:"mediaType"`
-	TMDBID    int    `json:"tmdbId"`
-	TVDBID    int    `json:"tvdbId"`
-	Name      string `json:"name"`
-	Year      int    `json:"year"`
-	Seasons   []int  `json:"seasons"`
-}
-
-// lineupItem is an in-library pick from the proposal. Approval creates an
-// `available` title Record for each so the scheduler can place it (§8 line 307:
-// "the approved lineup feeds the scheduler").
-type lineupItem struct {
-	MediaType     string `json:"mediaType"`
-	TMDBID        int    `json:"tmdbId"`
-	TVDBID        int    `json:"tvdbId"`
-	Name          string `json:"name"`
-	Year          int    `json:"year"`
-	Seasons       []int  `json:"seasons"`
-	InLibrary     bool   `json:"inLibrary"`
-	LibraryItemID string `json:"libraryItemId"`
-}
+// The approve path reads the same typed ProposalPayload the list/get endpoints return
+// (defined above) — one mirror of the stored suggest.Proposal, no longer a second.
 
 type approveOutput struct {
 	Body struct {
@@ -217,7 +195,7 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 		return nil, huma.Error409Conflict("proposal is not in the submitted state")
 	}
 
-	var body proposalBody
+	var body suggest.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return nil, huma.Error500InternalServerError("stored proposal is malformed", err)
 	}

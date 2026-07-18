@@ -173,6 +173,9 @@ importers:
 
   packages/fixtures:
     dependencies:
+      '@loomarr/api':
+        specifier: workspace:*
+        version: link:../api
       '@loomarr/core':
         specifier: workspace:*
         version: link:../core

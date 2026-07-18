@@ -6,12 +6,12 @@
 //   - the double-submit CSRF header on state-changing requests (§11)
 //   - RFC 7807 problem+json surfaced as a typed error (rendered by ErrorState, §3)
 
-import type { ProblemDetail } from "./mutator.type";
+import type { ErrorModel } from "../../generated/model";
 
 class ApiError extends Error {
   constructor(
     readonly status: number,
-    readonly problem: ProblemDetail,
+    readonly problem: ErrorModel,
   ) {
     super(problem.title || problem.detail || `HTTP ${status}`);
     this.name = "ApiError";
@@ -32,7 +32,7 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   const body = text ? (JSON.parse(text) as unknown) : undefined;
 
   if (!res.ok) {
-    throw new ApiError(res.status, (body as ProblemDetail) ?? { status: res.status });
+    throw new ApiError(res.status, (body as ErrorModel) ?? { status: res.status });
   }
   return body as T;
 };
