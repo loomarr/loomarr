@@ -1,8 +1,7 @@
 import type { SettingEntry } from "@loomarr/api";
 import { useForm } from "@tanstack/react-form";
 import { CircleCheck, CircleX, Loader2 } from "lucide-react";
-import { useState } from "react";
-import { SettingField } from "@/components/loomarr/setting-field";
+import { SettingsFields } from "@/components/loomarr/settings-fields";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
 import type { SettingsGroupFormProps } from "./settings-group-form.type";
@@ -46,10 +45,6 @@ const SettingsGroupForm = ({
   testHint,
   className,
 }: SettingsGroupFormProps) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const advancedCount = entries.filter((e) => e.advanced).length;
-  const resultFor = (key: string) => results?.find((r) => r.key === key);
-
   const form = useForm({
     defaultValues: { values: entries.map((entry) => entry.value ?? "") },
     onSubmit: ({ value }) => onSave(changedEntries(value.values, entries)),
@@ -64,34 +59,23 @@ const SettingsGroupForm = ({
       }}
       className={cn("flex flex-col gap-5", className)}
     >
-      <div className="flex flex-col gap-5">
-        {/* Iterate ALL entries so indices stay stable — a hidden advanced key keeps its
-            value in form state and is still compared on save. */}
-        {entries.map((entry, i) =>
-          entry.advanced && !showAdvanced ? null : (
-            <form.Field key={entry.key} name={`values[${i}]`}>
-              {(field) => (
-                <SettingField
-                  entry={entry}
-                  value={field.state.value ?? ""}
-                  onChange={(v) => field.handleChange(v)}
-                  result={resultFor(entry.key)}
-                />
-              )}
-            </form.Field>
-          ),
+      {/* The field rendering is shared with the Settings pages via SettingsFields; what
+          differs here is the save UNIT — the wizard commits one group per step. */}
+      <form.Field name="values">
+        {(field) => (
+          <SettingsFields
+            entries={entries}
+            values={Object.fromEntries(entries.map((e, i) => [e.key, field.state.value[i] ?? e.value ?? ""]))}
+            onChange={(key, v) => {
+              const i = entries.findIndex((e) => e.key === key);
+              const next = [...field.state.value];
+              next[i] = v;
+              field.handleChange(next);
+            }}
+            results={results}
+          />
         )}
-      </div>
-
-      {advancedCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="w-fit text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
-        >
-          {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
-        </button>
-      )}
+      </form.Field>
 
       {(testHint || testOk !== undefined) && !testing && (
         <p
