@@ -96,6 +96,7 @@ func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 		string(settings.FeatureSuggestions): f.Suggestions,
 		string(settings.FeatureFiller):      f.Filler,
 		string(settings.FeatureUserSync):    f.UserSync,
+		string(settings.FeatureIngest):      f.Ingest,
 	}
 }
 

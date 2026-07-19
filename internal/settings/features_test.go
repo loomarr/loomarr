@@ -99,3 +99,42 @@ func TestFeatures_UserSyncTracksMediaServerWiring(t *testing.T) {
 		t.Error("library.flavor set → user sync must be on; app.go registers the route on this exact key")
 	}
 }
+
+// Ingest is the one gate NOT derived from settings completeness (config-design §7): it
+// depends on whether the running IMAGE carries yt-dlp + ffmpeg. The probe is injected so
+// this never touches the filesystem (CLAUDE.md: unit tests stay off the disk).
+func TestFeatures_IngestNeedsBothToolsPresent(t *testing.T) {
+	svc := func(db map[string]string, present ...string) *Service {
+		s := featureService(t, db)
+		set := map[string]bool{}
+		for _, p := range present {
+			set[p] = true
+		}
+		s.execProbe = func(path string) bool { return set[path] }
+		return s
+	}
+	paths := map[string]string{"ingest.ytdlp_path": "/bin/yt-dlp", "ingest.ffmpeg_path": "/bin/ffmpeg"}
+
+	// loomarr:latest — no tool paths configured at all.
+	if svc(nil).Features().Ingest {
+		t.Error("no tool paths → ingest must be off (this is the default image)")
+	}
+	// Configured but missing on disk: off, and NOT a boot failure — the image is
+	// otherwise perfectly usable without ingest.
+	if svc(paths).Features().Ingest {
+		t.Error("paths configured but absent on disk → ingest must be off")
+	}
+	// Only one tool present. yt-dlp cannot merge video+audio without ffmpeg, so a
+	// half-present image would accept the request and fail mid-download on exactly the
+	// high-resolution sources most worth fetching.
+	if svc(paths, "/bin/yt-dlp").Features().Ingest {
+		t.Error("yt-dlp without ffmpeg → ingest must be off")
+	}
+	if svc(paths, "/bin/ffmpeg").Features().Ingest {
+		t.Error("ffmpeg without yt-dlp → ingest must be off")
+	}
+	// Both present — the loomarr:filler image.
+	if !svc(paths, "/bin/yt-dlp", "/bin/ffmpeg").Features().Ingest {
+		t.Error("both tools present → ingest must be on (this is loomarr:filler)")
+	}
+}

@@ -207,6 +207,32 @@ func declared() []Setting {
 			Doc: "Relative draw weight across multiple filler-lists.",
 		},
 
+		// --- Filler ingest (§10, §15; loomarr:filler image variant only) ---
+		// The two tool paths are what the `ingest` feature gate probes. They are
+		// settings rather than hardcoded so an operator can point at a NEWER yt-dlp
+		// than the image ships — yt-dlp releases fixes far faster than we cut images,
+		// and a stale one silently stops extracting from YouTube.
+		{
+			Key: "ingest.ytdlp_path", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Path to the yt-dlp binary. Set by the loomarr:filler image; empty disables ingest.",
+		},
+		{
+			Key: "ingest.ffmpeg_path", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Path to the ffmpeg binary (yt-dlp needs it to merge video+audio streams).",
+		},
+		{
+			Key: "ingest.max_concurrent", EnvVar: "INGEST_MAX_CONCURRENT", Group: GroupFiller,
+			Kind: KindInt, Default: 2, Advanced: true,
+			Doc: "Maximum ingest sources downloaded in parallel.",
+		},
+		{
+			Key: "ingest.timeout", EnvVar: "INGEST_TIMEOUT", Group: GroupFiller,
+			Kind: KindDuration, Default: "30m", Advanced: true,
+			Doc: "Wall-clock ceiling for one ingest source, so a wedged fetch can't hold a worker forever.",
+		},
+
 		// --- Users & security (§15, Phase 9) ---
 		{
 			Key: "session.ttl", EnvVar: "SESSION_TTL", Group: GroupUsersSecurity,

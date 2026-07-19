@@ -4,6 +4,50 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4d-0b pt2 — the sidecar is actually gone (2026-07-19).** Branch
+`feat/ingest-in-core-13.4d0b2`. PR #25 changed the DESIGN; this closes the code. Between
+the two, the docs said the sidecar was removed while the repo still shipped it — real
+drift, caught by the maintainer noticing `Dockerfile.ingest` in the tree.
+
+**The move was smaller than feared.** The download logic was already `internal/ingestkit`
+(a core package, fully tested with fake downloaders); only a 71-line driver in
+`cmd/loomarr-ingest/` was sidecar-specific. Renamed to **`internal/clipfetch`** because
+`internal/ingest` is the Sonarr/Radarr WEBHOOK handler (§6's Ingest port) — two unrelated
+concepts one autocomplete apart, now that both live in the core.
+
+**Two real bugs found by actually building and running the image:**
+1. **The tooling was x86_64-only.** Inherited from `Dockerfile.ingest`, which hardcoded
+   amd64 URLs for yt-dlp/deno/ffmpeg. On arm64 the image BUILT FINE and then died at run
+   time with `rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2`. Now
+   fetched per `TARGETARCH`, with a build-time `--version` check on all three so a broken
+   image can never ship looking healthy.
+2. **Appending the stage made the fat image the DEFAULT.** Docker builds the last stage,
+   so `docker build .` produced 704MB instead of the distroless core. Reordered: filler
+   before core, core last. Measured after: **loomarr:latest 31.1MB, loomarr:filler 549MB.**
+
+**The documented size was wrong.** §10/§14/§16 claimed "~170MB" (inherited from the
+sidecar's own comment). Measured reality is ~518MB more. Corrected everywhere rather than
+left as a comfortable number. Also dropped **ffprobe** (~99MB): Loomarr never probes media
+— Tunarr assigns duration during its `local`-source scan — so bundling it was pure weight.
+
+**`ingest` is the first environment-derived feature gate.** It probes for runnable
+yt-dlp + ffmpeg rather than reading settings completeness, exactly as config-design §7's
+new exception describes. Both tools are required (yt-dlp cannot merge streams without
+ffmpeg, so a half-present image would accept the job and fail mid-download on the
+high-res sources most worth fetching). The 409 names the remedy — "run the loomarr:filler
+image" — and deliberately is NOT `feature_not_configured`, because no setting can open it.
+
+**Ingest returns a job id, not a result.** Downloads run minutes to hours; progress rides
+the SSE bus as `filler_ingest` frames, the same shape §8.1's model pull uses. The
+background context is deliberately NOT the request context, or every ingest would die the
+moment a browser tab closed.
+
+**Gate:** `make check` GREEN; `make fe` GREEN (169 app tests); `make openapi-verify` GREEN;
+`docker build` of BOTH targets verified, and yt-dlp/deno/ffmpeg each executed natively on
+arm64 (not inferred from a successful build).
+**Next:** 13.4d-0b pt3 (pod preview — §12's explicit Filler requirement), then 13.4d-0c.
+
+
 **Design change — filler ingest moves into the core; the `loomarr-ingest` sidecar is removed (2026-07-19).**
 Branch `design/ingest-in-core`. Doc-only; no code, no spec drift. Maintainer call, taken before building
 13.4d's Filler page so the page isn't designed against a seam we were about to delete.

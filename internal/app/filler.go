@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/clipfetch"
+	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/store"
@@ -100,6 +103,12 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 type fillerServiceAdapter struct {
 	syncer *filler.Syncer
 	tagger *filler.Tagger
+	// fetcher is nil unless the running image carries the ingest tooling (loomarr:filler
+	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
+	fetcher *clipfetch.Ingestor
+	bus     *events.Bus
+	newID   func() string
+	timeout time.Duration
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -112,6 +121,62 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 	}
 	res, err := a.tagger.Run(ctx)
 	return res.Considered, res.Tagged, res.Partial, res.Skipped, err
+}
+
+// Ingest downloads clips into the drop-folder (§10). It returns a job id immediately and
+// does the work in the background: a playlist can take minutes to hours, so holding the
+// HTTP request open would guarantee a gateway timeout on exactly the useful cases.
+// Progress rides the SSE bus as `filler_ingest` frames — the same shape the §8.1 model
+// pull uses, because it is the same problem (long external process, no request to hold).
+func (a fillerServiceAdapter) Ingest(_ context.Context, urls []string) (string, error) {
+	if a.fetcher == nil {
+		return "", api.ErrIngestUnavailable
+	}
+	sources := make([]clipfetch.Source, 0, len(urls))
+	for _, u := range urls {
+		sources = append(sources, clipfetch.Source{Kind: clipfetch.KindForURL(u), URL: u})
+	}
+
+	jobID := a.newID()
+	go func() {
+		// Deliberately NOT the request context: the HTTP response has already been
+		// written, so tying the download to it would cancel every ingest the moment the
+		// client disconnected. The timeout below is what bounds the work instead.
+		bg := context.Background()
+		if a.timeout > 0 {
+			var cancel context.CancelFunc
+			bg, cancel = context.WithTimeout(bg, a.timeout*time.Duration(len(sources)))
+			defer cancel()
+		}
+		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
+		res := a.fetcher.Run(bg, sources)
+		if res.Failed > 0 && res.Fetched == 0 {
+			// Every source failed — report it as an error rather than a success with
+			// zeroes, which reads as "nothing to download" and hides a bad URL or an
+			// expired yt-dlp.
+			a.publishIngest(jobID, "error", res, "every source failed; check the URLs and the yt-dlp version")
+			return
+		}
+		a.publishIngest(jobID, "success", res, "")
+	}()
+	return jobID, nil
+}
+
+// publishIngest emits one ingest-progress frame (§7, type=filler_ingest). Empty counts
+// sources that yielded nothing without erroring — a typo'd Archive id returns 200 with no
+// items, so without surfacing it the operator sees "fetched:0 failed:0" and no reason.
+func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.Result, errMsg string) {
+	if a.bus == nil {
+		return
+	}
+	a.bus.Publish(events.Event{
+		Type: "filler_ingest",
+		Payload: map[string]any{
+			"jobId": jobID, "status": status,
+			"fetched": res.Fetched, "skipped": res.Skipped,
+			"failed": res.Failed, "empty": res.Empty, "error": errMsg,
+		},
+	})
 }
 
 // runFillerSync runs the periodic filler catalog sync until ctx is done (§10).

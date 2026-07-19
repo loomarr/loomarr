@@ -53,6 +53,11 @@ type Service struct {
 	log    *slog.Logger
 	loader Loader // kept for the post-write snapshot refresh (Patch hot-apply)
 
+	// execProbe reports whether a path is a runnable executable. Injectable so the
+	// `ingest` feature gate (the one environment-derived gate, config-design §7) can be
+	// tested without touching the filesystem. nil ⇒ the real os.Stat probe.
+	execProbe func(path string) bool
+
 	mu       sync.RWMutex
 	db       map[string]string // persisted overrides (raw strings)
 	watchers map[string][]chan Change

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -14,7 +15,12 @@ import (
 )
 
 // fakeFiller records sync/tag calls.
-type fakeFiller struct{ syncs, tags int }
+type fakeFiller struct {
+	syncs, tags int
+	ingested    []string
+	// unavailable simulates loomarr:latest — the image with no ingest tooling.
+	unavailable bool
+}
 
 func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 	f.syncs++
@@ -23,6 +29,14 @@ func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 func (f *fakeFiller) Tag(context.Context) (int, int, int, int, error) {
 	f.tags++
 	return 3, 2, 1, 0, nil
+}
+
+func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
+	if f.unavailable {
+		return "", api.ErrIngestUnavailable
+	}
+	f.ingested = append(f.ingested, urls...)
+	return "job-1", nil
 }
 
 func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
@@ -211,5 +225,56 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	}
 	if got, _ = st.GetClip(context.Background(), "t1"); got.Kind != filler.Trailer {
 		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Kind)
+	}
+}
+
+// Ingest is admin-only, returns a job id rather than blocking, and reports the
+// image-variant gate as something a setting cannot fix.
+func TestFiller_Ingest(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	// §19 negative: downloading arbitrary URLs onto the host is admin-only.
+	if resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", "", `{"urls":["https://archive.org/details/x"]}`); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("member ingest → %d, want 403", resp.StatusCode)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", adminToken, `{"urls":["https://archive.org/details/x"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("ingest → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		JobID string `json:"jobId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	// A job id, not a result: the download outlives the request (§10).
+	if body.JobID == "" {
+		t.Error("no jobId returned — progress is unwatchable without one")
+	}
+	if len(ff.ingested) != 1 {
+		t.Errorf("ingested = %v, want the one URL passed through", ff.ingested)
+	}
+}
+
+// On loomarr:latest the gate is NOT a configuration problem, and the error must not
+// send the operator to a Settings page that cannot help them.
+func TestFiller_IngestUnavailableOnDefaultImage(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.unavailable = true
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", adminToken, `{"urls":["https://youtube.com/playlist?list=x"]}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("ingest without tooling → %d, want 409", resp.StatusCode)
+	}
+	var problem struct {
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+		t.Fatal(err)
+	}
+	// The remedy is a different IMAGE. Naming it is the whole point of this branch.
+	if !strings.Contains(problem.Detail, "loomarr:filler") {
+		t.Errorf("detail = %q, want it to name the loomarr:filler image", problem.Detail)
 	}
 }
