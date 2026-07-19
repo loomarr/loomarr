@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Drive every story from the built Storybook index: a pixel snapshot + an axe sweep, at
 // each project's viewport (frontend-design §5). Build storybook-static first —
@@ -19,6 +19,26 @@ interface StoryEntry {
 
 const index = JSON.parse(readFileSync(indexPath, "utf8")) as { entries: Record<string, StoryEntry> };
 const stories = Object.values(index.entries).filter((entry) => entry.type === "story");
+
+// axe-core keeps a module-global "running" flag per frame, and its runPartialRecursive
+// walk can re-enter it — so an analyze() occasionally rejects with "Axe is already
+// running" even though this test owns its page. It surfaced on roughly one story per run,
+// a DIFFERENT story each time, which is how we know it is a race rather than a real
+// violation. Playwright's retry masked it as "1 flaky" and the suite stayed green, but a
+// gate that cries wolf on every run stops being read.
+//
+// Retry ONLY on that specific message: a genuine violation still fails on the first pass.
+const analyzeWhenFree = async (page: Page) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await new AxeBuilder({ page }).include("#storybook-root").analyze();
+    } catch (err) {
+      const busy = err instanceof Error && err.message.includes("Axe is already running");
+      if (!busy || attempt >= 3) throw err;
+      await page.waitForTimeout(100 * (attempt + 1));
+    }
+  }
+};
 
 for (const story of stories) {
   test(`${story.title} — ${story.name}`, async ({ page }) => {
@@ -46,7 +66,7 @@ for (const story of stories) {
 
     // Accessibility (§5.3): zero serious/critical violations. The region/landmark rule
     // (moderate) is expected on bare component stories, so only serious+ is blocking.
-    const results = await new AxeBuilder({ page }).include("#storybook-root").analyze();
+    const results = await analyzeWhenFree(page);
     const blocking = results.violations.filter(
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     );
