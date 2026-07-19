@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -150,7 +151,19 @@ type FillerService interface {
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
 	// Tag runs AI classification over untagged commercials.
 	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
+	// Ingest downloads clips from the given source URLs into the drop-folder, returning
+	// a job id immediately (§10). Downloads take minutes to hours, so this is
+	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
+	// same shape the model pull uses (§8.1). ErrIngestUnavailable when the running image
+	// lacks the tooling.
+	Ingest(ctx context.Context, urls []string) (jobID string, err error)
 }
+
+// ErrIngestUnavailable reports that the running image carries no ingest tooling — the
+// default loomarr:latest. It is NOT a configuration error: no setting can fix it, only
+// running loomarr:filler can (§10, §16), which is why the API renders it as a distinct
+// problem type rather than the usual feature_not_configured.
+var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
 // owns playout). Abstracted so the API needn't import the programmer client, and so a

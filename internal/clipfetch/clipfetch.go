@@ -1,10 +1,15 @@
-// Package ingestkit is the loomarr-ingest sidecar's logic (design §10, §16). It
-// is separate from the core: nothing in internal/ (except this package, used only
-// by cmd/loomarr-ingest) imports it, and the core never downloads media. The
-// orchestration here is testable with fake downloaders; the real yt-dlp exec +
-// Archive HTTP live behind the Downloader interface so unit tests never touch the
+// Package clipfetch downloads filler clips into the drop-folder (design §10, §16).
+//
+// It runs IN THE CORE (revised — the loomarr-ingest sidecar is removed): the tooling it
+// shells out to ships only in the `loomarr:filler` image variant, so availability is a
+// computed feature gate rather than a separate service. Named clipfetch, NOT ingest,
+// because internal/ingest is the Sonarr/Radarr WEBHOOK handler (§6's Ingest port) — two
+// unrelated concepts that would otherwise share a name one autocomplete apart.
+//
+// The orchestration here is testable with fake downloaders; the real yt-dlp exec +
+// Archive HTTP live behind the Downloader interface, so unit tests never touch the
 // network or the yt-dlp binary (CLAUDE.md testing rules).
-package ingestkit
+package clipfetch
 
 import (
 	"context"

@@ -1,4 +1,6 @@
-# Loomarr deployment compose (design §16). Profiles: sqlite · postgres · ai · filler.
+# Loomarr deployment compose (design §16). Profiles: sqlite · postgres · ai.
+# Filler ingest is NOT a profile — it is an image tag: run loomarr:filler (same binary,
+# plus vendored yt-dlp + ffmpeg) to download clips in-app. See §16.
 #
 #   docker compose -f docker/compose.yaml --profile sqlite up -d
 #   docker compose -f docker/compose.yaml --profile postgres up -d
@@ -51,7 +53,7 @@ services:
       FILLER_DIR: ${FILLER_DIR:-}
       AUTO_MIGRATE: "true"
     ports: ["8080:8080"]
-    # Mount the filler drop-folder (filler profile) so the core can hand its path to
+    # Mount the filler drop-folder so the core can hand its path to
     # Tunarr as a `local` source. Empty/unused when FILLER_DIR isn't set.
     volumes:
       - ${FILLER_DROP_DIR:-filler-drop}:/filler
@@ -85,30 +87,8 @@ services:
     volumes: ["ollama:/root/.ollama"]
     restart: unless-stopped
 
-  # ---- filler profile: loomarr-ingest sidecar (Phase 12) ----
-  # Go binary bundling yt-dlp + ffmpeg (YouTube + Archive.org → drop-folder).
-  # Separate image so that ~170MB of media tooling never touches the core (§16).
-  loomarr-ingest:
-    image: loomarr-ingest:latest
-    build:
-      context: ..
-      dockerfile: Dockerfile.ingest
-    profiles: ["filler"]
-    environment:
-      # The sidecar owns its OWN config (§10 — the core has no download config).
-      INGEST_DROP_DIR: /drop
-      INGEST_SOURCES: ${INGEST_SOURCES:-}      # comma-separated YouTube playlist / Archive.org URLs
-      INGEST_EVERY: ${INGEST_EVERY:-6h}        # unset for single-shot
-      INGEST_PREFER_ORIGINAL: ${INGEST_PREFER_ORIGINAL:-false}  # true keeps full-quality masters; default takes Archive's small derivative (right for filler)
-    volumes:
-      # The drop-folder the sidecar writes into. The SAME host folder is mounted
-      # into the core (FILLER_DIR) and must be mounted into Tunarr, which scans it
-      # as a `local` media source (§10 — the media server is out of the filler path).
-      - ${FILLER_DROP_DIR:-filler-drop}:/drop
-    restart: unless-stopped
-
 volumes:
   loomarr-data: # sqlite backend
   pg-data: # postgres profile
-  filler-drop: # filler profile drop-folder (override with FILLER_DROP_DIR bind mount)
+  filler-drop: # filler drop-folder (override with FILLER_DROP_DIR bind mount)
   ollama: # ai profile

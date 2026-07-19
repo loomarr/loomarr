@@ -3,7 +3,7 @@
 **Captured:** 2026-07-13, against the live Archive.org public JSON APIs (no key — that's why the
 design chose plain net/http here, §10). Verified end-to-end with a real download.
 
-## The walk (implemented in internal/ingestkit/archive.go)
+## The walk (implemented in internal/clipfetch/archive.go)
 
 1. **Resolve** an `archive.org/details/<id>` (or `/metadata/<id>`, or bare id) URL → id.
 2. **`GET /metadata/<id>`** → `{server, dir, metadata{mediatype,title,description}, files[]}`.
