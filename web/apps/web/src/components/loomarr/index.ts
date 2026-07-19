@@ -20,7 +20,6 @@ export * from "./search-command";
 export * from "./secrets-panel";
 export * from "./setting-field";
 export * from "./settings-fields";
-export * from "./settings-group-form";
 export * from "./settings-save-bar";
 export * from "./state-badge";
 export * from "./wizard-shell";

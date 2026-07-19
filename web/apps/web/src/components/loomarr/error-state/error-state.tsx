@@ -1,4 +1,4 @@
-import { ApiError, type ErrorModel } from "@loomarr/api";
+import { toProblem } from "@loomarr/api";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
@@ -8,12 +8,6 @@ import type { ErrorStateProps } from "./error-state.type";
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
 // TanStack Form instead (this is the block/list-level error).
-const toProblem = (err: unknown): ErrorModel => {
-  if (err instanceof ApiError) return err.problem;
-  if (err instanceof Error) return { title: err.message };
-  return { title: "Something went wrong" };
-};
-
 const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
@@ -38,4 +32,4 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
   );
 };
 
-export { ErrorState, toProblem };
+export { ErrorState };

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, customFetch } from "./mutator";
+import { ApiError, customFetch, toProblem } from "./mutator";
 
 const mockFetch = (status: number, body: unknown) =>
   vi.fn((_url: string, _init?: RequestInit) =>
@@ -58,5 +58,24 @@ describe("customFetch", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.status).toBe(404);
     expect(err.message).toBe("Not found");
+  });
+});
+
+// toProblem is what every error surface renders through, so its FALLBACKS are the
+// contract: a thrown string or a non-ApiError must still produce a titled problem, or
+// ErrorState renders an empty box on the failure the operator most needs explained.
+describe("toProblem", () => {
+  it("passes an ApiError's problem through untouched", () => {
+    const problem = { title: "Conflict", detail: "already exists" };
+    expect(toProblem(new ApiError(409, problem))).toEqual(problem);
+  });
+
+  it("falls back to the message for a plain Error", () => {
+    expect(toProblem(new Error("plain")).title).toBe("plain");
+  });
+
+  it("falls back to a generic title for a non-Error throw", () => {
+    expect(toProblem("weird").title).toBe("Something went wrong");
+    expect(toProblem(undefined).title).toBe("Something went wrong");
   });
 });
