@@ -1,5 +1,5 @@
 import { SettingEntryProvenance, SettingResultStatus } from "@loomarr/api";
-import { humanizeSettingKey } from "@loomarr/core";
+import { formatRelative, humanizeSettingKey } from "@loomarr/core";
 import { Lock, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Badge, Checkbox, Input, Label, Select } from "@/components/ui";
@@ -116,6 +116,16 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
         <p className="flex items-center gap-1 text-onair-300 text-xs">
           <TriangleAlert className="size-3" aria-hidden />
           The stored value was invalid and has been reset to the default.
+        </p>
+      )}
+
+      {/* "changed by … · when" (§5 field anatomy). Only for a value a PERSON set: an
+          env pin or a built-in default has no author, and inventing one would imply a
+          human decision that never happened. */}
+      {entry.updatedAt && (
+        <p className="text-muted-foreground text-xs">
+          {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
+          {formatRelative(entry.updatedAt)}
         </p>
       )}
 
