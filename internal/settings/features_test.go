@@ -80,3 +80,22 @@ func TestFeatureSet_Available(t *testing.T) {
 		t.Error("ungated feature should be available")
 	}
 }
+
+// UserSync gates a CONDITIONALLY REGISTERED route: with no media server,
+// POST /v1/users/sync does not exist at runtime, yet it IS in the committed spec
+// (generated in schema-only mode, where every route registers). The generated client
+// therefore offers a call that 404s unless the UI checks this flag first — which is the
+// bug this feature exists to close.
+//
+// The condition must mirror app.go's wiring EXACTLY (`library.flavor` set). If someone
+// rewires app.go to a different key, this test still passes while the flag silently lies,
+// so the assertion is pinned to the key name deliberately: change one, this comment
+// sends you to the other.
+func TestFeatures_UserSyncTracksMediaServerWiring(t *testing.T) {
+	if featureService(t, nil).Features().UserSync {
+		t.Error("no media server configured → user sync must be off (the route is not registered)")
+	}
+	if !featureService(t, map[string]string{"library.flavor": "emby"}).Features().UserSync {
+		t.Error("library.flavor set → user sync must be on; app.go registers the route on this exact key")
+	}
+}

@@ -38,6 +38,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
 	t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
 	t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
+	t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -728,5 +729,67 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetSetting(ctx, "library.url"); err != ErrNotFound {
 		t.Errorf("after delete, GetSetting = %v want ErrNotFound", err)
+	}
+}
+
+// testSessionLifecycle covers the §11 session rules that authentication depends on:
+// sessions are revocable rows, expiry is immediate for reads even though purging is
+// eventual, and disabling a user kills every session at once. None of this had store
+// conformance coverage before — it is the one area where a dialect difference would be
+// a security bug rather than a correctness bug, so it belongs in the shared suite.
+func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertUser(ctx, User{ID: "u2", Name: "Grace", Role: RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+
+	live := Session{TokenHash: "h-live", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	older := Session{TokenHash: "h-older", UserID: "u1", CreatedAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)}
+	dead := Session{TokenHash: "h-dead", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(-time.Minute)}
+	other := Session{TokenHash: "h-other", UserID: "u2", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	for _, sess := range []Session{live, older, dead, other} {
+		if err := s.CreateSession(ctx, sess); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.ListSessionsForUser(ctx, "u1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Expired excluded, another user's session excluded, newest first.
+	if len(got) != 2 {
+		t.Fatalf("ListSessionsForUser = %d sessions, want 2 (expired and other-user excluded)", len(got))
+	}
+	if got[0].TokenHash != "h-live" || got[1].TokenHash != "h-older" {
+		t.Errorf("order = [%s %s], want newest first [h-live h-older]", got[0].TokenHash, got[1].TokenHash)
+	}
+	if !got[0].CreatedAt.Equal(now) || !got[0].ExpiresAt.Equal(now.Add(time.Hour)) {
+		t.Errorf("timestamps did not round-trip: created=%v expires=%v", got[0].CreatedAt, got[0].ExpiresAt)
+	}
+
+	// Revoking one leaves the rest — the admin "sign out this device" path.
+	if err := s.RevokeSession(ctx, "h-live"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.ListSessionsForUser(ctx, "u1", now); len(got) != 1 {
+		t.Errorf("after RevokeSession: %d sessions, want 1", len(got))
+	}
+
+	// Disabling a user kills their sessions immediately (§11) — and only theirs.
+	if err := s.RevokeSessionsForUser(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.ListSessionsForUser(ctx, "u1", now); len(got) != 0 {
+		t.Errorf("after RevokeSessionsForUser: %d sessions, want 0", len(got))
+	}
+	if got, _ = s.ListSessionsForUser(ctx, "u2", now); len(got) != 1 {
+		t.Errorf("RevokeSessionsForUser hit another user's sessions: u2 has %d, want 1", len(got))
 	}
 }

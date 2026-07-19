@@ -713,6 +713,25 @@ components:
       required:
         - proposals
       type: object
+    ListUserSessionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListUserSessionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        sessions:
+          items:
+            $ref: "#/components/schemas/SessionBody"
+          type:
+            - array
+            - "null"
+      required:
+        - sessions
+      type: object
     ListUsersOutputBody:
       additionalProperties: false
       properties:
@@ -1202,6 +1221,32 @@ components:
           type: string
       required:
         - key
+      type: object
+    SessionBody:
+      additionalProperties: false
+      properties:
+        createdAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        current:
+          description: This is the caller's own session — revoking it signs them out
+          type: boolean
+        expiresAt:
+          description: Unix ms
+          format: int64
+          type: integer
+        id:
+          description: Opaque session handle (the stored token hash); pass to DELETE /v1/sessions/{hash}
+          type: string
+        userId:
+          type: string
+      required:
+        - id
+        - userId
+        - createdAt
+        - expiresAt
+        - current
       type: object
     SettingEntry:
       additionalProperties: false
@@ -1764,6 +1809,8 @@ components:
           type: boolean
         id:
           type: string
+        local:
+          type: boolean
         name:
           type: string
         quota:
@@ -1781,6 +1828,7 @@ components:
         - disabled
         - quota
         - autoApprove
+        - local
       type: object
 info:
   description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
@@ -2182,6 +2230,27 @@ paths:
       summary: Federated search (library + TMDB + clips)
       tags:
         - search
+  /v1/sessions/{hash}:
+    delete:
+      operationId: revoke-session
+      parameters:
+        - in: path
+          name: hash
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Revoke one session (admin)
+      tags:
+        - users
   /v1/settings:
     get:
       description: Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).
@@ -2886,5 +2955,30 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Update a user's role/quota/disabled (admin)
+      tags:
+        - users
+  /v1/users/{id}/sessions:
+    get:
+      operationId: list-user-sessions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUserSessionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List a user's live sessions (admin)
       tags:
         - users

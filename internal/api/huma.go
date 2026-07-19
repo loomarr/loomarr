@@ -239,9 +239,11 @@ type LoginService interface {
 	Disable(ctx context.Context, userID string) error
 }
 
-// SessionManager revokes sessions (logout) (§11).
+// SessionManager revokes sessions (logout) and exposes them for admin review (§11).
 type SessionManager interface {
 	Revoke(ctx context.Context, token string) error
+	List(ctx context.Context, userID string) ([]store.Session, error)
+	RevokeHash(ctx context.Context, tokenHash string) error
 }
 
 // BackupStreamer streams a consistent DB snapshot (§16). Implemented by the
