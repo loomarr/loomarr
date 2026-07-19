@@ -1,4 +1,5 @@
 import type { LLMModelView } from "@loomarr/api";
+import { formatGiB, formatPercentPoints } from "@loomarr/core";
 import { Check, Download, Loader2 } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { cn } from "@/lib";
@@ -32,7 +33,7 @@ const ModelPicker = ({
     {(gpuName || vramGiB) && (
       <p className="text-muted-foreground text-sm">
         Ranked for {gpuName ?? "this machine"}
-        {vramGiB ? ` · ${vramGiB} GiB VRAM` : ""}.
+        {vramGiB ? ` · ${formatGiB(vramGiB)} VRAM` : ""}.
       </p>
     )}
 
@@ -64,11 +65,11 @@ const ModelPicker = ({
               <p className="mt-0.5 text-muted-foreground text-sm">{model.why}</p>
               <p className="mt-1 flex items-center gap-2 text-xs">
                 <Badge variant={fit.variant}>{fit.text}</Badge>
-                <span className="text-static-400">~{model.approxVramGiB} GiB</span>
+                <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>
                 {!model.runtimeOk && <span className="text-onair-300">needs a newer Ollama</span>}
                 {isPulling && (
                   <span className="text-tune">
-                    downloading{progress !== undefined ? ` ${progress}%` : "…"}
+                    downloading{progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
                   </span>
                 )}
               </p>

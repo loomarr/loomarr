@@ -29,8 +29,8 @@ const formatClipDuration = (ms: number): string => {
 const channelNumber = (n: number): string => String(n);
 
 // "8:00 PM" for the EPG. Fixed 12-hour, zero-padded minutes, locale-independent.
-const formatEpgTime = (iso: string): string => {
-  const d = new Date(iso);
+const formatEpgTime = (t: Instant): string => {
+  const d = new Date(msOf(t));
   let h = d.getHours();
   const m = d.getMinutes();
   const ampm = h >= 12 ? "PM" : "AM";
@@ -38,16 +38,55 @@ const formatEpgTime = (iso: string): string => {
   return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
 };
 
+// A 0–1 ratio as a percentage: 0.87 → "87%". The domain is documented and enforced
+// here BECAUSE it is ambiguous: the suggester's confidence is a ratio, while the LLM
+// pull's progress is already 0–100. Two conventions with no named helper is how one
+// gets rendered as "0%" or "8700%".
+const formatPercent = (ratio: number): string => `${Math.round(ratio * 100)}%`;
+
+// An already-0–100 value: 71 → "71%". Named separately rather than overloading
+// formatPercent, so a call site declares which convention its number follows.
+const formatPercentPoints = (points: number): string => `${Math.round(points)}%`;
+
+// "5 GiB" — VRAM and model sizes. Trivial today; centralized because it renders in the
+// model picker's summary AND per-row, and will render again in the Expo app.
+const formatGiB = (n: number): string => `${n} GiB`;
+
+// "1 session" · "3 sessions". English-only, matching the rest of the UI copy.
+const pluralize = (n: number, singular: string, plural = `${singular}s`): string =>
+  `${n} ${n === 1 ? singular : plural}`;
+
+// A point in time as the API expresses it. Most payloads carry ISO strings, but some
+// carry Unix ms (session createdAt/expiresAt, now/next startMs/stopMs), and forcing
+// every ms-based caller to round-trip through an ISO string just to format it is how
+// duplicate local helpers get written.
+type Instant = string | number;
+
+const msOf = (t: Instant): number => (typeof t === "number" ? t : new Date(t).getTime());
+
 // "just now" · "3m ago" · "2h ago" · "5d ago". `now` is injectable for tests.
-const formatRelative = (iso: string, now: number = Date.now()): string => {
-  const then = new Date(iso).getTime();
-  const secs = Math.max(0, Math.round((now - then) / 1000));
+const formatRelative = (t: Instant, now: number = Date.now()): string => {
+  const secs = Math.max(0, Math.round((now - msOf(t)) / 1000));
   if (secs < 45) return "just now";
   const mins = Math.round(secs / 60);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
+};
+
+// The forward-looking twin: "in 20m" · "in 3h" · "in 5d" · "expired". Used for session
+// expiry, where "expires in 6d" is the number an admin judges a stale session by.
+// Deliberately coarse, matching formatRelative — these read as an at-a-glance sense of
+// time, not a precise countdown.
+const formatUntil = (t: Instant, now: number = Date.now()): string => {
+  const secs = Math.round((msOf(t) - now) / 1000);
+  if (secs <= 0) return "expired";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `in ${Math.max(1, mins)}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `in ${hrs}h`;
+  return `in ${Math.round(hrs / 24)}d`;
 };
 
 // A settings registry key as a human label: "library.url" → "Library URL",
@@ -65,12 +104,18 @@ const humanizeSettingKey = (key: string): string =>
     })
     .join(" ");
 
+export type { Instant };
 export {
   channelNumber,
   formatClipDuration,
   formatDuration,
   formatEpgTime,
+  formatGiB,
+  formatPercent,
+  formatPercentPoints,
   formatRelative,
   formatRuntime,
+  formatUntil,
   humanizeSettingKey,
+  pluralize,
 };

@@ -4,9 +4,14 @@ import {
   formatClipDuration,
   formatDuration,
   formatEpgTime,
+  formatGiB,
+  formatPercent,
+  formatPercentPoints,
   formatRelative,
   formatRuntime,
+  formatUntil,
   humanizeSettingKey,
+  pluralize,
 } from "./format";
 
 describe("formatters", () => {
@@ -47,5 +52,74 @@ describe("formatters", () => {
     expect(humanizeSettingKey("llm.provider")).toBe("LLM provider");
     expect(humanizeSettingKey("filler.breaks_per_hour")).toBe("Filler breaks per hour");
     expect(humanizeSettingKey("tunarr.transcode_config_id")).toBe("Tunarr transcode config ID");
+  });
+});
+
+// The API expresses time two ways — ISO strings on most payloads, Unix ms on sessions
+// and now/next. formatRelative accepting only ISO is what makes a component author
+// write their own ms-based copy, which is exactly what happened once already.
+describe("Instant accepts both wire shapes", () => {
+  const now = Date.parse("2026-07-17T12:00:00Z");
+
+  it("formats a Unix-ms instant identically to its ISO equivalent", () => {
+    const iso = "2026-07-17T11:57:00Z";
+    expect(formatRelative(Date.parse(iso), now)).toBe(formatRelative(iso, now));
+    expect(formatRelative(Date.parse(iso), now)).toBe("3m ago");
+  });
+
+  it("formats an EPG time from Unix ms", () => {
+    // now/next carry stopMs, so the channel card's "·til 8:00 PM" needs ms support.
+    expect(formatEpgTime(Date.parse("2026-07-17T20:00:00"))).toBe("8:00 PM");
+  });
+});
+
+describe("formatUntil", () => {
+  const now = Date.parse("2026-07-17T12:00:00Z");
+
+  it("counts forward with the same coarseness as formatRelative", () => {
+    expect(formatUntil(Date.parse("2026-07-17T12:20:00Z"), now)).toBe("in 20m");
+    expect(formatUntil(Date.parse("2026-07-17T15:00:00Z"), now)).toBe("in 3h");
+    expect(formatUntil(Date.parse("2026-07-22T12:00:00Z"), now)).toBe("in 5d");
+  });
+
+  it("says expired rather than counting backwards", () => {
+    // A lapsed session must not read "in -3h"; the list only ever shows live ones, so
+    // this is the guard against a clock-skew display bug rather than a normal state.
+    expect(formatUntil(Date.parse("2026-07-17T09:00:00Z"), now)).toBe("expired");
+    expect(formatUntil(now, now)).toBe("expired");
+  });
+});
+
+describe("percent helpers keep their domains straight", () => {
+  it("formatPercent takes a 0–1 ratio", () => {
+    expect(formatPercent(0.87)).toBe("87%");
+    expect(formatPercent(1)).toBe("100%");
+    expect(formatPercent(0)).toBe("0%");
+  });
+
+  it("formatPercentPoints takes an already-0–100 value", () => {
+    // The two exist separately because the suggester sends ratios and the LLM pull
+    // sends points; one helper for both is how a 0.87 renders as "1%".
+    expect(formatPercentPoints(71)).toBe("71%");
+    expect(formatPercentPoints(100)).toBe("100%");
+  });
+});
+
+describe("pluralize", () => {
+  it("agrees with the noun at 1", () => {
+    expect(pluralize(1, "session")).toBe("1 session");
+    expect(pluralize(0, "session")).toBe("0 sessions");
+    expect(pluralize(3, "session")).toBe("3 sessions");
+  });
+
+  it("takes an explicit plural for irregular nouns", () => {
+    expect(pluralize(1, "entry", "entries")).toBe("1 entry");
+    expect(pluralize(2, "entry", "entries")).toBe("2 entries");
+  });
+});
+
+describe("formatGiB", () => {
+  it("renders the unit the model picker shows twice", () => {
+    expect(formatGiB(5)).toBe("5 GiB");
   });
 });
