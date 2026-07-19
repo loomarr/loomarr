@@ -4,6 +4,39 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4b — Channels, Channel detail, Board (2026-07-19).** Branch `feat/fe-channels-13.4b`. The
+"where is my stuff" surfaces, on top of the guide read landed as this slice's prerequisite (#19).
+
+**Two derivations that belong in one place, not inline in a page.** `channelHealth` maps the API's lifecycle
+(`building/live/drifted/detached`) plus slot fill onto the card's presentational health — deliberately different
+vocabularies (channel-card.type.ts says a page must derive this). The interesting case is **live with unfilled
+slots**: the channel IS airing (Tunarr plays flex, never dead air, §9) but is not yet what was asked for, so it
+reads `pending-slots` rather than `healthy`, which would hide the backfill the operator is waiting on.
+`channelOnAir` answers a *different* question — a **drifted** channel still broadcasts, it just no longer matches
+intent, so it is `live` there and `drift` in health. Both are pure and tested.
+
+**The Board leads with the journey, not the states.** §13 asks for member framing — "1 of 3 titles have landed" —
+so the five provisioning states (§4) collapse into waiting · acquiring · ready. `unavailable` deliberately does NOT
+become a fourth stage: a title that gave up after its TTL belongs to the "waiting" conversation (something to
+retry), not a verdict on the channel — and it stays in the progress **denominator**, since dropping it would
+silently shrink what was requested and read as better progress than reality.
+
+**Built:** Channels (cards with now/next from the one-call guide endpoint, health rollup, reconcile-now, and the
+§6 empty state whose single next action is "suggest a channel" — the only way to make one). Channel detail moved
+the route into a directory (`channels/index.tsx` + `channels/$id.tsx`) and shows slot fill, the Tunarr link, and
+the **relaxation ladder**: each applied relaxation is structured (`kind/from/to`), so a chip reads
+"audience: TV-Y → TV-Y7" instead of an opaque label — the honest account of what Loomarr loosened to fill the
+channel (programming-design §9). Board groups titles by stage with per-title `StateBadge` for the operator who
+wants detail, and offers retry only where a human can act.
+
+**Caught by the typechecker, not by me:** the retry initially posted `{key}`, but the enqueue contract takes the
+title's real identity (`mediaType/tmdbId/tvdbId/name/year`) — the 1:1 generated client refusing a hand-guessed
+body, which is exactly what it is for.
+
+Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN (**172 tests**); Docker visual GREEN
+(144, 0 diffs); `make e2e` GREEN. **Next: 13.4c** — Settings (5 groups, secrets lifecycle, the §8.1 model picker,
+and the re-runnable checklist as the troubleshooting console), which reuses `SettingsGroupForm` from 13.3b.
+
 **Phase 13.4b (prerequisite) — reading Tunarr's guide for now/next (2026-07-19).** Branch
 `feat/fe-channels-13.4b`. The BE half of Channels: `NowNextStrip` was built in 13.2 and listed under Channels in
 the build plan, but had **no data source**. `LineupEntry` carries a duration and no start time — Loomarr owns the
