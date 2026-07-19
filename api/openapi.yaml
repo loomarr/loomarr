@@ -557,6 +557,13 @@ components:
     Intent:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Intent.json
+          format: uri
+          readOnly: true
+          type: string
         description:
           type: string
         era:
@@ -1354,42 +1361,6 @@ components:
             - "null"
       required:
         - checks
-      type: object
-    SubmitInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/SubmitInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        description:
-          examples:
-            - 90s action movies
-          type: string
-        era:
-          type: string
-        maxAcquisitions:
-          format: int64
-          type: integer
-        mustExclude:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        mustInclude:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        tone:
-          type: string
-      required:
-        - description
       type: object
     SubmitOutputBody:
       additionalProperties: false
@@ -2419,7 +2390,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubmitInputBody"
+              $ref: "#/components/schemas/Intent"
         required: true
       responses:
         "200":

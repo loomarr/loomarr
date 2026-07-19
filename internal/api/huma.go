@@ -11,6 +11,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
@@ -153,8 +154,12 @@ type FillerService interface {
 // by suggest.Service + the store; abstracted so the API doesn't couple to the
 // worker internals.
 type SuggestService interface {
-	// Submit enqueues a suggestion job for an intent and returns the job id.
-	Submit(ctx context.Context, description, era, tone string, mustInclude, mustExclude []string, maxAcquire int, createdBy string) (jobID string, err error)
+	// Submit enqueues a suggestion job for an intent and returns the job id. It takes
+	// the DOMAIN intent rather than flat args: the flat form was "dependency-light",
+	// but this package already imports suggest (ProposalDTO carries suggest.Proposal),
+	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
+	// honors (suggester.go prompt + scoring) that no client could set.
+	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM

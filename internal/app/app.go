@@ -247,7 +247,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
-		suggestSvc = submitAdapter{svc}
+		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
 		log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"), "tmdb", tmdbClient != nil)

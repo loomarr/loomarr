@@ -12,13 +12,20 @@ import (
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
-// fakeSuggest records submissions.
-type fakeSuggest struct{ submits int }
+// fakeSuggest records the LAST intent it was asked to run, so a test can assert the
+// WHOLE intent survives the wire — the hand-mirrored body this replaced had silently
+// dropped RuntimeTgt, and nothing caught it.
+type fakeSuggest struct {
+	submits int
+	last    suggest.Intent
+}
 
-func (f *fakeSuggest) Submit(_ context.Context, desc, era, tone string, inc, exc []string, max int, createdBy string) (string, error) {
+func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string) (string, error) {
 	f.submits++
+	f.last = intent
 	return "job-1", nil
 }
 
@@ -237,5 +244,39 @@ func TestEvents_RequiresAuth(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/events", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("anonymous /v1/events → %d, want 401", resp.StatusCode)
+	}
+}
+
+// The WHOLE intent must survive the wire. This is the regression test for a real gap:
+// the submit body used to be a hand-mirrored struct that had drifted from
+// suggest.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
+// though the suggester feeds it to the LLM prompt and the scorer, and §13 lists a
+// runtime target among the constraints a user may set. Typing the body from the domain
+// fixed it; this keeps any future Intent field from going missing the same way.
+func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
+	srv, _, fs := newSuggestServer(t)
+	body := `{"description":"90s action movies","era":"1990s","tone":"high-energy",
+	          "runtimeTargetMin":180,"maxAcquisitions":7,
+	          "mustInclude":["Speed"],"mustExclude":["Cats"]}`
+
+	if resp := do(t, srv, http.MethodPost, "/v1/suggestions", adminToken, body); resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit → %d, want 200", resp.StatusCode)
+	}
+
+	got := fs.last
+	if got.Description != "90s action movies" || got.Era != "1990s" || got.Tone != "high-energy" {
+		t.Errorf("intent basics lost: %+v", got)
+	}
+	if got.RuntimeTgt != 180 {
+		t.Errorf("runtimeTargetMin = %d, want 180 — the field the old mirror dropped", got.RuntimeTgt)
+	}
+	if got.MaxAcquire != 7 {
+		t.Errorf("maxAcquisitions = %d, want 7", got.MaxAcquire)
+	}
+	if len(got.MustInclude) != 1 || got.MustInclude[0] != "Speed" {
+		t.Errorf("mustInclude = %v, want [Speed]", got.MustInclude)
+	}
+	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Cats" {
+		t.Errorf("mustExclude = %v, want [Cats]", got.MustExclude)
 	}
 }
