@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,13 +18,13 @@ import (
 // pinned capture guards the PARSING, in programmer/guide_contract_test.go.
 func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
-	ms := func(offset time.Duration) int64 { return now.Add(offset).UnixMilli() }
+	ms := func(offset time.Duration) string { return strconv.FormatInt(now.Add(offset).UnixMilli(), 10) }
 
 	body := `{"ch-1":{"id":"ch-1","name":"Test","number":42,"programs":[
-	  {"type":"content","start":` + itoa(ms(-2*time.Hour)) + `,"stop":` + itoa(ms(-1*time.Hour)) + `,"program":{"title":"Already Over"}},
-	  {"type":"content","start":` + itoa(ms(30*time.Minute)) + `,"stop":` + itoa(ms(90*time.Minute)) + `,"program":{"title":"Later"}},
-	  {"type":"content","start":` + itoa(ms(-10*time.Minute)) + `,"stop":` + itoa(ms(20*time.Minute)) + `,"program":{"title":"On Now"}},
-	  {"type":"flex","start":` + itoa(ms(20*time.Minute)) + `,"stop":` + itoa(ms(30*time.Minute)) + `,"title":"Commercials"}
+	  {"type":"content","start":` + ms((-2 * time.Hour)) + `,"stop":` + ms((-1 * time.Hour)) + `,"program":{"title":"Already Over"}},
+	  {"type":"content","start":` + ms((30 * time.Minute)) + `,"stop":` + ms((90 * time.Minute)) + `,"program":{"title":"Later"}},
+	  {"type":"content","start":` + ms((-10 * time.Minute)) + `,"stop":` + ms((20 * time.Minute)) + `,"program":{"title":"On Now"}},
+	  {"type":"flex","start":` + ms((20 * time.Minute)) + `,"stop":` + ms((30 * time.Minute)) + `,"title":"Commercials"}
 	]}}`
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -71,24 +72,4 @@ func TestNowNext_OmitsChannelsWithNothingScheduled(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("got %v, want no entry for a channel with nothing scheduled", got)
 	}
-}
-
-func itoa(v int64) string {
-	const digits = "0123456789"
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	var b []byte
-	for v > 0 {
-		b = append([]byte{digits[v%10]}, b...)
-		v /= 10
-	}
-	if neg {
-		return "-" + string(b)
-	}
-	return string(b)
 }
