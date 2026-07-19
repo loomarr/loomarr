@@ -119,6 +119,13 @@ func (s *Server) registerChannels(api huma.API) {
 	}, s.getChannel)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
+		Summary:     "Preview the commercial pool this channel would get",
+		Description: "Assembles the channel's filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
+		Tags:        []string{"channels", "filler"},
+	}, s.previewChannelPods)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "create-channel", Method: http.MethodPost, Path: "/v1/channels",
 		Summary: "Create a channel", Description: "Admin only. From an approved proposal or hand-made.",
 		Tags: []string{"channels"},
@@ -319,4 +326,65 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 		return nil, err
 	}
 	return &deleteChannelOutput{}, nil
+}
+
+// PodEntryDTO is one clip placed in the previewed pool, in play order.
+type PodEntryDTO struct {
+	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Empty for the embedded fallback bumper card, which is not a Tunarr program"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	DurationMs      int64  `json:"durationMs"`
+	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
+}
+
+type previewPodsInput struct {
+	ID string `path:"id"`
+}
+type previewPodsOutput struct {
+	Body struct {
+		Entries []PodEntryDTO `json:"entries"`
+		TotalMs int64         `json:"totalMs"`
+		// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
+		// is the answer to "why are my commercials wrong": exact means era+audience
+		// matched, and bumper_card means nothing matched and the channel is running on
+		// the embedded card alone.
+		MatchLevel string `json:"matchLevel" doc:"How far down the fallback ladder assembly went (§10)"`
+	}
+}
+
+// previewChannelPods shows the filler pool a channel would receive, without touching
+// Tunarr (§12). It runs the SAME assembler and the SAME seed as reconcile, so preview
+// and reality cannot disagree — a preview that could drift from what actually ships
+// would be worse than none.
+func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (*previewPodsOutput, error) {
+	if s.pods == nil {
+		return nil, huma.Error501NotImplemented("filler pod assembly not configured")
+	}
+	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+
+	pod, err := s.pods.Preview(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &previewPodsOutput{}
+	// Always a slice, never null: an empty catalog is a normal state the UI renders as
+	// "no clips yet", and a null here would make the FE guard a case that isn't an error.
+	out.Body.Entries = make([]PodEntryDTO, 0, len(pod.Entries))
+	for _, e := range pod.Entries {
+		out.Body.Entries = append(out.Body.Entries, PodEntryDTO{
+			TunarrProgramID: e.TunarrProgramID,
+			Name:            e.Name,
+			Kind:            string(e.Kind),
+			DurationMs:      e.DurationMs,
+			IsFallbackCard:  e.IsFallbackCard,
+		})
+	}
+	out.Body.TotalMs = pod.TotalMs
+	out.Body.MatchLevel = string(pod.MatchLevel)
+	return out, nil
 }
