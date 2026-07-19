@@ -52,7 +52,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
-		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler,
+		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig,
 	}

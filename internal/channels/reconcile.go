@@ -143,7 +143,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 // never returned — the channel still plays (§9 resilience), and EnsureFillerList
 // is internally idempotent so a stable pool makes no Tunarr write.
 func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
-	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, podEra(ch), podSeed(ch.ID))
+	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodEra(ch), PodSeed(ch.ID))
 	if !ok {
 		ids = nil // empty catalog / only-fallback → detach (channel falls back to flex)
 	}
@@ -153,14 +153,19 @@ func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
 	}
 }
 
-// podEra derives the block's target era from the channel (v1: unset → 0, any-era
+// PodEra derives the block's target era from the channel (v1: unset → 0, any-era
 // matching). A per-block era comes from the time-slot strategy in future work.
-func podEra(ch store.Channel) int { return 0 }
+//
+// Exported so the §12 pod PREVIEW derives era identically. If preview computed its own,
+// the two would drift and the UI would confidently show pods the reconciler never
+// builds — the whole failure mode preview exists to prevent.
+func PodEra(ch store.Channel) int { return 0 }
 
-// podSeed derives a deterministic pod seed from the channel id (§10 seeded-
+// PodSeed derives a deterministic pod seed from the channel id (§10 seeded-
 // deterministic — same channel rebuilds the same clip pool, so the filler-list
-// attach is idempotent across reconciles).
-func podSeed(channelID string) int64 {
+// attach is idempotent across reconciles). Exported for the same reason as PodEra:
+// preview must seed from the identical value or it previews a different pod.
+func PodSeed(channelID string) int64 {
 	var h int64 = 1469598103934665603 // FNV-1a offset basis
 	for _, b := range []byte(channelID) {
 		h ^= int64(b)

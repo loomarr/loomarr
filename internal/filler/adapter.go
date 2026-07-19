@@ -42,22 +42,13 @@ const poolGapMs = 600_000 // 10 min of clips
 // pool is seed-deterministic (same catalog + seed → same uuids), so a re-reconcile
 // produces the same list (idempotency at the EnsureFillerList layer, §9).
 func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era int, seed int64) ([]string, bool) {
-	clips, err := a.catalog.AllClips(ctx)
+	pod, err := a.Preview(ctx, channelID, era, seed)
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler list: load catalog failed (channel stays flex)", "channel", channelID, "err", err)
 		}
 		return nil, false
 	}
-	if len(clips) == 0 {
-		return nil, false // no filler yet → flex
-	}
-	w := Window{
-		ChannelID: channelID, Seed: seed, Era: era,
-		Audience: General, // v1: channel-level audience wiring is future; General matches broadly
-		GapMs:    poolGapMs, PodMax: 32,
-	}
-	pod := Assemble(clips, w, a.policy, map[string]bool{})
 	ids := make([]string, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
 		if e.TunarrProgramID == "" {
@@ -69,6 +60,39 @@ func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era 
 		return nil, false // only the fallback card → nothing to attach; flex
 	}
 	return ids, true
+}
+
+// Preview assembles the pool a channel WOULD get, without touching Tunarr (§12: the
+// Filler view previews a channel's pods). It is the SAME call BuildFillerList makes —
+// deliberately one code path, because a preview that diverges from what reconcile
+// actually attaches is worse than no preview: it would confidently show pods the
+// operator never receives.
+//
+// Assemble is pure and seeded-deterministic, so preview and the next reconcile of the
+// same channel produce identical output. Returns an empty pod (not an error) when the
+// catalog is empty — "no clips yet" is a normal state the UI renders, not a failure.
+func (a *PodAdapter) Preview(ctx context.Context, channelID string, era int, seed int64) (Pod, error) {
+	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return Pod{}, err
+	}
+	if len(clips) == 0 {
+		return Pod{}, nil
+	}
+	w := Window{
+		ChannelID: channelID, Seed: seed, Era: era,
+		// Empty audience = NO PREFERENCE, which is what "channel audience isn't wired
+		// yet" actually means. This previously passed General, whose comment claimed it
+		// "matches broadly" — the exact opposite of what filterAudience does: it keeps
+		// clips where `c.Audience == aud || c.Audience == General`, so General matches
+		// ONLY general-tagged clips. Every kids/family/late_night commercial, and every
+		// untagged one, was silently dropped from every channel's filler-list, leaving
+		// pods that were bumpers and the fallback card alone. Commercials are the point
+		// of §10, so this was the feature quietly not working.
+		Audience: "",
+		GapMs:    poolGapMs, PodMax: 32,
+	}
+	return Assemble(clips, w, a.policy, map[string]bool{}), nil
 }
 
 var _ interface {
