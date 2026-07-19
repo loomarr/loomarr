@@ -16,8 +16,13 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const Tagged: Story = { args: { clip: taggedClip } };
+
+// A tagged clip is still editable: §10's likely error is a trailer scanned as a
+// commercial, which arrives fully tagged and therefore wrong-but-"complete". Gating the
+// edit on `!tagged` left exactly that clip uncorrectable.
+const TaggedEditable: Story = { args: { clip: taggedClip, onTag: noop } };
 const Untagged: Story = { args: { clip: untaggedClip, onTag: noop } };
 const AiSuggestedTags: Story = { args: { clip: aiTaggedClip, onConfirmTags: noop } };
 
 export default meta;
-export { AiSuggestedTags, Tagged, Untagged };
+export { AiSuggestedTags, Tagged, TaggedEditable, Untagged };

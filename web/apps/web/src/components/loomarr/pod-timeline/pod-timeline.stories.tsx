@@ -1,9 +1,10 @@
-import { bumperClip, podClips } from "@loomarr/fixtures";
+import { fallbackCardEntry, podEntries } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { PodTimeline } from "./pod-timeline";
 
-// A commercial break made legible (§3, §10): matched · fallback-widened · bumper-card-only.
+// A commercial break made legible (§3, §10). The chip names how far down the fallback
+// ladder assembly went — the answer to "why are my commercials wrong".
 const meta = {
   title: "Loomarr/PodTimeline",
   component: PodTimeline,
@@ -13,9 +14,17 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Matched: Story = { args: { clips: podClips, match: "matched" } };
-const FallbackWidened: Story = { args: { clips: podClips, match: "fallback-widened" } };
-const BumperCardOnly: Story = { args: { clips: [bumperClip], match: "bumper-card-only" } };
+// The quiet case: era + audience both matched, so no chip.
+const Exact: Story = { args: { entries: podEntries, matchLevel: "exact" } };
+
+const EraWidened: Story = { args: { entries: podEntries, matchLevel: "widened" } };
+
+const EraIgnored: Story = { args: { entries: podEntries, matchLevel: "audience" } };
+
+// Nothing matched — the embedded card stands in rather than dead air (§10).
+const BumperCardOnly: Story = {
+  args: { entries: [fallbackCardEntry], matchLevel: "bumper_card" },
+};
 
 export default meta;
-export { BumperCardOnly, FallbackWidened, Matched };
+export { BumperCardOnly, EraIgnored, EraWidened, Exact };

@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { channelHealth, channelOnAir } from "@/channels";
 import { ChannelCard, ErrorState } from "@/components/loomarr";
 import { Badge, Button } from "@/components/ui";
+import { ChannelPods } from "@/filler";
 
 // Channel detail (§12): the card plus the things that explain WHY it looks the way it
 // does — slot fill, the Tunarr link, and the programming policy actually in force
@@ -89,6 +90,15 @@ const ChannelDetailScreen = () => {
               Running on the channel's stated policy — nothing had to be relaxed.
             </p>
           )}
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="font-semibold text-lg">Commercials</h2>
+          <p className="text-muted-foreground text-sm">
+            The clip pool Tunarr draws from for this channel's breaks — assembled the same way reconcile does
+            it, so this is what actually plays.
+          </p>
+          <ChannelPods channelId={id} />
         </section>
 
         <div className="flex items-center gap-2">
