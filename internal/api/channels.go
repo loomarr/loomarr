@@ -348,7 +348,10 @@ type previewPodsOutput struct {
 		// is the answer to "why are my commercials wrong": exact means era+audience
 		// matched, and bumper_card means nothing matched and the channel is running on
 		// the embedded card alone.
-		MatchLevel string `json:"matchLevel" doc:"How far down the fallback ladder assembly went (§10)"`
+		// Enumerated so orval generates a union the FE can switch on exhaustively. Left
+		// as a bare string, the frontend would hand-mirror these values — and the one
+		// that already did drifted out of sync with the ladder's real levels.
+		MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
 	}
 }
 

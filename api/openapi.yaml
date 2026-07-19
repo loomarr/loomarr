@@ -1067,6 +1067,11 @@ components:
             - "null"
         matchLevel:
           description: How far down the fallback ladder assembly went (§10)
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
           type: string
         totalMs:
           format: int64

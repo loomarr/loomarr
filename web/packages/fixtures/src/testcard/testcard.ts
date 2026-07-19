@@ -1,4 +1,4 @@
-import type { ClipDTO, Proposal } from "@loomarr/api";
+import type { ClipDTO, PodEntryDTO, Proposal } from "@loomarr/api";
 import type { SearchResult } from "@loomarr/core";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
@@ -23,6 +23,50 @@ const bumperClip: ClipDTO = {
   tagged: true,
   aiTagged: false,
   tunarrProgramId: "clip-bumper-open",
+};
+
+// GET /v1/channels/{id}/pods returns PodEntryDTO, NOT ClipDTO: a pod entry is a placed
+// clip (it can be the embedded fallback card, which has no Tunarr program id at all),
+// while a ClipDTO is a catalog row carrying tags. Typed to the shape the endpoint really
+// returns so the timeline tracks the contract 1:1 (§12).
+const podEntries: PodEntryDTO[] = [
+  {
+    name: "Channel bumper",
+    kind: "bumper",
+    durationMs: 5000,
+    isFallbackCard: false,
+    tunarrProgramId: "clip-bumper-open",
+  },
+  {
+    name: "Sunny D — Dude!",
+    kind: "commercial",
+    durationMs: 30000,
+    isFallbackCard: false,
+    tunarrProgramId: "clip-sunnyd",
+  },
+  {
+    name: "Gushers — Fruit by the Foot",
+    kind: "commercial",
+    durationMs: 30000,
+    isFallbackCard: false,
+    tunarrProgramId: "clip-gushers",
+  },
+  {
+    name: "Back after these",
+    kind: "bumper",
+    durationMs: 5000,
+    isFallbackCard: false,
+    tunarrProgramId: "clip-bumper-close",
+  },
+];
+
+// The bottom of the §10 fallback ladder: nothing matched, so the embedded card stands in
+// rather than dead air. It has no program id because it is not a Tunarr program.
+const fallbackCardEntry: PodEntryDTO = {
+  name: "Loomarr — We'll be right back",
+  kind: "bumper",
+  durationMs: 5000,
+  isFallbackCard: true,
 };
 
 const podClips: ClipDTO[] = [
@@ -131,8 +175,10 @@ const searchResults: SearchResult[] = [
 export {
   aiTaggedClip,
   bumperClip,
+  fallbackCardEntry,
   intentTemplates,
   podClips,
+  podEntries,
   proposal,
   sampleIntent,
   searchResults,

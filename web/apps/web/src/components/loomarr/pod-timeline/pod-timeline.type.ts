@@ -1,13 +1,16 @@
-import type { ClipDTO } from "@loomarr/api";
-
-type PodMatch = "matched" | "fallback-widened" | "bumper-card-only";
+import type { PodEntryDTO, PreviewPodsOutputBodyMatchLevel } from "@loomarr/api";
 
 interface PodTimelineProps {
-  clips: ClipDTO[];
-  match?: PodMatch;
+  // The generated preview shape, not a hand-written mirror: GET /v1/channels/{id}/pods
+  // returns PodEntryDTO, which carries exactly what a segment renders.
+  entries: PodEntryDTO[];
+  // The §10 fallback ladder level, straight off the wire. This was a hand-written union
+  // ("matched" | "fallback-widened" | "bumper-card-only") that had ALREADY drifted from
+  // the four levels the assembler reports — the reason the API now enumerates it.
+  matchLevel?: PreviewPodsOutputBodyMatchLevel;
   era?: number;
   audience?: string;
   className?: string;
 }
 
-export type { PodMatch, PodTimelineProps };
+export type { PodTimelineProps };
