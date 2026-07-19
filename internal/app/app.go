@@ -260,6 +260,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// filler path), plus the AI-tagging job and the pod assembler wired into the
 	// scheduler. Wired when a store, Tunarr, and FILLER_DIR are configured.
 	var fillerSvc api.FillerService
+	var podPreview api.PodPreviewer
 	if st != nil {
 		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
 		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log)
@@ -287,9 +288,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 
 		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to
 		// build a matched filler-list per channel (attached to Tunarr on reconcile).
+		// The SAME adapter instance backs the §12 preview endpoint, so preview and
+		// reconcile share one assembler and one policy — they cannot drift.
+		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{}, log)
+		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
 		if engine, ok := channelSvc.(*channels.Engine); ok {
-			podPolicy := filler.Policy{}
-			engine.WithPods(filler.NewPodAdapter(clipCatalogAdapter{st}, podPolicy, log))
+			engine.WithPods(podAdapter)
 			log.Info("filler pod assembler wired into the scheduler")
 		}
 
@@ -391,6 +395,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Search:        searchSvc,
 		Events:        eventBus,
 		Filler:        fillerSvc,
+		Pods:          podPreview,
 		SystemLLM:     systemLLM,
 		Settings:      settingsSvc,
 		Guide:         guideSvc,

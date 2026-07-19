@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
@@ -42,6 +43,7 @@ type Server struct {
 	search  SearchService
 	events  EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
 	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods    PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
 	systemLLM SystemLLMService
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
@@ -165,6 +167,17 @@ type FillerService interface {
 // problem type rather than the usual feature_not_configured.
 var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
+// PodPreviewer answers "what commercials would this channel get" without touching
+// Tunarr (§12). Implemented by filler.PodAdapter, which serves preview and the
+// reconciler from ONE code path — a preview that could diverge from what reconcile
+// attaches would be worse than none. nil ⇒ the route 501s.
+type PodPreviewer interface {
+	// Preview takes only a channel id: era and seed are derived by the adapter using
+	// the SAME exported helpers the reconciler uses (channels.PodEra/PodSeed), so the
+	// API cannot accidentally preview a differently-seeded pod than the one that ships.
+	Preview(ctx context.Context, channelID string) (filler.Pod, error)
+}
+
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
 // owns playout). Abstracted so the API needn't import the programmer client, and so a
 // unit test can drive the page without a Tunarr. nil ⇒ now/next reads empty.
@@ -284,6 +297,7 @@ type Options struct {
 	Search        SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
 	Events        EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods          PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -199,4 +200,21 @@ func runFillerSync(ctx context.Context, syncer *filler.Syncer, every time.Durati
 			}
 		}
 	}
+}
+
+// podPreviewAdapter bridges filler.PodAdapter → api.PodPreviewer (§12). It exists to
+// derive era + seed from the channel using the SAME exported helpers the reconciler
+// calls, so a preview and the next reconcile of that channel produce the identical
+// pool. The API stays out of that derivation entirely.
+type podPreviewAdapter struct {
+	store store.Store
+	pods  *filler.PodAdapter
+}
+
+func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (filler.Pod, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.Pod{}, err
+	}
+	return a.pods.Preview(ctx, ch.ID, channels.PodEra(ch), channels.PodSeed(ch.ID))
 }
