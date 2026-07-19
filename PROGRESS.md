@@ -4,6 +4,49 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4d-0c — Help transport, version, and a startup panic (2026-07-19).** Branch
+`feat/be-help-13.4d0c`. The last backend slice before the 13.4d screens.
+
+**The docHref anchors had nothing to land on.** The API has emitted deep-links like
+`troubleshooting#tunarr` since phase 8, and §13 promises "every red check deep-links to
+its section" — but nothing embedded `docs/`, and the troubleshooting page did not exist.
+Every red check pointed at a blank page, at exactly the moment an operator is stuck.
+Now: `docs/help/` embedded via `docs/embed.go`, `GET /v1/docs` + `GET /v1/docs/{slug}`,
+and a **test that every anchor the API emits resolves to a real heading** — renaming a
+heading fails the build instead of silently breaking a link. Only `help/` ships; the
+design docs beside it are internal and deliberately excluded.
+
+Wrote `troubleshooting.md` with all 8 sections. This is not phase 14's docs set (that
+still owns Quickstart/Concepts/Member guide/etc.) — it is the one page the *existing*
+backend contract already requires. Also gave `tunarr_library` its own anchor rather than
+sharing `#tunarr`: it fails for a specific silent reason (unscanned media source ⇒ dead
+air while everything else reads healthy) and deserves that explanation, not generic
+connectivity advice.
+
+**Version.** Nothing exposed one — §16 discusses upgrades and the runbook assumes the
+operator knows what they run. `internal/buildinfo` stamps via ldflags, falls back to Go's
+embedded VCS stamps, then to "dev". Surfaced on `GET /v1/system/version` together with
+readiness.
+
+**Deliberately did NOT move /healthz + /readyz into huma.** The sweep suggested it so
+orval could type them, but their consumers are Docker HEALTHCHECK and orchestrators,
+which hold no session — registering them in the authenticated /v1 API would put auth in
+front of a container health probe. The UI gets the typed twin instead. Pinned by a test,
+because "type the health endpoints" is a tempting future change.
+
+**Found and fixed a startup panic (pre-existing, from the 2026-07-18 guide-reader work).**
+Starting with no DATABASE_URL is a SUPPORTED mode — main logs "running without a store
+(not ready)" and expects /readyz to explain itself. Instead the process panicked in
+BuildHandler: no store ⇒ no settings service, and `resolved.str` dereferenced nil. A
+container missing DATABASE_URL crash-looped instead of answering the probe that would
+have told the operator why. Guarded every `resolved` getter; regression test verified to
+reproduce the exact panic without the fix.
+
+**Gate:** `make check` GREEN; `make fe` GREEN (169 app tests); `make openapi-verify` GREEN;
+manually verified a storeless boot serves /healthz 200 and /readyz 503 "no store configured".
+**Next:** 13.4d proper — the Filler, Users, Help, and ⌘K screens.
+
+
 **Phase 13.4d-0b pt2 — the sidecar is actually gone (2026-07-19).** Branch
 `feat/ingest-in-core-13.4d0b2`. PR #25 changed the DESIGN; this closes the code. Between
 the two, the docs said the sidecar was removed while the repo still shipped it — real

@@ -100,7 +100,11 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 	}
 	if s.tunarrConnect != nil {
 		ready, err := s.tunarrConnect.LibrariesReady(ctx)
-		check := SetupCheck{Name: "tunarr_library", OK: ready, DocHref: "troubleshooting#tunarr"}
+		// Its own anchor, not the general Tunarr one: this check fails for a specific and
+		// silent reason (Tunarr's media source isn't scanned, so every slot degrades to
+		// dead air while everything else reports healthy), and it deserves the section
+		// that explains that rather than generic connectivity advice.
+		check := SetupCheck{Name: "tunarr_library", OK: ready, DocHref: "troubleshooting#tunarr-library"}
 		if err != nil {
 			check.OK = false
 			check.Hint = "could not reach Tunarr: " + err.Error()
