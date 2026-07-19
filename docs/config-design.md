@@ -101,7 +101,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB | one **Test** button per connection block → runs the same `ConnectionTest` the wizard/checklist uses |
 | **AI** | Provider (ollama/openai) · URL · model · key · auto-approve + quota · **in-app model picker** (probe + catalog + hot-swap, main doc §8.1) | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Channels & playback** | Default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) | — |
-| **Filler** | Library (**dropdown of the server's actual libraries**) · sync interval · AI tagging · pod density · **ingestion sources list-editor** (feeds `/v1/filler/sources`) | library-exists check |
+| **Filler** | Drop-folder path (registered with Tunarr as a `local` source — *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths (`loomarr:filler` only) | drop-folder readable + Tunarr local-source check |
 | **Users & security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) | — |
 | **Advanced** | TTLs · retention · job workers · event webhook — plus every `Advanced: true` key surfaces here *and* behind its home page's toggle | — |
 
@@ -117,22 +117,24 @@ The re-runnable **connection checklist** sits at the top of Connections — Sett
 
 No parallel form system. Each wizard step renders the relevant **settings group's form** (essentials only — `Advanced` keys hidden), pre-resolved (env-pinned fields render locked), with the group's live test inline. **Configure → validate → save → advance.** The wizard writes through the exact same PATCH path as Settings.
 
-- **Step → group mapping:** claim (auth, pre-settings) → Connections/media-server → Connections/Tunarr (+ media-source check + one-click Live TV connect) → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; library dropdown + optional starter sources) → guided first channel.
+- **Step → group mapping:** claim (auth, pre-settings) → Connections/media-server → Connections/Tunarr (+ media-source check + one-click Live TV connect) → Connections/requester + **webhook handshake** (displays the generated secret's URL, listens for `Test`) → AI (skippable; includes the §8.1 model picker) → Filler (skippable; drop-folder path + optional starter ingest targets on `loomarr:filler`) → guided first channel.
 - **Skippable steps are neutral, not red:** checklist states are `pass | fail | skipped | pinned`. Skipping AI doesn't shame you with a red X — it shows a neutral "not configured" that links back here.
 - **First-run detection:** the `setup.completed` registry key (bool, `SETUP_COMPLETED`, Advanced — dotted to match every other key); until set, `/` routes to the wizard. The wizard's final step sets it through the ordinary `PATCH /v1/settings` path, so it is a setting like any other. "Re-run setup" lives in Settings forever.
 - **Defaults philosophy:** every optional key ships a working default, so the shortest honest path to a live channel is media server + Tunarr; Seerr adds acquisitions; AI adds suggestions.
 
 ---
 
-## 7. Feature gating derives from settings completeness
+## 7. Feature gating derives from settings completeness — with one environment-derived exception
 
-`RequiredFor` on registry keys computes feature availability — nothing else does:
+`RequiredFor` on registry keys computes feature availability:
 
 - **AI unconfigured** → the Suggest tab renders an inviting empty state ("Connect an LLM to build channels from a sentence" → deep link to Settings→AI), and `POST /v1/suggestions` returns a 409 problem `feature_not_configured` with the same pointer. Never a stack trace, never a dead button.
 - **Requester unconfigured** → proposals still generate from the library; acquisitions render disabled with "Connect Seerr to request missing titles."
-- **Filler unconfigured** → channels build without pods; the channel card notes "no filler library configured."
+- **Filler unconfigured** → channels build without pods; the channel card notes "no filler drop-folder configured."
 
-The checklist, the tab states, and the API gating all read the *same* computed feature set — one function, three consumers, no drift.
+**`ingest` is the exception, and it is deliberate.** Its availability is not a settings question — it depends on whether the running *image* carries `yt-dlp` + `ffmpeg`, which only `loomarr:filler` does (design §16). No amount of configuring makes it available on `loomarr:latest`, so it resolves from binary presence at startup rather than from `RequiredFor`. This matters for the UI copy: every other gate says "configure this," while `ingest` must say "**run the `loomarr:filler` image**" — pointing an operator at Settings for a gate no setting can open is exactly the dead end this section exists to prevent.
+
+The rule that survives: **one function computes the set, and every consumer reads it.** The checklist, the tab states, and the API gating never re-derive availability — only the *inputs* differ, never the seam.
 
 **Policy defaults are settings; policy effects are data.** Changing a registry default (e.g. the episode no-repeat window) hot-applies like any setting — but it only affects channels that *don't override* that key. The channel editor shows per-field provenance mirroring the settings UI: `channel override | default | built-in`.
 
