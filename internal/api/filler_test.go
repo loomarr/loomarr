@@ -156,3 +156,60 @@ func TestTagFiller_AdminOnly(t *testing.T) {
 		t.Errorf("tag invoked %d times, want 1", ff.tags)
 	}
 }
+
+// Clip search lives on /v1/filler, not /v1/search (§7.2). A clip is not a provisionable
+// title, so it cannot be a federated Candidate without pushing a non-title through the
+// LLM grounding path — the leak §10 exists to prevent.
+func TestFiller_NameSearch(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "c1", filler.Commercial, 1992, filler.Kids, "cereal")
+	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler?q=C1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("search → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []struct {
+			TunarrProgramID string `json:"tunarrProgramId"`
+		} `json:"clips"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	// Case-insensitive, and the result carries the Tunarr program id — the identity that
+	// makes a search hit deep-linkable, which a title-shaped Candidate could not carry.
+	if len(body.Clips) != 1 || body.Clips[0].TunarrProgramID != "c1" {
+		t.Errorf("q=C1 → %+v, want exactly clip c1", body.Clips)
+	}
+}
+
+// Kind is correctable by hand (§10): detection at sync mis-reads a trailer as a
+// commercial often enough to matter, and kind drives pod ROLE, so a wrong kind produces
+// structurally wrong pods rather than merely a mis-tagged clip.
+func TestFiller_PatchCorrectsKind(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
+
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/t1", adminToken,
+		`{"era":1994,"audience":"kids","category":"toys","kind":"trailer"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d, want 200", resp.StatusCode)
+	}
+	got, err := st.GetClip(context.Background(), "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != filler.Trailer {
+		t.Errorf("kind = %q, want trailer", got.Kind)
+	}
+
+	// Omitting kind must leave it alone, so a tag-only edit never rewrites it.
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/t1", adminToken, `{"era":1995,"audience":"kids","category":"toys"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("tag-only patch → %d, want 200", resp.StatusCode)
+	}
+	if got, _ = st.GetClip(context.Background(), "t1"); got.Kind != filler.Trailer {
+		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Kind)
+	}
+}

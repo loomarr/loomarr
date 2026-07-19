@@ -39,6 +39,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
 	t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
 	t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
+	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -791,5 +792,53 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got, _ = s.ListSessionsForUser(ctx, "u2", now); len(got) != 1 {
 		t.Errorf("RevokeSessionsForUser hit another user's sessions: u2 has %d, want 1", len(got))
+	}
+}
+
+// testClipNameSearch covers the §7.2 `name LIKE` clip search. It is in the shared suite
+// because the two dialects disagree by default: SQLite's LIKE folds ASCII case while
+// Postgres's does not, so a naive implementation would make search case-sensitive on
+// exactly one backend — the dialect fork the store rules forbid.
+func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
+
+	names := func(f ClipFilter) []string {
+		t.Helper()
+		got, err := s.ListClips(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(got))
+		for _, c := range got {
+			out = append(out, c.Name)
+		}
+		return out
+	}
+
+	// Substring, and case-insensitive on BOTH backends.
+	if got := names(ClipFilter{Query: "flakes"}); len(got) != 1 || got[0] != "Frosted Flakes" {
+		t.Errorf("Query=flakes → %v, want [Frosted Flakes] (case-insensitive on both dialects)", got)
+	}
+	if got := names(ClipFilter{Query: "FROSTED"}); len(got) != 1 {
+		t.Errorf("Query=FROSTED → %v, want 1 match", got)
+	}
+
+	// A literal % must not act as a wildcard. Without escaping this returns everything,
+	// which reads as "search is broken" and scans the whole table.
+	if got := names(ClipFilter{Query: "%"}); len(got) != 1 || got[0] != "100% Juice" {
+		t.Errorf("Query=%% → %v, want only [100%% Juice] — %% must be literal, not a wildcard", got)
+	}
+	// Likewise _, which would otherwise match any single character.
+	if got := names(ClipFilter{Query: "_"}); len(got) != 0 {
+		t.Errorf("Query=_ → %v, want none — _ must be literal, not a single-char wildcard", got)
+	}
+
+	// Search composes with the other filters rather than replacing them.
+	if got := names(ClipFilter{Query: "e", Category: "toys"}); len(got) != 1 || got[0] != "TMNT figures" {
+		t.Errorf("Query+Category → %v, want [TMNT figures]", got)
 	}
 }

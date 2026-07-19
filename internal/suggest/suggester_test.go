@@ -20,7 +20,7 @@ func buildSuggester(t *testing.T, llmMock *testkit.LLM) *suggest.Suggester {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm, nil)
+	cat := catalog.New(lib, tm)
 	return suggest.New(llmMock, cat, tm, 10)
 }
 
@@ -128,7 +128,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm, nil)
+	cat := catalog.New(lib, tm)
 	s := suggest.New(llmMock, cat, tm, 1) // cap = 1 acquisition
 
 	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "action"})

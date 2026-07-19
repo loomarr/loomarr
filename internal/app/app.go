@@ -228,7 +228,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		// clip corpus wired in Phase 12. WithPresence lets discovery mark titles the
 		// library already owns as in-library (a lineup pick, not an acquisition).
-		cat := catalog.New(lib, tmdbSearcher, nil).WithPresence(libraryPresence{lib})
+		cat := catalog.New(lib, tmdbSearcher).WithPresence(libraryPresence{lib})
 		searchSvc = searchAdapter{cat}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the

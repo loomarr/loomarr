@@ -38,7 +38,7 @@ func buildSuggester() (*suggest.Suggester, *tmdb.Client, error) {
 		return nil, nil, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
-	cat := catalog.New(lib, tm, nil).WithPresence(libPresence{lib})
+	cat := catalog.New(lib, tm).WithPresence(libPresence{lib})
 
 	provider := buildProvider()
 	if provider == nil {

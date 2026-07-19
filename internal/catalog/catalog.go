@@ -25,14 +25,13 @@ type Scope string
 const (
 	ScopeLibrary Scope = "library"
 	ScopeTMDB    Scope = "tmdb"
-	ScopeClips   Scope = "clips"
 	ScopeAll     Scope = "all"
 )
 
 // ParseScope validates a scope, defaulting to all.
 func ParseScope(s string) Scope {
 	switch Scope(s) {
-	case ScopeLibrary, ScopeTMDB, ScopeClips:
+	case ScopeLibrary, ScopeTMDB:
 		return Scope(s)
 	default:
 		return ScopeAll
@@ -110,23 +109,23 @@ type LibraryPresence interface {
 	Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (libraryItemID string, present bool, err error)
 }
 
-// ClipSearcher is the clip-catalog corpus (a name LIKE over the store — §7.2).
+// NOTE: there is deliberately no clip corpus here (§7.2, revised). Candidate models a
+// PROVISIONABLE TITLE — MediaType admits only movie|series, and every Candidate flows
+// through the dedupe/identity machinery that grounds the LLM. A clip is not a title
+// (§10), so representing one as a Candidate would push an unprovisionable row with an
+// invalid media type into the grounding path. Clip search lives on GET /v1/filler?q=,
+// which returns real ClipDTOs carrying a Tunarr program id.
 // Wired in Phase 12 when the clip catalog exists; nil until then.
-type ClipSearcher interface {
-	SearchClips(ctx context.Context, term string, limit int) ([]Candidate, error)
-}
-
-// Catalog federates the corpora. TMDB/clips may be nil (scope skipped).
+// Catalog federates the corpora. TMDB may be nil (scope skipped).
 type Catalog struct {
 	lib      LibrarySearcher
 	tmdb     TMDBSearcher
-	clips    ClipSearcher
 	presence LibraryPresence // optional; backfills in-library on discovery results
 }
 
 // New builds a Catalog. Any corpus may be nil; its scope is then skipped.
-func New(lib LibrarySearcher, tmdb TMDBSearcher, clips ClipSearcher) *Catalog {
-	return &Catalog{lib: lib, tmdb: tmdb, clips: clips}
+func New(lib LibrarySearcher, tmdb TMDBSearcher) *Catalog {
+	return &Catalog{lib: lib, tmdb: tmdb}
 }
 
 // WithPresence wires the in-library presence check used to backfill discovery
@@ -172,15 +171,6 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 	}
 	if scopeIncludes(scope, ScopeTMDB) && c.tmdb != nil {
 		res, err := c.tmdb.Search(ctx, term, limit)
-		if err != nil {
-			return nil, err
-		}
-		for _, cand := range res {
-			add(cand)
-		}
-	}
-	if scopeIncludes(scope, ScopeClips) && c.clips != nil {
-		res, err := c.clips.SearchClips(ctx, term, limit)
 		if err != nil {
 			return nil, err
 		}
