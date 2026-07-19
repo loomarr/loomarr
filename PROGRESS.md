@@ -4,6 +4,43 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4a — the Suggest workspace + approval queue (2026-07-18).** Branch `feat/fe-suggest-13.4a`. The
+product's core loop: a sentence becomes a grounded lineup. 13.4 is 8 surfaces, so it is sliced — **a** Suggest +
+approval, **b** Channels + Board, **c** Settings, **d** Filler/Users/Help/⌘K, **e** the gate. Suggest went first
+because the wizard already hands off to `/suggest` and it was landing on a placeholder — a broken promise in
+shipped code.
+
+**A three-way contract mismatch, fixed at the root (first commit).** `submitInput.Body` was a hand-mirrored copy
+of `suggest.Intent` — the exact pattern PR #9 removed from ProposalDTO, whose "zero hand-written mirror on either
+side" comment sits *twelve lines below* the mirror that had drifted. It omitted `RuntimeTgt`, so `runtimeTargetMin`
+was **unreachable by any client** even though the suggester feeds it to the LLM prompt and the scorer, and §13
+lists a runtime target among the constraints a user may set. Meanwhile the FE's `intentSchema` said `maxAcquire`
+where the wire says `maxAcquisitions` — parses fine, serializes fine, server ignores it: **a user's acquisition cap
+silently vanished**. Fixed by typing the body from the domain rather than patching one field, so `SubmitInputBody`
+disappears from the spec entirely and the request body now refs the SAME `Intent` schema `Proposal.intent` already
+used (spec net −29 lines). Two now-redundant `submitAdapter` copies deleted — the composition root's and a second
+one duplicated inside `internal/integration`. **Both halves are guarded, both proven to fail:**
+`TestSubmit_CarriesTheWholeIntent` (drop RuntimeTgt's json tag → red) and a **compile-time** `intent-contract.test.ts`
+asserting the form's output *is* a valid API `Intent` (rename a field → `tsc` breaks).
+
+**One SSE stream, many listeners.** The live phases (`searching · reasoning · scoring`) exist ONLY on the wire — no
+GET returns them — but the layout already opens an EventSource for cache invalidation, so a screen calling
+`useLoomarrEvents` again would open a second. `LoomarrEventsProvider` owns the single subscription and fans frames
+out; `useLoomarrEventListener` is a no-op outside it, so a component still renders in a story or unit test, just
+without live frames.
+
+**Built:** `IntentForm` (the hero + templates from `packages/core`, plus §13's "intent-writing hints" — era, tone,
+runtime target, acquisition cap — behind a disclosure, because the blank page is solved by one good sentence, not a
+form) → `useSuggestionRun` (submit → job → live phase → the proposal, matched on `jobId` client-side since
+`GET /v1/proposals` filters by status but not job, and the DTO already carries it) → `GenerationProgress` →
+`ProposalReview`, with approve/deny **admin-only** (§7/§11 — a member reviews without the controls). The
+`ApprovalQueue` lists everything still `submitted`: approving is the only path from a proposal to `/v1/titles`, so
+that list is the audit surface for what is about to spend real resources. Per §8 the stream stays a latency
+optimisation — a dropped `done` frame costs a spinner, not a proposal, because the list refetches on the same event.
+
+Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN (**170 tests**); Docker visual GREEN
+(144, 0 diffs); `make e2e` GREEN. **Next: 13.4b** — Channels + Channel detail + Board.
+
 **Phase 13.3d — the phase gate: wizard flow suite + page snapshots (2026-07-18).** Branch `feat/fe-wizard-13.3d`.
 Closes Phase 13.3 (frontend-build-plan §5 gate: "wizard e2e smoke vs mocked BE green; page-level snapshot per
 wizard step"). `make e2e` was a stub that exited 1; it is now real.

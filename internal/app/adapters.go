@@ -11,7 +11,6 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/setup"
-	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface
@@ -45,17 +44,6 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 		}
 		return out, nil
 	}
-}
-
-// submitAdapter maps suggest.Service to api.SuggestService (the API interface
-// takes flat args to stay dependency-light; here we rebuild the Intent).
-type submitAdapter struct{ svc *suggest.Service }
-
-func (a submitAdapter) Submit(ctx context.Context, desc, era, tone string, inc, exc []string, max int, createdBy string) (string, error) {
-	return a.svc.Submit(ctx, suggest.Intent{
-		Description: desc, Era: era, Tone: tone,
-		MustInclude: inc, MustExclude: exc, MaxAcquire: max,
-	}, createdBy)
 }
 
 // searchAdapter maps catalog.Catalog to api.SearchService (converts candidates

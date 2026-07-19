@@ -120,20 +120,11 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 		Auth:     api.NewTokenAuthorizer(adminToken),
 		Log:      slog.New(slog.DiscardHandler),
 		Channels: engine,
-		Suggest:  submitAdapter{svc},
+		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return &rig{srv: srv, store: st, tun: tun, llm: llmMock, clock: clock}
-}
-
-// submitAdapter mirrors main.go's: maps the API's flat Submit args to an Intent.
-type submitAdapter struct{ svc *suggest.Service }
-
-func (a submitAdapter) Submit(ctx context.Context, desc, era, tone string, inc, exc []string, max int, createdBy string) (string, error) {
-	return a.svc.Submit(ctx, suggest.Intent{
-		Description: desc, Era: era, Tone: tone, MustInclude: inc, MustExclude: exc, MaxAcquire: max,
-	}, createdBy)
 }
 
 // newIDGen returns a deterministic sequential id generator (job/proposal ids).
