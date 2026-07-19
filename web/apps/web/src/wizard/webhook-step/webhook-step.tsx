@@ -1,9 +1,9 @@
 import { settingsApi, setupApi } from "@loomarr/api";
 import { formatRelative } from "@loomarr/core";
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
 import { ChecklistItem, ErrorState } from "@/components/loomarr";
 import { Button } from "@/components/ui";
+import { useCopied } from "@/lib";
 
 // The two apps that send Loomarr webhooks (§6). Each reports independently so a
 // half-configured install says exactly which one is still missing.
@@ -15,7 +15,7 @@ const APPS = ["sonarr", "radarr"] as const;
 // WEBHOOK_SECRET as its token, revealed (never rotated — §4) so what's shown is what
 // they already pasted. Polls while the operator is off in the other tab.
 const WebhookStep = () => {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopied();
   const secret = settingsApi.useSecretReveal("webhook_secret");
   const status = setupApi.useSetupStatus({ query: { refetchInterval: 5000 } });
 
@@ -25,12 +25,6 @@ const WebhookStep = () => {
 
   const token = secret.data?.status === 200 ? (secret.data.data.value ?? "") : "";
   const url = token ? `${window.location.origin}/hooks/arr?token=${token}` : "";
-
-  const copy = () => {
-    void navigator.clipboard?.writeText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,7 +40,7 @@ const WebhookStep = () => {
         <code className="flex-1 truncate rounded-md border border-input bg-static-800 px-3 py-2 font-mono text-sm">
           {url || "Loading the webhook URL…"}
         </code>
-        <Button variant="outline" onClick={copy} disabled={!url}>
+        <Button variant="outline" onClick={() => copy(url)} disabled={!url}>
           {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
           {copied ? "Copied" : "Copy"}
         </Button>

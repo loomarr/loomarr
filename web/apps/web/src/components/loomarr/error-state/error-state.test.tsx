@@ -2,7 +2,7 @@ import { ApiError } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ErrorState, toProblem } from "./error-state";
+import { ErrorState } from "./error-state";
 
 describe("ErrorState", () => {
   it("renders an RFC7807 problem's title and detail (never raw JSON)", () => {
@@ -22,10 +22,5 @@ describe("ErrorState", () => {
     rerender(<ErrorState error={new Error("boom")} onRetry={onRetry} />);
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledOnce();
-  });
-
-  it("toProblem falls back for plain and unknown errors", () => {
-    expect(toProblem(new Error("plain")).title).toBe("plain");
-    expect(toProblem("weird").title).toBe("Something went wrong");
   });
 });

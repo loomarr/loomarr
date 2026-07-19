@@ -1,4 +1,5 @@
 import { titlesApi } from "@loomarr/api";
+import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { journeyProgress, stageOf } from "@/board";
@@ -44,8 +45,8 @@ const BoardScreen = () => {
         <h1 className="font-semibold text-xl">Board</h1>
         {rows.length > 0 && (
           <p className="mt-1 text-muted-foreground text-sm">
-            {progress.ready} of {progress.total} titles have landed. Channels play what's ready and fill the
-            rest, so they improve as the others arrive.
+            {`${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed.`}{" "}
+            Channels play what's ready and fill the rest, so they improve as the others arrive.
           </p>
         )}
       </header>

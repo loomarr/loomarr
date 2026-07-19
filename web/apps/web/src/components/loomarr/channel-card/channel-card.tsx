@@ -1,3 +1,4 @@
+import { channelNumber } from "@loomarr/core";
 import { Card } from "@/components/ui";
 import { cn } from "@/lib";
 import { NowNextStrip } from "../now-next-strip";
@@ -29,7 +30,7 @@ const ChannelCard = ({
     <Card className={cn("flex flex-col gap-3 p-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <span className="font-mono text-2xl tabular-nums leading-none">{number}</span>
+          <span className="font-mono text-2xl tabular-nums leading-none">{channelNumber(number)}</span>
           <div>
             <p className="font-medium leading-tight">{name}</p>
             {managed && (
