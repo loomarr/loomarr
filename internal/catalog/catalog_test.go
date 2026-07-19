@@ -20,7 +20,7 @@ func realLibrary(t *testing.T) *library.Client {
 
 func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
 	lib := realLibrary(t)
-	c := catalog.New(lib, nil, nil)
+	c := catalog.New(lib, nil)
 
 	got, err := c.Search(context.Background(), "matrix", catalog.ScopeLibrary, 10)
 	if err != nil {
@@ -53,7 +53,7 @@ func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
 	lib := realLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	c := catalog.New(lib, tm, nil)
+	c := catalog.New(lib, tm)
 
 	// "matrix" is in BOTH the library fixture (tmdb 603) and the TMDB mock (603).
 	// The merged candidate must appear ONCE, in_library=true.
@@ -82,7 +82,7 @@ func TestCatalogSearch_EnrichesGenreOverview_WithoutChangingDedupe(t *testing.T)
 	lib := realLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	c := catalog.New(lib, tm, nil)
+	c := catalog.New(lib, tm)
 
 	got, err := c.Search(context.Background(), "matrix", catalog.ScopeAll, 20)
 	if err != nil {
@@ -117,7 +117,7 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	// A TMDB title absent from the library ("Speed") → in_library=false.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(realLibrary(t), tm, nil)
+	c := catalog.New(realLibrary(t), tm)
 
 	got, err := c.Search(context.Background(), "speed", catalog.ScopeAll, 20)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(realLibrary(t), tm, nil)
+	c := catalog.New(realLibrary(t), tm)
 
 	// "matrix" matches an in-library title; add a TMDB-only via broad-ish search
 	// isn't possible with distinct terms, so just assert in-library sorts first
@@ -199,7 +199,7 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	// The mock owns The Matrix (603) → discovery of Action should mark it in-library.
-	c := catalog.New(lib, tm, nil).WithPresence(fakePresence{owned: map[int]string{603: "lib-603"}})
+	c := catalog.New(lib, tm).WithPresence(fakePresence{owned: map[int]string{603: "lib-603"}})
 
 	got, err := c.Discover(context.Background(), provision.Movie, []string{"Action"}, 1990, 1999, 20)
 	if err != nil {

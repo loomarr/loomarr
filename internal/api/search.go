@@ -14,13 +14,15 @@ import (
 func (s *Server) registerSearch(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "search", Method: http.MethodGet, Path: "/v1/search",
-		Summary: "Federated search (library + TMDB + clips)", Tags: []string{"search"},
+		Summary: "Federated search (library + TMDB)", Tags: []string{"search"},
 	}, s.doSearch)
 }
 
 type searchInput struct {
-	Q     string `query:"q" doc:"Search terms"`
-	Scope string `query:"scope" enum:"library,tmdb,clips,all" doc:"Corpus to search (default all)"`
+	Q string `query:"q" doc:"Search terms"`
+	// Clips are NOT a scope (§7.2): Candidate models a provisionable title, and a clip
+	// is not one (§10). Clip search is GET /v1/filler?q=, which returns ClipDTOs.
+	Scope string `query:"scope" enum:"library,tmdb,all" doc:"Corpus to search (default all). Clips are not searchable here — use /v1/filler?q="`
 	Limit int    `query:"limit" doc:"Max results (default 20)"`
 }
 type searchOutput struct {

@@ -894,6 +894,16 @@ components:
         era:
           format: int64
           type: integer
+        kind:
+          enum:
+            - commercial
+            - bumper
+            - station_id
+            - psa
+            - trailer
+            - interstitial
+            - ""
+          type: string
       type: object
     PatchUserInputBody:
       additionalProperties: false
@@ -2095,6 +2105,13 @@ paths:
           schema:
             description: Only commercials missing match tags
             type: boolean
+        - description: Case-insensitive substring match on the clip name
+          explode: false
+          in: query
+          name: q
+          schema:
+            description: Case-insensitive substring match on the clip name
+            type: string
       responses:
         "200":
           content:
@@ -2194,16 +2211,15 @@ paths:
           schema:
             description: Search terms
             type: string
-        - description: Corpus to search (default all)
+        - description: Corpus to search (default all). Clips are not searchable here — use /v1/filler?q=
           explode: false
           in: query
           name: scope
           schema:
-            description: Corpus to search (default all)
+            description: Corpus to search (default all). Clips are not searchable here — use /v1/filler?q=
             enum:
               - library
               - tmdb
-              - clips
               - all
             type: string
         - description: Max results (default 20)
@@ -2227,7 +2243,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Federated search (library + TMDB + clips)
+      summary: Federated search (library + TMDB)
       tags:
         - search
   /v1/sessions/{hash}:

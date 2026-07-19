@@ -93,6 +93,11 @@ type Store interface {
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. Returns ErrNotFound if absent.
 	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
+	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
+	// the AI tagging job never sets kind — it classifies era/audience/category from text
+	// signals, while kind is detected at sync and only a human corrects it (a trailer
+	// scanned as a commercial being the likely case).
+	UpdateClipKind(ctx context.Context, tunarrProgramID, kind string, updatedAt time.Time) error
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
