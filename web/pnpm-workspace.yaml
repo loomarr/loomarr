@@ -11,3 +11,15 @@ allowBuilds:
 # build script; pnpm blocks build scripts by default. Approve exactly this one.
 onlyBuiltDependencies:
   - esbuild
+
+# Transitive advisories we pin past. Both arrive ONLY through orval's codegen chain
+# (orval → @orval/core → @ibm-cloud/openapi-ruleset → spectral), so neither is in the
+# shipped artifact — what ships is the built SPA embedded in the Go binary, and orval
+# runs at build time. Pinned anyway: a dev-only advisory still runs on developer and CI
+# machines, and leaving it open trains us to ignore the alert list.
+# Both stay within the major their dependents ask for, so no API break.
+overrides:
+  # GHSA: code injection via `_.template` + prototype pollution in `_.unset`/`_.omit`.
+  lodash: "^4.18.1"
+  # GHSA: quadratic-complexity DoS via repeated aliases in merge keys.
+  js-yaml: "^4.2.0"
