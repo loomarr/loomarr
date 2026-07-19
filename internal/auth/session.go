@@ -97,3 +97,24 @@ func (m *Manager) Resolve(ctx context.Context, token string) (store.User, error)
 func (m *Manager) Revoke(ctx context.Context, token string) error {
 	return m.store.RevokeSession(ctx, hashToken(token))
 }
+
+// List returns a user's live sessions (§11). The returned Sessions carry the stored
+// token HASH, never a token: an admin reviewing "who is signed in" needs a stable handle
+// to revoke by, and the hash is already that handle. Returning it preserves the schema's
+// guarantee that a read never yields a usable cookie — SHA-256 is preimage-resistant, so
+// the hash cannot be turned back into the cookie it authenticates.
+func (m *Manager) List(ctx context.Context, userID string) ([]store.Session, error) {
+	return m.store.ListSessionsForUser(ctx, userID, m.now())
+}
+
+// RevokeHash ends a single session addressed by its stored hash — the admin-facing
+// counterpart to Revoke, which takes the plaintext token only the session's owner holds.
+func (m *Manager) RevokeHash(ctx context.Context, tokenHash string) error {
+	return m.store.RevokeSession(ctx, tokenHash)
+}
+
+// IsCurrent reports whether a stored hash belongs to the caller's own token. The UI uses
+// it to mark "this device" so an admin does not sign themselves out by accident.
+func IsCurrent(tokenHash, callerToken string) bool {
+	return callerToken != "" && tokenHash == hashToken(callerToken)
+}
