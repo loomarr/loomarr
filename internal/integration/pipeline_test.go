@@ -94,7 +94,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm, nil)
+	cat := catalog.New(lib, tm)
 	suggester := suggest.New(llmMock, cat, tm, 10)
 
 	// The REAL worker service that runs jobs → persists proposals.

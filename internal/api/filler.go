@@ -69,6 +69,10 @@ type listFillerInput struct {
 	Audience string `query:"audience" enum:"kids,family,general,late_night"`
 	Category string `query:"category"`
 	Untagged bool   `query:"untagged" doc:"Only commercials missing match tags"`
+	// Q is the clip corpus's search box (§7.2). Clip search lives here rather than on
+	// /v1/search because a clip is not a provisionable title (§10) and cannot be a
+	// federated Candidate without leaking a non-title into the LLM grounding path.
+	Q string `query:"q" doc:"Case-insensitive substring match on the clip name"`
 }
 type listFillerOutput struct {
 	Body struct {
@@ -83,6 +87,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		Audience:     filler.Audience(in.Audience),
 		Category:     in.Category,
 		UntaggedOnly: in.Untagged,
+		Query:        in.Q,
 	})
 	if err != nil {
 		return nil, err
@@ -101,6 +106,12 @@ type patchClipInput struct {
 		Era      int    `json:"era,omitempty"`
 		Audience string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 		Category string `json:"category,omitempty"`
+		// Kind is correctable by hand (§10). Detection at sync gets it wrong in one
+		// direction often enough to matter — a trailer scanned as a commercial — and
+		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
+		// wrong kind yields structurally wrong pods rather than just a mis-tagged clip.
+		// Empty means "leave it alone", so a tag-only edit never rewrites kind.
+		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,"`
 	}
 }
 type clipOutput struct{ Body ClipDTO }
@@ -109,12 +120,24 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	// A manual edit clears the AI flag (a human tagged it).
-	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, false, time.Now()); err != nil {
+	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, huma.Error404NotFound("no such clip")
 		}
 		return nil, err
+	}
+	// Kind is a separate write because the AI tagging job shares UpdateClipTags and must
+	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
+	// safe to retry if the second fails.
+	if in.Body.Kind != "" {
+		if err := s.store.UpdateClipKind(ctx, in.ID, in.Body.Kind, now); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, huma.Error404NotFound("no such clip")
+			}
+			return nil, err
+		}
 	}
 	c, err := s.store.GetClip(ctx, in.ID)
 	if err != nil {

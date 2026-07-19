@@ -36,7 +36,7 @@ func buildService(t *testing.T, st store.Store, llmMock *testkit.LLM) *suggest.S
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm, nil)
+	cat := catalog.New(lib, tm)
 	sug := suggest.New(llmMock, cat, tm, 10)
 	return suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger())
@@ -162,7 +162,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm, nil)
+	cat := catalog.New(lib, tm)
 	sug := suggest.New(slow, cat, tm, 10)
 	svc := suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: 200 * time.Millisecond, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger())

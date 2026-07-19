@@ -121,7 +121,7 @@ func randRating(rng *rand.Rand) string {
 	return r[rng.Intn(len(r))]
 }
 func randScope(rng *rand.Rand) Scope {
-	s := []Scope{ScopeLibrary, ScopeTMDB, ScopeClips}
+	s := []Scope{ScopeLibrary, ScopeTMDB}
 	return s[rng.Intn(len(s))]
 }
 
@@ -144,7 +144,7 @@ func mutateNonIdentity(c Candidate, field string) Candidate {
 		c.InLibrary = !c.InLibrary
 	case "Source":
 		if c.Source == ScopeTMDB {
-			c.Source = ScopeClips
+			c.Source = ScopeLibrary
 		} else {
 			c.Source = ScopeTMDB
 		}
@@ -193,7 +193,7 @@ func TestProp_DedupeKey_IdentityComponentsMatter(t *testing.T) {
 	noisy.Year = 2001
 	noisy.InLibrary = true
 	noisy.Genres = []string{"Action"}
-	noisy.Source = ScopeClips
+	noisy.Source = ScopeLibrary
 	if dedupeKey(noisy) != k {
 		t.Fatalf("noise changed key: %q vs %q", dedupeKey(noisy), k)
 	}

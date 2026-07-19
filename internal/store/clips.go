@@ -29,6 +29,11 @@ type ClipFilter struct {
 	// UntaggedOnly restricts to clips missing era/audience/category — the AI
 	// tagging job's work list (§10).
 	UntaggedOnly bool
+	// Query is a case-insensitive substring match on the clip name — the `name LIKE`
+	// filter §7.2 prescribes for the clip corpus. Clip search lives here rather than in
+	// /v1/search because a clip is not a provisionable title (§10), so it cannot be a
+	// federated Candidate without leaking a non-title into the LLM grounding path.
+	Query string
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
@@ -75,6 +80,15 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		where = append(where, "category = ?")
 		args = append(args, f.Category)
 	}
+	if f.Query != "" {
+		// LOWER() on both sides so the match is case-insensitive on BOTH dialects:
+		// SQLite's LIKE folds case for ASCII by default while Postgres's does not, and
+		// a search that behaves differently per backend is exactly the dialect fork the
+		// store rules forbid. The term is escaped for LIKE metacharacters so a user
+		// typing "%" searches for a percent sign rather than matching everything.
+		where = append(where, "LOWER(name) LIKE LOWER(?) ESCAPE '\\'")
+		args = append(args, "%"+escapeLike(f.Query)+"%")
+	}
 	if f.UntaggedOnly {
 		// "Untagged" = a COMMERCIAL missing any match tag. Bumpers/station-ids/PSAs
 		// serve their bookend role without era/audience/category, so the AI-tagging
@@ -108,6 +122,23 @@ func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audie
 		era, audience, category, boolToInt(aiTagged), epoch(updatedAt), id)
 	if err != nil {
 		return fmt.Errorf("update clip tags %s: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends
+// a pod while a commercial fills it — so a mis-detected kind produces structurally wrong
+// pods, not merely a mis-tagged clip.
+func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedAt time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET kind = ?, updated_at = ? WHERE tunarr_program_id = ?`),
+		kind, epoch(updatedAt), id)
+	if err != nil {
+		return fmt.Errorf("update clip kind %s: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -182,4 +213,12 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// escapeLike neutralizes LIKE metacharacters so a search term is matched literally.
+// Without it, a query of "%" matches every clip and "_" matches any single character —
+// surprising for a plain search box, and a needless full-table scan.
+func escapeLike(term string) string {
+	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	return r.Replace(term)
 }
