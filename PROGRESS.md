@@ -4,6 +4,42 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4b (prerequisite) — reading Tunarr's guide for now/next (2026-07-19).** Branch
+`feat/fe-channels-13.4b`. The BE half of Channels: `NowNextStrip` was built in 13.2 and listed under Channels in
+the build plan, but had **no data source**. `LineupEntry` carries a duration and no start time — Loomarr owns the
+lineup (what should play), Tunarr owns playout (when it actually plays, §6) — so airtimes are Tunarr's truth and
+cannot be recomputed here without duplicating its scheduling math.
+
+**How the contract was established, after two wrong turns worth recording.** First I claimed this needed
+maintainer-supervised live contact and handed over curl commands. That was invented: the repo vendors Tunarr's
+OpenAPI (`api/vendor/tunarr-openapi.json`), a version-pinned Tunarr runs in the dev stack, `TUNARR_URL` is in
+`.env`, and Tunarr is open source. The rule I cited forbids the *test suite* touching the network, not
+investigating. Second — prompted by "the code is open source, why not look at it?" — reading Tunarr's own zod
+schemas at tag `v1.3.8` **invalidated the capture I had just taken**: I had sampled the SINGULAR
+`/api/guide/channels/{id}`, whose shape (`{index, lineupItem, startTimeMs}`) carries **no title and no stop time**.
+Had that been pinned, Channels would have shipped a title-less strip plus a second lookup just to name a program.
+The **plural** `/api/guide/channels` carries `start`/`stop`, a real `title`, and tmdb `identifiers[]` — and is keyed
+by channel id, so a Channels LIST costs **one** upstream call, not one per card. That also dissolved the N+1
+objection I had raised against doing this at all. Capture + both traps recorded in
+`fixtures/tunarr/GUIDE-FINDINGS.md`; the vendored spec does not type the guide response, so the source and the
+capture are the only authorities.
+
+**Built:** `programmer.Guide` (parses the guide; tmdb id lifted from `identifiers[]` so an entry joins to a
+provisioning key with no second lookup; an ungenerated guide is empty, not an error — the tolerance `GetLineup`
+already gives an unprogrammed channel). `guideAdapter` reduces a timeline to the pair a card shows, using a
+**containment** test rather than "the first entry", so an out-of-order or already-finished head cannot mislabel
+what is on. `GET /v1/channels/now-next` serves every channel from that one call, keyed by the **Loomarr** id (the
+FE never sees Tunarr ids), and a Tunarr hiccup returns empty rather than blanking the page.
+
+**Self-review caught two more:** the new route shares a prefix with `/v1/channels/{id}` and could plausibly have
+resolved to `get-channel` with `id="now-next"` — Go 1.22 prefers the literal segment, but that was assumed rather
+than proven, and is now pinned; and a test carried a hand-rolled `itoa` reinventing `strconv`. Parsing is tested
+against the pinned capture and **proven to fail** (read the title-less singular shape → red).
+
+Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN; `make e2e` GREEN; orval generated
+`useChannelsNowNext`. **Next: 13.4b proper** — the Channels page (cards, health rollup, now/next, reconcile-now),
+Channel detail, and the Board.
+
 **Phase 13.4a — the Suggest workspace + approval queue (2026-07-18).** Branch `feat/fe-suggest-13.4a`. The
 product's core loop: a sentence becomes a grounded lineup. 13.4 is 8 surfaces, so it is sliced — **a** Suggest +
 approval, **b** Channels + Board, **c** Settings, **d** Filler/Users/Help/⌘K, **e** the gate. Suggest went first

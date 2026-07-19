@@ -55,6 +55,8 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
+	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
+	guide GuideReader
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -148,6 +150,15 @@ type FillerService interface {
 	Sync(ctx context.Context) (total, added, updated, pruned int, err error)
 	// Tag runs AI classification over untagged commercials.
 	Tag(ctx context.Context) (considered, tagged, partial, skipped int, err error)
+}
+
+// GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr
+// owns playout). Abstracted so the API needn't import the programmer client, and so a
+// unit test can drive the page without a Tunarr. nil ⇒ now/next reads empty.
+type GuideReader interface {
+	// NowNext returns, per TUNARR channel id, the program airing at `now` and the one
+	// following it. A channel with no generated guide is simply absent.
+	NowNext(ctx context.Context, now time.Time) (map[string]ChannelNowNext, error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented
@@ -260,6 +271,7 @@ type Options struct {
 	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).

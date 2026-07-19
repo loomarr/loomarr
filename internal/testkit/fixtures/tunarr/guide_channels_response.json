@@ -1,0 +1,158 @@
+{
+    "2a46c4ea-8c70-4ef8-8aa1-d1289748fcf5": {
+        "icon": {
+            "path": "",
+            "width": 0,
+            "duration": 0,
+            "position": "bottom-right"
+        },
+        "name": "Loomarr Test 90s Action",
+        "number": 42,
+        "id": "2a46c4ea-8c70-4ef8-8aa1-d1289748fcf5",
+        "programs": [
+            {
+                "type": "content",
+                "duration": 6802198,
+                "id": "c93e0798-c884-4c08-989d-432b020a6a58",
+                "program": {
+                    "uuid": "c93e0798-c884-4c08-989d-432b020a6a58",
+                    "sourceType": "emby",
+                    "type": "movie",
+                    "identifiers": [
+                        {
+                            "id": "tt0082089",
+                            "type": "imdb"
+                        },
+                        {
+                            "id": "14412",
+                            "type": "tmdb"
+                        },
+                        {
+                            "id": "4809",
+                            "type": "tvdb"
+                        },
+                        {
+                            "id": "2677682",
+                            "sourceId": "0387b3ab-067f-42f8-9318-d31189b829c8",
+                            "type": "emby"
+                        }
+                    ],
+                    "title": "Body Heat",
+                    "sortTitle": "body heat",
+                    "tags": [
+                        "80s Best",
+                        "Top Romance"
+                    ],
+                    "originalTitle": null,
+                    "year": 1981,
+                    "releaseDate": 367819200000,
+                    "releaseDateString": "1981-08-28T04:00:00+00:00",
+                    "actors": [],
+                    "writers": [],
+                    "directors": [],
+                    "artwork": [
+                        {
+                            "id": "1896831d-8863-495b-bc9d-7ce873f1b0b2",
+                            "type": "poster",
+                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Primary"
+                        },
+                        {
+                            "id": "df3a6b6e-bd69-4e96-a146-ca7c76fe66c1",
+                            "type": "banner",
+                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Banner"
+                        },
+                        {
+                            "id": "b2e56fe7-0201-4357-86d9-7af538912029",
+                            "type": "thumbnail",
+                            "path": "http://100.75.125.45:8096/Items/2677682/Images/Thumb"
+                        }
+                    ],
+                    "state": "ok",
+                    "summary": null,
+                    "plot": "During an extreme heatwave, a beautiful Florida woman and a seedy lawyer engage in an affair while plotting the murder of her rich husband.",
+                    "tagline": "As the temperature rises, the suspense begins.",
+                    "rating": "R",
+                    "mediaSourceId": "0387b3ab-067f-42f8-9318-d31189b829c8",
+                    "libraryId": "0f6162cd-6637-45fc-8486-a35686e061db",
+                    "canonicalId": "95cf6c077fe6eb32908ff242d08223bc",
+                    "externalId": "2677682",
+                    "duration": 6802198
+                },
+                "start": 1784424773090,
+                "stop": 1784431575288,
+                "isPaused": false
+            },
+            {
+                "type": "content",
+                "duration": 6759968,
+                "id": "c687015a-4ea8-425c-b71d-8972fd266ceb",
+                "program": {
+                    "uuid": "c687015a-4ea8-425c-b71d-8972fd266ceb",
+                    "sourceType": "emby",
+                    "type": "movie",
+                    "identifiers": [
+                        {
+                            "id": "tt0106856",
+                            "type": "imdb"
+                        },
+                        {
+                            "id": "37094",
+                            "type": "tmdb"
+                        },
+                        {
+                            "id": "5073",
+                            "type": "tvdb"
+                        },
+                        {
+                            "id": "2920908",
+                            "sourceId": "0387b3ab-067f-42f8-9318-d31189b829c8",
+                            "type": "emby"
+                        }
+                    ],
+                    "title": "Falling Down",
+                    "sortTitle": "falling down",
+                    "tags": [
+                        "90s Best"
+                    ],
+                    "originalTitle": null,
+                    "year": 1993,
+                    "releaseDate": 730702800000,
+                    "releaseDateString": "1993-02-26T05:00:00+00:00",
+                    "actors": [],
+                    "writers": [],
+                    "directors": [],
+                    "artwork": [
+                        {
+                            "id": "ee04d155-1b50-4f14-8aee-14e9473bfb68",
+                            "type": "poster",
+                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Primary"
+                        },
+                        {
+                            "id": "2529927a-f63d-4fbd-a1f8-98a68fae23e2",
+                            "type": "banner",
+                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Banner"
+                        },
+                        {
+                            "id": "4c4a8184-4640-4704-ab14-20067b3cf548",
+                            "type": "thumbnail",
+                            "path": "http://100.75.125.45:8096/Items/2920908/Images/Thumb"
+                        }
+                    ],
+                    "state": "ok",
+                    "summary": null,
+                    "plot": "An ordinary man frustrated with the various flaws he sees in society begins to psychotically and violently lash out against them.",
+                    "tagline": "The adventures of an ordinary man at war with the everyday world.",
+                    "rating": "R",
+                    "mediaSourceId": "0387b3ab-067f-42f8-9318-d31189b829c8",
+                    "libraryId": "0f6162cd-6637-45fc-8486-a35686e061db",
+                    "canonicalId": "d1131595028ffc3fee44a9daa3d57bfd",
+                    "externalId": "2920908",
+                    "duration": 6759968
+                },
+                "start": 1784431575288,
+                "stop": 1784438335256,
+                "isPaused": false
+            }
+        ]
+    }
+}

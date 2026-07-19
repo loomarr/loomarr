@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -256,5 +258,77 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", "", "")
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("member status → %d, want 403", resp.StatusCode)
+	}
+}
+
+// fakeGuide is a scripted api.GuideReader keyed by TUNARR id (as the real one is).
+type fakeGuide struct{ byTunarr map[string]api.ChannelNowNext }
+
+func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+	return f.byTunarr, nil
+}
+
+// GET /v1/channels/now-next must resolve to the now/next handler, NOT to
+// GET /v1/channels/{id} with id="now-next". A literal segment beats a wildcard in Go
+// 1.22's ServeMux, but that is a routing detail worth pinning rather than assuming: if
+// precedence ever flipped, the page would 404 on a channel that does not exist.
+func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/nn.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// A reconciled channel (has a Tunarr id) and one that has never reconciled.
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-live", Name: "Live", Number: 42, TunarrID: "tunarr-1", Status: "live"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-new", Name: "New", Number: 43, Status: "building"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st,
+		Auth:  api.NewTokenAuthorizer(adminToken),
+		Log:   slog.New(slog.DiscardHandler),
+		Guide: fakeGuide{byTunarr: map[string]api.ChannelNowNext{
+			"tunarr-1": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},
+		}},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("now-next → %d; a 404 means it routed to get-channel with id=now-next", resp.StatusCode)
+	}
+	var body struct {
+		Channels []api.ChannelNowNext `json:"channels"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+
+	if len(body.Channels) != 1 {
+		t.Fatalf("got %d entries, want 1 (the never-reconciled channel has nothing airing)", len(body.Channels))
+	}
+	// The response is keyed by the LOOMARR channel id — the FE never sees Tunarr ids.
+	if body.Channels[0].ChannelID != "ch-live" {
+		t.Errorf("channelId = %q, want ch-live (the Tunarr id must be translated)", body.Channels[0].ChannelID)
+	}
+	if body.Channels[0].Now == nil || body.Channels[0].Now.Title != "On Now" {
+		t.Errorf("now = %+v", body.Channels[0].Now)
+	}
+}
+
+// With no Tunarr configured the page still loads: now/next is a nicety on a list view,
+// so an absent guide reads as "nothing airing", never an error.
+func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t) // wired without a Guide
+	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("now-next without a guide → %d, want 200", resp.StatusCode)
 	}
 }
