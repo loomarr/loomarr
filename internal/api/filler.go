@@ -38,6 +38,12 @@ func (s *Server) registerFiller(api huma.API) {
 		Summary: "AI-tag untagged clips", Description: "Admin only. Text-signal classification (§10).",
 		Tags: []string{"filler"},
 	}, s.tagFiller)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
+		Summary: "Download clips into the drop-folder (admin; loomarr:filler image only)",
+		Tags:    []string{"filler"},
+	}, s.ingestFiller)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the Tunarr `local`-
@@ -193,5 +199,45 @@ func (s *Server) tagFiller(ctx context.Context, _ *struct{}) (*tagFillerOutput, 
 	}
 	out := &tagFillerOutput{}
 	out.Body.Considered, out.Body.Tagged, out.Body.Partial, out.Body.Skipped = considered, tagged, partial, skipped
+	return out, nil
+}
+
+type ingestFillerInput struct {
+	Body struct {
+		// URLs are supplied per request by an admin rather than configured globally:
+		// there is no unattended crawler (§10), so ingestion is always a deliberate act
+		// with a person attached to it.
+		URLs []string `json:"urls" minItems:"1" doc:"YouTube playlist/video or Archive.org collection/item URLs"`
+	}
+}
+type ingestFillerOutput struct {
+	Body struct {
+		JobID string `json:"jobId" doc:"Watch /v1/events for filler_ingest frames carrying this id"`
+	}
+}
+
+// ingestFiller starts a download job and returns immediately. Downloads run for minutes
+// to hours, so the response carries a job id and progress arrives on the SSE bus — the
+// same contract as the §8.1 model pull.
+func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*ingestFillerOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.filler == nil {
+		return nil, huma.Error501NotImplemented("filler not configured")
+	}
+	jobID, err := s.filler.Ingest(ctx, in.Body.URLs)
+	if errors.Is(err, ErrIngestUnavailable) {
+		// NOT feature_not_configured: no setting can open this gate. The message names
+		// the actual remedy (a different image), because pointing an operator at
+		// Settings for something Settings cannot fix is the dead end §7 warns about.
+		return nil, huma.Error409Conflict(
+			"this image has no ingest tooling — run the loomarr:filler image to download clips in-app (design §10, §16)")
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := &ingestFillerOutput{}
+	out.Body.JobID = jobID
 	return out, nil
 }

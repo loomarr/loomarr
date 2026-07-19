@@ -75,6 +75,10 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Min seconds before a filler clip may repeat (Tunarr filler-list attach). _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | Relative draw weight across multiple filler-lists. _(advanced)_ |
+| `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Path to the yt-dlp binary. Set by the loomarr:filler image; empty disables ingest. _(advanced)_ |
+| `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Path to the ffmpeg binary (yt-dlp needs it to merge video+audio streams). _(advanced)_ |
+| `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |
+| `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | Wall-clock ceiling for one ingest source, so a wedged fetch can't hold a worker forever. _(advanced)_ |
 
 ## Users & security
 

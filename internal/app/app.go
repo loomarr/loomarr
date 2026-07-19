@@ -14,6 +14,7 @@ import (
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
+	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/ingest"
@@ -268,7 +269,21 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
 			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, time.Now, log)
 		}
-		fillerSvc = fillerServiceAdapter{syncer: syncer, tagger: tagger}
+		// Ingest tooling ships only in the loomarr:filler image (§16). Absent paths are
+		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
+		// — the `ingest` feature gate reports it and the UI explains the image variant.
+		var fetcher *clipfetch.Ingestor
+		if yt, ff := set.str("ingest.ytdlp_path"), set.str("ingest.ffmpeg_path"); yt != "" && ff != "" {
+			fetcher = clipfetch.New(
+				clipfetch.NewYtDlpDownloader(yt, ff),
+				clipfetch.NewArchiveDownloader(false),
+				set.str("filler.dir"), log)
+			log.Info("filler ingest available", "ytdlp", yt, "ffmpeg", ff)
+		}
+		fillerSvc = fillerServiceAdapter{
+			syncer: syncer, tagger: tagger, fetcher: fetcher,
+			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
+		}
 
 		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to
 		// build a matched filler-list per channel (attached to Tunarr on reconcile).

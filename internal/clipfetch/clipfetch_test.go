@@ -1,4 +1,4 @@
-package ingestkit_test
+package clipfetch_test
 
 import (
 	"context"
@@ -7,17 +7,17 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/mantonx/loomarr/internal/ingestkit"
+	"github.com/mantonx/loomarr/internal/clipfetch"
 )
 
 // fakeDL records which sources it was handed and returns scripted results.
 type fakeDL struct {
-	got     []ingestkit.Source
+	got     []clipfetch.Source
 	fetched int
 	err     error
 }
 
-func (f *fakeDL) Download(_ context.Context, src ingestkit.Source, _ string) (int, int, error) {
+func (f *fakeDL) Download(_ context.Context, src clipfetch.Source, _ string) (int, int, error) {
 	f.got = append(f.got, src)
 	if f.err != nil {
 		return 0, 0, f.err
@@ -28,14 +28,14 @@ func (f *fakeDL) Download(_ context.Context, src ingestkit.Source, _ string) (in
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func TestKindForURL(t *testing.T) {
-	cases := map[string]ingestkit.Kind{
-		"https://youtube.com/playlist?list=abc":      ingestkit.YouTube,
-		"https://youtu.be/xyz":                       ingestkit.YouTube,
-		"https://archive.org/details/classic-tv-ads": ingestkit.Archive,
-		"https://www.someothersite.com/vid":          ingestkit.YouTube, // default yt-dlp
+	cases := map[string]clipfetch.Kind{
+		"https://youtube.com/playlist?list=abc":      clipfetch.YouTube,
+		"https://youtu.be/xyz":                       clipfetch.YouTube,
+		"https://archive.org/details/classic-tv-ads": clipfetch.Archive,
+		"https://www.someothersite.com/vid":          clipfetch.YouTube, // default yt-dlp
 	}
 	for url, want := range cases {
-		if got := ingestkit.KindForURL(url); got != want {
+		if got := clipfetch.KindForURL(url); got != want {
 			t.Errorf("KindForURL(%q) = %q, want %q", url, got, want)
 		}
 	}
@@ -44,16 +44,16 @@ func TestKindForURL(t *testing.T) {
 // Run dispatches each source to the downloader for its kind.
 func TestRun_DispatchesByKind(t *testing.T) {
 	yt, arch := &fakeDL{fetched: 2}, &fakeDL{fetched: 5}
-	ing := ingestkit.New(yt, arch, "/drop", discardLog())
+	ing := clipfetch.New(yt, arch, "/drop", discardLog())
 
-	res := ing.Run(context.Background(), []ingestkit.Source{
-		{Kind: ingestkit.YouTube, URL: "https://youtube.com/playlist?list=a"},
-		{Kind: ingestkit.Archive, URL: "https://archive.org/details/x"},
+	res := ing.Run(context.Background(), []clipfetch.Source{
+		{Kind: clipfetch.YouTube, URL: "https://youtube.com/playlist?list=a"},
+		{Kind: clipfetch.Archive, URL: "https://archive.org/details/x"},
 	})
-	if len(yt.got) != 1 || yt.got[0].Kind != ingestkit.YouTube {
+	if len(yt.got) != 1 || yt.got[0].Kind != clipfetch.YouTube {
 		t.Errorf("youtube downloader got %+v", yt.got)
 	}
-	if len(arch.got) != 1 || arch.got[0].Kind != ingestkit.Archive {
+	if len(arch.got) != 1 || arch.got[0].Kind != clipfetch.Archive {
 		t.Errorf("archive downloader got %+v", arch.got)
 	}
 	if res.Fetched != 7 { // 2 + 5
@@ -65,11 +65,11 @@ func TestRun_DispatchesByKind(t *testing.T) {
 func TestRun_ResilientToSourceFailure(t *testing.T) {
 	yt := &fakeDL{err: errors.New("playlist gone")}
 	arch := &fakeDL{fetched: 3}
-	ing := ingestkit.New(yt, arch, "/drop", discardLog())
+	ing := clipfetch.New(yt, arch, "/drop", discardLog())
 
-	res := ing.Run(context.Background(), []ingestkit.Source{
-		{Kind: ingestkit.YouTube, URL: "https://youtube.com/bad"},
-		{Kind: ingestkit.Archive, URL: "https://archive.org/details/good"},
+	res := ing.Run(context.Background(), []clipfetch.Source{
+		{Kind: clipfetch.YouTube, URL: "https://youtube.com/bad"},
+		{Kind: clipfetch.Archive, URL: "https://archive.org/details/good"},
 	})
 	if res.Failed != 1 {
 		t.Errorf("failed = %d, want 1", res.Failed)
@@ -86,11 +86,11 @@ func TestRun_ResilientToSourceFailure(t *testing.T) {
 func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 	empty := &fakeDL{fetched: 0} // no error, nothing fetched — the silent case
 	good := &fakeDL{fetched: 2}
-	ing := ingestkit.New(empty, good, "/drop", discardLog())
+	ing := clipfetch.New(empty, good, "/drop", discardLog())
 
-	res := ing.Run(context.Background(), []ingestkit.Source{
-		{Kind: ingestkit.YouTube, URL: "https://youtube.com/nonexistent"},
-		{Kind: ingestkit.Archive, URL: "https://archive.org/details/real"},
+	res := ing.Run(context.Background(), []clipfetch.Source{
+		{Kind: clipfetch.YouTube, URL: "https://youtube.com/nonexistent"},
+		{Kind: clipfetch.Archive, URL: "https://archive.org/details/real"},
 	})
 	if res.Empty != 1 {
 		t.Errorf("empty = %d, want 1 (the yield-nothing source surfaced)", res.Empty)

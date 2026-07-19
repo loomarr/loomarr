@@ -1,4 +1,4 @@
-package ingestkit
+package clipfetch
 
 import (
 	"fmt"
