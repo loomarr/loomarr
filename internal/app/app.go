@@ -329,6 +329,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 
 	// The settings API surface (config-design §8): wired when the store (hence the
 	// settings service) is up. Connection Test probes reuse the live adapters.
+	// The guide reader powers /v1/channels/now-next. It reads the LIVE Tunarr connection
+	// through the settings snapshot, so saving a new Tunarr URL takes effect without a
+	// restart, like every other connection (config-design §3 hot-apply). A 2h window is
+	// comfortably longer than any single program, so "next" is always present.
+	var guideSvc api.GuideReader
+	if set.str("tunarr.url") != "" {
+		guideSvc = guideAdapter{
+			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+			window: 2 * time.Hour,
+		}
+	}
+
 	var settingsSvc api.SettingsService
 	if st != nil && secrets != nil {
 		settingsSvc = settingsAdapter{
@@ -366,6 +378,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Filler:        fillerSvc,
 		SystemLLM:     systemLLM,
 		Settings:      settingsSvc,
+		Guide:         guideSvc,
 		Provision:     provisionSvc,
 		LiveConfig:    liveConfig,
 	}), nil
