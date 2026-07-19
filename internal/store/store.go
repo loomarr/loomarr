@@ -78,6 +78,7 @@ type Store interface {
 	CountAdmins(ctx context.Context) (int, error)
 	CreateSession(ctx context.Context, sess Session) error
 	GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error)
+	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error)
 	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error

@@ -54,6 +54,7 @@ const (
 	FeatureAcquisition Feature = "acquisition" // needs a requester (Seerr or direct arr)
 	FeatureSuggestions Feature = "suggestions" // needs an LLM + TMDB grounding
 	FeatureFiller      Feature = "filler"      // needs a filler drop-folder
+	FeatureUserSync    Feature = "user_sync"   // needs a media server to sync users FROM
 )
 
 // ValidateFunc checks a parsed value's shape (config-design §2, §9). URL

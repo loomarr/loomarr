@@ -146,6 +146,33 @@ func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, expiresAt
 	return err
 }
 
+// ListSessionsForUser returns a user's live sessions, newest first. Expired rows are
+// excluded on the same "expiry is immediate, purging is eventual" rule GetSession uses
+// (§11) — an admin reviewing who is signed in must not see sessions that can no longer
+// authenticate, or they would revoke things that were already dead and mistrust the list.
+func (s *sqlStore) ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT token_hash, user_id, created_at, expires_at
+		 FROM sessions WHERE user_id = ? AND expires_at > ?
+		 ORDER BY created_at DESC`), userID, epoch(now))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Session
+	for rows.Next() {
+		var sess Session
+		var created, expires int64
+		if err := rows.Scan(&sess.TokenHash, &sess.UserID, &created, &expires); err != nil {
+			return nil, err
+		}
+		sess.CreatedAt, sess.ExpiresAt = fromEpoch(created), fromEpoch(expires)
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
 // RevokeSession deletes one session (logout).
 func (s *sqlStore) RevokeSession(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM sessions WHERE token_hash = ?`), tokenHash)
