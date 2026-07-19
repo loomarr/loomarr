@@ -6,12 +6,16 @@ import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only
 // required field — the blank-page killer templates prefill the rest.
+// Field names are the API's `Intent` verbatim (POST /v1/suggestions). They were NOT:
+// this schema said `maxAcquire` where the wire says `maxAcquisitions`, so a user's
+// acquisition cap was silently dropped, and `runtimeTarget` where the wire says
+// `runtimeTargetMin`. Both are the hand-mirroring the 1:1 rule exists to prevent (§12).
 const intentSchema = z.object({
   description: z.string().trim().min(3, "Describe the channel you want (a sentence is plenty)."),
   era: z.string().trim().optional(),
   tone: z.string().trim().optional(),
-  runtimeTarget: z.number().int().positive().optional(),
-  maxAcquire: z.number().int().min(0).max(200).optional(),
+  runtimeTargetMin: z.number().int().positive().optional(),
+  maxAcquisitions: z.number().int().min(0).max(200).optional(),
   mustInclude: z.array(z.string().trim()).optional(),
   mustExclude: z.array(z.string().trim()).optional(),
 });

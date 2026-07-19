@@ -60,15 +60,14 @@ func (s *Server) registerSuggestions(api huma.API) {
 
 // --- submit ---
 
+// submitInput takes the FULL typed suggest.Intent, for the same reason ProposalDTO
+// carries suggest.Proposal (§12, 1:1): the previous hand-mirrored body had already
+// drifted from the domain — it omitted RuntimeTgt, so `runtimeTargetMin` was
+// unreachable even though the suggester honors it (prompt + scoring) and §13 lists a
+// runtime target among the intent constraints a user may set. Typing from the domain
+// removes the whole drift class rather than patching one missing field.
 type submitInput struct {
-	Body struct {
-		Description string   `json:"description" example:"90s action movies"`
-		Era         string   `json:"era,omitempty"`
-		Tone        string   `json:"tone,omitempty"`
-		MustInclude []string `json:"mustInclude,omitempty"`
-		MustExclude []string `json:"mustExclude,omitempty"`
-		MaxAcquire  int      `json:"maxAcquisitions,omitempty"`
-	}
+	Body suggest.Intent
 }
 type submitOutput struct {
 	Body struct {
@@ -84,8 +83,7 @@ func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submit
 		return nil, huma.Error400BadRequest("description is required")
 	}
 	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
-	jobID, err := s.suggest.Submit(ctx, in.Body.Description, in.Body.Era, in.Body.Tone,
-		in.Body.MustInclude, in.Body.MustExclude, in.Body.MaxAcquire, createdBy)
+	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)
 	if err != nil {
 		return nil, err
 	}
