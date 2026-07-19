@@ -4,6 +4,46 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4c — Settings (2026-07-19).** Branch `feat/fe-settings-13.4c`. The troubleshooting console (§13) and
+the first real test of whether `SettingsGroupForm` held up outside the wizard. **It did not**, and that was the
+useful finding.
+
+**The save UNIT differs by context, so form ownership had to move out.** config-design §5 specifies ONE sticky save
+bar per page — Sonarr's model, chosen because connection settings change *together* (a URL and its token) and a
+half-saved pair caught mid-test looks like a broken integration. But Connections alone has four blocks (media
+server, requester, Tunarr, TMDB), and `SettingsGroupForm` owned both its state and its own Save button: four
+blocks would have meant four save buttons and no aggregate dirty state. Extracted **`SettingsFields`** — a
+*controlled* group of fields, no `<form>`, no save — which the wizard (one group per step, own save) and a
+Settings page (many blocks, one bar) both compose. `SettingsGroupForm` now wraps it; **all 29 wizard tests passed
+unchanged**, which is what made the refactor safe to do.
+
+**Also corrected:** the build plan says 5 Settings pages; config-design §5 lists **6** — it omits **Filler**. §5 is
+authoritative on Settings IA (a companion wins on its own domain), so six were built. And `updatedBy`/`updatedAt`
+existed on every entry but were never rendered; §5's field anatomy asks for "changed by … · when", now shown —
+only where a *person* set the value, since an env pin or built-in default has no author.
+
+**Built:** the six pages behind a nav, each composing blocks with one save bar that appears only when dirty and
+sends **only changed keys** (an untouched secret reads back empty (§4) and an empty-string PATCH would clear it
+(§9) — the hazard fixed in #14, now guarded at the page level too). Per-block **Test** runs the same named check
+the wizard uses. The re-runnable **connection checklist** sits at the top of Connections, making Settings the
+troubleshooting console for the life of the install rather than a first-run-only screen.
+
+**Both conventions guards fired on my own work** — `structure.test.ts` caught a hook filed inside another module's
+folder, and `story-coverage.test.ts` caught two new Layer-2 components shipped without stories. Biome's a11y rule
+caught `role="region"` where a `<section>` belongs. Three convention failures I did not have to notice myself.
+
+**A silent no-op in my own tooling, worth recording:** this entry was missing from the 13.4c PR entirely. The
+insert anchored on a marker that did not exist on that branch (13.4b was still unmerged), and `str.replace`
+returns the string unchanged rather than failing — the same class of quiet failure as an ignored `maxAcquire` or a
+guessed guide field. Entries now anchor on the file's stable preamble and the result is verified, not assumed.
+
+**Deferred, flagged:** the §8.1 **AI model picker** (probe, fit-ranked catalog, hot-swap, `llm_pull` progress over
+SSE) and the **generated-secrets panel** (view/copy/regenerate, §4).
+
+Gates: `make check` (30 packages) GREEN; `make fe` GREEN (**167 tests**); Docker visual GREEN (157, **14 new
+baselines**, a11y clean); `make e2e` GREEN. **Next: 13.4c-2** (model picker + secrets panel) then **13.4d**
+(Filler · Users · Help · ⌘K).
+
 **Phase 13.4b — Channels, Channel detail, Board (2026-07-19).** Branch `feat/fe-channels-13.4b`. The
 "where is my stuff" surfaces, on top of the guide read landed as this slice's prerequisite (#19).
 
