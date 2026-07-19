@@ -35,11 +35,37 @@ interface LlmPullEvent {
   [k: string]: unknown;
 }
 
+// Mirrors the BE's filler_ingest frame (internal/app/filler.go publishIngest). Every
+// field it sends is declared for the same reason LlmPullEvent's are: the index signature
+// would otherwise hide a missing one, and the UI would silently render a worse version.
+interface FillerIngestEvent {
+  jobId?: string;
+  // "starting" | "success" | "error".
+  status?: string;
+  fetched?: number;
+  skipped?: number;
+  failed?: number;
+  // Sources that returned no clips AND no error — almost always a typo'd Archive id,
+  // which returns 200 with nothing. Surfaced so "fetched: 0" has a reason attached.
+  empty?: number;
+  error?: string;
+  [k: string]: unknown;
+}
+
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
   onChannel?: (e: ChannelEvent) => void;
   onSuggestion?: (e: SuggestionEvent) => void;
   onLlmPull?: (e: LlmPullEvent) => void;
+  onFillerIngest?: (e: FillerIngestEvent) => void;
 }
 
-export type { ChannelEvent, EventHandlers, LlmPullEvent, SuggestionEvent, SuggestionPhase, TitleEvent };
+export type {
+  ChannelEvent,
+  EventHandlers,
+  FillerIngestEvent,
+  LlmPullEvent,
+  SuggestionEvent,
+  SuggestionPhase,
+  TitleEvent,
+};

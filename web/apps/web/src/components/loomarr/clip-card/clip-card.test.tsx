@@ -37,4 +37,13 @@ describe("ClipCard", () => {
     expect(screen.getByText("AI-tagged")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /confirm tags/i })).toBeInTheDocument();
   });
+
+  // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
+  // as a commercial — it arrives with era/audience/category filled in, so it counts as
+  // "tagged" while being wrong, and kind drives pod ROLE. Gating the edit on `!tagged`
+  // left precisely that clip uncorrectable from the UI.
+  it("offers an edit path for an already-tagged clip", () => {
+    render(<ClipCard clip={{ ...base, tagged: true }} onTag={() => {}} />);
+    expect(screen.getByRole("button", { name: /edit tags/i })).toBeInTheDocument();
+  });
 });

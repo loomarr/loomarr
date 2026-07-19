@@ -8,7 +8,14 @@
 
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import type { ChannelEvent, EventHandlers, LlmPullEvent, SuggestionEvent, TitleEvent } from "./events.type";
+import type {
+  ChannelEvent,
+  EventHandlers,
+  FillerIngestEvent,
+  LlmPullEvent,
+  SuggestionEvent,
+  TitleEvent,
+} from "./events.type";
 
 const EVENTS_URL = "/v1/events";
 
@@ -31,6 +38,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<ChannelEvent>("channel", handlers.onChannel);
   on<SuggestionEvent>("suggestion", handlers.onSuggestion);
   on<LlmPullEvent>("llm_pull", handlers.onLlmPull);
+  on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
   return () => es.close();
 };
 
@@ -69,6 +77,13 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
       onLlmPull: (e) => {
         invalidateByPrefix(qc, "/v1/system/llm");
         extraRef.current?.onLlmPull?.(e);
+      },
+      onFillerIngest: (e) => {
+        // Downloaded files are not clips until Tunarr scans the folder, so a finished
+        // ingest does NOT invalidate the catalog on its own — the operator runs Sync,
+        // which is what actually changes /v1/filler. Invalidating here would refetch an
+        // unchanged list and imply the clips had arrived.
+        extraRef.current?.onFillerIngest?.(e);
       },
     });
   }, [qc]);

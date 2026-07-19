@@ -1,21 +1,27 @@
-import type { ClipDTO } from "@loomarr/api";
+import type { PodEntryDTO, PreviewPodsOutputBodyMatchLevel } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib";
-import type { PodMatch, PodTimelineProps } from "./pod-timeline.type";
+import type { PodTimelineProps } from "./pod-timeline.type";
 
-// PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper,
-// each segment sized by its duration, with the pod's era/audience context. `matched`
-// means every clip hit the pod's target; `fallback-widened` flags that the relaxation
-// ladder loosened to fill the break (caution); `bumper-card-only` is the dead-air
-// guard — a bumper card stands in when no ads matched, never silence (§10).
-const MATCH: Record<PodMatch, { label: string; variant: "caution" | "neutral" } | null> = {
-  matched: null,
-  "fallback-widened": { label: "Widened match", variant: "caution" },
-  "bumper-card-only": { label: "Bumper only", variant: "neutral" },
+// PodTimeline — a commercial break made legible (§3, §10): bumper → ads → bumper, each
+// segment sized by its duration, with the pod's era/audience context.
+//
+// The match chip answers "why are my commercials wrong". `exact` is the quiet case and
+// shows nothing; every other level says how far down the §10 fallback ladder assembly had
+// to go, ending at `bumper_card` — the dead-air guard, where no ad matched and the
+// embedded card stands in rather than silence.
+const MATCH: Record<
+  PreviewPodsOutputBodyMatchLevel,
+  { label: string; variant: "caution" | "neutral" } | null
+> = {
+  exact: null,
+  widened: { label: "Era widened", variant: "caution" },
+  audience: { label: "Era ignored", variant: "caution" },
+  bumper_card: { label: "Bumper only", variant: "neutral" },
 };
 
-const SEGMENT_FILL: Record<ClipDTO["kind"], string> = {
+const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
   bumper: "bg-tune-tint-30",
   station_id: "bg-tune-tint-30",
   commercial: "bg-suggest-tint-30",
@@ -24,7 +30,7 @@ const SEGMENT_FILL: Record<ClipDTO["kind"], string> = {
   interstitial: "bg-static-700",
 };
 
-const SEGMENT_ABBR: Record<ClipDTO["kind"], string> = {
+const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
   bumper: "BMP",
   station_id: "ID",
   commercial: "AD",
@@ -33,10 +39,9 @@ const SEGMENT_ABBR: Record<ClipDTO["kind"], string> = {
   interstitial: "INT",
 };
 
-const PodTimeline = ({ clips, match = "matched", era, audience, className }: PodTimelineProps) => {
-  const total = clips.reduce((sum, c) => sum + c.durationMs, 0) || 1;
-  const chip = MATCH[match];
-  const segments = clips.map((clip, i) => ({ key: `${clip.name}-${clip.kind}-${i}`, clip }));
+const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }: PodTimelineProps) => {
+  const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
+  const chip = MATCH[matchLevel];
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
@@ -52,18 +57,24 @@ const PodTimeline = ({ clips, match = "matched", era, audience, className }: Pod
         className="flex h-9 w-full overflow-hidden rounded-md border border-border"
         aria-label="Pod segments"
       >
-        {segments.map(({ key, clip }) => (
+        {entries.map((entry, i) => (
           <li
-            key={key}
-            title={`${clip.name} · ${formatClipDuration(clip.durationMs)}`}
-            style={{ flexBasis: `${(clip.durationMs / total) * 100}%` }}
+            // A pod is an ordered, immutable sequence — position IS identity. The same
+            // clip can legitimately appear twice in one pod, and the embedded fallback
+            // card has no program id at all, so nothing else uniquely identifies a
+            // segment. The list is replaced whole on every preview rather than mutated,
+            // which is the reordering case the rule guards against.
+            // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
+            key={`${entry.tunarrProgramId ?? "card"}-${i}`}
+            title={`${entry.name} · ${formatClipDuration(entry.durationMs)}`}
+            style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
             className={cn(
               "flex min-w-0 items-center justify-center border-border border-r px-1 last:border-r-0",
-              SEGMENT_FILL[clip.kind],
+              SEGMENT_FILL[entry.kind],
             )}
           >
             <span className="truncate font-mono text-[10px] text-static-100 uppercase tracking-wide">
-              {SEGMENT_ABBR[clip.kind]}
+              {SEGMENT_ABBR[entry.kind]}
             </span>
           </li>
         ))}

@@ -54,10 +54,15 @@ const ClipCard = ({ clip, onConfirmTags, onTag, className }: ClipCardProps) => (
         Confirm tags
       </Button>
     )}
-    {!clip.tagged && !clip.aiTagged && onTag && (
+    {/* Offered for EVERY clip, not just untagged ones. A fully-tagged clip can still be
+        wrong — §10's likely error is a trailer scanned as a commercial, which arrives
+        with era/audience/category filled in and therefore counts as "tagged". Gating the
+        edit on `!tagged` left exactly that clip uncorrectable, and kind drives pod role,
+        so a wrong one yields structurally wrong pods. */}
+    {!clip.aiTagged && onTag && (
       <Button variant="outline" size="sm" onClick={onTag} className="self-start">
         <Tag aria-hidden />
-        Tag clip
+        {clip.tagged ? "Edit tags" : "Tag clip"}
       </Button>
     )}
   </Card>
