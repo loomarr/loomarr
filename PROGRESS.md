@@ -4,6 +4,33 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4c-2 — the model picker and the secrets panel (2026-07-19).** Branch `feat/fe-settings-13.4c2`. The two
+sub-features deliberately deferred out of 13.4c, each substantial enough to deserve the room.
+
+**The §8.1 model picker renders a judgement it does not make.** Picking a local model is a real onboarding hurdle —
+a household admin should not have to know which Ollama tag fits their GPU or supports tool-calling — so the BE
+probes the machine and returns a catalog already annotated with `fit` (fits/tight/wont_fit), `approxVramGiB`,
+`runtimeOk`, `pulled`, `recommended`, and a `why`. The UI's whole job is to show that honestly. Two calls worth
+recording: an unrunnable model is shown **disabled with its reason** rather than hidden, because "why isn't X
+listed?" is a worse question than seeing X greyed out; and an unpulled tag offers **only Download**, never "use
+this", because `select` 409s on a model that is not local (§8.1). Pull progress exists only on the `llm_pull` SSE
+frames, so it arrives through the shared event fan-out built in 13.4a, and a terminal frame refreshes the catalog
+so the row flips from Download to In-use without a reload.
+
+**The secrets panel states consequences before the click, not after.** §4's display policy is differentiated by
+PURPOSE, so the panel is a closed set of three rather than a generic list: `API_TOKEN` and `WEBHOOK_SECRET` are
+values you must paste elsewhere (viewable on demand, eye toggle + copy), while `SESSION_SECRET` has nothing to
+paste anywhere and is **never displayed** — Regenerate is its only affordance. Regeneration requires a second
+confirm carrying the specific consequence, because they differ sharply: rotating the webhook secret silently
+breaks every Sonarr/Radarr hook already configured, and rotating the session secret signs everyone out *including
+the person clicking*. An operator should learn that from the button, not the aftermath. Revealing is fetched
+**imperatively on click** rather than mounted as a live query — a secret should cross the wire when asked for, not
+sit in the cache of every page that renders the panel.
+
+Gates: `make check` (30 packages) + `openapi-verify` GREEN; `make fe` GREEN (**189 tests**); Docker visual GREEN
+(172, **14 new baselines**, a11y clean); `make e2e` GREEN. **Next: 13.4d** (Filler · Users · Help · ⌘K) then
+**13.4e** (the 13.4 gate).
+
 **Phase 13.4c — Settings (2026-07-19).** Branch `feat/fe-settings-13.4c`. The troubleshooting console (§13) and
 the first real test of whether `SettingsGroupForm` held up outside the wizard. **It did not**, and that was the
 useful finding.

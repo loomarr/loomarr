@@ -17,6 +17,9 @@ interface SettingsPageProps {
   entries: SettingEntry[];
   // Rendered above the blocks — Connections puts the re-runnable checklist here (§5).
   children?: ReactNode;
+  // Rendered below the blocks, for things that read as a consequence of the settings
+  // above: the AI page's model picker only makes sense once a provider is chosen.
+  footer?: ReactNode;
 }
 
 export type { SettingsBlock, SettingsPageProps };

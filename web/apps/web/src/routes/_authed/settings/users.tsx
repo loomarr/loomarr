@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SettingsPage, useSettingsEntries } from "@/settings";
+import { SecretsSettings, SettingsPage, useSettingsEntries } from "@/settings";
 
 const UsersSettings = () => (
   <SettingsPage
@@ -7,6 +7,7 @@ const UsersSettings = () => (
     description="Sessions, cookies, and how often Loomarr re-syncs media-server accounts."
     entries={useSettingsEntries()}
     blocks={[{ group: "users_security", title: "Sessions and sync" }]}
+    footer={<SecretsSettings />}
   />
 );
 

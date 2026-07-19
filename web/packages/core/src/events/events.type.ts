@@ -17,11 +17,21 @@ interface SuggestionEvent {
   phase: SuggestionPhase;
 }
 
+// Mirrors the BE's llm_pull frame (internal/app/systemllm.go publishPull). Every field
+// it actually sends is declared, because the index signature below otherwise hides a
+// missing one: `percent` was absent here while the BE had been sending it all along, so
+// the UI recomputed a worse version and showed nothing during "starting".
 interface LlmPullEvent {
+  jobId?: string;
   model?: string;
+  // Ollama's own status strings pass through, plus Loomarr's terminal "success"/"error".
   status?: string;
+  // BE-computed, 0-100. It is -1 on failure — a sentinel, never a percentage to render.
+  percent?: number;
   completed?: number;
   total?: number;
+  // Set when status is "error"; the reason the download failed.
+  error?: string;
   [k: string]: unknown;
 }
 
