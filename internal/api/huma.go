@@ -58,6 +58,10 @@ type Server struct {
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
 	liveConfig func(key string) string
+
+	// ready is the same readiness /readyz reports, surfaced through the typed
+	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
+	ready ReadyFunc
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
