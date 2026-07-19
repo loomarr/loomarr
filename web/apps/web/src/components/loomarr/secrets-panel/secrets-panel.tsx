@@ -1,7 +1,7 @@
 import { Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { cn } from "@/lib";
+import { cn, useCopied } from "@/lib";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 
 // Generated secrets (config-design §4), on Sonarr's model: values you must paste
@@ -13,13 +13,7 @@ import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 // clicking. An operator should learn that from the button, not from the aftermath.
 const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, className }: SecretsPanelProps) => {
   const [confirming, setConfirming] = useState<SecretName | undefined>();
-  const [copied, setCopied] = useState<SecretName | undefined>();
-
-  const copy = (name: SecretName, value: string) => {
-    void navigator.clipboard?.writeText(value);
-    setCopied(name);
-    window.setTimeout(() => setCopied(undefined), 2000);
-  };
+  const { copied, copy } = useCopied<SecretName>();
 
   return (
     <ul className={cn("flex flex-col gap-3", className)}>
@@ -49,7 +43,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                   {value ? "Hide" : "Reveal"}
                 </Button>
                 {value && (
-                  <Button variant="outline" size="sm" onClick={() => copy(secret.name, value)}>
+                  <Button variant="outline" size="sm" onClick={() => copy(value, secret.name)}>
                     <Copy className="size-4" aria-hidden />
                     {copied === secret.name ? "Copied" : "Copy"}
                   </Button>

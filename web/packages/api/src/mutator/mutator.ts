@@ -18,6 +18,15 @@ class ApiError extends Error {
   }
 }
 
+// Normalize any thrown value into an RFC 7807 problem. Lives here beside ApiError, not
+// in the component that renders it: an unknown → ErrorModel coercion has no DOM surface,
+// and mobile needs the identical mapping the day it renders its first failed request.
+const toProblem = (err: unknown): ErrorModel => {
+  if (err instanceof ApiError) return err.problem;
+  if (err instanceof Error) return { title: err.message };
+  return { title: "Something went wrong" };
+};
+
 const CSRF_HEADER = "X-Loomarr-Csrf";
 
 const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T> => {
@@ -41,4 +50,4 @@ const customFetch = async <T>(url: string, options: RequestInit = {}): Promise<T
   return { status: res.status, data: body, headers: res.headers } as T;
 };
 
-export { ApiError, customFetch };
+export { ApiError, customFetch, toProblem };

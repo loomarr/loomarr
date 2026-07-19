@@ -1,4 +1,5 @@
 import type { ProposalItem } from "@loomarr/api";
+import { formatPercent } from "@loomarr/core";
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge, Button, Card } from "@/components/ui";
@@ -22,8 +23,6 @@ const STATUS: Record<
   "partially-edited": { label: "Edited", variant: "caution" },
 };
 
-const pct = (n: number): string => `${Math.round(n * 100)}%`;
-
 const ItemRow = ({
   item,
   kind,
@@ -42,7 +41,7 @@ const ItemRow = ({
           {kind === "lineup" ? "In library" : "Will acquire"}
         </Badge>
         {typeof item.confidence === "number" && (
-          <span className="font-mono text-static-400 text-xs">{`${pct(item.confidence)} fit`}</span>
+          <span className="font-mono text-static-400 text-xs">{`${formatPercent(item.confidence)} fit`}</span>
         )}
       </div>
       {item.rationale && <p className="mt-1 text-muted-foreground text-sm">{item.rationale}</p>}
@@ -100,11 +99,15 @@ const ProposalReview = ({
           <dl className="shrink-0 text-right">
             <div className="flex items-baseline justify-end gap-1.5">
               <dt className="text-static-400 text-xs">Theme fit</dt>
-              <dd className="font-mono text-sm text-suggest-300">{pct(proposal.scores.themeFit)}</dd>
+              <dd className="font-mono text-sm text-suggest-300">
+                {formatPercent(proposal.scores.themeFit)}
+              </dd>
             </div>
             <div className="flex items-baseline justify-end gap-1.5">
               <dt className="text-static-400 text-xs">Ready now</dt>
-              <dd className="font-mono text-lock text-sm">{pct(proposal.scores.availabilityRatio)}</dd>
+              <dd className="font-mono text-lock text-sm">
+                {formatPercent(proposal.scores.availabilityRatio)}
+              </dd>
             </div>
           </dl>
         )}

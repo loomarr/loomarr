@@ -1,4 +1,5 @@
 import { channelsApi } from "@loomarr/api";
+import { formatEpgTime } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
@@ -82,7 +83,12 @@ const ChannelsScreen = () => {
                       managed
                       nowNext={
                         nn && {
-                          now: nn.now ? { title: nn.now.title } : undefined,
+                          // `until` is what makes the strip read like a guide ("Cheers
+                          // ·til 8:00 PM"). NowNextEntry has carried stopMs all along;
+                          // omitting it left the affordance rendering nothing.
+                          now: nn.now
+                            ? { title: nn.now.title, until: formatEpgTime(nn.now.stopMs) }
+                            : undefined,
                           next: nn.next ? { title: nn.next.title } : undefined,
                           gap: nn.now?.gap,
                         }
