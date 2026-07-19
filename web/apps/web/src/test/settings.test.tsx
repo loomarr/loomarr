@@ -126,3 +126,90 @@ describe("Settings", () => {
     expect(await screen.findByLabelText("Job workers")).toBeDisabled();
   });
 });
+
+// A pull that fails must SAY so. Before this, an "error" frame cleared the progress and
+// refreshed — indistinguishable from success, leaving the operator to eventually notice
+// the row still said "Download". The frame carries the reason; it belongs on screen.
+describe("AI model pull", () => {
+  it("surfaces a failed download instead of silently clearing it", async () => {
+    let emit: ((e: MessageEvent) => void) | undefined;
+    const mock = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
+      if (u.includes("/v1/system/llm")) {
+        return Promise.resolve(
+          json({
+            local: true,
+            reachable: true,
+            provider: "ollama",
+            model: "",
+            catalog: [
+              {
+                tag: "qwen3:8b",
+                label: "Qwen3 8B",
+                approxVramGiB: 5,
+                fit: "fits",
+                pulled: false,
+                recommended: true,
+                runtimeOk: true,
+                why: "Good fit.",
+              },
+            ],
+            hosted: [],
+          }),
+        );
+      }
+      if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
+      return Promise.resolve(json({}));
+    });
+    vi.stubGlobal("fetch", mock);
+    vi.stubGlobal(
+      "EventSource",
+      class {
+        addEventListener(type: string, cb: (e: MessageEvent) => void) {
+          if (type === "llm_pull") emit = cb;
+        }
+        close() {}
+      },
+    );
+
+    renderAt("/settings/ai");
+    await userEvent.click(await screen.findByRole("button", { name: /download/i }));
+
+    // The BE reports failure with a reason and percent -1 (a sentinel, not a percentage).
+    emit?.({
+      data: JSON.stringify({
+        model: "qwen3:8b",
+        status: "error",
+        percent: -1,
+        error: "no space left on device",
+      }),
+    } as MessageEvent);
+
+    expect(await screen.findByText(/no space left on device/i)).toBeInTheDocument();
+  });
+});
+
+// Each Settings page mounts its footer panel. These are one-line wirings in the route
+// files that a component test can't see: both the model picker and the secrets panel were
+// imported-but-never-rendered, so the feature was absent while every unit test stayed
+// green. Asserting the panel reaches the page is what the component tests can't do.
+describe("Settings page footers", () => {
+  it("mounts the secrets panel on Users & security", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        const u = String(url);
+        if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
+        if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
+        return Promise.resolve(json({}));
+      }),
+    );
+
+    renderAt("/settings/users");
+    // The three generated secrets are a closed set held in the component (config-design
+    // §4), not a fetched list — so the assertion is that the panel is on the page at all.
+    expect(await screen.findByText(/API token/i)).toBeInTheDocument();
+    expect(screen.getByText(/Session secret/i)).toBeInTheDocument();
+  });
+});

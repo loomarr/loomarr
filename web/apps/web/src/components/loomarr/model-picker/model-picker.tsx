@@ -17,9 +17,6 @@ const FIT_LABEL: Record<string, { text: string; variant: "lock" | "caution" | "o
   wont_fit: { text: "won't fit", variant: "onair" },
 };
 
-const pct = (completed?: number, total?: number) =>
-  completed && total && total > 0 ? Math.round((completed / total) * 100) : undefined;
-
 const ModelPicker = ({
   catalog,
   active,
@@ -44,7 +41,7 @@ const ModelPicker = ({
         const fit = FIT_LABEL[model.fit] ?? { text: model.fit, variant: "caution" as const };
         const isActive = model.tag === active;
         const isPulling = pulling?.tag === model.tag;
-        const progress = isPulling ? pct(pulling?.completed, pulling?.total) : undefined;
+        const progress = isPulling ? pulling?.percent : undefined;
         // Runtime support is a hard blocker in a way VRAM is not: a too-big model is slow,
         // a model the installed Ollama cannot run simply fails.
         const unusable = !model.runtimeOk || model.fit === "wont_fit";

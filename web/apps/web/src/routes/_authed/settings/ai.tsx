@@ -7,6 +7,7 @@ const AiSettings = () => (
     description="The model that turns a sentence into a lineup, and the quota it works within."
     entries={useSettingsEntries()}
     blocks={[{ group: "ai", title: "Provider and model", check: "llm" }]}
+    footer={<AiModelSettings />}
   />
 );
 

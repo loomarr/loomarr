@@ -57,11 +57,11 @@ describe("ModelPicker", () => {
     expect(screen.getByRole("button", { name: /in use/i })).toBeDisabled();
   });
 
-  it("reports download progress from the pull stream", () => {
+  it("renders the percent the BE computed, not one derived from bytes", () => {
     render(
       <ModelPicker
         catalog={[model({ tag: "llama3.1:8b", label: "Llama", pulled: false })]}
-        pulling={{ tag: "llama3.1:8b", completed: 50, total: 200 }}
+        pulling={{ tag: "llama3.1:8b", percent: 25 }}
         onSelect={vi.fn()}
         onPull={vi.fn()}
       />,

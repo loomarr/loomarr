@@ -68,7 +68,7 @@ type Story = StoryObj<typeof meta>;
 const Default: Story = {};
 const NothingSelected: Story = { args: { active: undefined } };
 const Downloading: Story = {
-  args: { pulling: { tag: "llama3.1:8b", completed: 3_500_000_000, total: 4_900_000_000 } },
+  args: { pulling: { tag: "llama3.1:8b", percent: 71 } },
 };
 const NoGpuDetected: Story = { args: { gpuName: undefined, vramGiB: undefined } };
 

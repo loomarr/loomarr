@@ -11,8 +11,10 @@ interface ModelPickerProps {
   vramGiB?: number;
   onSelect: (tag: string) => void;
   onPull: (tag: string) => void;
-  // The tag currently downloading, with progress from the llm_pull SSE frames.
-  pulling?: { tag: string; completed?: number; total?: number };
+  // The tag currently downloading. `percent` is computed by the BE and arrives on the
+  // llm_pull frames from the first one — deriving it from byte counts here would show
+  // nothing until bytes start flowing.
+  pulling?: { tag: string; percent?: number };
   busy?: boolean;
   className?: string;
 }

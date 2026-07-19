@@ -7,6 +7,7 @@ const UsersSettings = () => (
     description="Sessions, cookies, and how often Loomarr re-syncs media-server accounts."
     entries={useSettingsEntries()}
     blocks={[{ group: "users_security", title: "Sessions and sync" }]}
+    footer={<SecretsSettings />}
   />
 );
 

@@ -12,7 +12,10 @@ import { useLoomarrEventListener } from "@/events";
 // the shared event fan-out — the same reason the Suggest workspace does.
 const AiModelSettings = () => {
   const queryClient = useQueryClient();
-  const [pulling, setPulling] = useState<{ tag: string; completed?: number; total?: number }>();
+  const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
+  // A failed download must SAY so. Clearing the progress on error looked identical to
+  // success, leaving the operator to notice the row still said "Download".
+  const [pullError, setPullError] = useState<string>();
 
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
   const invalidate = () =>
@@ -24,14 +27,22 @@ const AiModelSettings = () => {
   useLoomarrEventListener({
     onLlmPull: (e) => {
       if (!e.model) return;
-      // A terminal frame ends the download and refreshes the catalog, so the model flips
-      // from "Download" to "Use this" without the operator reloading.
-      if (e.status === "success" || e.status === "error") {
+      if (e.status === "error") {
+        setPullError(e.error ?? `Downloading ${e.model} failed.`);
+        setPulling(undefined);
+        return;
+      }
+      // A successful terminal frame refreshes the catalog, so the row flips from
+      // "Download" to "Use this" without the operator reloading.
+      if (e.status === "success") {
         setPulling(undefined);
         void invalidate();
         return;
       }
-      setPulling({ tag: e.model, completed: e.completed, total: e.total });
+      // `percent` is computed by the BE and present from the first "starting" frame;
+      // deriving it from completed/total here would show nothing until bytes flow, and
+      // -1 is the failure sentinel rather than a real percentage.
+      setPulling({ tag: e.model, percent: e.percent && e.percent >= 0 ? e.percent : undefined });
     },
   });
 
@@ -61,6 +72,7 @@ const AiModelSettings = () => {
   return (
     <div className="flex flex-col gap-3">
       {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
+      {pullError && <ErrorState error={new Error(pullError)} />}
       <ModelPicker
         catalog={status.catalog ?? []}
         active={status.model}
@@ -70,6 +82,7 @@ const AiModelSettings = () => {
         pulling={pulling}
         onSelect={(model) => select.mutate({ data: { model } })}
         onPull={(model) => {
+          setPullError(undefined);
           setPulling({ tag: model });
           pull.mutate({ data: { model } });
         }}
