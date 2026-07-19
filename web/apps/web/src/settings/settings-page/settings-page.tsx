@@ -12,7 +12,7 @@ import type { SettingsPageProps } from "./settings-page.type";
 // Only CHANGED keys are sent, for the same reason the wizard does it: a stored secret
 // reads back empty (§4) and an empty-string PATCH would clear it (§9). Here that matters
 // even more, since a page carries many keys the operator never touched.
-const SettingsPage = ({ title, description, blocks, entries, children }: SettingsPageProps) => {
+const SettingsPage = ({ title, description, blocks, entries, children, footer }: SettingsPageProps) => {
   const queryClient = useQueryClient();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState<string | undefined>();
@@ -88,6 +88,8 @@ const SettingsPage = ({ title, description, blocks, entries, children }: Setting
             </section>
           );
         })}
+
+        {footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>
