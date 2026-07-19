@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/events"
@@ -43,5 +47,39 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 		}
 	default:
 		t.Fatal("no event published to the bus — #11 seam still open (nothing reached the subscriber)")
+	}
+}
+
+// Starting with no store is a SUPPORTED degraded mode, not a misconfiguration to crash
+// on: main logs "running without a store (not ready)" and expects the server to keep
+// serving so /readyz can report why. It didn't — with no store there is no settings
+// service, and the first unguarded settings read panicked inside BuildHandler. A
+// container missing DATABASE_URL therefore crash-looped instead of answering the probe
+// that would have explained the problem.
+//
+// The assertion is deliberately just "builds and answers": the value here is that the
+// process stays alive long enough to tell the operator what's wrong.
+func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T) {
+	h, err := BuildHandler(context.Background(), nil, slog.New(slog.DiscardHandler), Overrides{})
+	if err != nil {
+		t.Fatalf("BuildHandler with no store returned an error: %v", err)
+	}
+	if h == nil {
+		t.Fatal("BuildHandler returned a nil handler")
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("/readyz = %d, want 503 (not ready, but answering)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "no store configured") {
+		t.Errorf("/readyz body = %q, want the reason the operator needs", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/healthz = %d, want 200 (the process is alive)", rec.Code)
 	}
 }

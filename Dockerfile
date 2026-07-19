@@ -12,10 +12,18 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# Stamped so the running instance can say what it is (§13 Help/About, §16 upgrades).
+# Unset ARGs are fine: buildinfo falls back to Go's embedded VCS stamps, then to "dev".
+ARG VERSION=""
+ARG COMMIT=""
+ARG BUILT_AT=""
 # Static, stripped, reproducible-ish. Build tag placeholder for the embedded FE
 # (no-op until Phase 13).
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w" \
+    -ldflags="-s -w \
+      -X github.com/mantonx/loomarr/internal/buildinfo.version=${VERSION} \
+      -X github.com/mantonx/loomarr/internal/buildinfo.commit=${COMMIT} \
+      -X github.com/mantonx/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
     -o /out/loomarr ./cmd/loomarr
 
 # ---- runtime variant: loomarr:filler ----------------------------------------

@@ -22,20 +22,40 @@ type resolved struct {
 	svc *settings.Service
 }
 
-func (r resolved) str(key string) string { return r.svc.String(key) }
+// Every getter tolerates a nil service, because "no store ⇒ no settings service" is a
+// SUPPORTED state, not a bug: starting without DATABASE_URL logs "running without a
+// store (not ready)" and is expected to keep serving so /readyz can report why. It did
+// not — the first unguarded read panicked during BuildHandler, so a misconfigured
+// container crash-looped instead of answering the probe that would have explained it.
+// An unset key already resolves to a zero value; an absent service is the same answer.
+func (r resolved) str(key string) string {
+	if r.svc == nil {
+		return ""
+	}
+	return r.svc.String(key)
+}
 func (r resolved) dur(key string) time.Duration {
+	if r.svc == nil {
+		return 0
+	}
 	if d, ok := r.svc.Resolve(key).Value.(time.Duration); ok {
 		return d
 	}
 	return 0
 }
 func (r resolved) intv(key string) int {
+	if r.svc == nil {
+		return 0
+	}
 	if n, ok := r.svc.Resolve(key).Value.(int); ok {
 		return n
 	}
 	return 0
 }
 func (r resolved) boolv(key string) bool {
+	if r.svc == nil {
+		return false
+	}
 	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
 		return b
 	}
