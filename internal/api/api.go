@@ -53,7 +53,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler,
-		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision,
+		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig,
 	}
 	srv.registerMiddleware(humaAPI)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -44,6 +45,60 @@ func channelToDTO(ch store.Channel) ChannelDTO {
 	}
 }
 
+// NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes
+// come from Tunarr, which owns playout — Loomarr owns the lineup (what should play), not
+// when it plays, so recomputing these locally would duplicate Tunarr's scheduling math.
+type NowNextEntry struct {
+	Title   string `json:"title"`
+	StartMs int64  `json:"startMs" doc:"Epoch ms; airtime as Tunarr scheduled it"`
+	StopMs  int64  `json:"stopMs"`
+	Gap     bool   `json:"gap" doc:"A flex/commercial-pod gap rather than a program"`
+	TMDBID  string `json:"tmdbId,omitempty" doc:"Joins to a provisioning key (movie:tmdb:<id>) when known"`
+}
+
+// ChannelNowNext is what a channel card shows: what is on, and what follows.
+type ChannelNowNext struct {
+	ChannelID string        `json:"channelId" doc:"Loomarr channel id"`
+	Now       *NowNextEntry `json:"now,omitempty"`
+	Next      *NowNextEntry `json:"next,omitempty"`
+}
+
+type nowNextOutput struct {
+	Body struct {
+		Channels []ChannelNowNext `json:"channels"`
+	}
+}
+
+// channelsNowNext answers the Channels LIST in one upstream call: Tunarr's guide is keyed
+// by channel id, so N cards cost one request, not N. A channel with no generated guide
+// simply has no entry — an empty guide is "nothing to show", not a failure (finding 4).
+func (s *Server) channelsNowNext(ctx context.Context, _ *struct{}) (*nowNextOutput, error) {
+	out := &nowNextOutput{}
+	out.Body.Channels = []ChannelNowNext{}
+	if s.guide == nil {
+		return out, nil // guide reader not configured (unit tests, no Tunarr) — empty, not 501
+	}
+	channels, err := s.store.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byTunarr, err := s.guide.NowNext(ctx, time.Now())
+	if err != nil {
+		// The guide is a nicety on a list view; a Tunarr hiccup must not blank the page.
+		return out, nil
+	}
+	for _, ch := range channels {
+		if ch.TunarrID == "" {
+			continue // never reconciled: nothing is airing yet
+		}
+		if nn, ok := byTunarr[ch.TunarrID]; ok {
+			nn.ChannelID = ch.ID
+			out.Body.Channels = append(out.Body.Channels, nn)
+		}
+	}
+	return out, nil
+}
+
 // registerChannels mounts /v1/channels* (§7). Reads are visible to any
 // authenticated user; create/update/delete/reconcile require admin.
 func (s *Server) registerChannels(api huma.API) {
@@ -51,6 +106,12 @@ func (s *Server) registerChannels(api huma.API) {
 		OperationID: "list-channels", Method: http.MethodGet, Path: "/v1/channels",
 		Summary: "List channels", Tags: []string{"channels"},
 	}, s.listChannels)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
+		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel.",
+		Tags: []string{"channels"},
+	}, s.channelsNowNext)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "get-channel", Method: http.MethodGet, Path: "/v1/channels/{id}",

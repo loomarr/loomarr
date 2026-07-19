@@ -151,6 +151,19 @@ components:
         - slotCount
         - policy
       type: object
+    ChannelNowNext:
+      additionalProperties: false
+      properties:
+        channelId:
+          description: Loomarr channel id
+          type: string
+        next:
+          $ref: "#/components/schemas/NowNextEntry"
+        now:
+          $ref: "#/components/schemas/NowNextEntry"
+      required:
+        - channelId
+      type: object
     ChannelPolicy:
       additionalProperties: false
       properties:
@@ -795,6 +808,49 @@ components:
         - disabled
         - quota
         - autoApprove
+      type: object
+    NowNextEntry:
+      additionalProperties: false
+      properties:
+        gap:
+          description: A flex/commercial-pod gap rather than a program
+          type: boolean
+        startMs:
+          description: Epoch ms; airtime as Tunarr scheduled it
+          format: int64
+          type: integer
+        stopMs:
+          format: int64
+          type: integer
+        title:
+          type: string
+        tmdbId:
+          description: Joins to a provisioning key (movie:tmdb:<id>) when known
+          type: string
+      required:
+        - title
+        - startMs
+        - stopMs
+        - gap
+      type: object
+    NowNextOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/NowNextOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelNowNext"
+          type:
+            - array
+            - "null"
+      required:
+        - channels
       type: object
     PatchClipInputBody:
       additionalProperties: false
@@ -1841,6 +1897,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Create a channel
+      tags:
+        - channels
+  /v1/channels/now-next:
+    get:
+      description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel."
+      operationId: channels-now-next
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowNextOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What is airing now and next
       tags:
         - channels
   /v1/channels/{id}:
