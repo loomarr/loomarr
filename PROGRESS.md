@@ -4,6 +4,43 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Design change — filler ingest moves into the core; the `loomarr-ingest` sidecar is removed (2026-07-19).**
+Branch `design/ingest-in-core`. Doc-only; no code, no spec drift. Maintainer call, taken before building
+13.4d's Filler page so the page isn't designed against a seam we were about to delete.
+
+**What changed and why.** The sidecar's *only* stated justification was keeping ~170MB of yt-dlp+ffmpeg out of
+the core image (§14). It was already Go, so §14's language policy never required it. What that slimness cost:
+a second image to build/version/publish, a `filler` compose profile, a proxy endpoint in the core just to reach
+the sidecar, ingest progress that could not ride the existing SSE job bus, and a Filler page whose primary
+action was a hop to an optional service that might not be running. Ingest is now a normal in-core job, and the
+tooling ships in an opt-in image *tag* (`loomarr:filler`) rather than an opt-in *service* — same binary, same
+config, same endpoints, so operators move between tags with a restart, not a topology change.
+
+**The one genuinely new mechanism:** `ingest` is the first feature gate that is NOT derived from settings
+completeness — no amount of configuring opens it on `loomarr:latest`, because it depends on which image is
+running. config-design §7's heading previously claimed `RequiredFor` computed availability and "nothing else
+does"; that is now stated as an explicit, reasoned exception rather than left as a quiet contradiction. The
+invariant that survives: one function computes the set, every consumer reads it — only the inputs differ.
+ffmpeg is bundled (not skipped) so yt-dlp can merge separate video/audio streams; without it, high-res sources
+fail or silently downgrade.
+
+**Sections touched:** §2 (filler flow + FillerSource port row), §7 (`/v1/filler/ingest`), §10 (ingestion path,
+config, probing), §13 (Filler guide), §14 (Sidecar & CI → Ingest tooling & CI), §15 (four `INGEST_*` keys),
+§16 (two tags one binary; compose profiles now sqlite/postgres/ai), §21 (repo layout drops
+`cmd/loomarr-ingest/`; phase-12 text); config-design §5 (Filler settings row), §7 (the exception), §6 (wizard
+step). The §15 additions are the human mirror only — the Go registry entries land with the implementation, so
+`make config-docs` stays drift-free until then.
+
+**Stale docs fixed in passing (a real contradiction, not cosmetics):** §2 lines 85/98 still described filler as
+"the media server scans its dedicated filler library" and "media-server filler-library sync" — but §10 was
+revised long ago to Tunarr-`local` with the media server *out* of the filler path, and §2 was never updated.
+Same for `/v1/filler/sync`'s table description and config-design's Filler settings row (which also referenced
+`/v1/filler/sources`, an endpoint that does not exist).
+
+**Gate:** `make check` GREEN; `make openapi-verify` GREEN (no spec drift — doc-only).
+**Next:** 13.4d-0a/0b/0c (the backend surfaces 13.4d needs), then 13.4d itself.
+
+
 **Phase 13.4c-2 — the model picker and the secrets panel (2026-07-19).** Branch `feat/fe-settings-13.4c2`. The two
 sub-features deliberately deferred out of 13.4c, each substantial enough to deserve the room.
 
