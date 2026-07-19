@@ -4,6 +4,46 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4d — Users and Filler shipped; Help + ⌘K remain (2026-07-19).** PRs #26–#33,
+all merged. The session ran backend-prep-then-screens, and the prep was worth it: the
+gap sweep before writing any UI found surfaces §12/§13 assume but nobody had built.
+
+**Backend prep (#26, #27, #28, #29, #30).** Sessions list/revoke; the `user_sync` gate
+that fixed a live `useSyncUsers` 404; the credential-path flag; clip search moved off the
+federated scope; the sidecar deleted and ingest folded into the core; pod preview; the
+Help docs embed, version endpoint, and a storeless-boot panic fix.
+
+**Screens (#32, #33).** Users (allowlist, sessions, explicit import) and Filler (catalog,
+tagging, ingest, pod preview). Both admin-gated in the UI as a courtesy; the server
+enforces (§11, §19).
+
+**The recurring failure of this phase, worth carrying into 13.4e.** SIX things were built,
+unit-tested, and unreachable — `AiModelSettings` and `SecretsSettings` never mounted;
+`formatEpgTime` never called, so "·til 8:00 PM" was dead UI on every channel card;
+`SettingsGroupForm` (323 lines + tests + 12 visual baselines) rendered by nothing;
+`ClipCard`'s tag action gated so the one clip that needs correcting couldn't be;
+`scope=clips` advertising a corpus that always returned empty. Every component test
+passed in every case. Page-level tests were added for Users and Filler specifically to
+assert WIRING rather than behavior — **13.4e should make reachability part of the gate**:
+every route renders, every feature-gated panel appears when its flag is on.
+
+**Gates got two real repairs.** The a11y check rejected a disabled row whose `opacity-60`
+fell under the WCAG AA contrast floor. And the visual suite's "1 flaky" — present on every
+run, a different story each time — was axe-core's module-global running flag re-entering
+through `runPartialRecursive`; Playwright's retry kept it green so it never blocked, but a
+gate that cries wolf stops being read. Retried only on that exact message; zero flaky on
+every run since.
+
+**Shared-code cleanup (#31).** Four core formatters had NO call sites (the inverse of the
+duplication we went looking for), one live grammar bug at n=1, and copy-to-clipboard
+hand-rolled twice with the same two defects in both copies.
+
+**Gate:** `make check`, `make fe` (191 app tests), `make fe-visual` (188, zero flaky),
+`make e2e`, `make openapi-verify` — all GREEN on main.
+**Next:** 13.4d-3 (Help page + ⌘K palette — transport and `troubleshooting.md` already
+exist from #30, so it is mostly rendering + client-side search), then 13.4e.
+
+
 **Phase 13.4d-0c — Help transport, version, and a startup panic (2026-07-19).** Branch
 `feat/be-help-13.4d0c`. The last backend slice before the 13.4d screens.
 
