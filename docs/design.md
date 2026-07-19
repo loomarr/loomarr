@@ -82,7 +82,7 @@ flowchart LR
 
 The subsystems are internally decoupled (clean interfaces) but ship in one binary/container by default. The **provisioner's availability events are now an internal feed to the scheduler** — that's what drives backfill. An *optional* outbound webhook/SSE remains for external consumers, but the primary consumer is `loomarr`'s own scheduler.
 
-**Filler flow (not drawn above to keep the diagram legible):** clips land in a drop-folder (manually, via MeTube, or via the optional `loomarr-ingest` sidecar) → the media server scans its dedicated filler library → loomarr **syncs its clip catalog from the media server** (§10). The core never downloads or probes media itself.
+**Filler flow (not drawn above to keep the diagram legible):** clips land in a drop-folder (manually, via MeTube, or via loomarr's own **ingest job** on a `filler`-variant image) → Tunarr scans that folder as a **`local` media source** → loomarr **syncs its clip catalog from Tunarr** (§10). The media server is not in the filler path at all, and the core never *probes* media — Tunarr assigns duration and program ids.
 
 ### Boundaries (ports)
 Core logic depends only on interfaces; concrete adapters live at the edges.
@@ -95,7 +95,7 @@ Core logic depends only on interfaces; concrete adapters live at the edges.
 | **Programmer** | `Programmer.Reconcile(channel, lineup)` | **Tunarr** (only impl; abstracted for future ErsatzTV) |
 | Suggester | `Suggester.Propose(intent) → Proposal` | LLM: Ollama (local) or an OpenAI-compatible endpoint (hosted — OpenRouter, or a user-supplied Custom base URL; Claude via OpenRouter) |
 | Catalog | `Catalog.Search(query) → []Candidate` | Library + TMDB/TVDB — grounds the LLM **and** backs `GET /v1/search` (§7.2) |
-| FillerSource | catalog sync + optional ingest | media-server filler-library sync (core); `loomarr-ingest` sidecar: yt-dlp / Archive.org → drop-folder (§10) |
+| FillerSource | catalog sync + optional ingest | Tunarr `local`-source catalog sync (core); `Ingester`: yt-dlp / Archive.org → drop-folder, in-core on a `filler`-variant image (§10) |
 | Store | `Store` (see §5) | Postgres, SQLite |
 | Events | `EventBus` | internal (→ scheduler) + optional outbound webhook |
 
@@ -268,7 +268,8 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/suggestions/{id}/deny` | Deny (admin) with optional reason; proposal → `denied`, member sees it in My proposals. |
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category. |
 | PATCH | `/v1/filler/{id}` | Edit a clip's tags. |
-| POST | `/v1/filler/sync` | Sync catalog from the media server's filler library. |
+| POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
+| POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` unless the running image carries the ingest tooling — `loomarr:filler` (§10, §16). |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | GET | `/v1/channels/{id}/pods/preview` | Preview assembled pods for a channel's current policy. |
 | POST | `/v1/auth/login` | Sign in with media-server credentials (§11) → session cookie. |
@@ -449,9 +450,10 @@ Commercials are core to the "feels like real TV" goal, not a garnish — this is
 ### Why filler is a separate pipeline
 Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station IDs are **not** in TMDB and aren't "titles," so the provisioning loop (§3–§7) does not apply to them. Filler gets its own ingestion — designed so the **core stays a static binary** (no Python, no ffprobe; see §16):
 - **Sources:** Internet Archive collections; curated YouTube playlists (the dizqueTV-wiki-style filler repos); user-created bumpers / station IDs / "we'll be right back" cards.
-- **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via the optional **`loomarr-ingest` sidecar** (a small **Go** image wrapping yt-dlp + Archive downloads; `filler` compose profile).
+- **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via loomarr's own **ingest job** (yt-dlp for YouTube/playlists, plain `net/http` for Archive.org), which writes files + info-JSON sidecars into that folder.
+- **Ingest runs in the core, on an opt-in image variant (revised — the `loomarr-ingest` sidecar is removed).** Ingest is a normal job on the same job bus as every other long operation: it reports progress over SSE, is cancellable, and needs no service discovery, no compose profile, and no proxy hop from the API. The tooling it shells out to (`yt-dlp` + `ffmpeg`) is *not* in the default image; it ships in the **`loomarr:filler`** variant built from the same source and the same binary (§16). Availability is a computed **feature gate** (`FeatureIngest`, config-design §7) resolved from the presence of the binaries, so the API 409s and the Filler tab's empty state read the same signal as every other gated capability — the UI never offers an action the image can't perform. *Rationale for the reversal: the sidecar's only justification was keeping ~170MB of tooling out of the core image, and it bought that with a second image to publish, a compose profile, a distributed seam for the Filler page's primary action, and ingest progress that could not ride the existing SSE job bus. An opt-in image tag buys the same slimness without the seam.*
 - **Filler is Loomarr-owned, NOT a media-server library (revised — the media server is out of the filler path).** The drop-folder is registered in **Tunarr as a `local` media source** (Tunarr scans a plain folder directly — no Emby/Jellyfin involved) that Loomarr sets up idempotently at first filler sync (same enumerate-first pattern as the Live TV wiring, §6). This keeps filler a pure **Loomarr↔Tunarr** concern: the operator never creates or manages a commercials library in their media server, and program content (Emby) stays cleanly separated from filler (Tunarr-local) — filler *cannot* leak into a programming lineup because it isn't in the media server at all. Rationale: commercials aren't "library titles"; making the operator curate an Emby library for them was the wrong seam.
-- **Catalog sync (core):** loomarr syncs its clip catalog *from the Tunarr `local` filler source* — Tunarr scans the folder and assigns each clip a program id + **duration** (Tunarr probes media in the sidecar/`local`-scan path, never the core). Clip identity = the **Tunarr program id** for that clip. `/v1/filler/sync` triggers it (setting up the local source on first run if absent); a periodic sync runs alongside the reconciler. The core stays a static binary (no ffprobe/downloads — §16); probing lives in Tunarr + the ingest sidecar.
+- **Catalog sync (core):** loomarr syncs its clip catalog *from the Tunarr `local` filler source* — Tunarr scans the folder and assigns each clip a program id + **duration** (Tunarr probes media during its `local`-source scan, never loomarr). Clip identity = the **Tunarr program id** for that clip. `/v1/filler/sync` triggers it (setting up the local source on first run if absent); a periodic sync runs alongside the reconciler. **Probing stays out of loomarr entirely** — duration comes from Tunarr's scan, so the core never needs ffprobe even on the `filler` variant, where the bundled ffmpeg exists only for yt-dlp's stream merging.
 
 ### Filler catalog (metadata is what enables matching)
 Each clip carries metadata so the scheduler can place it well, persisted in the store (§5):
@@ -461,7 +463,7 @@ Each clip carries metadata so the scheduler can place it well, persisted in the 
 - `category`: toys | cereal | cars | tech | fast_food | movie_trailer | …
 - `duration` (from the media server), `rating`, `source`
 
-Tagging options, in increasing order of leverage: filename/folder convention → sidecar metadata → **AI-assisted classification**. **V1 AI tagging uses text signals only** — filename, and the source title/description that yt-dlp/Archive provide (the ingest sidecar preserves these as sidecar metadata) — classified by the configured LLM into era/audience/category. Transcript- or vision-based tagging (whisper, video models) is future work (§20). Even text-only tagging is what makes thousands of clips practical, and is where Loomarr beats hand-curated filler lists.
+Tagging options, in increasing order of leverage: filename/folder convention → sidecar metadata → **AI-assisted classification**. **V1 AI tagging uses text signals only** — filename, and the source title/description that yt-dlp/Archive provide (the ingest job preserves these as info-JSON sidecar files next to each clip) — classified by the configured LLM into era/audience/category. Transcript- or vision-based tagging (whisper, video models) is future work (§20). Even text-only tagging is what makes thousands of clips practical, and is where Loomarr beats hand-curated filler lists.
 
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
@@ -480,7 +482,7 @@ Two jobs the suggester (§8) can do here, both under the same grounding rule (ca
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
 
 ### Config
-Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). The `loomarr-ingest` sidecar owns its own ingestion-target config (playlist/collection URLs + the drop-folder path) — the core has no download configuration. **Migration note:** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity are superseded; clip identity becomes the Tunarr `local`-source program id.
+Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_MAX_CONCURRENT` and `INGEST_TIMEOUT`. Ingestion *targets* (playlist/collection URLs) are supplied per-request by an admin, not configured globally — there is no unattended crawler. **Migration note:** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity are superseded; clip identity becomes the Tunarr `local`-source program id.
 
 ---
 
@@ -581,7 +583,7 @@ Docs live as markdown in `docs/` in the repo and are **embedded and rendered as 
 - **Concepts** — the mental model: proposals, approval, provisioning states, backfill, pods, and the **programming heuristics** extract/enforce principle (`programming-design.md` §1). (Aimed at both personas.)
 - **Member guide** — writing good intents; what happens after submit; reading channel status.
 - **Programming guide** — the ChannelPolicy: scope/audience/separation/ordering/seasonal, and how the relaxation ladder keeps a channel filled (`programming-design.md`).
-- **Filler guide** — drop-folder, MeTube, the ingest sidecar, tagging, pod policy.
+- **Filler guide** — drop-folder, MeTube, the in-core ingest job and the `loomarr:filler` image variant it requires, tagging, pod policy.
 - **Troubleshooting** — organized by checklist item: every red check in the wizard deep-links to its section here. The checklist is executable documentation; this page is its narrative twin.
 
 **Companion design docs** (incorporated in Phase 14; authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
@@ -621,8 +623,9 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Component workshop + gallery | **Storybook 10** (`@storybook/react-vite`) + `@storybook/addon-a11y` (axe, in the workshop) | The component gallery/contract *and* dev workshop (frontend-design §5); carries to the future mobile app via `@storybook/react-native` (Expo, on-device). Replaces the hand-rolled `/__gallery` registry. The CI gate (visual + a11y) is **one Playwright pass** over the offline `storybook-static` build. **Chromatic rejected** — hosted SaaS visual-diff, breaks the offline/self-hosted rule (§16) |
 | FE tests | Vitest + Testing Library (jsdom units) + a story-coverage test; **Playwright** over `storybook-static` for the visual suite (`toHaveScreenshot`) **and** a11y (`@axe-core/playwright`), plus the e2e approve-flow smoke | Matches §19 |
 
-### Sidecar & CI
-- `loomarr-ingest`: **Go**, shelling out to the bundled **`yt-dlp`** + **`ffmpeg`** binaries (CLI) for YouTube, plain `net/http` for Archive.org; writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Written in Go for repo consistency (shares the module/types/testkit with the core); shipped as a **separate** image so the ~170MB of yt-dlp+ffmpeg tooling never touches the core (§16). Only the `filler` compose profile pulls it.
+### Ingest tooling & CI
+- **Ingest is core Go code** (`internal/ingest`), shelling out to **`yt-dlp`** + **`ffmpeg`** (CLI) for YouTube/playlists and plain `net/http` for Archive.org; it writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. The two binaries are the **only** vendored non-Go executables the project allows, and they are invoked via `exec` — never linked, never scripted around. They ship **only in the `loomarr:filler` image variant** (§16), built from the same source and the same Go binary as `loomarr:latest`; the default image omits ~170MB of tooling and reports the `ingest` feature as unavailable.
+- **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 
 ---
@@ -674,6 +677,8 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | drop-folder Loomarr registers as a Tunarr `local` source / `15m` / `false` (§10) |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
+| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths on the `loomarr:filler` image, else empty ⇒ `ingest` feature off (§10). Overridable so an operator can run a newer yt-dlp than the image ships |
+| `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (CLAUDE.md do-nots). Full mechanics: `config-design.md`.
@@ -682,13 +687,15 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 
 ## 16. Deployment (Docker)
 
-Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver ⇒ no cgo; no Python/ffprobe in the core — filler design in §10 depends on this). Toolchain pins: **Go 1.22+** for the binary, **Node 20+** in the FE build stage. Non-root. `HEALTHCHECK` → `/healthz`. The web UI is embedded and served at `/`.
+Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver ⇒ no cgo). Toolchain pins: **Go 1.22+** for the binary, **Node 20+** in the FE build stage. Non-root. `HEALTHCHECK` → `/healthz`. The web UI is embedded and served at `/`.
 
-### Compose (profiles: sqlite · postgres · ai · filler)
+**Two tags, one binary.** `loomarr:latest` is the image above and carries no media tooling. `loomarr:filler` is the *same* Go binary in a final stage that also vendors pinned **`yt-dlp`** + **`ffmpeg`** for the §10 ingest job (~170MB more, and a non-distroless base since those binaries need a libc). Nothing else differs — same config, same endpoints, same migrations — so an operator moves between them with a tag change and a restart. **Loomarr still never probes media**: duration comes from Tunarr's `local`-source scan, and the bundled ffmpeg exists solely for yt-dlp's stream merging. Both binaries are invoked via `exec` and are the only vendored non-Go executables the project permits (§14).
+
+### Compose (profiles: sqlite · postgres · ai)
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama; optional GPU passthrough).
-- **filler:** adds the **`loomarr-ingest` sidecar** (Go, bundling yt-dlp + ffmpeg: YouTube + Archive downloads → the drop-folder the media server scans). Skip it if you fill the drop-folder manually or with MeTube.
+**Filler ingest is not a profile — it is an image tag.** There is no ingest service to add or skip. To download clips in-app, run the **`loomarr:filler`** image instead of `loomarr:latest`: same binary, same config, same endpoints, plus vendored yt-dlp + ffmpeg (~170MB). Everything else is identical, so switching is a tag change and a restart, not a topology change. On `loomarr:latest` the `ingest` feature simply reports unavailable and the Filler tab explains that clips arrive via the drop-folder (manually or with MeTube). *Revised: this replaces the `filler` compose profile and the `loomarr-ingest` sidecar.*
 
 The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
@@ -742,9 +749,10 @@ services:
   # ollama:                        # ai profile
   #   image: ollama/ollama:latest
   #   volumes: [ollama:/root/.ollama]
-  # loomarr-ingest:                # filler profile (yt-dlp/Archive → drop-folder)
-  #   image: loomarr-ingest:latest
-  #   volumes: [/mnt/media/filler:/downloads]   # same folder the media server scans
+  # For in-app clip downloads, change the loomarr service's image to
+  # loomarr:filler (vendored yt-dlp + ffmpeg) and mount the drop-folder:
+  #   image: loomarr:filler
+  #   volumes: [/mnt/media/filler:/filler]      # the folder Tunarr scans as a `local` source
 
 volumes:
   loomarr-data:
@@ -848,7 +856,6 @@ Each phase ends green (compiles + its tests pass) before the next.
    internal/api/           # §7 HTTP + OpenAPI wiring
    web/                    # §12 Vite SPA (built assets embedded)
    docs/                   # §13 markdown docs (embedded → in-app Help)
-   cmd/loomarr-ingest/     # loomarr-ingest sidecar (Go, own Dockerfile bundling yt-dlp+ffmpeg)
    api/openapi.yaml        # committed exported spec
    ```
 2. **Provisioner domain + state machine.** Types, keying (+ webhook-key parity test), pure transitions + invariant tests. No I/O.
@@ -861,7 +868,7 @@ Each phase ends green (compiles + its tests pass) before the next.
 9. **Users & auth (§11).** Session issuance/middleware, `/v1/auth/*` + `/v1/users*`, **local-admin bootstrap (once) + explicit media-server import (allowlist; un-imported → 403) + local bcrypt credential path**, user sync (periodic + on-demand; refreshes imported users, never adds), role enforcement on all mutating routes, `API_TOKEN` break-glass, login rate-limit. **Auth & roles tests are the gate.** *(The identity model was reworked from the earlier claim-on-login/lazy-provision design — see §11.)*
 10. **Scheduler + Tunarr (the point).** `Channel`/`DesiredLineup`/`Slot`; Tunarr `Programmer` adapter; desired-vs-actual reconcile + **periodic sweep with slot revalidation** (`CHANNEL_RECONCILE_EVERY`, §9 drift + ownership + TZ); **backfill** consuming provisioning events (sweep-backed); basic Flex/filler-list plumbing; `/v1/channels*`. **Live TV wiring (§6):** `POST /v1/setup/livetv-connect` wires Tunarr as an M3U tuner + XMLTV guide source in the media server (idempotent enumerate-first), a `/v1/setup/status` "wired?" check, and a best-effort guide-refresh poke after channel-affecting reconciles (§9). **Maintainer-supervised live capture (Phase-0 style, folded here):** pin the accepted `/LiveTv/TunerHosts` + `/LiveTv/ListingProviders` request/response payloads and the guide-refresh task id from the real Emby/Jellyfin into `internal/testkit/fixtures/`; adapter written against the pins, not memory. Reconcile-against-mock-Tunarr tests **and the idempotent-connect second-call-no-op test** are the gate.
 11. **Suggester (§8).** `Suggester` + Ollama and the OpenAI-compatible client (hosted OR Ollama's own `/v1`); in-app provider/model selection (§8.1: probe, catalog, hot-swap); catalog tool (library+TMDB) w/ tool-calling; grounding + validation; deterministic scoring; persisted jobs (store worker + `ClaimDueJobs`) + proposals + SSE; `/v1/suggestions*` + `/v1/system/llm*`; expose Catalog as `GET /v1/search` (§7.2). **Grounding tests are the gate.**
-12. **Commercials & filler (§10).** Catalog sync from the media server's filler library (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; `loomarr-ingest` sidecar image (yt-dlp/Archive → drop-folder). **Filler-never-a-program + pod-matching tests are the gate.**
+12. **Commercials & filler (§10).** Catalog sync from the Tunarr `local` filler source (`/v1/filler/sync` + periodic); clip metadata + tag editing; pod assembly with era/audience matching, category variety, density, no-repeat, and the fallback ladder; optional AI text-signal tagging job; the in-core ingest job (yt-dlp/Archive → drop-folder) plus the `loomarr:filler` image variant that carries its tooling. **Filler-never-a-program + pod-matching tests are the gate.**
 12.5. **End-to-end integration (the seams).** *Added after the first live smoke (2026-07-13/14) revealed that phases 0–12, each gate-green in isolation, had unwired seams between them — the per-phase unit gates never exercised the composition.* This phase makes "the whole thing works, driven only through Loomarr's own endpoints" an explicit gate, not an emergent hope. Scope = close every seam between an approved intent and a playing channel **with pods**, each proven against the live stack AND covered by an integration test:
     - **Approve → lineup carries acquisitions** (`#9`): a not-yet-available acquisition must enter the channel's lineup as a *pending* entry (key preserved) so backfill/sweep can place it — today `lineupEntries` drops non-in-library items, so acquired titles never appear.
     - **Provisioner availability events → scheduler** (`#10`) and **→ SSE `/v1/events`** (`#11`): wire the emitter adapters in `cmd/loomarr/main.go` (a `reconcile.Emitter` + ingest-handler emitter) that fan `DomainEvent`s to `engine.OnAvailability` **and** `eventBus.Publish`. Both are built on the consuming side and never called.
