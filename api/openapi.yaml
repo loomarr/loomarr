@@ -2002,13 +2002,20 @@ components:
           type: boolean
         disabled:
           type: boolean
+        effectiveQuota:
+          format: int64
+          type: integer
         id:
           type: string
         local:
           type: boolean
         name:
           type: string
+        pendingAcquisitions:
+          format: int64
+          type: integer
         quota:
+          description: Pending-acquisition cap; 0 ⇒ the suggest.max_acquisitions default (§11)
           format: int64
           type: integer
         role:
@@ -2022,6 +2029,8 @@ components:
         - role
         - disabled
         - quota
+        - pendingAcquisitions
+        - effectiveQuota
         - autoApprove
         - local
       type: object

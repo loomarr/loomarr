@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -208,4 +209,14 @@ func (s *Server) livetvConnect(ctx context.Context, _ *struct{}) (*livetvConnect
 	out.Body.ListingAdded = listingAdded
 	out.Body.AlreadyWired = !tunerAdded && !listingAdded
 	return out, nil
+}
+
+// configInt reads a live integer setting. Unparseable or unwired ⇒ 0, which callers
+// treat as "no configured value" rather than as a real limit of zero.
+func (s *Server) configInt(key string) int {
+	n, err := strconv.Atoi(s.configValue(key))
+	if err != nil {
+		return 0
+	}
+	return n
 }

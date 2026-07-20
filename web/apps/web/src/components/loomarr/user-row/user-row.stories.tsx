@@ -13,6 +13,8 @@ const base: UserBody = {
   disabled: false,
   autoApprove: false,
   local: false,
+  pendingAcquisitions: 2,
+  effectiveQuota: 5,
 };
 
 // One row of the §11 allowlist: credential path, role, quota, auto-approve, disabled.
