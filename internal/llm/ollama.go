@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/mantonx/loomarr/internal/metrics"
 )
 
 // Ollama is the local-Ollama provider (§8 homelab default). Pinned to the real
@@ -84,6 +85,9 @@ type ollamaTool struct {
 type ollamaChatResp struct {
 	Message    ollamaMessage `json:"message"`
 	DoneReason string        `json:"done_reason"`
+	// Token accounting (§17): Ollama reports prompt vs generated eval counts.
+	PromptEvalCount int `json:"prompt_eval_count"`
+	EvalCount       int `json:"eval_count"`
 }
 
 // Chat implements Provider against Ollama /api/chat.
@@ -129,6 +133,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return Response{}, fmt.Errorf("decode ollama response: %w", err)
 	}
+	metrics.LLMTokens(out.PromptEvalCount, out.EvalCount) // §17: no-op on 0
 
 	return Response{
 		Content:   out.Message.Content,

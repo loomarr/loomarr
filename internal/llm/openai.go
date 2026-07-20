@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/httpx"
+	"github.com/mantonx/loomarr/internal/metrics"
 )
 
 // OpenAI is the OpenAI-COMPATIBLE provider (§8/§14): one hand-written client
@@ -95,6 +96,12 @@ type openaiChatResp struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
+	// Token accounting (§17): the OpenAI-compatible usage block. Absent on a
+	// provider that omits it ⇒ zero ⇒ LLMTokens skips it.
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 // Chat implements Provider against /v1/chat/completions.
@@ -144,6 +151,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if len(out.Choices) == 0 {
 		return Response{}, fmt.Errorf("openai chat: empty choices")
 	}
+	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens) // §17: no-op on 0
 	msg := out.Choices[0].Message
 	return Response{
 		Content:   msg.Content,

@@ -83,7 +83,9 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// desired and is no longer a program now means a scheduled item vanished
 	// (deleted / re-id'd). An old `available` is never trusted forever — surface
 	// it as StatusDrifted so the Channels view flags it.
-	drifted := programWentStale(ch.Desired, desired.Slots)
+	staleCount := staleProgramCount(ch.Desired, desired.Slots)
+	drifted := staleCount > 0
+	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
 
 	channelAffecting := false
 
@@ -270,24 +272,26 @@ func (e *Engine) rescanTuner(ctx context.Context, channelID string) {
 	}
 }
 
-// programWentStale reports whether any Key that was a real program in the
-// previously-persisted desired is no longer a program in the freshly-computed
-// desired (§9 slot revalidation). That means a scheduled item vanished from the
-// library since the last reconcile — the signal for StatusDrifted. A first-ever
-// reconcile (empty prev) can't drift.
-func programWentStale(prev, next []schedule.Slot) bool {
+// staleProgramCount reports how many Keys that were real programs in the
+// previously-persisted desired are no longer programs in the freshly-computed
+// desired (§9 slot revalidation). A non-zero count means scheduled items
+// vanished from the library since the last reconcile — the signal for
+// StatusDrifted and the §17 slot-substitution count. A first-ever reconcile
+// (empty prev) can't drift.
+func staleProgramCount(prev, next []schedule.Slot) int {
 	nowProgram := map[provision.Key]bool{}
 	for _, s := range next {
 		if s.IsProgram() && s.Key != "" {
 			nowProgram[s.Key] = true
 		}
 	}
+	n := 0
 	for _, s := range prev {
 		if s.IsProgram() && s.Key != "" && !nowProgram[s.Key] {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
 }
 
 // lineupDiffers reports whether the desired slots differ from Tunarr's actual
