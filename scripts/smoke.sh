@@ -55,16 +55,9 @@ down() {
 
 write_env() {
   mkdir -p "$WORK"
-  # The transcode config id must come from THIS Tunarr: the operator's real one names a
-  # config in their dev instance, and Tunarr validates the field as a UUID that must
-  # exist. Sending the wrong one (or "") fails channel creation with a bare 400.
-  local tc
-  tc=$(curl -s -m 5 "localhost:$TUNARR_PORT/api/transcode_configs" \
-    | sed -n 's/.*"id":"\([0-9a-f-]\{36\}\)".*/\1/p' | head -1)
-  [ -n "$tc" ] || echo "  ! could not read a transcode config from the throwaway Tunarr"
-  python3 - "$ROOT" "$WORK" "$PORT" "$TUNARR_PORT" "$tc" <<'PY'
+  python3 - "$ROOT" "$WORK" "$PORT" "$TUNARR_PORT" <<'PY'
 import pathlib, sys
-root, work, port, tport, transcode = sys.argv[1:6]
+root, work, port, tport = sys.argv[1:5]
 out = []
 for line in pathlib.Path(root, ".env").read_text().splitlines():
     if "=" not in line or line.strip().startswith("#"):
@@ -74,14 +67,16 @@ for line in pathlib.Path(root, ".env").read_text().splitlines():
     # Omitted on purpose: a requester would turn an approval into a real download.
     if k in ("SEERR_URL", "SEERR_API_KEY"):
         continue
+    # DROP the operator's transcode-config id: it names a config in THEIR Tunarr, not
+    # the throwaway. Leaving it empty is deliberate — it exercises the auto-resolve of
+    # the instance Default (FINDING 5), which is what a real operator relies on since
+    # the setting is Advanced and almost never set.
+    if k == "TUNARR_TRANSCODE_CONFIG_ID":
+        continue
     if k == "DATABASE_URL": v = f"sqlite://{work}/smoke.db"
     if k == "TUNARR_URL":   v = f"http://localhost:{tport}"
     if k == "LISTEN_ADDR":  v = f":{port}"
-    # Point at THIS Tunarr's config, not the dev instance's (see write_env).
-    if k == "TUNARR_TRANSCODE_CONFIG_ID": v = transcode
     out.append(f"{k}={v}")
-if not any(l.startswith("TUNARR_TRANSCODE_CONFIG_ID=") for l in out) and transcode:
-    out.append(f"TUNARR_TRANSCODE_CONFIG_ID={transcode}")
 pathlib.Path(work, "env").write_text("\n".join(out) + "\n")
 PY
 }

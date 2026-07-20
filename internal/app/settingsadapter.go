@@ -162,6 +162,15 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 			if _, _, err := prog.GetChannel(ctx, "loomarr-probe"); err != nil {
 				return false, "could not reach Tunarr: " + err.Error()
 			}
+			// Reachable is not enough: every channel create carries a transcode-config
+			// uuid, and a missing/unresolvable one makes Tunarr 400 EVERY create while
+			// this check reads green (FINDING 5 — a channel that sits `building` forever
+			// with nothing the operator can see). Resolving it here (the configured id,
+			// or the auto-selected Default) turns that silent failure into an actionable
+			// red.
+			if _, err := prog.TranscodeConfigID(ctx); err != nil {
+				return false, "Tunarr is reachable but no transcode config is usable: " + err.Error()
+			}
 			return true, ""
 		},
 		// requester (§6): Seerr is the implemented requester; the probe validates the
