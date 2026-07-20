@@ -59,19 +59,50 @@ type listingProvider struct {
 	Path string `json:"Path"` // Emby/Jellyfin use Path for the xmltv URL
 }
 
+// liveTVConfigPath is the ONE read that enumerates both tuners and listing
+// providers, and the only one that works on both flavors.
+//
+// The Emby-lineage `GET /LiveTv/TunerHosts` / `GET /LiveTv/ListingProviders` are
+// WRITE-ONLY on Jellyfin: POST works, GET returns 405 (verified against Jellyfin
+// 10.10.3 — see fixtures/livetv/FINDINGS.md). Reading through them meant the
+// enumerate-first idempotency check errored on every Jellyfin install, so a connect
+// either failed outright or re-registered the tuner on each attempt. §6 has always
+// claimed both flavors; the Phase-10 capture was Emby-only, which is how it went
+// unnoticed until the maintainer smoke wired a real Jellyfin.
+const liveTVConfigPath = "/System/Configuration/livetv"
+
+// liveTVConfig is the media server's Live TV configuration. Both flavors answer 200
+// here and both return these two collections; everything else in the payload is
+// recording/padding settings we neither read nor write.
+type liveTVConfig struct {
+	TunerHosts       []tunerHost       `json:"TunerHosts"`
+	ListingProviders []listingProvider `json:"ListingProviders"`
+}
+
+// liveTVConfigRaw is the same read kept as generic maps, for RescanTuner — it must
+// re-POST a host VERBATIM (Id, DeviceId, and any field we don't model) or the media
+// server treats the write as a new registration rather than an update.
+type liveTVConfigRaw struct {
+	TunerHosts []map[string]any `json:"TunerHosts"`
+}
+
+func (c *Client) liveTVConfig(ctx context.Context, into any) error {
+	req, err := c.newRequest(ctx, http.MethodGet, liveTVConfigPath, nil)
+	if err != nil {
+		return err
+	}
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	return c.do(req, into)
+}
+
 // TunerRegistered enumerates tuner hosts and reports whether one already targets
 // the Tunarr M3U (§6 enumerate-first idempotency).
 func (c *Client) TunerRegistered(ctx context.Context, tunarrM3U string) (bool, error) {
-	req, err := c.newRequest(ctx, http.MethodGet, "/LiveTv/TunerHosts", nil)
-	if err != nil {
+	var cfg liveTVConfig
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return false, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
-	var hosts []tunerHost
-	if err := c.do(req, &hosts); err != nil {
-		return false, err
-	}
-	for _, h := range hosts {
+	for _, h := range cfg.TunerHosts {
 		if h.URL == tunarrM3U {
 			return true, nil
 		}
@@ -82,16 +113,11 @@ func (c *Client) TunerRegistered(ctx context.Context, tunarrM3U string) (bool, e
 // ListingRegistered enumerates listing providers and reports whether one already
 // targets the Tunarr XMLTV guide.
 func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (bool, error) {
-	req, err := c.newRequest(ctx, http.MethodGet, "/LiveTv/ListingProviders", nil)
-	if err != nil {
+	var cfg liveTVConfig
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return false, err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
-	var providers []listingProvider
-	if err := c.do(req, &providers); err != nil {
-		return false, err
-	}
-	for _, p := range providers {
+	for _, p := range cfg.ListingProviders {
 		if p.Path == tunarrXMLTV {
 			return true, nil
 		}
@@ -109,16 +135,11 @@ func (c *Client) ListingRegistered(ctx context.Context, tunarrXMLTV string) (boo
 // preserve fields we don't model — Id, DeviceId, etc.) so the media server treats
 // it as an update of the same host rather than a new registration.
 func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
-	req, err := c.newRequest(ctx, http.MethodGet, "/LiveTv/TunerHosts", nil)
-	if err != nil {
+	var cfg liveTVConfigRaw
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
 		return err
 	}
-	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
-	var hosts []map[string]any
-	if err := c.do(req, &hosts); err != nil {
-		return err
-	}
-	for _, h := range hosts {
+	for _, h := range cfg.TunerHosts {
 		if url, _ := h["Url"].(string); url == tunarrM3U {
 			post, err := c.newJSONRequest(ctx, http.MethodPost, "/LiveTv/TunerHosts", h)
 			if err != nil {
