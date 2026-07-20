@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/mantonx/loomarr/internal/httpx"
 )
@@ -20,11 +21,18 @@ type Tunarr struct {
 	// hot-apply): a Tunarr URL saved in Settings takes effect on the next push.
 	conn func() (baseURL, apiKey string)
 	// transcodeConfigID references a real Tunarr transcode config (Phase-0
-	// finding 3: must be a valid uuid; the instance ships a "Default"). Supplied
-	// at construction from GET /api/transcode_configs (or config).
+	// finding 3: channel create requires a valid uuid; the instance ships a
+	// "Default"). EMPTY is the common case (§15: TUNARR_TRANSCODE_CONFIG_ID is an
+	// Advanced knob most operators never touch) and means "resolve the instance
+	// Default" — see transcodeID. A household admin should not have to hunt a uuid
+	// out of Tunarr to get a channel on air.
 	transcodeConfigID string
-	http              *http.Client
-	resolver          *contentResolver // media-server item id → Tunarr program uuid (§6)
+	// resolvedTranscodeID caches the auto-resolved Default so the resolve query
+	// runs once, not per channel create.
+	transcodeMu         sync.Mutex
+	resolvedTranscodeID string
+	http                *http.Client
+	resolver            *contentResolver // media-server item id → Tunarr program uuid (§6)
 	// filler-list attach policy (§10/§15): weight = relative draw when a channel has
 	// multiple lists; cooldownSeconds = min seconds before a clip repeats. Zero
 	// values fall back to sane defaults in attachFillerList.
@@ -110,10 +118,62 @@ type createEnvelope struct {
 	Channel tunarrChannel `json:"channel"`
 }
 
+// transcodeConfig is a /api/transcode_configs entry — only the fields the resolve
+// + validate needs. Tunarr ships one named "Default".
+type transcodeConfig struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// TranscodeConfigID resolves the transcode-config uuid every channel create must
+// carry (Phase-0 finding 3). A configured id is trusted as-is; otherwise the
+// instance's own configs are fetched and the "Default" (or, failing an exact name
+// match, the first) is chosen and cached. This is what makes TUNARR_TRANSCODE_
+// CONFIG_ID an Advanced knob rather than a required one (§15): an empty setting
+// used to send "" and Tunarr rejected every channel with a bare 400 (invalid
+// uuid), while the setup check — probing only reachability — stayed green.
+//
+// Returns an error when the instance reports no configs at all, so the setup check
+// can surface an actionable failure instead of letting channel creation die later.
+func (t *Tunarr) TranscodeConfigID(ctx context.Context) (string, error) {
+	if id := strings.TrimSpace(t.transcodeConfigID); id != "" {
+		return id, nil
+	}
+	t.transcodeMu.Lock()
+	defer t.transcodeMu.Unlock()
+	if t.resolvedTranscodeID != "" {
+		return t.resolvedTranscodeID, nil
+	}
+	var configs []transcodeConfig
+	if err := t.doJSON(ctx, http.MethodGet, "/api/transcode_configs", nil, &configs); err != nil {
+		return "", fmt.Errorf("resolve transcode config: %w", err)
+	}
+	if len(configs) == 0 {
+		return "", fmt.Errorf("Tunarr reports no transcode configs — create one (its UI ships a Default)")
+	}
+	chosen := configs[0].ID
+	for _, c := range configs {
+		if strings.EqualFold(c.Name, "Default") {
+			chosen = c.ID
+			break
+		}
+	}
+	t.resolvedTranscodeID = chosen
+	return chosen, nil
+}
+
 // EnsureChannel implements Programmer. On create it reads back the
 // server-assigned id (Phase-0 finding 1) and returns it.
 func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, error) {
 	body := t.channelBody(spec)
+	// Resolve the transcode config once, here where we have a ctx (channelBody has
+	// none). A create with an empty id is the FINDING 5 dead-end: Tunarr 400s and the
+	// channel never appears, while the setup check reads green.
+	transcodeID, err := t.TranscodeConfigID(ctx)
+	if err != nil {
+		return "", fmt.Errorf("channel %d: %w", spec.Number, err)
+	}
+	body.TranscodeID = transcodeID
 	if spec.TunarrID == "" {
 		// Create: POST /api/channels with the {type:"new",channel:{…}} envelope.
 		env := createEnvelope{Type: "new", Channel: body}
@@ -135,7 +195,8 @@ func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, e
 }
 
 // channelBody fills the minimal-valid create/update channel from a spec plus the
-// captured defaults (Phase-0 finding 2). transcodeConfigId comes from the client.
+// captured defaults (Phase-0 finding 2). TranscodeID is set by EnsureChannel (which
+// has the ctx to resolve it), not here.
 func (t *Tunarr) channelBody(spec ChannelSpec) tunarrChannel {
 	return tunarrChannel{
 		Name:        spec.Name,
@@ -147,7 +208,6 @@ func (t *Tunarr) channelBody(spec ChannelSpec) tunarrChannel {
 		OnDemand:    tunarrOnDem{Enabled: false},
 		StartTime:   0,
 		GuideMinDur: 300,
-		TranscodeID: t.transcodeConfigID,
 		FillerColls: []any{},
 	}
 }

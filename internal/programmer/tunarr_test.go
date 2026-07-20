@@ -75,6 +75,65 @@ func TestEnsureChannel_Create_ReadsServerAssignedID(t *testing.T) {
 	}
 }
 
+// FINDING 5: an empty TUNARR_TRANSCODE_CONFIG_ID (the common case — it is Advanced,
+// §15) must AUTO-RESOLVE the instance's Default, not send "" and let Tunarr 400 every
+// create. The resolve is one GET, cached; the Default is picked by name.
+func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
+	createResp := testkit.Fixture(t, "tunarr/channel_create_response.json")
+	var configHits int
+	var sentTranscodeID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/transcode_configs":
+			configHits++
+			// A non-Default first entry proves the pick is by NAME, not position.
+			_, _ = w.Write([]byte(`[{"id":"first-uuid","name":"HW"},{"id":"default-uuid","name":"Default"}]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/channels":
+			body, _ := io.ReadAll(r.Body)
+			var env struct {
+				Channel struct {
+					TranscodeID string `json:"transcodeConfigId"`
+				} `json:"channel"`
+			}
+			_ = json.Unmarshal(body, &env)
+			sentTranscodeID = env.Channel.TranscodeID
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write(createResp)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	c := programmer.New(srv.URL, "", "") // EMPTY config id → resolve
+	for i := 0; i < 2; i++ {              // twice, to prove the resolve is cached
+		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: i + 1, Name: "Ch"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sentTranscodeID != "default-uuid" {
+		t.Errorf("auto-resolved transcodeConfigId = %q, want default-uuid (the Default, by name)", sentTranscodeID)
+	}
+	if configHits != 1 {
+		t.Errorf("resolved the transcode config %d times, want 1 (it must be cached)", configHits)
+	}
+}
+
+// A reachable Tunarr with NO transcode configs is a real dead-end: every create would
+// 400. TranscodeConfigID surfaces it as an error so the setup check can go red instead
+// of green (FINDING 5).
+func TestTranscodeConfigID_ErrorsWhenNoneExist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := programmer.New(srv.URL, "", "")
+	if _, err := c.TranscodeConfigID(context.Background()); err == nil {
+		t.Error("expected an error when the instance reports no transcode configs")
+	}
+}
+
 func TestEnsureChannel_Update_PutsToID(t *testing.T) {
 	var got capture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
