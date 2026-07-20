@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { anchorOf } from "./anchor";
+import { anchorOf, parseDocHref } from "./anchor";
 
 // Every deep-link the API emits on a setup check (internal/api/setup.go). Duplicated here
 // deliberately — the point is to prove the FE's slugger agrees with the BE's, and
@@ -60,5 +60,23 @@ describe("anchorOf", () => {
         `${href} has no heading anchoring to "${fragment}". Available: ${[...anchors].join(", ")}`,
       ).toBe(true);
     }
+  });
+});
+
+describe("parseDocHref", () => {
+  it("splits an API deep-link into page + section", () => {
+    expect(parseDocHref("troubleshooting#tunarr")).toEqual({ page: "troubleshooting", section: "tunarr" });
+  });
+  it("handles a page with no section", () => {
+    expect(parseDocHref("concepts")).toEqual({ page: "concepts", section: undefined });
+  });
+  it("treats a leading # as a same-page anchor (no page)", () => {
+    expect(parseDocHref("#approval-the-one-gate")).toEqual({ section: "approval-the-one-gate" });
+  });
+  it("keeps a hyphenated slug and anchor intact", () => {
+    expect(parseDocHref("member-guide#reading-channel-status")).toEqual({
+      page: "member-guide",
+      section: "reading-channel-status",
+    });
   });
 });

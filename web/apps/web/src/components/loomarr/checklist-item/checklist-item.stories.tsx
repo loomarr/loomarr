@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { widthFrame } from "@/test/story-utils";
+import { widthFrame, withRouter } from "@/test/story-utils";
 import { ChecklistItem } from "./checklist-item";
 
 // The wizard / Settings check row (§3, §6): pending · running · pass · fail(+hint+doc).
+// withRouter because a failed row's "Fix" is a routed Link into the Help center.
 const meta = {
   title: "Loomarr/ChecklistItem",
   component: ChecklistItem,
-  decorators: [widthFrame(420)],
+  decorators: [widthFrame(420), withRouter("/wizard")],
 } satisfies Meta<typeof ChecklistItem>;
 
 type Story = StoryObj<typeof meta>;
@@ -19,7 +20,7 @@ const Fail: Story = {
     name: "Tunarr reachable",
     status: "fail",
     hint: "Connection refused at http://tunarr:8000. Check the URL and that Tunarr is running.",
-    docHref: "/help/connections#tunarr",
+    docHref: "troubleshooting#tunarr",
   },
 };
 
