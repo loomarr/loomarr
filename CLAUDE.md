@@ -36,7 +36,7 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 | 10 Scheduler + Tunarr | §9, §6 (Programmer + resilience), §18 + `docs/programming-design.md` §2–§8 |
 | 11 Suggester + search | §8, §8.1 (model selection), §7.2 + `docs/programming-design.md` §2, §8 |
 | 12 Commercials & filler | §10 |
-| 13 Web UI + onboarding | §12, §13, §14 (FE) + `loomarr-frontend-design.md` (all of it) + `docs/config-design.md` §5–§7 |
+| 13 Web UI + onboarding | §12, §13, §14 (FE) + `docs/frontend-design.md` (all of it) + `docs/config-design.md` §5–§7 |
 | 14 Docs & ship | §13 (docs set), §16 |
 
 ## PROGRESS.md format
@@ -96,14 +96,14 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 
 ## Companion & seed docs
 
-**Companion design docs — already in `docs/`, authoritative for their own domains:**
+**Companion design docs — in `docs/`, authoritative for their own domains:**
 - **`docs/programming-design.md`** — the ChannelPolicy heuristics: extract-vs-enforce split, scope/audience/separation/ordering/seasonality, the relaxation ladder, the extensibility checklist. Phases 10, 11, and 13 build against it.
 - **`docs/config-design.md`** — the settings subsystem mechanics: the typed registry, `env > database > default` resolution, hot-apply, secrets lifecycle, Settings IA, wizard-as-settings. Phases 1, 8, 9, and 13 build against it.
+- **`docs/frontend-design.md`** — authoritative for how the frontend looks and is built (tokens, palette, component library, visual testing, mobile-readiness). Incorporated in phase 14 (was `loomarr-frontend-design.md` at the repo root).
+- **`docs/integrations/media-server-livetv.md`** — the media-server Live TV wiring summary; its troubleshooting hooks are folded into `docs/help/troubleshooting.md`. Incorporated in phase 14 (was `docs-livetv-integration.md`).
 
-**Seed artifacts (not yet in `docs/`; incorporated in later phases):**
-- **`design/loomarr-prototype-{desktop,mobile}.dc.html`** — the Claude Design mock: the authoritative visual reference for phase 13. Recreate pixel-perfectly (per `design/README.md`) with the two deltas noted in `loomarr-frontend-design.md` §7 (badge `-300` text stops; `static-500` disabled-only). These are `.dc.html` prototypes (a design-tool format + `support.js` runtime), NOT the shippable frontend — phase 13 builds the real Vite/React app to match their rendered output.
-- **`loomarr-frontend-design.md`** — authoritative for how the frontend looks and is built (tokens, palette, component library, visual testing, mobile-readiness). Phases 1 and 13 build against it; incorporate as `docs/frontend-design.md` during phase 14.
-- **`docs-livetv-integration.md`** — summary of the media-server Live TV wiring. Incorporate as `docs/integrations/media-server-livetv.md` during **phase 14** (update section references if the design doc has moved) and fold its "Troubleshooting hooks" into the Troubleshooting page. It is a summary — where it and the design doc disagree, the design doc wins and the seed gets corrected.
+**Remaining seed artifact (not in `docs/`):**
+- **`design/loomarr-prototype-{desktop,mobile}.dc.html`** — the Claude Design mock: the authoritative visual reference for phase 13. Recreate pixel-perfectly (per `design/README.md`) with the two deltas noted in `docs/frontend-design.md` §7 (badge `-300` text stops; `static-500` disabled-only). These are `.dc.html` prototypes (a design-tool format + `support.js` runtime), NOT the shippable frontend — phase 13 builds the real Vite/React app to match their rendered output.
 
 Precedence for all of them: `docs/design.md` wins on *behavior* (endpoints, flows, auth, phases); each companion/seed wins on its own domain (programming heuristics, config mechanics, look/onboarding). A companion or seed that contradicts the design doc gets corrected, not followed.
 

@@ -1,7 +1,7 @@
 # Loomarr design prototypes — Phase-13 visual reference
 
 These are the **authoritative visual reference** for the Phase-13 Web UI (CLAUDE.md
-"Seed docs"; `loomarr-frontend-design.md` §7). They are Claude Design mockups in the
+"Seed docs"; `docs/frontend-design.md` §7). They are Claude Design mockups in the
 `.dc.html` format — a self-contained prototype runtime (`support.js`), NOT the shippable
 frontend.
 
@@ -14,15 +14,15 @@ frontend.
 ## How Phase 13 uses these
 
 **Recreate the visual output pixel-perfectly** in the decided stack (Vite + React 18 +
-Tailwind v4 + shadcn/ui — design doc §14, `loomarr-frontend-design.md` §3–4). Match the
+Tailwind v4 + shadcn/ui — design doc §14, `docs/frontend-design.md` §3–4). Match the
 *rendered picture*, not the prototype's internal structure (`.dc.html` templating is a
 mock tool; production is React components + the token layer). The Playwright visual suite
-(`make fe-visual`, `loomarr-frontend-design.md` §5) judges the React build against these
+(`make fe-visual`, `docs/frontend-design.md` §5) judges the React build against these
 prototypes as the baseline — the "transmitted test card".
 
 ## Two reconciliation deltas (apply ON TOP of the prototypes)
 
-The prototypes predate the palette's contrast calibration. Per `loomarr-frontend-design.md`
+The prototypes predate the palette's contrast calibration. Per `docs/frontend-design.md`
 §2.1 and §7, the React recreation must diverge from the prototypes in exactly two ways, and
 the gallery baselines are judged against **prototypes + these deltas**:
 
@@ -38,7 +38,7 @@ the gallery baselines are judged against **prototypes + these deltas**:
 
 Imported 2026-07-13 from the maintainer's Claude Design project ("Shared file archive",
 `dc543738-…`). The design-doc precedence rule applies: `docs/design.md` wins on *behavior*
-(endpoints, flows, auth); `loomarr-frontend-design.md` + these prototypes win on *look*.
+(endpoints, flows, auth); `docs/frontend-design.md` + these prototypes win on *look*.
 Where a prototype shows behavior that contradicts the design doc, the design doc wins and
 the recreation follows it (e.g. real state/enum values from `api/openapi.yaml`, not the
 prototype's illustrative strings).

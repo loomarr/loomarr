@@ -16,8 +16,20 @@ Notes that support the phased build but aren't shipped to end users.
   `internal/testkit/fixtures/*/FINDINGS.md` (kept there on purpose — findings explain the pinned
   fixtures they sit beside; see CLAUDE.md "Fixtures are pinned truth").
 
-## `product/` — the §13 documentation set (embedded in the binary → in-app Help)
+## `help/` — the §13 documentation set (embedded in the binary → in-app Help)
 
-Built out in Phase 13/14. These render offline via `react-markdown` at `/docs` and in the app's
-Help view (§7.1, §13). Planned set (§13): Quickstart, Integrations, Concepts, Member guide,
-Filler guide, Troubleshooting (keyed to onboarding-checklist items). Empty until Phase 13.
+Rendered offline via `react-markdown` at `/v1/docs` and in the app's Help view (§7.2, §13).
+Written lean for the household admin: Quickstart, Integrations, Concepts, Member guide, Filler
+guide, and Troubleshooting (keyed to the onboarding-checklist items — every red check deep-links
+into it). Embedded by `docs/embed.go` (`//go:embed help/*.md`).
+
+## Companion design docs — authoritative for their own domains
+
+- [`programming-design.md`](programming-design.md) — the ChannelPolicy heuristics (§8/§9).
+- [`config-design.md`](config-design.md) — the settings subsystem (§13/§15).
+- [`frontend-design.md`](frontend-design.md) — the "Test Card" design system, tokens, visual
+  testing (§12/§14). *Incorporated in Phase 14.*
+- [`integrations/media-server-livetv.md`](integrations/media-server-livetv.md) — the Emby/Jellyfin
+  Live TV wiring (§6). *Incorporated in Phase 14.*
+
+Precedence: `design.md` wins on behavior; each companion wins on its own domain (see CLAUDE.md).
