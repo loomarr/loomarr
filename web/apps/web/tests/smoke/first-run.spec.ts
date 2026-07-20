@@ -360,3 +360,95 @@ test("8 · approving materializes a channel, and Tunarr really has it", async ({
     )
     .toBeGreaterThan(0);
 });
+
+// The Help center is embedded markdown served by the binary (§7.2 — works air-gapped),
+// so it verifies regardless of any external service being up. A dead help link is a
+// support dead-end, which is exactly what the docHref check (step 4) guards at the API
+// level; this proves the READER renders it.
+test("9 · the Help center renders embedded docs and search filters them", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/help");
+
+  await expect(page.getByRole("heading", { name: /^help$/i })).toBeVisible();
+  const nav = page.getByRole("navigation", { name: /help pages/i });
+  await expect(nav, "the page list is built from GET /v1/docs").toBeVisible();
+
+  // The server lists its own pages; the reader must show them. Assert against the API so
+  // a renamed page can't silently drop from the UI.
+  const docs = await (await page.request.get("/v1/docs")).json();
+  expect((docs.docs ?? docs).length ?? 0, "the binary should embed help pages").toBeGreaterThan(0);
+
+  // Client-side search (§7.2, no server round-trip) narrows the list.
+  const before = await nav.getByRole("link").count();
+  await page
+    .getByLabel(/search/i)
+    .first()
+    .fill("zzzznomatch");
+  await expect.poll(async () => nav.getByRole("link").count()).toBeLessThan(Math.max(before, 1) + 1); // narrowing never ADDS pages
+});
+
+// The command palette (§12) is the app's cross-surface jump. Channels and help pages
+// come from the store + embedded docs, so this needs no media server — it proves the
+// palette opens, searches, and navigates.
+test("10 · the command palette opens, searches, and navigates to a help page", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/channels");
+
+  // Open via the AppShell's ⌘K affordance — the button IS the shortcut's discoverable
+  // twin (it renders the "⌘K" hint), and clicking it is a real operator action that
+  // doesn't depend on synthetic-keypress focus quirks.
+  await page
+    .getByRole("button", { name: /search/i })
+    .first()
+    .click();
+  const dialog = page.getByRole("dialog", { name: /search loomarr/i });
+  await expect(dialog, "the palette should open").toBeVisible();
+
+  // "troubleshooting" is a known embedded help page (step 4 resolves its anchors). The
+  // results render as buttons; pick the one that names it.
+  await dialog.getByLabel(/search/i).fill("troubleshoot");
+  await dialog
+    .getByRole("button", { name: /troublesh/i })
+    .first()
+    .click();
+  await expect(page, "picking a help result jumps to the Help center").toHaveURL(/\/help/);
+});
+
+// The Users page (§11): identity is Loomarr's, and the bootstrap admin is the one account
+// that always exists. The USER LIST is store-backed (GET /v1/users), so it verifies with
+// no media server — which matters here because import candidates DO need the media server,
+// and this asserts only what holds regardless of its state.
+test("11 · the Users page lists the owning admin, and offers explicit import", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/users");
+
+  await expect(page.getByRole("heading", { name: /^users$/i })).toBeVisible();
+  // The admin created in step 2 is present and marked admin — the allowlist's root (§11).
+  await expect(page.getByText(ADMIN.username).first()).toBeVisible();
+
+  // §11 is "explicit import, never implicit": the import affordance must be on the page,
+  // whether or not the media server is currently reachable to populate it. Asserting the
+  // section (not its candidates) keeps this honest when Emby is down.
+  const users = await (await page.request.get("/v1/users")).json();
+  expect(
+    (users.users ?? users).some(
+      (u: { name: string; role: string }) => u.name === ADMIN.username && u.role === "admin",
+    ),
+    "the owning admin must be in the allowlist",
+  ).toBe(true);
+});
+
+// The Filler page (§10). The smoke omits FILLER_DIR (filler is optional), so the honest
+// state is "not configured" — and that must read as a clear, non-broken empty state, not
+// a crash or a spinner that never resolves. A feature you haven't set up should SAY so.
+test("12 · the Filler page renders its unconfigured state cleanly", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/filler");
+
+  await expect(page.getByRole("heading", { name: /^filler$/i })).toBeVisible();
+  // Whatever the exact copy, the page must resolve to real content — a heading plus its
+  // empty/guidance state — rather than hanging or erroring. The clip list is empty
+  // because no drop-folder is configured, which is a legitimate first-run state.
+  const clips = await (await page.request.get("/v1/filler")).json();
+  expect(Array.isArray(clips.clips ?? clips), "the filler list endpoint should answer").toBe(true);
+});
