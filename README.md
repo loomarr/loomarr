@@ -12,9 +12,11 @@ pods, push to Tunarr, and backfill as content lands.
 ## Stack
 
 Go 1.26 single binary · stdlib `net/http` + [Huma v2](https://huma.rocks) (code-first OpenAPI
-3.1) · `database/sql` over `modernc.org/sqlite` **or** `pgx` (Postgres) · goose migrations ·
-embedded Vite + React + TypeScript SPA (Phase 13). Distroless, non-root, cgo-free (~8 MB image).
-Full rationale in [`docs/design.md`](docs/design.md) §14.
+3.1, exported to [`api/openapi.yaml`](api/openapi.yaml) and consumed by the frontend via orval) ·
+`database/sql` over `modernc.org/sqlite` **or** `pgx` (Postgres) · goose migrations · an
+embedded Vite + React + TypeScript SPA (and the help docs) baked into the binary, so a single
+image serves API + UI + docs offline. LLM via local **Ollama** or any OpenAI-compatible provider.
+Distroless, non-root, cgo-free (~8 MB image). Full rationale in [`docs/design.md`](docs/design.md) §14.
 
 ## Develop
 
@@ -48,9 +50,30 @@ internal/api/        # inbound HTTP (§7; Huma mounts here in Phase 8)
 internal/testkit/    # shared mocks + Phase-0 pinned fixtures (all tests use these)
 internal/…           # provision, store, library, schedule, suggest, filler (later phases)
 api/vendor/          # pinned external specs (Tunarr OpenAPI)
-docs/                # design.md (truth), engineering/, product/ (in-app Help, Phase 13)
+docs/                # design.md (truth), companion designs, help/ (in-app Help), integrations/
 docker/              # deployment + dev compose, Dockerfile context
 ```
+
+## Documentation
+
+- **In-app Help** — the user-facing set ([`docs/help/`](docs/help/)) is embedded and served at
+  `/v1/docs`; open **Help** in the app. Start with [Quickstart](docs/help/quickstart.md).
+- **Design** — [`docs/design.md`](docs/design.md) is the single source of truth. Companion
+  designs: [`programming-design.md`](docs/programming-design.md),
+  [`config-design.md`](docs/config-design.md), [`frontend-design.md`](docs/frontend-design.md).
+
+## Operations
+
+- **Config** — everything is an env var ([`.env.example`](.env.example)); an env-set value locks
+  its field in Settings. Full reference: `docs/design.md` §15.
+- **Backup** — SQLite: `GET /v1/backup` streams a consistent snapshot, e.g. nightly:
+  `curl -sH "Authorization: Bearer $API_TOKEN" localhost:8080/v1/backup > loomarr-$(date +%F).db`.
+  Postgres: use `pg_dump` directly (the scratch image ships none, so `/v1/backup` returns 501).
+  Backups contain secrets — keep them safe.
+- **Upgrade** — migrations are forward-only, so the ritual is **back up, then pull.** Restore a
+  SQLite install by replacing `/data/loomarr.db`.
+- **Probes** — `/healthz` and `/readyz` are unauthenticated on the LAN for Docker
+  healthchecks and orchestrators.
 
 ## License
 
