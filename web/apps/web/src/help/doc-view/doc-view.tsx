@@ -1,9 +1,16 @@
-import { anchorOf } from "@loomarr/core";
+import { anchorOf, parseDocHref } from "@loomarr/core";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib";
 import type { DocViewProps } from "./doc-view.type";
+
+// An internal doc link is a relative one: not an absolute URL, and not a bare same-page
+// "#anchor" (which the browser scrolls on its own). Those are the cross-page links the
+// help set uses ("concepts", "member-guide#section") and must be ROUTED, not followed as
+// a raw href — see parseDocHref.
+const isInternal = (href?: string): href is string =>
+  !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("#") && !href.startsWith("/");
 
 // Heading ids are a CONTRACT, not decoration. The API emits `troubleshooting#tunarr`-style
 // deep-links on every failed setup check (§13: "every red check deep-links to its
@@ -20,7 +27,7 @@ const headingId = (children: ReactNode): string =>
 // DocView renders one embedded help page. Styling is explicit per element rather than a
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
-const DocView = ({ markdown, className }: DocViewProps) => (
+const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
   <article className={cn("flex flex-col gap-4", className)}>
     <Markdown
       remarkPlugins={[remarkGfm]}
@@ -58,17 +65,32 @@ const DocView = ({ markdown, className }: DocViewProps) => (
             {children}
           </blockquote>
         ),
-        // Docs ship offline, so an external link is a deliberate exit. Marked as such
-        // rather than silently stealing the tab.
-        a: ({ children, href }) => (
-          <a
-            href={href}
-            className="text-suggest-300 underline underline-offset-2"
-            {...(href?.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {})}
-          >
-            {children}
-          </a>
-        ),
+        // Three link kinds: an INTERNAL cross-page link ("concepts",
+        // "member-guide#section") is routed into the Help center (§13 — a raw href would
+        // resolve relative to the current path and break); an external URL opens in a new
+        // tab (a deliberate exit from the offline docs); a same-page "#anchor" falls
+        // through to the browser.
+        a: ({ children, href }) =>
+          onNavigate && isInternal(href) ? (
+            <button
+              type="button"
+              className="text-suggest-300 underline underline-offset-2"
+              onClick={() => {
+                const { page, section } = parseDocHref(href);
+                if (page) onNavigate(page, section);
+              }}
+            >
+              {children}
+            </button>
+          ) : (
+            <a
+              href={href}
+              className="text-suggest-300 underline underline-offset-2"
+              {...(href?.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {})}
+            >
+              {children}
+            </a>
+          ),
         table: ({ children }) => (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">{children}</table>

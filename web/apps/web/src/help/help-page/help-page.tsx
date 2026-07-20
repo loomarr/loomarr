@@ -1,6 +1,6 @@
 import { helpApi } from "@loomarr/api";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr";
 import { Card, Input, Label } from "@/components/ui";
 import { DocView } from "../doc-view";
@@ -15,7 +15,7 @@ import { docMatches } from "../search-docs";
 // be able to land the operator on the right section, not just the right page.
 const HelpPage = () => {
   const navigate = useNavigate();
-  const { page } = useSearch({ from: "/_authed/help" });
+  const { page, section } = useSearch({ from: "/_authed/help" });
   const [q, setQ] = useState("");
 
   const list = helpApi.useListDocs();
@@ -27,6 +27,14 @@ const HelpPage = () => {
 
   const doc = helpApi.useGetDoc(active ?? "", { query: { enabled: Boolean(active) } });
   const markdown = doc.data?.status === 200 ? doc.data.data.markdown : "";
+
+  // Scroll to the deep-linked section once its page has rendered (§13: a red check lands
+  // on the exact heading, not just the page). Runs when the section OR the rendered
+  // markdown changes, so switching pages re-targets and a slow doc load still lands.
+  useEffect(() => {
+    if (!section || !markdown) return;
+    document.getElementById(section)?.scrollIntoView({ block: "start" });
+  }, [section, markdown]);
 
   // Searching filters the NAV, not the prose: the corpus is a handful of pages, so
   // narrowing which page to open is the useful operation — not excerpting matches.
@@ -83,7 +91,12 @@ const HelpPage = () => {
           ) : doc.isLoading ? (
             <p className="text-muted-foreground text-sm">Loading…</p>
           ) : (
-            <DocView markdown={markdown} />
+            <DocView
+              markdown={markdown}
+              onNavigate={(nextPage, nextSection) =>
+                navigate({ to: "/help", search: { page: nextPage, section: nextSection } })
+              }
+            />
           )}
         </div>
       </div>

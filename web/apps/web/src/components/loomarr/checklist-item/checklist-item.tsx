@@ -1,3 +1,5 @@
+import { parseDocHref } from "@loomarr/core";
+import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Circle, CircleCheck, CircleX, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib";
@@ -30,12 +32,17 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
       {status === "fail" && hint && <p className="mt-0.5 text-muted-foreground text-sm">{hint}</p>}
     </div>
     {status === "fail" && docHref && (
-      <a
-        href={docHref}
+      // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed
+      // into { page, section }, not used as a raw href (which resolves relative to the
+      // current path and 404s). This is what makes §13's "every red check deep-links to
+      // its section" actually navigate.
+      <Link
+        to="/help"
+        search={parseDocHref(docHref)}
         className="inline-flex shrink-0 items-center gap-0.5 text-tune text-xs hover:underline"
       >
         Fix <ArrowUpRight className="size-3" aria-hidden />
-      </a>
+      </Link>
     )}
   </div>
 );
