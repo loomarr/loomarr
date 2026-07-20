@@ -24,6 +24,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        channelId:
+          description: The channel this approval created or patched (§7). Empty only if channel creation failed — the approval itself still stands.
+          type: string
         enqueued:
           description: Acquisitions enqueued as wanted titles
           format: int64
