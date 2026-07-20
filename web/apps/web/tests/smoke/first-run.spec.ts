@@ -14,6 +14,10 @@ import { expect, test } from "@playwright/test";
 
 const ADMIN = { username: "smoke-admin", password: "smoke-password-123" };
 
+// The throwaway Tunarr the smoke stack runs (scripts/smoke.sh). Step 8 asks TUNARR
+// whether the channel landed, rather than believing Loomarr's own report of the push.
+const TUNARR = process.env.SMOKE_TUNARR_URL ?? "http://127.0.0.1:8001";
+
 // Each test gets a fresh browser context, so the session from bootstrap does not carry
 // over. Signing in through the real login form (not by injecting a cookie) keeps the
 // smoke honest: if login breaks, every later step fails, which is correct.
@@ -222,4 +226,137 @@ test("6 · wiring Tunarr to the real library makes tunarr_library green, idempot
   await expect
     .poll(async () => checkNamed(await setupStatus(page), "tunarr_library")?.ok, { timeout: 120_000 })
     .toBe(true);
+});
+
+// §21's manual Definition of Done, automated: "a real intent → approved → a channel
+// actually playing in Tunarr". Everything upstream is real — the operator's library, TMDB
+// grounding, and their own Ollama composing the lineup.
+//
+// SAFE BY CONSTRUCTION: the smoke env omits the requester (§ scripts/smoke.sh), so
+// approving cannot submit anything to Sonarr/Radarr and nothing downloads. The approval
+// gate itself is still exercised end to end — it is the gate, not the acquisition, that
+// this proves.
+test("7 · a real intent becomes a grounded proposal from the operator's own Ollama", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/suggest");
+
+  await page.getByRole("textbox").first().fill("90s Saturday morning cartoons for the kids");
+  await page.getByRole("button", { name: /suggest a lineup/i }).click();
+
+  // A real local model on real hardware: minutes, not milliseconds. The proposal landing
+  // is the assertion — §8 treats the SSE phases as a latency optimisation, never truth.
+  const proposal = page.getByRole("button", { name: /approve & acquire/i });
+  await expect(proposal, "the suggestion run should produce a reviewable proposal").toBeVisible({
+    timeout: 600_000,
+  });
+
+  // GROUNDING (§8, non-negotiable): every title must be something the CATALOG returned,
+  // not something the model composed. Asserted against the PERSISTED proposal — a UI that
+  // merely renders plausible text cannot satisfy this.
+  //
+  // The approval queue is GET /v1/suggestions?status=submitted (proposals are the
+  // resource, suggestions the route — §7.2).
+  const listed = await (await page.request.get("/v1/suggestions?status=submitted")).json();
+  const latest = listed.proposals?.[0];
+  expect(latest, "a submitted proposal should be persisted").toBeTruthy();
+
+  const lineup = latest.proposal?.lineup ?? [];
+  // §8: a zero-grounded-title run FAILS the job rather than persisting an empty proposal,
+  // so an empty lineup here would mean that rule stopped holding.
+  expect(lineup.length, "a proposal with no lineup is a failed run, not a result").toBeGreaterThan(0);
+
+  for (const item of lineup) {
+    expect(item.name, "every lineup entry needs a name").toBeTruthy();
+    // A hallucinated title has no catalog identity. tmdbId comes from TMDB, libraryItemId
+    // from the media server — an entry with neither was invented by the model, which is
+    // exactly what §8's grounding exists to make impossible.
+    expect(
+      item.tmdbId || item.libraryItemId,
+      `"${item.name}" carries no catalog identity — that is a hallucination, not a suggestion`,
+    ).toBeTruthy();
+    // §8 also requires the model to say WHY, so the operator can judge the lineup rather
+    // than take it on faith.
+    expect(item.rationale, `"${item.name}" was suggested with no rationale`).toBeTruthy();
+  }
+
+  // The intent must survive onto the proposal, or "My proposals" and the approval queue
+  // show lineups nobody can trace back to a request.
+  expect(latest.proposal?.intent?.description).toContain("Saturday morning");
+});
+
+// §21's Definition of Done, end to end: "a real intent → approved → a channel actually
+// playing in Tunarr". This is the step the whole product exists for, and until FINDING 4
+// was fixed it could not pass at all — approving enqueued acquisitions and stopped, so
+// no channel was ever created.
+//
+// Still safe: the smoke env omits the requester, so approving cannot start a download.
+// The gate is exercised; nothing leaves the machine.
+test("8 · approving materializes a channel, and Tunarr really has it", async ({ page }) => {
+  await signIn(page);
+
+  // Work with whatever step 7 left in the queue; if it is empty the approval already
+  // happened on an earlier run, and the channel assertions below still hold.
+  const queued = (await (await page.request.get("/v1/suggestions?status=submitted")).json()).proposals?.[0];
+
+  if (queued) {
+    await page.goto("/suggest");
+    // The QUEUE's button is "Approve" — "Approve & acquire" belongs to the run's own
+    // review card, which only exists while a suggestion run is on screen. An admin
+    // acting on someone else's earlier proposal (the whole point of the queue, §11)
+    // sees the queue, so that is what this drives.
+    await page
+      .getByRole("button", { name: /^approve/i })
+      .first()
+      .click();
+    // The UI navigates to the channel it just made (§7 returns its id) — that landing is
+    // the operator-visible proof that approving produced something.
+    await expect(page).toHaveURL(/\/channels\//, { timeout: 60_000 });
+  }
+
+  // Loomarr's own view: a channel bound to the approved intent, carrying its lineup.
+  const channels = (await (await page.request.get("/v1/channels")).json()).channels ?? [];
+  expect(channels.length, "approving an intent must leave a channel behind").toBeGreaterThan(0);
+  const ch = channels.find((c: { intentRef?: string }) => c.intentRef) ?? channels[0];
+  expect(ch.name, "a channel named from the operator's own words").toBeTruthy();
+  expect(ch.number, "auto-allocated so the operator never has to pick one").toBeGreaterThan(0);
+
+  // And Tunarr's, which is the honest one: Loomarr reporting that it pushed a channel is
+  // exactly the claim under test (§6 — Tunarr owns playout, so it is the source of truth).
+  // The reconcile is async, so poll rather than assume it already landed.
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(`${TUNARR}/api/channels`);
+        if (res.status() !== 200) return -1;
+        return ((await res.json()) as { number: number }[]).length;
+      },
+      { timeout: 180_000 },
+    )
+    .toBeGreaterThan(0);
+
+  const tunarrChannels = (await (await page.request.get(`${TUNARR}/api/channels`)).json()) as {
+    number: number;
+    name: string;
+  }[];
+  expect(
+    tunarrChannels.some((t) => t.number === ch.number),
+    `Loomarr has channel ${ch.number} but Tunarr does not — the push never landed`,
+  ).toBe(true);
+
+  // §21 says "actually PLAYING", not merely "present". A channel with zero programs is
+  // dead air (§9) — which is exactly what FINDING 6 produced: audience-ceiling policy +
+  // in-library picks whose rating was dropped in discovery, so every entry was excluded
+  // and the channel went live with nothing to play. Asserting the count is what turns
+  // that from an invisible green into a red. Poll: the first reconcile resolves slots
+  // from live library availability, which is not instant.
+  await expect
+    .poll(
+      async () => {
+        const fresh = (await (await page.request.get("/v1/channels")).json()).channels ?? [];
+        const c = fresh.find((x: { id: string }) => x.id === ch.id);
+        return c?.programCount ?? 0;
+      },
+      { timeout: 120_000 },
+    )
+    .toBeGreaterThan(0);
 });
