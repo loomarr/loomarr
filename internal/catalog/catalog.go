@@ -105,8 +105,20 @@ type TMDBDiscoverer interface {
 // Lookup. Optional: a Catalog without one simply skips the backfill.
 type LibraryPresence interface {
 	// Present reports whether the title is in the library, returning its library
-	// item id when so. Called per discovered candidate (a cheap indexed lookup).
-	Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (libraryItemID string, present bool, err error)
+	// item id AND the audience-enforcement metadata (rating/genres) when so. The
+	// rating is why this is not a bare bool: a discovered-then-owned title that came
+	// back without its rating reaches the scheduler unrated, and a channel with an
+	// audience ceiling drops it (dead air, §9). Called per discovered candidate.
+	Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (Presence, bool, error)
+}
+
+// Presence is a library ownership hit: the item id plus the enforcement metadata
+// discovery would otherwise lack (the library has no discover endpoint, so titles
+// arrive from TMDB and the rating is confirmed only here).
+type Presence struct {
+	LibraryItemID  string
+	OfficialRating string
+	Genres         []string
 }
 
 // NOTE: there is deliberately no clip corpus here (§7.2, revised). Candidate models a
@@ -232,12 +244,22 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 		if cands[i].InLibrary || cands[i].TMDBID == 0 {
 			continue // already known in-library, or no id to look up
 		}
-		id, present, err := c.presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
+		p, present, err := c.presence.Present(ctx, cands[i].MediaType, cands[i].TMDBID, cands[i].TVDBID)
 		if err != nil || !present {
 			continue
 		}
 		cands[i].InLibrary = true
-		cands[i].LibraryItemID = id
+		cands[i].LibraryItemID = p.LibraryItemID
+		// Carry the enforcement metadata the discovery result lacked. Additive, like
+		// the merge below: a candidate that already has a rating (it won't, from TMDB
+		// discovery) keeps it. Dropping this is the dead-air bug — the whole reason
+		// Presence carries more than an id.
+		if cands[i].OfficialRating == "" {
+			cands[i].OfficialRating = p.OfficialRating
+		}
+		if len(cands[i].Genres) == 0 {
+			cands[i].Genres = p.Genres
+		}
 	}
 }
 
@@ -303,8 +325,10 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 	if dst.Overview == "" && src.Overview != "" {
 		dst.Overview = src.Overview
 	}
-	// OfficialRating comes from the library (TMDB search/discover leaves it empty),
-	// so the merged view keeps whichever side actually has it.
+	// OfficialRating comes from the library keyword search or the presence backfill —
+	// TMDB *search/discover* leaves it empty, though TMDB's content-ratings endpoint
+	// can fill it for a not-yet-owned acquisition (see enrichRatings). Keep whichever
+	// side actually has it.
 	if dst.OfficialRating == "" && src.OfficialRating != "" {
 		dst.OfficialRating = src.OfficialRating
 	}

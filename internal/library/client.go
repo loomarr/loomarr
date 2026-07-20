@@ -59,44 +59,69 @@ func (c *Client) token() string {
 	return t
 }
 
-// item is the slice of the media server's /Items response we need (§6).
+// item is the slice of the media server's /Items response we need (§6). The
+// enforcement metadata (OfficialRating/Genres) is populated only when the request
+// asks for it via Fields — LookupDetail does, Lookup's other callers don't need it.
 type item struct {
-	ID   string `json:"Id"`
-	Name string `json:"Name"`
+	ID             string   `json:"Id"`
+	Name           string   `json:"Name"`
+	OfficialRating string   `json:"OfficialRating"`
+	Genres         []string `json:"Genres"`
 }
 
 type itemsResponse struct {
 	Items []item `json:"Items"`
 }
 
-// Lookup implements the §6 presence check:
+// LibraryItem is a presence-check hit enriched with the audience-enforcement
+// metadata (§4). It exists because the *discovery* path finds titles via TMDB and
+// only confirms library ownership afterwards, so — unlike keyword search — it must
+// fetch the rating explicitly. Without it a discovered-then-owned title reaches the
+// scheduler unrated, and a channel with an audience ceiling drops it, going live
+// with no programs (dead air, §9).
+type LibraryItem struct {
+	ID             string
+	OfficialRating string
+	Genres         []string
+}
+
+// LookupDetail is the §6 presence check that also returns the enforcement metadata:
 //
-//	GET /Items?Recursive=true&IncludeItemTypes=<type>&Limit=1&AnyProviderIdEquals=<kind>.<id>
+//	GET /Items?Recursive=true&IncludeItemTypes=<type>&Limit=1
+//	    &Fields=Genres,OfficialRating&AnyProviderIdEquals=<kind>.<id>
 //
-// Present iff Items is non-empty → Items[0].Id. Provider name is lowercase
-// (tmdb./tvdb.) per §6; Phase 0 confirmed Emby matches case-insensitively but
-// lowercase is the spec.
-func (c *Client) Lookup(ctx context.Context, kind ProviderKind, providerID string, mt MediaType) (string, bool, error) {
+// Present iff Items is non-empty. Provider name is lowercase (tmdb./tvdb.) per §6.
+func (c *Client) LookupDetail(ctx context.Context, kind ProviderKind, providerID string, mt MediaType) (LibraryItem, bool, error) {
 	q := url.Values{}
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", string(mt))
 	q.Set("Limit", "1")
+	q.Set("Fields", "Genres,OfficialRating")
 	q.Set("AnyProviderIdEquals", fmt.Sprintf("%s.%s", kind, providerID))
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
-		return "", false, err
+		return LibraryItem{}, false, err
 	}
 	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 
 	var out itemsResponse
 	if err := c.do(req, &out); err != nil {
-		return "", false, err
+		return LibraryItem{}, false, err
 	}
 	if len(out.Items) == 0 {
-		return "", false, nil
+		return LibraryItem{}, false, nil
 	}
-	return out.Items[0].ID, true, nil
+	it := out.Items[0]
+	return LibraryItem{ID: it.ID, OfficialRating: it.OfficialRating, Genres: it.Genres}, true, nil
+}
+
+// Lookup is the id-only presence check (reconcile, ingest, eval): whether the title
+// is present and its library item id. It delegates to LookupDetail and discards the
+// metadata, so there is ONE presence query, not two shapes that could drift.
+func (c *Client) Lookup(ctx context.Context, kind ProviderKind, providerID string, mt MediaType) (string, bool, error) {
+	d, present, err := c.LookupDetail(ctx, kind, providerID, mt)
+	return d.ID, present, err
 }
 
 // authResponse is AuthenticateByName's success body (§11).
