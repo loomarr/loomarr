@@ -62,6 +62,8 @@ type Server struct {
 	// ready is the same readiness /readyz reports, surfaced through the typed
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready ReadyFunc
+
+	liveConfigInt func(key string) int
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
@@ -310,6 +312,12 @@ type Options struct {
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
 	LiveConfig func(key string) string
+	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
+	// string, because settings.String PANICS on a non-string key — an int setting read
+	// through the string seam took down GET /v1/users in the quota work, and only a run
+	// against a real settings service surfaced it (unit tests leave the seam nil, so the
+	// typed accessor was never reached).
+	LiveConfigInt func(key string) int
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

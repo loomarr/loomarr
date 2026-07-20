@@ -411,5 +411,6 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Guide:         guideSvc,
 		Provision:     provisionSvc,
 		LiveConfig:    liveConfig,
+		LiveConfigInt: set.intv,
 	}), nil
 }

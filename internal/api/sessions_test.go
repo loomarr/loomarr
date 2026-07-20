@@ -129,3 +129,56 @@ func TestSessions_RevokeIsIdempotent(t *testing.T) {
 		t.Errorf("revoked = %v, want the hash passed through twice", fs.revoked)
 	}
 }
+
+// GET /v1/users PANICKED in production while every unit test passed: quota accounting
+// reads suggest.max_acquisitions, an INT setting, and it was routed through the string
+// config seam — settings.String panics on a type mismatch. Tests never reached it because
+// they leave the seam nil, so the read short-circuited to "".
+//
+// This wires an int seam that would have panicked under the old code, so the Users list
+// is exercised on the path a real install actually takes.
+func TestListUsers_ReadsTheIntConfigSeam(t *testing.T) {
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/u.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.UpsertUser(context.Background(), store.User{ID: "u1", Name: "Ada", Role: store.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st,
+		Auth:  api.NewTokenAuthorizer(adminToken),
+		Log:   slog.New(slog.DiscardHandler),
+		// The seam a real composition root wires. Its absence is what hid the bug.
+		LiveConfigInt: func(key string) int {
+			if key == "suggest.max_acquisitions" {
+				return 7
+			}
+			return 0
+		},
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/users", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list users → %d, want 200 (a 500 here is the panic)", resp.StatusCode)
+	}
+	var body struct {
+		Users []struct {
+			Quota          int `json:"quota"`
+			EffectiveQuota int `json:"effectiveQuota"`
+		} `json:"users"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Users) != 1 {
+		t.Fatalf("got %d users, want 1", len(body.Users))
+	}
+	// Quota 0 means "use the default", which is precisely the path that read the setting.
+	if body.Users[0].EffectiveQuota != 7 {
+		t.Errorf("effectiveQuota = %d, want the configured default 7", body.Users[0].EffectiveQuota)
+	}
+}

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -211,12 +210,13 @@ func (s *Server) livetvConnect(ctx context.Context, _ *struct{}) (*livetvConnect
 	return out, nil
 }
 
-// configInt reads a live integer setting. Unparseable or unwired ⇒ 0, which callers
-// treat as "no configured value" rather than as a real limit of zero.
+// configInt reads a live INTEGER setting. It deliberately does NOT parse configValue:
+// settings.String panics on a non-string key, so routing an int setting through the
+// string seam is a 500 waiting to happen — which is exactly what it was. Unwired ⇒ 0,
+// which callers treat as "no configured value" rather than as a real limit of zero.
 func (s *Server) configInt(key string) int {
-	n, err := strconv.Atoi(s.configValue(key))
-	if err != nil {
+	if s.liveConfigInt == nil {
 		return 0
 	}
-	return n
+	return s.liveConfigInt(key)
 }
