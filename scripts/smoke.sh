@@ -55,9 +55,16 @@ down() {
 
 write_env() {
   mkdir -p "$WORK"
-  python3 - "$ROOT" "$WORK" "$PORT" "$TUNARR_PORT" <<'PY'
+  # The transcode config id must come from THIS Tunarr: the operator's real one names a
+  # config in their dev instance, and Tunarr validates the field as a UUID that must
+  # exist. Sending the wrong one (or "") fails channel creation with a bare 400.
+  local tc
+  tc=$(curl -s -m 5 "localhost:$TUNARR_PORT/api/transcode_configs" \
+    | sed -n 's/.*"id":"\([0-9a-f-]\{36\}\)".*/\1/p' | head -1)
+  [ -n "$tc" ] || echo "  ! could not read a transcode config from the throwaway Tunarr"
+  python3 - "$ROOT" "$WORK" "$PORT" "$TUNARR_PORT" "$tc" <<'PY'
 import pathlib, sys
-root, work, port, tport = sys.argv[1:5]
+root, work, port, tport, transcode = sys.argv[1:6]
 out = []
 for line in pathlib.Path(root, ".env").read_text().splitlines():
     if "=" not in line or line.strip().startswith("#"):
@@ -65,12 +72,16 @@ for line in pathlib.Path(root, ".env").read_text().splitlines():
     k, v = line.split("=", 1)
     k = k.strip()
     # Omitted on purpose: a requester would turn an approval into a real download.
-    if k in ("SEERR_URL", "SEERR_API_KEY", "TUNARR_TRANSCODE_CONFIG_ID"):
+    if k in ("SEERR_URL", "SEERR_API_KEY"):
         continue
     if k == "DATABASE_URL": v = f"sqlite://{work}/smoke.db"
     if k == "TUNARR_URL":   v = f"http://localhost:{tport}"
     if k == "LISTEN_ADDR":  v = f":{port}"
+    # Point at THIS Tunarr's config, not the dev instance's (see write_env).
+    if k == "TUNARR_TRANSCODE_CONFIG_ID": v = transcode
     out.append(f"{k}={v}")
+if not any(l.startswith("TUNARR_TRANSCODE_CONFIG_ID=") for l in out) and transcode:
+    out.append(f"TUNARR_TRANSCODE_CONFIG_ID={transcode}")
 pathlib.Path(work, "env").write_text("\n".join(out) + "\n")
 PY
 }
@@ -94,6 +105,9 @@ start_app() {
   # (No setsid — it is Linux-only and this is expected to run on the maintainer's Mac.)
   ( set -a && . "$WORK/env" && set +a \
       && nohup "$WORK/loomarr" > "$WORK/app.log" 2>&1 < /dev/null & ) || true
+  # Record exactly what this process was started with, so the next run can tell whether
+  # the live server is still current (see needs_restart).
+  cp "$WORK/env" "$WORK/env.running"
   wait_for "localhost:$PORT/healthz" "loomarr" 120
 }
 
@@ -258,10 +272,18 @@ fi
 # costs less than the confusion of a stale server.
 needs_restart() {
   app_up || return 0
+  # The ENVIRONMENT is half of what a server "is". Settings resolve env > db > default
+  # (config-design §3) and are read at boot, so a rewritten env with an identical binary
+  # still means the live process is stale — which cost a full debugging round when the
+  # transcode config id was added and the run cheerfully reported "already up (and
+  # current)" while the server had never seen it.
+  if [ -f "$WORK/env.running" ] && ! cmp -s "$WORK/env" "$WORK/env.running"; then
+    return 0
+  fi
   ( cd "$ROOT" && go build -o "$WORK/loomarr.next" ./cmd/loomarr ) || return 0
   if [ -f "$WORK/loomarr" ] && cmp -s "$WORK/loomarr" "$WORK/loomarr.next"; then
     rm -f "$WORK/loomarr.next"
-    return 1 # identical binary → the running server is current
+    return 1 # identical binary AND identical env → the running server is current
   fi
   rm -f "$WORK/loomarr.next"
   return 0
