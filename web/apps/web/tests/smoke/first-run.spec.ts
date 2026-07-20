@@ -185,3 +185,56 @@ test("5 · the §8.1 picker ranks the operator's REAL models, and selecting one 
   // still unconfigured immediately after configuring themselves.
   expect(checkNamed(await setupStatus(page), "llm")?.ok, "llm check should go green").toBe(true);
 });
+
+test("6 · wiring Tunarr to the real library makes tunarr_library green, idempotently", async ({ page }) => {
+  await signIn(page);
+
+  // FINDING 2 (open): this step is UNREACHABLE until Live TV is wired.
+  //
+  // The wizard resumes at the first incomplete step and offers only Back/Continue — the
+  // step list is not clickable — and `guide` (Live TV) is not skippable, so Continue
+  // stays disabled until the `livetv` check goes green. Everything after it (this step,
+  // users, first channel) is therefore gated behind it. Neither one-click wiring action
+  // has a home outside the wizard: `useTunarrConnect`/`useLivetvConnect` are each mounted
+  // exactly once, in their wizard step.
+  //
+  // That matters most for THIS step, because §6 introduced it precisely to close a
+  // silent-failure gap: without the scan, a channel's slots find no Tunarr program and
+  // degrade to dead air while the rest of the wizard reads all-green. An operator whose
+  // Live TV wiring fails — or who doesn't use their media server's Live TV at all — can
+  // never reach the guard against dead-air channels.
+  //
+  // Skipped rather than asserted-as-correct: the moment `livetv` is green this step runs
+  // for real, so it needs no edit when the gate is resolved.
+  const livetvGreen = checkNamed(await setupStatus(page), "livetv")?.ok === true;
+  test.skip(
+    !livetvGreen,
+    "FINDING 2: the library step sits behind the un-skippable Live TV step, and neither " +
+      "wiring action exists outside the wizard",
+  );
+
+  await page.goto("/wizard");
+
+  // This step points the THROWAWAY Tunarr at the operator's real Emby and triggers a
+  // scan. It mutates only Tunarr — nothing is written to the media server, which is why
+  // it is safe here while the Live TV step (the opposite direction) is not.
+  //
+  // `tunarr_library` is the assertion, not the button's own response: the BE's own probe
+  // is the only honest source of "this actually worked" (§6, never silent).
+  const wire = page.getByRole("button", { name: /wire tunarr to your library|run again/i });
+  await expect(wire).toBeVisible({ timeout: 60_000 });
+  await wire.click();
+
+  await expect
+    .poll(async () => checkNamed(await setupStatus(page), "tunarr_library")?.ok, {
+      timeout: 120_000, // a real library scan, not a mock
+    })
+    .toBe(true);
+
+  // "Safe to run more than once" is a claim the UI makes (§6 — and it never re-scans
+  // unasked). A second click must leave it green, not duplicate the media source.
+  await page.getByRole("button", { name: /run again/i }).click();
+  await expect
+    .poll(async () => checkNamed(await setupStatus(page), "tunarr_library")?.ok, { timeout: 120_000 })
+    .toBe(true);
+});

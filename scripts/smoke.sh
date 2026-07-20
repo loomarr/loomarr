@@ -96,7 +96,125 @@ start_app() {
   wait_for "localhost:$PORT/healthz" "loomarr" 120
 }
 
+# ---------------------------------------------------------------------------------
+# The LIVE TV profile — a DISPOSABLE media server, on purpose.
+#
+# POST /v1/setup/livetv-connect is the one wiring action that writes to the MEDIA SERVER
+# (it registers Tunarr as an M3U tuner + XMLTV guide source). Running it against the
+# maintainer's real Emby would leave a tuner pointing at a Tunarr that gets torn down,
+# and there is no product code path to undo it — internal/library/livetv.go only adds.
+# So this profile stands up its own Jellyfin, wires THAT, and deletes the whole server
+# afterwards. Reverting is free because nothing survives.
+#
+# It runs as a SEPARATE loomarr instance rather than repointing the main smoke stack:
+# the main stack's LIBRARY_* must keep pointing at the real Emby, because that is where
+# the library content the later steps ground against actually lives. This instance's
+# library is empty, which is fine — the Live TV wiring never reads content.
+JELLY_PORT=8097
+JELLY_NAME=loomarr-smoke-jellyfin
+JELLY_IMAGE="jellyfin/jellyfin:10.10.3"
+LT_PORT=8091
+LT_WORK=/tmp/loomarr-smoke-livetv
+JELLY_USER=smoke
+JELLY_PASS=smoke-password-123
+
+jelly() { curl -s -m 10 -H 'Content-Type: application/json' "$@"; }
+
+# Jellyfin boots into a first-run wizard and refuses API calls until it is completed.
+# These are the wizard's own endpoints, in the order its UI calls them.
+jellyfin_first_run() {
+  say "completing Jellyfin's first-run wizard"
+  jelly -X POST "localhost:$JELLY_PORT/Startup/Configuration" \
+    -d '{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}' >/dev/null
+  jelly "localhost:$JELLY_PORT/Startup/User" >/dev/null
+  jelly -X POST "localhost:$JELLY_PORT/Startup/User" \
+    -d "{\"Name\":\"$JELLY_USER\",\"Password\":\"$JELLY_PASS\"}" >/dev/null
+  jelly -X POST "localhost:$JELLY_PORT/Startup/RemoteAccess" \
+    -d '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' >/dev/null
+  jelly -X POST "localhost:$JELLY_PORT/Startup/Complete" >/dev/null
+  ok "wizard completed"
+}
+
+# The access token doubles as the admin API key for header auth (§6 flavor login).
+jellyfin_token() {
+  jelly -X POST "localhost:$JELLY_PORT/Users/AuthenticateByName" \
+    -H 'Authorization: MediaBrowser Client="loomarr-smoke", Device="smoke", DeviceId="smoke", Version="1"' \
+    -d "{\"Username\":\"$JELLY_USER\",\"Pw\":\"$JELLY_PASS\"}" \
+    | sed -n 's/.*"AccessToken":"\([^"]*\)".*/\1/p'
+}
+
+livetv_down() {
+  lsof -ti:"$LT_PORT" 2>/dev/null | xargs kill -9 2>/dev/null || true
+  docker rm -f "$JELLY_NAME" >/dev/null 2>&1 || true
+  rm -rf "$LT_WORK"
+}
+
+livetv_smoke() {
+  # Always from scratch: a half-configured media server is worse than none, and the
+  # whole point of this profile is that nothing persists.
+  say "tearing down any previous Live TV profile"
+  livetv_down
+  mkdir -p "$LT_WORK/jellyfin/config" "$LT_WORK/jellyfin/cache"
+
+  # Tunarr must be up — it is what gets registered as the tuner.
+  tunarr_up || { echo "start the main smoke stack first (make smoke)"; return 1; }
+
+  say "starting a throwaway Jellyfin on :$JELLY_PORT"
+  docker run -d --name "$JELLY_NAME" \
+    -p "$JELLY_PORT":8096 \
+    -v "$LT_WORK/jellyfin/config":/config -v "$LT_WORK/jellyfin/cache":/cache \
+    "$JELLY_IMAGE" >/dev/null
+  wait_for "localhost:$JELLY_PORT/System/Info/Public" "jellyfin" 180
+
+  jellyfin_first_run
+  local token; token=$(jellyfin_token)
+  [ -n "$token" ] || { echo "  ✗ could not authenticate against the throwaway Jellyfin"; return 1; }
+  ok "authenticated"
+
+  # TUNARR_URL must be reachable from BOTH sides, so it is the host's LAN address rather
+  # than localhost: §6 derives the M3U/XMLTV URLs from this one setting, and those URLs
+  # are handed to Jellyfin — which is in a container, where "localhost" is itself. There
+  # is no separate public-URL knob to reach for (§15), and inventing one to paper over a
+  # test-environment detail would be the wrong fix.
+  local host_ip; host_ip=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  [ -n "$host_ip" ] || { echo "  ✗ could not determine a host IP the container can reach"; return 1; }
+  ok "host address for Tunarr URLs: $host_ip"
+
+  say "writing the Live TV env (own DB, own Jellyfin, own port)"
+  grep -v -E '^(LIBRARY_FLAVOR|LIBRARY_URL|LIBRARY_TOKEN|DATABASE_URL|LISTEN_ADDR|TUNARR_URL|SEERR_URL|SEERR_API_KEY)=' \
+    "$WORK/env" > "$LT_WORK/env"
+  {
+    echo "LIBRARY_FLAVOR=jellyfin"
+    echo "LIBRARY_URL=http://localhost:$JELLY_PORT"
+    echo "LIBRARY_TOKEN=$token"
+    echo "DATABASE_URL=sqlite://$LT_WORK/livetv.db"
+    echo "LISTEN_ADDR=:$LT_PORT"
+    echo "TUNARR_URL=http://$host_ip:$TUNARR_PORT"
+  } >> "$LT_WORK/env"
+
+  say "starting loomarr on :$LT_PORT"
+  ( cd "$ROOT" && go build -o "$LT_WORK/loomarr" ./cmd/loomarr )
+  ( set -a && . "$LT_WORK/env" && set +a \
+      && nohup "$LT_WORK/loomarr" > "$LT_WORK/app.log" 2>&1 < /dev/null & ) || true
+  wait_for "localhost:$LT_PORT/healthz" "loomarr" 120
+
+  say "driving the Live TV wiring with Playwright"
+  local rc=0
+  ( cd "$ROOT/web/apps/web" \
+      && SMOKE_BASE_URL="http://127.0.0.1:$LT_PORT" \
+         SMOKE_JELLYFIN_URL="http://127.0.0.1:$JELLY_PORT" \
+         SMOKE_JELLYFIN_TOKEN="$token" \
+         npx playwright test --config=playwright.smoke.config.ts livetv ) || rc=$?
+
+  # The revert IS the teardown: the media server we wrote to ceases to exist.
+  say "destroying the throwaway Jellyfin (this is the revert)"
+  livetv_down
+  ok "gone — your real media server was never touched"
+  return $rc
+}
+
 case "${1:-run}" in
+  livetv) livetv_smoke; exit $? ;;
   down)
     say "tearing down the smoke stack"; down
     echo "done — your dev stack (tunarr-dev, data/loomarr.db) was never touched."
