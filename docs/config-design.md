@@ -100,7 +100,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 
 | Page | Contents | Live tests |
 | --- | --- | --- |
-| **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB | one **Test** button per connection block → runs the same `ConnectionTest` the wizard/checklist uses |
+| **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB · **the two one-click wiring actions** (Connect Tunarr to the guide; Wire Tunarr to your library — main doc §6) | one **Test** button per connection block → runs the same `ConnectionTest` the wizard/checklist uses; the wiring actions run `POST /v1/setup/{livetv,tunarr}-connect` and report through their `livetv` / `tunarr_library` checks |
 | **AI** | Provider (ollama/openai) · URL · model · key · auto-approve + quota · **in-app model picker** (probe + catalog + hot-swap, main doc §8.1) | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
 | **Channels & playback** | Default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) | — |
 | **Filler** | Drop-folder path (registered with Tunarr as a `local` source — *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths (`loomarr:filler` only) | drop-folder readable + Tunarr local-source check |
