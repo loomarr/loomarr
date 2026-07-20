@@ -62,7 +62,7 @@ func NewDynamic(conn func() (baseURL, apiKey string), transcodeConfigID string) 
 	t := &Tunarr{
 		conn:              conn,
 		transcodeConfigID: transcodeConfigID,
-		http:              httpx.New(httpx.TimeoutTunarr),
+		http:              httpx.NewNamed("tunarr", httpx.TimeoutTunarr),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t

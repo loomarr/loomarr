@@ -81,10 +81,13 @@ docker/              # deployment + dev compose, Dockerfile context
 - **Metrics** — `/metrics` exposes Prometheus text (unauthenticated on the LAN). Currently:
   HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route),
   the Go runtime + process collectors, the state gauges (`loomarr_titles{state}`,
-  `loomarr_jobs{status}`, `loomarr_active_sessions`), and the event counters
-  (`loomarr_auth_logins_total{result}`, `loomarr_webhook_events_total{type}`). Still staged
-  as follow-up (`docs/design.md` §17): the latency histograms (reconcile / Tunarr API / LLM /
-  library-lookup), LLM token/cost, filler pod-ladder depth, and slot-drift substitutions.
+  `loomarr_jobs{status}`, `loomarr_active_sessions`), the event counters
+  (`loomarr_auth_logins_total{result}`, `loomarr_webhook_events_total{type}`), and the
+  latency series — outbound client RED per dependency (`loomarr_outbound_requests_total`,
+  `loomarr_outbound_request_duration_seconds`, labelled by `target`: tunarr/library/llm/…)
+  and channel reconcile timing (`loomarr_channel_reconciles_total{result}`,
+  `loomarr_channel_reconcile_duration_seconds`). Still staged as follow-up (`docs/design.md`
+  §17): LLM token/cost, filler pod-ladder depth, and slot-drift substitutions.
 
 ## License
 

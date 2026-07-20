@@ -37,13 +37,13 @@ func New(apiKey string) *Client {
 	return &Client{
 		baseURL: "https://api.themoviedb.org/3",
 		apiKey:  apiKey,
-		http:    httpx.New(httpx.TimeoutTMDB),
+		http:    httpx.NewNamed("tmdb", httpx.TimeoutTMDB),
 	}
 }
 
 // NewWithBase is for tests: point at a mock TMDB server.
 func NewWithBase(baseURL, apiKey string) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: httpx.New(httpx.TimeoutTMDB)}
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: httpx.NewNamed("tmdb", httpx.TimeoutTMDB)}
 }
 
 // multiResult is one /search/multi row. media_type distinguishes movie/tv/person;

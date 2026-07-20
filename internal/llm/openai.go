@@ -37,7 +37,7 @@ func NewOpenAI(baseURL, model, apiKey string) *OpenAI {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   model,
-		http:    httpx.New(httpx.TimeoutLLM),
+		http:    httpx.NewNamed("llm", httpx.TimeoutLLM),
 	}
 }
 

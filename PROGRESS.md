@@ -4,6 +4,19 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 14 — domain metrics, tranche 2: latency (2026-07-20).** Client-side RED for every
+outbound dependency via ONE instrumented transport in `httpx.NewNamed` — the six RPC
+adapters (library/tunarr/seerr/tmdb/ollama+openai) now build named clients, so
+`loomarr_outbound_request_duration_seconds{target}` + `loomarr_outbound_requests_total{target,code}`
+cover the §17 library-lookup / Tunarr-API-latency-and-errors / LLM-latency in one series
+filtered by target (a transport failure → `code="error"`). Health probes stay on plain
+`New` (unlabelled) to keep the metric to the operational RPC path. Plus reconcile timing:
+`Engine.Reconcile` (named-return + defer) emits `loomarr_channel_reconcile_duration_seconds`
+and `loomarr_channel_reconciles_total{result}`; the injected clock keeps it deterministic (0)
+under fixed-time tests. `httpx → metrics` is a new edge but acyclic (metrics imports only
+prometheus + provision). **Still deferred** (§17): LLM token/cost (needs provider usage),
+filler pod-ladder depth, slot-drift — domain counters, not latencies. Gate: `make check` GREEN.
+
 **Phase 14 — domain metrics, tranche 1 (2026-07-20).** The §17 *domain* series, first
 tranche: the state gauges via a pull-based collector (`loomarr_titles{state}`,
 `loomarr_jobs{status}`, `loomarr_active_sessions`) + the two cleanest event counters

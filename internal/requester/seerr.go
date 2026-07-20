@@ -32,7 +32,7 @@ func NewSeerr(baseURL, apiKey string) *Seerr {
 // via conn (config-design §3 hot-apply). The composition root passes a closure
 // over the settings snapshot.
 func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
-	return &Seerr{conn: conn, http: httpx.New(httpx.TimeoutSeerr)}
+	return &Seerr{conn: conn, http: httpx.NewNamed("seerr", httpx.TimeoutSeerr)}
 }
 
 func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }

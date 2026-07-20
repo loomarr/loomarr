@@ -28,7 +28,7 @@ func NewOllama(baseURL, model string) *Ollama {
 	return &Ollama{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		model:   model,
-		http:    httpx.New(httpx.TimeoutLLM),
+		http:    httpx.NewNamed("llm", httpx.TimeoutLLM),
 	}
 }
 
