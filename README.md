@@ -1,5 +1,9 @@
 # Loomarr
 
+[![CI](https://github.com/mantonx/loomarr/actions/workflows/ci.yml/badge.svg)](https://github.com/mantonx/loomarr/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+
 Turn a natural-language channel intent into a live, self-maintaining
 [Tunarr](https://tunarr.com) channel: suggest a lineup (LLM, grounded against your library),
 acquire what's missing (Seerr → Sonarr/Radarr), schedule and insert era-appropriate commercial
@@ -92,6 +96,15 @@ docker/              # deployment + dev compose, Dockerfile context
   set; **cost** is intentionally left to a dashboard recording rule (tokens × your provider's
   posted rate) rather than a baked-in price table that would drift.
 
+## Contributing
+
+Contributions are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and
+the conventions that keep the tree green (doc-first, one gate per change, generated
+files never hand-edited). By participating you agree to the
+[Code of Conduct](CODE_OF_CONDUCT.md). Security issues: [`SECURITY.md`](SECURITY.md).
+
 ## License
 
-MIT.
+[MIT](LICENSE). Bundled and vendored components (notably the GPL `ffmpeg` in the
+`loomarr:filler` image) are inventoried in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

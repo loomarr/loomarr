@@ -1,0 +1,94 @@
+# CI — mirrors the harness contract (CLAUDE.md / design §16):
+# check + openapi-verify + config-docs-verify + test-pg + fe + e2e/visual.
+# Every gate here is a `make` target so local and CI never diverge.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# A newer push to the same ref cancels the older in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "22"
+
+jobs:
+  go:
+    name: Go — check + spec/config drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: make check
+      - name: OpenAPI spec is committed and current
+        run: make openapi-verify
+      - name: Config docs are committed and current
+        run: make config-docs-verify
+
+  store-postgres:
+    name: Store conformance (Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
+      - run: make test-pg
+
+  frontend:
+    name: Frontend — biome + typecheck + unit + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable pnpm (pinned via web/package.json packageManager)
+        run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: make fe-install
+      - run: make fe
+      - name: Token artifacts are committed and current
+        run: make fe-tokens-verify
+
+  playwright:
+    name: Playwright — visual + a11y + e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: make fe-install
+      # Both drive the pinned Playwright Docker image (the reference rasterizer,
+      # §5.2), so CI and local snapshots are byte-identical.
+      - name: Visual + a11y over storybook-static
+        run: make fe-visual
+      - name: Wizard e2e smoke vs a mocked backend
+        run: make e2e

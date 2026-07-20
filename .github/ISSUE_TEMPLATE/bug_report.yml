@@ -1,0 +1,63 @@
+name: Bug report
+description: Something isn't working as designed
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For **security** issues, do not file here — see
+        [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+      placeholder: Approving an intent created a channel with zero programs…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / image tag
+      description: The running version (Help → About) or image tag / commit.
+      placeholder: "ghcr.io/mantonx/loomarr:0.1.0 (or a commit SHA)"
+    validations:
+      required: true
+  - type: dropdown
+    id: image
+    attributes:
+      label: Image variant
+      options:
+        - "loomarr:latest (core)"
+        - "loomarr:filler"
+        - "built from source"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Store backend
+      options: [SQLite, Postgres]
+    validations:
+      required: true
+  - type: input
+    id: media-server
+    attributes:
+      label: Media server
+      placeholder: "Emby 4.10 / Jellyfin 10.10.3 / n/a"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant log lines (they're formatted automatically).
+      render: shell
