@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -31,10 +32,15 @@ import (
 //     re-scan (discover it in the channel list); a lineup-only change triggers a
 //     guide (EPG) refresh. These are distinct operations — a guide refresh alone
 //     won't surface a new channel.
-func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
+func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	lock := e.lockFor(channelID)
 	lock.Lock()
 	defer lock.Unlock()
+
+	// §17 reconcile-loop latency + channel-reconcile counter. e.now() is the
+	// injected clock, so the duration is deterministic (0) under a fixed-time test.
+	start := e.now()
+	defer func() { metrics.ReconcileObserved(e.now().Sub(start), err == nil) }()
 
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {

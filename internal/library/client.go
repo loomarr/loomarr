@@ -43,7 +43,7 @@ func NewDynamic(flavor Flavor, conn func() (baseURL, token string), deviceID str
 		flavor:   flavor,
 		conn:     conn,
 		deviceID: deviceID,
-		http:     httpx.New(httpx.TimeoutLibrary),
+		http:     httpx.NewNamed("library", httpx.TimeoutLibrary),
 	}
 }
 

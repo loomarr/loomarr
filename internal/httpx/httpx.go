@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/metrics"
 )
 
 // Per-service hard timeouts (§6). Verified reachable at these budgets in Phase 0.
@@ -41,6 +43,17 @@ func New(timeout time.Duration) *http.Client {
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}
+}
+
+// NewNamed is New plus outbound metrics: the returned client's transport is
+// wrapped so every request records latency + result under `target` (§17). Use it
+// for the request/response RPC clients each adapter builds (target = the service
+// name: "tunarr", "library", "llm", …); health probes stay on plain New to keep
+// the metric to the operational RPC path.
+func NewNamed(target string, timeout time.Duration) *http.Client {
+	c := New(timeout)
+	c.Transport = metrics.InstrumentTransport(target, c.Transport)
+	return c
 }
 
 // NewStreaming returns an *http.Client for long streaming reads — an Ollama model

@@ -67,3 +67,30 @@ func TestNewStreaming_ReadsSlowStreamToCompletion(t *testing.T) {
 		t.Fatalf("expected all 5 chunks, got %q", got)
 	}
 }
+
+// NewNamed adds outbound metrics transparently: the instrumented transport must
+// not change the client's behaviour — a normal request still round-trips and
+// still honours the whole-request timeout.
+func TestNewNamedIsTransparent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	c := NewNamed("test-target", 5*time.Second)
+	if c.Timeout != 5*time.Second {
+		t.Fatalf("NewNamed timeout = %v, want 5s", c.Timeout)
+	}
+	resp, err := c.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("instrumented GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	if string(b) != "ok" {
+		t.Fatalf("body = %q, want ok", string(b))
+	}
+}
