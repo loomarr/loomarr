@@ -4,6 +4,19 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 14 — domain metrics, tranche 3: §17 closed (2026-07-20).** The last non-latency,
+non-state counters, each hooked at its subsystem's natural point:
+`loomarr_llm_tokens_total{kind}` (prompt/completion, parsed from the provider usage block —
+Ollama `prompt_eval_count`/`eval_count`, OpenAI `usage.*`; zero → no-op so a provider that
+omits usage adds no phantom sample); `loomarr_filler_pods_total{match_level}` (fallback-ladder
+rung, recorded in `BuildFillerList` — the attach path, NOT `Preview`, so UI previews don't
+inflate it); `loomarr_channel_slot_substitutions_total` (`programWentStale` → `staleProgramCount`,
+now returns the count, recorded in reconcile). **Cost is deliberately NOT a metric** — it's
+tokens × a per-model posted rate that drifts and is hosted-specific, so it belongs in a
+dashboard recording rule over the token series, not baked into the request path. That closes
+the §17 metric list end to end (RED + runtime + state gauges + event counters + latency +
+these). Gate: `make check` GREEN.
+
 **Phase 14 — domain metrics, tranche 2: latency (2026-07-20).** Client-side RED for every
 outbound dependency via ONE instrumented transport in `httpx.NewNamed` — the six RPC
 adapters (library/tunarr/seerr/tmdb/ollama+openai) now build named clients, so

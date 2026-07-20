@@ -86,8 +86,11 @@ docker/              # deployment + dev compose, Dockerfile context
   latency series — outbound client RED per dependency (`loomarr_outbound_requests_total`,
   `loomarr_outbound_request_duration_seconds`, labelled by `target`: tunarr/library/llm/…)
   and channel reconcile timing (`loomarr_channel_reconciles_total{result}`,
-  `loomarr_channel_reconcile_duration_seconds`). Still staged as follow-up (`docs/design.md`
-  §17): LLM token/cost, filler pod-ladder depth, and slot-drift substitutions.
+  `loomarr_channel_reconcile_duration_seconds`); and the domain counters —
+  `loomarr_llm_tokens_total{kind}`, `loomarr_filler_pods_total{match_level}` (fallback-ladder
+  depth), `loomarr_channel_slot_substitutions_total` (slot drift). This covers the §17 metric
+  set; **cost** is intentionally left to a dashboard recording rule (tokens × your provider's
+  posted rate) rather than a baked-in price table that would drift.
 
 ## License
 

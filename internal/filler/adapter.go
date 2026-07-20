@@ -3,6 +3,8 @@ package filler
 import (
 	"context"
 	"log/slog"
+
+	"github.com/mantonx/loomarr/internal/metrics"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip
@@ -48,6 +50,12 @@ func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era 
 			a.log.Warn("filler list: load catalog failed (channel stays flex)", "channel", channelID, "err", err)
 		}
 		return nil, false
+	}
+	// §17 fallback-ladder depth: record the rung this reconcile's pod reached.
+	// Recorded here (the attach path) not in Preview, so UI previews don't inflate
+	// it; skipped when the catalog is empty (a zero-value MatchLevel).
+	if pod.MatchLevel != "" {
+		metrics.FillerPodAssembled(string(pod.MatchLevel))
 	}
 	ids := make([]string, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
