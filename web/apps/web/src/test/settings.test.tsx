@@ -213,3 +213,65 @@ describe("Settings page footers", () => {
     expect(screen.getByText(/Session secret/i)).toBeInTheDocument();
   });
 });
+
+// The two one-click wiring actions live on Connections for the LIFE of the install
+// (§13, config-design §5), not only inside the first-run wizard.
+//
+// The regression this guards: they existed ONLY as wizard steps, and the wizard offers
+// just Back/Continue with a non-clickable rail — so a step that could not go green
+// stranded the operator on that screen. Worst on the library wiring, which sat behind
+// Live TV: an operator whose guide wiring failed could never reach the very thing that
+// stops channels scheduling slots with no program (§6). The maintainer smoke could not
+// reach it at all, which is how it surfaced.
+describe("Connections wiring actions", () => {
+  const stubWiring = () => {
+    const mock = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
+      if (u.includes("/v1/setup/status")) {
+        return Promise.resolve(
+          json({
+            checks: [
+              { name: "livetv", ok: false, hint: "Tunarr is not a tuner yet." },
+              { name: "tunarr_library", ok: false, hint: "Tunarr has no media source." },
+            ],
+          }),
+        );
+      }
+      if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
+      return Promise.resolve(json({}));
+    });
+    vi.stubGlobal("fetch", mock);
+    vi.stubGlobal(
+      "EventSource",
+      class {
+        addEventListener() {}
+        close() {}
+      },
+    );
+    return mock;
+  };
+
+  it("offers both wiring actions outside the wizard", async () => {
+    stubWiring();
+    renderAt("/settings/connections");
+
+    expect(await screen.findByRole("button", { name: /connect tunarr to the guide/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /wire tunarr to your library/i })).toBeInTheDocument();
+  });
+
+  it("POSTs the connect endpoint, and reports through the CHECK not the click", async () => {
+    const fetchMock = stubWiring();
+    renderAt("/settings/connections");
+
+    // The red check's hint must be on screen — an action with no diagnosis is the dead
+    // end this panel exists to remove (§13). findAll, not find: the page's own checklist
+    // reports the same check above, so the hint legitimately appears twice.
+    expect((await screen.findAllByText("Tunarr has no media source.")).length).toBeGreaterThan(0);
+
+    await userEvent.click(await screen.findByRole("button", { name: /wire tunarr to your library/i }));
+
+    const posted = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/tunarr-connect"));
+    expect(posted, "clicking must actually call tunarr-connect").toBeTruthy();
+  });
+});

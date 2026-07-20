@@ -54,9 +54,20 @@ const COPY: Record<string, { title: string; description: string }> = {
   },
 };
 
-// A step the operator may pass on: webhooks (an install with no *arr apps can never go
-// green) and users (§13 marks it optional). Skipped reads neutral, never red (§6).
-const SKIPPABLE = new Set(["webhooks", "users"]);
+// A step the operator may pass on. Skipped reads neutral, never red (§6).
+//
+// Every WIRING step is here, not just webhooks. The blocking set is media_server +
+// tunarr (§13, config-design §6) — "the shortest honest path to a live channel" — and a
+// step that gates on a check the operator cannot satisfy is a dead end, because the
+// wizard offers only Back/Continue and the rail is not clickable: they are stranded on
+// that screen for good. An install with no *arr apps can never turn `webhook` green, and
+// one that doesn't use its media server's Live TV can never turn `livetv` green.
+//
+// It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling
+// slots with no program: gating it behind Live TV meant an operator whose guide wiring
+// failed could never reach the guard against dead-air channels. Found by the maintainer
+// smoke, which could not reach step 5 at all.
+const SKIPPABLE = new Set(["guide", "webhooks", "library", "users"]);
 
 const WizardScreen = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
