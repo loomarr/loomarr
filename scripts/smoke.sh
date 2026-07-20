@@ -76,13 +76,24 @@ PY
 }
 
 start_app() {
-  say "starting loomarr on :$PORT (first run compiles, ~20s)"
+  # BUILD, don't `go run`. `go run` does not exec the server — it compiles, then
+  # supervises the real binary as a subprocess and stays alive itself. Backgrounded from
+  # here it remained a CHILD of this script and held its stdout open, so `make smoke`
+  # never returned even though Playwright had finished: piping the output (`make smoke |
+  # tail`) hung forever with an empty buffer, which reads exactly like a stuck test run.
+  # Building first removes the supervisor layer entirely — and it also means `stop_app`'s
+  # kill-by-port actually kills the thing, instead of orphaning a `go run` parent.
+  say "building the smoke binary"
+  ( cd "$ROOT" && go build -o "$WORK/loomarr" ./cmd/loomarr )
+  ok "built"
+
+  say "starting loomarr on :$PORT"
   # nohup + a detached subshell so the server OUTLIVES this script: interrupting a run
   # must not take the stack down with it, or every ^C costs another cold start.
   # (No setsid — it is Linux-only and this is expected to run on the maintainer's Mac.)
-  ( set -a && . "$WORK/env" && set +a && cd "$ROOT" \
-      && nohup go run ./cmd/loomarr > "$WORK/app.log" 2>&1 < /dev/null & ) || true
-  wait_for "localhost:$PORT/healthz" "loomarr" 180
+  ( set -a && . "$WORK/env" && set +a \
+      && nohup "$WORK/loomarr" > "$WORK/app.log" 2>&1 < /dev/null & ) || true
+  wait_for "localhost:$PORT/healthz" "loomarr" 120
 }
 
 case "${1:-run}" in

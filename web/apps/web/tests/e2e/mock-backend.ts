@@ -15,6 +15,11 @@ const CANDIDATES = [
 interface MockOptions {
   // Start signed out (the true first run) or already authenticated.
   authed?: boolean;
+  // Whether the install has an owning admin (§7 GET /v1/setup/state). Defaults to
+  // TRUE — most specs sign in, and an unclaimed install redirects every route to the
+  // wizard. Set false to exercise the genuine first run, where /login must bounce to
+  // /wizard because no credential could work yet.
+  bootstrapped?: boolean;
   // Who is signed in. The approve-flow smoke runs the SAME screens as both, because
   // §7's gate is a role check and a member must be refused (§19).
   role?: "admin" | "member";
@@ -50,6 +55,7 @@ const json = (route: Route, body: unknown, status = 200) =>
 const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<MockBackend> => {
   const state = {
     authed: opts.authed ?? false,
+    bootstrapped: opts.bootstrapped ?? true,
     checks: { media_server: true, tunarr: true, ...(opts.checks ?? {}) } as Record<string, boolean>,
     webhook: { ...(opts.webhook ?? {}) } as Record<string, string>,
     imported: [] as string[],
@@ -89,7 +95,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       state.authed = true;
       return json(route, ADMIN);
     }
+    // Unauthenticated (§7): the router guards read this BEFORE any session exists, to
+    // tell an unclaimed install from a merely signed-out one.
+    if (path === "/v1/setup/state") {
+      return json(route, { bootstrapped: state.bootstrapped });
+    }
     if (path === "/v1/setup/bootstrap" && method === "POST") {
+      state.bootstrapped = true;
       return json(route, { id: ADMIN.id, name: ADMIN.name, role: ADMIN.role });
     }
 

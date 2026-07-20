@@ -39,45 +39,49 @@ const checkNamed = (
 
 test.describe.configure({ mode: "serial" });
 
-// FINDING 1 (see the run notes): on a fresh install `/` redirects to /login, which a new
-// operator cannot pass because no account exists yet. The wizard IS public and reachable
-// directly — the entry point is what is wrong. Asserted as the CURRENT behavior so the
-// walkthrough can continue; the fix flips this expectation.
-test("1 · a fresh install reaches the wizard (entry point is broken, see notes)", async ({ page }) => {
-  await page.goto("/");
-  await expect(page, "known bug: a new operator is sent to a login they cannot pass").toHaveURL(/\/login/);
+// FINDING 1, now FIXED: a fresh install used to bounce the owner to /login, which no
+// credential could pass because no account existed yet — and nothing on the page said
+// so. The unauthenticated GET /v1/setup/state (§7) is what lets the guards tell an
+// unclaimed install from a signed-out one.
+test("1 · a fresh install lands the operator on the wizard, not a login they cannot pass", async ({
+  page,
+}) => {
+  const claimed = (await (await page.request.get("/v1/setup/state")).json()).bootstrapped;
+  test.skip(claimed, "already bootstrapped — `make smoke-reset` exercises the true first run");
 
-  await page.goto("/wizard");
+  // The entry point §16 tells operators to open.
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/wizard/);
   await expect(page.getByLabel(/username/i)).toBeVisible();
+
+  // And the bookmark/direct-navigation path, which is guarded separately.
+  await page.goto("/login");
+  await expect(page, "/login must not strand the owner of an unclaimed install").toHaveURL(/\/wizard/);
 });
 
 test("2 · bootstrap creates the owning admin, and only ever once", async ({ page }) => {
   // §11: the first account claims the install, and the endpoint closes for good.
-  //
-  // There is NO unauthenticated "is this install claimed?" signal to branch on — that
-  // absence is FINDING 1 above. So the fresh path is attempted FIRST, through the real
-  // form: a POST to /v1/setup/bootstrap cannot be used to probe, because on a genuinely
-  // fresh database it would succeed and claim the install with a throwaway account,
-  // destroying the first run it was meant to detect.
-  await page.goto("/wizard");
-  await page.getByLabel(/username/i).fill(ADMIN.username);
-  await page.getByLabel(/^password/i).fill(ADMIN.password);
-  const confirm = page.getByLabel(/confirm/i);
-  if (await confirm.count()) await confirm.fill(ADMIN.password);
-  await page.getByRole("button", { name: /create|continue|next/i }).first().click();
+  // /v1/setup/state tells the two legitimate states apart up front — a genuinely fresh
+  // database and a re-run against the install a previous run claimed — so each is
+  // asserted for what it is. (Before that endpoint existed this step had to *guess* by
+  // driving the form and waiting 30s for a session that would never arrive.)
+  if (!(await (await page.request.get("/v1/setup/state")).json()).bootstrapped) {
+    await page.goto("/wizard");
+    await page.getByLabel(/username/i).fill(ADMIN.username);
+    await page.getByLabel(/^password/i).fill(ADMIN.password);
+    const confirm = page.getByLabel(/confirm/i);
+    if (await confirm.count()) await confirm.fill(ADMIN.password);
+    await page
+      .getByRole("button", { name: /create|continue|next/i })
+      .first()
+      .click();
 
-  const claimed = await expect
-    .poll(async () => (await page.request.get("/v1/auth/me")).status(), { timeout: 30_000 })
-    .toBe(200)
-    .then(
-      () => true,
-      () => false,
-    );
-
-  if (!claimed) {
-    // A re-run against the install a previous run already claimed. Now — and only now,
-    // once it is closed — POSTing bootstrap is safe, so assert the security property
-    // directly: an endpoint that reopened would be a serious regression.
+    await expect
+      .poll(async () => (await page.request.get("/v1/auth/me")).status(), { timeout: 30_000 })
+      .toBe(200);
+  } else {
+    // Already claimed, so POSTing bootstrap is safe — assert the security property
+    // directly rather than skipping it: an endpoint that reopened would be serious.
     const again = await page.request.post("/v1/setup/bootstrap", {
       data: { username: "smoke-intruder", password: "smoke-intruder-123" },
       failOnStatusCode: false,
