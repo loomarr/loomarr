@@ -4,6 +4,22 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 14 — domain metrics, tranche 1 (2026-07-20).** The §17 *domain* series, first
+tranche: the state gauges via a pull-based collector (`loomarr_titles{state}`,
+`loomarr_jobs{status}`, `loomarr_active_sessions`) + the two cleanest event counters
+(`loomarr_auth_logins_total{result}`, `loomarr_webhook_events_total{type}`). The collector
+reads three new store count-by-state methods on *scrape* (not on the write path), so no
+mutation path is instrumented; `RegisterStoreCollector` wires it once at boot from
+`BuildHandler`. The store methods are dialect-neutral (GROUP BY / COUNT) — one impl on
+`sqlStore`, covered by a new `ObservabilityCounts` case in the one-suite-two-backends
+conformance suite. Webhook + login labels are bounded (unknown eventType → "other"; login
+result ∈ success/failure, rate-limits excluded — they're the 429 signal). Scrape-time store
+errors degrade to `loomarr_metrics_scrape_errors_total`, never a panic or a stale zero.
+**Still deferred** (§17, honest): the latency histograms (reconcile / Tunarr-API / LLM /
+library-lookup), LLM token/cost, filler pod-ladder depth, slot-drift — each needs its own
+timing wrapper around an external call, a different pattern; a later tranche. Gate: `make
+check` GREEN; conformance passes on sqlite (`make test-pg` for Postgres on CI/Docker).
+
 **Phase 14 — docs set, compose audit, metrics foundation (2026-07-20).** The user-facing
 help set (Quickstart, Integrations, Concepts, Member, Filler + Troubleshooting keyed to
 checklist items), rewritten lean on maintainer feedback, embedded and served at `/v1/docs`

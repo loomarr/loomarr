@@ -121,6 +121,17 @@ type Store interface {
 	// (config-design §9: an empty PATCH on an optional key clears it).
 	DeleteSetting(ctx context.Context, key string) error
 
+	// --- observability counts (§17 /metrics state gauges) ---
+	// Read on scrape by the metrics collector, never on the write path.
+	// CountTitlesByState returns the record count per provisioning state; a
+	// state with no rows is omitted (the collector zero-fills the known set).
+	CountTitlesByState(ctx context.Context) (map[provision.State]int, error)
+	// CountJobsByStatus returns the suggester-job count per status
+	// (queued/running/done/failed) — the queue-depth gauge.
+	CountJobsByStatus(ctx context.Context) (map[string]int, error)
+	// CountActiveSessions returns the number of unexpired sessions as of now.
+	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
+
 	// Close releases the underlying database handle.
 	Close() error
 }

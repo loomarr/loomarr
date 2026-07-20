@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -63,6 +64,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad payload", http.StatusBadRequest)
 		return
 	}
+	metrics.WebhookEvent(webhookKind(p)) // §17: events by type (bounded)
 
 	switch {
 	case p.isTest:
@@ -81,6 +83,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.handleTracked(r.Context(), p)
 	w.WriteHeader(http.StatusOK)
+}
+
+// webhookKind classifies a parsed webhook into a bounded metric label (§17), so
+// an arbitrary eventType string can never inflate the /metrics cardinality.
+func webhookKind(p parsed) string {
+	switch {
+	case p.isTest:
+		return "test"
+	case p.eventType == evGrab:
+		return "grab"
+	case p.eventType == evDownload:
+		return "download"
+	default:
+		return "other"
+	}
 }
 
 // handleTracked applies the Grab/Download event to the record (§4). It is

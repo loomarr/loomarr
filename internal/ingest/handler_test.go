@@ -209,3 +209,27 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// webhookKind maps a parsed webhook to a bounded /metrics label (§17); an
+// unknown eventType must collapse to "other", never leak through as its own
+// high-cardinality label value.
+func TestWebhookKind(t *testing.T) {
+	cases := []struct {
+		name string
+		p    parsed
+		want string
+	}{
+		{"test", parsed{isTest: true}, "test"},
+		{"grab", parsed{eventType: evGrab, isTracked: true}, "grab"},
+		{"download", parsed{eventType: evDownload, isTracked: true}, "download"},
+		{"unknown", parsed{eventType: "Rename"}, "other"},
+		{"empty", parsed{}, "other"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := webhookKind(c.p); got != c.want {
+				t.Errorf("webhookKind(%+v) = %q, want %q", c.p, got, c.want)
+			}
+		})
+	}
+}

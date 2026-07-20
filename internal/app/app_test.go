@@ -10,6 +10,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // TestEventEmitterPublishesToBus is the #11 seam: the composition-root emitter
@@ -81,5 +82,37 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("/healthz = %d, want 200 (the process is alive)", rec.Code)
+	}
+}
+
+// BuildHandler must register the state-gauge collector (§17), so /metrics
+// exposes the domain gauges — not just the RED/runtime foundation. This is the
+// end-to-end wiring the metrics package unit tests can't prove on their own.
+func TestBuildHandlerExposesDomainMetrics(t *testing.T) {
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/app.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	h, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{})
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/metrics = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`loomarr_titles{state="wanted"}`, // zero-filled gauge proves the collector ran
+		"loomarr_jobs{status=",
+		"loomarr_active_sessions",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/metrics missing domain gauge %q (store collector not wired?)", want)
+		}
 	}
 }

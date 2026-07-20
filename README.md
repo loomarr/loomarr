@@ -79,10 +79,12 @@ docker/              # deployment + dev compose, Dockerfile context
 - **Probes** — `/healthz` and `/readyz` are unauthenticated on the LAN for Docker
   healthchecks and orchestrators.
 - **Metrics** — `/metrics` exposes Prometheus text (unauthenticated on the LAN). Currently:
-  HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route)
-  and the Go runtime + process collectors. The domain series in `docs/design.md` §18
-  (records-by-state, reconcile/Tunarr/LLM latency, filler, logins, sessions, queue depth)
-  are staged follow-up instrumentation.
+  HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route),
+  the Go runtime + process collectors, the state gauges (`loomarr_titles{state}`,
+  `loomarr_jobs{status}`, `loomarr_active_sessions`), and the event counters
+  (`loomarr_auth_logins_total{result}`, `loomarr_webhook_events_total{type}`). Still staged
+  as follow-up (`docs/design.md` §17): the latency histograms (reconcile / Tunarr API / LLM /
+  library-lookup), LLM token/cost, filler pod-ladder depth, and slot-drift substitutions.
 
 ## License
 
