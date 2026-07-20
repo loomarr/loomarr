@@ -116,6 +116,15 @@ guide: Tunarr registered as a **tuner** (M3U) and a **guide provider** (XMLTV).
 - **Channels are in Tunarr but not in the Emby/Jellyfin guide** — the tuner is wired but
   the guide hasn't refreshed. Media servers refresh on a schedule (often nightly); Loomarr
   pokes a refresh after reconciles, but the media server decides when to honor it.
+- **Duplicate channels in the guide** — a tuner was registered twice (manual + Loomarr).
+  Remove the extras in your media server; Loomarr's connect is idempotent and won't add
+  more.
+- **Channels show but won't play** — that's not a Live TV problem. Tunarr's library
+  source doesn't match, so the programs resolve to nothing. Re-run **Wire Tunarr to your
+  library** (the `tunarr_library` check above).
+- **Playback stops after ~4 seconds in Firefox** — a Firefox playback quirk, not a Loomarr
+  or Tunarr fault; the stream is fine. Watch in a Chrome-based browser or the Emby/Jellyfin
+  app.
 - Loomarr's admin token needs privilege to register tuners — the same admin key used for
   the media-server connection.
 

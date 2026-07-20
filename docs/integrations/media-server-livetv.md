@@ -38,7 +38,9 @@ Both servers refresh guide data on a schedule (nightly by default). After any re
 
 The endpoints exist across both flavors, but **payload fields and the guide-refresh task id drift across versions.** Phase 0 captures the exact accepted request/response payloads and the task id from the maintainer's real Emby and Jellyfin into `internal/testkit/fixtures/`; the adapter is written against those pins, not memory. Any contract deviation ⇒ update the design doc before implementing.
 
-## Troubleshooting hooks (fold into the Troubleshooting page)
+## Troubleshooting
+
+These are also surfaced in the in-app Help center (Troubleshooting → LiveTV).
 
 - **Channel exists in Tunarr but not in the Emby/Jellyfin guide** → wiring missing (run the connect) or guide refresh pending (poke/refresh manually).
 - **Duplicate channels in the guide** → duplicate tuner registration from manual + API wiring; remove extras, rely on the idempotent connect thereafter.

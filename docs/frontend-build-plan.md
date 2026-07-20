@@ -1,7 +1,7 @@
 # Frontend Build Plan — Phase 13 (and its BE prerequisite)
 
 **Status:** approved sequencing, ready to execute · owner: phase 13
-**Companion to:** `loomarr-frontend-design.md` (the "Test Card" design system — authoritative for *look/build*), `docs/design.md` §12/§13 (authoritative for *behavior*), `docs/config-design.md` §5–§7 (Settings IA), `design/` prototypes + `design/README.md` (pixel-perfect visual reference).
+**Companion to:** `docs/frontend-design.md` (the "Test Card" design system — authoritative for *look/build*), `docs/design.md` §12/§13 (authoritative for *behavior*), `docs/config-design.md` §5–§7 (Settings IA), `design/` prototypes + `design/README.md` (pixel-perfect visual reference).
 **Precedence:** unchanged — `docs/design.md` wins on behavior; `frontend-design.md` wins on look; this doc is *process* (sequencing, gates, the FE↔BE reconciliation) and never overrides either.
 
 This plan exists because a pre-implementation FE↔BE audit found **5 concrete seams** between what the frontend design assumes and what the backend actually exposes. Closing them *before* the FE build is the "no surprises" contract. The design itself is already mobile-aware (Expo is pre-decided in `frontend-design.md` §2.5/§4.2), so mobile is a *readiness discipline*, not a new architecture.
