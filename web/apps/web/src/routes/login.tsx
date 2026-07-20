@@ -1,7 +1,7 @@
 import { authApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { meQueryOptions } from "@/auth";
+import { meQueryOptions, needsBootstrap } from "@/auth";
 import { LoginForm } from "@/components/loomarr";
 import { Card, CardContent } from "@/components/ui";
 
@@ -51,7 +51,12 @@ const Route = createFileRoute("/login")({
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
     } catch {
-      return; // not signed in → show the form
+      // Not signed in — but on an UNCLAIMED install there is no credential that
+      // could work, so showing the form would strand the owner (§7/§13). Guarding
+      // here as well as in _authed covers the operator who navigates to /login
+      // directly, or who bookmarked it before bootstrapping.
+      if (await needsBootstrap(context.queryClient)) throw redirect({ to: "/wizard" });
+      return; // signed out on a claimed install → show the form
     }
     throw redirect({ href: search.redirect ?? "/channels" });
   },

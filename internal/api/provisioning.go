@@ -24,6 +24,12 @@ func (s *Server) registerProvisioning(api huma.API) {
 	}, s.bootstrap)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "setup-state", Method: http.MethodGet, Path: "/v1/setup/state",
+		Summary: "Whether the install has an owning admin", Description: "Unauthenticated. Reports only whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13). Exposes nothing that POST /v1/setup/bootstrap doesn't already reveal by answering 409-vs-created.",
+		Tags: []string{"setup"},
+	}, s.setupState)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "import-users", Method: http.MethodPost, Path: "/v1/users/import",
 		Summary: "Import media-server users", Description: "Admin only. Allowlists the named media-server user ids — the only way a media-server user gains access (§11).",
 		Tags: []string{"users"},
@@ -71,6 +77,34 @@ func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCand
 			ID: c.ID, Name: c.Name, IsAdmin: c.IsAdmin, Disabled: c.Disabled, Imported: c.Imported,
 		})
 	}
+	return out, nil
+}
+
+type setupStateOutput struct {
+	Body struct {
+		Bootstrapped bool `json:"bootstrapped" doc:"Whether an owning admin exists. False ⇒ the install is unclaimed and the wizard's bootstrap step is the only way in (§11)."`
+	}
+}
+
+// setupState answers the one question a first-run visitor's browser must be able to
+// ask before it holds any session (§7). No requireAdmin — that is the point: gating
+// it would reproduce the dead end it exists to remove.
+//
+// A nil provisioner reports bootstrapped=true. That reads backwards, but it is the
+// safe direction: provisioning is unwired only in schema-only/partial servers, and
+// claiming to be UNclaimed there would route every visitor into a wizard whose
+// bootstrap step cannot work.
+func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput, error) {
+	out := &setupStateOutput{}
+	if s.provision == nil {
+		out.Body.Bootstrapped = true
+		return out, nil
+	}
+	done, err := s.provision.Bootstrapped(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("could not read setup state", err)
+	}
+	out.Body.Bootstrapped = done
 	return out, nil
 }
 
