@@ -1,9 +1,12 @@
 package settings
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -103,6 +106,84 @@ func TestEnvValue_FileAndAmbiguity(t *testing.T) {
 	s = newTestService(t, map[string]string{"LIBRARY_TOKEN": "x", "LIBRARY_TOKEN_FILE": secretFile}, nil)
 	if _, _, err := s.envValue(set); err == nil {
 		t.Error("expected ambiguity error when <VAR> and <VAR>_FILE both set")
+	}
+}
+
+// An env var that is SET BUT EMPTY counts as unset (config-design §3), so an
+// unfilled `.env` template line cannot shadow a value saved through the UI.
+//
+// This is a regression test for a bug the maintainer smoke caught end to end: with
+// `LLM_MODEL=` in the environment, the §8.1 picker persisted `llm.model` to the db
+// and hot-swapped the live suggester — the UI said "In use" and suggestions worked —
+// while every *read* still resolved to the empty env pin. The checklist therefore
+// reported "no model selected" immediately after one was, and because the boot path
+// resolves the same setting, the operator's choice vanished on the next restart.
+//
+// Every unit test missed it because they all inject env maps and none had ever set a
+// key to "".
+func TestResolve_EmptyEnvIsUnset(t *testing.T) {
+	// Empty env + a db value → the db value wins, with db provenance (so the UI shows
+	// the field as editable rather than env-locked).
+	s := newTestService(t, map[string]string{"LIBRARY_URL": ""}, map[string]string{"library.url": "http://emby:8096"})
+	if r := s.Resolve("library.url"); r.Value != "http://emby:8096" || r.Provenance != ProvenanceDB {
+		t.Errorf("empty env must not shadow the db: got %v/%s, want http://emby:8096/db", r.Value, r.Provenance)
+	}
+
+	// Empty env + no db → the default, NOT an empty env-provenance value.
+	s = newTestService(t, map[string]string{"JOB_WORKERS": ""}, nil)
+	if r := s.Resolve("job.workers"); r.Value != 2 || r.Provenance != ProvenanceDefault {
+		t.Errorf("empty env with no db: got %v/%s, want 2/default", r.Value, r.Provenance)
+	}
+
+	// A non-empty pin still wins — the rule narrows to blank values only.
+	s = newTestService(t, map[string]string{"LIBRARY_URL": "http://pinned:8096"}, map[string]string{"library.url": "http://emby:8096"})
+	if r := s.Resolve("library.url"); r.Value != "http://pinned:8096" || r.Provenance != ProvenanceEnv {
+		t.Errorf("a real pin must still win: got %v/%s", r.Value, r.Provenance)
+	}
+}
+
+// An empty <VAR> must not make <VAR>_FILE "ambiguous": a blank line left in a
+// template alongside a real Docker secret is exactly the case the rule forgives, and
+// failing the boot over it would be the same footgun in a louder costume.
+func TestEnvValue_EmptyDirectDoesNotBlockFile(t *testing.T) {
+	dir := t.TempDir()
+	secretFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	set := Setting{Key: "library.token", EnvVar: "LIBRARY_TOKEN", Kind: KindSecret}
+
+	s := newTestService(t, map[string]string{"LIBRARY_TOKEN": "", "LIBRARY_TOKEN_FILE": secretFile}, nil)
+	raw, ok, err := s.envValue(set)
+	if err != nil || !ok || raw != "s3cr3t" {
+		t.Errorf("empty <VAR> + <VAR>_FILE: got %q,%v,%v want s3cr3t,true,nil", raw, ok, err)
+	}
+}
+
+// Boot must SAY it ignored an empty pin (config-design §3). An operator who meant to
+// blank a setting should not have to infer that we disregarded them.
+func TestNew_WarnsOnEmptyEnvPin(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	reg := newRegistry([]Setting{{Key: "llm.model", EnvVar: "LLM_MODEL", Kind: KindString, Default: "", Doc: "x"}})
+
+	t.Setenv("LLM_MODEL", "")
+	if _, err := New(context.Background(), reg, fakeLoader{m: nil}, log); err != nil {
+		t.Fatalf("an empty pin must not fail the boot: %v", err)
+	}
+	if got := buf.String(); !strings.Contains(got, "LLM_MODEL") {
+		t.Errorf("boot did not warn about the ignored empty pin; log was: %q", got)
+	}
+
+	// A pin that is actually set says nothing — the warning must stay rare enough to
+	// be worth reading.
+	buf.Reset()
+	t.Setenv("LLM_MODEL", "qwen3:8b")
+	if _, err := New(context.Background(), reg, fakeLoader{m: nil}, log); err != nil {
+		t.Fatal(err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("a real pin should log nothing, got: %q", buf.String())
 	}
 }
 

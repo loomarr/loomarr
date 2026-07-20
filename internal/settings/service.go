@@ -79,12 +79,23 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 	}
 	// Validate every env pin at boot — an operator typo must fail here, not lurk.
 	for _, set := range reg.All() {
-		if raw, ok, err := s.envValue(set); err != nil {
+		raw, present, err := s.envRaw(set)
+		if err != nil {
 			return nil, err
-		} else if ok {
-			if _, perr := set.parse(raw); perr != nil {
-				return nil, fmt.Errorf("invalid env %s: %w", set.EnvVar, perr)
-			}
+		}
+		if !present {
+			continue
+		}
+		// An empty pin is ignored (config-design §3), but never silently: an operator
+		// who *meant* to blank the setting must not have to infer that we disregarded
+		// them from the absence of any effect.
+		if raw == "" {
+			log.Warn("ignoring empty env pin — falling through to the database, then the default",
+				"var", set.EnvVar, "key", set.Key)
+			continue
+		}
+		if _, perr := set.parse(raw); perr != nil {
+			return nil, fmt.Errorf("invalid env %s: %w", set.EnvVar, perr)
 		}
 	}
 	db, err := loader.LoadAll(ctx)
@@ -95,14 +106,35 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 	return s, nil
 }
 
-// envValue reads a setting's env pin, honoring the Docker-secrets idiom
-// (config-design §3): <VAR> or <VAR>_FILE supplies the value; both set is an
-// ambiguous boot error. Returns (value, isSet, error).
+// envValue reads a setting's env pin and applies the empty-is-unset rule
+// (config-design §3), so an unfilled `.env` template line cannot shadow a value the
+// operator saved through the UI. Returns (value, isSet, error).
 func (s *Service) envValue(set Setting) (string, bool, error) {
+	raw, present, err := s.envRaw(set)
+	if err != nil || !present || raw == "" {
+		return "", false, err
+	}
+	return raw, true, nil
+}
+
+// envRaw resolves the pin *before* the empty-is-unset rule, honoring the
+// Docker-secrets idiom (config-design §3): <VAR> or <VAR>_FILE supplies the value.
+// Split out from envValue so boot can tell "no pin" from "a pin we deliberately
+// ignored" and warn about the latter — silently dropping it is what made the
+// original bug invisible.
+//
+// An empty <VAR> does not count for the ambiguity check either: `LIBRARY_TOKEN=`
+// left in a template alongside a real LIBRARY_TOKEN_FILE from Docker secrets is a
+// plausible combination, and failing the boot over it would punish the same blank
+// line this rule exists to forgive.
+func (s *Service) envRaw(set Setting) (string, bool, error) {
 	direct, hasDirect := s.env(set.EnvVar)
 	filePath, hasFile := s.env(set.EnvVar + "_FILE")
 	switch {
-	case hasDirect && hasFile:
+	// Only a NON-EMPTY <VAR> conflicts with <VAR>_FILE; an empty one falls through to
+	// the file below. Presence is otherwise reported verbatim — applying the
+	// empty-is-unset rule here would hide the empty pin from the boot warning too.
+	case hasDirect && direct != "" && hasFile:
 		return "", false, fmt.Errorf("%s and %s_FILE both set (ambiguous)", set.EnvVar, set.EnvVar)
 	case hasFile:
 		b, err := os.ReadFile(filePath) //nolint:gosec // path is operator-supplied config, by design
