@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -47,10 +49,27 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	svc := &systemLLMService{
 		swap:       sw,
 		ollamaBase: func() string { return ollamaBase(set) }, // resolved live per probe/pull
-		store:      st,
-		bus:        bus,
-		log:        log,
-		newID:      newID,
+		saveSettings: func(ctx context.Context, edits map[string]string) error {
+			results, err := set.svc.Patch(ctx, storePersister{st: st}, edits, "system")
+			if err != nil {
+				return err
+			}
+			// A per-key refusal (an env pin, or a value the registry rejects) is NOT an
+			// error from Patch's point of view — it is a result. Swallowing it would
+			// recreate the bug in a new costume: the picker would report success while
+			// the environment kept winning, and the operator's choice would evaporate
+			// on restart with nothing having said no.
+			for _, r := range results {
+				if r.Status != settings.PatchSaved {
+					return fmt.Errorf("could not save %s: %s", r.Key, r.Problem)
+				}
+			}
+			return nil
+		},
+		store: st,
+		bus:   bus,
+		log:   log,
+		newID: newID,
 	}
 	return sw, svc
 }
@@ -106,10 +125,18 @@ type systemLLMService struct {
 	// exactly like the suggester's Swappable hot-swaps. A frozen base URL was the
 	// live-smoke bug: after PATCHing llm.url the picker still reported unreachable.
 	ollamaBase func() string
-	store      store.Store
-	bus        *events.Bus
-	log        *slog.Logger
-	newID      func() string
+	// saveSettings writes the non-secret llm.* trio through the SETTINGS SERVICE, not
+	// straight to the store. Writing to the store directly skipped SetDB, so the
+	// service's in-memory snapshot kept the old value: the picker said "In use" and
+	// the suggester really did hot-swap (selectLocal calls swap.Set itself), while
+	// every settings *read* — including the wizard's `llm` check — still saw the
+	// previous value until the next reboot. The Watch in buildLLM exists precisely to
+	// react to this write, and it never fired for the same reason.
+	saveSettings func(ctx context.Context, edits map[string]string) error
+	store        store.Store
+	bus          *events.Bus
+	log          *slog.Logger
+	newID        func() string
 }
 
 // prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
@@ -314,16 +341,17 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 	return jobID, nil
 }
 
-// persist writes the provider/url/model settings (the non-secret trio). The key is
-// stored separately, namespaced per provider (see selectHosted).
+// persist writes the provider/url/model settings (the non-secret trio) through the
+// settings service, so the write hot-applies (config-design §3) instead of landing in
+// the store where only the next boot would notice it. The API key is NOT written here:
+// it is namespaced per provider (`llm.api_key.<provider>`, see selectHosted), which is
+// not a registry key, so it cannot go through the registry-validated PATCH path.
 func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error {
-	if err := s.store.SetSetting(ctx, setLLMProvider, sel.Provider); err != nil {
-		return err
-	}
-	if err := s.store.SetSetting(ctx, setLLMURL, sel.URL); err != nil {
-		return err
-	}
-	return s.store.SetSetting(ctx, setLLMModel, sel.Model)
+	return s.saveSettings(ctx, map[string]string{
+		setLLMProvider: sel.Provider,
+		setLLMURL:      sel.URL,
+		setLLMModel:    sel.Model,
+	})
 }
 
 // publishPull emits one pull-progress frame on the SSE bus (§7, type=llm_pull).
