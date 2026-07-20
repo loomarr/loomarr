@@ -15,6 +15,13 @@ const CANDIDATES = [
 interface MockOptions {
   // Start signed out (the true first run) or already authenticated.
   authed?: boolean;
+  // Who is signed in. The approve-flow smoke runs the SAME screens as both, because
+  // §7's gate is a role check and a member must be refused (§19).
+  role?: "admin" | "member";
+  // Seed a proposal already awaiting approval, as if a member submitted it earlier.
+  // The gate's interesting case is an admin acting on SOMEONE ELSE'S work — that is the
+  // only path from a proposal to spent resources (§7).
+  pendingProposal?: boolean;
   // Which setup/status checks are green before the operator does anything. The two
   // REQUIRED ones default green so the flow can reach the wiring steps.
   checks?: Record<string, boolean>;
@@ -29,6 +36,11 @@ interface MockBackend {
     checks: Record<string, boolean>;
     imported: string[];
     edits: Record<string, string>;
+    // Titles the approval gate actually enqueued. The smoke asserts on THIS rather than
+    // on the UI, because "the button looked like it worked" is exactly the failure a
+    // gate test exists to catch.
+    enqueued: string[];
+    proposals: Array<{ id: string; status: string }>;
   };
 }
 
@@ -42,6 +54,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     webhook: { ...(opts.webhook ?? {}) } as Record<string, string>,
     imported: [] as string[],
     edits: {} as Record<string, string>,
+    enqueued: [] as string[],
+    proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
+      id: string;
+      status: string;
+    }>,
+    role: opts.role ?? "admin",
   };
 
   // The SSE stream: the app opens it for the session's lifetime. Left hanging open and
@@ -64,7 +82,8 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
 
     // --- identity ---------------------------------------------------------------
     if (path === "/v1/auth/me") {
-      return state.authed ? json(route, ADMIN) : json(route, { title: "Unauthorized" }, 401);
+      const me = { ...ADMIN, role: state.role, autoApprove: state.role === "admin" };
+      return state.authed ? json(route, me) : json(route, { title: "Unauthorized" }, 401);
     }
     if (path === "/v1/auth/login" && method === "POST") {
       state.authed = true;
@@ -116,6 +135,57 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       const ids = (body().ids as string[]) ?? [];
       state.imported.push(...ids);
       return json(route, { imported: ids.length });
+    }
+
+    // --- the §7 approval gate ------------------------------------------------------
+    // A proposal is created by anyone; only an ADMIN turns it into acquisitions. This
+    // mock enforces the same rule the server does, so the smoke proves the UI honors a
+    // real 403 rather than a hand-waved one.
+    if (path === "/v1/suggestions" && method === "POST") {
+      const id = `prop-${state.proposals.length + 1}`;
+      state.proposals.push({ id, status: "submitted" });
+      return json(route, { jobId: `job-${id}` });
+    }
+    if (path === "/v1/suggestions" && method === "GET") {
+      // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,
+      // `.acquisitions`) — the queue reads those exact fields, and a hand-guessed shape
+      // would make this smoke pass against a proposal the app can't actually render.
+      const wanted = url.searchParams.get("status");
+      const rows = state.proposals
+        .filter((p) => !wanted || p.status === wanted)
+        .map((p) => ({
+          id: p.id,
+          jobId: `job-${p.id}`,
+          status: p.status,
+          createdBy: "grace",
+          proposal: {
+            intent: { description: "90s saturday morning cartoons" },
+            rationale: "Kid-friendly 90s animation, all ages.",
+            lineup: [{ name: "Animaniacs", year: 1993, mediaType: "series" }],
+            // One acquisition: the in-library pick needs nothing, so only the missing
+            // title spends anything (§8).
+            acquisitions: [{ name: "Gargoyles", year: 1994, mediaType: "series", tmdbId: 12345 }],
+            scores: { themeFit: 0.9, availabilityRatio: 0.5, coherence: 0.8 },
+          },
+        }));
+      return json(route, { proposals: rows });
+    }
+    if (path.endsWith("/approve") && method === "POST") {
+      if (state.role !== "admin") {
+        return json(route, { title: "Forbidden", detail: "Approving is an admin action." }, 403);
+      }
+      const id = path.split("/").at(-2) ?? "";
+      const found = state.proposals.find((p) => p.id === id);
+      if (found) found.status = "approved";
+      // Only the not-in-library item becomes an acquisition — the in-library one is
+      // already playable and never enters the provisioning loop (§8).
+      state.enqueued.push("series:tmdb:gargoyles");
+      return json(route, { channelId: "ch-new", enqueued: 1 });
+    }
+    if (path === "/v1/titles") {
+      return json(route, {
+        titles: state.enqueued.map((key) => ({ key, mediaType: "series", state: "wanted" })),
+      });
     }
 
     // --- settings (the wizard's terminal act writes setup.completed here) ---------

@@ -4,6 +4,40 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 13.4e — the 13.4 gate (2026-07-19).** Branch `feat/fe-gate-13.4e`. Phase 13.4 is
+complete: Channels, Board, Suggest, Settings, Users, Filler, Help, and the ⌘K palette.
+
+**The reachability guard is the gate this phase earned.** SEVEN times in 13.4 something
+was built, unit-tested, and unreachable — two settings panels never mounted; a formatter
+never called (so "·til 8:00 PM" was dead UI on every channel card); a 323-line settings
+form rendered by nothing; a clip's tag action gated so the one clip needing correction
+couldn't be; a search scope that always returned empty; a Search button wired to a
+discarded setState. Component tests passed in every case, because a component test cannot
+see whether anything mounts it.
+
+`reachability.test.tsx` asserts every route in the generated tree renders real content and
+every feature-gated panel appears when its flag is on. The route list is DERIVED from
+`router.routesById` — a hand-maintained list is the same mistake one level up, which
+`structure.test.ts` already learned. **Verified against the real regressions:** removing
+the secrets panel's mount and removing the palette's mount each fail it with a precise
+message.
+
+**The approve-flow e2e is §7's gate under test.** An admin approving enqueues the
+acquisition; a member is not offered approval and nothing is enqueued (§19's negative).
+Assertions land on the mock's recorded state, not the screen — "the button looked like it
+worked" is exactly the failure a gate exists to catch. Verified by deleting the `isAdmin`
+condition on the approval queue: the member test fails.
+
+**Contract discipline held.** The mock backend's proposal shape was wrong twice (guessed
+field names), and both times the fix was to read the generated DTO rather than the
+remembered shape — the same rule the fixtures carry.
+
+**Gate:** `make check` GREEN; `make fe` GREEN (217 app / 24 core / 9 api); `make fe-visual`
+GREEN (188, zero flaky); `make e2e` GREEN (5); `make openapi-verify` GREEN.
+**Next:** Phase 14 — the user-facing docs set, runbook, README, and folding in the seed
+docs (checking each against the design doc first: §2 and §7.2 were both stale this phase).
+
+
 **Phase 13.4d — Users and Filler shipped; Help + ⌘K remain (2026-07-19).** PRs #26–#33,
 all merged. The session ran backend-prep-then-screens, and the prep was worth it: the
 gap sweep before writing any UI found surfaces §12/§13 assume but nobody had built.
