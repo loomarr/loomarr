@@ -33,13 +33,13 @@ describe("SessionList", () => {
 
   it("agrees with the count at one", () => {
     freeze();
-    render(<SessionList userName="Ada" sessions={[session()]} />);
+    render(<SessionList userName="Ada" sessions={[session()]} now={NOW} />);
     expect(screen.getByText(/1 active session for Ada/)).toBeInTheDocument();
   });
 
   it("shows when each session started and when it lapses", () => {
     freeze();
-    render(<SessionList userName="Ada" sessions={[session()]} />);
+    render(<SessionList userName="Ada" sessions={[session()]} now={NOW} />);
     expect(screen.getByText(/signed in 2h ago/i)).toBeInTheDocument();
     expect(screen.getByText(/expires in 2d/i)).toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe("SessionList", () => {
   // session, and the label is what stops them signing themselves out by accident.
   it("marks the caller's own session and names the consequence", () => {
     freeze();
-    render(<SessionList userName="Ada" sessions={[session({ current: true })]} />);
+    render(<SessionList userName="Ada" sessions={[session({ current: true })]} now={NOW} />);
     expect(screen.getByText("This device")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign out \(this device\)/i })).toBeInTheDocument();
   });
@@ -66,7 +66,12 @@ describe("SessionList", () => {
   it("spins only the row being revoked", () => {
     freeze();
     render(
-      <SessionList userName="Ada" sessions={[session({ id: "a" }), session({ id: "b" })]} revoking="a" />,
+      <SessionList
+        userName="Ada"
+        sessions={[session({ id: "a" }), session({ id: "b" })]}
+        revoking="a"
+        now={NOW}
+      />,
     );
     const buttons = screen.getAllByRole("button", { name: /sign out/i });
     expect(buttons[0]).toBeDisabled();
