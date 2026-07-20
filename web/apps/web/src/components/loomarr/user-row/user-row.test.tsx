@@ -12,6 +12,8 @@ const user = (over: Partial<UserBody> = {}): UserBody => ({
   disabled: false,
   autoApprove: false,
   local: false,
+  pendingAcquisitions: 2,
+  effectiveQuota: 5,
   ...over,
 });
 
@@ -80,5 +82,16 @@ describe("UserRow", () => {
     expect(screen.getByLabelText("Role")).toBeDisabled();
     expect(screen.getByLabelText("Quota")).toBeDisabled();
     expect(screen.getByRole("button", { name: /sessions/i })).toBeDisabled();
+  });
+
+  // The denominator was deliberately withheld until quota actually bound something
+  // (§11 auto-approve): showing "2 / 5" while nothing enforced the 5 would advertise a
+  // limit that did not exist.
+  it("shows pending acquisitions against the effective cap", () => {
+    render(<UserRow user={user({ pendingAcquisitions: 3, quota: 0, effectiveQuota: 5 })} />);
+    expect(screen.getByText("3 /")).toBeInTheDocument();
+    // A quota of 0 means "use the default", so the field shows the server's effective
+    // value as a placeholder rather than a literal 0 the admin would read as "none".
+    expect(screen.getByLabelText("Quota")).toHaveAttribute("placeholder", "5");
   });
 });

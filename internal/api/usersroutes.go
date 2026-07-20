@@ -9,6 +9,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
@@ -61,12 +62,19 @@ func (s *Server) syncUsers(ctx context.Context, _ *struct{}) (*syncOutput, error
 }
 
 type userBody struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Role        string `json:"role" enum:"admin,member"`
-	Disabled    bool   `json:"disabled"`
-	Quota       int    `json:"quota"`
-	AutoApprove bool   `json:"autoApprove"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Role     string `json:"role" enum:"admin,member"`
+	Disabled bool   `json:"disabled"`
+	Quota    int    `json:"quota" doc:"Pending-acquisition cap; 0 ⇒ the suggest.max_acquisitions default (§11)"`
+	// PendingAcquisitions is what the cap is measured against — titles this user caused
+	// that have not landed. Shipped so the UI can show "3 / 5" HONESTLY; it was withheld
+	// until the cap actually bound something, because a denominator implies a limit.
+	PendingAcquisitions int `json:"pendingAcquisitions"`
+	// EffectiveQuota is Quota, or the configured default when Quota is 0 — so the UI
+	// never has to re-derive the fallback and disagree with the server about it.
+	EffectiveQuota int  `json:"effectiveQuota"`
+	AutoApprove    bool `json:"autoApprove"`
 	// Local reports the credential path (§11): true ⇒ a Loomarr-native user verified
 	// against a stored bcrypt hash; false ⇒ an imported media-server user verified
 	// against Emby/Jellyfin. The UI needs this to label rows and to explain why a
@@ -99,9 +107,27 @@ func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, 
 	out := &listUsersOutput{}
 	out.Body.Users = make([]userBody, 0, len(users))
 	for _, u := range users {
-		out.Body.Users = append(out.Body.Users, toUserBody(u))
+		out.Body.Users = append(out.Body.Users, s.withUsage(ctx, toUserBody(u), u))
 	}
 	return out, nil
+}
+
+// withUsage fills in the quota accounting (§11). Best-effort: a usage read that fails
+// leaves the count at zero rather than failing the whole list — the Users page must still
+// render so an admin can act, and a wrong-looking zero is visibly different from a page
+// that will not load.
+func (s *Server) withUsage(ctx context.Context, body userBody, u store.User) userBody {
+	limit := u.Quota
+	if limit <= 0 {
+		limit = s.configInt("suggest.max_acquisitions")
+	}
+	body.EffectiveQuota = limit
+	usage, err := suggest.PendingFor(ctx, s.store, u.ID, limit)
+	if err != nil {
+		return body
+	}
+	body.PendingAcquisitions = usage.Pending
+	return body
 }
 
 type patchUserInput struct {

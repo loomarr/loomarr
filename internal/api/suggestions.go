@@ -9,7 +9,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
@@ -193,74 +192,13 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 		return nil, huma.Error409Conflict("proposal is not in the submitted state")
 	}
 
-	var body suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-		return nil, huma.Error500InternalServerError("stored proposal is malformed", err)
+	// The gate has ONE implementation, shared with the auto-approve path (§8, §11), so
+	// the two can never disagree about what approving means.
+	enqueued, err := suggest.Approve(ctx, s.store, p, userIDFromHuma(ctx), time.Now)
+	if errors.Is(err, suggest.ErrNotSubmitted) {
+		return nil, huma.Error409Conflict("proposal is not in the submitted state")
 	}
-
-	// In-library picks become `available` title Records so the scheduler can place
-	// them (§8: "the approved lineup feeds the scheduler"). Without this, an
-	// in-library pick is unresolvable and never becomes a program.
-	for _, l := range body.Lineup {
-		if !l.InLibrary || l.LibraryItemID == "" {
-			continue // a not-in-library lineup item is covered by acquisitions
-		}
-		title := provision.Title{
-			MediaType: provision.MediaType(l.MediaType),
-			TMDBID:    l.TMDBID, TVDBID: l.TVDBID, Name: l.Name, Year: l.Year, Seasons: l.Seasons,
-		}
-		key, kerr := title.Key()
-		if kerr != nil {
-			continue // grounded proposals are always keyable; skip defensively
-		}
-		// Idempotent: don't clobber an existing record (it may already be tracked
-		// through the provisioner). Only record freshly-observed in-library titles.
-		if _, gerr := s.store.GetTitle(ctx, key); gerr == nil {
-			continue
-		} else if !errors.Is(gerr, store.ErrNotFound) {
-			return nil, gerr
-		}
-		rec := provision.Record{
-			Key: key, Title: title,
-			State: provision.Available, LibraryID: l.LibraryItemID,
-		}
-		if err := s.store.UpsertTitle(ctx, rec); err != nil {
-			return nil, err
-		}
-	}
-
-	enqueued := 0
-	for _, a := range body.Acquisitions {
-		title := provision.Title{
-			MediaType: provision.MediaType(a.MediaType),
-			TMDBID:    a.TMDBID, TVDBID: a.TVDBID, Name: a.Name, Year: a.Year, Seasons: a.Seasons,
-		}
-		key, kerr := title.Key()
-		if kerr != nil {
-			// A grounded proposal never has an unkeyable acquisition; skip defensively.
-			continue
-		}
-		// Idempotent enqueue (§4 inv. 3) — only create if absent.
-		if _, gerr := s.store.GetTitle(ctx, key); gerr == nil {
-			continue
-		} else if !errors.Is(gerr, store.ErrNotFound) {
-			return nil, gerr
-		}
-		// Deadline = now so the acquisition is DUE IMMEDIATELY: the provisioning
-		// reconciler's ClaimDueTitles only claims rows with `deadline <= now AND
-		// deadline > 0`, so a zero-deadline wanted title is never claimed and never
-		// submitted to Seerr. (Caught by the live smoke: approved acquisitions sat in
-		// `wanted` forever because the deadline was unset.)
-		rec := provision.Record{Key: key, Title: title, State: provision.Wanted, Deadline: time.Now()}
-		if err := s.store.UpsertTitle(ctx, rec); err != nil {
-			return nil, err
-		}
-		enqueued++
-	}
-
-	p.Status = "approved"
-	p.ApprovedBy = userIDFromHuma(ctx)
-	if err := s.store.UpdateProposal(ctx, p); err != nil {
+	if err != nil {
 		return nil, err
 	}
 	out := &approveOutput{}
