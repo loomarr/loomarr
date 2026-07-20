@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
@@ -278,5 +280,156 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	}
 	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Cats" {
 		t.Errorf("mustExclude = %v, want [Cats]", got.MustExclude)
+	}
+}
+
+// §7: approve → "enqueue acquisitions + create/patch channel". Only the first half was
+// ever implemented, which made Loomarr's whole purpose unreachable from the UI — an
+// operator could describe a channel, get a grounded lineup, approve it, and no channel
+// ever appeared. There is no create-a-channel screen because THIS is meant to be the
+// path (§13), so nothing else could close the gap.
+//
+// Found by the maintainer smoke walking the flow as an operator. The mocked e2e could
+// not catch it: it asserts the acquisition is enqueued, which is exactly what the code
+// did do.
+func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"intent":{"description":"90s Saturday morning cartoons for the kids"},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
+		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-ch", JobID: "job-ch", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-ch/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if out.ChannelID == "" {
+		t.Fatal("approve returned no channelId — the UI has nothing to navigate to")
+	}
+
+	ch, err := st.GetChannel(context.Background(), out.ChannelID)
+	if err != nil {
+		t.Fatalf("approve reported a channel that does not exist: %v", err)
+	}
+	// Bound to the intent, so re-approval can find it again.
+	if ch.IntentRef != "job-ch" {
+		t.Errorf("channel IntentRef = %q, want job-ch", ch.IntentRef)
+	}
+	// Named from what the operator typed, not "channel-1".
+	if !strings.Contains(ch.Name, "Saturday morning") {
+		t.Errorf("channel name = %q, want it derived from the intent", ch.Name)
+	}
+	// Numbered without the operator having to choose (§7).
+	if ch.Number < 1 {
+		t.Errorf("channel number = %d, want an auto-allocated positive number", ch.Number)
+	}
+	// The approved lineup rides onto the channel — a channel with no lineup is dead air,
+	// which is the failure §9 exists to prevent.
+	if len(ch.Lineup) == 0 {
+		t.Error("channel created with an EMPTY lineup — it would play nothing")
+	}
+}
+
+// "create/patch" (§7) means re-approving the same intent must not mint a second
+// channel — and must not clobber the fields the OPERATOR owns. Name and number are
+// ordinary editable fields; silently reverting an edit on re-approve is data loss.
+func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"intent":{"description":"90s cartoons"},"lineup":[{"mediaType":"movie",` +
+		`"tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
+		`"acquisitions":[]}`
+	seed := func(id, job string) {
+		if err := st.CreateProposal(context.Background(), store.Proposal{
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("p-a", "job-same")
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-a/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first approve → %d", resp.StatusCode)
+	}
+	var first struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&first)
+
+	// The operator renames and renumbers it, as §7 says they may.
+	ch, _ := st.GetChannel(context.Background(), first.ChannelID)
+	ch.Name, ch.Number = "Cartoon Corner", 42
+	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second proposal for the SAME intent (a re-run of that job) is approved.
+	seed("p-b", "job-same")
+	resp = do(t, srv, http.MethodPost, "/v1/suggestions/p-b/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("second approve → %d", resp.StatusCode)
+	}
+	var second struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&second)
+
+	if second.ChannelID != first.ChannelID {
+		t.Errorf("re-approval made a NEW channel (%s vs %s) — the guide would show two",
+			second.ChannelID, first.ChannelID)
+	}
+	all, _ := st.ListChannels(context.Background())
+	if len(all) != 1 {
+		t.Errorf("channel count = %d, want 1", len(all))
+	}
+	again, _ := st.GetChannel(context.Background(), first.ChannelID)
+	if again.Name != "Cartoon Corner" || again.Number != 42 {
+		t.Errorf("re-approval clobbered operator edits: name=%q number=%d", again.Name, again.Number)
+	}
+}
+
+// Channel numbers are auto-allocated as the lowest free one, so the operator never has
+// to think about numbering to get on air — and an approval can never collide with a
+// channel they numbered by hand.
+func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	// A hand-made channel already occupies number 1.
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{
+			ID: "ch_manual", Name: "Manual", Number: 1, Strategy: schedule.Sequential,
+			Status: schedule.StatusBuilding,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":603,` +
+		`"name":"The Matrix","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-n", JobID: "job-n", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-n/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	ch, err := st.GetChannel(context.Background(), out.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Number != 2 {
+		t.Errorf("allocated number %d, want 2 (1 is taken by the hand-made channel)", ch.Number)
 	}
 }

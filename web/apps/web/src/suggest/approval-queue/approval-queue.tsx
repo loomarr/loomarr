@@ -1,5 +1,6 @@
 import { suggestionsApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { ApprovalQueueItem, EmptyState, ErrorState } from "@/components/loomarr";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
@@ -12,7 +13,23 @@ const ApprovalQueue = () => {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
 
-  const approve = suggestionsApi.useApproveProposal({ mutation: { onSuccess: invalidate } });
+  // Approving CREATES the channel (§7), so it ends by showing the operator the thing
+  // they just made rather than an emptier queue. Without this the flow stops at
+  // "approved" and the channel — the entire point — is somewhere they have to go find.
+  //
+  // Guarded on channelId: approval is durable even when channel creation fails, and in
+  // that case there is nowhere to navigate to. Staying put is right, and the queue
+  // refresh still shows the proposal left the queue.
+  const navigate = useNavigate();
+  const approve = suggestionsApi.useApproveProposal({
+    mutation: {
+      onSuccess: (res) => {
+        invalidate();
+        const channelId = res.status === 200 ? res.data.channelId : undefined;
+        if (channelId) void navigate({ to: "/channels/$id", params: { id: channelId } });
+      },
+    },
+  });
   const deny = suggestionsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
 
   if (proposals.error) {
