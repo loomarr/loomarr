@@ -87,6 +87,7 @@ start_app() {
   ( cd "$ROOT" && go build -o "$WORK/loomarr" ./cmd/loomarr )
   ok "built"
 
+  stop_app
   say "starting loomarr on :$PORT"
   # nohup + a detached subshell so the server OUTLIVES this script: interrupting a run
   # must not take the stack down with it, or every ^C costs another cold start.
@@ -244,10 +245,33 @@ fi
 
 [ -f "$WORK/env" ] || { say "writing the smoke env (own DB, own Tunarr, NO requester)"; write_env; ok "env written"; }
 
-if app_up; then
-  ok "loomarr already up on :$PORT"
-else
+# Reuse the running server ONLY if it is actually running the current code.
+#
+# The SPA is embedded in the binary at compile time (internal/web/dist), so a running
+# instance serves whatever frontend existed when it was built. "Already up, skip the
+# start" therefore meant FE changes silently never reached the browser: a Settings panel
+# added minutes earlier was simply absent, and the spec failed as though the feature were
+# broken. That is the same stale-artifact-as-product-failure trap this whole harness keeps
+# turning up, so the check is on the ARTIFACTS, not on liveness.
+#
+# `go build` is incremental and near-free when nothing changed, so rebuilding to compare
+# costs less than the confusion of a stale server.
+needs_restart() {
+  app_up || return 0
+  ( cd "$ROOT" && go build -o "$WORK/loomarr.next" ./cmd/loomarr ) || return 0
+  if [ -f "$WORK/loomarr" ] && cmp -s "$WORK/loomarr" "$WORK/loomarr.next"; then
+    rm -f "$WORK/loomarr.next"
+    return 1 # identical binary → the running server is current
+  fi
+  rm -f "$WORK/loomarr.next"
+  return 0
+}
+
+if needs_restart; then
+  app_up && say "the code changed since this server started — restarting it"
   start_app
+else
+  ok "loomarr already up on :$PORT (and current)"
 fi
 
 say "driving it with Playwright"
