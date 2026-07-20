@@ -20,6 +20,7 @@ import (
 	"github.com/mantonx/loomarr/internal/ingest"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/requester"
@@ -70,6 +71,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			return false, "store unreachable: " + err.Error()
 		}
 		return true, "ok"
+	}
+
+	// State gauges for /metrics (§17): read from the store on scrape. Non-fatal —
+	// a registration failure just omits these gauges, it never blocks boot.
+	if st != nil {
+		if err := metrics.RegisterStoreCollector(st, time.Now); err != nil {
+			log.Warn("metrics: store collector not registered", "err", err)
+		}
 	}
 
 	// Settings subsystem (config-design §3): once the store is open, build the

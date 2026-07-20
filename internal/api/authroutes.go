@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/metrics"
 )
 
 // registerAuth mounts /v1/auth/* (§11). login and logout manage the session
@@ -61,13 +62,17 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrRateLimited):
+			// Rate-limited attempts are their own signal (HTTP 429); don't fold
+			// them into the credential success/failure ratio.
 			return nil, huma.Error429TooManyRequests("too many login attempts")
 		case errors.Is(err, auth.ErrInvalidCredentials):
+			metrics.LoginResult(false)
 			return nil, huma.Error401Unauthorized("invalid username or password")
 		default:
 			return nil, err
 		}
 	}
+	metrics.LoginResult(true)
 	out := &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),
 		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove},

@@ -40,6 +40,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
 	t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
+	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
@@ -840,5 +841,67 @@ func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	// Search composes with the other filters rather than replacing them.
 	if got := names(ClipFilter{Query: "e", Category: "toys"}); len(got) != 1 || got[0] != "TMNT figures" {
 		t.Errorf("Query+Category → %v, want [TMNT figures]", got)
+	}
+}
+
+// testCounts covers the §17 observability gauges: grouped counts must reflect
+// the rows present, and (for sessions) honor the same expiry predicate the read
+// path uses. Same assertions on both backends (one suite, two dialects).
+func testCounts(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	// Titles across three states: two requested, one available.
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:20", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:21", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:22", provision.Available, time.Time{}))
+
+	titles, err := s.CountTitlesByState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if titles[provision.Requested] != 2 || titles[provision.Available] != 1 {
+		t.Errorf("CountTitlesByState = %v, want requested:2 available:1", titles)
+	}
+	// A state with no rows is absent, not zero — the collector zero-fills it.
+	if _, ok := titles[provision.Downloading]; ok {
+		t.Errorf("CountTitlesByState included an empty state: %v", titles)
+	}
+
+	// Jobs: two queued (sampleJob defaults to queued), one flipped to running.
+	_ = s.CreateJob(ctx, sampleJob("job-1", "h1", now, now))
+	_ = s.CreateJob(ctx, sampleJob("job-2", "h2", now, now))
+	running := sampleJob("job-3", "h3", now, now)
+	running.Status = "running"
+	_ = s.CreateJob(ctx, running)
+
+	jobs, err := s.CountJobsByStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jobs["queued"] != 2 || jobs["running"] != 1 {
+		t.Errorf("CountJobsByStatus = %v, want queued:2 running:1", jobs)
+	}
+
+	// Sessions: two live, one expired — only the live ones count as of now.
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	for _, sess := range []Session{
+		{TokenHash: "c-live1", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "c-live2", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "c-dead", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(-time.Minute)},
+	} {
+		if err := s.CreateSession(ctx, sess); err != nil {
+			t.Fatal(err)
+		}
+	}
+	active, err := s.CountActiveSessions(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != 2 {
+		t.Errorf("CountActiveSessions = %d, want 2 (expired excluded)", active)
 	}
 }
