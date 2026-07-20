@@ -54,7 +54,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
-		liveConfig: opts.LiveConfig, ready: ready,
+		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
