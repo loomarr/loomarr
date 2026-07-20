@@ -18,10 +18,9 @@ const SessionList = ({
   loading,
   onRevoke,
   onRevokeAll,
+  now = Date.now(),
   className,
 }: SessionListProps) => {
-  const now = Date.now();
-
   if (loading) {
     return <p className="text-muted-foreground text-sm">Loading sessions…</p>;
   }

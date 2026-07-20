@@ -7,6 +7,7 @@
 export * as authApi from "../generated/endpoints/auth/auth";
 export * as channelsApi from "../generated/endpoints/channels/channels";
 export * as fillerApi from "../generated/endpoints/filler/filler";
+export * as helpApi from "../generated/endpoints/help/help";
 export * as searchApi from "../generated/endpoints/search/search";
 export * as settingsApi from "../generated/endpoints/settings/settings";
 export * as setupApi from "../generated/endpoints/setup/setup";
