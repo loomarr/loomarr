@@ -4,6 +4,39 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Maintainer smoke — §21's DoD closed end to end (2026-07-20, cont.).** The walkthrough
+now runs intent → grounded proposal (real Ollama) → approve → a channel PLAYING in Tunarr,
+proven live: an 80-program kids channel from "90s Saturday morning cartoons", built by
+Loomarr's own approve→reconcile against the real Emby. Eight steps; `make smoke-livetv`
+wires+destroys a disposable Jellyfin for the one media-server-writing action. **Bugs the
+smoke found, every one CI-green beforehand — the seams BETWEEN gate-green subsystems:**
+
+1. `GET /v1/users` panic — int setting read through a string-only seam (`0dc957e`).
+2. Empty env var destroyed the operator's saved value — `.env.example` ships `LLM_MODEL=`;
+   the resolver read present-but-empty as a pin (`be860bc`).
+3. FINDING 1 — a fresh install had no way in (`/`→`/login`, no account); added the
+   unauthenticated `GET /v1/setup/state` the router guards branch on (`38f8215`).
+4. Model selection didn't hot-apply — `persist` bypassed the settings service, so the
+   choice vanished on restart (`2128db5`).
+5. `make smoke` could never exit — `go run` supervises rather than execs (`e8a956b`).
+6. Live TV wiring broken on ALL of Jellyfin — the enumerate GETs are write-only there
+   (405); moved to `GET /System/Configuration/livetv`, works on both flavors (`57209f8`).
+7. Wizard stranded operators behind un-skippable wiring steps; both wiring actions also
+   surfaced in Settings (`3f3082e`).
+8. FINDING 4 — approving never created the channel (§7 said it should); `channelForIntent`
+   (`be9cb35`).
+9. FINDING 6 — a kids channel went live with ZERO programs: discovery backfill set
+   InLibrary but dropped the rating, so an audience ceiling excluded every entry (dead
+   air, §9). Backfill now carries the rating (`bad5814`).
+
+**Open (surfaced, not taken):** FINDING 5 — the `tunarr` setup check only probes
+reachability, so an unset/foreign `transcode_config_id` reads green while every channel
+create 400s; recommend auto-selecting Tunarr's Default + validating it. Part 2 — the
+acquisition-rating gap (a not-yet-owned title has no library rating) is entangled with
+§389's stamp-once-at-create-time invariant; the clean fix is one design question: should
+an entry's rating refresh at reconcile when library presence resolves? (Also fixes the
+upgrade case where a pre-fix cached proposal, §8 24h TTL, carries empty ratings forward.)
+
 **Maintainer smoke — the §21 second half, mechanised (2026-07-20).** Branch
 `fix/quota-panic-live-smoke`. `make smoke` stands up a THROWAWAY install (own database,
 own Tunarr container) and drives it with Playwright against the real media server, TMDB
