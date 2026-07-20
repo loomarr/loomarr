@@ -52,3 +52,45 @@ delete is `?Id=`; M3U registration is fetch-validating). None contradict §6/§9
   `http://TUNARR_HOST:8000/...`, Id → `<server-assigned>`).
 - `listing_add_request.json` / `listing_add_response.json` — accepted xmltv provider add (scrubbed).
 - `guide_refresh_task.json` — the `RefreshGuide` scheduled task (Id + Key + State).
+
+---
+
+# Jellyfin capture — the enumerate endpoints DIVERGE (2026-07-20)
+
+**Captured:** 2026-07-20 against a **throwaway** Jellyfin **10.10.3** container (`make smoke-livetv`
+stands one up, wires it, and destroys it). No real media server was involved, so there was nothing
+to revert.
+
+**Why it happened:** the Phase-10 capture above was **Emby-only**, while §6 has always claimed both
+flavors. The maintainer smoke wired a real Jellyfin for the first time and the adapter failed
+immediately.
+
+## The deviation
+
+| Op | Emby 4.10 | Jellyfin 10.10.3 |
+| --- | --- | --- |
+| `GET /LiveTv/TunerHosts` | **200** | **405** |
+| `GET /LiveTv/ListingProviders` | **200** | **405** |
+| `POST /LiveTv/TunerHosts` | 200 | **200** |
+| `POST /LiveTv/ListingProviders` | 200 | **200** |
+| `GET /System/Configuration/livetv` | **200** | **200** |
+
+Jellyfin makes the lineage Live TV admin endpoints **write-only**: the POSTs the adapter already
+used are fine, but the GETs it enumerated through return 405. The §6 "enumerate-first" idempotency
+check therefore **errored on every Jellyfin install** — so the connect either failed outright or
+re-registered the tuner on each attempt, which is exactly the duplicate-tuner mess §6 set out to
+avoid.
+
+`GET /System/Configuration/livetv` returns `{TunerHosts, ListingProviders}` (plus recording/padding
+settings we neither read nor write) and answers **200 on both flavors**. The adapter now reads only
+that: one code path, no flavor branch — strictly simpler than what it replaced.
+
+**Verified on the real Emby too** (read-only GETs, nothing written): both `/LiveTv/TunerHosts` and
+`/System/Configuration/livetv` answer 200, so moving to the config endpoint loses nothing on Emby.
+
+## Fixture
+
+- `livetv_config_jellyfin.json` — a real `GET /System/Configuration/livetv` from Jellyfin 10.10.3
+  **after** wiring, so it carries a populated `TunerHosts` (m3u) and `ListingProviders` (xmltv).
+  URLs are the throwaway host's (`192.168.1.79:8001` — the smoke Tunarr); ids are Jellyfin's own.
+  Unscrubbed on purpose: nothing here is secret, and the whole server has ceased to exist.

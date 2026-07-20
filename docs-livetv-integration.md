@@ -19,7 +19,8 @@ The middle row is years of accumulated media-pipeline scar tissue (see design do
 
 ## How the wiring works
 
-- Both flavors share the admin endpoints (Emby lineage): **`POST /LiveTv/TunerHosts`** (type `m3u`, `Url` = Tunarr's playlist URL) and **`POST /LiveTv/ListingProviders`** (type `xmltv`, `Url` = Tunarr's guide URL). Loomarr's existing admin `LIBRARY_TOKEN` has sufficient privilege.
+- Both flavors share the **write** endpoints (Emby lineage): **`POST /LiveTv/TunerHosts`** (type `m3u`, `Url` = Tunarr's playlist URL) and **`POST /LiveTv/ListingProviders`** (type `xmltv`, `Path` = Tunarr's guide URL — `Path`, not `Url`; Phase-10 finding 1). Loomarr's existing admin `LIBRARY_TOKEN` has sufficient privilege.
+- They do **not** share the **read** side. `GET /LiveTv/TunerHosts` and `GET /LiveTv/ListingProviders` are Emby-only — Jellyfin 10.10.3 returns **405**, making those paths write-only there. Enumeration therefore goes through **`GET /System/Configuration/livetv`** (`{TunerHosts, ListingProviders}`), which answers 200 on both. See `internal/testkit/fixtures/livetv/FINDINGS.md`; this corrects the original claim that the admin endpoints were shared wholesale.
 - **M3U is preferred over HDHomeRun emulation for API wiring** — explicit and discovery-free, so the registration is deterministic.
 - It is **one-time**. There is no per-channel API call to the media server, ever.
 

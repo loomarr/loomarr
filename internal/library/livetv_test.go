@@ -21,27 +21,113 @@ func newLiveTVClient(url string) *library.Client {
 	return library.New(library.Emby, url, "test-token", "dev-1")
 }
 
-func TestTunerRegistered_MatchesByURL(t *testing.T) {
-	list := testkit.Fixture(t, "livetv/tuner_hosts_list.json") // has the HDHomeRun, not our M3U
+// The enumerate-first read goes through GET /System/Configuration/livetv, which is the
+// ONLY listing endpoint both flavors serve. Emby also answers the lineage
+// GET /LiveTv/{TunerHosts,ListingProviders}, but Jellyfin makes those write-only and
+// returns 405 — so reading through them broke the idempotency check on every Jellyfin
+// install (see fixtures/livetv/FINDINGS.md, Jellyfin capture).
+//
+// This asserts the PATH as well as the parse: a regression back to the lineage endpoint
+// would still pass a body-shape-only test while being broken against half the supported
+// media servers.
+func serveLiveTVConfig(t *testing.T) (*httptest.Server, *library.Client) {
+	t.Helper()
+	cfg := testkit.Fixture(t, "livetv/livetv_config_jellyfin.json")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(list)
+		if r.URL.Path != "/System/Configuration/livetv" {
+			t.Errorf("enumerate hit %s — Jellyfin 405s the /LiveTv/* listing endpoints", r.URL.Path)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = w.Write(cfg)
 	}))
-	defer srv.Close()
-	c := newLiveTVClient(srv.URL)
+	t.Cleanup(srv.Close)
+	return srv, library.New(library.Emby, srv.URL, "test-token", "dev-1")
+}
 
-	// The fixture's only tuner is an HDHomeRun at "192.168.0.11" — our M3U URL is
-	// absent, so TunerRegistered is false (drives the enumerate-first idempotency).
-	got, err := c.TunerRegistered(context.Background(), "http://TUNARR_HOST:8000/api/channels.m3u")
+func TestTunerRegistered_MatchesByURL(t *testing.T) {
+	_, c := serveLiveTVConfig(t)
+
+	// The captured config holds one m3u tuner at this exact URL.
+	got, err := c.TunerRegistered(context.Background(), "http://192.168.1.79:8001/api/channels.m3u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
+		t.Error("the captured M3U tuner should report registered")
+	}
+
+	// A URL that is absent reports false — this is what drives the enumerate-first
+	// idempotency, so getting it wrong means either a duplicate tuner or a skipped wiring.
+	got, err = c.TunerRegistered(context.Background(), "http://elsewhere:8000/api/channels.m3u")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got {
-		t.Error("M3U not in the fixture; TunerRegistered should be false")
+		t.Error("an unregistered M3U URL should report false")
 	}
-	// A URL that IS present reports true.
-	got, _ = c.TunerRegistered(context.Background(), "10.0.0.11")
+}
+
+func TestListingRegistered_MatchesByPath(t *testing.T) {
+	_, c := serveLiveTVConfig(t)
+
+	// The xmltv provider's URL lives in `Path`, not `Url` (Phase-10 finding 1).
+	got, err := c.ListingRegistered(context.Background(), "http://192.168.1.79:8001/api/xmltv.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !got {
-		t.Error("existing HDHomeRun URL should report registered")
+		t.Error("the captured xmltv provider should report registered")
+	}
+
+	got, err = c.ListingRegistered(context.Background(), "http://elsewhere:8000/api/xmltv.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got {
+		t.Error("an unregistered xmltv URL should report false")
+	}
+}
+
+// RescanTuner re-POSTs the matching host VERBATIM, so the media server treats it as an
+// update rather than a second registration. Fields we don't model (Id, TunerCount,
+// IgnoreDts…) must survive the round trip.
+func TestRescanTuner_Reposts_TheWholeHost(t *testing.T) {
+	cfg := testkit.Fixture(t, "livetv/livetv_config_jellyfin.json")
+	var posted map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/System/Configuration/livetv" {
+			_, _ = w.Write(cfg)
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/LiveTv/TunerHosts" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &posted)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	c := newLiveTVClient(srv.URL)
+
+	if err := c.RescanTuner(context.Background(), "http://192.168.1.79:8001/api/channels.m3u"); err != nil {
+		t.Fatal(err)
+	}
+	if posted["Id"] != "f31d60f93a5d4affa67b67c8a51174cc" {
+		t.Errorf("re-POST lost the host Id (%v) — the server would create a SECOND tuner", posted["Id"])
+	}
+	if posted["FriendlyName"] != "loomarr" {
+		t.Errorf("re-POST dropped unmodeled fields: %v", posted)
+	}
+
+	// An unregistered URL is a no-op, not an error, and must not POST anything.
+	posted = nil
+	if err := c.RescanTuner(context.Background(), "http://nope:8000/api/channels.m3u"); err != nil {
+		t.Fatal(err)
+	}
+	if posted != nil {
+		t.Error("rescanning an unwired tuner must not write")
 	}
 }
 
