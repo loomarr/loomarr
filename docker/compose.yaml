@@ -5,6 +5,10 @@
 #   docker compose -f docker/compose.yaml --profile sqlite up -d
 #   docker compose -f docker/compose.yaml --profile postgres up -d
 #
+# The `ai` profile is orthogonal — ADD it to run a local Ollama (the default
+# LLM_PROVIDER points at http://ollama:11434). Skip it for a hosted/external LLM:
+#   docker compose -f docker/compose.yaml --profile sqlite --profile ai up -d
+#
 # For local dev dependencies (a persistent Tunarr wired to Emby) see compose.dev.yaml.
 
 services:
