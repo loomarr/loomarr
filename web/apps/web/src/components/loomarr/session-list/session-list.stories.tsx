@@ -24,7 +24,8 @@ const session = (over: Partial<SessionBody> = {}): SessionBody => ({
 const meta = {
   title: "Loomarr/SessionList",
   component: SessionList,
-  args: { userName: "Grace", onRevoke: noop },
+  // The frozen clock the fixtures are relative to, so snapshots do not drift (§5.2).
+  args: { userName: "Grace", onRevoke: noop, now: NOW },
   decorators: [widthFrame(640)],
 } satisfies Meta<typeof SessionList>;
 

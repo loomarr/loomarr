@@ -5,6 +5,7 @@ import { useState } from "react";
 import { meQueryOptions, useAuth } from "@/auth";
 import { AppShell } from "@/components/loomarr";
 import { LoomarrEventsProvider } from "@/events";
+import { CommandPalette, useCommandShortcut } from "@/palette";
 
 // The authenticated app layout + session gate (§11). beforeLoad ensures the me query
 // (shared meQueryOptions) before any child renders — a 401 throws a redirect to /login
@@ -15,7 +16,8 @@ import { LoomarrEventsProvider } from "@/events";
 // phases. Identity comes from useAuth (real name, admin-only nav), and logout clears the
 // query cache and drops back to /login.
 const AuthedLayout = () => {
-  const [, setCommandOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  useCommandShortcut(setCommandOpen);
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -39,6 +41,7 @@ const AuthedLayout = () => {
       >
         <Outlet />
       </AppShell>
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
     </LoomarrEventsProvider>
   );
 };
