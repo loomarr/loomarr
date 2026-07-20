@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/web"
 )
 
@@ -39,6 +40,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		}
 		writeJSON(w, code, map[string]any{"ready": ok, "detail": detail})
 	})
+
+	// Prometheus exposition (§7 /metrics, §18). Unauthenticated on the LAN like
+	// the other ops probes; the metrics.Middleware below records every request.
+	mux.Handle("GET /metrics", metrics.Handler())
 
 	// Sonarr/Radarr ingest webhook (§6). Uses WEBHOOK_SECRET, not /v1 auth.
 	if opts.Ingest != nil {
@@ -97,7 +102,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		spa.ServeHTTP(w, r)
 	}))
 
-	return logRequests(log, mux)
+	// Outermost so it observes total handling time; it reads r.Pattern after the
+	// mux has matched (§18 request metrics).
+	return metrics.Middleware(logRequests(log, mux))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

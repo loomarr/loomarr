@@ -46,7 +46,7 @@ tag, not a profile (see `docs/design.md` §16).
 
 ## Layout
 
-```
+```text
 cmd/loomarr/         # main (Phase 1)
 internal/config/     # §15 env config
 internal/httpx/      # shared outbound HTTP client factory (§6 timeouts)
@@ -78,6 +78,11 @@ docker/              # deployment + dev compose, Dockerfile context
   SQLite install by replacing `/data/loomarr.db`.
 - **Probes** — `/healthz` and `/readyz` are unauthenticated on the LAN for Docker
   healthchecks and orchestrators.
+- **Metrics** — `/metrics` exposes Prometheus text (unauthenticated on the LAN). Currently:
+  HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route)
+  and the Go runtime + process collectors. The domain series in `docs/design.md` §18
+  (records-by-state, reconcile/Tunarr/LLM latency, filler, logins, sessions, queue depth)
+  are staged follow-up instrumentation.
 
 ## License
 
