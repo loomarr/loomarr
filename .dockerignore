@@ -1,0 +1,43 @@
+# Keep the build context lean and reproducible. The Go build stage does `COPY . .`
+# and the fe stage does `COPY web ./web`; everything below is either regenerated
+# inside the image (deps, the SPA build) or irrelevant to it.
+
+# VCS + editor
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Node: reinstalled in the fe stage from the lockfile
+**/node_modules
+web/.pnpm-store
+
+# Generated / build outputs (the fe stage rebuilds the SPA into internal/web/dist)
+internal/web/dist
+web/apps/web/dist
+web/apps/web/storybook-static
+**/*.tsbuildinfo
+bin/
+dist/
+
+# Test + tooling artifacts
+**/coverage
+**/test-results
+**/playwright-report
+web/apps/web/tests/**/__screenshots__
+*.db
+*.db-shm
+*.db-wal
+
+# NOTE: docs/ MUST stay — docs/embed.go does `//go:embed help/*.md` into the
+# binary (the in-app Help center), so excluding it breaks the Go build.
+# Only the non-embedded design mocks and scratch are safe to drop.
+design/
+scratchpad/
+
+# Local env / secrets — never bake into an image
+.env
+.env.*
+!.env.example
+docker/.env

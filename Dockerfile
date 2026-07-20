@@ -1,25 +1,50 @@
 # Loomarr core image (design §16): multi-stage → distroless static, non-root.
 # Pure-Go SQLite driver ⇒ CGO_ENABLED=0 ⇒ a fully static binary with no glibc,
 # no Python/ffprobe in the core (the filler design §10 depends on this).
-# The Node FE build stage is added in Phase 13 (web/ embedded at /).
+#
+# Stages: fe (build the SPA) → build (cross-compile Go, embedding the SPA) →
+# filler (the §10 ingest-tooling variant) → runtime (the default distroless image).
+
+# ---- frontend ----
+# Build the Vite/React SPA so the Go stage can embed it (internal/web/embed.go's
+# `//go:embed all:dist`). WITHOUT this stage the image embeds only the .gitkeep
+# placeholder and serves a "not built" notice — the UI would be missing. Runs on
+# the BUILD platform (native), never emulated: the output is portable static assets.
+# codegen reads the committed api/openapi.yaml (orval) — no running server needed.
+# Node 22 (not 20): pnpm 11.13 uses the built-in `node:sqlite` for its store index,
+# which only exists on Node 22.5+ — Node 20 fails with ERR_UNKNOWN_BUILTIN_MODULE.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS fe
+RUN corepack enable
+WORKDIR /src
+COPY web ./web
+COPY api/openapi.yaml ./api/openapi.yaml
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    cd web && pnpm install --frozen-lockfile \
+    && pnpm codegen \
+    && pnpm --filter @loomarr/web build
+# vite outDir is ../../../internal/web/dist ⇒ /src/internal/web/dist
 
 # ---- build ----
-# Debian-based build stage (consistent with the sidecar image); CGO_ENABLED=0
-# still yields a fully static binary, so the distroless runtime below is unaffected.
-FROM golang:1.26-bookworm AS build
+# Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
+# far faster than compiling under QEMU emulation, and correct because the static
+# pure-Go build has no arch-specific C toolchain to satisfy.
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS build
+ARG TARGETARCH
 WORKDIR /src
 # Cache modules first.
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# Overlay the built SPA over the committed .gitkeep placeholder so `go build`'s
+# embed bakes the real UI into the binary.
+COPY --from=fe /src/internal/web/dist ./internal/web/dist
 # Stamped so the running instance can say what it is (§13 Help/About, §16 upgrades).
 # Unset ARGs are fine: buildinfo falls back to Go's embedded VCS stamps, then to "dev".
 ARG VERSION=""
 ARG COMMIT=""
 ARG BUILT_AT=""
-# Static, stripped, reproducible-ish. Build tag placeholder for the embedded FE
-# (no-op until Phase 13).
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# Static, stripped, reproducible-ish.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
       -X github.com/mantonx/loomarr/internal/buildinfo.version=${VERSION} \
       -X github.com/mantonx/loomarr/internal/buildinfo.commit=${COMMIT} \
@@ -103,14 +128,33 @@ COPY --from=build /out/loomarr /loomarr
 # discovered, so the gate is a config question with an operator override (§10).
 ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
     INGEST_FFMPEG_PATH=/usr/local/bin/ffmpeg
+ARG VERSION=""
+ARG COMMIT=""
+# licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the
+# bundled GPL ffmpeg. See THIRD_PARTY_NOTICES.md for the source offer.
+LABEL org.opencontainers.image.title="loomarr-filler" \
+      org.opencontainers.image.description="Loomarr + vendored yt-dlp/ffmpeg/deno for in-app clip ingest (§10)." \
+      org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
+      org.opencontainers.image.licenses="MIT AND GPL-3.0-only" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/loomarr"]
 
 # ---- runtime ----
-# distroless static: no shell, no package manager, non-root by default.
-FROM gcr.io/distroless/static-debian12:nonroot
+# distroless static: no shell, no package manager, non-root by default. This is
+# the LAST stage, so a plain `docker build` (no --target) produces loomarr:latest.
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 COPY --from=build /out/loomarr /loomarr
+ARG VERSION=""
+ARG COMMIT=""
+LABEL org.opencontainers.image.title="loomarr" \
+      org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
+      org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
 EXPOSE 8080
 # distroless has no shell, so HEALTHCHECK uses the binary's own probe. Phase 1
 # ships /healthz; a `loomarr healthcheck` subcommand can replace this later.
