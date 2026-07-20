@@ -106,7 +106,7 @@ func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
 	defer srv.Close()
 
 	c := programmer.New(srv.URL, "", "") // EMPTY config id → resolve
-	for i := 0; i < 2; i++ {              // twice, to prove the resolve is cached
+	for i := 0; i < 2; i++ {             // twice, to prove the resolve is cached
 		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: i + 1, Name: "Ch"}); err != nil {
 			t.Fatal(err)
 		}

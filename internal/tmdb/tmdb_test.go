@@ -61,3 +61,27 @@ func TestExists_ZeroIDIsFalse(t *testing.T) {
 		t.Errorf("Exists(_,0) = %v,%v want false,nil", ok, err)
 	}
 }
+
+// ContentRating pulls the US rating from /content_ratings (tv) or /release_dates
+// (movie) — the source for an acquisition's rating before it's in the library (§389).
+// Sparse coverage is normal, so a title with none returns "" and no error.
+func TestContentRating(t *testing.T) {
+	mock := testkit.NewTMDB(t)
+	mock.SetRating(provision.Series, 1396, "TV-MA") // Breaking Bad
+	mock.SetRating(provision.Movie, 603, "R")       // The Matrix
+	c := tmdb.NewWithBase(mock.URL, "key")
+
+	if r, err := c.ContentRating(context.Background(), provision.Series, 1396); err != nil || r != "TV-MA" {
+		t.Errorf("tv rating = %q,%v want TV-MA,nil", r, err)
+	}
+	if r, err := c.ContentRating(context.Background(), provision.Movie, 603); err != nil || r != "R" {
+		t.Errorf("movie rating = %q,%v want R,nil", r, err)
+	}
+	// A title TMDB doesn't rate → "" and NO error (sparse coverage is expected).
+	if r, err := c.ContentRating(context.Background(), provision.Movie, 100); err != nil || r != "" {
+		t.Errorf("unrated title = %q,%v want \"\",nil", r, err)
+	}
+	if r, err := c.ContentRating(context.Background(), provision.Movie, 0); err != nil || r != "" {
+		t.Errorf("zero id = %q,%v want \"\",nil", r, err)
+	}
+}

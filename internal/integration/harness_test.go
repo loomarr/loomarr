@@ -79,7 +79,16 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	h.tmdb = testkit.NewTMDB(t)
 	h.tun = testkit.NewTunarr()
 	h.ollama = testkit.NewOllama(t)
-	h.tunarrStub = httptest.NewServer(http.NotFoundHandler())
+	// A reachable Tunarr: 404 everything (the GetChannel probe treats that as up),
+	// EXCEPT /api/transcode_configs, which the `tunarr` setup check now resolves — a
+	// real instance always has a Default (Phase-0 finding 3).
+	h.tunarrStub = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/transcode_configs" {
+			_, _ = w.Write([]byte(`[{"id":"default-uuid","name":"Default"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
 	t.Cleanup(h.tunarrStub.Close)
 	if h.llm = cfg.llm; h.llm == nil {
 		h.llm = testkit.NewLLM(testkit.FinalResponse(`{"picks":[]}`))

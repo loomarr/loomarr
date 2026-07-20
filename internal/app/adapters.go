@@ -65,6 +65,32 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 	return out, nil
 }
 
+// libraryRatings adapts library.Client to channels.RatingResolver: it resolves an
+// approved lineup entry's content rating by the entry's Key, for the reconcile-time
+// heal of unrated entries (§389 amendment). Reuses LookupDetail — the same query the
+// presence backfill uses — so the rating comes from the media server, not a guess.
+type libraryRatings struct{ lib *library.Client }
+
+func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
+	mt, provider, id, ok := provision.ParseKey(key)
+	if !ok {
+		return "", false, nil // an unparseable key can't be looked up; leave it unrated
+	}
+	kind := library.TMDB
+	if provider == "tvdb" {
+		kind = library.TVDB
+	}
+	lmt := library.Movie
+	if mt == provision.Series {
+		lmt = library.Series
+	}
+	d, present, err := a.lib.LookupDetail(ctx, kind, strconv.Itoa(id), lmt)
+	if err != nil || !present {
+		return "", false, err
+	}
+	return d.OfficialRating, true, nil
+}
+
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
 // discovery can mark titles the library already owns as in-library. Prefers the
 // TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb.

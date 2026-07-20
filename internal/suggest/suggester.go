@@ -57,6 +57,16 @@ type Validator interface {
 	Exists(ctx context.Context, mt provision.MediaType, tmdbID int) (bool, error)
 }
 
+// RatingSource fills the content rating for an acquisition NOT yet in the library
+// (so with no library rating) from TMDB, at proposal time (§389 amendment). Optional:
+// nil ⇒ acquisitions stay unrated until they land, then the reconciler heals them —
+// this just lets a rated acquisition survive as a pending slot under an audience
+// ceiling in the meantime instead of being dropped. TMDB coverage is sparse, so an
+// empty answer is normal.
+type RatingSource interface {
+	ContentRating(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error)
+}
+
 // Suggester turns an intent into a grounded proposal (§8). It composes the
 // provider-neutral LLM, the catalog (grounding tool + search), and the validator
 // (TMDB exists-check).
@@ -64,7 +74,15 @@ type Suggester struct {
 	llm       llm.Provider
 	catalog   *catalog.Catalog
 	validator Validator
-	maxAcq    int // default SUGGEST_MAX_ACQUISITIONS cap
+	ratings   RatingSource // optional acquisition-rating enrichment (§389)
+	maxAcq    int          // default SUGGEST_MAX_ACQUISITIONS cap
+}
+
+// WithRatings wires the acquisition-rating enrichment (§389 amendment). Returns the
+// suggester for chaining; keeps New's signature stable.
+func (s *Suggester) WithRatings(r RatingSource) *Suggester {
+	s.ratings = r
+	return s
 }
 
 // New builds a Suggester. maxAcq is the default acquisition cap (§8 quota).
@@ -279,6 +297,15 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		}
 		if !exists {
 			continue // fabricated/withdrawn id → drop
+		}
+		// Enrich the rating from TMDB (§389): the library can't rate a title it doesn't
+		// have, so without this an acquisition under an audience ceiling is dropped
+		// before it can even show as a pending slot. Best-effort — sparse TMDB coverage
+		// or a lookup error leaves it unrated, and the reconciler heals it once it lands.
+		if item.OfficialRating == "" && s.ratings != nil {
+			if r, err := s.ratings.ContentRating(ctx, cand.MediaType, cand.TMDBID); err == nil {
+				item.OfficialRating = r
+			}
 		}
 		prop.Acquisitions = append(prop.Acquisitions, item)
 		acqCount++
