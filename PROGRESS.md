@@ -4,6 +4,27 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Phase 14 — docs set, compose audit, metrics foundation (2026-07-20).** The user-facing
+help set (Quickstart, Integrations, Concepts, Member, Filler + Troubleshooting keyed to
+checklist items), rewritten lean on maintainer feedback, embedded and served at `/v1/docs`
+(`a50c57b`, deep-link routing fixed `eb09813`). Seed docs folded into `docs/` (`62d9369`);
+README got Documentation + Operations sections (`f46ddf9`).
+
+*Compose-profile audit* (`61e1f9c`): topology matched §16; three satellite docs had drifted
+— README + compose header never showed `--profile ai` (yet the default LLM points at the
+ollama service it gates), and `.env.example` called filler "a profile" when §16 is explicit
+it's the `loomarr:filler` image tag. Fixed the docs; design.md was already correct.
+
+*Metrics* — `internal/metrics` + `GET /metrics` (unauthenticated, §7), `prometheus/client_golang`
+(already sanctioned in §14 line 633, so no new-dep conversation). **Scope, honestly (no silent
+caps):** wired the RED basics — `loomarr_http_requests_total` / `_request_duration_seconds` /
+`_requests_in_flight`, labelled by method + *matched route pattern* (bounded cardinality, not
+raw path) — plus the free Go/process runtime collectors. **Deferred:** the §18 *domain* series
+(records-by-state, reconcile + Tunarr-API latency, LLM tokens, filler pod-ladder depth, logins,
+active sessions, job-queue depth, janitor purges). The pull-based gauges among them need store
+count-by-state methods, which touch the one-suite-two-backends conformance gate — a separate
+follow-up, not smuggled in here.
+
 **Maintainer smoke — §21's DoD closed end to end (2026-07-20, cont.).** The walkthrough
 now runs intent → grounded proposal (real Ollama) → approve → a channel PLAYING in Tunarr,
 proven live: an 80-program kids channel from "90s Saturday morning cartoons", built by
