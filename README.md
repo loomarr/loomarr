@@ -40,6 +40,10 @@ docker compose -f docker/compose.yaml --profile sqlite   up -d   # SQLite backen
 docker compose -f docker/compose.yaml --profile postgres up -d   # Postgres backend
 ```
 
+Add `--profile ai` to either to run a local Ollama (the default `LLM_PROVIDER`); omit it
+for a hosted or external LLM. Filler in-app clip download is the `loomarr:filler` image
+tag, not a profile (see `docs/design.md` §16).
+
 ## Layout
 
 ```
