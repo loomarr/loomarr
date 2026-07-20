@@ -70,7 +70,7 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 // TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb.
 type libraryPresence struct{ lib *library.Client }
 
-func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (string, bool, error) {
+func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
 	kind, id := library.TMDB, strconv.Itoa(tmdbID)
 	if tmdbID == 0 && tvdbID != 0 {
 		kind, id = library.TVDB, strconv.Itoa(tvdbID)
@@ -79,7 +79,17 @@ func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tm
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	return a.lib.Lookup(ctx, kind, id, lmt)
+	// LookupDetail, not Lookup: discovery needs the rating too, or a kids channel of
+	// owned-but-unrated titles resolves to nothing (§9 dead air).
+	d, present, err := a.lib.LookupDetail(ctx, kind, id, lmt)
+	if err != nil || !present {
+		return catalog.Presence{}, false, err
+	}
+	return catalog.Presence{
+		LibraryItemID:  d.ID,
+		OfficialRating: d.OfficialRating,
+		Genres:         d.Genres,
+	}, true, nil
 }
 
 // noopValidator is the acquisition validator when TMDB isn't configured: it can't

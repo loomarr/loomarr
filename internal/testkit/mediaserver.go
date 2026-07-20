@@ -76,16 +76,17 @@ func (ms *MediaServer) stubRuntime(libraryItemID string) int64 {
 	return 0
 }
 
-// stubPresent reports whether an AnyProviderIdEquals value (e.g. "tmdb.100")
-// matches a scripted stub's tmdb id — so a discovered title the catalog also owns
-// backfills as in-library consistently with what the search returned.
-func (ms *MediaServer) stubPresent(prov string) bool {
+// stubForProv returns the scripted stub matching an AnyProviderIdEquals value
+// (e.g. "tmdb.100"), so the presence check answers with that stub's full item —
+// rating and all — exactly as the real library does. This is what lets the
+// in-library backfill carry the rating through discovery (FINDING 6).
+func (ms *MediaServer) stubForProv(prov string) (SearchStub, bool) {
 	for _, s := range ms.SearchItems {
 		if s.TMDBID > 0 && strings.EqualFold(prov, "tmdb."+strconv.Itoa(s.TMDBID)) {
-			return true
+			return s, true
 		}
 	}
-	return false
+	return SearchStub{}, false
 }
 
 func (s SearchStub) matches(term string) bool {
@@ -187,12 +188,18 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			return
 		}
 		prov := r.URL.Query().Get("AnyProviderIdEquals")
+		// A scripted stub answers with ITS OWN item (carrying OfficialRating/genres),
+		// so the presence backfill picks up the rating exactly as the real Emby does
+		// with Fields=OfficialRating — the seam FINDING 6 was hiding in. A static
+		// fixture here would return the title present but unrated, masking the bug.
+		if stub, ok := ms.stubForProv(prov); ok {
+			_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":1}`, stub.itemJSON())
+			return
+		}
 		// The pinned present fixture is tmdb.16153 (Phase 0); a test may add one
-		// more present id via PresentTMDB. A scripted SearchStub's tmdb id also
-		// reports present (so in-library backfill on discovery is consistent).
+		// more present id via PresentTMDB.
 		present := strings.EqualFold(prov, "tmdb.16153") ||
-			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB)) ||
-			ms.stubPresent(prov)
+			(ms.PresentTMDB != "" && strings.EqualFold(prov, "tmdb."+ms.PresentTMDB))
 		if present {
 			_, _ = w.Write(Fixture(t, "emby/lookup_present.json"))
 			return

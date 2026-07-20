@@ -184,12 +184,20 @@ func TestCandidateKey_IgnoresOfficialRating(t *testing.T) {
 	}
 }
 
-// fakePresence marks a fixed set of tmdb ids as in-library.
-type fakePresence struct{ owned map[int]string }
+// fakePresence marks a fixed set of tmdb ids as in-library, each with its library
+// item id and — critically — its content rating, so the backfill-carries-the-rating
+// behavior can be asserted (a rating dropped here is dead air under a kids ceiling).
+type fakePresence struct {
+	owned   map[int]string
+	ratings map[int]string
+}
 
-func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (string, bool, error) {
+func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, _ int) (catalog.Presence, bool, error) {
 	id, ok := f.owned[tmdbID]
-	return id, ok, nil
+	if !ok {
+		return catalog.Presence{}, false, nil
+	}
+	return catalog.Presence{LibraryItemID: id, OfficialRating: f.ratings[tmdbID]}, true, nil
 }
 
 // In-library backfill: a DISCOVERED title the library already owns comes back
@@ -198,8 +206,12 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	lib := realLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
-	// The mock owns The Matrix (603) → discovery of Action should mark it in-library.
-	c := catalog.New(lib, tm).WithPresence(fakePresence{owned: map[int]string{603: "lib-603"}})
+	// The mock owns The Matrix (603), rated R → discovery of Action marks it in-library
+	// AND carries the rating, so audience enforcement has something to judge.
+	c := catalog.New(lib, tm).WithPresence(fakePresence{
+		owned:   map[int]string{603: "lib-603"},
+		ratings: map[int]string{603: "R"},
+	})
 
 	got, err := c.Discover(context.Background(), provision.Movie, []string{"Action"}, 1990, 1999, 20)
 	if err != nil {
@@ -216,6 +228,12 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	}
 	if !matrix.InLibrary || matrix.LibraryItemID != "lib-603" {
 		t.Errorf("owned discovered title should be backfilled in-library, got InLibrary=%v id=%q", matrix.InLibrary, matrix.LibraryItemID)
+	}
+	// The rating MUST ride along. Dropping it here is FINDING 6: a discovered-then-
+	// owned title reaches the scheduler unrated, and an audience ceiling silently
+	// excludes it — a channel that goes live playing nothing (§9 dead air).
+	if matrix.OfficialRating != "R" {
+		t.Errorf("backfill dropped the rating: got %q, want R — an owned title reaches the scheduler unrated", matrix.OfficialRating)
 	}
 	// A discovered title NOT owned stays an acquisition candidate.
 	for _, c := range got {

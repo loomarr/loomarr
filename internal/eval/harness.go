@@ -66,7 +66,7 @@ func buildProvider() llm.Provider {
 // libPresence adapts the library client to catalog.LibraryPresence (mirrors main.go).
 type libPresence struct{ lib *library.Client }
 
-func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (string, bool, error) {
+func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
 	kind, id := library.TMDB, strconv.Itoa(tmdbID)
 	if tmdbID == 0 && tvdbID != 0 {
 		kind, id = library.TVDB, strconv.Itoa(tvdbID)
@@ -75,7 +75,11 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	return a.lib.Lookup(ctx, kind, id, lmt)
+	d, present, err := a.lib.LookupDetail(ctx, kind, id, lmt)
+	if err != nil || !present {
+		return catalog.Presence{}, false, err
+	}
+	return catalog.Presence{LibraryItemID: d.ID, OfficialRating: d.OfficialRating, Genres: d.Genres}, true, nil
 }
 
 // mapIntent converts the corpus Intent to a suggest.Intent.
