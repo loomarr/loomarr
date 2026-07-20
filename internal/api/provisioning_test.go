@@ -70,6 +70,46 @@ func TestBootstrap_OnceViaAPI(t *testing.T) {
 	}
 }
 
+// GET /v1/setup/state is unauthenticated and flips exactly once bootstrap lands (§7).
+//
+// The regression it guards: the frontend is a static bundle, so with no unauthenticated
+// signal every entry point resolves to /login — and a brand-new install has no account
+// to log in with. The maintainer smoke walked into that dead end (FINDING 1); only an
+// operator who guessed the /wizard URL could escape it.
+func TestSetupState_UnauthenticatedAndFlipsOnBootstrap(t *testing.T) {
+	srv, _ := provServer(t)
+
+	state := func() bool {
+		t.Helper()
+		// The empty token argument is the assertion that matters: no session, no
+		// API_TOKEN. A 401 here would restore the dead end.
+		resp := do(t, srv, http.MethodGet, "/v1/setup/state", "", "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /v1/setup/state (no auth) → %d, want 200", resp.StatusCode)
+		}
+		var body struct {
+			Bootstrapped bool `json:"bootstrapped"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body.Bootstrapped
+	}
+
+	if state() {
+		t.Error("a fresh install reports bootstrapped=true — the wizard would be skipped")
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"owner","password":"s3cret-pw"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bootstrap → %d, want 200", resp.StatusCode)
+	}
+
+	if !state() {
+		t.Error("still bootstrapped=false after bootstrap — every visitor would be sent back to the wizard")
+	}
+}
+
 // Empty username/password → 422 (§11).
 func TestBootstrap_Invalid(t *testing.T) {
 	srv, _ := provServer(t)

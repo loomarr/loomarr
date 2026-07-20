@@ -1607,6 +1607,22 @@ components:
         - name
         - ok
       type: object
+    SetupStateOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetupStateOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        bootstrapped:
+          description: Whether an owning admin exists. False ⇒ the install is unclaimed and the wizard's bootstrap step is the only way in (§11).
+          type: boolean
+      required:
+        - bootstrapped
+      type: object
     SetupStatusOutputBody:
       additionalProperties: false
       properties:
@@ -2738,6 +2754,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Wire Tunarr as a tuner + guide
+      tags:
+        - setup
+  /v1/setup/state:
+    get:
+      description: Unauthenticated. Reports only whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13). Exposes nothing that POST /v1/setup/bootstrap doesn't already reveal by answering 409-vs-created.
+      operationId: setup-state
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStateOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Whether the install has an owning admin
       tags:
         - setup
   /v1/setup/status:

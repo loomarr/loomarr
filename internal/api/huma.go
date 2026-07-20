@@ -263,6 +263,9 @@ type Provisioner interface {
 	// Candidates lists media-server accounts available to import, each flagged with
 	// whether it is already allowlisted (§11). Read-only — listing never provisions.
 	Candidates(ctx context.Context) ([]auth.Candidate, error)
+	// Bootstrapped reports whether an owning admin exists — the one fact the
+	// unauthenticated GET /v1/setup/state exposes (§7).
+	Bootstrapped(ctx context.Context) (bool, error)
 }
 
 // LoginService verifies credentials and issues a session (Phase 9, §11).

@@ -86,6 +86,18 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 	return u, nil
 }
 
+// Bootstrapped reports whether the install has an owning admin yet — the single
+// fact behind the unauthenticated GET /v1/setup/state (§7). It is the same
+// CountAdmins gate Bootstrap enforces, exposed as a read so the frontend can send
+// a first-run visitor to the wizard rather than to a login they cannot pass.
+func (p *Provisioner) Bootstrapped(ctx context.Context) (bool, error) {
+	n, err := p.store.CountAdmins(ctx)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // Candidate is a media-server account an admin may import (§11), with whether it
 // is already allowlisted so a picker can show it as done rather than hiding it.
 type Candidate struct {

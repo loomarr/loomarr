@@ -2,7 +2,7 @@ import { authApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { meQueryOptions, useAuth } from "@/auth";
+import { meQueryOptions, needsBootstrap, useAuth } from "@/auth";
 import { AppShell } from "@/components/loomarr";
 import { LoomarrEventsProvider } from "@/events";
 import { CommandPalette, useCommandShortcut } from "@/palette";
@@ -51,6 +51,11 @@ const Route = createFileRoute("/_authed")({
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
     } catch {
+      // No session. Before sending them to a login form, ask whether this install
+      // even HAS accounts yet (§7/§13): on a fresh one, /login is a door with no key
+      // — nothing on the page says the install is unclaimed, so the owner is simply
+      // stuck. Only reached on the 401 path, so a claimed install pays nothing.
+      if (await needsBootstrap(context.queryClient)) throw redirect({ to: "/wizard" });
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
   },
