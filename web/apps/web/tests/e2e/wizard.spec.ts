@@ -86,6 +86,32 @@ test.describe("operator first-run wizard", () => {
     expect(backend.state.edits["setup.completed"]).toBe("true");
   });
 
+  // FINDING 1 from the maintainer smoke (§7 GET /v1/setup/state). An UNCLAIMED install
+  // has no account, so /login is a door with no key — and nothing on it says so. The
+  // guards must therefore branch on "is this install claimed?", not just "am I signed
+  // in?". Both entry points are covered because they are separate guards: `/` goes
+  // through _authed's 401 path, while /login is reached directly, from a bookmark or by
+  // an operator who typed it.
+  test("an unclaimed install sends the operator to the wizard, from any entry point", async ({ page }) => {
+    await installMockBackend(page, { authed: false, bootstrapped: false });
+
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/wizard/);
+
+    await page.goto("/login");
+    await expect(page, "/login must not strand the owner of an unclaimed install").toHaveURL(/\/wizard/);
+  });
+
+  // The converse, so the redirect can never become unconditional: a claimed install
+  // that is merely signed out gets the login form, not the first-run wizard.
+  test("a claimed install still shows signed-out visitors the login form", async ({ page }) => {
+    await installMockBackend(page, { authed: false, bootstrapped: true });
+
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByLabel(/username/i)).toBeVisible();
+  });
+
   test("a completed setup no longer routes / to the wizard", async ({ page }) => {
     // The other half of first-run detection: once the flag is set, the app opens normally.
     const backend = await installMockBackend(page, { authed: true });

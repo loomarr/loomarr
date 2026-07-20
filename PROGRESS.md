@@ -4,6 +4,44 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Maintainer smoke — the §21 second half, mechanised (2026-07-20).** Branch
+`fix/quota-panic-live-smoke`. `make smoke` stands up a THROWAWAY install (own database,
+own Tunarr container) and drives it with Playwright against the real media server, TMDB
+and Ollama. Not in CI and never in `make check` — those mock every external service by
+rule (§19), and this exists because the seams *between* gate-green subsystems are where
+the bugs have been. Seerr is deliberately omitted so no approval can start a real
+download. The stack stays up between runs, so the suite is stateful by design: every step
+asserts something real in both a fresh and a re-run state, because a suite that is
+normally red teaches you to ignore it.
+
+**Three real bugs in its first four steps, none of which any gate could have caught:**
+
+1. **`GET /v1/users` panicked on every load** (shipped in #36) — an int setting read
+   through a string-only seam. Unit tests all leave the config seam nil, so the typed
+   accessor was never reached. Fixed with a `LiveConfigInt` seam + a regression test that
+   wires it (`0dc957e`).
+2. **An empty env var silently destroyed the operator's saved value** (`be860bc`).
+   `.env.example` ships `LLM_MODEL=`, and the resolver read a present-but-empty var as a
+   pin. The §8.1 picker persisted `llm.model` and hot-swapped the live suggester — UI said
+   "In use", suggestions genuinely worked — while every *read* still resolved to the empty
+   pin, so the checklist said "no model selected" right after one was, and the choice
+   vanished on the next restart (verified live: `"model":""` → `"model":"qwen3.5:9b"`).
+   config-design §3 now states empty-is-unset and boot WARNs each pin it ignores. Every
+   settings unit test missed it because none had ever set a key to `""`.
+3. **FINDING 1 — a fresh install had no way in.** `/` redirected to `/login`, which no
+   credential could pass because no account existed, and nothing on the page said the
+   install was unclaimed; only an operator who guessed `/wizard` escaped. §16 has always
+   told operators to "open the UI at `/` and create the owning admin", so the code
+   contradicted the doc. Fixed with an unauthenticated `GET /v1/setup/state` (§7, doc-first)
+   that the `_authed` and `/login` guards branch on; `needsBootstrap` **fails closed**, so a
+   blip on that probe cannot drop a healthy install's users into a first-run wizard.
+   Covered by a Go handler test (unauthenticated + flips on bootstrap), FE unit tests for
+   the failure directions, and two e2e cases (unclaimed → wizard from both entry points;
+   claimed + signed out → login).
+
+Gate evidence: `make check`, `make e2e` (7/7), `make fe` unit (223/223), and `make smoke`
+against the live stack.
+
 **Phase 13.4e — the 13.4 gate (2026-07-19).** Branch `feat/fe-gate-13.4e`. Phase 13.4 is
 complete: Channels, Board, Suggest, Settings, Users, Filler, Help, and the ⌘K palette.
 
