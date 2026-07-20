@@ -248,6 +248,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames
+
+		// The §11 auto-approve grant, hard-gated by the pending-acquisition cap. The
+		// default limit is read PER CALL so raising suggest.max_acquisitions takes
+		// effect without a restart, like every other setting (config-design §3).
+		svc = svc.WithAutoApprove(suggest.NewAutoApprover(
+			st,
+			func(context.Context) int { return set.intv("suggest.max_acquisitions") },
+			time.Now,
+			log,
+		))
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)

@@ -78,12 +78,24 @@ const UserRow = ({
         <Label htmlFor={quotaId} className="text-muted-foreground text-xs">
           Quota
         </Label>
+        {/* The count against the cap. Shown only now that the cap actually BINDS
+            (§11 auto-approve): a denominator advertises a limit, and until quota was
+            enforced this would have promised one that did not exist. `effectiveQuota`
+            comes from the server so the UI never re-derives the 0-means-default rule
+            and disagrees with it. */}
+        <span
+          className="font-mono text-static-400 text-xs tabular-nums"
+          title="Pending acquisitions against the cap"
+        >
+          {`${user.pendingAcquisitions} /`}
+        </span>
         <Input
           id={quotaId}
           type="number"
           min={0}
           className="w-20"
           defaultValue={user.quota}
+          placeholder={String(user.effectiveQuota)}
           disabled={busy}
           // Commit on blur, not per keystroke: typing "12" would otherwise PATCH a
           // quota of 1 on the way to 12.

@@ -44,6 +44,16 @@ type Service struct {
 	newID     func() string
 	now       func() time.Time
 	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
+	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
+	// which is the correct default: the gate is closed unless something opens it.
+	auto *AutoApprover
+}
+
+// WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
+// composition root, where the settings service and the full store are both available.
+func (s *Service) WithAutoApprove(a *AutoApprover) *Service {
+	s.auto = a
+	return s
 }
 
 // ProgressEmitter publishes a job's generation-progress frames to the SSE bus
@@ -207,6 +217,23 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err))
 		return
 	}
+	// The auto-approve grant (§8, §11), if the requester holds one and stays within
+	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
+	// cap bounds unattended spending rather than judging the request.
+	if s.auto != nil {
+		if d, aerr := s.auto.Consider(ctx, p); aerr != nil {
+			// A failed auto-approval must not fail the JOB: the proposal exists and an
+			// admin can still act on it. Log and move on.
+			s.log.Warn("auto-approve failed; proposal stays in the queue",
+				"proposal", p.ID, "user", p.CreatedBy, "err", aerr)
+		} else if d.Approved {
+			s.log.Info("auto-approved within quota",
+				"proposal", p.ID, "user", p.CreatedBy, "enqueued", d.Enqueued)
+		} else {
+			s.log.Debug("not auto-approved", "proposal", p.ID, "reason", d.Reason)
+		}
+	}
+
 	job.Status = "done"
 	job.UpdatedAt = now
 	_ = s.store.UpdateJob(ctx, job)
