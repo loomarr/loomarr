@@ -189,35 +189,20 @@ test("5 · the §8.1 picker ranks the operator's REAL models, and selecting one 
 test("6 · wiring Tunarr to the real library makes tunarr_library green, idempotently", async ({ page }) => {
   await signIn(page);
 
-  // FINDING 2 (open): this step is UNREACHABLE until Live TV is wired.
+  // Driven from SETTINGS, not the wizard — which is the point of FINDING 2's fix.
   //
-  // The wizard resumes at the first incomplete step and offers only Back/Continue — the
-  // step list is not clickable — and `guide` (Live TV) is not skippable, so Continue
-  // stays disabled until the `livetv` check goes green. Everything after it (this step,
-  // users, first channel) is therefore gated behind it. Neither one-click wiring action
-  // has a home outside the wizard: `useTunarrConnect`/`useLivetvConnect` are each mounted
-  // exactly once, in their wizard step.
-  //
-  // That matters most for THIS step, because §6 introduced it precisely to close a
-  // silent-failure gap: without the scan, a channel's slots find no Tunarr program and
-  // degrade to dead air while the rest of the wizard reads all-green. An operator whose
-  // Live TV wiring fails — or who doesn't use their media server's Live TV at all — can
-  // never reach the guard against dead-air channels.
-  //
-  // Skipped rather than asserted-as-correct: the moment `livetv` is green this step runs
-  // for real, so it needs no edit when the gate is resolved.
-  const livetvGreen = checkNamed(await setupStatus(page), "livetv")?.ok === true;
-  test.skip(
-    !livetvGreen,
-    "FINDING 2: the library step sits behind the un-skippable Live TV step, and neither " +
-      "wiring action exists outside the wizard",
-  );
+  // This step used to be unreachable here: the wizard resumes at the first incomplete
+  // step, offers only Back/Continue with a non-clickable rail, and Live TV was not
+  // skippable — so the library wiring sat behind a check this install cannot turn green
+  // (its media server is the maintainer's real Emby, which the smoke must not write to).
+  // The wiring actions now live on Settings → Connections for the life of the install,
+  // so this needs no wizard navigation at all.
+  await page.goto("/settings/connections");
 
-  await page.goto("/wizard");
-
-  // This step points the THROWAWAY Tunarr at the operator's real Emby and triggers a
+  // The action points the THROWAWAY Tunarr at the operator's real Emby and triggers a
   // scan. It mutates only Tunarr — nothing is written to the media server, which is why
-  // it is safe here while the Live TV step (the opposite direction) is not.
+  // it is safe here while Live TV (the opposite direction) gets its own disposable
+  // Jellyfin in livetv.spec.ts.
   //
   // `tunarr_library` is the assertion, not the button's own response: the BE's own probe
   // is the only honest source of "this actually worked" (§6, never silent).
