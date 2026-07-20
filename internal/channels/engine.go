@@ -66,7 +66,13 @@ type Engine struct {
 	avail Availability
 	guide GuidePoker
 	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
-	log   *slog.Logger
+	// ratings heals an approved lineup entry that reached the scheduler UNRATED
+	// (an acquisition that hadn't landed at proposal time, or a pre-fix cached
+	// proposal — §389). Optional: nil ⇒ no heal (the entry stays unrated and a
+	// fail-closed audience gate drops it). Bounded to unrated entries, so a
+	// normally-stamped channel never calls it.
+	ratings RatingResolver
+	log     *slog.Logger
 
 	policy        schedule.PendingPolicy
 	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
@@ -114,6 +120,21 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		now:           now,
 		locks:         map[string]*sync.Mutex{},
 	}
+}
+
+// RatingResolver returns the content rating for an approved lineup entry, looked up
+// by its Key against the library. ok=false when the title isn't present yet (so
+// there's nothing to heal — it stays unrated until it lands). Implemented by a
+// composition-root adapter over library.Client.LookupDetail.
+type RatingResolver interface {
+	Rating(ctx context.Context, key provision.Key) (rating string, ok bool, err error)
+}
+
+// WithRatings wires the heal-unrated-entries resolver (§389 amendment). Returns the
+// engine for chaining; keeps New's signature stable.
+func (e *Engine) WithRatings(r RatingResolver) *Engine {
+	e.ratings = r
+	return e
 }
 
 // WithPods enables ad-pod assembly for filler gaps (§10). Without it the engine

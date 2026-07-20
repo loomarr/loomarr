@@ -7,6 +7,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/library"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
 	"github.com/mantonx/loomarr/internal/tmdb"
@@ -86,6 +87,34 @@ func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
 	}
 	if len(prop.Acquisitions) != 1 || prop.Acquisitions[0].TMDBID != 101 {
 		t.Fatalf("The Rock (101, exists on TMDB) should be a validated acquisition: %+v", prop.Acquisitions)
+	}
+}
+
+// §389 amendment: an acquisition is NOT in the library, so it has no library rating.
+// Under an audience ceiling it would be dropped before it could even show as a
+// pending slot — so the suggester enriches its rating from TMDB when a RatingSource
+// is wired. TMDB coverage is sparse, so this is best-effort; here the mock has it.
+func TestGrounding_AcquisitionRatingEnrichedFromTMDB(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	mt := testkit.NewTMDB(t)
+	mt.SetRating(provision.Movie, 101, "PG-13") // The Rock, an acquisition (not in library)
+	tm := tmdb.NewWithBase(mt.URL, "key")
+	s := suggest.New(testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "the rock"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":101,"name":"The Rock"}]}`),
+	), catalog.New(lib, tm), tm, 10).WithRatings(tm)
+
+	prop, err := s.Suggest(context.Background(), suggest.Intent{Description: "action"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Acquisitions) != 1 {
+		t.Fatalf("want one acquisition, got %+v", prop.Acquisitions)
+	}
+	if prop.Acquisitions[0].OfficialRating != "PG-13" {
+		t.Errorf("acquisition rating = %q, want PG-13 (enriched from TMDB so a ceiling can keep it)",
+			prop.Acquisitions[0].OfficialRating)
 	}
 }
 

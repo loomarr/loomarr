@@ -102,6 +102,53 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 }
 
+// fakeRatings is a RatingResolver over a fixed key→rating map (present = ok).
+type fakeRatings map[provision.Key]string
+
+func (f fakeRatings) Rating(_ context.Context, k provision.Key) (string, bool, error) {
+	r, ok := f[k]
+	return r, ok, nil
+}
+
+// §389 amendment: an entry that reached the scheduler UNRATED (an acquisition that
+// wasn't in the library at proposal time, or a pre-fix cached proposal) is healed
+// from the library at reconcile — otherwise a fail-closed audience ceiling drops it
+// and the channel plays nothing (§9 dead air, the shape of FINDING 6). The heal is
+// persisted, so it happens once.
+func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	// The library rates it TV-Y7 — within the channel's kids ceiling.
+	e := newEngine(st, tun, avail, nil).
+		WithRatings(fakeRatings{"movie:tmdb:1": "TV-Y7"})
+
+	// A channel whose approved entry has NO rating, under a TV-Y7 audience ceiling.
+	ch := store.Channel{Lineup: []schedule.LineupEntry{
+		{Key: "movie:tmdb:1", Title: "Kids Pick", DurationMs: 3600000}, // OfficialRating unset
+	}}
+	ch.ID, ch.Number, ch.Strategy, ch.Status = "cheal", 7, schedule.Sequential, schedule.StatusBuilding
+	ch.Policy = schedule.ChannelPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}
+	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := e.Reconcile(context.Background(), "cheal"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := st.GetChannel(context.Background(), "cheal")
+	// Healed AND persisted, so a future reconcile skips the lookup.
+	if got.Lineup[0].OfficialRating != "TV-Y7" {
+		t.Errorf("entry rating = %q, want TV-Y7 (healed from the library + persisted)", got.Lineup[0].OfficialRating)
+	}
+	// And the payoff: the entry survived the audience gate and became a program,
+	// rather than being dropped to dead air.
+	if n := programCount(got); n < 1 {
+		t.Errorf("channel has %d programs — the unrated entry was dropped instead of healed", n)
+	}
+}
+
 // Backfill: a pending slot is pod-filled, then the title lands and an availability
 // event places the real program IN PLACE, re-pushing the lineup.
 func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {

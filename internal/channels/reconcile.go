@@ -44,6 +44,13 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) error {
 		return nil // no longer managed (§9 ownership)
 	}
 
+	// Heal any entry that reached us UNRATED but whose title is now in the library
+	// (§389 amendment): a fail-closed audience gate would otherwise drop it, taking
+	// the channel to dead air (§9). Self-healing and bounded — only empty ratings are
+	// looked up, and the healed value is stamped back onto ch.Lineup and persisted by
+	// the UpsertChannel below, so a future reconcile skips the lookup entirely.
+	e.healRatings(ctx, ch.Lineup)
+
 	// 2: recompute desired from the approved lineup + current availability under the
 	// channel's ChannelPolicy (programming-design §3–§7). ComputeDesiredAt resolves
 	// each entry against the library (a vanished title comes back a placeholder),
@@ -150,6 +157,36 @@ func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
 	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids); err != nil && e.log != nil {
 		e.log.Warn("attach filler list (channel plays without commercials this pass)",
 			"channel", ch.ID, "err", err)
+	}
+}
+
+// healRatings fills the OfficialRating of any entry that reached the scheduler
+// unrated, looking it up against the library by the entry's Key (§389 amendment).
+// Mutates the slice in place — the caller persists ch.Lineup — so the heal is a
+// one-time repair: a future reconcile finds the entry rated and skips it.
+//
+// Bounded and best-effort by design: only empty ratings are looked up (a stamped
+// channel makes ZERO calls), a not-yet-present title (ok=false) is left unrated to
+// try again next pass, and a lookup error never fails the reconcile — the channel
+// still plays (§9 resilience).
+func (e *Engine) healRatings(ctx context.Context, lineup []schedule.LineupEntry) {
+	if e.ratings == nil {
+		return
+	}
+	for i := range lineup {
+		if lineup[i].OfficialRating != "" {
+			continue
+		}
+		raw, ok, err := e.ratings.Rating(ctx, lineup[i].Key)
+		if err != nil {
+			if e.log != nil {
+				e.log.Warn("heal rating (entry stays unrated this pass)", "key", lineup[i].Key, "err", err)
+			}
+			continue
+		}
+		if ok {
+			lineup[i].OfficialRating = schedule.NormalizeRating(raw)
+		}
 	}
 }
 

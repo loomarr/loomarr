@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/mantonx/loomarr/internal/provision"
 )
 
 // TMDB is the shared TMDB test double (CLAUDE.md: one mock per service). It
@@ -28,6 +30,22 @@ type tmdbTitle struct {
 	Date     string
 	GenreIDs []int  // §8 enrichment: TMDB genre ids (28=Action, 878=Sci-Fi, …)
 	Overview string // short synopsis the model reasons about
+	// USRating is the US content rating the /content_ratings (tv) or /release_dates
+	// (movie) endpoint reports (§389 acquisition enrichment). Empty ⇒ no US rating,
+	// which is the common sparse-coverage case a test may assert is handled.
+	USRating string
+}
+
+// SetRating scripts a title's US content rating so a test can drive the §389
+// acquisition-enrichment path. Adds the id to the relevant catalog if absent.
+func (m *TMDB) SetRating(mt provision.MediaType, tmdbID int, rating string) {
+	cat := m.movies
+	if mt == provision.Series {
+		cat = m.series
+	}
+	t := cat[tmdbID]
+	t.ID, t.USRating = tmdbID, rating
+	cat[tmdbID] = t
 }
 
 // NewTMDB starts a mock TMDB with a fixed small catalog (Speed/The Rock movies,
@@ -89,6 +107,25 @@ func NewTMDB(t testing.TB) *TMDB {
 	})
 	mux.HandleFunc("GET /tv/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m.existsHandler(w, r, m.series)
+	})
+	// Content ratings (§389 acquisition enrichment). A US entry iff the title scripts
+	// a USRating; an empty results array is the realistic sparse-coverage answer.
+	mux.HandleFunc("GET /tv/{id}/content_ratings", func(w http.ResponseWriter, r *http.Request) {
+		results := []map[string]any{}
+		if t, ok := m.series[atoiPath(r.PathValue("id"))]; ok && t.USRating != "" {
+			results = append(results, map[string]any{"iso_3166_1": "US", "rating": t.USRating})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+	})
+	mux.HandleFunc("GET /movie/{id}/release_dates", func(w http.ResponseWriter, r *http.Request) {
+		results := []map[string]any{}
+		if t, ok := m.movies[atoiPath(r.PathValue("id"))]; ok && t.USRating != "" {
+			results = append(results, map[string]any{
+				"iso_3166_1":    "US",
+				"release_dates": []map[string]any{{"certification": t.USRating}},
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
 	m.Server = httptest.NewServer(mux)
 	return m

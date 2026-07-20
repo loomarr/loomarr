@@ -230,6 +230,58 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 	}
 }
 
+// ContentRating returns the US content rating for a title — TV series via
+// /tv/{id}/content_ratings (the TV-* certifications), movies via
+// /movie/{id}/release_dates (the MPAA certification on a US release). It exists so a
+// not-yet-owned acquisition can still carry a rating: the library cannot rate a title
+// it does not have, and under an audience ceiling an unrated entry is dropped
+// (dead air, §9). Returns "" (no error) when TMDB has no US rating — sparse coverage
+// is normal, so an empty answer is a legitimate result, not a failure.
+func (c *Client) ContentRating(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	if tmdbID <= 0 {
+		return "", nil
+	}
+	if mt == provision.Series {
+		var body struct {
+			Results []struct {
+				ISO    string `json:"iso_3166_1"`
+				Rating string `json:"rating"`
+			} `json:"results"`
+		}
+		if err := c.get(ctx, "/tv/"+strconv.Itoa(tmdbID)+"/content_ratings", &body); err != nil {
+			return "", err
+		}
+		for _, r := range body.Results {
+			if r.ISO == "US" {
+				return strings.TrimSpace(r.Rating), nil
+			}
+		}
+		return "", nil
+	}
+	var body struct {
+		Results []struct {
+			ISO          string `json:"iso_3166_1"`
+			ReleaseDates []struct {
+				Certification string `json:"certification"`
+			} `json:"release_dates"`
+		} `json:"results"`
+	}
+	if err := c.get(ctx, "/movie/"+strconv.Itoa(tmdbID)+"/release_dates", &body); err != nil {
+		return "", err
+	}
+	for _, r := range body.Results {
+		if r.ISO != "US" {
+			continue
+		}
+		for _, d := range r.ReleaseDates {
+			if cert := strings.TrimSpace(d.Certification); cert != "" {
+				return cert, nil
+			}
+		}
+	}
+	return "", nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	status, err := c.getStatus(ctx, path, out)
 	if err != nil {

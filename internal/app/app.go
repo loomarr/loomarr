@@ -185,6 +185,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			Policy: schedule.PodFill, ReconcileTTL: set.dur("channel.reconcile_every"),
 			BreaksPerHour: set.intv("filler.breaks_per_hour"), // §10 commercial-break density
 		}, time.Now, log)
+		// Heal an entry that reached the scheduler unrated once its title is in the
+		// library (§389 amendment): without this a fail-closed audience ceiling drops
+		// it and the channel plays nothing (§9). Uses the same library client the
+		// availability resolver does.
+		engine.WithRatings(libraryRatings{lib: lib})
 		channelSvc = engine
 
 		// Now that the scheduler engine exists, give the emitter its backfill
@@ -245,6 +250,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			provider = ov.LLM
 		}
 		sug := suggest.New(provider, cat, validator, set.intv("suggest.max_acquisitions"))
+		// Enrich a not-yet-owned acquisition's rating from TMDB (§389), so an audience
+		// ceiling doesn't drop it before it can even show as a pending slot. Only when
+		// TMDB is configured; sparse coverage is fine (the reconciler heals from the
+		// library once it lands).
+		if tmdbClient != nil {
+			sug.WithRatings(tmdbClient)
+		}
 		svc := suggest.NewService(st, sug, suggest.Config{
 			Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
 		}, newID, time.Now, log).WithProgressEmitter(emitter) // §8 SSE type=suggestion frames

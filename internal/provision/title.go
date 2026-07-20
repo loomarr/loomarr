@@ -62,6 +62,30 @@ func (t Title) Key() (Key, error) {
 	return "", fmt.Errorf("title %q (%s) has no usable id (need TMDBID, or TVDBID for series)", t.Name, t.MediaType)
 }
 
+// ParseKey is the inverse of Title.Key: it recovers (mediaType, provider, id) from
+// a Key string ("movie:tmdb:603", "series:tvdb:71663", "series:tmdb:4229"). ok is
+// false for a malformed key. Used where a downstream call needs the raw ids back —
+// e.g. a library rating lookup for an approved lineup entry, which stores only the
+// Key. Provider is "tmdb" or "tvdb".
+func ParseKey(k Key) (mt MediaType, provider string, id int, ok bool) {
+	parts := strings.Split(string(k), ":")
+	if len(parts) != 3 {
+		return "", "", 0, false
+	}
+	mt = MediaType(parts[0])
+	if !mt.Valid() {
+		return "", "", 0, false
+	}
+	if parts[1] != "tmdb" && parts[1] != "tvdb" {
+		return "", "", 0, false
+	}
+	n, err := strconv.Atoi(parts[2])
+	if err != nil || n <= 0 {
+		return "", "", 0, false
+	}
+	return mt, parts[1], n, true
+}
+
 // KeyFromWebhook builds the same Key from the identity a Sonarr/Radarr webhook
 // carries (design §3 parity requirement; §6 fixtures). Radarr sends
 // remoteMovie.tmdbId; Sonarr sends remoteSeries.tvdbId. Passing the ids the
