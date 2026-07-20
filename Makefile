@@ -158,6 +158,9 @@ smoke: ## maintainer smoke: drive the REAL stack (starts it only if it isn't up)
 smoke-reset: ## force a true FIRST RUN (wipes the smoke database + Tunarr), then run
 	./scripts/smoke.sh reset
 
+smoke-livetv: ## Live TV wiring vs a DISPOSABLE Jellyfin (destroyed after — never touches your media server)
+	./scripts/smoke.sh livetv
+
 smoke-down: ## tear down the smoke stack (container, volume, temp database)
 	./scripts/smoke.sh down
 
