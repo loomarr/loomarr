@@ -40,7 +40,7 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
               button that would 404. */}
           <p className="mt-1 text-muted-foreground text-sm">
             Connect Emby or Jellyfin under Settings → Connections, and their accounts can be imported here.
-            Until then, users are created at first-run setup.
+            Until then, the only account is the one you created during setup.
           </p>
         </div>
       </Card>

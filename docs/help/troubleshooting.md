@@ -45,8 +45,8 @@ server consumes. Loomarr owns *what plays and when* and pushes that to Tunarr.
 
 - **Cannot reach Tunarr** — same container-networking rule as the media server. Tunarr's
   default port is 8000.
-- **Channels exist in Loomarr but not in Tunarr** — the channel hasn't reconciled yet, or
-  reconcile is failing. Force one from the channel page and read the error.
+- **Channels exist in Loomarr but not in Tunarr** — the channel hasn't rebuilt yet, or the
+  rebuild is failing. Press **Rebuild now** on the channel page and read the error.
 - **A channel exists but plays nothing** — see *Tunarr library* below: Tunarr needs its own
   media source wired and scanned, or its programs table is empty and every slot degrades
   to flex.
@@ -61,7 +61,7 @@ movie and show libraries **enabled and scanned**. Loomarr wires this for you
 program table.
 
 This check exists because its absence is a **silent** failure: without the scan, channels
-build, reconcile reports success, and every program slot quietly becomes dead air.
+build, the rebuild reports success, and every program slot quietly becomes dead air.
 
 ## LLM
 
@@ -115,7 +115,7 @@ guide: Tunarr registered as a **tuner** (M3U) and a **guide provider** (XMLTV).
   renames, or deletes propagates automatically.
 - **Channels are in Tunarr but not in the Emby/Jellyfin guide** — the tuner is wired but
   the guide hasn't refreshed. Media servers refresh on a schedule (often nightly); Loomarr
-  pokes a refresh after reconciles, but the media server decides when to honor it.
+  pokes a refresh after each rebuild, but the media server decides when to honor it.
 - **Duplicate channels in the guide** — a tuner was registered twice (manual + Loomarr).
   Remove the extras in your media server; Loomarr's connect is idempotent and won't add
   more.
@@ -133,7 +133,7 @@ guide: Tunarr registered as a **tuner** (M3U) and a **guide provider** (XMLTV).
 **Check name:** `webhook`
 
 Sonarr and Radarr tell Loomarr when a download finishes, which is what moves a title from
-*downloading* to *available* and triggers backfill into your channels.
+*downloading* to *available* and fills it into your channels.
 
 - **Never received** — add a Webhook connection in Sonarr/Radarr pointing at Loomarr's
   `/hooks/arr` URL (shown in Settings), and use its **Test** button. The check goes green on

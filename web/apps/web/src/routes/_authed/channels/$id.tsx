@@ -58,7 +58,7 @@ const ChannelDetailScreen = () => {
             the channel never goes to dead air while acquisitions land.
           </p>
           {ch.tunarrId ? (
-            <p className="font-mono text-muted-foreground text-xs">Tunarr id {ch.tunarrId}</p>
+            <p className="font-mono text-muted-foreground text-xs">Tunarr channel: {ch.tunarrId}</p>
           ) : (
             <p className="text-muted-foreground text-xs">
               Not pushed to Tunarr yet — the first reconcile creates it.
@@ -95,15 +95,14 @@ const ChannelDetailScreen = () => {
         <section className="flex flex-col gap-2">
           <h2 className="font-semibold text-lg">Commercials</h2>
           <p className="text-muted-foreground text-sm">
-            The clip pool Tunarr draws from for this channel's breaks — assembled the same way reconcile does
-            it, so this is what actually plays.
+            The clips Tunarr plays during this channel's breaks, assembled exactly as the channel builds them.
           </p>
           <ChannelPods channelId={id} />
         </section>
 
         <div className="flex items-center gap-2">
           <Button onClick={() => reconcile.mutate({ id })} disabled={reconcile.isPending}>
-            {reconcile.isPending ? "Reconciling…" : "Reconcile now"}
+            {reconcile.isPending ? "Rebuilding…" : "Rebuild now"}
           </Button>
         </div>
         {reconcile.error != null && <ErrorState error={reconcile.error} />}

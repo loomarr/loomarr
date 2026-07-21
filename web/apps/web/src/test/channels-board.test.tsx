@@ -108,7 +108,7 @@ describe("Channels", () => {
     const fetchMock = stubFetch();
     renderAt("/channels");
 
-    const buttons = await screen.findAllByRole("button", { name: /reconcile now/i });
+    const buttons = await screen.findAllByRole("button", { name: /rebuild now/i });
     await userEvent.click(buttons[0] as HTMLElement);
 
     expect(

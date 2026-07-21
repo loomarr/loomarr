@@ -11,8 +11,8 @@ describe("OnAirIndicator", () => {
   it("shows the mono label only when asked", () => {
     const { rerender } = render(<OnAirIndicator state="reconciling" />);
     // sr-only text is present but the visible mono label is not.
-    expect(screen.getAllByText("Reconciling")).toHaveLength(1);
+    expect(screen.getAllByText("Rebuilding")).toHaveLength(1);
     rerender(<OnAirIndicator state="reconciling" showLabel />);
-    expect(screen.getAllByText("Reconciling")).toHaveLength(2);
+    expect(screen.getAllByText("Rebuilding")).toHaveLength(2);
   });
 });

@@ -11,7 +11,7 @@ const NowNextStrip = ({ now, next, gap, className }: NowNextStripProps) => {
   return (
     <p className={cn("truncate text-sm", className)}>
       <span className="text-static-400">Now </span>
-      <span className="font-mono text-foreground">{gap ? "Filler" : now?.title}</span>
+      <span className="font-mono text-foreground">{gap ? "Filler break" : now?.title}</span>
       {now?.until && <span className="ml-1 font-mono text-static-400 text-xs">·til {now.until}</span>}
       {next && (
         <>

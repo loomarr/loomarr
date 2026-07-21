@@ -27,7 +27,7 @@ const SettingsChecklist = () => {
         </div>
         <Button variant="outline" onClick={() => status.refetch()} disabled={status.isFetching}>
           <RefreshCw className={status.isFetching ? "animate-spin" : undefined} aria-hidden />
-          {status.isFetching ? "Checking…" : "Re-run"}
+          {status.isFetching ? "Checking…" : "Re-run checks"}
         </Button>
       </div>
 

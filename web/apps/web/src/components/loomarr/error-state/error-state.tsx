@@ -20,7 +20,7 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
     >
       <AlertTriangle className="size-6 text-onair-300" aria-hidden />
       <div>
-        <p className="font-medium text-onair-300">{p.title ?? "Request failed"}</p>
+        <p className="font-medium text-onair-300">{p.title ?? "Something went wrong"}</p>
         {p.detail && <p className="mt-1 max-w-md text-muted-foreground text-sm">{p.detail}</p>}
       </div>
       {onRetry && (
