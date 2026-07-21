@@ -1,4 +1,5 @@
 import { channelsApi } from "@loomarr/api";
+import { humanizeRelaxation } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -75,14 +76,18 @@ const ChannelDetailScreen = () => {
                   that doesn't match the stated intent (programming-design §9). */}
               <p className="text-muted-foreground text-sm">To fill this channel, Loomarr relaxed:</p>
               <div className="flex flex-wrap gap-1.5">
-                {applied.map((step) => (
-                  // Each relaxation is structured (kind/from/to), so the chip says what
-                  // was loosened and by how much — "audience: TV-Y → TV-Y7" — rather
-                  // than an opaque label the operator has to decode.
-                  <Badge key={`${step.kind}:${step.from}->${step.to}`} variant="caution">
-                    {step.kind}: {step.from} → {step.to}
-                  </Badge>
-                ))}
+                {applied.map((step) => {
+                  // The ladder sends machine values (a camelCase kind, Go-duration
+                  // strings like "30h0m0s"); humanizeRelaxation turns them into a
+                  // readable "Episode no-repeat: 30h → 24h" so the operator isn't
+                  // decoding "episodeNoRepeat: 30h0m0s → 24h0m0s".
+                  const r = humanizeRelaxation(step);
+                  return (
+                    <Badge key={`${step.kind}:${step.from}->${step.to}`} variant="caution">
+                      {r.label}: {r.from} → {r.to}
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
           ) : (

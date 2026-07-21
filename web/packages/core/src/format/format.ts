@@ -104,6 +104,40 @@ const humanizeSettingKey = (key: string): string =>
     })
     .join(" ");
 
+// A relaxation-ladder step (§7) as a person reads it. The API sends the raw ladder
+// output — a camelCase `kind` and Go-duration `from`/`to` strings ("30h0m0s") — which
+// is a machine contract, not display text; the channel-detail chip humanizes it here
+// rather than showing the operator "episodeNoRepeat: 30h0m0s → 24h0m0s". Labels are a
+// fixed map over the four ladder kinds (relax.go): anything unknown falls back to the
+// slug so a new kind still renders (unlabeled) instead of vanishing.
+const RELAXATION_LABELS: Record<string, string> = {
+  episodeNoRepeat: "Episode no-repeat",
+  movieNoRepeat: "Movie no-repeat",
+  seriesMinGap: "Series min gap",
+  blockMax: "Block max",
+  era: "Era",
+};
+
+// Trim a Go-duration string for display: "30h0m0s" → "30h", "24h0m0s" → "24h",
+// "2h30m0s" → "2h30m", "0s" → "none". Leaves non-duration values ("8", "unbounded",
+// "1990-1999") untouched, so one function handles every from/to the ladder emits.
+const humanizeRelaxationValue = (v: string): string => {
+  if (v === "0s") return "none";
+  const m = v.match(/^(\d+h)?(\d+m)?(\d+s)?$/);
+  if (!m || (!m[1] && !m[2] && !m[3])) return v; // not a duration — leave as-is
+  // Drop zero-valued trailing units ("30h0m0s" → "30h"), but keep a leading zero unit
+  // if a later non-zero unit follows ("0h30m" stays meaningful as "30m").
+  const trimmed = [m[1], m[2], m[3]].filter((u) => u && !/^0[hms]$/.test(u)).join("");
+  return trimmed === "" ? v : trimmed;
+};
+
+// { label, from, to } for a relaxation chip: "Episode no-repeat", "30h", "24h".
+const humanizeRelaxation = (step: { kind: string; from: string; to: string }) => ({
+  label: RELAXATION_LABELS[step.kind] ?? step.kind,
+  from: humanizeRelaxationValue(step.from),
+  to: humanizeRelaxationValue(step.to),
+});
+
 export type { Instant };
 export {
   channelNumber,
@@ -116,6 +150,7 @@ export {
   formatRelative,
   formatRuntime,
   formatUntil,
+  humanizeRelaxation,
   humanizeSettingKey,
   pluralize,
 };

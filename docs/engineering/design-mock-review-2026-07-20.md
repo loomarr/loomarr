@@ -124,11 +124,15 @@ visual suite is not currently guarding the thing it's named after.
 
 ---
 
-## Not captured
+## Not captured — RESOLVED 2026-07-21 (see follow-up below)
 
-Require state or overlays not set up in this pass; no findings recorded:
-- **Channel detail** — needs a channel to exist (store was empty).
-- **Member intro**, **User drawer** — overlay states.
+The three screens flagged here needed store state / overlays the first pass hadn't set up.
+They are now captured and bucketed in the **2026-07-21 follow-up** section at the end of this
+doc. Original list, for the record:
+
+- **Channel detail** — needed a channel to exist (store was empty). → now captured.
+- **Member intro**, **User drawer** — overlay states. → now resolved (one build-gap, one
+  stale-mock).
 - **⌘K command palette** — *was* checked: good parity (centered modal, "Search titles,
   channels, help…", ESC affordance, empty-prompt copy all match).
 
@@ -138,3 +142,156 @@ Live app: `go run ./cmd/loomarr` (SQLite in scratch) on `:8080` + `pnpm --filter
 @loomarr/web dev` on `:5173` (Vite proxies `/v1` → `:8080`). Mock: `python3 -m
 http.server` over `design/` (and a patched copy) rendered via `support.js`. Both dark,
 1280×800. The app was bootstrapped (owning admin created) so wizard step 1 was passed.
+
+---
+
+## Follow-up (2026-07-21): the three uncaptured screens
+
+The first pass couldn't capture Channel detail / Member intro / User drawer because they
+need store state or overlays. To capture them **against a real backend** (not a mock, not a
+hand-built fixture), `make seed` was implemented — a gate-respecting dev-store populator
+(`cmd/seed`, see the seed note at the bottom). With it, a believable slice of state exists:
+an admin + a member, titles across every provisioning stage, a live channel with a real
+computed lineup, and a filler catalog. All three screens were then driven live (Playwright)
+and bucketed with the same lens.
+
+## 🟥 B2. Channel detail — relaxation chips render raw machine values  ·  FIXED
+
+- **Where:** `web/apps/web/src/routes/_authed/channels/$id.tsx` — the "Programming policy"
+  section rendered each relaxation-ladder step as `{step.kind}: {step.from} → {step.to}`.
+- **Symptom (captured live):** the chips read **`episodeNoRepeat: 30h0m0s → 24h0m0s`**,
+  **`seriesMinGap: 24h0m0s → 0s`**, **`blockMax: 8 → unbounded`** — a camelCase slug plus
+  Go-duration `.String()` output (`30h0m0s`) leaking straight into user-facing copy. The
+  code's own comment wanted a friendly `"audience: TV-Y → TV-Y7"`; the values weren't
+  humanized to match.
+- **Root cause / whose fix:** the API sends the raw ladder output on purpose — `Duration`
+  is a locked machine contract (`internal/schedule/policy.go`; `policy_test.go` asserts the
+  `"168h0m0s"` wire form). That transport is correct; the bug is a **view** displaying a
+  transport string verbatim. Same call as the Board fix: humanize on the side that owns
+  presentation (the FE), don't destabilize the domain serializer every other consumer relies
+  on.
+- **Fix:** `humanizeRelaxation()` in `@loomarr/core` (`packages/core/src/format/format.ts`)
+  — a fixed label map over the four ladder kinds (`episodeNoRepeat`, `seriesMinGap`,
+  `blockMax`, `era`) + a Go-duration trimmer (`30h0m0s`→`30h`, `0s`→`none`) that leaves
+  counts/ranges (`8`, `1990-1999`) untouched; unknown kinds fall back to the slug so a future
+  ladder step still renders. Chips now read **`Episode no-repeat: 30h → 24h`**, **`Series min
+  gap: 24h → none`**, **`Block max: 8 → unbounded`**. Unit-tested (`format.test.ts`), verified
+  live, Biome/tsc/vitest green.
+- **Severity:** low (cosmetic) but user-facing on a shipped page; a household operator should
+  never read `30h0m0s`.
+
+## ✅ Channel detail — mock vs build (the rest)
+
+The mock's Channel detail (desktop prototype, `route:'chdetail'`) is a **demo-scripted**
+screen and diverges from the build in ways that are *not* defects:
+
+| Aspect | Mock | Build | Verdict |
+| --- | --- | --- | --- |
+| Primary action | **`Reconcile now`** | **`Rebuild now`** | Build correct — house-vocab rename (copy sweep #50, `reconcile→rebuild`). |
+| Programming-policy / relaxations | **absent entirely** (mock has no such concept) | present (the B2 chips) | Build is *richer* — the relaxation ladder is a real §7/§9 feature the 2026-07-13 mock predates. |
+| Lineup | per-slot list w/ tvdb keys + a "simulate library drift" demo button + state badges | slot **counts** ("4 of 4 slots have a real program") + honest "Not pushed to Tunarr yet" | Different framing; build's is production-honest, mock's is a scripted story. Defensible. |
+| "Today's guide" EPG strip | horizontal program timeline + amber ad-pod blocks | **absent** | **Bucket 2 (mock authoritative)** — a genuinely nice visualization the build omits. Needs a live Tunarr guide to populate, so it's real future work, not a quick add. |
+| Reconcile log | timestamped history of reconciler actions | **absent** | **Bucket 2** — candidate future work (an activity log per channel). |
+| Pod policy editing | per-channel chips (breaks/hr, ads/pod, era, audience) | lives in Settings, not per-channel | Build's IA choice (config-design §5). Defensible. |
+
+Net: one real bug (B2, fixed); the build is ahead of the mock on the policy/relaxation story;
+the mock is ahead on the EPG strip + reconcile log (logged as Bucket-2 future work, not
+defects).
+
+## 🎨 V4. Member intro — SPECIFIED but NOT BUILT (build gap)
+
+- **Design says build it:** `docs/design.md` §13 **"Member first-run"** → *"**First login
+  intro** — one screen with the mental model: intent → proposal → submit → admin approves →
+  titles are acquired → your channel appears in the TV guide. Sets the expectation that
+  channels may start filler-heavy and improve as content lands."* The mock's `memberIntro`
+  overlay (with `introSteps` + a `memberIntroSeen` once-only flag) is the realization of this.
+- **Build:** there is **no** intro/welcome/onboarding surface — `grep -ri
+  'intro|welcome|onboard'` over `apps/web/src` finds nothing member-facing. A member's first
+  login lands them straight on a page with no mental-model primer.
+- **Scope note:** this is the *one* unbuilt item of §13's four "Member first-run" features.
+  The other three exist: **intent-writing hints** (the Suggest form's era/tone/runtime
+  placeholders), **"My proposals" status** (the Board — captured live, "5 of 7 titles have
+  landed"), and **channel-template plumbing** (`IntentInput` accepts `templates`, though the
+  named starter intents aren't wired yet — a lesser, separate gap).
+- **Verdict: Bucket 2 (prototype + design doc authoritative).** A real, well-scoped build
+  gap. The mock is right; the build is missing a documented screen.
+
+## ✅ V-drawer. User drawer — mock is stale; inline controls supersede it (verified live)
+
+- **Mock:** a slide-over **`userDrawer`** for editing one user (role, quota, an auto-approve
+  toggle w/ `drawerAutoBg`/`drawerAutoKnob` styling, sessions, disable).
+- **Build (captured live on `/users`):** **every one of those controls is present INLINE on
+  the user row** — Role dropdown, Quota spinner (with "N / cap" usage), Auto-approve checkbox,
+  Sessions button, Disable button. Self-row controls are correctly disabled (you can't demote
+  or disable yourself). The seeded member renders as **"Media-server account"** and the admin
+  as **"Local account" + a "YOU" badge** — the reworked import-only identity model
+  (`loomarr-auth-rework`) rendering exactly right.
+- **Verdict: Bucket 3 (mock stale; build correct).** The drawer's job is done inline; it's a
+  layout evolution, not a missing feature. This matches the original review's Users row
+  (which already bucketed the mock's Emby-sync users as stale). No action.
+
+## The seed (`make seed` / `cmd/seed`) — how these captures were made honestly
+
+`make seed` was a stub (`exit 1`); it's now `cmd/seed/main.go`. The binding constraint
+(CLAUDE.md do-nots): **seed goes through the real domain, never raw rows that skip a gate.**
+
+- `available`/`wanted` titles come **only** from `suggest.Approve(...)` — the single approval
+  gate — run on a hand-built submitted proposal. Seed never `UpsertTitle`s an `available`
+  record directly.
+- Board stages come from walking the pure `provision.Apply` state machine
+  (RequestAccepted → Grabbed → LibraryConfirmed).
+- The channel's `Desired` slots + `policy.applied` chips are the **real output** of
+  `schedule.ComputeDesiredAt(...)` (the reconciler's pure core over an in-memory
+  `Availability`), not hand-authored literals — so the seeded relaxations are genuinely what
+  the ladder computes.
+- The member is passwordless-by-design (imported-style): §11 has no local-member constructor,
+  so a password would misrepresent the identity model.
+
+Running it surfaced a real bug in the seed itself (a per-call `newID` minter handed the admin
+and member the same id → the member silently overwrote the admin) — caught precisely *because*
+seed drives the app instead of forging rows. Login: `admin` / `loomarr`.
+
+### Follow-ups opened here (not defects, or out of this pass's scope)
+
+- **Bucket 2:** Channel detail could gain the mock's **EPG "Today's guide" strip** and a
+  **reconcile/activity log** (both need live Tunarr guide data).
+- **Build gap:** the **Member first-login intro** screen (§13) is unbuilt.
+- **Minor gap:** named **channel-template starter intents** (§13) aren't wired (the
+  `IntentInput` mechanism exists).
+- **Dev-env:** `pnpm` isn't on PATH in non-interactive shells; `npx pnpm@<pinned>` works.
+  Worth a project run-skill.
+
+## Bonus: the wizard "set a media server flavor" bug chain (found while seeding)
+
+Driving the seeded wizard against the live backend surfaced a **four-bug chain** behind a
+single confusing symptom — the media-server Test connection reporting *"set a media server
+flavor (emby | jellyfin)"* even after a flavor was picked, and later a *401* that looked
+like a credential problem. Each was verified live and fixed; the FE one was NOT the Radix
+Select (a natural first suspicion), which propagated its value correctly all along.
+
+1. **Test ran before Save (FE).** `/v1/setup/test` evaluates *persisted* settings
+   (config-design §6 — the wizard IS settings), but the checklist step held edits in local
+   state and only saved on a separate button. Typing a flavor then Testing tested the *old*
+   (empty) value. Fix: `checklist-step.tsx` `test()` now `mutateAsync`-saves dirty edits
+   before running the check. Verified: the PATCH (carrying `library.flavor`) precedes the
+   `/v1/setup/test` POST (regression test in `wizard-router.test.tsx`).
+2. **Stale settings snapshot (BE).** The settings service refreshes its in-memory snapshot
+   only on a write; an out-of-band store change (a §18 replica write, a restore, a direct
+   edit) left it stale, and the Test probe reads the snapshot. Fix: `settingsAdapter.Test`
+   calls a new `Service.Refresh(ctx)` (public wrapper over `reload`) before probing, so a
+   Test always reflects what's persisted. Verified with a drift test: save via API → delete
+   the row under the service → Test correctly reports the cleared state, not the stale one.
+3. **Corrupt secret stored (BE).** `KindSecret` accepted *any* string verbatim, so a
+   connection-test hint string had been persisted as `library.token`, making every probe
+   `401`. Fix: a shape sanity-guard in `parseKind` (config-design §9) — trim surrounding
+   whitespace, reject internal whitespace or a <4-char value. Floor is deliberately LOW
+   because the guard also runs on the resolve/read path (a stored value self-heals to
+   default if it no longer parses), so a high floor would retroactively invalidate a real
+   short key on upgrade.
+4. **Normalization dropped on write (BE, latent).** `Patch` validated via `parse()` but
+   persisted the *raw* input — so a URL's stripped trailing slash and a secret's trimmed
+   whitespace never reached the store (stored form ≠ resolved form). Exposed by fix #3's
+   trim. Fix: `Patch` now persists `ValueString(parsed)`, the canonical value.
+
+All four are covered by `make check` (BE unit tests) + the FE regression test; config-design
+§9 gained the secret-shape and canonical-value rules (doc-first).

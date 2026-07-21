@@ -10,6 +10,7 @@ import {
   formatRelative,
   formatRuntime,
   formatUntil,
+  humanizeRelaxation,
   humanizeSettingKey,
   pluralize,
 } from "./format";
@@ -121,5 +122,49 @@ describe("pluralize", () => {
 describe("formatGiB", () => {
   it("renders the unit the model picker shows twice", () => {
     expect(formatGiB(5)).toBe("5 GiB");
+  });
+});
+
+describe("humanizeRelaxation", () => {
+  it("labels the four ladder kinds and trims Go-duration values", () => {
+    // The channel-detail chip was rendering "episodeNoRepeat: 30h0m0s → 24h0m0s"
+    // verbatim — the raw ladder output. Each kind gets a readable label; durations
+    // lose their zero units.
+    expect(humanizeRelaxation({ kind: "episodeNoRepeat", from: "30h0m0s", to: "24h0m0s" })).toEqual({
+      label: "Episode no-repeat",
+      from: "30h",
+      to: "24h",
+    });
+    expect(humanizeRelaxation({ kind: "seriesMinGap", from: "24h0m0s", to: "0s" })).toEqual({
+      label: "Series min gap",
+      from: "24h",
+      to: "none", // "0s" reads as "none" — the gap was removed entirely
+    });
+    expect(humanizeRelaxation({ kind: "blockMax", from: "8", to: "unbounded" })).toEqual({
+      label: "Block max",
+      from: "8", // a count, not a duration — passes through untouched
+      to: "unbounded",
+    });
+    expect(humanizeRelaxation({ kind: "era", from: "1990-1999", to: "1988-2001" })).toEqual({
+      label: "Era",
+      from: "1990-1999", // an era range — passes through
+      to: "1988-2001",
+    });
+  });
+
+  it("keeps meaningful sub-hour units and falls back on an unknown kind", () => {
+    // A mixed duration keeps its non-zero units ("2h30m0s" → "2h30m").
+    expect(humanizeRelaxation({ kind: "movieNoRepeat", from: "2h30m0s", to: "1h0m0s" })).toEqual({
+      label: "Movie no-repeat",
+      from: "2h30m",
+      to: "1h",
+    });
+    // A kind with no label renders the slug rather than vanishing — so a future ladder
+    // step still shows up, just unlabeled.
+    expect(humanizeRelaxation({ kind: "somethingNew", from: "5m0s", to: "0s" })).toEqual({
+      label: "somethingNew",
+      from: "5m",
+      to: "none",
+    });
   });
 });

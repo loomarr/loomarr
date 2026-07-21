@@ -29,7 +29,15 @@ const entry = (key: string, group: string) => ({
   provenance: "db",
   value: "",
 });
+// An enum entry renders as the Radix Select — the control the flavor-save regression
+// (below) exercises. `enum` fills its options; the jsdom Select shims live in test/setup.ts.
+const enumEntry = (key: string, group: string, options: string[]) => ({
+  ...entry(key, group),
+  kind: "enum",
+  enum: options,
+});
 const CONNECTION_ENTRIES = [
+  enumEntry("library.flavor", "connections.media_server", ["emby", "jellyfin"]),
   entry("media_server.url", "connections.media_server"),
   entry("tunarr.url", "connections.tunarr"),
   entry("seerr.url", "connections.requester"),
@@ -53,6 +61,11 @@ const stubFetch = (opts: { authed: boolean; setupCompleted?: boolean; checks?: u
     }
     if (u.includes("/v1/setup/status")) {
       return Promise.resolve(json({ checks: opts.checks ?? GREEN_CHECKS }, 200));
+    }
+    if (u.includes("/v1/setup/test")) {
+      // The real endpoint tests PERSISTED settings; the FE must save first, so the mock
+      // just acks. The flavor-save regression asserts the PATCH landed BEFORE this call.
+      return Promise.resolve(json({ ok: true, hint: "Connection OK" }, 200));
     }
     if (u.includes("/v1/settings")) {
       return Promise.resolve(
@@ -178,6 +191,51 @@ describe("wizard", () => {
     await userEvent.click(tunarrSubItem);
     expect(await screen.findByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+  });
+
+  it("saves the flavor before testing — Test checks what's on screen, not stale settings", async () => {
+    // Regression: /v1/setup/test evaluates PERSISTED settings, so testing an unsaved edit
+    // ran against the OLD (empty) flavor — picking "emby" then Testing showed "set a media
+    // server flavor". Test must PATCH the dirty edits first, THEN test. Asserted by call
+    // ORDER: the PATCH (carrying library.flavor) must precede the /v1/setup/test POST.
+    const fetchMock = stubFetch({
+      authed: true,
+      setupCompleted: false,
+      // Both required checks red so the wizard STAYS on the connections step (a
+      // satisfied checklist auto-advances — see the "resumes past" test below).
+      checks: [
+        { name: "media_server", ok: false, hint: "Not connected yet" },
+        { name: "tunarr", ok: false, hint: "Not connected yet" },
+      ],
+    });
+    renderAt("/wizard");
+
+    // Wait for the connections step to mount (auth + route resolve async), then open
+    // the media-server block from the rail and pick a flavor in the Radix Select.
+    await screen.findByRole("heading", { name: /connect your services/i });
+    const rail = within(screen.getByRole("complementary"));
+    await userEvent.click(rail.getByRole("button", { name: "Media server" }));
+    await userEvent.click(await screen.findByRole("combobox", { name: /library flavor/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "emby" }));
+
+    // The media-server block is the one open, so its Test button is the first.
+    const [testButton] = screen.getAllByRole("button", { name: /test connection/i });
+    if (!testButton) throw new Error("no Test connection button rendered");
+    await userEvent.click(testButton);
+
+    // The save landed before the test — and carried the flavor the operator just picked.
+    await vi.waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([u, init]) => String(u).includes("/v1/settings") && (init as RequestInit)?.method === "PATCH",
+      );
+      const testCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/test"));
+      expect(patch).toBeDefined();
+      expect(testCall).toBeDefined();
+      const patchIdx = fetchMock.mock.calls.indexOf(patch as (typeof fetchMock.mock.calls)[number]);
+      const testIdx = fetchMock.mock.calls.indexOf(testCall as (typeof fetchMock.mock.calls)[number]);
+      expect(patchIdx).toBeLessThan(testIdx);
+      expect(String((patch?.[1] as RequestInit)?.body)).toContain("library.flavor");
+    });
   });
 
   it("resumes past the checklist when only optional integrations are red", async () => {

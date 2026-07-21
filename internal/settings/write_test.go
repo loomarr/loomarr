@@ -67,6 +67,31 @@ func TestPatch_SaveInvalidUnknown(t *testing.T) {
 	}
 }
 
+// Patch persists the CANONICAL parsed value, not the raw input: a URL keeps no
+// trailing slash and a secret is trimmed IN THE STORE, so the stored form and the
+// resolved form agree (regression — Patch used to persist raw, dropping normalization).
+func TestPatch_PersistsCanonicalValue(t *testing.T) {
+	s, p := patchService(t, nil)
+	res, err := s.Patch(context.Background(), p, map[string]string{
+		"library.url":   "http://emby:8096/",    // trailing slash → stripped on store
+		"library.token": "  a1b2c3d4e5f6g7h8  ", // surrounding whitespace → trimmed on store
+	}, "matt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res {
+		if r.Status != PatchSaved {
+			t.Fatalf("%s: %+v want saved", r.Key, r)
+		}
+	}
+	if p.m["library.url"] != "http://emby:8096" {
+		t.Errorf("stored url = %q, want the trailing slash stripped in the STORE", p.m["library.url"])
+	}
+	if p.m["library.token"] != "a1b2c3d4e5f6g7h8" {
+		t.Errorf("stored token = %q, want surrounding whitespace trimmed in the STORE", p.m["library.token"])
+	}
+}
+
 // An env-pinned key returns pinned and is NOT written (config-design §3, §8).
 func TestPatch_EnvPinnedRejected(t *testing.T) {
 	s, p := patchService(t, map[string]string{"LIBRARY_URL": "http://pinned:8096"})
@@ -167,8 +192,9 @@ func TestClear_UnknownKeyAndEnvPin(t *testing.T) {
 // A bad SECRET value's problem message never echoes the value (config-design §4).
 func TestPatch_SecretProblemRedacted(t *testing.T) {
 	s := Setting{Key: "library.token", Kind: KindSecret}
-	// A secret's parse never fails on shape (any string is valid), so force the
-	// redaction path directly: patchProblem must never include the value.
+	// A secret's parse CAN now fail on shape (whitespace / too-short, §9), but this
+	// asserts the redaction of an arbitrary problem, so force the redaction path
+	// directly: patchProblem must never include the value.
 	msg := patchProblem(s, errWith("the-secret-value-leaked"))
 	if msg == "the-secret-value-leaked" || containsStr(msg, "leaked") {
 		t.Errorf("secret problem leaked the value: %q", msg)
