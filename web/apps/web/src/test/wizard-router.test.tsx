@@ -15,6 +15,27 @@ const GREEN_CHECKS = [
   { name: "llm", ok: false, hint: "No LLM configured — suggestions stay off until you connect one." },
 ];
 
+// The connections step (config-design §6) renders the settings GROUP forms, so the
+// settings list must carry a field per group for its blocks to appear. One essential key
+// each is enough to exercise the block headings + Test/verdict.
+const entry = (key: string, group: string) => ({
+  key,
+  group,
+  kind: "string",
+  doc: `${key} for tests`,
+  advanced: false,
+  secret: false,
+  set: false,
+  provenance: "db",
+  value: "",
+});
+const CONNECTION_ENTRIES = [
+  entry("media_server.url", "connections.media_server"),
+  entry("tunarr.url", "connections.tunarr"),
+  entry("seerr.url", "connections.requester"),
+  entry("tmdb.api_key", "connections.tmdb"),
+];
+
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -39,6 +60,7 @@ const stubFetch = (opts: { authed: boolean; setupCompleted?: boolean; checks?: u
           {
             features: {},
             settings: [
+              ...CONNECTION_ENTRIES,
               {
                 key: "setup.completed",
                 group: "advanced",
