@@ -56,7 +56,7 @@ const IntentInput = ({
       )}
 
       <div className="flex justify-end">
-        <Button onClick={submit} disabled={!canSubmit}>
+        <Button variant="suggest" onClick={submit} disabled={!canSubmit}>
           {submitting ? <Loader2 className="animate-spin" aria-hidden /> : <Sparkles aria-hidden />}
           {submitting ? "Suggesting…" : "Suggest a lineup"}
         </Button>

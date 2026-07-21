@@ -1,6 +1,6 @@
 import { loginSchema } from "@loomarr/core";
 import { useForm } from "@tanstack/react-form";
-import { Loader2, LogIn, Radio } from "lucide-react";
+import { Loader2, LogIn } from "lucide-react";
 import { ErrorState } from "@/components/loomarr";
 import { Button, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
@@ -30,11 +30,6 @@ const LoginForm = ({ onSubmit, isPending = false, error, className }: LoginFormP
       }}
       className={cn("flex w-full flex-col gap-5", className)}
     >
-      <div className="flex items-center gap-2">
-        <Radio className="size-5 text-signal" aria-hidden />
-        <span className="font-mono font-semibold text-md tracking-tight">Loomarr</span>
-      </div>
-
       {error != null && <ErrorState error={error} />}
 
       <form.Field name="username">

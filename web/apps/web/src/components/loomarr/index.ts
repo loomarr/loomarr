@@ -2,9 +2,11 @@
 // compose from here — `import { ChannelCard, StateBadge } from "@/components/loomarr"`.
 export * from "./app-shell";
 export * from "./approval-queue-item";
+export * from "./brand-lockup";
 export * from "./channel-card";
 export * from "./checklist-item";
 export * from "./clip-card";
+export * from "./color-bars";
 export * from "./empty-state";
 export * from "./error-state";
 export * from "./generation-progress";
@@ -23,5 +25,6 @@ export * from "./setting-field";
 export * from "./settings-fields";
 export * from "./settings-save-bar";
 export * from "./state-badge";
+export * from "./tv-static";
 export * from "./user-row";
 export * from "./wizard-shell";
