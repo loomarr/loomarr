@@ -32,12 +32,24 @@ func (s Setting) parse(raw string) (any, error) {
 	return v, nil
 }
 
+// minSecretLen is the shortest a stored secret may be (config-design §9 sanity
+// guard). Deliberately LOW: this guard also runs on the resolve/read path (a stored
+// value is re-parsed and self-heals to default if it no longer parses — resolve.go),
+// so too high a floor would retroactively invalidate a real short key already in a
+// user's store on upgrade. 4 catches a 1–3 char fragment while passing any plausible
+// key; the whitespace check is what actually catches the error-string corruption.
+const minSecretLen = 4
+
 // parseKind does the Kind-specific string→typed conversion, with no Validate
-// hook. Secrets and plain strings pass through verbatim; url normalizes.
+// hook. Plain strings and enums pass through verbatim; url normalizes; a secret
+// gets a shape sanity-check (§9) so garbage like a stray error string can't be
+// stored as a token.
 func (s Setting) parseKind(raw string) (any, error) {
 	switch s.Kind {
-	case KindString, KindSecret, KindEnum:
+	case KindString, KindEnum:
 		return raw, nil
+	case KindSecret:
+		return parseSecret(s.Key, raw)
 	case KindInt:
 		n, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil {
@@ -63,6 +75,26 @@ func (s Setting) parseKind(raw string) (any, error) {
 	default:
 		return nil, fmt.Errorf("%s: unknown kind %q", s.Key, s.Kind)
 	}
+}
+
+// parseSecret is the KindSecret sanity guard (config-design §9). Secrets have no
+// universal format, so this checks SHAPE, not content: trim surrounding whitespace
+// (a paste artifact), then reject internal whitespace or a too-short value. It never
+// echoes the value in the error — the message names the problem only (§4). An empty
+// secret is left to the caller's replace-only rule (an empty PATCH is `invalid`
+// upstream), so "" passes through here rather than tripping the length floor.
+func parseSecret(key, raw string) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", nil // replace-only is enforced in Patch; not this guard's job
+	}
+	if strings.ContainsAny(v, " \t\r\n") {
+		return "", fmt.Errorf("%s: a token or key can't contain spaces — check for a stray paste", key)
+	}
+	if len(v) < minSecretLen {
+		return "", fmt.Errorf("%s: that looks too short for a real token or key", key)
+	}
+	return v, nil
 }
 
 // normalizeURL enforces config-design §9: a scheme is required, and the trailing

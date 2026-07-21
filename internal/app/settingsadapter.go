@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -25,6 +26,7 @@ type settingsAdapter struct {
 	svc     *settings.Service
 	secrets *settings.Secrets
 	store   store.Store
+	log     *slog.Logger
 	// tests maps a check name → a live connection probe (media_server, tunarr, …).
 	// nil-safe: an unknown/unconfigured check returns a neutral "not configured".
 	tests map[string]func(ctx context.Context) (bool, string)
@@ -126,10 +128,20 @@ func (a settingsAdapter) RevealSecret(_ context.Context, name string) (string, b
 }
 
 func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) {
-	if fn, ok := a.tests[check]; ok && fn != nil {
-		return fn(ctx)
+	fn, ok := a.tests[check]
+	if !ok || fn == nil {
+		return false, "not configured"
 	}
-	return false, "not configured"
+	// Re-read the store before probing so a Test reflects what is actually PERSISTED,
+	// never a stale snapshot (config-design §3 hot-apply refreshes on write only — a §18
+	// multi-replica write, a restore, or an out-of-band edit would otherwise leave the
+	// snapshot behind, and the probe reads the snapshot). The probe closures read live via
+	// `resolved.svc`, so a refresh here propagates to them. A refresh error is non-fatal:
+	// fall through to the probe against the current snapshot rather than failing the test.
+	if err := a.svc.Refresh(ctx); err != nil {
+		a.log.Warn("settings refresh before connection test failed; probing current snapshot", "check", check, "err", err)
+	}
+	return fn(ctx)
 }
 
 // connectionTests builds the named connection probes for POST /v1/setup/test

@@ -176,5 +176,5 @@ fe-build:
 	cd $(WEB) && pnpm codegen && pnpm --filter @loomarr/web build
 
 .PHONY: seed
-seed: ## populate a dev store via the testkit (admin path only — CLAUDE.md)
-	@echo "seed: implemented alongside the store/API"; exit 1
+seed: ## populate a dev store via the real domain paths (approval gate honored — CLAUDE.md)
+	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed
