@@ -1,6 +1,6 @@
-import { titlesApi } from "@loomarr/api";
+import { type TitleDTO, TitleDTOState, titlesApi } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { journeyProgress, stageOf } from "@/board";
 import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
@@ -19,24 +19,53 @@ const STAGE_COPY = {
 
 const ORDER = ["acquiring", "waiting", "ready"] as const;
 
+// The Board needs every provisioning state at once (§4) to collapse them into the three
+// journey stages. GET /v1/titles is a single-state FILTER, though — it 400s without a
+// `state` (a deliberate, §7-pinned contract: `TestListRequiresState`, so an unbounded
+// "list all titles" can't be issued by accident) — so we fan out one query per state and
+// merge. This is the aggregation the endpoint intentionally leaves to the client.
+const STATES = Object.values(TitleDTOState);
+
 const BoardScreen = () => {
   const queryClient = useQueryClient();
-  const titles = titlesApi.useListTitles();
+  const stateQueries = useQueries({
+    queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),
+  });
   const retry = titlesApi.useEnqueueTitle({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: titlesApi.getListTitlesQueryKey() }),
+      // A re-enqueue moves the title out of `unavailable` and back to `wanted`, and the
+      // reconciler may advance it further before we refetch — so invalidate every state
+      // query, not just the two ends of the transition. Cheap at household scale.
+      onSuccess: () =>
+        Promise.all(
+          STATES.map((state) =>
+            queryClient.invalidateQueries({ queryKey: titlesApi.getListTitlesQueryKey({ state }) }),
+          ),
+        ),
     },
   });
 
-  if (titles.error) {
+  // All-or-nothing: if ANY state query fails, show the error rather than a board that
+  // silently omits a stage — a partial set would make journeyProgress misreport how far
+  // along the member actually is.
+  const failed = stateQueries.find((q) => q.error);
+  if (failed) {
     return (
       <div className="p-6">
-        <ErrorState error={titles.error} onRetry={() => titles.refetch()} />
+        <ErrorState
+          error={failed.error}
+          onRetry={() => {
+            for (const q of stateQueries) q.refetch();
+          }}
+        />
       </div>
     );
   }
 
-  const rows = titles.data?.status === 200 ? (titles.data.data.titles ?? []) : [];
+  const isLoading = stateQueries.some((q) => q.isLoading);
+  const rows: TitleDTO[] = stateQueries.flatMap((q) =>
+    q.data?.status === 200 ? (q.data.data.titles ?? []) : [],
+  );
   const progress = journeyProgress(rows);
 
   return (
@@ -52,7 +81,7 @@ const BoardScreen = () => {
       </header>
 
       <div className="flex-1 overflow-auto p-6">
-        {rows.length === 0 && !titles.isLoading ? (
+        {rows.length === 0 && !isLoading ? (
           <EmptyState
             title="Nothing in flight"
             description="Approved acquisitions show their journey here — from queued, to downloading, to playable."

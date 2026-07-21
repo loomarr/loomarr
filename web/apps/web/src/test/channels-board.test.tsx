@@ -54,7 +54,17 @@ const stubFetch = () => {
       );
     }
     if (u.includes("/v1/channels")) return Promise.resolve(json({ channels: CHANNELS }));
-    if (u.includes("/v1/titles")) return Promise.resolve(json({ titles: TITLES }));
+    // GET /v1/titles is a single-state FILTER, and it 400s without a `state` — mirror the
+    // real handler (internal/api/titles.go) rather than answering any URL, so a caller
+    // that forgets the param fails here exactly as it would in production. Returning the
+    // full set for every request is what let the Board ship a param-less call that 400s
+    // live while the suite stayed green.
+    if (u.includes("/v1/titles") && (!_init || _init.method === undefined || _init.method === "GET")) {
+      const state = new URL(u, "http://x").searchParams.get("state");
+      if (!state)
+        return Promise.resolve(json({ title: "Bad Request", detail: "state query param is required" }, 400));
+      return Promise.resolve(json({ titles: TITLES.filter((t) => t.state === state) }));
+    }
     if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: [] }));
     return Promise.resolve(json({}));
   });
