@@ -94,7 +94,7 @@ const WizardShell = ({
                           onClick={() => onSubItem?.(sub.id)}
                           aria-current={active ? "true" : undefined}
                           className={cn(
-                            "w-full rounded px-2 py-1 text-left text-sm transition-colors",
+                            "w-full cursor-pointer rounded px-2 py-1 text-left text-sm transition-colors",
                             active
                               ? "font-medium text-signal"
                               : "text-muted-foreground hover:text-foreground",

@@ -47,7 +47,7 @@ const IntentInput = ({
               type="button"
               disabled={submitting}
               onClick={() => onValueChange(t.value)}
-              className="rounded-full border border-border bg-static-800 px-3 py-1 text-static-400 text-xs transition-colors hover:border-suggest hover:text-suggest-300 disabled:opacity-50"
+              className="cursor-pointer rounded-full border border-border bg-static-800 px-3 py-1 text-static-400 text-xs transition-colors hover:border-suggest hover:text-suggest-300 disabled:opacity-50"
             >
               {t.label}
             </button>

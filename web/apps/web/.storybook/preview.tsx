@@ -4,6 +4,7 @@ import type { Preview } from "@storybook/react-vite";
 // `body` rule in styles.css paints the dark (§2.1) canvas inside the story iframe.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
+import { TooltipProvider } from "../src/components/ui";
 import "../src/styles.css";
 
 const preview: Preview = {
@@ -17,6 +18,15 @@ const preview: Preview = {
     backgrounds: { disable: true },
     controls: { expanded: true },
   },
+  // Mirror the app root (__root.tsx): a single TooltipProvider so any story with an
+  // icon-only button's tooltip renders exactly as it does in the app.
+  decorators: [
+    (Story) => (
+      <TooltipProvider>
+        <Story />
+      </TooltipProvider>
+    ),
+  ],
 };
 
 export default preview;

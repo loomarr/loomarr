@@ -110,7 +110,7 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
               type="button"
               onClick={() => onToggle?.(block.id)}
               aria-expanded={open}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800"
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800"
             >
               {/* Status dot: green when its check passes, muted otherwise. */}
               <span

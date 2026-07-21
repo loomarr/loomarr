@@ -8,7 +8,10 @@ import type { ButtonProps } from "./button.type";
 // the primitive logic (frontend-design §3, Layer 1). The signal focus ring is the
 // brand focus treatment (§2.1).
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  // cursor-pointer: Tailwind v4's Preflight no longer sets it on <button> (v3 did), so
+  // without this every button shows the default arrow. disabled:pointer-events-none
+  // already suppresses the cursor when disabled, so no disabled:cursor rule is needed.
+  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
