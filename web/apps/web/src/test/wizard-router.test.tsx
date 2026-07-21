@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -13,6 +13,27 @@ const GREEN_CHECKS = [
   { name: "media_server", ok: true },
   { name: "tunarr", ok: true },
   { name: "llm", ok: false, hint: "No LLM configured — suggestions stay off until you connect one." },
+];
+
+// The connections step (config-design §6) renders the settings GROUP forms, so the
+// settings list must carry a field per group for its blocks to appear. One essential key
+// each is enough to exercise the block headings + Test/verdict.
+const entry = (key: string, group: string) => ({
+  key,
+  group,
+  kind: "string",
+  doc: `${key} for tests`,
+  advanced: false,
+  secret: false,
+  set: false,
+  provenance: "db",
+  value: "",
+});
+const CONNECTION_ENTRIES = [
+  entry("media_server.url", "connections.media_server"),
+  entry("tunarr.url", "connections.tunarr"),
+  entry("seerr.url", "connections.requester"),
+  entry("tmdb.api_key", "connections.tmdb"),
 ];
 
 const json = (body: unknown, status: number) =>
@@ -39,6 +60,7 @@ const stubFetch = (opts: { authed: boolean; setupCompleted?: boolean; checks?: u
           {
             features: {},
             settings: [
+              ...CONNECTION_ENTRIES,
               {
                 key: "setup.completed",
                 group: "advanced",
@@ -129,7 +151,7 @@ describe("wizard", () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/setup/bootstrap"))).toBe(false);
   });
 
-  it("renders every check as words and blocks while a required one is red", async () => {
+  it("shows the connections as inline forms and blocks while a required one is red", async () => {
     stubFetch({
       authed: true,
       setupCompleted: false,
@@ -140,10 +162,21 @@ describe("wizard", () => {
     });
     renderAt("/wizard");
 
-    expect(await screen.findByText("Media server")).toBeInTheDocument();
-    expect(screen.getByText("Tunarr")).toBeInTheDocument();
-    // A failure is the BE's plain-language hint, never a stack trace (§13).
-    expect(screen.getByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
+    // Each connection is a collapsible block AND a rail sub-item (§13 sub-nav), so the
+    // names appear twice — that is the point, not a bug.
+    expect(await screen.findAllByText("Media server")).not.toHaveLength(0);
+    const rail = within(screen.getByRole("complementary"));
+    const tunarrSubItem = rail.getByRole("button", { name: "Tunarr" });
+
+    // The connections step renders the settings-group FORM, not a read-only checklist —
+    // configure in place (§6). A Test-connection button per block is the tell (there is no
+    // "Fix ↗ go to Settings" here anymore).
+    expect(screen.getAllByRole("button", { name: /test connection/i }).length).toBeGreaterThan(0);
+
+    // Opening Tunarr from the rail reveals its red verdict — the BE's plain-language hint,
+    // never a stack trace (§13) — and Continue stays disabled while a required check is red.
+    await userEvent.click(tunarrSubItem);
+    expect(await screen.findByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
   });
 

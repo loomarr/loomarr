@@ -76,6 +76,10 @@ const WizardScreen = () => {
 
   const [visited, setVisited] = useState<string | undefined>();
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
+  // Which connection block is revealed on the Connections step. Media server is open on
+  // arrival so the step never lands fully collapsed; picking the same one again closes it.
+  const [openConn, setOpenConn] = useState<string | undefined>("media_server");
+  const toggleConn = (id: string) => setOpenConn((cur) => (cur === id ? undefined : id));
 
   // Land on the right step the FIRST time. The resume point is derived from server truth,
   // so computing it before `me` / `setup/status` settle would briefly show the wrong step
@@ -101,7 +105,7 @@ const WizardScreen = () => {
       case "bootstrap":
         return <BootstrapStep onDone={() => goTo("checklist")} />;
       case "checklist":
-        return <ChecklistStep />;
+        return <ChecklistStep openId={openConn} onToggle={toggleConn} />;
       case "guide":
         return <LiveTvStep check={checkFor("livetv")} />;
       case "webhooks":
@@ -129,6 +133,10 @@ const WizardScreen = () => {
       steps={WIZARD_STEPS}
       currentId={currentId}
       statusById={statusById}
+      // The rail's connection sub-items drive (and reflect) which block is revealed. Only
+      // meaningful on the Connections step; other steps carry no subItems.
+      activeSubItem={currentId === "checklist" ? openConn : undefined}
+      onSubItem={toggleConn}
       title={copy?.title ?? step?.title ?? "Setup"}
       description={copy?.description}
       onBack={index > 0 ? () => goTo(WIZARD_STEPS[index - 1]?.id) : undefined}

@@ -207,9 +207,28 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       return json(route, { results });
     }
     if (path === "/v1/settings") {
+      // A field per connection group so the Connections step (config-design §6) renders its
+      // inline forms — otherwise the blocks are empty and the flow snapshot lies about the
+      // real UI. One essential key each is enough; the reveal/sub-nav needs the groups.
+      const connEntry = (key: string, group: string, doc: string) => ({
+        key,
+        group,
+        kind: "string",
+        doc,
+        advanced: false,
+        secret: false,
+        set: false,
+        provenance: "db" as const,
+        value: state.edits[key] ?? "",
+      });
       return json(route, {
         features: {},
         settings: [
+          connEntry("media_server.url", "connections.media_server", "Media server base URL."),
+          connEntry("media_server.token", "connections.media_server", "Media server API token."),
+          connEntry("tunarr.url", "connections.tunarr", "Tunarr base URL."),
+          connEntry("seerr.url", "connections.requester", "Seerr base URL."),
+          connEntry("tmdb.api_key", "connections.tmdb", "TMDB API key."),
           {
             key: "setup.completed",
             group: "advanced",
