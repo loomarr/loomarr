@@ -4,13 +4,13 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
-  Radio,
   Search,
   Settings,
   Sparkles,
   Tv,
   Users,
 } from "lucide-react";
+import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
@@ -36,9 +36,8 @@ const AppShell = ({
 }: AppShellProps) => (
   <div className="grid min-h-screen grid-cols-[auto_1fr] bg-background text-foreground">
     <nav aria-label="Primary" className="flex w-56 flex-col gap-1 border-border border-r bg-card px-3 py-4">
-      <div className="mb-4 flex items-center gap-2 px-2">
-        <Radio className="size-5 text-signal" aria-hidden />
-        <span className="font-mono font-semibold text-md tracking-tight">Loomarr</span>
+      <div className="mb-4 px-2">
+        <BrandLockup variant="compact" />
       </div>
 
       <button

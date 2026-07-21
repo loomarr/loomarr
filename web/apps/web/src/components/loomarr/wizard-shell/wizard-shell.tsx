@@ -1,6 +1,8 @@
-import { Check, Loader2, Radio } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Button, Card, CardContent } from "@/components/ui";
 import { cn } from "@/lib";
+import { BrandLockup } from "../brand-lockup";
+import { TvStatic } from "../tv-static";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 
 // WizardShell — the operator first-run frame (§13, config-design §6). A numbered rail
@@ -30,12 +32,14 @@ const WizardShell = ({
   busy = false,
   className,
 }: WizardShellProps) => (
-  <main className={cn("flex min-h-screen flex-col items-center bg-background px-6 py-10", className)}>
+  <main
+    className={cn("relative flex min-h-screen flex-col items-center bg-background px-6 py-10", className)}
+  >
+    <TvStatic />
     <div className="flex w-full max-w-2xl flex-col gap-8">
-      <div className="flex items-center gap-2">
-        <Radio className="size-5 text-signal" aria-hidden />
-        <span className="font-mono font-semibold text-md tracking-tight">Loomarr</span>
-        <span className="text-muted-foreground text-sm">· first-run setup</span>
+      <div className="flex flex-col items-center gap-1">
+        <BrandLockup variant="hero" />
+        <span className="text-muted-foreground text-sm">first-run setup</span>
       </div>
 
       <ol aria-label="Setup steps" className="flex flex-wrap gap-x-5 gap-y-2">
