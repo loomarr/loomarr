@@ -3,9 +3,10 @@ import { formatEpgTime } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
-import { channelHealth, channelOnAir } from "@/channels";
+import { useAuth } from "@/auth";
+import { channelHealth, channelOnAir, useTunarrReady } from "@/channels";
 import { ChannelCard, EmptyState, ErrorState } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 
 // Channels (§12) — the "is my TV working" screen. Everything here is Loomarr's own state
 // except now/next, which is Tunarr's (§6): one call serves every card, so the list costs
@@ -13,6 +14,8 @@ import { Button } from "@/components/ui";
 // `channel` SSE frames, so a reconcile finishing elsewhere updates this page.
 const ChannelsScreen = () => {
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuth();
+  const tunarrReady = useTunarrReady();
   const channels = channelsApi.useListChannels();
   const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });
 
@@ -74,7 +77,15 @@ const ChannelsScreen = () => {
               const nn = byChannel.get(ch.id);
               return (
                 <li key={ch.id} className="flex items-start gap-3">
-                  <Link to="/channels/$id" params={{ id: ch.id }} className="min-w-0 flex-1">
+                  {/* Hover feedback lives on the Link, not ChannelCard — the card is
+                      reused non-clickably on the detail page and must not look interactive
+                      there. A ring hugs the card's rounded edge without touching its border.
+                      cursor-pointer because a <Link> gets no pointer by default. */}
+                  <Link
+                    to="/channels/$id"
+                    params={{ id: ch.id }}
+                    className="min-w-0 flex-1 cursor-pointer rounded-lg outline-none ring-signal/0 transition-[box-shadow] hover:ring-2 hover:ring-static-600 focus-visible:ring-2 focus-visible:ring-ring"
+                  >
                     <ChannelCard
                       number={ch.number}
                       name={ch.name}
@@ -95,14 +106,35 @@ const ChannelsScreen = () => {
                       }
                     />
                   </Link>
-                  <Button
-                    variant="outline"
-                    onClick={() => reconcile.mutate({ id: ch.id })}
-                    disabled={reconcile.isPending}
-                    title="Rebuild this channel's lineup from what's available now"
-                  >
-                    {reconcile.isPending ? "Rebuilding…" : "Rebuild now"}
-                  </Button>
+                  {/* Rebuild pushes to Tunarr, so it's admin-only AND gated on Tunarr being
+                      connected — a disabled button with a reason beats one that only 501s. */}
+                  {isAdmin &&
+                    (tunarrReady ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => reconcile.mutate({ id: ch.id })}
+                        disabled={reconcile.isPending}
+                        title="Rebuild this channel's lineup from what's available now"
+                      >
+                        {reconcile.isPending ? "Rebuilding…" : "Rebuild now"}
+                      </Button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          {/* aria-disabled keeps it focusable so the tooltip reaches
+                              keyboard users too; the no-op onClick makes it inert. */}
+                          <Button
+                            variant="outline"
+                            aria-disabled
+                            className="opacity-50"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            Rebuild now
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Connect Tunarr in Settings to rebuild</TooltipContent>
+                      </Tooltip>
+                    ))}
                 </li>
               );
             })}

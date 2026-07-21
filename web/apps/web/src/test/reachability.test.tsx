@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 
@@ -267,13 +268,24 @@ describe("feature-gated panels mount when their flag is on", () => {
     ["/settings/users", /api token|session secret/i, "the generated-secrets panel"],
     ["/users", /import from your media server/i, "the §11 import panel"],
     ["/filler", /download clips/i, "the ingest panel"],
-    ["/channels/ch-1", /commercials/i, "the §12 pod preview"],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
     renderAt(path);
     // findAllBy, not findBy: a panel legitimately renders its name more than once (a
     // heading plus a row label). Presence is the assertion here, not uniqueness.
     const found = await screen.findAllByText(pattern, undefined, { timeout: 3000 });
+    expect(found.length).toBeGreaterThan(0);
+  });
+
+  // The §12 pod preview moved into the channel-detail "Advanced" disclosure (admin-only,
+  // collapsed) so the viewer surface stays plain-language — so reaching it now means
+  // expanding Advanced first. This still guards that the panel is WIRED, just behind the
+  // disclosure rather than always-on.
+  it("/channels/ch-1 mounts the §12 pod preview inside Advanced", async () => {
+    stubFetch();
+    renderAt("/channels/ch-1");
+    await userEvent.click(await screen.findByRole("button", { name: /advanced/i }));
+    const found = await screen.findAllByText(/commercial break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
 });

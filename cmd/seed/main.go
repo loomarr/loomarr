@@ -291,8 +291,13 @@ func seedChannel(ctx context.Context, st store.Store, intentRef string, picks []
 		Number:    42,
 		Group:     "Loomarr",
 		Strategy:  schedule.Sequential,
-		Status:    schedule.StatusLive,
-		Shuffle:   schedule.ShuffleParams{Seed: chanSeed},
+		// StatusBuilding, NOT StatusLive: seed has no Tunarr, so this channel was never
+		// pushed and has no TunarrID. `live` is only reached BY the reconcile that assigns
+		// a TunarrID — seeding `live` without one is an impossible state that renders as the
+		// contradictory "On air" + "Nothing scheduled". `building` is the honest state:
+		// created, lineup computed, awaiting its first push to Tunarr.
+		Status:  schedule.StatusBuilding,
+		Shuffle: schedule.ShuffleParams{Seed: chanSeed},
 	}
 
 	// LineupEntry carries the policy-enforcement metadata (rating/genres/year) the

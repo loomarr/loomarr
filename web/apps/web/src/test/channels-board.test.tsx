@@ -65,7 +65,16 @@ const stubFetch = () => {
         return Promise.resolve(json({ title: "Bad Request", detail: "state query param is required" }, 400));
       return Promise.resolve(json({ titles: TITLES.filter((t) => t.state === state) }));
     }
-    if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: [] }));
+    if (u.includes("/v1/settings")) {
+      // tunarr.url set → the list's Rebuild button is enabled (it's gated on Tunarr being
+      // connected, so a rebuild can't 501). Minimal entry shape the useTunarrReady hook reads.
+      return Promise.resolve(
+        json({
+          features: {},
+          settings: [{ key: "tunarr.url", set: true, provenance: "db", secret: false }],
+        }),
+      );
+    }
     return Promise.resolve(json({}));
   });
   vi.stubGlobal("fetch", mock);
