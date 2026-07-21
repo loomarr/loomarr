@@ -2,7 +2,17 @@ import { SettingEntryProvenance, SettingResultStatus } from "@loomarr/api";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core";
 import { Lock, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { Badge, Checkbox, Input, Label, Select } from "@/components/ui";
+import {
+  Badge,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import { cn } from "@/lib";
 import type { SettingFieldProps } from "./setting-field.type";
 
@@ -42,19 +52,17 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
     }
     if (entry.kind === "enum") {
       return (
-        <Select
-          id={id}
-          value={value}
-          disabled={pinned}
-          aria-describedby={describedBy}
-          aria-invalid={invalid ? "true" : undefined}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {(entry.enum ?? []).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
+        <Select value={value} disabled={pinned} onValueChange={onChange}>
+          <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={invalid ? "true" : undefined}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(entry.enum ?? []).map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       );
     }

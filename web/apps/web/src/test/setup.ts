@@ -12,3 +12,16 @@ class MockEventSource {
   close(): void {}
 }
 globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+
+// Radix primitives (Select, …) call DOM APIs jsdom doesn't implement — pointer capture,
+// scrollIntoView, ResizeObserver. Shim them so a Select can open and be driven in tests;
+// without these, opening the listbox throws "hasPointerCapture is not a function".
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};
+globalThis.ResizeObserver ??= class {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+} as unknown as typeof ResizeObserver;

@@ -5,7 +5,17 @@ import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
 import { ClipCard, EmptyState, ErrorState } from "@/components/loomarr";
-import { Button, Card, Input, Label, Select } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { IngestPanel } from "../ingest-panel";
 
@@ -113,24 +123,35 @@ const FillerPage = () => {
         </div>
         <div>
           <Label htmlFor="clip-kind">Kind</Label>
-          <Select id="clip-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">Any</option>
-            <option value="commercial">Commercial</option>
-            <option value="bumper">Bumper</option>
-            <option value="station_id">Station ID</option>
-            <option value="psa">PSA</option>
-            <option value="trailer">Trailer</option>
-            <option value="interstitial">Interstitial</option>
+          {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
+          <Select value={kind || "any"} onValueChange={(v) => setKind(v === "any" ? "" : v)}>
+            <SelectTrigger id="clip-kind">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any</SelectItem>
+              <SelectItem value="commercial">Commercial</SelectItem>
+              <SelectItem value="bumper">Bumper</SelectItem>
+              <SelectItem value="station_id">Station ID</SelectItem>
+              <SelectItem value="psa">PSA</SelectItem>
+              <SelectItem value="trailer">Trailer</SelectItem>
+              <SelectItem value="interstitial">Interstitial</SelectItem>
+            </SelectContent>
           </Select>
         </div>
         <div>
           <Label htmlFor="clip-audience">Audience</Label>
-          <Select id="clip-audience" value={audience} onChange={(e) => setAudience(e.target.value)}>
-            <option value="">Any</option>
-            <option value="kids">Kids</option>
-            <option value="family">Family</option>
-            <option value="general">General</option>
-            <option value="late_night">Late night</option>
+          <Select value={audience || "any"} onValueChange={(v) => setAudience(v === "any" ? "" : v)}>
+            <SelectTrigger id="clip-audience">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any</SelectItem>
+              <SelectItem value="kids">Kids</SelectItem>
+              <SelectItem value="family">Family</SelectItem>
+              <SelectItem value="general">General</SelectItem>
+              <SelectItem value="late_night">Late night</SelectItem>
+            </SelectContent>
           </Select>
         </div>
         <Button
