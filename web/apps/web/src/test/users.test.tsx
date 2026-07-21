@@ -89,9 +89,11 @@ describe("Users page", () => {
     renderAt("/users");
     await screen.findByText("Grace");
 
-    // Grace's row — the second Role select.
+    // Grace's row — the second Role select. Open it, then pick admin from its listbox
+    // (only the opened Select mounts its options, so the query is unambiguous).
     const roles = screen.getAllByLabelText("Role");
-    await userEvent.selectOptions(roles[1] as HTMLElement, "admin");
+    await userEvent.click(roles[1] as HTMLElement);
+    await userEvent.click(await screen.findByRole("option", { name: "admin" }));
 
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "changing a role should PATCH immediately").toBeDefined();

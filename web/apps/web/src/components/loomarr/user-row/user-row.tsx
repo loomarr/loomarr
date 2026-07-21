@@ -1,5 +1,16 @@
 import { KeyRound, MonitorSmartphone, Server } from "lucide-react";
-import { Badge, Button, Checkbox, Input, Label, Select } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import { cn } from "@/lib";
 import type { UserRowProps } from "./user-row.type";
 
@@ -61,16 +72,19 @@ const UserRow = ({
           Role
         </Label>
         <Select
-          id={roleId}
           value={user.role}
           // Self-demotion is refused: an admin who removes their own admin role cannot
           // undo it from the UI, and if they are the last admin nobody can.
           disabled={busy || isSelf}
-          title={isSelf ? "You cannot change your own role" : undefined}
-          onChange={(e) => onRoleChange?.(e.target.value as "admin" | "member")}
+          onValueChange={(v) => onRoleChange?.(v as "admin" | "member")}
         >
-          <option value="member">member</option>
-          <option value="admin">admin</option>
+          <SelectTrigger id={roleId} title={isSelf ? "You cannot change your own role" : undefined}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">member</SelectItem>
+            <SelectItem value="admin">admin</SelectItem>
+          </SelectContent>
         </Select>
       </div>
 

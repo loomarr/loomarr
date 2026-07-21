@@ -1,7 +1,17 @@
 import { type ClipDTO, fillerApi } from "@loomarr/api";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr";
-import { Button, Card, Input, Label, Select } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
 
 // ClipTagDialog — hand-correct one clip's match tags (§10). Tags are what let the
@@ -61,13 +71,18 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="tag-kind">Kind</Label>
-            <Select id="tag-kind" value={kind} onChange={(e) => setKind(e.target.value as ClipDTO["kind"])}>
-              <option value="commercial">Commercial</option>
-              <option value="bumper">Bumper</option>
-              <option value="station_id">Station ID</option>
-              <option value="psa">PSA</option>
-              <option value="trailer">Trailer</option>
-              <option value="interstitial">Interstitial</option>
+            <Select value={kind} onValueChange={(v) => setKind(v as ClipDTO["kind"])}>
+              <SelectTrigger id="tag-kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="commercial">Commercial</SelectItem>
+                <SelectItem value="bumper">Bumper</SelectItem>
+                <SelectItem value="station_id">Station ID</SelectItem>
+                <SelectItem value="psa">PSA</SelectItem>
+                <SelectItem value="trailer">Trailer</SelectItem>
+                <SelectItem value="interstitial">Interstitial</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div>
@@ -82,12 +97,19 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
           </div>
           <div>
             <Label htmlFor="tag-audience">Audience</Label>
-            <Select id="tag-audience" value={audience} onChange={(e) => setAudience(e.target.value)}>
-              <option value="">Unset</option>
-              <option value="kids">Kids</option>
-              <option value="family">Family</option>
-              <option value="general">General</option>
-              <option value="late_night">Late night</option>
+            {/* Radix reserves "" for clearing, so an "unset" sentinel stands in for the
+                empty audience and maps back to "" in state. */}
+            <Select value={audience || "unset"} onValueChange={(v) => setAudience(v === "unset" ? "" : v)}>
+              <SelectTrigger id="tag-audience">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unset">Unset</SelectItem>
+                <SelectItem value="kids">Kids</SelectItem>
+                <SelectItem value="family">Family</SelectItem>
+                <SelectItem value="general">General</SelectItem>
+                <SelectItem value="late_night">Late night</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div>
