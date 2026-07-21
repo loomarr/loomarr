@@ -86,6 +86,11 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - run: make fe-install
+      # Generate the orval API client + tokens + routes (all gitignored). Without
+      # this the Storybook/SPA builds can't resolve the generated endpoints on a
+      # clean checkout — `make fe` does this in the frontend job, but fe-visual's
+      # storybook-build does not.
+      - run: make fe-codegen
       # Both drive the pinned Playwright Docker image (the reference rasterizer,
       # §5.2), so CI and local snapshots are byte-identical.
       - name: Visual + a11y over storybook-static
