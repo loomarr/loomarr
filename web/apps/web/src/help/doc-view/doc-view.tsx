@@ -74,7 +74,7 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           onNavigate && isInternal(href) ? (
             <button
               type="button"
-              className="text-suggest-300 underline underline-offset-2"
+              className="cursor-pointer text-suggest-300 underline underline-offset-2"
               onClick={() => {
                 const { page, section } = parseDocHref(href);
                 if (page) onNavigate(page, section);

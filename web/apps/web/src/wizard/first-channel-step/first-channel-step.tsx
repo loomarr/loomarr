@@ -37,7 +37,7 @@ const FirstChannelStep = () => {
               type="button"
               disabled={complete.isPending}
               onClick={() => start(t.id)}
-              className="flex w-full items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-suggest disabled:opacity-50"
+              className="flex w-full cursor-pointer items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-suggest disabled:opacity-50"
             >
               {complete.isPending && chosen === t.id ? (
                 <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-suggest" aria-hidden />

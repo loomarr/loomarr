@@ -44,7 +44,7 @@ const IntentForm = ({ initialDescription = "", onSubmit, submitting = false }: I
       <button
         type="button"
         onClick={() => setRefining((v) => !v)}
-        className="w-fit text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+        className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
       >
         {refining ? "Hide constraints" : "Add constraints"}
       </button>

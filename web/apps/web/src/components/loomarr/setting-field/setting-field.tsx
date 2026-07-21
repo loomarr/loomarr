@@ -107,7 +107,7 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
               setReplacing(true);
               onChange("");
             }}
-            className="rounded-md border border-input px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+            className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-sm transition-colors hover:bg-accent"
           >
             Replace
           </button>

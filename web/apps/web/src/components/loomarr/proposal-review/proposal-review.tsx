@@ -1,8 +1,8 @@
 import type { ProposalItem } from "@loomarr/api";
 import { formatPercent } from "@loomarr/core";
-import { Pencil } from "lucide-react";
+import { Check, Pencil, X } from "lucide-react";
 import type { ReactNode } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
@@ -47,15 +47,20 @@ const ItemRow = ({
       {item.rationale && <p className="mt-1 text-muted-foreground text-sm">{item.rationale}</p>}
     </div>
     {onEdit && (
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0"
-        aria-label={`Swap ${item.name}`}
-        onClick={() => onEdit(item)}
-      >
-        <Pencil aria-hidden />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            aria-label={`Edit ${item.name}`}
+            onClick={() => onEdit(item)}
+          >
+            <Pencil aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit pick</TooltipContent>
+      </Tooltip>
     )}
   </li>
 );
@@ -137,9 +142,11 @@ const ProposalReview = ({
       {actionable && (
         <footer className="flex justify-end gap-2 border-border border-t pt-4">
           <Button variant="outline" onClick={onDeny} disabled={busy}>
+            <X aria-hidden />
             Deny
           </Button>
           <Button onClick={onApprove} disabled={busy}>
+            <Check aria-hidden />
             Approve & acquire
           </Button>
         </footer>

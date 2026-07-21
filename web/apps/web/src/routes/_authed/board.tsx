@@ -2,6 +2,7 @@ import { type TitleDTO, TitleDTOState, titlesApi } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { RotateCw } from "lucide-react";
 import { journeyProgress, stageOf } from "@/board";
 import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
 import { Button } from "@/components/ui";
@@ -131,6 +132,7 @@ const BoardScreen = () => {
                               })
                             }
                           >
+                            <RotateCw aria-hidden />
                             Try again
                           </Button>
                         )}

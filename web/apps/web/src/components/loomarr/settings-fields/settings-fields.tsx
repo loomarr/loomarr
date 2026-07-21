@@ -36,7 +36,7 @@ const SettingsFields = ({ entries, values, onChange, results, className }: Setti
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="w-fit text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+          className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
         >
           {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
         </button>
