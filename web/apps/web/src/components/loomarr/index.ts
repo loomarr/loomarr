@@ -12,6 +12,7 @@ export * from "./error-state";
 export * from "./generation-progress";
 export * from "./intent-input";
 export * from "./login-form";
+export * from "./login-shell";
 export * from "./model-picker";
 export * from "./now-next-strip";
 export * from "./on-air-indicator";
