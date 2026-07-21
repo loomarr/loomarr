@@ -2,8 +2,7 @@ import { authApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { meQueryOptions, needsBootstrap } from "@/auth";
-import { BrandLockup, LoginForm, TvStatic } from "@/components/loomarr";
-import { Card, CardContent } from "@/components/ui";
+import { LoginForm, LoginShell } from "@/components/loomarr";
 
 // Login — the public sign-in screen (§11, §13). An idle surface (dark broadcast frame).
 // beforeLoad bounces an already-signed-in visitor to where they were headed; the
@@ -29,19 +28,13 @@ const LoginScreen = () => {
   });
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6">
-      <TvStatic />
-      <BrandLockup variant="hero" />
-      <Card className="w-full max-w-sm">
-        <CardContent className="p-8">
-          <LoginForm
-            onSubmit={(values) => login.mutate({ data: values })}
-            isPending={login.isPending}
-            error={login.error}
-          />
-        </CardContent>
-      </Card>
-    </main>
+    <LoginShell>
+      <LoginForm
+        onSubmit={(values) => login.mutate({ data: values })}
+        isPending={login.isPending}
+        error={login.error}
+      />
+    </LoginShell>
   );
 };
 
