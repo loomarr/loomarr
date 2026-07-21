@@ -8,7 +8,7 @@ const ConnectionsSettings = () => (
     entries={useSettingsEntries()}
     blocks={[
       { group: "connections.media_server", title: "Media server", check: "media_server" },
-      { group: "connections.requester", title: "Requester", check: "requester" },
+      { group: "connections.requester", title: "Requester (Seerr)", check: "requester" },
       { group: "connections.tunarr", title: "Tunarr", check: "tunarr" },
       { group: "connections.tmdb", title: "TMDB", check: "tmdb" },
     ]}

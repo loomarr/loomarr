@@ -4,7 +4,7 @@ import { SettingsPage, useSettingsEntries } from "@/settings";
 const AdvancedSettings = () => (
   <SettingsPage
     title="Advanced"
-    description="Timeouts, retention and workers. Sensible defaults — change them when you have a reason."
+    description="Timeouts, retention, and workers. Safe defaults — change only if you need to."
     entries={useSettingsEntries()}
     blocks={[{ group: "advanced", title: "Timeouts and retention" }]}
   />

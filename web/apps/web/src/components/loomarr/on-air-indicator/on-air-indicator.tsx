@@ -14,7 +14,7 @@ const DOT: Record<OnAirState, string> = {
 const SR: Record<OnAirState, string> = {
   off: "Off air",
   live: "On air",
-  reconciling: "Reconciling",
+  reconciling: "Rebuilding",
 };
 
 const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorProps) => (

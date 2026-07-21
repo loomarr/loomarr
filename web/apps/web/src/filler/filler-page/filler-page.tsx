@@ -54,7 +54,7 @@ const FillerPage = () => {
         <PageHeading />
         <EmptyState
           title="No filler folder configured"
-          description="Point Loomarr at a folder of commercials and bumpers under Settings → Filler. Tunarr scans it directly — no media-server library involved."
+          description="Point Loomarr at a folder of commercials and bumpers under Settings → Filler. Tunarr scans it directly."
         />
       </div>
     );
@@ -162,7 +162,7 @@ const FillerPage = () => {
           // without era/audience, so they are never counted as needing work (§10).
           title="Commercials missing era, audience, or category"
         >
-          Needs tags
+          Untagged only
         </Button>
       </Card>
 

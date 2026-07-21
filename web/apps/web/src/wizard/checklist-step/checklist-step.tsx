@@ -21,7 +21,7 @@ import type { ChecklistStepProps } from "./checklist-step.type";
 const BLOCKS = [
   { id: "media_server", group: "connections.media_server", title: "Media server" },
   { id: "tunarr", group: "connections.tunarr", title: "Tunarr" },
-  { id: "requester", group: "connections.requester", title: "Requester" },
+  { id: "requester", group: "connections.requester", title: "Requester (Seerr)" },
   { id: "tmdb", group: "connections.tmdb", title: "TMDB" },
 ] as const;
 

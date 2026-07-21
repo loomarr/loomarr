@@ -39,7 +39,7 @@ describe("PodTimeline", () => {
   // answerable from the screen rather than from the logs.
   it.each([
     ["widened", "Era widened"],
-    ["audience", "Era ignored"],
+    ["audience", "Any era"],
     ["bumper_card", "Bumper only"],
   ] as const)("names the %s fallback level", (level, label) => {
     render(<PodTimeline matchLevel={level} entries={[entry("Filler", "interstitial", 15000)]} />);

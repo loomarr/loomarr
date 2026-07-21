@@ -99,8 +99,9 @@ const ChannelsScreen = () => {
                     variant="outline"
                     onClick={() => reconcile.mutate({ id: ch.id })}
                     disabled={reconcile.isPending}
+                    title="Rebuild this channel's lineup from what's available now"
                   >
-                    Reconcile now
+                    {reconcile.isPending ? "Rebuilding…" : "Rebuild now"}
                   </Button>
                 </li>
               );

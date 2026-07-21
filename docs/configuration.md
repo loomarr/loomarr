@@ -9,60 +9,60 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `library.flavor` (`LIBRARY_FLAVOR`) | enum | — | Media server flavor. Selects the auth-header shape (Emby X-Emby-Token vs Jellyfin MediaBrowser). _(one of: emby \| jellyfin)_ |
+| `library.flavor` (`LIBRARY_FLAVOR`) | enum | — | Emby or Jellyfin. They sign in differently, so Loomarr needs to know which one you run. _(one of: emby \| jellyfin)_ |
 | `library.url` (`LIBRARY_URL`) | url | — | Media server base URL, e.g. http://emby:8096. |
-| `library.token` (`LIBRARY_TOKEN`) | secret | (secret) | Media server API token (Emby/Jellyfin). Grants read + Live-TV wiring. |
-| `season.precision` (`SEASON_PRECISION`) | enum | `series` | Acquisition granularity for series: whole series (default) or per-season. _(advanced; one of: series \| seasons)_ |
+| `library.token` (`LIBRARY_TOKEN`) | secret | (secret) | An API key from your media server. Lets Loomarr read your library and set up the TV guide. |
+| `season.precision` (`SEASON_PRECISION`) | enum | `series` | When adding a series, get the whole show (default) or just the seasons you asked for. _(advanced; one of: series \| seasons)_ |
 
 ## Connections — Requester
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `seerr.url` (`SEERR_URL`) | url | — | Seerr base URL, e.g. http://seerr:5055. Enables acquisitions (or use the direct Sonarr/Radarr pair). _(required for acquisition)_ |
-| `seerr.api_key` (`SEERR_API_KEY`) | secret | (secret) | Seerr API key (X-Api-Key header). |
-| `sonarr.url` (`SONARR_URL`) | url | — | Direct Sonarr base URL (alternative to Seerr for TV acquisitions). _(advanced)_ |
-| `sonarr.api_key` (`SONARR_API_KEY`) | secret | (secret) | Direct Sonarr API key. _(advanced)_ |
-| `radarr.url` (`RADARR_URL`) | url | — | Direct Radarr base URL (alternative to Seerr for movie acquisitions). _(advanced)_ |
-| `radarr.api_key` (`RADARR_API_KEY`) | secret | (secret) | Direct Radarr API key. _(advanced)_ |
+| `seerr.url` (`SEERR_URL`) | url | — | Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles (or connect Sonarr and Radarr directly below). _(required for acquisition)_ |
+| `seerr.api_key` (`SEERR_API_KEY`) | secret | (secret) | Your Seerr API key. |
+| `sonarr.url` (`SONARR_URL`) | url | — | Sonarr address, if you'd rather connect it directly than go through Seerr (for TV). _(advanced)_ |
+| `sonarr.api_key` (`SONARR_API_KEY`) | secret | (secret) | Your Sonarr API key. _(advanced)_ |
+| `radarr.url` (`RADARR_URL`) | url | — | Radarr address, if you'd rather connect it directly than go through Seerr (for movies). _(advanced)_ |
+| `radarr.api_key` (`RADARR_API_KEY`) | secret | (secret) | Your Radarr API key. _(advanced)_ |
 
 ## Connections — Tunarr
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `tunarr.url` (`TUNARR_URL`) | url | — | Tunarr base URL, e.g. http://tunarr:8000. Where channels are pushed. |
-| `tunarr.api_key` (`TUNARR_API_KEY`) | secret | (secret) | Tunarr API key (optional on 1.3.8 — Phase-0 finding). |
-| `tunarr.transcode_config_id` (`TUNARR_TRANSCODE_CONFIG_ID`) | string | — | Tunarr transcode-config uuid created channels reference (empty → resolve the instance Default, §9). _(advanced)_ |
+| `tunarr.url` (`TUNARR_URL`) | url | — | Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels. |
+| `tunarr.api_key` (`TUNARR_API_KEY`) | secret | (secret) | Tunarr API key. Usually not needed — leave blank unless your Tunarr requires one. |
+| `tunarr.transcode_config_id` (`TUNARR_TRANSCODE_CONFIG_ID`) | string | — | Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default. _(advanced)_ |
 
 ## Connections — TMDB
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | TMDB API key. Grounds suggestions — required when the suggester is enabled. _(required for suggestions)_ |
+| `tmdb.api_key` (`TMDB_API_KEY`) | secret | (secret) | A free TMDB API key. Needed for AI channel suggestions. _(required for suggestions)_ |
 
 ## AI
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `llm.provider` (`LLM_PROVIDER`) | enum | `ollama` | LLM provider. Selects the client (ollama vs OpenAI-compatible). An in-app pick (§8.1) overrides this. _(required for suggestions; one of: ollama \| openai)_ |
-| `llm.url` (`LLM_URL`) | url | — | LLM base URL. For openai, the OpenAI-compatible base (…/v1); for ollama, its own host. |
-| `llm.model` (`LLM_MODEL`) | string | — | LLM model id (e.g. qwen3:8b). An in-app pick (§8.1) overrides this. |
-| `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | LLM API key (read when provider=openai). In-app hosted picks store per-provider keys; never echoed by any API. |
-| `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Auto-approve suggested acquisitions (bypasses the human approval gate — off by default, §8). _(advanced)_ |
-| `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | Cap on acquisitions per suggestion (the §8 quota). |
+| `llm.provider` (`LLM_PROVIDER`) | enum | `ollama` | Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings. _(required for suggestions; one of: ollama \| openai)_ |
+| `llm.url` (`LLM_URL`) | url | — | The AI's address. For an OpenAI-compatible service, the base URL ending in /v1; for Ollama, its own host. |
+| `llm.model` (`LLM_MODEL`) | string | — | Which AI model to use (e.g. qwen3:8b). You can also pick one in the AI settings. |
+| `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for a hosted AI service (not needed for a local Ollama). Never shown again after saving. |
+| `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Automatically approve suggested downloads, with no review step. Off by default. _(advanced)_ |
+| `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |
 
 ## Channels & playback
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `sched.default_strategy` (`SCHED_DEFAULT_STRATEGY`) | enum | `shuffle` | Default per-channel scheduling strategy when a channel doesn't specify one. _(one of: sequential \| shuffle)_ |
-| `sched.backfill` (`SCHED_BACKFILL`) | enum | `stable` | How the sweep places newly-available acquisitions: stable (in place) or reshuffle. _(one of: stable \| reshuffle)_ |
-| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | Periodic channel reconcile sweep interval (§9). |
+| `sched.default_strategy` (`SCHED_DEFAULT_STRATEGY`) | enum | `shuffle` | How channels order their programs by default, unless a channel sets its own. _(one of: sequential \| shuffle)_ |
+| `sched.backfill` (`SCHED_BACKFILL`) | enum | `stable` | When new titles arrive, keep the lineup order (stable) or reshuffle it. _(one of: stable \| reshuffle)_ |
+| `channel.reconcile_every` (`CHANNEL_RECONCILE_EVERY`) | duration | `10m` | How often Loomarr rebuilds channels to pick up newly-available content. |
 | `sched.episode_norepeat` (`SCHED_EPISODE_NOREPEAT`) | duration | `168h` | Default no-repeat window for a series' episodes (per-channel overridable). |
 | `sched.movie_norepeat` (`SCHED_MOVIE_NOREPEAT`) | duration | `720h` | Default no-repeat window for movies (per-channel overridable). |
 | `sched.series_min_gap` (`SCHED_SERIES_MIN_GAP`) | duration | `2h` | Default minimum gap between two episodes of the same series (per-channel overridable). |
 | `sched.block_max` (`SCHED_BLOCK_MAX`) | int | `2` | Default max consecutive programs from one series before another must air (per-channel overridable). |
-| `sched.ordering` (`SCHED_ORDERING`) | enum | `syndication` | Default policy ordering mode (per-channel overridable). Omitted per channel → the channel's Strategy. _(one of: sequential \| shuffle \| syndication)_ |
-| `seasonal.mode` (`SEASONAL_MODE`) | enum | `auto` | Default seasonal handling (per-channel overridable): off, auto (boost/bench), or exclusive. _(one of: off \| auto \| exclusive)_ |
+| `sched.ordering` (`SCHED_ORDERING`) | enum | `syndication` | Default program order (per-channel overridable). If a channel sets none, it uses its own strategy. _(one of: sequential \| shuffle \| syndication)_ |
+| `seasonal.mode` (`SEASONAL_MODE`) | enum | `auto` | How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season. _(one of: off \| auto \| exclusive)_ |
 
 ## Filler / commercials
 
@@ -73,32 +73,32 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
-| `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Min seconds before a filler clip may repeat (Tunarr filler-list attach). _(advanced)_ |
-| `filler.weight` (`FILLER_WEIGHT`) | int | `1` | Relative draw weight across multiple filler-lists. _(advanced)_ |
-| `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Path to the yt-dlp binary. Set by the loomarr:filler image; empty disables ingest. _(advanced)_ |
-| `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Path to the ffmpeg binary (yt-dlp needs it to merge video+audio streams). _(advanced)_ |
+| `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
+| `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
+| `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Where the yt-dlp program lives. The loomarr:filler image sets this; empty means clip downloading is off. _(advanced)_ |
+| `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |
 | `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |
-| `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | Wall-clock ceiling for one ingest source, so a wedged fetch can't hold a worker forever. _(advanced)_ |
+| `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | How long one download may run before it's stopped, so a stuck fetch can't block others. _(advanced)_ |
 
 ## Users & security
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `session.ttl` (`SESSION_TTL`) | duration | `720h` | Session lifetime before re-login (§11). |
-| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | Secure-cookie policy: auto (infer from request), always, or never (dev only). _(one of: auto \| always \| never)_ |
-| `user.sync_every` (`USER_SYNC_EVERY`) | duration | `1h` | How often to sync users from the media server (§11). _(advanced)_ |
+| `session.ttl` (`SESSION_TTL`) | duration | `720h` | How long you stay signed in before needing to log in again. |
+| `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
+| `user.sync_every` (`USER_SYNC_EVERY`) | duration | `1h` | How often Loomarr refreshes imported users from your media server. _(advanced)_ |
 
 ## Advanced
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long a 'wanted' title is retried before give-up (§4). |
-| `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a 'downloading' title waits for the import webhook before give-up (§4). |
-| `reconcile.every` (`RECONCILE_EVERY`) | duration | `5m` | Provisioning reconcile tick interval (§7). |
-| `job.workers` (`JOB_WORKERS`) | int | `2` | Suggester worker-pool size (§8). |
-| `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | Per-suggestion-job timeout (§8). |
-| `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long completed jobs are kept before the janitor prunes them (§5). |
-| `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long proposals are kept before pruning (§5). |
-| `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional external event target (fired on terminal title transitions). |
-| `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | First-run wizard completed; until set, / routes to the wizard (config-design §6). _(advanced)_ |
+| `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
+| `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
+| `reconcile.every` (`RECONCILE_EVERY`) | duration | `5m` | How often Loomarr checks on in-progress downloads. |
+| `job.workers` (`JOB_WORKERS`) | int | `2` | How many channel suggestions can be worked on at once. |
+| `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | How long one channel suggestion may run before it's stopped. |
+| `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
+| `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
+| `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip. |
+| `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 

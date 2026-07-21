@@ -24,12 +24,12 @@ A proposal does nothing until an **admin approves** it. Approval is the only pla
 resources get spent: it starts the downloads and **creates the channel**. Members can
 suggest and review; only admins approve.
 
-## Backfill
+## Filling in
 
 Titles move **wanted → downloading → available**. A channel is built from what's available
 *now*; anything missing becomes a **pending** slot filled with commercials, and is swapped
-for the real program **the moment it lands**. The channel improves itself — that's
-backfill.
+for the real program **the moment it lands**. The channel improves itself as content
+arrives — Loomarr calls this *filling in*.
 
 ## Series
 
