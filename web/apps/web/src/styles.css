@@ -37,6 +37,9 @@
 /* Expose the semantic layer to Tailwind so bg-card / text-muted-foreground / etc.
    resolve (Tailwind v4 @theme inline convention). */
 @theme inline {
+  /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
+     keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
+  --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -81,6 +84,28 @@ body {
   }
   50% {
     opacity: 0.4;
+  }
+}
+
+/* TV snow — the CRT flicker on idle surfaces (§1). The noise layer is oversized (200%),
+   and this steps its transform between offsets so the grain JUMPS a few times a second
+   (real static flickers; it doesn't drift). Applied only via `motion-safe:animate-tv-snow`,
+   and the reduced-motion killswitch below neutralizes it as a second guard. */
+@keyframes tv-snow {
+  0% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-8%, 5%);
+  }
+  50% {
+    transform: translate(4%, -6%);
+  }
+  75% {
+    transform: translate(-5%, -3%);
+  }
+  100% {
+    transform: translate(6%, 4%);
   }
 }
 @media (prefers-reduced-motion: reduce) {

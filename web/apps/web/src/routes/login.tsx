@@ -2,7 +2,7 @@ import { authApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { meQueryOptions, needsBootstrap } from "@/auth";
-import { LoginForm } from "@/components/loomarr";
+import { BrandLockup, LoginForm, TvStatic } from "@/components/loomarr";
 import { Card, CardContent } from "@/components/ui";
 
 // Login — the public sign-in screen (§11, §13). An idle surface (dark broadcast frame).
@@ -29,7 +29,9 @@ const LoginScreen = () => {
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
+    <main className="relative flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6">
+      <TvStatic />
+      <BrandLockup variant="hero" />
       <Card className="w-full max-w-sm">
         <CardContent className="p-8">
           <LoginForm

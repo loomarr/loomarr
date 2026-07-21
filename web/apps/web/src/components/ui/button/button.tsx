@@ -13,6 +13,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // The AI action (§2.1: suggest is "THE AI color"). Reserved for generation —
+        // the Suggest button — so magenta reads as "this asks the model", distinct from
+        // the amber primary. DARK text: white on solid suggest is only 4.12:1 (fails AA
+        // for <18px), while static-950 clears it at 4.75:1 — the same reason the amber
+        // primary carries dark text. (§2.1's calibration is stricter than the prototype's
+        // white-on-magenta; the a11y gate enforces it.)
+        suggest: "bg-suggest text-static-950 hover:bg-suggest/90",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline: "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
