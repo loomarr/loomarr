@@ -77,12 +77,17 @@ func (s *Service) Patch(ctx context.Context, p Persister, edits map[string]strin
 			results = append(results, PatchResult{Key: key, Status: PatchSaved})
 			continue
 		}
-		// Validate by parsing; a bad value is rejected (never persisted).
-		if _, err := set.parse(raw); err != nil {
+		// Validate by parsing; a bad value is rejected (never persisted). Persist the
+		// CANONICAL form the parse produced, not the raw input — parsing normalizes
+		// (a URL's trailing slash stripped, a secret's surrounding whitespace trimmed,
+		// a duration canonicalized), and storing raw would drop that normalization so
+		// the stored value and the resolved value disagree.
+		parsed, err := set.parse(raw)
+		if err != nil {
 			results = append(results, PatchResult{Key: key, Status: PatchInvalid, Problem: patchProblem(set, err)})
 			continue
 		}
-		if err := p.Upsert(ctx, key, raw, updatedBy, now); err != nil {
+		if err := p.Upsert(ctx, key, ValueString(parsed), updatedBy, now); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -141,3 +146,13 @@ func (s *Service) reload(ctx context.Context) error {
 	s.SetDB(db)
 	return nil
 }
+
+// Refresh forces the in-memory snapshot to re-read the durable store — the public
+// entry point behind reload. The snapshot normally refreshes only on a write through
+// this service (Patch/Clear), so anything that changes the store OUT OF BAND leaves the
+// snapshot stale: another replica's write (§18 Postgres), a restore, or a direct edit.
+// A connection Test reading a stale snapshot reports the OLD value's result (e.g. "set a
+// media server flavor" right after the operator saved one elsewhere), which is the most
+// confusing place for drift to surface — so the test path calls this first. A no-op when
+// no loader is wired (unit tests that construct the service without a store).
+func (s *Service) Refresh(ctx context.Context) error { return s.reload(ctx) }

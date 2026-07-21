@@ -118,6 +118,48 @@ func TestRegistry_URLNormalization(t *testing.T) {
 	}
 }
 
+// Secret shape sanity guard (config-design §9): trims surrounding whitespace,
+// rejects internal whitespace or a too-short value — so a stray error string or a
+// fat-fingered fragment can't be stored as a token/key. The message is secret-safe
+// (redacted upstream in patchProblem), so this checks the accept/reject decision and
+// the trimming, not the message text.
+func TestRegistry_SecretShapeGuard(t *testing.T) {
+	s := Setting{Key: "library.token", Kind: KindSecret}
+
+	// The exact corruption that motivated the guard: a connection-test hint got stored
+	// as library.token, then every probe 401'd. It has spaces, so it's rejected now.
+	if _, err := s.parse("set a media server flavor (emby | jellyfin)"); err == nil {
+		t.Error("expected the space-containing error string to be rejected as a secret")
+	}
+	// Too short (a 1–3 char fragment).
+	if _, err := s.parse("ab"); err == nil {
+		t.Error("expected a too-short secret to be rejected")
+	}
+	// But a short REAL-looking key still passes — the floor is low on purpose so it
+	// can't retroactively invalidate an existing stored key on the read path (§9).
+	if _, err := s.parse("tmdbkey"); err != nil {
+		t.Errorf("a plausible short key must still pass the guard: %v", err)
+	}
+	// Internal whitespace of any kind.
+	for _, bad := range []string{"has a space", "has\ttab", "has\nnewline"} {
+		if _, err := s.parse(bad); err == nil {
+			t.Errorf("expected internal-whitespace secret %q to be rejected", bad)
+		}
+	}
+	// A real-looking token is accepted AND trimmed of surrounding whitespace.
+	got, err := s.parse("  a1b2c3d4e5f6g7h8  ")
+	if err != nil {
+		t.Fatalf("valid secret rejected: %v", err)
+	}
+	if got != "a1b2c3d4e5f6g7h8" {
+		t.Errorf("secret = %q, want surrounding whitespace trimmed", got)
+	}
+	// Empty passes the guard (replace-only is enforced in Patch, not here).
+	if _, err := s.parse(""); err != nil {
+		t.Errorf("empty secret should pass parse (replace-only handled in Patch): %v", err)
+	}
+}
+
 // Enum validation is fail-closed: an off-list value is rejected.
 func TestRegistry_EnumFailClosed(t *testing.T) {
 	s := Setting{Key: "library.flavor", Kind: KindEnum, Enum: []string{"emby", "jellyfin"}}

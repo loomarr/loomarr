@@ -397,6 +397,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			svc:     set.svc,
 			secrets: secrets,
 			store:   st,
+			log:     log,
 			tests:   connectionTests(set),
 		}
 	}

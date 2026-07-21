@@ -63,19 +63,25 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
   }, [openId]);
 
   const save = () => patch.mutate({ data: { edits } });
-  const test = (check: string) => {
+  // Test checks PERSISTED settings (config-design §6: /v1/setup/test takes only a check
+  // name and evaluates what's saved) — so unsaved edits would be tested against the old
+  // (here: empty) values, which reads as "set a media server flavor" right after you
+  // picked one. Save first when dirty, so Test always checks what's on screen. `edits`
+  // captured before the save clears it; onError leaves the edits for the operator to retry.
+  const test = async (check: string) => {
     setTesting(check);
-    runTest.mutate(
-      { data: { check } },
-      {
-        onSuccess: (res) => {
-          if (res.status === 200)
-            setTestResult((p) => ({ ...p, [check]: { ok: res.data.ok, hint: res.data.hint } }));
-          setTesting(undefined);
-        },
-        onError: () => setTesting(undefined),
-      },
-    );
+    try {
+      if (Object.keys(edits).length > 0) {
+        await patch.mutateAsync({ data: { edits } });
+      }
+      const res = await runTest.mutateAsync({ data: { check } });
+      if (res.status === 200)
+        setTestResult((p) => ({ ...p, [check]: { ok: res.data.ok, hint: res.data.hint } }));
+    } catch {
+      // patch/test surface their own error UI (patch.error below; test verdict stays prior).
+    } finally {
+      setTesting(undefined);
+    }
   };
 
   const dirty = Object.keys(edits).length > 0;
