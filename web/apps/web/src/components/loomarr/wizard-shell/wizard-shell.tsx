@@ -22,6 +22,8 @@ const WizardShell = ({
   steps,
   currentId,
   statusById,
+  activeSubItem,
+  onSubItem,
   title,
   description,
   children,
@@ -47,33 +49,64 @@ const WizardShell = ({
         <p className="font-mono text-muted-foreground text-xs">First-run setup · saved as you go</p>
       </div>
 
-      <ol aria-label="Setup steps" className="flex flex-col gap-3">
+      <ol aria-label="Setup steps" className="flex flex-col gap-1">
         {steps.map((step, i) => {
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
+          const subItems = isCurrent ? step.subItems : undefined;
           return (
-            <li
-              key={step.id}
-              aria-current={isCurrent ? "step" : undefined}
-              className={cn(
-                "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
-                isCurrent && "bg-static-800",
-              )}
-            >
-              <span
+            <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
+              <div
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
-                  MARKER[status],
+                  "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
+                  isCurrent && "bg-static-800",
                 )}
               >
-                {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
-              </span>
-              <span
-                className={cn("text-sm", isCurrent ? "font-medium text-foreground" : "text-muted-foreground")}
-              >
-                {step.title}
-              </span>
-              {status === "skipped" && <span className="ml-auto text-static-400 text-xs">skipped</span>}
+                <span
+                  className={cn(
+                    "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
+                    MARKER[status],
+                  )}
+                >
+                  {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
+                </span>
+                <span
+                  className={cn(
+                    "text-sm",
+                    isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {step.title}
+                </span>
+                {status === "skipped" && <span className="ml-auto text-static-400 text-xs">skipped</span>}
+              </div>
+
+              {subItems && subItems.length > 0 && (
+                // Second-level connections: an indented list that appears under the current
+                // step. The vertical guide line ties them to their parent.
+                <ul className="mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-border border-l pl-3">
+                  {subItems.map((sub) => {
+                    const active = sub.id === activeSubItem;
+                    return (
+                      <li key={sub.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSubItem?.(sub.id)}
+                          aria-current={active ? "true" : undefined}
+                          className={cn(
+                            "w-full rounded px-2 py-1 text-left text-sm transition-colors",
+                            active
+                              ? "font-medium text-signal"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {sub.label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </li>
           );
         })}

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -151,7 +151,7 @@ describe("wizard", () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/setup/bootstrap"))).toBe(false);
   });
 
-  it("renders every check as words and blocks while a required one is red", async () => {
+  it("shows the connections as inline forms and blocks while a required one is red", async () => {
     stubFetch({
       authed: true,
       setupCompleted: false,
@@ -162,10 +162,21 @@ describe("wizard", () => {
     });
     renderAt("/wizard");
 
-    expect(await screen.findByText("Media server")).toBeInTheDocument();
-    expect(screen.getByText("Tunarr")).toBeInTheDocument();
-    // A failure is the BE's plain-language hint, never a stack trace (§13).
-    expect(screen.getByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
+    // Each connection is a collapsible block AND a rail sub-item (§13 sub-nav), so the
+    // names appear twice — that is the point, not a bug.
+    expect(await screen.findAllByText("Media server")).not.toHaveLength(0);
+    const rail = within(screen.getByRole("complementary"));
+    const tunarrSubItem = rail.getByRole("button", { name: "Tunarr" });
+
+    // The connections step renders the settings-group FORM, not a read-only checklist —
+    // configure in place (§6). A Test-connection button per block is the tell (there is no
+    // "Fix ↗ go to Settings" here anymore).
+    expect(screen.getAllByRole("button", { name: /test connection/i }).length).toBeGreaterThan(0);
+
+    // Opening Tunarr from the rail reveals its red verdict — the BE's plain-language hint,
+    // never a stack trace (§13) — and Continue stays disabled while a required check is red.
+    await userEvent.click(tunarrSubItem);
+    expect(await screen.findByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
   });
 

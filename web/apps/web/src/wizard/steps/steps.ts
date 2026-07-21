@@ -5,7 +5,18 @@ import type { WizardStep, WizardStepStatus } from "@/components/loomarr";
 // seven so the operator can see the whole road; steps 3–7 land in 13.3c.
 const WIZARD_STEPS: WizardStep[] = [
   { id: "bootstrap", title: "Admin" },
-  { id: "checklist", title: "Connections" },
+  {
+    id: "checklist",
+    title: "Connections",
+    // The individual connections show as sub-items under this step; picking one reveals
+    // its form in the content (§13). ids match the setup-check names.
+    subItems: [
+      { id: "media_server", label: "Media server" },
+      { id: "tunarr", label: "Tunarr" },
+      { id: "requester", label: "Requester" },
+      { id: "tmdb", label: "TMDB" },
+    ],
+  },
   { id: "guide", title: "TV guide" },
   { id: "webhooks", title: "Webhooks" },
   { id: "library", title: "Library" },
