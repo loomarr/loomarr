@@ -53,16 +53,23 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("");
   });
 
-  it("renders an enum as a select of its options", () => {
+  it("renders an enum as a select of its options", async () => {
+    const onChange = vi.fn();
     render(
       <SettingField
         entry={entry({ key: "library.flavor", kind: "enum", enum: ["emby", "jellyfin"] })}
         value="jellyfin"
-        onChange={vi.fn()}
+        onChange={onChange}
       />,
     );
-    expect(screen.getByLabelText("Library flavor")).toHaveValue("jellyfin");
-    expect(screen.getByRole("option", { name: "emby" })).toBeInTheDocument();
+    // The trigger shows the current value; the options are in a listbox opened on click.
+    const trigger = screen.getByLabelText("Library flavor");
+    expect(trigger).toHaveTextContent("jellyfin");
+
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("option", { name: "emby" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "emby" }));
+    expect(onChange).toHaveBeenCalledWith("emby");
   });
 
   it("toggles a bool as a checkbox", async () => {

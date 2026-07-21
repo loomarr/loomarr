@@ -31,7 +31,8 @@ describe("UserRow", () => {
     render(<UserRow user={user()} onRoleChange={onRoleChange} onToggleAutoApprove={onToggleAutoApprove} />);
 
     return (async () => {
-      await userEvent.selectOptions(screen.getByLabelText("Role"), "admin");
+      await userEvent.click(screen.getByLabelText("Role"));
+      await userEvent.click(await screen.findByRole("option", { name: "admin" }));
       expect(onRoleChange).toHaveBeenCalledWith("admin");
       await userEvent.click(screen.getByLabelText(/auto-approve/i));
       expect(onToggleAutoApprove).toHaveBeenCalledWith(true);

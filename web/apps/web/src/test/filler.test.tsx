@@ -162,8 +162,11 @@ describe("Filler page", () => {
 
     // Scoped to the editor's region: the page's own Kind/Audience FILTERS share those
     // visible names, which is why the editor is a labelled region in the first place.
+    // Open the editor's Kind select, then pick "trailer" — the listbox portals to the
+    // body (outside the region), so its option is found at the screen level.
     const editor = await screen.findByRole("region", { name: /edit tags — some trailer/i });
-    await userEvent.selectOptions(within(editor).getByLabelText("Kind"), "trailer");
+    await userEvent.click(within(editor).getByLabelText("Kind"));
+    await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
     await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
 
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");

@@ -21,6 +21,7 @@
     "@loomarr/core": "workspace:*",
     "@loomarr/fixtures": "workspace:*",
     "@loomarr/tokens": "workspace:*",
+    "@radix-ui/react-select": "^2.3.4",
     "@radix-ui/react-slot": "^1.1.1",
     "@tanstack/react-form": "^1.33.2",
     "@tanstack/react-query": "^5.62.7",

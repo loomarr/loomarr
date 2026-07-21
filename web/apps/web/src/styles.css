@@ -40,6 +40,7 @@
   /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
      keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
   --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
+  --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -84,6 +85,21 @@ body {
   }
   50% {
     opacity: 0.4;
+  }
+}
+
+/* Select/popover entrance — a small fade + rise on open (this repo doesn't use
+   tailwindcss-animate, so the Select recipe's animate-in classes are provided here as a
+   project-native keyframe). Applied via `motion-safe:animate-select-in`, so it's off under
+   reduced-motion and frozen in the visual suite by the killswitch below. */
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
