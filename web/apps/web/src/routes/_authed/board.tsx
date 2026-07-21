@@ -75,7 +75,7 @@ const BoardScreen = () => {
         {rows.length > 0 && (
           <p className="mt-1 text-muted-foreground text-sm">
             {`${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed.`}{" "}
-            Channels play what's ready and fill the rest, so they improve as the others arrive.
+            Channels play what's ready and fill the rest, improving as more arrives.
           </p>
         )}
       </header>

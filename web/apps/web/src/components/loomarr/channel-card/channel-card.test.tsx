@@ -21,8 +21,8 @@ describe("ChannelCard", () => {
 
   it("renders a health chip for non-healthy states only", () => {
     const { rerender } = render(<ChannelCard number={1} name="A" onAir="off" health="healthy" />);
-    expect(screen.queryByText("Backfilling")).not.toBeInTheDocument();
+    expect(screen.queryByText("Filling in")).not.toBeInTheDocument();
     rerender(<ChannelCard number={1} name="A" onAir="reconciling" health="pending-slots" />);
-    expect(screen.getByText("Backfilling")).toBeInTheDocument();
+    expect(screen.getByText("Filling in")).toBeInTheDocument();
   });
 });

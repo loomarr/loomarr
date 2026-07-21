@@ -48,7 +48,7 @@ const AiModelSettings = () => {
 
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
   const status = llm.data?.status === 200 ? llm.data.data : undefined;
-  if (!status) return <p className="text-muted-foreground text-sm">Probing your LLM host…</p>;
+  if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
   // Local Ollama gets the fit-ranked catalog; a hosted provider is configured through the
   // settings form + its own key test, so there is no local catalog to show.

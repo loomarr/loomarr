@@ -24,9 +24,8 @@ const TunarrLibraryStep = ({ check }: TunarrLibraryStepProps) => {
       isPending={connect.isPending}
       error={connect.error}
     >
-      Points Tunarr at your Emby/Jellyfin library, enables the movie and show folders, and triggers a scan —
-      so your channels play real programs instead of dead air. Safe to run more than once; Loomarr never
-      re-scans unasked.
+      Points Tunarr at your Emby/Jellyfin library and scans it, so channels play real programs instead of dead
+      air. Safe to run again — Loomarr only scans when you ask.
     </ConnectStep>
   );
 };

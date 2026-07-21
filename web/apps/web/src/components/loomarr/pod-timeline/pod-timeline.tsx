@@ -17,7 +17,7 @@ const MATCH: Record<
 > = {
   exact: null,
   widened: { label: "Era widened", variant: "caution" },
-  audience: { label: "Era ignored", variant: "caution" },
+  audience: { label: "Any era", variant: "caution" },
   bumper_card: { label: "Bumper only", variant: "neutral" },
 };
 

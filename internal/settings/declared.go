@@ -15,7 +15,7 @@ func declared() []Setting {
 		{
 			Key: "library.flavor", EnvVar: "LIBRARY_FLAVOR", Group: GroupMediaServer,
 			Kind: KindEnum, Enum: []string{"emby", "jellyfin"}, Default: "",
-			Doc: "Media server flavor. Selects the auth-header shape (Emby X-Emby-Token vs Jellyfin MediaBrowser).",
+			Doc: "Emby or Jellyfin. They sign in differently, so Loomarr needs to know which one you run.",
 		},
 		{
 			Key: "library.url", EnvVar: "LIBRARY_URL", Group: GroupMediaServer,
@@ -25,117 +25,117 @@ func declared() []Setting {
 		{
 			Key: "library.token", EnvVar: "LIBRARY_TOKEN", Group: GroupMediaServer,
 			Kind: KindSecret, Default: "",
-			Doc: "Media server API token (Emby/Jellyfin). Grants read + Live-TV wiring.",
+			Doc: "An API key from your media server. Lets Loomarr read your library and set up the TV guide.",
 		},
 		{
 			Key: "season.precision", EnvVar: "SEASON_PRECISION", Group: GroupMediaServer,
 			Kind: KindEnum, Enum: []string{"series", "seasons"}, Default: "series", Advanced: true,
-			Doc: "Acquisition granularity for series: whole series (default) or per-season.",
+			Doc: "When adding a series, get the whole show (default) or just the seasons you asked for.",
 		},
 
 		// --- Connections: requester (§15, Phase 6) ---
 		{
 			Key: "seerr.url", EnvVar: "SEERR_URL", Group: GroupRequester,
 			Kind: KindURL, Default: "", Required: FeatureAcquisition,
-			Doc: "Seerr base URL, e.g. http://seerr:5055. Enables acquisitions (or use the direct Sonarr/Radarr pair).",
+			Doc: "Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles (or connect Sonarr and Radarr directly below).",
 		},
 		{
 			Key: "seerr.api_key", EnvVar: "SEERR_API_KEY", Group: GroupRequester,
 			Kind: KindSecret, Default: "",
-			Doc: "Seerr API key (X-Api-Key header).",
+			Doc: "Your Seerr API key.",
 		},
 		{
 			Key: "sonarr.url", EnvVar: "SONARR_URL", Group: GroupRequester,
 			Kind: KindURL, Default: "", Advanced: true,
-			Doc: "Direct Sonarr base URL (alternative to Seerr for TV acquisitions).",
+			Doc: "Sonarr address, if you'd rather connect it directly than go through Seerr (for TV).",
 		},
 		{
 			Key: "sonarr.api_key", EnvVar: "SONARR_API_KEY", Group: GroupRequester,
 			Kind: KindSecret, Default: "", Advanced: true,
-			Doc: "Direct Sonarr API key.",
+			Doc: "Your Sonarr API key.",
 		},
 		{
 			Key: "radarr.url", EnvVar: "RADARR_URL", Group: GroupRequester,
 			Kind: KindURL, Default: "", Advanced: true,
-			Doc: "Direct Radarr base URL (alternative to Seerr for movie acquisitions).",
+			Doc: "Radarr address, if you'd rather connect it directly than go through Seerr (for movies).",
 		},
 		{
 			Key: "radarr.api_key", EnvVar: "RADARR_API_KEY", Group: GroupRequester,
 			Kind: KindSecret, Default: "", Advanced: true,
-			Doc: "Direct Radarr API key.",
+			Doc: "Your Radarr API key.",
 		},
 
 		// --- Connections: Tunarr (§15, Phase 10) ---
 		{
 			Key: "tunarr.url", EnvVar: "TUNARR_URL", Group: GroupTunarr,
 			Kind: KindURL, Default: "",
-			Doc: "Tunarr base URL, e.g. http://tunarr:8000. Where channels are pushed.",
+			Doc: "Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels.",
 		},
 		{
 			Key: "tunarr.api_key", EnvVar: "TUNARR_API_KEY", Group: GroupTunarr,
 			Kind: KindSecret, Default: "",
-			Doc: "Tunarr API key (optional on 1.3.8 — Phase-0 finding).",
+			Doc: "Tunarr API key. Usually not needed — leave blank unless your Tunarr requires one.",
 		},
 		{
 			Key: "tunarr.transcode_config_id", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Tunarr transcode-config uuid created channels reference (empty → resolve the instance Default, §9).",
+			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
 		},
 
 		// --- Connections: TMDB (§15, Phase 11) ---
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
 			Kind: KindSecret, Default: "", Required: FeatureSuggestions,
-			Doc: "TMDB API key. Grounds suggestions — required when the suggester is enabled.",
+			Doc: "A free TMDB API key. Needed for AI channel suggestions.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
 		{
 			Key: "llm.provider", EnvVar: "LLM_PROVIDER", Group: GroupAI,
 			Kind: KindEnum, Enum: []string{"ollama", "openai"}, Default: "ollama", Required: FeatureSuggestions,
-			Doc: "LLM provider. Selects the client (ollama vs OpenAI-compatible). An in-app pick (§8.1) overrides this.",
+			Doc: "Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings.",
 		},
 		{
 			Key: "llm.url", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "LLM base URL. For openai, the OpenAI-compatible base (…/v1); for ollama, its own host.",
+			Doc: "The AI's address. For an OpenAI-compatible service, the base URL ending in /v1; for Ollama, its own host.",
 		},
 		{
 			Key: "llm.model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "",
-			Doc: "LLM model id (e.g. qwen3:8b). An in-app pick (§8.1) overrides this.",
+			Doc: "Which AI model to use (e.g. qwen3:8b). You can also pick one in the AI settings.",
 		},
 		{
 			Key: "llm.api_key", EnvVar: "LLM_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "",
-			Doc: "LLM API key (read when provider=openai). In-app hosted picks store per-provider keys; never echoed by any API.",
+			Doc: "API key for a hosted AI service (not needed for a local Ollama). Never shown again after saving.",
 		},
 		{
 			Key: "suggest.auto_approve", EnvVar: "SUGGEST_AUTO_APPROVE", Group: GroupAI,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Auto-approve suggested acquisitions (bypasses the human approval gate — off by default, §8).",
+			Doc: "Automatically approve suggested downloads, with no review step. Off by default.",
 		},
 		{
 			Key: "suggest.max_acquisitions", EnvVar: "SUGGEST_MAX_ACQUISITIONS", Group: GroupAI,
 			Kind: KindInt, Default: 10,
-			Doc: "Cap on acquisitions per suggestion (the §8 quota).",
+			Doc: "The most titles a single suggestion may download.",
 		},
 
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
 			Key: "sched.default_strategy", EnvVar: "SCHED_DEFAULT_STRATEGY", Group: GroupChannels,
 			Kind: KindEnum, Enum: []string{"sequential", "shuffle"}, Default: "shuffle",
-			Doc: "Default per-channel scheduling strategy when a channel doesn't specify one.",
+			Doc: "How channels order their programs by default, unless a channel sets its own.",
 		},
 		{
 			Key: "sched.backfill", EnvVar: "SCHED_BACKFILL", Group: GroupChannels,
 			Kind: KindEnum, Enum: []string{"stable", "reshuffle"}, Default: "stable",
-			Doc: "How the sweep places newly-available acquisitions: stable (in place) or reshuffle.",
+			Doc: "When new titles arrive, keep the lineup order (stable) or reshuffle it.",
 		},
 		{
 			Key: "channel.reconcile_every", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
 			Kind: KindDuration, Default: "10m",
-			Doc: "Periodic channel reconcile sweep interval (§9).",
+			Doc: "How often Loomarr rebuilds channels to pick up newly-available content.",
 		},
 		// Policy defaults (the middle tier of channel policy > registry default > built-in,
 		// programming-design §2/§9). These close the ChannelPolicy registry-default deferral.
@@ -162,12 +162,12 @@ func declared() []Setting {
 		{
 			Key: "sched.ordering", EnvVar: "SCHED_ORDERING", Group: GroupChannels,
 			Kind: KindEnum, Enum: []string{"sequential", "shuffle", "syndication"}, Default: "syndication",
-			Doc: "Default policy ordering mode (per-channel overridable). Omitted per channel → the channel's Strategy.",
+			Doc: "Default program order (per-channel overridable). If a channel sets none, it uses its own strategy.",
 		},
 		{
 			Key: "seasonal.mode", EnvVar: "SEASONAL_MODE", Group: GroupChannels,
 			Kind: KindEnum, Enum: []string{"off", "auto", "exclusive"}, Default: "auto",
-			Doc: "Default seasonal handling (per-channel overridable): off, auto (boost/bench), or exclusive.",
+			Doc: "How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season.",
 		},
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
@@ -199,12 +199,12 @@ func declared() []Setting {
 		{
 			Key: "filler.cooldown_seconds", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
 			Kind: KindInt, Default: 30, Advanced: true,
-			Doc: "Min seconds before a filler clip may repeat (Tunarr filler-list attach).",
+			Doc: "Seconds before the same commercial can play again.",
 		},
 		{
 			Key: "filler.weight", EnvVar: "FILLER_WEIGHT", Group: GroupFiller,
 			Kind: KindInt, Default: 1, Advanced: true,
-			Doc: "Relative draw weight across multiple filler-lists.",
+			Doc: "How heavily this commercial set is drawn from, relative to others.",
 		},
 
 		// --- Filler ingest (§10, §15; loomarr:filler image variant only) ---
@@ -215,12 +215,12 @@ func declared() []Setting {
 		{
 			Key: "ingest.ytdlp_path", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Path to the yt-dlp binary. Set by the loomarr:filler image; empty disables ingest.",
+			Doc: "Where the yt-dlp program lives. The loomarr:filler image sets this; empty means clip downloading is off.",
 		},
 		{
 			Key: "ingest.ffmpeg_path", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Path to the ffmpeg binary (yt-dlp needs it to merge video+audio streams).",
+			Doc: "Where the ffmpeg program lives (yt-dlp needs it to combine video and audio).",
 		},
 		{
 			Key: "ingest.max_concurrent", EnvVar: "INGEST_MAX_CONCURRENT", Group: GroupFiller,
@@ -230,71 +230,71 @@ func declared() []Setting {
 		{
 			Key: "ingest.timeout", EnvVar: "INGEST_TIMEOUT", Group: GroupFiller,
 			Kind: KindDuration, Default: "30m", Advanced: true,
-			Doc: "Wall-clock ceiling for one ingest source, so a wedged fetch can't hold a worker forever.",
+			Doc: "How long one download may run before it's stopped, so a stuck fetch can't block others.",
 		},
 
 		// --- Users & security (§15, Phase 9) ---
 		{
 			Key: "session.ttl", EnvVar: "SESSION_TTL", Group: GroupUsersSecurity,
 			Kind: KindDuration, Default: "720h",
-			Doc: "Session lifetime before re-login (§11).",
+			Doc: "How long you stay signed in before needing to log in again.",
 		},
 		{
 			Key: "cookie.secure", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
 			Kind: KindEnum, Enum: []string{"auto", "always", "never"}, Default: "auto",
-			Doc: "Secure-cookie policy: auto (infer from request), always, or never (dev only).",
+			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
 		{
 			Key: "user.sync_every", EnvVar: "USER_SYNC_EVERY", Group: GroupUsersSecurity,
 			Kind: KindDuration, Default: "1h", Advanced: true,
-			Doc: "How often to sync users from the media server (§11).",
+			Doc: "How often Loomarr refreshes imported users from your media server.",
 		},
 
 		// --- Advanced: TTLs, retention, workers, event webhook (§15) ---
 		{
 			Key: "request.ttl", EnvVar: "REQUEST_TTL", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "48h",
-			Doc: "How long a 'wanted' title is retried before give-up (§4).",
+			Doc: "How long Loomarr keeps trying to request a title before giving up.",
 		},
 		{
 			Key: "downloading.ttl", EnvVar: "DOWNLOADING_TTL", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "12h",
-			Doc: "How long a 'downloading' title waits for the import webhook before give-up (§4).",
+			Doc: "How long a downloading title waits to finish before Loomarr gives up on it.",
 		},
 		{
 			Key: "reconcile.every", EnvVar: "RECONCILE_EVERY", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "5m",
-			Doc: "Provisioning reconcile tick interval (§7).",
+			Doc: "How often Loomarr checks on in-progress downloads.",
 		},
 		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 2,
-			Doc: "Suggester worker-pool size (§8).",
+			Doc: "How many channel suggestions can be worked on at once.",
 		},
 		{
 			Key: "job.timeout", EnvVar: "JOB_TIMEOUT", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "10m",
-			Doc: "Per-suggestion-job timeout (§8).",
+			Doc: "How long one channel suggestion may run before it's stopped.",
 		},
 		{
 			Key: "jobs.retention", EnvVar: "JOBS_RETENTION", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "720h",
-			Doc: "How long completed jobs are kept before the janitor prunes them (§5).",
+			Doc: "How long finished suggestion jobs are kept before they're cleaned up.",
 		},
 		{
 			Key: "proposals.retention", EnvVar: "PROPOSALS_RETENTION", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "2160h",
-			Doc: "How long proposals are kept before pruning (§5).",
+			Doc: "How long suggested lineups are kept before they're cleaned up.",
 		},
 		{
 			Key: "event.webhook_url", EnvVar: "EVENT_WEBHOOK_URL", Group: GroupAdvanced,
 			Kind: KindURL, Default: "",
-			Doc: "Optional external event target (fired on terminal title transitions).",
+			Doc: "Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip.",
 		},
 		{
 			Key: "setup.completed", EnvVar: "SETUP_COMPLETED", Group: GroupAdvanced,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "First-run wizard completed; until set, / routes to the wizard (config-design §6).",
+			Doc: "Whether first-run setup is done. Until it is, Loomarr opens the setup wizard.",
 		},
 	}
 }

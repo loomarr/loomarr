@@ -39,8 +39,8 @@ const FirstStep: Story = {
   args: {
     currentId: "bootstrap",
     statusById: { bootstrap: "current" },
-    title: "Create the owning admin",
-    description: "This account owns the instance. It works with zero media-server config.",
+    title: "Create your admin account",
+    description: "This account owns Loomarr. You can set it up before connecting a media server.",
     onBack: undefined,
     nextLabel: "Create admin",
   },

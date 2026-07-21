@@ -10,7 +10,7 @@ import type { ChannelCardProps, ChannelHealth } from "./channel-card.type";
 // OnAir + NowNext atoms. States: healthy · pending-slots · drift · error · creating.
 const HEALTH: Record<ChannelHealth, { label: string; chip: string } | null> = {
   healthy: null,
-  "pending-slots": { label: "Backfilling", chip: "bg-tune-tint-15 text-tune" },
+  "pending-slots": { label: "Filling in", chip: "bg-tune-tint-15 text-tune" },
   drift: { label: "Drift", chip: "bg-caution-tint-15 text-caution" },
   error: { label: "Error", chip: "bg-onair-tint-15 text-onair-300" },
   creating: { label: "Creating", chip: "bg-static-800 text-static-400" },

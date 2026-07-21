@@ -9,9 +9,9 @@ describe("NowNextStrip", () => {
     expect(screen.getByText("Con Air")).toBeInTheDocument();
   });
 
-  it("labels a flex/pod gap as Filler, not dead air", () => {
+  it("labels a flex/pod gap as a filler break, not dead air", () => {
     render(<NowNextStrip gap />);
-    expect(screen.getByText("Filler")).toBeInTheDocument();
+    expect(screen.getByText("Filler break")).toBeInTheDocument();
   });
 
   it("reads 'Nothing scheduled' when empty", () => {

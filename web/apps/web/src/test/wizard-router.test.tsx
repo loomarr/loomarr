@@ -118,7 +118,7 @@ describe("wizard", () => {
   it("opens on bootstrap when no one is signed in", async () => {
     stubFetch({ authed: false });
     renderAt("/wizard");
-    expect(await screen.findByRole("heading", { name: /create the owning admin/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /create your admin account/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Username")).toBeInTheDocument();
     expect(screen.getByLabelText("Confirm password")).toBeInTheDocument();
   });

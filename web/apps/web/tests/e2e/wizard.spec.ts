@@ -26,7 +26,7 @@ test.describe("operator first-run wizard", () => {
     // --- step 1: bootstrap ------------------------------------------------------
     // A true first run: no admin exists, so the wizard is reachable unauthenticated.
     await page.goto("/wizard");
-    await shot(page, "step-1-bootstrap", /create the owning admin/i);
+    await shot(page, "step-1-bootstrap", /create your admin account/i);
 
     await page.getByLabel("Username").fill("ada");
     await page.getByLabel("Password", { exact: true }).fill("hunter2!");

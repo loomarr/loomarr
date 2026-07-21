@@ -25,8 +25,8 @@ import {
 // loses nothing; `visited` only lets the operator step back and forth within that.
 const COPY: Record<string, { title: string; description: string }> = {
   bootstrap: {
-    title: "Create the owning admin",
-    description: "This account owns the instance. It works with zero media-server config.",
+    title: "Create your admin account",
+    description: "This account owns Loomarr. You can set it up before connecting a media server.",
   },
   checklist: {
     title: "Connect your services",
