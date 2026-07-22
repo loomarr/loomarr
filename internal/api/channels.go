@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -11,6 +14,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
@@ -22,7 +26,7 @@ type ChannelDTO struct {
 	Number       int    `json:"number" example:"42" doc:"Guide channel number"`
 	Group        string `json:"group,omitempty" example:"Kids"`
 	Strategy     string `json:"strategy" enum:"sequential,shuffle,time_slot"`
-	Status       string `json:"status" enum:"building,live,drifted,detached" doc:"Loomarr-side channel status (§9)"`
+	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
 	IntentRef    string `json:"intentRef,omitempty"`
 	ProgramCount int    `json:"programCount" doc:"Real playable programs in the desired lineup"`
@@ -32,17 +36,79 @@ type ChannelDTO struct {
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
 	// relaxation banners. Empty ⇒ the channel runs on built-in defaults.
 	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations"`
+	// Lineup is the intent-level "what should play" — the titles the channel is built
+	// from, in order (distinct from the summarized Desired slots above). Read-only here;
+	// the diff a refine shows (kept/added/removed) is computed against this. Editing the
+	// lineup entries is Phase 3.
+	Lineup []LineupEntryDTO `json:"lineup" doc:"The channel's titles, in order (the intent-level lineup, not the expanded slots)"`
+}
+
+// LineupEntryDTO is one title on the channel — enough to display and to diff a refine
+// against (a real key + human name/year). Not the full scheduler entry.
+type LineupEntryDTO struct {
+	Key    string   `json:"key" doc:"Provisioning key, e.g. movie:tmdb:603"`
+	Name   string   `json:"name"`
+	Year   int      `json:"year,omitempty"`
+	Genres []string `json:"genres,omitempty"`
 }
 
 func channelToDTO(ch store.Channel) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
+	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
+	for _, e := range ch.Lineup {
+		lineup = append(lineup, LineupEntryDTO{
+			Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres,
+		})
+	}
 	return ChannelDTO{
 		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
-		Policy: ch.Policy,
+		Policy: ch.Policy, Lineup: lineup,
 	}
+}
+
+// mergeLineupEdit turns a whole-list lineup edit (the DTO shape the read side emits) into
+// scheduler entries, for the PATCH path (§7). The read DTO is deliberately lossy — it
+// drops a series' season range, the content rating, and the runtime cap — so a naive
+// DTO→entry rebuild would silently reset those on an unrelated reorder. The fix: for each
+// incoming entry, if its key already exists in the current lineup, carry that entry's rich
+// metadata forward and only take the (possibly edited) name/year/genres from the DTO; a
+// genuinely new key becomes a fresh entry (its rating/duration heal from the library at
+// reconcile). Order follows the incoming list (add/remove/reorder in one payload). Every
+// key is validated up front — a malformed key fails the whole edit rather than landing a
+// junk entry. A key not `available` in the library is fine: it renders as a pending slot
+// until the title lands (§9), so this never plays or acquires unapproved content.
+func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	byKey := make(map[provision.Key]schedule.LineupEntry, len(current))
+	for _, e := range current {
+		byKey[e.Key] = e
+	}
+	out := make([]schedule.LineupEntry, 0, len(edit))
+	seen := make(map[provision.Key]struct{}, len(edit))
+	for i, dto := range edit {
+		key := provision.Key(strings.TrimSpace(dto.Key))
+		if _, _, _, ok := provision.ParseKey(key); !ok {
+			return nil, fmt.Errorf("entry %d: malformed key %q", i, dto.Key)
+		}
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("entry %d: duplicate key %q in lineup", i, dto.Key)
+		}
+		seen[key] = struct{}{}
+
+		entry, existed := byKey[key] // preserves SeasonMin/Max, OfficialRating, RuntimeSec, DurationMs
+		if !existed {
+			entry = schedule.LineupEntry{Key: key}
+		}
+		// The DTO owns the display-level fields; everything else rides through from the
+		// existing entry (or heals at reconcile for a new one).
+		entry.Title = dto.Name
+		entry.Year = dto.Year
+		entry.Genres = dto.Genres
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 // NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes
@@ -130,6 +196,20 @@ func (s *Server) registerChannels(api huma.API) {
 		Summary: "Create a channel", Description: "Admin only. From an approved proposal or hand-made.",
 		Tags: []string{"channels"},
 	}, s.createChannel)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-channel", Method: http.MethodPatch, Path: "/v1/channels/{id}",
+		Summary:     "Edit a channel",
+		Description: "Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.",
+		Tags:        []string{"channels"},
+	}, s.updateChannel)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "refine-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/refine",
+		Summary:     "Refine a channel with the LLM",
+		Description: "Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).",
+		Tags:        []string{"channels", "suggestions"},
+	}, s.refineChannel)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
@@ -276,6 +356,200 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	return &channelOutput{Body: channelToDTO(fresh)}, nil
 }
 
+// updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
+// omitting a field and setting it to its zero value are distinguishable (a rename to
+// "" is rejected by Validate, not silently ignored). Operator-owned fields + the
+// per-channel policy + pause/resume via status; lineup edits arrive with the lineup
+// read shape (Phase 3).
+type updateChannelInput struct {
+	ID   string `path:"id" example:"ch_abc123"`
+	Body struct {
+		Name     *string                 `json:"name,omitempty"`
+		Number   *int                    `json:"number,omitempty" minimum:"1"`
+		Group    *string                 `json:"group,omitempty"`
+		Strategy *string                 `json:"strategy,omitempty" enum:"sequential,shuffle,time_slot"`
+		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write."`
+		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
+		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
+		// reconciler's/delete's to set, never a client's.
+		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause (off air, keep the channel) or resume."`
+		// Lineup is a WHOLE-LIST replace (§7): the full ordered set of entries. Add = a new
+		// entry, remove = an omitted one, reorder = the same entries reordered. Each key is
+		// validated (provision.ParseKey); a key not `available` in the library is inert (a
+		// pending slot, never played) until it lands, so this can't play unapproved content.
+		// nil = leave the lineup unchanged; an empty (non-nil) array clears it.
+		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
+	}
+}
+
+// updateChannel edits a channel (§7 PATCH). It mirrors createChannel's validate →
+// uniqueness → upsert → auto-reconcile shape, but as a partial update that preserves
+// operator/proposal ownership: a client may set name/number/group/strategy/policy and
+// pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
+// The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
+func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+
+	if in.Body.Name != nil {
+		ch.Name = strings.TrimSpace(*in.Body.Name)
+	}
+	if in.Body.Group != nil {
+		ch.Group = *in.Body.Group
+	}
+	if in.Body.Strategy != nil {
+		ch.Strategy = schedule.Strategy(*in.Body.Strategy)
+	}
+	// Renumber: unique-check EXCLUDING self (a no-op renumber to the channel's own
+	// number must not 409). The store's unique index would also reject, but a clean
+	// 409 beats a 500 (matches createChannel's rationale).
+	if in.Body.Number != nil && *in.Body.Number != ch.Number {
+		if other, gerr := s.store.GetChannelByNumber(ctx, *in.Body.Number); gerr == nil {
+			if other.ID != ch.ID {
+				return nil, huma.Error409Conflict("channel number already in use")
+			}
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return nil, gerr
+		}
+		ch.Number = *in.Body.Number
+	}
+	// Policy merge: take the client's policy but PRESERVE the reconcile-owned `applied`
+	// (a client can't set relaxations; they're recomputed each reconcile). Validate
+	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
+	if in.Body.Policy != nil {
+		next := *in.Body.Policy
+		next.Applied = ch.Policy.Applied // reconcile owns this; never client-set
+		if verr := next.Validate(); verr != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid policy", verr)
+		}
+		ch.Policy = next
+	}
+	// Pause/resume. Only paused↔building; the transition is deliberately narrow so a
+	// client can't force a channel `live`/`detached` out from under the reconciler.
+	if in.Body.Status != nil {
+		switch schedule.ChannelStatus(*in.Body.Status) {
+		case schedule.StatusPaused:
+			ch.Status = schedule.StatusPaused
+		case schedule.StatusBuilding:
+			// Resume only makes sense from paused; from any other state it's a no-op-ish
+			// nudge back onto the sweep, which the reconcile below will settle.
+			ch.Status = schedule.StatusBuilding
+		default:
+			return nil, huma.Error422UnprocessableEntity("status may only be set to paused or building", nil)
+		}
+	}
+	// Lineup edit (add/remove/reorder as a whole-list replace). Validate every key and
+	// preserve the rich scheduling metadata the read DTO drops (season range, rating,
+	// runtime) by matching incoming entries to the current lineup by key — a reorder must
+	// not silently reset a series' season scope. Desired is NOT computed here; the
+	// reconcile below derives it from ch.Lineup (§9).
+	if in.Body.Lineup != nil {
+		next, lerr := mergeLineupEdit(ch.Lineup, *in.Body.Lineup)
+		if lerr != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid lineup", lerr)
+		}
+		ch.Lineup = next
+	}
+
+	if err := ch.Validate(); err != nil {
+		return nil, huma.Error422UnprocessableEntity("invalid channel", err)
+	}
+	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
+	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+		return nil, err
+	}
+
+	// Auto-reconcile so the edit reaches Tunarr with no user action (§9 "self-
+	// maintaining"; there is no manual rebuild). Best-effort + skipped while paused or
+	// Tunarr-unconfigured: the edit is durable regardless, and the sweep is the
+	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
+	if ch.Status != schedule.StatusPaused && s.channels != nil && !s.unconfigured("tunarr.url") {
+		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
+			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
+		}
+	}
+	fresh, err := s.store.GetChannel(ctx, ch.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &channelOutput{Body: channelToDTO(fresh)}, nil
+}
+
+type refineChannelInput struct {
+	ID   string `path:"id" example:"ch_abc123"`
+	Body struct {
+		Change string `json:"change" minLength:"1" doc:"What to change, in plain words: \"add more Schwarzenegger, drop the slow ones\"." example:"add more Schwarzenegger"`
+	}
+}
+type refineChannelOutput struct {
+	Body struct {
+		JobID string `json:"jobId" doc:"Poll /v1/suggestions for the refined proposal (matched on this jobId), then approve to apply."`
+	}
+}
+
+// refineChannel re-runs the channel's suggestion with a plain-language change (§7). It
+// seeds a refine intent from the channel's CURRENT lineup + the original description + the
+// change, and re-queues the channel's OWN suggestion job (its IntentRef) so the refined
+// proposal binds back to this channel — approving it patches in place, no duplicate.
+// Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
+// grounded.
+func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
+		return nil, huma.Error501NotImplemented("suggester not configured")
+	}
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+	// Refine only makes sense for an LLM-created channel: it re-runs that channel's own
+	// suggestion job. A hand-made channel (no IntentRef) has no job to re-run.
+	if ch.IntentRef == "" {
+		return nil, huma.Error422UnprocessableEntity("this channel wasn't created from a suggestion, so it can't be refined")
+	}
+
+	// Seed the refine intent from the channel's original intent (for description/constraints)
+	// plus the current lineup as context and the requested change.
+	intent := suggest.Intent{Description: ch.Name}
+	if job, jerr := s.store.GetJob(ctx, ch.IntentRef); jerr == nil {
+		var orig suggest.Intent
+		if json.Unmarshal([]byte(job.IntentJSON), &orig) == nil {
+			intent = orig // keep the original description + era/tone/constraints
+		}
+	}
+	intent.RefineText = strings.TrimSpace(in.Body.Change)
+	intent.CurrentLineup = lineupContext(ch.Lineup)
+
+	jobID, err := s.suggest.Refine(ctx, ch.IntentRef, intent)
+	if err != nil {
+		return nil, err
+	}
+	out := &refineChannelOutput{}
+	out.Body.JobID = jobID
+	return out, nil
+}
+
+// lineupContext turns a channel's stored lineup entries into the lightweight
+// name/year/key context the refiner reasons about.
+func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
+	out := make([]suggest.LineupContext, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, suggest.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+	}
+	return out
+}
+
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
@@ -317,11 +591,21 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	// Default: detach (stop managing; leave the Tunarr channel). Detached channels
-	// are never reconciled again (§9 ownership). Purge (Tunarr deletion) is a
-	// Phase-10 follow-on wired through the Programmer; for now detach is the
-	// safe default and purge is recorded on the status.
+	// Purge (?purge=true): delete the Tunarr channel AND hard-delete the store row,
+	// through the engine (which holds the programmer). Idempotent on the Tunarr side.
+	if in.Purge {
+		if s.channels == nil {
+			return nil, huma.Error501NotImplemented("scheduler not configured (cannot purge the Tunarr channel)")
+		}
+		if err := s.channels.Purge(ctx, in.ID); err != nil {
+			return nil, huma.Error502BadGateway("purge failed", err)
+		}
+		return &deleteChannelOutput{}, nil
+	}
+	// Default: detach (stop managing; leave the Tunarr channel + the store row).
+	// Detached channels are never reconciled again (§9 ownership).
 	ch.Status = schedule.StatusDetached
+	ch.UpdatedAt = time.Now().Unix()
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
 		return nil, err
 	}

@@ -61,3 +61,13 @@ func (e *eventEmitter) SuggestionPhase(jobID, phase string) {
 		Payload: map[string]string{"jobId": jobID, "phase": phase},
 	})
 }
+
+// ChannelChanged publishes a `channel` frame after a reconcile so the Channels/detail
+// pages update live — the "no manual rebuild" model (§9). Satisfies
+// channels.ChannelNotifier. Best-effort: GET /v1/channels is the truth on load.
+func (e *eventEmitter) ChannelChanged(channelID, status string) {
+	e.bus.Publish(events.Event{
+		Type:    "channel",
+		Payload: map[string]string{"channelId": channelID, "status": status},
+	})
+}

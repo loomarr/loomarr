@@ -14,6 +14,8 @@ const HEALTH: Record<ChannelHealth, { label: string; chip: string } | null> = {
   drift: { label: "Drift", chip: "bg-caution-tint-15 text-caution" },
   error: { label: "Error", chip: "bg-onair-tint-15 text-onair-300" },
   creating: { label: "Creating", chip: "bg-static-800 text-static-400" },
+  // A deliberate operator pause — calm and neutral (a muted chip), never an error.
+  paused: { label: "Paused", chip: "bg-static-800 text-static-400" },
 };
 
 const ChannelCard = ({

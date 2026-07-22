@@ -106,6 +106,13 @@ components:
           type: string
         intentRef:
           type: string
+        lineup:
+          description: The channel's titles, in order (the intent-level lineup, not the expanded slots)
+          items:
+            $ref: "#/components/schemas/LineupEntryDTO"
+          type:
+            - array
+            - "null"
         name:
           examples:
             - Saturday Morning Cartoons
@@ -134,6 +141,7 @@ components:
             - live
             - drifted
             - detached
+            - paused
           type: string
         strategy:
           enum:
@@ -153,6 +161,7 @@ components:
         - programCount
         - slotCount
         - policy
+        - lineup
       type: object
     ChannelNowNext:
       additionalProperties: false
@@ -653,6 +662,12 @@ components:
           format: uri
           readOnly: true
           type: string
+        currentLineup:
+          items:
+            $ref: "#/components/schemas/LineupContext"
+          type:
+            - array
+            - "null"
         description:
           type: string
         era:
@@ -672,6 +687,8 @@ components:
           type:
             - array
             - "null"
+        refineText:
+          type: string
         runtimeTargetMin:
           format: int64
           type: integer
@@ -712,6 +729,40 @@ components:
         - runtimeOk
         - recommended
         - why
+      type: object
+    LineupContext:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        year:
+          format: int64
+          type: integer
+      required:
+        - name
+      type: object
+    LineupEntryDTO:
+      additionalProperties: false
+      properties:
+        genres:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        key:
+          description: Provisioning key, e.g. movie:tmdb:603
+          type: string
+        name:
+          type: string
+        year:
+          format: int64
+          type: integer
+      required:
+        - key
+        - name
       type: object
     ListChannelsOutputBody:
       additionalProperties: false
@@ -1211,6 +1262,41 @@ components:
           format: int64
           type: integer
       type: object
+    RefineChannelInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RefineChannelInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        change:
+          description: "What to change, in plain words: \"add more Schwarzenegger, drop the slow ones\"."
+          examples:
+            - add more Schwarzenegger
+          minLength: 1
+          type: string
+      required:
+        - change
+      type: object
+    RefineChannelOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RefineChannelOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: Poll /v1/suggestions for the refined proposal (matched on this jobId), then approve to apply.
+          type: string
+      required:
+        - jobId
+      type: object
     ScopePolicy:
       additionalProperties: false
       properties:
@@ -1358,14 +1444,23 @@ components:
           format: int64
           type: integer
         episodeNoRepeat:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         movieNoRepeat:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         seriesMinGap:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
       type: object
     SeriesStruct:
       additionalProperties: false
@@ -2007,6 +2102,45 @@ components:
         - sourceId
         - librariesEnabled
       type: object
+    UpdateChannelInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UpdateChannelInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          type: string
+        lineup:
+          description: Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands.
+          items:
+            $ref: "#/components/schemas/LineupEntryDTO"
+          type: array
+        name:
+          type: string
+        number:
+          format: int64
+          minimum: 1
+          type: integer
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+          description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+        status:
+          description: Pause (off air, keep the channel) or resume.
+          enum:
+            - paused
+            - building
+          type: string
+        strategy:
+          enum:
+            - sequential
+            - shuffle
+            - time_slot
+          type: string
+      type: object
     UserBody:
       additionalProperties: false
       properties:
@@ -2245,6 +2379,39 @@ paths:
       summary: Get a channel definition + status
       tags:
         - channels
+    patch:
+      description: Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.
+      operationId: update-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a channel
+      tags:
+        - channels
   /v1/channels/{id}/pods:
     get:
       description: Assembles the channel's filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.
@@ -2300,6 +2467,41 @@ paths:
       summary: Force desired→Tunarr reconciliation
       tags:
         - channels
+  /v1/channels/{id}/refine:
+    post:
+      description: Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).
+      operationId: refine-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefineChannelInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefineChannelOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Refine a channel with the LLM
+      tags:
+        - channels
+        - suggestions
   /v1/docs:
     get:
       description: The Help section's table of contents (§13). Pages ship inside the binary, so Help works air-gapped.

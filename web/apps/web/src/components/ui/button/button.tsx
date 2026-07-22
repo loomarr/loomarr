@@ -8,7 +8,10 @@ import type { ButtonProps } from "./button.type";
 // the primitive logic (frontend-design §3, Layer 1). The signal focus ring is the
 // brand focus treatment (§2.1).
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  // cursor-pointer: Tailwind v4's Preflight no longer sets it on <button> (v3 did), so
+  // without this every button shows the default arrow. disabled:pointer-events-none
+  // already suppresses the cursor when disabled, so no disabled:cursor rule is needed.
+  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -20,7 +23,10 @@ const buttonVariants = cva(
         // primary carries dark text. (§2.1's calibration is stricter than the prototype's
         // white-on-magenta; the a11y gate enforces it.)
         suggest: "bg-suggest text-static-950 hover:bg-suggest/90",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        // DARK text on the onair red, same AA calibration as `suggest`: white on solid
+        // onair (#E5484D) is only 3.91:1 (fails AA for <18px — caught by the a11y gate on
+        // the danger zone), while static-950 clears it comfortably.
+        destructive: "bg-destructive text-static-950 hover:bg-destructive/90",
         outline: "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",

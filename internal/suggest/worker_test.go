@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -199,5 +200,77 @@ func TestIntentHash_NormalizesEquivalentIntents(t *testing.T) {
 	c := suggest.Intent{Description: "90s comedy"}
 	if suggest.IntentHash(a) == suggest.IntentHash(c) {
 		t.Error("different intents should hash differently")
+	}
+}
+
+// A refine's change text + current lineup are part of the intent identity, so two
+// refines of the same channel (or a refine vs the original) never collide in the cache.
+func TestIntentHash_DistinguishesRefine(t *testing.T) {
+	base := suggest.Intent{Description: "90s action"}
+	refineA := base
+	refineA.RefineText = "add more Schwarzenegger"
+	refineB := base
+	refineB.RefineText = "make it kid-friendly"
+
+	if suggest.IntentHash(base) == suggest.IntentHash(refineA) {
+		t.Error("a refine must hash differently from the plain intent")
+	}
+	if suggest.IntentHash(refineA) == suggest.IntentHash(refineB) {
+		t.Error("two different refine texts must hash differently")
+	}
+	// The current lineup also contributes (order-independent).
+	l1 := refineA
+	l1.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:603"}, {Key: "movie:tmdb:165"}}
+	l2 := refineA
+	l2.CurrentLineup = []suggest.LineupContext{{Key: "movie:tmdb:165"}, {Key: "movie:tmdb:603"}}
+	if suggest.IntentHash(l1) != suggest.IntentHash(l2) {
+		t.Error("current-lineup order must not change the hash")
+	}
+	if suggest.IntentHash(refineA) == suggest.IntentHash(l1) {
+		t.Error("a different current lineup must change the hash")
+	}
+}
+
+// Refine re-queues an EXISTING job in place (the channel's IntentRef) — same id, new
+// intent, status back to queued so the worker re-runs it. This is what lets the refined
+// proposal bind back to the same channel.
+func TestRefine_ReQueuesExistingJob(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM())
+
+	// A completed original suggestion job.
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-orig", Kind: "suggest", Status: "done",
+		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	refine := suggest.Intent{Description: "90s action", RefineText: "add more Schwarzenegger"}
+	got, err := svc.Refine(ctx, "job-orig", refine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "job-orig" {
+		t.Errorf("Refine returned %q, want the same job id job-orig", got)
+	}
+	// The SAME job is now re-queued with the refine intent (not a new job).
+	j, _ := st.GetJob(ctx, "job-orig")
+	if j.Status != "queued" {
+		t.Errorf("refined job status = %q, want queued (re-run)", j.Status)
+	}
+	if !strings.Contains(j.IntentJSON, "add more Schwarzenegger") {
+		t.Errorf("refined job intent = %q, want the refine text swapped in", j.IntentJSON)
+	}
+}
+
+// Refine on a missing job errors (the caller — refineChannel — guards IntentRef, but the
+// service must be honest if handed a bad id).
+func TestRefine_MissingJob(t *testing.T) {
+	st := newStore(t)
+	svc := buildService(t, st, testkit.NewLLM())
+	if _, err := svc.Refine(context.Background(), "nope", suggest.Intent{}); err == nil {
+		t.Error("refine on a missing job should error")
 	}
 }

@@ -1,6 +1,9 @@
 package suggest
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The external-LLM smoke found Claude wraps its final JSON in a ```json fence even
 // when told "ONLY JSON". parsePicks must read the object out of that wrapping — but
@@ -63,5 +66,35 @@ func TestParsePicks_UnwrapsAndValidates(t *testing.T) {
 				t.Errorf("rationale = %q, want %q", out.Rationale, tt.wantRat)
 			}
 		})
+	}
+}
+
+// userPrompt switches to a REFINE framing when the intent carries refine inputs: it
+// leads with "already exists" + the current lineup + the change, and re-asserts the
+// grounding requirement — rather than the fresh "Build a channel" framing.
+func TestUserPrompt_RefineFraming(t *testing.T) {
+	fresh := userPrompt(Intent{Description: "90s action"})
+	if !strings.Contains(fresh, "Build a channel:") {
+		t.Errorf("fresh prompt missing the build framing:\n%s", fresh)
+	}
+
+	refine := userPrompt(Intent{
+		Description:   "90s action",
+		RefineText:    "add more Schwarzenegger",
+		CurrentLineup: []LineupContext{{Name: "The Matrix", Year: 1999}, {Name: "Point Break", Year: 1991}},
+	})
+	for _, want := range []string{
+		"already exists",
+		"The Matrix (1999)",
+		"Point Break (1991)",
+		"add more Schwarzenegger",
+		"catalog tool", // grounding re-asserted for refine picks
+	} {
+		if !strings.Contains(refine, want) {
+			t.Errorf("refine prompt missing %q:\n%s", want, refine)
+		}
+	}
+	if strings.Contains(refine, "Build a channel:") {
+		t.Error("refine prompt should NOT use the fresh build framing")
 	}
 }

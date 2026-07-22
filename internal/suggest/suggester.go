@@ -426,7 +426,30 @@ const repairPrompt = `Your previous reply was not valid JSON matching the requir
 // userPrompt renders the intent into the first user turn.
 func userPrompt(i Intent) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Build a channel: %s\n", i.Description)
+	// Refine framing (§7): when the channel already exists, lead with its current lineup +
+	// the requested change, so the model KEEPS what still fits and revises the rest — rather
+	// than proposing a channel from scratch. Grounding is unchanged: it must still call the
+	// catalog tool for every pick, kept or new (the buildProposal `surfaced` gate enforces it).
+	if i.RefineText != "" || len(i.CurrentLineup) > 0 {
+		fmt.Fprintf(&b, "This channel already exists: %s\n", i.Description)
+		if len(i.CurrentLineup) > 0 {
+			b.WriteString("Its current lineup is:\n")
+			for _, e := range i.CurrentLineup {
+				if e.Year > 0 {
+					fmt.Fprintf(&b, "  - %s (%d)\n", e.Name, e.Year)
+				} else {
+					fmt.Fprintf(&b, "  - %s\n", e.Name)
+				}
+			}
+		}
+		if i.RefineText != "" {
+			fmt.Fprintf(&b, "The user wants to change it: %s\n", i.RefineText)
+		}
+		b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
+			"Re-ground EVERY title (kept or new) through the catalog tool — use only ids the tool returns.\n")
+	} else {
+		fmt.Fprintf(&b, "Build a channel: %s\n", i.Description)
+	}
 	if i.Era != "" {
 		fmt.Fprintf(&b, "Era: %s\n", i.Era)
 	}

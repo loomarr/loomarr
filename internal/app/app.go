@@ -199,6 +199,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
 		engine.WithRatings(libraryRatings{lib: lib})
+		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
+		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
+		engine.WithNotifier(emitter)
 		channelSvc = engine
 
 		// Now that the scheduler engine exists, give the emitter its backfill
