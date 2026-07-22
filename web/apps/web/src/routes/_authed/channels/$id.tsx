@@ -17,6 +17,7 @@ import {
 } from "@/components/loomarr";
 import { Input } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
+import { ChannelFiller } from "@/filler";
 import { ChannelAdvanced } from "./-channel-advanced";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -74,6 +75,10 @@ const ChannelDetailScreen = () => {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) });
     void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelsNowNextQueryKey() });
+    // The saved pod preview (GET …/pods) lives under its own key, not the channel key, so
+    // a reconcile that changes the break — including an applied filler edit — wouldn't
+    // refresh it without this. The Filler section reads the saved break here.
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getPreviewChannelPodsQueryKey(id) });
   };
 
   // Live update: a background reconcile (this edit, the sweep, a title landing) emits a
@@ -233,8 +238,14 @@ const ChannelDetailScreen = () => {
               <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
             </section>
 
-            {/* Advanced — the scheduler internals (relaxations, the commercial-break
-                breakdown, the Tunarr id), collapsed so the surface above stays plain. */}
+            {/* Filler — choose and preview the channel's ad breaks. A live draft sandbox:
+                shape the theme + pin/exclude clips, watch the break re-assemble, then
+                apply. Sits between the programming rules and the internals because it's
+                part of shaping the channel, not a scheduler detail (§10, §12). */}
+            <ChannelFiller channelId={id} policy={ch.policy} />
+
+            {/* Advanced — the scheduler internals (relaxations and the Tunarr id),
+                collapsed so the surface above stays plain. */}
             <section className="rounded-lg border border-border">
               <button
                 type="button"
@@ -249,7 +260,7 @@ const ChannelDetailScreen = () => {
                   aria-hidden
                 />
               </button>
-              {showAdvanced && <ChannelAdvanced channel={ch} channelId={id} />}
+              {showAdvanced && <ChannelAdvanced channel={ch} />}
             </section>
 
             <ChannelDangerZone
