@@ -2114,6 +2114,11 @@ components:
           type: string
         group:
           type: string
+        lineup:
+          description: Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands.
+          items:
+            $ref: "#/components/schemas/LineupEntryDTO"
+          type: array
         name:
           type: string
         number:

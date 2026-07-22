@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -66,6 +67,48 @@ func channelToDTO(ch store.Channel) ChannelDTO {
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
 		Policy: ch.Policy, Lineup: lineup,
 	}
+}
+
+// mergeLineupEdit turns a whole-list lineup edit (the DTO shape the read side emits) into
+// scheduler entries, for the PATCH path (§7). The read DTO is deliberately lossy — it
+// drops a series' season range, the content rating, and the runtime cap — so a naive
+// DTO→entry rebuild would silently reset those on an unrelated reorder. The fix: for each
+// incoming entry, if its key already exists in the current lineup, carry that entry's rich
+// metadata forward and only take the (possibly edited) name/year/genres from the DTO; a
+// genuinely new key becomes a fresh entry (its rating/duration heal from the library at
+// reconcile). Order follows the incoming list (add/remove/reorder in one payload). Every
+// key is validated up front — a malformed key fails the whole edit rather than landing a
+// junk entry. A key not `available` in the library is fine: it renders as a pending slot
+// until the title lands (§9), so this never plays or acquires unapproved content.
+func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	byKey := make(map[provision.Key]schedule.LineupEntry, len(current))
+	for _, e := range current {
+		byKey[e.Key] = e
+	}
+	out := make([]schedule.LineupEntry, 0, len(edit))
+	seen := make(map[provision.Key]struct{}, len(edit))
+	for i, dto := range edit {
+		key := provision.Key(strings.TrimSpace(dto.Key))
+		if _, _, _, ok := provision.ParseKey(key); !ok {
+			return nil, fmt.Errorf("entry %d: malformed key %q", i, dto.Key)
+		}
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("entry %d: duplicate key %q in lineup", i, dto.Key)
+		}
+		seen[key] = struct{}{}
+
+		entry, existed := byKey[key] // preserves SeasonMin/Max, OfficialRating, RuntimeSec, DurationMs
+		if !existed {
+			entry = schedule.LineupEntry{Key: key}
+		}
+		// The DTO owns the display-level fields; everything else rides through from the
+		// existing entry (or heals at reconcile for a new one).
+		entry.Title = dto.Name
+		entry.Year = dto.Year
+		entry.Genres = dto.Genres
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 // NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes
@@ -330,6 +373,12 @@ type updateChannelInput struct {
 		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
 		// reconciler's/delete's to set, never a client's.
 		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause (off air, keep the channel) or resume."`
+		// Lineup is a WHOLE-LIST replace (§7): the full ordered set of entries. Add = a new
+		// entry, remove = an omitted one, reorder = the same entries reordered. Each key is
+		// validated (provision.ParseKey); a key not `available` in the library is inert (a
+		// pending slot, never played) until it lands, so this can't play unapproved content.
+		// nil = leave the lineup unchanged; an empty (non-nil) array clears it.
+		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
 	}
 }
 
@@ -395,6 +444,18 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		default:
 			return nil, huma.Error422UnprocessableEntity("status may only be set to paused or building", nil)
 		}
+	}
+	// Lineup edit (add/remove/reorder as a whole-list replace). Validate every key and
+	// preserve the rich scheduling metadata the read DTO drops (season range, rating,
+	// runtime) by matching incoming entries to the current lineup by key — a reorder must
+	// not silently reset a series' season scope. Desired is NOT computed here; the
+	// reconcile below derives it from ch.Lineup (§9).
+	if in.Body.Lineup != nil {
+		next, lerr := mergeLineupEdit(ch.Lineup, *in.Body.Lineup)
+		if lerr != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid lineup", lerr)
+		}
+		ch.Lineup = next
 	}
 
 	if err := ch.Validate(); err != nil {
