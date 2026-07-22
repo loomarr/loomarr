@@ -25,6 +25,70 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// Filler is the channel's per-channel commercial-break selection (§10): which
+	// filler the channel draws from (theme) plus specific clips to always/never use.
+	// A pointer so an omitted selection serializes nothing and means "any" (the whole
+	// catalog — the additive default). Edited on the channel page; seeded from Scope.Era
+	// at channel creation.
+	Filler *FillerSelection `json:"filler,omitempty"`
+}
+
+// FillerSelection is a channel's per-channel filler choice (§10). Every field is
+// optional; an empty/absent field means "any", so the zero selection is the whole
+// catalog (the prior global-pool behavior). The theme fields (Era/Audience/Categories/
+// Kinds) narrow which clips are eligible; Pinned/Excluded are per-clip overrides on top.
+// Enum values mirror the filler package's wire strings deliberately — the policy model
+// validates its own closed sets and imports nothing (see the other enums here).
+type FillerSelection struct {
+	Era        *Range   `json:"era,omitempty"`        // year window; nil = any. Seeded from Scope.Era at create.
+	Audience   string   `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
+	Categories []string `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
+	Kinds      []string `json:"kinds,omitempty"`      // empty = the default kinds; else the chosen subset
+	Pinned     []string `json:"pinned,omitempty"`     // TunarrProgramIDs always included (a top-priority pool)
+	Excluded   []string `json:"excluded,omitempty"`   // TunarrProgramIDs never used (wins over Pinned)
+}
+
+// The closed sets FillerSelection validates against (mirrors internal/filler wire
+// values; kept local so the policy model stays dependency-free).
+var (
+	fillerKinds = map[string]bool{
+		"commercial": true, "bumper": true, "station_id": true,
+		"psa": true, "trailer": true, "interstitial": true,
+	}
+	fillerAudiences = map[string]bool{
+		"kids": true, "family": true, "general": true, "late_night": true,
+	}
+	fillerCategories = map[string]bool{
+		"toys": true, "cereal": true, "cars": true, "tech": true, "fast_food": true,
+		"movie_trailer": true, "candy": true, "games": true, "psa": true,
+		"ident": true, "bumper": true, "general": true,
+	}
+)
+
+// validate rejects a selection with an unknown non-empty enum value or an inverted era
+// range. Empty fields are always valid (they mean "any"). Pinned/Excluded are opaque
+// clip ids — not validated here (a stale id simply matches nothing at assembly).
+func (f *FillerSelection) validate() error {
+	if f == nil {
+		return nil
+	}
+	if f.Audience != "" && !fillerAudiences[f.Audience] {
+		return fmt.Errorf("filler: unknown audience %q", f.Audience)
+	}
+	for _, k := range f.Kinds {
+		if !fillerKinds[k] {
+			return fmt.Errorf("filler: unknown kind %q", k)
+		}
+	}
+	for _, c := range f.Categories {
+		if !fillerCategories[c] {
+			return fmt.Errorf("filler: unknown category %q", c)
+		}
+	}
+	if f.Era != nil && f.Era.From > 0 && f.Era.To > 0 && f.Era.From > f.Era.To {
+		return fmt.Errorf("filler: era range %d–%d is inverted", f.Era.From, f.Era.To)
+	}
+	return nil
 }
 
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
@@ -402,6 +466,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if !p.Seasonal.OffSeason.valid() {
 		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
+	}
+	if err := p.Filler.validate(); err != nil {
+		return fmt.Errorf("channel policy: %w", err)
 	}
 	return nil
 }

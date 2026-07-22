@@ -178,10 +178,15 @@ var ErrIngestUnavailable = errors.New("ingest tooling not present in this image"
 // reconciler from ONE code path — a preview that could diverge from what reconcile
 // attaches would be worse than none. nil ⇒ the route 501s.
 type PodPreviewer interface {
-	// Preview takes only a channel id: era and seed are derived by the adapter using
-	// the SAME exported helpers the reconciler uses (channels.PodEra/PodSeed), so the
-	// API cannot accidentally preview a differently-seeded pod than the one that ships.
+	// Preview takes only a channel id: the selection + seed are derived by the adapter
+	// using the SAME exported helpers the reconciler uses (channels.SelectionForChannel/
+	// PodSeed), so the API cannot accidentally preview a differently-seeded pod than the
+	// one that ships. This is the SAVED-state preview (GET …/pods).
 	Preview(ctx context.Context, channelID string) (filler.Pod, error)
+	// PreviewDraft assembles the pool for an UNSAVED draft selection (POST …/pods/preview,
+	// the sandbox), through the same assembler + seed — only the selection differs. It's
+	// what lets the channel page show exactly what a filler change would air before Apply.
+	PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error)
 }
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr

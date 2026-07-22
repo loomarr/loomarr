@@ -324,7 +324,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// build a matched filler-list per channel (attached to Tunarr on reconcile).
 		// The SAME adapter instance backs the §12 preview endpoint, so preview and
 		// reconcile share one assembler and one policy — they cannot drift.
-		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{}, log)
+		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{PodMax: set.intv("filler.pod_max")}, log)
 		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
 		if engine, ok := channelSvc.(*channels.Engine); ok {
 			engine.WithPods(podAdapter)
