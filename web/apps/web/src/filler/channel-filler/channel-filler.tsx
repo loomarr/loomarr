@@ -16,7 +16,7 @@ import { useFillerCatalog } from "./use-filler-catalog";
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: ChannelFillerProps) => {
   const { draft, setDraft, preview, isPreviewing, previewError, isDirty, apply, isApplying, discard } =
     useChannelFillerDraft(channelId, policy);
 
@@ -35,6 +35,8 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
     <CollapsibleSection
       title="Filler"
       description="The commercials, bumpers, and station IDs that play between shows."
+      open={open}
+      onOpenChange={onOpenChange}
       className={className}
       trailing={
         isDirty ? (
