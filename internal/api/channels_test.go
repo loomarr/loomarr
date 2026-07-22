@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -14,14 +15,20 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// fakeChannelSvc records reconcile calls.
+// fakeChannelSvc records reconcile + purge calls.
 type fakeChannelSvc struct {
 	reconciles int
+	purges     int
 	err        error
 }
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
 	f.reconciles++
+	return f.err
+}
+
+func (f *fakeChannelSvc) Purge(ctx context.Context, id string) error {
+	f.purges++
 	return f.err
 }
 
@@ -170,6 +177,180 @@ func TestDeleteChannelDetaches(t *testing.T) {
 	ch, _ := st.GetChannel(context.Background(), "c1")
 	if string(ch.Status) != "detached" {
 		t.Errorf("channel status after delete = %s, want detached", ch.Status)
+	}
+}
+
+// --- edit (PATCH), pause/resume, purge ---
+
+func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) {
+	t.Helper()
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"id":"`+id+`","name":"`+name+`","number":`+itoa(number)+`,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("seed channel %s → %d", id, resp.StatusCode)
+	}
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Old Name", 5)
+	before := chSvc.reconciles
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"name":"New Name","number":7,"group":"Kids"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if ch.Name != "New Name" || ch.Number != 7 || ch.Group != "Kids" {
+		t.Errorf("after patch = name=%q number=%d group=%q", ch.Name, ch.Number, ch.Group)
+	}
+	// An edit auto-reconciles (the seamless "no rebuild" model).
+	if chSvc.reconciles != before+1 {
+		t.Errorf("patch should auto-reconcile once: %d → %d", before, chSvc.reconciles)
+	}
+}
+
+func TestUpdateChannel_RenumberCollision409(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+	mkChannel(t, srv, "c2", "B", 6)
+
+	// Renumber c2 onto c1's number → 409 (not a 500 from the unique index).
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c2", adminToken, `{"number":5}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("renumber collision → %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannel_RenumberToSelfOK(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	// Re-setting a channel to its OWN number must not false-positive as a collision.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"number":5}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("renumber to self → %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannel_PolicyMergePreservesApplied(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	// Seed a reconcile-owned relaxation on the channel (as a reconcile would).
+	ctx := context.Background()
+	ch, _ := st.GetChannel(ctx, "c1")
+	ch.Policy.Applied = []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}}
+	if err := st.UpsertChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	// A policy edit that tries to also set `applied` must be ignored — the stored
+	// `applied` is reconcile-owned and preserved.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"policy":{"ordering":"shuffle","applied":[{"kind":"hacked","from":"x","to":"y"}]}}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("policy patch → %d, want 200", resp.StatusCode)
+	}
+	ch, _ = st.GetChannel(ctx, "c1")
+	if ch.Policy.Ordering != "shuffle" {
+		t.Errorf("policy.ordering = %q, want shuffle (the edit)", ch.Policy.Ordering)
+	}
+	if len(ch.Policy.Applied) != 1 || ch.Policy.Applied[0].Kind != "episodeNoRepeat" {
+		t.Errorf("policy.applied = %+v, want the reconcile-owned value preserved (not client-set)", ch.Policy.Applied)
+	}
+}
+
+func TestUpdateChannel_InvalidPolicyRejected(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	// An off-ladder audience ceiling is a §4 safety violation → 422.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"policy":{"audience":{"ceiling":"NOT-A-RATING"}}}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("invalid policy → %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestUpdateChannel_PauseAndResume(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+	ctx := context.Background()
+
+	// Pause: status → paused, and NO reconcile is kicked (a paused channel is off the sweep).
+	before := chSvc.reconciles
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"paused"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pause → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(ctx, "c1")
+	if ch.Status != schedule.StatusPaused {
+		t.Errorf("status after pause = %s, want paused", ch.Status)
+	}
+	if chSvc.reconciles != before {
+		t.Errorf("pause must NOT reconcile: %d → %d", before, chSvc.reconciles)
+	}
+
+	// Resume: status → building, and it reconciles again.
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"building"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("resume → %d, want 200", resp.StatusCode)
+	}
+	ch, _ = st.GetChannel(ctx, "c1")
+	if ch.Status != schedule.StatusBuilding {
+		t.Errorf("status after resume = %s, want building", ch.Status)
+	}
+	if chSvc.reconciles != before+1 {
+		t.Errorf("resume should reconcile once: %d → %d", before, chSvc.reconciles)
+	}
+}
+
+func TestUpdateChannel_RejectsBadStatus(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+	// A client may only pause/resume — never force live/detached/drifted.
+	for _, s := range []string{"live", "detached", "drifted"} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"status":"`+s+`"}`)
+		// Huma rejects an off-enum value at the schema layer (422) before the handler.
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("status=%q → %d, want 422", s, resp.StatusCode)
+		}
+	}
+}
+
+func TestUpdateChannel_RequiresAdmin(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+	for _, tok := range []string{"", "wrong"} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", tok, `{"name":"X"}`)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("patch with token %q → %d, want 403", tok, resp.StatusCode)
+		}
+	}
+}
+
+func TestUpdateChannel_NotFound(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"name":"X"}`)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "A", 5)
+
+	resp := do(t, srv, http.MethodDelete, "/v1/channels/c1?purge=true", adminToken, "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("purge delete → %d, want 204", resp.StatusCode)
+	}
+	if chSvc.purges != 1 {
+		t.Errorf("purge should call Engine.Purge once, got %d", chSvc.purges)
 	}
 }
 

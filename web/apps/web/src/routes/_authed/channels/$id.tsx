@@ -1,29 +1,24 @@
-import { type ChannelDTO, channelsApi } from "@loomarr/api";
+import { type ChannelDTO, type ChannelPolicy, channelsApi, toProblem } from "@loomarr/api";
 import { formatEpgTime, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/auth";
-import { useTunarrReady } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
-import { ErrorState, OnAirIndicator } from "@/components/loomarr";
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { ChannelAdvanced } from "./channel-advanced";
+import { ChannelDangerZone, ChannelPolicyFields, ErrorState, OnAirIndicator } from "@/components/loomarr";
+import { Input } from "@/components/ui";
+import { useLoomarrEventListener } from "@/events";
+import { ChannelAdvanced } from "./-channel-advanced";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
-// what's playing, what's next, how full is it — in plain words. The scheduler internals
-// (which programming rules were eased, the commercial-break breakdown, the Tunarr id) are
-// real and useful for debugging, but they are the operator's concern, so they live in a
-// collapsed admin-only "Advanced" section — never leaking codes like "reconcile" or a
-// relaxation ladder into the viewer surface.
+// what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,
+// the programming rules, pause/delete) is admin-only and lives inline (§7 PATCH). There is
+// NO manual "rebuild" button: an edit auto-reconciles server-side and the page updates live
+// via the `channel` SSE frame (§9 self-maintaining). The scheduler internals stay tucked in
+// an admin-only "Advanced" disclosure so the viewer surface reads plainly.
 
-// airState is the ONE honest status, derived from ground truth rather than the stored
-// `status` alone: a channel is only genuinely "on air" once it has been pushed to Tunarr
-// (a TunarrID). `live` with no TunarrID is the impossible state that used to render as the
-// contradictory "On air" + "Nothing scheduled"; here it reads as "building" instead.
-// dot reuses the existing OnAirIndicator states (live=red pulse, reconciling=amber,
-// off=muted); `label`/`detail` are the plain-language status a viewer reads.
 type AirState = { dot: OnAirState; label: string; detail: string };
 
 const airStateOf = (ch: ChannelDTO): AirState => {
@@ -31,26 +26,35 @@ const airStateOf = (ch: ChannelDTO): AirState => {
   if (ch.status === "detached") {
     return { dot: "off", label: "Off air", detail: "Loomarr no longer manages this channel." };
   }
+  if (ch.status === "paused") {
+    return {
+      dot: "off",
+      label: "Paused",
+      detail: "Off air, but kept — resume it below whenever you like.",
+    };
+  }
   if (ch.status === "drifted") {
     return {
       dot: "reconciling",
-      label: "On air (needs a rebuild)",
-      detail: "Something changed since the last build — rebuild to bring it back in line.",
+      label: "On air (catching up)",
+      detail: "Something changed in your library — Loomarr is bringing the lineup back in line.",
     };
   }
   if (ch.status === "live" && pushed) {
     return { dot: "live", label: "On air", detail: "Playing now in your TV guide." };
   }
-  // building, or live-without-a-push (not yet broadcasting).
+  // building, or live-without-a-push (not yet broadcasting). Once Tunarr is connected it
+  // goes live on its own — no manual step.
   return {
     dot: "reconciling",
     label: "Not on air yet",
-    detail: pushed ? "Getting ready to broadcast." : "Rebuild to push it to your TV guide and go live.",
+    detail: pushed ? "Getting ready to broadcast." : "It'll go live automatically once Tunarr is connected.",
   };
 };
 
 const ChannelDetailScreen = () => {
   const { id } = Route.useParams();
+  const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -59,12 +63,34 @@ const ChannelDetailScreen = () => {
   // Now/next is Tunarr's guide (§6) — absent until the channel is pushed, which is normal,
   // not an error, so it retries-false and simply shows an honest "nothing yet".
   const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });
-  // Whether a rebuild can even work: it pushes to Tunarr, so it needs tunarr.url set.
-  const tunarrReady = useTunarrReady();
 
-  const reconcile = channelsApi.useReconcileChannel({
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) });
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelsNowNextQueryKey() });
+  };
+
+  // Live update: a background reconcile (this edit, the sweep, a title landing) emits a
+  // `channel` frame — refresh so the page reflects it with no manual action.
+  useLoomarrEventListener({ onChannel: () => invalidate() });
+
+  // Edits save seamlessly, then auto-reconcile server-side. A light toast confirms; the
+  // edit is the trigger, never a separate "apply"/"rebuild" step.
+  const update = channelsApi.useUpdateChannel({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) }),
+      onSuccess: () => {
+        invalidate();
+        toast.success("Saved");
+      },
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't save that change"),
+    },
+  });
+  const del = channelsApi.useDeleteChannel({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Channel deleted");
+        void navigate({ to: "/channels" });
+      },
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't delete the channel"),
     },
   });
 
@@ -82,26 +108,59 @@ const ChannelDetailScreen = () => {
   const guide =
     nowNext.data?.status === 200 ? nowNext.data.data.channels?.find((c) => c.channelId === id) : undefined;
 
-  const ready = ch.programCount; // shows with a real program
+  const ready = ch.programCount;
   const total = ch.slotCount;
+
+  const savePolicy = (policy: ChannelPolicy) => update.mutate({ id, data: { policy } });
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-border border-b px-6 py-4">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              to="/channels"
-              aria-label="Back to channels"
-              className="cursor-pointer text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="size-4" aria-hidden />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent>Back to channels</TooltipContent>
-        </Tooltip>
-        <h1 className="font-semibold text-xl">{ch.name}</h1>
-        <span className="ml-auto font-mono text-muted-foreground text-sm">Channel {ch.number}</span>
+        <Link
+          to="/channels"
+          aria-label="Back to channels"
+          className="cursor-pointer text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+        </Link>
+        {/* Rename / renumber in place (admin) — commit on blur (§7 PATCH), so typing a name
+            doesn't PATCH every keystroke. Non-admins see the plain heading. */}
+        {isAdmin ? (
+          <>
+            <Input
+              aria-label="Channel name"
+              defaultValue={ch.name}
+              disabled={update.isPending}
+              className="h-auto max-w-xs border-transparent bg-transparent px-1 font-semibold text-xl hover:border-input focus:border-input"
+              onBlur={(e) => {
+                const name = e.target.value.trim();
+                if (name && name !== ch.name) update.mutate({ id, data: { name } });
+              }}
+            />
+            <label className="ml-auto flex items-center gap-1.5 font-mono text-muted-foreground text-sm">
+              Ch
+              <Input
+                aria-label="Channel number"
+                type="number"
+                min={1}
+                defaultValue={ch.number}
+                disabled={update.isPending}
+                className="h-8 w-16 px-2 text-center"
+                onBlur={(e) => {
+                  const number = Number(e.target.value);
+                  if (Number.isFinite(number) && number >= 1 && number !== ch.number) {
+                    update.mutate({ id, data: { number } });
+                  }
+                }}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <h1 className="font-semibold text-xl">{ch.name}</h1>
+            <span className="ml-auto font-mono text-muted-foreground text-sm">Channel {ch.number}</span>
+          </>
+        )}
       </header>
 
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 overflow-auto p-6">
@@ -134,61 +193,48 @@ const ChannelDetailScreen = () => {
           </p>
         </section>
 
-        {/* Rebuild — gated on Tunarr being connected AND admin, so it never invites a click
-            that only 501s. A member sees no controls; an admin without Tunarr sees WHY. */}
+        {/* Admin editing + internals, below the viewer surface. */}
         {isAdmin && (
-          <section className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              {tunarrReady ? (
-                <Button onClick={() => reconcile.mutate({ id })} disabled={reconcile.isPending}>
-                  {reconcile.isPending ? "Rebuilding…" : "Rebuild"}
-                </Button>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {/* aria-disabled (not `disabled`) keeps the button focusable so the
-                        tooltip reaches keyboard + hover users; the no-op onClick makes it inert. */}
-                    <Button aria-disabled className="opacity-50" onClick={(e) => e.preventDefault()}>
-                      Rebuild
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Connect Tunarr in Settings first</TooltipContent>
-                </Tooltip>
-              )}
-              {!tunarrReady && (
+          <>
+            <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
+              <div>
+                <h2 className="font-semibold text-lg">Programming rules</h2>
                 <p className="text-muted-foreground text-sm">
-                  <Link to="/settings/connections" className="cursor-pointer text-tune hover:underline">
-                    Connect Tunarr
-                  </Link>{" "}
-                  to push this channel live.
+                  How this channel picks and orders what plays. Anything left on a default just follows your
+                  global settings.
                 </p>
-              )}
-            </div>
-            {/* A rebuild that fails despite Tunarr being set is a real error worth showing. */}
-            {reconcile.error != null && <ErrorState error={reconcile.error} />}
-          </section>
-        )}
+              </div>
+              <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
+            </section>
 
-        {/* Advanced — the scheduler internals, admin-only + collapsed. This is where the
-            relaxation rules, the commercial-break breakdown, and the Tunarr id live, so the
-            viewer surface above stays in plain language. */}
-        {isAdmin && (
-          <section className="rounded-lg border border-border">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((v) => !v)}
-              aria-expanded={showAdvanced}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-muted-foreground text-sm transition-colors hover:bg-static-800 hover:text-foreground"
-            >
-              <span className="font-medium">Advanced</span>
-              <span className="text-static-400 text-xs">how this channel is built</span>
-              <ChevronDown
-                className={`ml-auto size-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
-                aria-hidden
-              />
-            </button>
-            {showAdvanced && <ChannelAdvanced channel={ch} channelId={id} />}
-          </section>
+            {/* Advanced — the scheduler internals (relaxations, the commercial-break
+                breakdown, the Tunarr id), collapsed so the surface above stays plain. */}
+            <section className="rounded-lg border border-border">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                aria-expanded={showAdvanced}
+                className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-muted-foreground text-sm transition-colors hover:bg-static-800 hover:text-foreground"
+              >
+                <span className="font-medium">Advanced</span>
+                <span className="text-static-400 text-xs">how this channel is built</span>
+                <ChevronDown
+                  className={`ml-auto size-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+                  aria-hidden
+                />
+              </button>
+              {showAdvanced && <ChannelAdvanced channel={ch} channelId={id} />}
+            </section>
+
+            <ChannelDangerZone
+              channelName={ch.name}
+              status={ch.status}
+              busy={update.isPending || del.isPending}
+              onPause={() => update.mutate({ id, data: { status: "paused" } })}
+              onResume={() => update.mutate({ id, data: { status: "building" } })}
+              onDelete={({ purge }) => del.mutate({ id, params: { purge } })}
+            />
+          </>
         )}
       </div>
     </div>

@@ -21,6 +21,10 @@ const channelHealth = (channel: ChannelDTO): ChannelHealth => {
       // Tunarr no longer has the channel Loomarr thinks it manages — the one state an
       // operator must act on, so it is an error rather than a soft warning.
       return "error";
+    case "paused":
+      // A deliberate operator pause is a real, calm, non-error state (unlike detached,
+      // which is a fault). Its own health value so the card can render "Paused" plainly.
+      return "paused";
     default:
       return channel.programCount < channel.slotCount ? "pending-slots" : "healthy";
   }
@@ -37,7 +41,7 @@ const channelOnAir = (channel: ChannelDTO): OnAirState => {
     case "building":
       return "reconciling"; // no Tunarr channel yet; it is on its way
     default:
-      return "off"; // detached: Tunarr lost it
+      return "off"; // detached (Tunarr lost it) or paused (operator took it off air)
   }
 };
 

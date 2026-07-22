@@ -113,16 +113,18 @@ describe("Channels", () => {
     expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
   });
 
-  it("reconciles a channel on demand", async () => {
-    const fetchMock = stubFetch();
+  it("has no manual rebuild/refresh — edits are seamless (§9), the card links to the channel", async () => {
+    stubFetch();
     renderAt("/channels");
 
-    const buttons = await screen.findAllByRole("button", { name: /rebuild now/i });
-    await userEvent.click(buttons[0] as HTMLElement);
+    // The card is present and links to the channel's page (where editing + refine live).
+    const card = await screen.findByRole("link", { name: /Cartoons/i });
+    expect(card).toHaveAttribute("href", expect.stringContaining("/channels/ch-live"));
 
-    expect(
-      fetchMock.mock.calls.some(([u, i]) => String(u).includes("/reconcile") && String(i?.method) === "POST"),
-    ).toBe(true);
+    // No manual "Rebuild"/"Refresh" buttons — a background reconcile + a `channel` SSE
+    // frame keep the list current on their own.
+    expect(screen.queryByRole("button", { name: /rebuild/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
   });
 });
 
