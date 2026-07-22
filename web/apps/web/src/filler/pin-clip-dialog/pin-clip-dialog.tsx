@@ -62,7 +62,9 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
     }
     update.mutate({
       id: channelId,
-      data: { policy: { ...policy, filler: { ...policy.filler, pinned: [...pinned, clip.tunarrProgramId] } } },
+      data: {
+        policy: { ...policy, filler: { ...policy.filler, pinned: [...pinned, clip.tunarrProgramId] } },
+      },
     });
   };
 

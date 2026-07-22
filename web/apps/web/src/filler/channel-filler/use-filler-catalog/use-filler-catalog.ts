@@ -11,13 +11,14 @@ const useFillerCatalog = (): { resolve: (id: string) => ClipDTO | undefined; isL
   const list = fillerApi.useListFiller();
   const clips = list.data?.status === 200 ? (list.data.data.clips ?? []) : [];
 
+  // Re-derive when the catalog changes; `clips` is a fresh array each render but its
+  // contents only change on a refetch, and a stale label until then is harmless. Keyed on
+  // the fetched `list.data`, not `clips`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the fetched data
   const byId = useMemo(() => {
     const m = new Map<string, ClipDTO>();
     for (const c of clips) m.set(c.tunarrProgramId, c);
     return m;
-    // Re-derive when the catalog changes; `clips` is a fresh array each render but its
-    // contents only change on a refetch, and a stale label until then is harmless.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the fetched data
   }, [list.data]);
 
   return { resolve: (id) => byId.get(id), isLoading: list.isLoading };

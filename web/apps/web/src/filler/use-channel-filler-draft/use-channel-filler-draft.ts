@@ -1,4 +1,4 @@
-import { channelsApi, type ChannelPolicy, type FillerSelection, toProblem } from "@loomarr/api";
+import { type ChannelPolicy, channelsApi, type FillerSelection, toProblem } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -66,15 +66,15 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   // Debounced re-assemble: fire a preview whenever the canonical draft settles. Keying the
   // effect on `draftKey` (not the object) means editing a field to the same value, or a
   // parent re-render, doesn't re-POST. The timer is cleared on the next change so only the
-  // settled draft is sent.
+  // settled draft is sent. preview.mutate is stable across renders (react-query); depending
+  // on the canonical draft + channel is the whole intent — re-preview exactly when the
+  // selection changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey IS the dependency
   useEffect(() => {
     const t = setTimeout(() => {
       preview.mutate({ id: channelId, data: { filler: JSON.parse(draftKey) as FillerSelection } });
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
-    // preview.mutate is stable across renders (react-query); depending on the canonical
-    // draft + channel is the whole intent — re-preview exactly when the selection changes.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey IS the dependency
   }, [channelId, draftKey]);
 
   const update = channelsApi.useUpdateChannel({

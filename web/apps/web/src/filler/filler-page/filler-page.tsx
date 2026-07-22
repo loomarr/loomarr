@@ -60,7 +60,12 @@ const FillerPage = () => {
           title="No filler folder configured"
           description="Add a folder of commercials, bumpers, and station IDs under Settings → Filler. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
           {...(isAdmin
-            ? { action: { label: "Open Filler settings", onClick: () => navigate({ to: "/settings/filler" }) } }
+            ? {
+                action: {
+                  label: "Open Filler settings",
+                  onClick: () => navigate({ to: "/settings/filler" }),
+                },
+              }
             : {})}
         />
       </div>

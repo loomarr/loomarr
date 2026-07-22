@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 
@@ -277,15 +276,16 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(found.length).toBeGreaterThan(0);
   });
 
-  // The §12 pod preview moved into the channel-detail "Advanced" disclosure (admin-only,
-  // collapsed) so the viewer surface stays plain-language — so reaching it now means
-  // expanding Advanced first. This still guards that the panel is WIRED, just behind the
-  // disclosure rather than always-on.
-  it("/channels/ch-1 mounts the §12 pod preview inside Advanced", async () => {
+  // The §12 pod preview lives in the channel-detail "Filler" section (admin-only), where it
+  // is the live draft-sandbox break — it moved OUT of the "Advanced" disclosure when filler
+  // became per-channel-selectable (§10). This guards that the Filler section (and its break
+  // preview) is WIRED and reachable without expanding anything.
+  it("/channels/ch-1 mounts the §12 filler section with its break preview", async () => {
     stubFetch();
     renderAt("/channels/ch-1");
-    await userEvent.click(await screen.findByRole("button", { name: /advanced/i }));
-    const found = await screen.findAllByText(/commercial break/i, undefined, { timeout: 3000 });
+    // The Filler section heading + its live break sub-heading are always-on for an admin.
+    expect(await screen.findByRole("heading", { name: "Filler", level: 2 })).toBeInTheDocument();
+    const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
 });

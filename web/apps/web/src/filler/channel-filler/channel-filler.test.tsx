@@ -100,7 +100,11 @@ describe("ChannelFiller", () => {
     await user.click(toys);
 
     await waitFor(() =>
-      expect(previews.some((p) => (p as { filler?: { categories?: string[] } }).filler?.categories?.includes("toys"))).toBe(true),
+      expect(
+        previews.some((p) =>
+          (p as { filler?: { categories?: string[] } }).filler?.categories?.includes("toys"),
+        ),
+      ).toBe(true),
     );
     expect(await screen.findByRole("button", { name: /apply filler/i })).toBeInTheDocument();
   });
@@ -127,7 +131,18 @@ describe("ChannelFiller", () => {
   });
 
   it("resolves a pinned clip's id to its name via the catalog", async () => {
-    stubFetch({ clips: [{ tunarrProgramId: "p9", name: "Frosted Flakes", kind: "commercial", durationMs: 30000, tagged: true, aiTagged: false }] });
+    stubFetch({
+      clips: [
+        {
+          tunarrProgramId: "p9",
+          name: "Frosted Flakes",
+          kind: "commercial",
+          durationMs: 30000,
+          tagged: true,
+          aiTagged: false,
+        },
+      ],
+    });
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();

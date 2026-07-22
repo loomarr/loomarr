@@ -58,7 +58,13 @@ const stubFetch = (opts: { detail?: unknown } = {}) => {
         return Promise.resolve(jsonResponse(200, opts.detail ?? channelDetail));
       }
       // GET /v1/channels — the list.
-      return Promise.resolve(jsonResponse(200, { channels: [{ id: "ch-1", name: "90s Action Hour", number: 42, status: "live", policy: channelDetail.policy }] }));
+      return Promise.resolve(
+        jsonResponse(200, {
+          channels: [
+            { id: "ch-1", name: "90s Action Hour", number: 42, status: "live", policy: channelDetail.policy },
+          ],
+        }),
+      );
     }),
   );
   return { patches };
@@ -91,12 +97,18 @@ describe("PinClipDialog", () => {
     // renders as Pinned straight away — no write path to reach.
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
+      vi.fn((_url: string, init?: RequestInit) => {
         if ((init?.method ?? "GET") === "PATCH") throw new Error("must not PATCH an already-pinned channel");
         return Promise.resolve(
           jsonResponse(200, {
             channels: [
-              { id: "ch-1", name: "90s Action Hour", number: 42, status: "live", policy: { filler: { pinned: ["clip-9"] } } },
+              {
+                id: "ch-1",
+                name: "90s Action Hour",
+                number: 42,
+                status: "live",
+                policy: { filler: { pinned: ["clip-9"] } },
+              },
             ],
           }),
         );
