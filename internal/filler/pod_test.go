@@ -174,6 +174,132 @@ func TestAssemble_RespectsPodMax(t *testing.T) {
 	}
 }
 
+// --- per-channel selection (§10): categories / kinds / exclude / pin ---
+
+// containsID reports whether the pod includes a clip id (any kind).
+func containsID(p filler.Pod, id string) bool {
+	for _, e := range p.Entries {
+		if e.TunarrProgramID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// A category selection narrows the commercial pool to just those categories — a "toys +
+// cereal" channel never plays the tech/fast-food ads, even though they'd otherwise match.
+func TestAssemble_CategorySelectionNarrowsPool(t *testing.T) {
+	w := kidsWindow(7)
+	w.Categories = []string{"toys", "cereal"}
+	w.PodMax = 8
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
+	for _, e := range p.Entries {
+		if e.Kind != filler.Commercial {
+			continue
+		}
+		if e.TunarrProgramID != "c1" && e.TunarrProgramID != "c2" { // cereal, toys
+			t.Errorf("category selection admitted %q (not toys/cereal)", e.TunarrProgramID)
+		}
+	}
+	// The narrowing is real: the tech ad (c3) is excluded.
+	if containsID(p, "c3") {
+		t.Error("tech ad c3 played despite a toys+cereal category selection")
+	}
+}
+
+// A kinds selection shapes the whole pod: "bumpers only" yields no commercials at all
+// (the pod is bumpers), because kinds is applied catalog-wide before assembly.
+func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
+	w := kidsWindow(7)
+	w.Kinds = []string{"bumper"}
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
+	for _, e := range p.Entries {
+		if e.Kind == filler.Commercial {
+			t.Errorf("a bumpers-only selection still placed a commercial: %q", e.TunarrProgramID)
+		}
+	}
+}
+
+// Excluding a clip removes it from the pod entirely — it never appears as a commercial,
+// even when it would otherwise be the tightest match.
+func TestAssemble_ExcludeRemovesClip(t *testing.T) {
+	w := kidsWindow(7)
+	w.PodMax = 8
+	w.Excluded = []string{"c2"} // exclude the TMNT toys ad
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
+	if containsID(p, "c2") {
+		t.Error("an excluded clip (c2) still played")
+	}
+	// Other kids ads still play — exclude is surgical, not a blanket empty.
+	if !containsID(p, "c1") && !containsID(p, "c3") {
+		t.Error("exclude removed more than the one excluded clip")
+	}
+}
+
+// Pinning forces a clip in even when it wouldn't otherwise rank — here a wrong-decade
+// (1985) clip that the exact-1992 ladder would never pick.
+func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
+	w := kidsWindow(7)
+	w.Pinned = []string{"c5"} // the 1985 toy ad — wrong decade for a 1992 exact match
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{EraStrict: true}, nil)
+	if !containsID(p, "c5") {
+		t.Error("a pinned off-ladder clip (c5, 1985) was not forced into the 1992 pod")
+	}
+}
+
+// Exclude WINS over pin: a clip that is both pinned and excluded is dropped (the safe
+// default — exclude is the stronger, "never play this" intent).
+func TestAssemble_ExcludeBeatsPin(t *testing.T) {
+	w := kidsWindow(7)
+	w.Pinned = []string{"c1"}
+	w.Excluded = []string{"c1"}
+	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
+	if containsID(p, "c1") {
+		t.Error("a clip both pinned and excluded played — exclude must win")
+	}
+}
+
+// A pin still respects the pod budget: a long pin list can't produce an unbounded pod.
+func TestAssemble_PinRespectsPodMax(t *testing.T) {
+	var cat []filler.Clip
+	for i := 0; i < 6; i++ {
+		cat = append(cat, filler.Clip{
+			TunarrProgramID: "pin" + strconv.Itoa(i), Kind: filler.Commercial,
+			Era: 1992, Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
+		})
+	}
+	w := filler.Window{ChannelID: "ch", Seed: 1, Era: 1992, Audience: filler.Kids, GapMs: 600000, PodMax: 2}
+	w.Pinned = []string{"pin0", "pin1", "pin2", "pin3"} // 4 pins, PodMax 2
+	p := filler.Assemble(cat, w, filler.Policy{}, nil)
+	commercials := 0
+	for _, e := range p.Entries {
+		if e.Kind == filler.Commercial {
+			commercials++
+		}
+	}
+	if commercials > 2 {
+		t.Errorf("pins exceeded PodMax=2: %d commercials", commercials)
+	}
+}
+
+// An empty selection == the prior behaviour: the whole catalog, era/audience-matched.
+// (Regression guard so the additive default never silently changes pods.)
+func TestAssemble_EmptySelectionUnchanged(t *testing.T) {
+	cat := sampleCatalog()
+	base := filler.Assemble(cat, kidsWindow(42), filler.Policy{}, nil)
+	// kidsWindow has no Categories/Kinds/Pinned/Excluded set — so it IS the empty
+	// selection. Assert it still produces a real (non-fallback) pod with commercials.
+	got := 0
+	for _, e := range base.Entries {
+		if e.Kind == filler.Commercial {
+			got++
+		}
+	}
+	if got == 0 {
+		t.Error("empty selection produced no commercials — the additive default regressed")
+	}
+}
+
 // --- helpers ---
 
 func ids(p filler.Pod) []string {

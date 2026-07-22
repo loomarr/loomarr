@@ -149,6 +149,12 @@ func TestValidate(t *testing.T) {
 		Ordering: OrderSyndication,
 		Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedExclude},
 		Seasonal: SeasonalPolicy{Mode: SeasonalAuto, OffSeason: OffSeasonLoop},
+		// A fully-specified filler selection with every closed-set value valid.
+		Filler: &FillerSelection{
+			Era: &Range{From: 1990, To: 1999}, Audience: "kids",
+			Categories: []string{"toys", "cereal"}, Kinds: []string{"commercial", "bumper"},
+			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"},
+		},
 	}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("valid policy rejected: %v", err)
@@ -158,6 +164,10 @@ func TestValidate(t *testing.T) {
 		{Audience: AudiencePolicy{Ceiling: "TV-BOGUS"}},
 		{Audience: AudiencePolicy{Unrated: "maybe"}},
 		{Seasonal: SeasonalPolicy{Mode: "sometimes"}},
+		{Filler: &FillerSelection{Audience: "nobody"}},                // unknown audience
+		{Filler: &FillerSelection{Kinds: []string{"advert"}}},         // unknown kind
+		{Filler: &FillerSelection{Categories: []string{"widgets"}}},   // unknown category
+		{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}, // inverted era range
 	}
 	for i, p := range bad {
 		if err := p.Validate(); err == nil {

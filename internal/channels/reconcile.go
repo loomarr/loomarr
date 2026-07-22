@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
@@ -188,7 +189,7 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 // never returned — the channel still plays (§9 resilience), and EnsureFillerList
 // is internally idempotent so a stable pool makes no Tunarr write.
 func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
-	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodEra(ch), PodSeed(ch.ID))
+	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch))
 	if !ok {
 		ids = nil // empty catalog / only-fallback → detach (channel falls back to flex)
 	}
@@ -228,13 +229,38 @@ func (e *Engine) healRatings(ctx context.Context, lineup []schedule.LineupEntry)
 	}
 }
 
-// PodEra derives the block's target era from the channel (v1: unset → 0, any-era
-// matching). A per-block era comes from the time-slot strategy in future work.
+// SelectionForChannel translates a channel's persisted filler policy (§10
+// FillerSelection) into the filler-package Selection the assembler consumes — the
+// boundary translation that keeps the filler domain free of the schedule type. The era
+// defaults from the channel's PROGRAM scope era when the filler selection sets no era of
+// its own (a "90s action" channel gets 90s ads for free); a Range is a from–to window,
+// so we take its lower bound as the representative era for the ladder. A nil filler
+// policy yields the zero Selection = the whole catalog (the additive default).
 //
-// Exported so the §12 pod PREVIEW derives era identically. If preview computed its own,
-// the two would drift and the UI would confidently show pods the reconciler never
-// builds — the whole failure mode preview exists to prevent.
-func PodEra(ch store.Channel) int { return 0 }
+// Exported so the §12 pod PREVIEW derives the selection identically. If preview computed
+// its own, the two would drift and the UI would confidently show pods the reconciler
+// never builds — the whole failure mode preview exists to prevent.
+func SelectionForChannel(ch store.Channel) filler.Selection {
+	sel := filler.Selection{}
+	f := ch.Policy.Filler
+	if f != nil {
+		sel.Audience = filler.Audience(f.Audience)
+		sel.Categories = f.Categories
+		sel.Kinds = f.Kinds
+		sel.Pinned = f.Pinned
+		sel.Excluded = f.Excluded
+		if f.Era != nil {
+			sel.Era = f.Era.From
+		}
+	}
+	// Default the era from the channel's program scope when the filler selection didn't
+	// set one (the "seed filler era from scope.era" default, applied live rather than
+	// only stamped at create — so an existing channel benefits too).
+	if sel.Era == 0 && ch.Policy.Scope.Era != nil {
+		sel.Era = ch.Policy.Scope.Era.From
+	}
+	return sel
+}
 
 // PodSeed derives a deterministic pod seed from the channel id (§10 seeded-
 // deterministic — same channel rebuilds the same clip pool, so the filler-list

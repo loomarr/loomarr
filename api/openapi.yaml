@@ -187,6 +187,8 @@ components:
             - "null"
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
+        filler:
+          $ref: "#/components/schemas/FillerSelection"
         ordering:
           type: string
         scope:
@@ -434,6 +436,38 @@ components:
             - https://example.com/errors/example
           format: uri
           type: string
+      type: object
+    FillerSelection:
+      additionalProperties: false
+      properties:
+        audience:
+          type: string
+        categories:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        era:
+          $ref: "#/components/schemas/Range"
+        excluded:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        kinds:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        pinned:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
       type: object
     GenreFilter:
       additionalProperties: false
@@ -1110,6 +1144,21 @@ components:
         - kind
         - durationMs
         - isFallbackCard
+      type: object
+    PreviewDraftPodsInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PreviewDraftPodsInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        filler:
+          $ref: "#/components/schemas/FillerSelection"
+      required:
+        - filler
       type: object
     PreviewPodsOutputBody:
       additionalProperties: false
@@ -2422,7 +2471,7 @@ paths:
         - channels
   /v1/channels/{id}/pods:
     get:
-      description: Assembles the channel's filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.
+      description: Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.
       operationId: preview-channel-pods
       parameters:
         - in: path
@@ -2444,6 +2493,39 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Preview the commercial pool this channel would get
+      tags:
+        - channels
+        - filler
+  /v1/channels/{id}/pods/preview:
+    post:
+      description: Assembles the pool a DRAFT filler selection would produce, without persisting it (§10, §12) — the live sandbox on the channel's Filler section. Same assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what will air once applied. Admin-only (an authoring tool); applying is a normal PATCH of policy.filler.
+      operationId: preview-draft-channel-pods
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewDraftPodsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewPodsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview a draft filler selection without saving it
       tags:
         - channels
         - filler
