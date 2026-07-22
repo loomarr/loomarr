@@ -68,7 +68,7 @@ const SearchCommand = ({
                 key={item.id}
                 type="button"
                 onClick={() => onSelect?.(item)}
-                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-static-800"
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-static-800"
               >
                 <span className="min-w-0 truncate">{item.name}</span>
                 <span className="flex shrink-0 items-center gap-2">

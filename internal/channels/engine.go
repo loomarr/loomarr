@@ -72,7 +72,13 @@ type Engine struct {
 	// fail-closed audience gate drops it). Bounded to unrated entries, so a
 	// normally-stamped channel never calls it.
 	ratings RatingResolver
-	log     *slog.Logger
+	// notify publishes a UI-facing `channel` SSE frame after a reconcile changes a
+	// channel, so the Channels/detail pages update live without a manual refresh
+	// (§9 self-maintaining; the "no rebuild button" model). Optional: nil ⇒ no emit
+	// (unit tests, no-events path). A local interface so this package needn't import
+	// internal/events — same accept-interfaces style as GuidePoker/RatingResolver.
+	notify ChannelNotifier
+	log    *slog.Logger
 
 	policy        schedule.PendingPolicy
 	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
@@ -142,6 +148,21 @@ func (e *Engine) WithRatings(r RatingResolver) *Engine {
 // chaining. Kept as a setter so New's signature stays stable for Phase-10 callers.
 func (e *Engine) WithPods(p PodFiller) *Engine {
 	e.pods = p
+	return e
+}
+
+// ChannelNotifier publishes a UI-facing "channel changed" signal (an SSE `channel`
+// frame). A local interface so the channels package needn't import internal/events;
+// the composition root adapts the event bus. `status` is the channel's Loomarr-side
+// status after the reconcile, so a subscriber can update without a refetch if it wants.
+type ChannelNotifier interface {
+	ChannelChanged(channelID, status string)
+}
+
+// WithNotifier wires the `channel` SSE emitter so a reconcile that changes a channel
+// updates the UI live (the "no manual rebuild" model, §9). Optional; nil ⇒ no emit.
+func (e *Engine) WithNotifier(n ChannelNotifier) *Engine {
+	e.notify = n
 	return e
 }
 

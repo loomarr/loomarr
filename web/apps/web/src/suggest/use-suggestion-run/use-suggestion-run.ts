@@ -15,9 +15,13 @@ const TERMINAL: SuggestionPhase[] = ["done", "failed"];
 // job, and ProposalDTO carries jobId, so the match is client-side rather than an
 // invented query param. The list is the approval queue, so it is bounded.
 //
-// Per §8 the stream is a latency optimisation, never the source of truth: a dropped
-// `done` frame costs a spinner, not a proposal, because the list refetches on the same
-// event and the proposal appears the moment it lands.
+// Per §8 the stream is a latency optimisation, never the source of truth. The phases ride
+// the stream; the proposal rides the list. This hook only tracks the phase for the
+// stepper — it does NOT refetch the list itself, because the app-lifetime stream already
+// does: useLoomarrEvents invalidates the `/v1/suggestions` prefix on every suggestion
+// frame (events.ts), and the proposals query lives under that prefix, so the proposal is
+// pulled in as the run progresses. A dropped frame therefore costs a beat, not a proposal
+// — the next frame (or a manual reload) still surfaces it.
 const useSuggestionRun = (): SuggestionRun => {
   const [jobId, setJobId] = useState<string | undefined>();
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();

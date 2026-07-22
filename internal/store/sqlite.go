@@ -25,14 +25,15 @@ WHERE key IN (
 RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at`
 
 // SQLite channel claim: same guarded-UPDATE lease as titles, keyed on
-// reconcile_deadline and excluding detached channels (§9/§18). RETURNs the full
-// channel column set (channelSelect order) so scanChannel serves it.
+// reconcile_deadline and excluding detached + paused channels (§9/§18) — both are
+// off the sweep (detached = unmanaged; paused = deliberately off-air). RETURNs the
+// full channel column set (channelSelect order) so scanChannel serves it.
 // Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteChannelClaimSQL = `
 UPDATE channels SET reconcile_deadline = ?1
 WHERE id IN (
     SELECT id FROM channels
-    WHERE status <> 'detached' AND reconcile_deadline <= ?2 AND reconcile_deadline > 0
+    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2 AND reconcile_deadline > 0
     ORDER BY reconcile_deadline LIMIT ?3
 )
 RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,

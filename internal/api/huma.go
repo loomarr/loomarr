@@ -203,6 +203,10 @@ type SuggestService interface {
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
 	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
+	// Refine re-runs an existing suggestion job (the channel's IntentRef) with a
+	// refine-flavored intent, so the new proposal binds back to the same channel
+	// (§7 POST /v1/channels/{id}/refine). Returns the job id to poll.
+	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
@@ -230,6 +234,9 @@ type ChannelService interface {
 	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
 	// POST /v1/channels/{id}/reconcile).
 	Reconcile(ctx context.Context, channelID string) error
+	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
+	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
+	Purge(ctx context.Context, channelID string) error
 }
 
 // LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and

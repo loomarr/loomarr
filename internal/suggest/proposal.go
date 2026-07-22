@@ -22,6 +22,22 @@ type Intent struct {
 	MustInclude []string `json:"mustInclude,omitempty"`      // titles/terms to include
 	MustExclude []string `json:"mustExclude,omitempty"`      // titles/terms to exclude
 	MaxAcquire  int      `json:"maxAcquisitions,omitempty"`  // cap on acquisitions (§8 quota)
+	// Refine inputs (§7 refine): a free-text change ("add more Schwarzenegger, drop the
+	// slow ones") plus the channel's CURRENT lineup as context. The prompt renders these
+	// so the model reasons from what's already on the channel and returns a revised
+	// lineup. Context only — new picks are still grounded through the catalog tool, so
+	// refine can't invent titles. Empty on a fresh (non-refine) suggestion.
+	RefineText    string          `json:"refineText,omitempty"`
+	CurrentLineup []LineupContext `json:"currentLineup,omitempty"`
+}
+
+// LineupContext is a lightweight "what's on this channel now" entry fed to the refiner —
+// title/year for the model to reason about, plus the real key so a kept item can be
+// matched back exactly. Display/context only; not an identity the grounding gate checks.
+type LineupContext struct {
+	Name string `json:"name"`
+	Year int    `json:"year,omitempty"`
+	Key  string `json:"key,omitempty"` // provisioning key, e.g. "movie:tmdb:603"
 }
 
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).

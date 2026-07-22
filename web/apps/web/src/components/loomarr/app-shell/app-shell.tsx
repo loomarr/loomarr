@@ -10,6 +10,7 @@ import {
   Tv,
   Users,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
@@ -43,7 +44,7 @@ const AppShell = ({
       <button
         type="button"
         onClick={onOpenCommand}
-        className="mb-2 flex items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
+        className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
       >
         <Search className="size-4" aria-hidden />
         <span>Search…</span>
@@ -57,7 +58,7 @@ const AppShell = ({
         <Link
           key={to}
           to={to}
-          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
+          className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
         >
           <Icon className="size-4" aria-hidden />
           {label}
@@ -70,14 +71,19 @@ const AppShell = ({
         </div>
         <span className="truncate text-muted-foreground">{userName}</span>
         {onLogout && (
-          <button
-            type="button"
-            onClick={onLogout}
-            aria-label="Sign out"
-            className="ml-auto rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <LogOut className="size-4" aria-hidden />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onLogout}
+                aria-label="Sign out"
+                className="ml-auto cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <LogOut className="size-4" aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Sign out</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </nav>

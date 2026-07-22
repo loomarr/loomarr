@@ -66,13 +66,19 @@ func (s *Server) approvedProposalForJob(ctx context.Context, jobID string) (stor
 	// proposal's picks become a live channel, so we enforce the §8 gate by only
 	// ever looking at status "approved". An intent that was never approved (or was
 	// denied) simply has no match here → a hard error, not an empty channel.
+	// Ordered created_at DESC (store.ListProposalsByStatus), so the FIRST match is the
+	// NEWEST approved proposal for this job. That is deliberate and load-bearing for
+	// refine (§7): a refine re-runs the channel's own job, producing a newer approved
+	// proposal, and the channel must bind to THAT — the latest approved lineup — not the
+	// original. (A job can therefore have several approved proposals over its life; newest
+	// wins.) Asserted by TestRefine_NewestApprovedWins.
 	approved, err := s.store.ListProposalsByStatus(ctx, "approved")
 	if err != nil {
 		return store.Proposal{}, err
 	}
 	for _, p := range approved {
 		if p.JobID == jobID {
-			return p, nil // a job yields one proposal; first match is the binding
+			return p, nil // newest approved proposal for this job (list is created_at DESC)
 		}
 	}
 	// No approved proposal for this intent. Refuse to build — don't let unapproved

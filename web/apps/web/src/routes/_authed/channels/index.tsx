@@ -2,23 +2,26 @@ import { channelsApi } from "@loomarr/api";
 import { formatEpgTime } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { RefreshCw } from "lucide-react";
 import { channelHealth, channelOnAir } from "@/channels";
 import { ChannelCard, EmptyState, ErrorState } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { useLoomarrEventListener } from "@/events";
 
 // Channels (§12) — the "is my TV working" screen. Everything here is Loomarr's own state
 // except now/next, which is Tunarr's (§6): one call serves every card, so the list costs
-// one upstream request no matter how many channels exist. Both queries live-invalidate on
-// `channel` SSE frames, so a reconcile finishing elsewhere updates this page.
+// one upstream request no matter how many channels exist. There is NO manual "refresh" or
+// "rebuild" button (§9 self-maintaining): a background reconcile — from an edit, the sweep,
+// or a title landing — emits a `channel` SSE frame, and the listener below live-invalidates
+// both queries so the page updates on its own.
 const ChannelsScreen = () => {
   const queryClient = useQueryClient();
   const channels = channelsApi.useListChannels();
   const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });
 
-  const reconcile = channelsApi.useReconcileChannel({
-    mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() }),
+  // Live update: any `channel` frame refreshes the list + guide (no refresh button).
+  useLoomarrEventListener({
+    onChannel: () => {
+      void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelsNowNextQueryKey() });
     },
   });
 
@@ -39,24 +42,11 @@ const ChannelsScreen = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-border border-b px-6 py-4">
-        <div>
-          <h1 className="font-semibold text-xl">Channels</h1>
-          <p className="mt-1 text-muted-foreground text-sm">
-            Every channel Loomarr manages, and what's on right now.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            void channels.refetch();
-            void nowNext.refetch();
-          }}
-          disabled={channels.isFetching}
-        >
-          <RefreshCw className={channels.isFetching ? "animate-spin" : undefined} aria-hidden />
-          Refresh
-        </Button>
+      <header className="border-border border-b px-6 py-4">
+        <h1 className="font-semibold text-xl">Channels</h1>
+        <p className="mt-1 text-muted-foreground text-sm">
+          Every channel Loomarr manages, and what's on right now.
+        </p>
       </header>
 
       <div className="flex-1 overflow-auto p-6">
@@ -73,8 +63,17 @@ const ChannelsScreen = () => {
             {rows.map((ch) => {
               const nn = byChannel.get(ch.id);
               return (
-                <li key={ch.id} className="flex items-start gap-3">
-                  <Link to="/channels/$id" params={{ id: ch.id }} className="min-w-0 flex-1">
+                <li key={ch.id}>
+                  {/* The whole card is the link to the channel's page (where all editing +
+                      refine lives) — there is no per-row action button; edits apply
+                      seamlessly and this list live-updates. Hover feedback lives on the
+                      Link, not ChannelCard (the card is reused non-clickably on the detail
+                      page). cursor-pointer because a <Link> gets no pointer by default. */}
+                  <Link
+                    to="/channels/$id"
+                    params={{ id: ch.id }}
+                    className="block cursor-pointer rounded-lg outline-none ring-signal/0 transition-[box-shadow] hover:ring-2 hover:ring-static-600 focus-visible:ring-2 focus-visible:ring-ring"
+                  >
                     <ChannelCard
                       number={ch.number}
                       name={ch.name}
@@ -95,20 +94,11 @@ const ChannelsScreen = () => {
                       }
                     />
                   </Link>
-                  <Button
-                    variant="outline"
-                    onClick={() => reconcile.mutate({ id: ch.id })}
-                    disabled={reconcile.isPending}
-                    title="Rebuild this channel's lineup from what's available now"
-                  >
-                    {reconcile.isPending ? "Rebuilding…" : "Rebuild now"}
-                  </Button>
                 </li>
               );
             })}
           </ul>
         )}
-        {reconcile.error != null && <ErrorState error={reconcile.error} className="mt-4" />}
       </div>
     </div>
   );
