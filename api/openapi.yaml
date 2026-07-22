@@ -757,6 +757,14 @@ components:
           type: string
         name:
           type: string
+        state:
+          description: available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up.
+          enum:
+            - available
+            - acquiring
+            - pending
+            - unavailable
+          type: string
         year:
           format: int64
           type: integer

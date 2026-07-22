@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { LineupEntryDTO, SearchCandidate } from "@loomarr/api";
+import type { LineupEntryDTO, LineupEntryDTOState, SearchCandidate } from "@loomarr/api";
 import { searchApi } from "@loomarr/api";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useState } from "react";
@@ -33,18 +33,35 @@ const keyOf = (c: SearchCandidate): string => {
   return `name:${c.name.trim().toLowerCase()}:${c.year ?? ""}`;
 };
 
-// One row: drag handle, name/year, a "Pending" badge when the key isn't in the library
-// yet (it'll play once the title lands — never an error state), and remove. Not
+// The badge for a lineup entry's acquisition state (§7). `available` is the normal case
+// and wears no badge — a badge only calls out a title that isn't playing yet: `pending`
+// (added, nothing requested it), `acquiring` (on its way), or `unavailable` (gave up).
+// `unavailable` is the one problem state, so it wears the `onair` (attention) colour;
+// pending/acquiring are calm "not yet" states, never errors. The state is server-derived
+// (durable across reloads); an optimistic add seeds it from the search result's inLibrary.
+const LineupStateBadge = ({ state }: { state?: LineupEntryDTOState }) => {
+  switch (state) {
+    case "pending":
+      return <Badge variant="tune">Pending</Badge>;
+    case "acquiring":
+      return <Badge variant="tune">Acquiring…</Badge>;
+    case "unavailable":
+      return <Badge variant="onair">Unavailable</Badge>;
+    default:
+      return null; // available (or unresolved) → no badge
+  }
+};
+
+// One row: drag handle, name/year, a state badge when the title isn't playing yet (see
+// LineupStateBadge — never an error state except a genuine "gave up"), and remove. Not
 // exported from the barrel — same "internal row" shape as RefineReview's Row or
 // ProposalReview's ItemRow — so it needs no story of its own.
 const SortableLineupRow = ({
   entry,
-  pending,
   disabled,
   onRemove,
 }: {
   entry: LineupEntryDTO;
-  pending: boolean;
   disabled: boolean;
   onRemove: () => void;
 }) => {
@@ -81,7 +98,7 @@ const SortableLineupRow = ({
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
-          {pending && <Badge variant="tune">Pending</Badge>}
+          <LineupStateBadge state={entry.state} />
         </div>
       </div>
 
@@ -112,19 +129,14 @@ const SortableLineupRow = ({
 // subscription + query invalidate is what brings this back in line with the server, the
 // same as every other edit on that page.
 //
-// "Pending" (not yet in the library — the backend renders it as a pending slot until
-// the title lands, rather than an error) is tracked as LOCAL UI state, not re-derived
-// from `lineup` on every render: LineupEntryDTO is deliberately {key, name, year,
-// genres} only (the backend's own read-back never carries an availability flag — that
-// richer per-entry metadata lives server-side, matched by key), so the only moment
-// availability truth is ever visible client-side is the search result that added a
-// title. A pick added `!inLibrary` is remembered as pending here; removing it (or the
-// page loading fresh, where this state starts empty) clears that memory rather than
-// guessing at entries the editor was never told the status of.
+// Each entry's acquisition state (pending / acquiring / unavailable / available) rides on
+// the entry itself — LineupEntryDTO.state, resolved server-side from the provision Record
+// (§7 GET) — so the badge is DURABLE across reloads, not guessed from client-only memory.
+// An optimistic add seeds that state from the search result's `inLibrary` for instant
+// feedback; the refetch the add triggers replaces it with the server's authoritative value.
 const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
 
   const { entries, isPending, add, remove, reorder } = useChannelLineup(channelId, lineup);
 
@@ -178,17 +190,8 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                 <SortableLineupRow
                   key={entry.key}
                   entry={entry}
-                  pending={pendingKeys.has(entry.key)}
                   disabled={isPending}
-                  onRemove={() => {
-                    remove(entry.key);
-                    setPendingKeys((prev) => {
-                      if (!prev.has(entry.key)) return prev;
-                      const next = new Set(prev);
-                      next.delete(entry.key);
-                      return next;
-                    });
-                  }}
+                  onRemove={() => remove(entry.key)}
                 />
               ))}
             </ul>
@@ -225,13 +228,17 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
             onSelect={(result) => {
               const candidate = candidates.find((c) => keyOf(c) === result.id);
               if (!candidate) return;
-              const committed = add({ key: result.id, name: candidate.name, year: candidate.year });
-              // Pending is the "not in the library yet" fact FROM THE SEARCH RESULT
-              // that added it — the only moment that truth is visible client-side, since
-              // LineupEntryDTO's read-back never carries it (see the component header).
-              if (committed && !candidate.inLibrary) {
-                setPendingKeys((prev) => new Set(prev).add(result.id));
-              }
+              // Seed the optimistic `state` from the candidate's library membership: a pick
+              // already in the library reads `available` immediately, one that isn't reads
+              // `pending`. The server re-derives the authoritative state (from the provision
+              // Record) on the refetch this add triggers — so the badge is right instantly
+              // AND durable across reloads, no client-only pending tracking.
+              add({
+                key: result.id,
+                name: candidate.name,
+                year: candidate.year,
+                state: candidate.inLibrary ? "available" : "pending",
+              });
               closeAdd();
             }}
           />

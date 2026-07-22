@@ -46,19 +46,49 @@ type ChannelDTO struct {
 // LineupEntryDTO is one title on the channel — enough to display and to diff a refine
 // against (a real key + human name/year). Not the full scheduler entry.
 type LineupEntryDTO struct {
-	Key    string   `json:"key" doc:"Provisioning key, e.g. movie:tmdb:603"`
-	Name   string   `json:"name"`
-	Year   int      `json:"year,omitempty"`
+	Key  string `json:"key" doc:"Provisioning key, e.g. movie:tmdb:603"`
+	Name string `json:"name"`
+	Year int    `json:"year,omitempty"`
+	// State is the entry's acquisition/availability, resolved from the provision Record per
+	// key so the "not here yet" badge survives a reload (§7). Only the single-channel GET
+	// populates it (the list omits it to avoid an N-query fan-out); "" ⇒ not resolved.
+	State  string   `json:"state,omitempty" enum:"available,acquiring,pending,unavailable" doc:"available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up."`
 	Genres []string `json:"genres,omitempty"`
 }
 
-func channelToDTO(ch store.Channel) ChannelDTO {
+// lineupEntryState collapses the provision.Record lifecycle (plus the no-record case) into
+// the small UI-facing vocabulary the lineup badge needs. A key with NO record is `pending`,
+// not `unavailable`: a manually-added title has a lineup entry but no Record until the
+// acquisition pipeline creates one, and "gave up" (unavailable) is a different thing from
+// "nobody has asked for it yet".
+func lineupEntryState(rec provision.Record, found bool) string {
+	if !found {
+		return "pending" // added to the lineup, but no acquisition Record exists yet
+	}
+	switch rec.State {
+	case provision.Available:
+		return "available"
+	case provision.Wanted, provision.Requested, provision.Downloading:
+		return "acquiring"
+	case provision.Unavailable:
+		return "unavailable"
+	default:
+		return "pending"
+	}
+}
+
+// channelToDTO renders a channel for the API. entryState, when non-nil, resolves each
+// lineup entry's acquisition state by key (the single-channel handlers pass a store-backed
+// resolver; the list passes nil to skip the per-entry lookups it does not need).
+func channelToDTO(ch store.Channel, entryState func(provision.Key) string) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
 	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
-		lineup = append(lineup, LineupEntryDTO{
-			Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres,
-		})
+		dto := LineupEntryDTO{Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres}
+		if entryState != nil {
+			dto.State = entryState(e.Key)
+		}
+		lineup = append(lineup, dto)
 	}
 	return ChannelDTO{
 		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group,
@@ -66,6 +96,19 @@ func channelToDTO(ch store.Channel) ChannelDTO {
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
 		Policy: ch.Policy, Lineup: lineup,
+	}
+}
+
+// entryStateResolver returns a per-key acquisition-state lookup for a SINGLE channel's DTO
+// (getChannel/createChannel/updateChannel/reconcileChannel). A channel has at most a few
+// dozen lineup entries, so a GetTitle per key is cheap here — and this path is per-request,
+// not a list fan-out. A key with no Record resolves to `pending` (lineupEntryState), so a
+// manually-added, not-yet-requested title reads as pending durably rather than only at
+// add-time. The list endpoint deliberately does NOT use this (it shows counts, not entries).
+func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) string {
+	return func(key provision.Key) string {
+		rec, err := s.store.GetTitle(ctx, key)
+		return lineupEntryState(rec, err == nil)
 	}
 }
 
@@ -243,7 +286,8 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	out := &listChannelsOutput{}
 	out.Body.Channels = make([]ChannelDTO, 0, len(all))
 	for _, ch := range all {
-		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch))
+		// nil resolver: the list shows counts, not per-entry state — no per-key fan-out.
+		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil))
 	}
 	return out, nil
 }
@@ -256,7 +300,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(ch)}, nil
+	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
 }
 
 type createChannelInput struct {
@@ -353,7 +397,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh)}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -479,7 +523,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh)}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
 }
 
 type refineChannelInput struct {
@@ -571,7 +615,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: channelToDTO(ch)}, nil
+	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
 }
 
 type deleteChannelInput struct {

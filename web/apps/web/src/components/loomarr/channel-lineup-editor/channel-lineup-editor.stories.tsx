@@ -51,14 +51,18 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-// The common case: a populated lineup with drag handles, remove buttons, and the add
-// affordance — the initial render the visual gallery snapshots (no play()).
+// The common case: a populated lineup showing the full range of entry states — available
+// (no badge, plays now), pending (added, nothing requested it), acquiring (on its way),
+// and unavailable (gave up). Each state rides on the entry (LineupEntryDTO.state, server-
+// derived), so this is a plain initial render — the badges are durable, not the result of
+// a click, which is why the gallery can snapshot them directly (no play()).
 const Populated: Story = {
   args: {
     lineup: [
-      { key: "movie:tmdb:949", name: "Heat", year: 1995 },
-      { key: "movie:tmdb:9426", name: "Point Break", year: 1991 },
-      { key: "movie:tmdb:1892", name: "Return of the Jedi", year: 1983 },
+      { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
+      { key: "movie:tmdb:9426", name: "Point Break", year: 1991, state: "pending" },
+      { key: "movie:tmdb:1892", name: "Return of the Jedi", year: 1983, state: "acquiring" },
+      { key: "movie:tmdb:11", name: "Star Wars", year: 1977, state: "unavailable" },
     ],
   },
 };
@@ -66,14 +70,12 @@ const Populated: Story = {
 // An empty lineup — the dashed empty state, not an error.
 const Empty: Story = { args: { lineup: [] } };
 
-// Ready + pending side by side: play() runs the real add flow (open the palette, search,
-// pick the not-in-library candidate) so the resulting Pending badge is the actual
-// component behaviour, not a prop invented for the story. "Pending" has no field on
-// LineupEntryDTO to seed directly (the backend's read-back never carries an
-// availability flag, see the component header) — the moment it becomes visible is
-// exactly this add, which is why this story demonstrates it rather than the default one.
-const WithPendingAdd: Story = {
-  args: Populated.args,
+// The add flow end to end: play() opens the palette, searches, and picks the
+// not-in-library candidate, so the resulting Pending badge is the actual component
+// behaviour (the optimistic state seeded from the search result's inLibrary), not just a
+// prop on a static entry.
+const AddingATitle: Story = {
+  args: { lineup: [{ key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" }] },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole("button", { name: /add a title/i }));
     await userEvent.type(canvas.getByLabelText("Search"), "breaking");
@@ -83,4 +85,4 @@ const WithPendingAdd: Story = {
 };
 
 export default meta;
-export { Empty, Populated, WithPendingAdd };
+export { AddingATitle, Empty, Populated };

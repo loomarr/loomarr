@@ -671,6 +671,96 @@ func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
 	}
 }
 
+// The single-channel GET resolves each lineup entry's `state` from its provision Record,
+// so the editor's "not here yet" badge is durable across reloads (§7). A key with NO
+// record reads `pending` (a manually-added title nothing has requested yet) — distinct
+// from `unavailable` (acquisition gave up).
+func TestGetChannel_LineupEntryStateFromRecords(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	ctx := context.Background()
+	seed := func(key provision.Key, state provision.State) {
+		if err := st.UpsertTitle(ctx, provision.Record{Key: key, State: state}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("movie:tmdb:603", provision.Available)    // in the library → available
+	seed("movie:tmdb:165", provision.Wanted)       // enqueued → acquiring
+	seed("movie:tmdb:9426", provision.Downloading) // grabbed → acquiring
+	seed("movie:tmdb:11", provision.Unavailable)   // gave up → unavailable
+	// movie:tmdb:106 has NO record → pending.
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix"},
+		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2"},
+		schedule.LineupEntry{Key: "movie:tmdb:9426", Title: "Point Break"},
+		schedule.LineupEntry{Key: "movie:tmdb:11", Title: "Star Wars"},
+		schedule.LineupEntry{Key: "movie:tmdb:106", Title: "Predator"},
+	)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/c1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Lineup []struct {
+			Key   string `json:"key"`
+			State string `json:"state"`
+		} `json:"lineup"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]string, len(body.Lineup))
+	for _, e := range body.Lineup {
+		got[e.Key] = e.State
+	}
+	want := map[string]string{
+		"movie:tmdb:603":  "available",
+		"movie:tmdb:165":  "acquiring",
+		"movie:tmdb:9426": "acquiring",
+		"movie:tmdb:11":   "unavailable",
+		"movie:tmdb:106":  "pending", // no record — the manual-add case
+	}
+	for key, wantState := range want {
+		if got[key] != wantState {
+			t.Errorf("entry %s state = %q, want %q", key, got[key], wantState)
+		}
+	}
+}
+
+// The LIST endpoint omits per-entry state (it shows counts, not entries) — so it must not
+// pay the per-key Record lookup. A listed channel's entries carry an empty state.
+func TestListChannels_OmitsLineupEntryState(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	if err := st.UpsertTitle(context.Background(),
+		provision.Record{Key: "movie:tmdb:603", State: provision.Available}); err != nil {
+		t.Fatal(err)
+	}
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix"})
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Channels []struct {
+			Lineup []struct {
+				State string `json:"state"`
+			} `json:"lineup"`
+		} `json:"channels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Channels) != 1 || len(body.Channels[0].Lineup) != 1 {
+		t.Fatalf("unexpected list shape: %+v", body)
+	}
+	// Even though the title IS available, the list leaves state unresolved (empty).
+	if s := body.Channels[0].Lineup[0].State; s != "" {
+		t.Errorf("list entry state = %q, want empty (list omits per-entry state)", s)
+	}
+}
+
 func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
 	srv, _, chSvc, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "A", 5)
