@@ -1,0 +1,94 @@
+import { suggestionsApi, toProblem } from "@loomarr/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/auth";
+import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loomarr";
+import { Button } from "@/components/ui";
+import { cn } from "@/lib";
+import { IntentForm } from "../intent-form";
+import { useSuggestionRun } from "../use-suggestion-run";
+import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
+
+// ChannelSuggestPanel — Suggest, inline on the Channels list. The create path IS describing a
+// channel: this composes the SAME flow as the /suggest page — IntentForm → useSuggestionRun →
+// GenerationProgress → ProposalReview — but scoped to "make one from here", and on approval it
+// hands the new channel id back so the list navigates to it. It does NOT fork the flow or the
+// approval gate: approve is the same admin-only useApproveProposal, and a member sees the
+// review without the controls (§7/§11). The full /suggest page stays the home for the
+// cross-user approval queue; this is the in-context create surface.
+//
+// One expanding surface over useSuggestionRun's three states: idle → describe form; running →
+// live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
+// another" resets back to the form.
+const ChannelSuggestPanel = ({ onCreated, className }: ChannelSuggestPanelProps) => {
+  const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const run = useSuggestionRun();
+
+  const approve = suggestionsApi.useApproveProposal({
+    mutation: {
+      onSuccess: (res) => {
+        void queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
+        // The approval created (or patched) a channel and returned its id — navigate there so
+        // the operator lands on the new channel. Empty channelId only if creation failed
+        // server-side (the approval still stands); guard so we never navigate to "".
+        if (res.status === 200 && res.data.channelId) {
+          run.reset();
+          onCreated(res.data.channelId);
+        }
+      },
+    },
+  });
+  const deny = suggestionsApi.useDenyProposal({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
+        run.reset();
+      },
+    },
+  });
+
+  const proposal = run.proposal;
+
+  return (
+    <section className={cn("flex flex-col gap-4 rounded-lg border border-border p-4", className)}>
+      <div>
+        <h2 className="font-semibold text-lg">Add a channel</h2>
+        <p className="text-muted-foreground text-sm">
+          Describe the channel you want — Loomarr grounds every pick against your library and TMDB, then you
+          review and approve before anything is built.
+        </p>
+      </div>
+
+      {/* Idle — the describe form (with optional constraints). */}
+      {!run.isRunning && !proposal && <IntentForm onSubmit={run.start} submitting={run.isRunning} />}
+
+      {run.error != null && <ErrorState error={run.error} />}
+
+      {/* Running — the live generation phases. */}
+      {run.isRunning && <GenerationProgress phase={run.phase ?? "searching"} />}
+
+      {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
+      {proposal && (
+        <div className="flex flex-col gap-4">
+          <ProposalReview
+            proposal={proposal.proposal}
+            status={proposal.status}
+            busy={approve.isPending || deny.isPending}
+            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id }) : undefined}
+            onDeny={isAdmin ? () => deny.mutate({ id: proposal.id, data: {} }) : undefined}
+          />
+          {(approve.error ?? deny.error) != null && (
+            <p className="text-onair-300 text-sm">
+              {toProblem(approve.error ?? deny.error).title ?? "That didn't go through — try again."}
+            </p>
+          )}
+          <Button variant="outline" size="sm" className="w-fit" onClick={run.reset}>
+            Start over
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+};
+
+export { ChannelSuggestPanel };
