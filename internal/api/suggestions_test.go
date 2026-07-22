@@ -348,6 +348,37 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 	}
 }
 
+// A new channel seeds its FILLER era from its PROGRAM scope era (§10 default-from-theme),
+// so a "90s" channel gets 90s ads out of the box without the operator touching filler.
+func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	// The proposal's policy scopes programs to the 1990s — the filler era should follow.
+	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
+		`"lineup":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,` +
+		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-era", JobID: "job-era", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-era/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+
+	ch, _ := st.GetChannel(context.Background(), out.ChannelID)
+	if ch.Policy.Filler == nil || ch.Policy.Filler.Era == nil {
+		t.Fatal("new channel got no filler era seeded from its scope era")
+	}
+	if ch.Policy.Filler.Era.From != 1990 || ch.Policy.Filler.Era.To != 1999 {
+		t.Errorf("filler era = %+v, want the scope era 1990–1999", ch.Policy.Filler.Era)
+	}
+}
+
 // "create/patch" (§7) means re-approving the same intent must not mint a second
 // channel — and must not clobber the fields the OPERATOR owns. Name and number are
 // ordinary editable fields; silently reverting an edit on re-approve is data loss.

@@ -33,6 +33,9 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 			commercials = append(commercials, c)
 		}
 	}
+	// Category narrowing (§10) applies to the commercial pool only — bumpers are
+	// bookends, not themed by category.
+	commercials = filterCategories(commercials, w.Categories)
 
 	audienceMatch := filterAudience(commercials, w.Audience)
 
@@ -193,6 +196,51 @@ func filterAudience(clips []Clip, aud Audience) []Clip {
 		// A general-audience clip fits any channel; otherwise require an exact
 		// audience match (kids ads on the kids channel, not late-night).
 		if c.Audience == aud || c.Audience == General {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// filterKinds keeps only clips whose kind is in the selected set (§10 per-channel
+// "kinds to include"). Empty selection = the default kinds (commercial + the two
+// bumper kinds), which is what a channel with no kind preference should draw: ads
+// with bumper bookends. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
+// "bumpers only" selection empties the commercial pool and a "no bumpers" one leaves
+// pickBumper nothing — the kind choice shapes the whole pod, not just the middle.
+func filterKinds(clips []Clip, kinds []string) []Clip {
+	allow := map[Kind]bool{}
+	if len(kinds) == 0 {
+		allow[Commercial], allow[Bumper], allow[StationID] = true, true, true
+	} else {
+		for _, k := range kinds {
+			allow[Kind(k)] = true
+		}
+	}
+	out := make([]Clip, 0, len(clips))
+	for _, c := range clips {
+		if allow[c.Kind] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// filterCategories keeps only clips whose category is in the selected set (§10
+// per-channel "categories"). Empty = any category. A clip with no category ("") is
+// dropped when a non-empty selection is given — an untagged clip can't be known to
+// match "toys", and the selection is an explicit narrowing.
+func filterCategories(clips []Clip, cats []string) []Clip {
+	if len(cats) == 0 {
+		return clips
+	}
+	allow := make(map[string]bool, len(cats))
+	for _, c := range cats {
+		allow[c] = true
+	}
+	out := make([]Clip, 0, len(clips))
+	for _, c := range clips {
+		if allow[c.Category] {
 			out = append(out, c)
 		}
 	}

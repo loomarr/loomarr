@@ -27,6 +27,20 @@ type CatalogReader interface {
 	AllClips(ctx context.Context) ([]Clip, error)
 }
 
+// Selection is a channel's per-channel filler choice in filler-native terms (§10) — the
+// projection of schedule.FillerSelection that assembly needs. Callers (channels/app,
+// which know both packages) translate the policy type to this at the boundary, keeping
+// the filler domain free of a schedule dependency. All fields optional; the zero
+// Selection is the whole catalog (the prior global behaviour).
+type Selection struct {
+	Era        int      // 0 = any (a representative year for the era ladder)
+	Audience   Audience // "" = any
+	Categories []string // empty = any
+	Kinds      []string // empty = the default kinds
+	Pinned     []string // clip ids always included
+	Excluded   []string // clip ids never used
+}
+
 // NewPodAdapter builds the scheduler-facing pod assembler.
 func NewPodAdapter(catalog CatalogReader, policy Policy, log *slog.Logger) *PodAdapter {
 	return &PodAdapter{catalog: catalog, policy: policy, log: log}
@@ -43,8 +57,8 @@ const poolGapMs = 600_000 // 10 min of clips
 // the channel's flex falls back to the bumper card — never dead air (§10, §9). The
 // pool is seed-deterministic (same catalog + seed → same uuids), so a re-reconcile
 // produces the same list (idempotency at the EnsureFillerList layer, §9).
-func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era int, seed int64) ([]string, bool) {
-	pod, err := a.Preview(ctx, channelID, era, seed)
+func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool) {
+	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler list: load catalog failed (channel stays flex)", "channel", channelID, "err", err)
@@ -79,7 +93,7 @@ func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, era 
 // Assemble is pure and seeded-deterministic, so preview and the next reconcile of the
 // same channel produce identical output. Returns an empty pod (not an error) when the
 // catalog is empty — "no clips yet" is a normal state the UI renders, not a failure.
-func (a *PodAdapter) Preview(ctx context.Context, channelID string, era int, seed int64) (Pod, error) {
+func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, sel Selection) (Pod, error) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {
 		return Pod{}, err
@@ -87,22 +101,24 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, era int, see
 	if len(clips) == 0 {
 		return Pod{}, nil
 	}
+	podMax := a.policy.PodMax
+	if podMax <= 0 {
+		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)
+	}
+	// The window IS the per-channel selection (§10): era/audience narrow the ladder,
+	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
+	// Selection leaves every field at its zero "any" value → the whole catalog, which is
+	// the prior behaviour (and the additive default for a channel with no filler choice).
 	w := Window{
-		ChannelID: channelID, Seed: seed, Era: era,
-		// Empty audience = NO PREFERENCE, which is what "channel audience isn't wired
-		// yet" actually means. This previously passed General, whose comment claimed it
-		// "matches broadly" — the exact opposite of what filterAudience does: it keeps
-		// clips where `c.Audience == aud || c.Audience == General`, so General matches
-		// ONLY general-tagged clips. Every kids/family/late_night commercial, and every
-		// untagged one, was silently dropped from every channel's filler-list, leaving
-		// pods that were bumpers and the fallback card alone. Commercials are the point
-		// of §10, so this was the feature quietly not working.
-		Audience: "",
-		GapMs:    poolGapMs, PodMax: 32,
+		ChannelID: channelID, Seed: seed,
+		Era: sel.Era, Audience: sel.Audience,
+		GapMs: poolGapMs, PodMax: podMax,
+		Categories: sel.Categories, Kinds: sel.Kinds,
+		Pinned: sel.Pinned, Excluded: sel.Excluded,
 	}
 	return Assemble(clips, w, a.policy, map[string]bool{}), nil
 }
 
 var _ interface {
-	BuildFillerList(ctx context.Context, channelID string, era int, seed int64) ([]string, bool)
+	BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool)
 } = (*PodAdapter)(nil)

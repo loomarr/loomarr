@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -230,9 +231,16 @@ func (s *Server) registerChannels(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
-		Description: "Assembles the channel's filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
+		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
 		Tags:        []string{"channels", "filler"},
 	}, s.previewChannelPods)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "preview-draft-channel-pods", Method: http.MethodPost, Path: "/v1/channels/{id}/pods/preview",
+		Summary:     "Preview a draft filler selection without saving it",
+		Description: "Assembles the pool a DRAFT filler selection would produce, without persisting it (§10, §12) — the live sandbox on the channel's Filler section. Same assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what will air once applied. Admin-only (an authoring tool); applying is a normal PATCH of policy.filler.",
+		Tags:        []string{"channels", "filler"},
+	}, s.previewDraftChannelPods)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "create-channel", Method: http.MethodPost, Path: "/v1/channels",
@@ -701,7 +709,12 @@ func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (
 	if err != nil {
 		return nil, err
 	}
+	return podToPreviewOutput(pod), nil
+}
 
+// podToPreviewOutput renders an assembled pod into the preview response — shared by the
+// saved (GET) and draft (POST) preview handlers so their shapes cannot drift.
+func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
 	out := &previewPodsOutput{}
 	// Always a slice, never null: an empty catalog is a normal state the UI renders as
 	// "no clips yet", and a null here would make the FE guard a case that isn't an error.
@@ -717,5 +730,62 @@ func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (
 	}
 	out.Body.TotalMs = pod.TotalMs
 	out.Body.MatchLevel = string(pod.MatchLevel)
-	return out, nil
+	return out
+}
+
+type previewDraftPodsInput struct {
+	ID   string `path:"id"`
+	Body struct {
+		// Filler is the DRAFT selection to preview (§10) — the unsaved selection the
+		// sandbox is experimenting with. Same shape as policy.filler; validated like a
+		// policy write, then assembled without persisting anything.
+		Filler schedule.FillerSelection `json:"filler"`
+	}
+}
+
+// previewDraftChannelPods assembles the pool a DRAFT filler selection would produce,
+// without saving it (§10/§12 — the channel-page sandbox). Admin-only: it's an authoring
+// tool (applying the selection is a normal PATCH of policy.filler). Runs the SAME
+// assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what
+// will air once applied — only the (draft) selection differs.
+func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewPodsOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.pods == nil {
+		return nil, huma.Error501NotImplemented("filler pod assembly not configured")
+	}
+	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+	// Validate the draft with the same rules a policy write uses (bad audience/kind/
+	// category/era → 422) — the sandbox must reject a nonsense selection, not assemble it.
+	if err := (schedule.ChannelPolicy{Filler: &in.Body.Filler}).Validate(); err != nil {
+		return nil, huma.Error422UnprocessableEntity("invalid filler selection", err)
+	}
+
+	pod, err := s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(in.Body.Filler))
+	if err != nil {
+		return nil, err
+	}
+	return podToPreviewOutput(pod), nil
+}
+
+// fillerSelectionToDomain translates the policy/DTO FillerSelection into the filler-
+// package Selection the assembler consumes (the API's boundary translation, mirroring
+// channels.SelectionForChannel but for a draft that isn't tied to a stored channel).
+func fillerSelectionToDomain(f schedule.FillerSelection) filler.Selection {
+	sel := filler.Selection{
+		Audience:   filler.Audience(f.Audience),
+		Categories: f.Categories,
+		Kinds:      f.Kinds,
+		Pinned:     f.Pinned,
+		Excluded:   f.Excluded,
+	}
+	if f.Era != nil {
+		sel.Era = f.Era.From
+	}
+	return sel
 }

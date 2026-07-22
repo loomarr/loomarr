@@ -203,18 +203,35 @@ func runFillerSync(ctx context.Context, syncer *filler.Syncer, every time.Durati
 }
 
 // podPreviewAdapter bridges filler.PodAdapter → api.PodPreviewer (§12). It exists to
-// derive era + seed from the channel using the SAME exported helpers the reconciler
-// calls, so a preview and the next reconcile of that channel produce the identical
-// pool. The API stays out of that derivation entirely.
+// derive the selection + seed from the channel using the SAME exported helpers the
+// reconciler calls, so a preview and the next reconcile of that channel produce the
+// identical pool. The API stays out of that derivation entirely.
 type podPreviewAdapter struct {
 	store store.Store
 	pods  *filler.PodAdapter
 }
 
+// Preview assembles the pool for the channel's SAVED filler selection (the GET …/pods
+// path).
 func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (filler.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return filler.Pod{}, err
 	}
-	return a.pods.Preview(ctx, ch.ID, channels.PodEra(ch), channels.PodSeed(ch.ID))
+	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), channels.SelectionForChannel(ch))
+}
+
+// PreviewDraft assembles the pool for a DRAFT selection (the POST …/pods/preview
+// sandbox) — the same seed as the saved preview (so only the selection differs), but the
+// caller's unsaved selection in place of the persisted one. The era still defaults from
+// the channel's program scope when the draft leaves it unset, matching SelectionForChannel.
+func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.Pod{}, err
+	}
+	if sel.Era == 0 && ch.Policy.Scope.Era != nil {
+		sel.Era = ch.Policy.Scope.Era.From
+	}
+	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), sel)
 }
