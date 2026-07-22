@@ -1,4 +1,5 @@
 import { ClipDTOAudience, ClipDTOKind, type FillerSelection } from "@loomarr/api";
+import { FieldHelp } from "@/components/loomarr";
 import {
   Checkbox,
   Input,
@@ -10,6 +11,15 @@ import {
   SelectValue,
 } from "@/components/ui";
 import { cn } from "@/lib";
+
+// FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
+// control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.
+const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
+  <div className="flex items-center gap-1.5">
+    <Label htmlFor={htmlFor}>{children}</Label>
+    <FieldHelp label={children}>{help}</FieldHelp>
+  </div>
+);
 
 // The filler category closed set — MIRRORS internal/schedule/policy.go `fillerCategories`
 // (the backend validates against it; `category` is a free string in the DTO, not a
@@ -85,11 +95,15 @@ const FillerCriteria = ({
   const kinds = selection.kinds ?? [];
 
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
+    // (checkbox row) span both columns.
+    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       {/* Era — two commit-on-blur year inputs, the same idiom as the program-scope era.
-          Blank on either side means unbounded, not 0. */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Era</Label>
+          Blank on either side means unbounded, not 0. Spans both columns (nested 2-up row). */}
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="Match commercials from this era. Left blank, it follows the channel's own era.">
+          Era
+        </FieldLabel>
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="filler-era-from" className="text-muted-foreground text-xs">
@@ -130,14 +144,16 @@ const FillerCriteria = ({
             />
           </div>
         </div>
-        <p className="text-muted-foreground text-xs">
-          Match commercials from this era. Left blank, it follows the channel's own era.
-        </p>
       </div>
 
       {/* Audience — "any" is the sentinel (Radix forbids an empty item value). */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="filler-audience">Audience</Label>
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel
+          htmlFor="filler-audience"
+          help="Keep breaks age-appropriate — kids' cartoons get kids' ads."
+        >
+          Audience
+        </FieldLabel>
         <Select
           value={selection.audience || "any"}
           disabled={disabled}
@@ -155,15 +171,14 @@ const FillerCriteria = ({
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Keep breaks age-appropriate — kids' cartoons get kids' ads.
-        </p>
       </div>
 
       {/* Categories — a multi-select of removable chips over the closed set. No selection
           means "any category", the widest pool. */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Categories</Label>
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="Narrow to certain kinds of ad. None selected draws from every category.">
+          Categories
+        </FieldLabel>
         <div className="flex flex-wrap gap-1.5">
           {CATEGORIES.map((c) => {
             const on = categories.includes(c);
@@ -186,15 +201,14 @@ const FillerCriteria = ({
             );
           })}
         </div>
-        <p className="text-muted-foreground text-xs">
-          Narrow to certain kinds of ad. None selected draws from every category.
-        </p>
       </div>
 
       {/* Kinds — checkboxes over the six clip kinds. None checked means the default set
-          (commercials + bumpers + station IDs), spelled out in the caption. */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Clip kinds</Label>
+          (commercials + bumpers + station IDs). */}
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).">
+          Clip kinds
+        </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {KINDS.map((k) => (
             <label key={k} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -207,9 +221,6 @@ const FillerCriteria = ({
             </label>
           ))}
         </div>
-        <p className="text-muted-foreground text-xs">
-          Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).
-        </p>
       </div>
     </div>
   );

@@ -1,6 +1,18 @@
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import { cn } from "@/lib";
+import { FieldHelp } from "../field-help";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
+
+// FieldLabel — a form label paired with an (i) help icon (FieldHelp), the row that replaces
+// the old permanent helper `<p>` under every control. Keeps the form compact: the guidance is
+// on hover, not always on screen. `htmlFor` ties the label to its control; the help names the
+// same field for screen readers.
+const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
+  <div className="flex items-center gap-1.5">
+    <Label htmlFor={htmlFor}>{children}</Label>
+    <FieldHelp label={children}>{help}</FieldHelp>
+  </div>
+);
 
 // ChannelPolicyFields — a ChannelPolicy as plain-language editable chips (programming-design
 // §8). Controlled: the parent holds `policy` and persists whatever this calls `onChange`
@@ -54,11 +66,16 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
   const separation = policy.separation;
 
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    // A responsive 2-column field grid (was a 1-wide stack): the two Selects sit side by side,
+    // while Era + No-repeat span the full width because they each hold a nested 2-up input row.
+    // gap-x for columns, gap-y for rows.
+    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
           forbids an empty-string item value, so "inherit" is the sentinel. */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="policy-ordering">Ordering</Label>
+        <FieldLabel htmlFor="policy-ordering" help="How programs are sequenced on this channel.">
+          Ordering
+        </FieldLabel>
         <Select
           value={policy.ordering || "inherit"}
           onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
@@ -74,13 +91,17 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">How programs are sequenced on this channel.</p>
       </div>
 
       {/* Audience ceiling — a safety limit, never relaxed by the ladder (§8), so the
-          caption says so explicitly rather than leaving that guarantee implicit. */}
+          help says so explicitly rather than leaving that guarantee implicit. */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="policy-ceiling">Audience ceiling</Label>
+        <FieldLabel
+          htmlFor="policy-ceiling"
+          help="Content stays at or below this — a safety limit Loomarr never loosens."
+        >
+          Audience ceiling
+        </FieldLabel>
         <Select
           value={policy.audience?.ceiling || "none"}
           onValueChange={(v) =>
@@ -101,14 +122,14 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
             ))}
           </SelectContent>
         </Select>
-        <p className="text-muted-foreground text-xs">
-          Content stays at or below this — a safety limit Loomarr never loosens.
-        </p>
       </div>
 
-      {/* Era — two commit-on-blur year inputs. Blank on either side means unbounded, not 0. */}
-      <div className="flex flex-col gap-1.5">
-        <Label>Era</Label>
+      {/* Era — two commit-on-blur year inputs. Blank on either side means unbounded, not 0.
+          Spans both columns (it has its own nested 2-up row). */}
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="Restrict content to titles released in this range. Leave blank for no restriction.">
+          Era
+        </FieldLabel>
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="policy-era-from" className="text-muted-foreground text-xs">
@@ -151,14 +172,14 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
             />
           </div>
         </div>
-        <p className="text-muted-foreground text-xs">
-          Restrict content to titles released in this range. Leave blank for no restriction.
-        </p>
       </div>
 
-      {/* No-repeat windows — commit-on-blur duration strings. */}
-      <div className="flex flex-col gap-1.5">
-        <Label>No-repeat windows</Label>
+      {/* No-repeat windows — commit-on-blur duration strings. Spans both columns (nested
+          2-up row). */}
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <FieldLabel help="How long before the same title can play again (e.g. 168h = 7 days).">
+          No-repeat windows
+        </FieldLabel>
         <div className="flex items-center gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor="policy-movie-norepeat" className="text-muted-foreground text-xs">
@@ -198,9 +219,6 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
             />
           </div>
         </div>
-        <p className="text-muted-foreground text-xs">
-          How long before the same title can play again (e.g. 168h = 7 days).
-        </p>
       </div>
     </div>
   );

@@ -1,23 +1,24 @@
 import { type ChannelDTO, type ChannelPolicy, channelsApi, toProblem } from "@loomarr/api";
-import { formatEpgTime, pluralize } from "@loomarr/core";
+import { channelNumber, formatEpgTime, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
+import { ChannelIdentityField } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
 import {
   ChannelDangerZone,
   ChannelLineupEditor,
   ChannelPolicyFields,
+  CollapsibleSection,
   ErrorState,
   OnAirIndicator,
   RefinePanel,
 } from "@/components/loomarr";
-import { Input } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
+import { cn } from "@/lib";
 import { ChannelAdvanced } from "./-channel-advanced";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -65,7 +66,6 @@ const ChannelDetailScreen = () => {
   const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const channel = channelsApi.useGetChannel(id);
   // Now/next is Tunarr's guide (§6) — absent until the channel is pushed, which is normal,
@@ -125,6 +125,14 @@ const ChannelDetailScreen = () => {
 
   const savePolicy = (policy: ChannelPolicy) => update.mutate({ id, data: { policy } });
 
+  // The identity fields commit through mutateAsync so they can distinguish success (adopt +
+  // close) from failure (a 409 renumber surfaces inline on the field, editor stays open). The
+  // hook-level onError toast still fires; the field also gets the rejection to show in place.
+  const saveName = (name: string | number) =>
+    update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
+  const saveNumber = (number: string | number) =>
+    update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-border border-b px-6 py-4">
@@ -135,144 +143,137 @@ const ChannelDetailScreen = () => {
         >
           <ArrowLeft className="size-4" aria-hidden />
         </Link>
-        {/* Rename / renumber in place (admin) — commit on blur (§7 PATCH), so typing a name
-            doesn't PATCH every keystroke. Non-admins see the plain heading. */}
+        {/* Identity. Admins edit the name/number inline with explicit Save/Cancel per field
+            (ChannelIdentityField); viewers see the plain heading. The mono channel number is
+            the anchor glyph either way (§2.2 — machine data is mono). */}
         {isAdmin ? (
-          <>
-            <Input
-              aria-label="Channel name"
-              defaultValue={ch.name}
-              disabled={update.isPending}
-              className="h-auto max-w-xs border-transparent bg-transparent px-1 font-semibold text-xl hover:border-input focus:border-input"
-              onBlur={(e) => {
-                const name = e.target.value.trim();
-                if (name && name !== ch.name) update.mutate({ id, data: { name } });
-              }}
+          <div className="flex flex-1 flex-wrap items-center gap-3">
+            <ChannelIdentityField
+              label="Channel name"
+              value={ch.name}
+              variant="title"
+              validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
+              onSave={saveName}
             />
-            <label className="ml-auto flex items-center gap-1.5 font-mono text-muted-foreground text-sm">
-              Ch
-              <Input
-                aria-label="Channel number"
+            <label className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
+              <span className="font-mono uppercase tracking-wide">Ch</span>
+              <ChannelIdentityField
+                label="Channel number"
+                value={ch.number}
                 type="number"
-                min={1}
-                defaultValue={ch.number}
-                disabled={update.isPending}
-                className="h-8 w-16 px-2 text-center"
-                onBlur={(e) => {
-                  const number = Number(e.target.value);
-                  if (Number.isFinite(number) && number >= 1 && number !== ch.number) {
-                    update.mutate({ id, data: { number } });
-                  }
+                variant="compact"
+                validate={(v) => {
+                  const n = Number(v);
+                  if (v.trim() === "" || !Number.isInteger(n) || n < 1) return "Use a whole number ≥ 1.";
+                  return undefined;
                 }}
+                onSave={saveNumber}
               />
             </label>
-          </>
+          </div>
         ) : (
           <>
             <h1 className="font-semibold text-xl">{ch.name}</h1>
-            <span className="ml-auto font-mono text-muted-foreground text-sm">Channel {ch.number}</span>
+            <span className="ml-auto font-mono text-muted-foreground text-sm">
+              Channel {channelNumber(ch.number)}
+            </span>
           </>
         )}
       </header>
 
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 overflow-auto p-6">
-        {/* Status — the honest one-liner. */}
-        <section className="flex items-start gap-3">
-          <OnAirIndicator state={air.dot} className="mt-1.5" />
-          <div>
-            <p className="font-semibold text-lg">{air.label}</p>
-            <p className="text-muted-foreground text-sm">{air.detail}</p>
-          </div>
-        </section>
-
-        {/* What's on — a viewer's first question. */}
-        <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-          <NowNextRow label="Now playing" entry={guide?.now} live={air.dot === "live"} />
-          <div className="border-border border-t" />
-          <NowNextRow label="Up next" entry={guide?.next} live={air.dot === "live"} />
-        </section>
-
-        {/* How full — plain words, no "slots/flex/filler" jargon. */}
-        <section className="flex flex-col gap-1">
-          <p className="text-sm">
-            <span className="font-medium">{`${ready} of ${pluralize(total, "show")} ready`}</span>
-            {ready < total && (
-              <span className="text-muted-foreground">
-                {" "}
-                — the rest fill in with clips as they arrive, so the channel never goes dark.
-              </span>
-            )}
-          </p>
-        </section>
-
-        {/* Admin editing + internals, below the viewer surface. */}
-        {isAdmin && (
-          <>
-            {/* Refine is the headline admin action — describe a change, review the diff,
-                apply — so it sits above the programming-rules editor rather than beside
-                the internals. */}
-            <RefinePanel
-              channelId={id}
-              channelName={ch.name}
-              current={(ch.lineup ?? []).map((entry) => ({
-                name: entry.name,
-                year: entry.year,
-                key: entry.key,
-              }))}
-              onApplied={invalidate}
-            />
-
-            {/* The direct, manual path alongside Refine: add/remove/reorder titles by
-                hand. No diff to review and no rebuild step — each edit commits and
-                reconciles immediately (§9), same as every other admin control here. */}
-            <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
-
-            <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
-              <div>
-                <h2 className="font-semibold text-lg">Programming rules</h2>
-                <p className="text-muted-foreground text-sm">
-                  How this channel picks and orders what plays. Anything left on a default just follows your
-                  global settings.
-                </p>
+      {/* Two-column: a sticky identity/at-a-glance rail beside the scrolling edit workbench.
+          Stacks to one column below lg; for a viewer (no workbench) the rail is full-width. */}
+      <div className="mx-auto w-full max-w-6xl flex-1 overflow-auto p-6">
+        <div className={cn("grid gap-6", isAdmin && "lg:grid-cols-[minmax(280px,340px)_1fr]")}>
+          {/* LEFT RAIL — channel identity + "is it working" at a glance. The inner wrapper is
+              sticky on desktop so status/now-next stay in view while the tall workbench scrolls
+              past; the danger zone lives here because it's channel lifecycle, next to identity,
+              not buried at the bottom. The aside is the full-height grid cell (giving the
+              sticky child room to travel); the wrapper is what actually sticks. */}
+          <aside className="flex flex-col gap-5 lg:sticky lg:top-0 lg:self-start">
+            {/* Status hero — the anchor: the mono channel number, the live dot, the honest
+                one-liner. Larger than the rest so the eye lands here first. */}
+            <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-3xl tabular-nums leading-none">
+                  {channelNumber(ch.number)}
+                </span>
+                <div className="flex items-center gap-2">
+                  <OnAirIndicator state={air.dot} />
+                  <span className="font-semibold text-lg">{air.label}</span>
+                </div>
               </div>
-              <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
+              <p className="text-muted-foreground text-sm">{air.detail}</p>
+
+              <div className="border-border border-t pt-3">
+                <NowNextRow label="Now playing" entry={guide?.now} live={air.dot === "live"} />
+                <div className="my-2 border-border border-t" />
+                <NowNextRow label="Up next" entry={guide?.next} live={air.dot === "live"} />
+              </div>
+
+              {/* How full — plain words, no "slots/flex/filler" jargon. */}
+              <p className="border-border border-t pt-3 text-sm">
+                <span className="font-medium">{`${ready} of ${pluralize(total, "show")} ready`}</span>
+                {ready < total && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    — the rest fill in as clips arrive, so the channel never goes dark.
+                  </span>
+                )}
+              </p>
             </section>
 
-            {/* Filler — choose and preview the channel's ad breaks. A live draft sandbox:
-                shape the theme + pin/exclude clips, watch the break re-assemble, then
-                apply. Sits between the programming rules and the internals because it's
-                part of shaping the channel, not a scheduler detail (§10, §12). */}
-            <ChannelFiller channelId={id} policy={ch.policy} />
+            {isAdmin && (
+              <ChannelDangerZone
+                channelName={ch.name}
+                status={ch.status}
+                busy={update.isPending || del.isPending}
+                onPause={() => update.mutate({ id, data: { status: "paused" } })}
+                onResume={() => update.mutate({ id, data: { status: "building" } })}
+                onDelete={({ purge }) => del.mutate({ id, params: { purge } })}
+              />
+            )}
+          </aside>
 
-            {/* Advanced — the scheduler internals (relaxations and the Tunarr id),
-                collapsed so the surface above stays plain. */}
-            <section className="rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-                aria-expanded={showAdvanced}
-                className="flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left text-muted-foreground text-sm transition-colors hover:bg-static-800 hover:text-foreground"
+          {/* RIGHT COLUMN — the editing workbench (admin only). Refine → Lineup → Programming
+              rules → Filler → Advanced, each a section with its own header + breathing room. */}
+          {isAdmin && (
+            <div className="flex min-w-0 flex-col gap-6">
+              {/* Refine is the headline admin action — describe a change, review the diff, apply. */}
+              <RefinePanel
+                channelId={id}
+                channelName={ch.name}
+                current={(ch.lineup ?? []).map((entry) => ({
+                  name: entry.name,
+                  year: entry.year,
+                  key: entry.key,
+                }))}
+                onApplied={invalidate}
+              />
+
+              {/* The direct, manual path alongside Refine: add/remove/reorder titles by hand.
+                  No diff, no rebuild — each edit commits and reconciles immediately (§9). */}
+              <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
+
+              {/* Programming rules — a settings-heavy section, so it's collapsible: opens calm,
+                  you expand it to tune ordering / audience / era / no-repeat. */}
+              <CollapsibleSection
+                title="Programming rules"
+                description="How this channel picks and orders what plays. Defaults follow your global settings."
               >
-                <span className="font-medium">Advanced</span>
-                <span className="text-static-400 text-xs">how this channel is built</span>
-                <ChevronDown
-                  className={`ml-auto size-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
-                  aria-hidden
-                />
-              </button>
-              {showAdvanced && <ChannelAdvanced channel={ch} />}
-            </section>
+                <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
+              </CollapsibleSection>
 
-            <ChannelDangerZone
-              channelName={ch.name}
-              status={ch.status}
-              busy={update.isPending || del.isPending}
-              onPause={() => update.mutate({ id, data: { status: "paused" } })}
-              onResume={() => update.mutate({ id, data: { status: "building" } })}
-              onDelete={({ purge }) => del.mutate({ id, params: { purge } })}
-            />
-          </>
-        )}
+              {/* Filler — its own collapsible sandbox (§10/§12); starts closed. */}
+              <ChannelFiller channelId={id} policy={ch.policy} />
+
+              {/* Advanced — the scheduler internals, collapsed so the surface above stays plain. */}
+              <CollapsibleSection title="Advanced" description="How this channel is built.">
+                <ChannelAdvanced channel={ch} />
+              </CollapsibleSection>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
