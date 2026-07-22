@@ -105,12 +105,14 @@ const ChannelsScreen = () => {
             {rows.map((ch) => {
               const nn = byChannel.get(ch.id);
               return (
-                <li key={ch.id} className="relative pr-12">
-                  {/* The whole card is the link to the channel's page (where all editing +
-                      refine lives). The per-row ⋮ menu (admin) overlays the top-right corner
-                      as a SIBLING, not a child, and swallows its own clicks so pause/delete
-                      don't also follow the link. Edits still apply seamlessly + the list
-                      live-updates. cursor-pointer because a <Link> gets no pointer by default. */}
+                <li key={ch.id}>
+                  {/* The whole card links to the channel's page (where all editing + refine
+                      lives). The per-row ⋮ menu (admin) rides the card's `trailing` slot —
+                      inside the card's top-right cluster, beside the on-air dot — so it reads
+                      as part of the row, not adrift in a margin. It's still a real interactive
+                      control inside a Link, so it swallows its own clicks (see ChannelRowMenu)
+                      to keep pause/delete from also following the link. Edits apply seamlessly
+                      and the list live-updates. cursor-pointer because a <Link> gets none. */}
                   <Link
                     to="/channels/$id"
                     params={{ id: ch.id }}
@@ -122,6 +124,11 @@ const ChannelsScreen = () => {
                       onAir={channelOnAir(ch)}
                       health={channelHealth(ch)}
                       managed
+                      trailing={
+                        isAdmin ? (
+                          <ChannelRowMenu channel={{ id: ch.id, name: ch.name, status: ch.status }} />
+                        ) : undefined
+                      }
                       nowNext={
                         nn && {
                           // `until` is what makes the strip read like a guide ("Cheers
@@ -136,15 +143,6 @@ const ChannelsScreen = () => {
                       }
                     />
                   </Link>
-                  {/* The ⋮ menu sits in a reserved right-hand GUTTER (the li's pr-12),
-                      vertically centered — NOT over the card's top-right corner, which the
-                      on-air status dot already occupies. Keeping it outside the card means
-                      the two never overlap at any width. */}
-                  {isAdmin && (
-                    <div className="absolute top-1/2 right-2 -translate-y-1/2">
-                      <ChannelRowMenu channel={{ id: ch.id, name: ch.name, status: ch.status }} />
-                    </div>
-                  )}
                 </li>
               );
             })}

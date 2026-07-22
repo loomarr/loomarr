@@ -25,6 +25,7 @@ const ChannelCard = ({
   nowNext,
   managed = true,
   health = "healthy",
+  trailing,
   className,
 }: ChannelCardProps) => {
   const chip = HEALTH[health];
@@ -42,7 +43,12 @@ const ChannelCard = ({
             )}
           </div>
         </div>
-        <OnAirIndicator state={onAir} />
+        {/* Top-right cluster: the on-air dot, then any trailing action (the row ⋮ menu).
+            Kept together so the action reads as part of the card, not adrift beside it. */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <OnAirIndicator state={onAir} />
+          {trailing}
+        </div>
       </div>
 
       <NowNextStrip {...nowNext} />
