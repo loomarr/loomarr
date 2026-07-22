@@ -1,4 +1,5 @@
 import { pluralize } from "@loomarr/core";
+import { Link } from "@tanstack/react-router";
 import { PodTimeline } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
@@ -33,7 +34,11 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
           Shape the commercials, bumpers, and station IDs that play between shows. Tweak and
-          watch the break update below — nothing saves until you apply.
+          watch the break update below — nothing saves until you apply. Clips come from your{" "}
+          <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
+            filler catalog
+          </Link>
+          .
         </p>
       </div>
 
@@ -69,9 +74,18 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
           </p>
         ) : entries.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            {isPreviewing
-              ? "Assembling preview…"
-              : "No clips match this selection yet — breaks fall back to the bumper card. Loosen the theme or add clips under Filler."}
+            {isPreviewing ? (
+              "Assembling preview…"
+            ) : (
+              <>
+                No clips match this selection yet — breaks fall back to the bumper card. Loosen the theme
+                above, or{" "}
+                <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
+                  add and tag clips
+                </Link>{" "}
+                in your filler catalog.
+              </>
+            )}
           </p>
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
