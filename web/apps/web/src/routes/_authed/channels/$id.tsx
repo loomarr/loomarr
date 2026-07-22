@@ -5,20 +5,18 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
-import { ChannelIdentityField } from "@/channels";
+import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
 import {
   ChannelDangerZone,
   ChannelLineupEditor,
   ChannelPolicyFields,
-  CollapsibleSection,
   ErrorState,
   OnAirIndicator,
   RefinePanel,
 } from "@/components/loomarr";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
-import { cn } from "@/lib";
 import { ChannelAdvanced } from "./-channel-advanced";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -27,6 +25,15 @@ import { ChannelAdvanced } from "./-channel-advanced";
 // NO manual "rebuild" button: an edit auto-reconciles server-side and the page updates live
 // via the `channel` SSE frame (§9 self-maintaining). The scheduler internals stay tucked in
 // an admin-only "Advanced" disclosure so the viewer surface reads plainly.
+
+// The tab/section ids — the closed set the `?section=` deep-link accepts. Shared by
+// validateSearch (URL narrowing) and the component (the tab registry + which panel shows).
+const SECTION_IDS = ["info", "refine", "lineup", "rules", "filler", "advanced", "danger"] as const;
+type SectionId = (typeof SECTION_IDS)[number];
+
+// `section` is OPTIONAL so a plain link to the channel (from the list, the palette, the approval
+// queue) needs no search param — it just lands on the default tab. Only a deep-link sets it.
+type ChannelDetailSearch = { section?: SectionId };
 
 type AirState = { dot: OnAirState; label: string; detail: string };
 
@@ -106,6 +113,24 @@ const ChannelDetailScreen = () => {
     },
   });
 
+  // The section registry drives BOTH the tab bar and which panel shows, so they can't drift.
+  const sections: ChannelNavSection[] = [
+    { id: "info", label: "Channel info" },
+    { id: "refine", label: "Refine with AI" },
+    { id: "lineup", label: "Lineup" },
+    { id: "rules", label: "Programming rules" },
+    { id: "filler", label: "Filler" },
+    { id: "advanced", label: "Advanced" },
+    { id: "danger", label: "Danger zone" },
+  ];
+
+  // The active tab is URL-driven (`?section=`) — deep-linkable, shareable, back-button aware.
+  // Absent (a plain link) → the default "info" tab. A click navigates, updating the URL.
+  const { section } = Route.useSearch();
+  const activeId: SectionId = section ?? "info";
+  const selectSection = (sid: string) =>
+    navigate({ to: "/channels/$id", params: { id }, search: { section: sid as SectionId } });
+
   if (channel.error) {
     return (
       <div className="p-6">
@@ -181,18 +206,19 @@ const ChannelDetailScreen = () => {
         )}
       </header>
 
-      {/* Two-column: a sticky identity/at-a-glance rail beside the scrolling edit workbench.
-          Stacks to one column below lg; for a viewer (no workbench) the rail is full-width. */}
-      <div className="mx-auto w-full max-w-6xl flex-1 overflow-auto p-6">
-        <div className={cn("grid gap-6", isAdmin && "lg:grid-cols-[minmax(280px,340px)_1fr]")}>
-          {/* LEFT RAIL — channel identity + "is it working" at a glance. The inner wrapper is
-              sticky on desktop so status/now-next stay in view while the tall workbench scrolls
-              past; the danger zone lives here because it's channel lifecycle, next to identity,
-              not buried at the bottom. The aside is the full-height grid cell (giving the
-              sticky child room to travel); the wrapper is what actually sticks. */}
-          <aside className="flex flex-col gap-5 lg:sticky lg:top-0 lg:self-start">
-            {/* Status hero — the anchor: the mono channel number, the live dot, the honest
-                one-liner. Larger than the rest so the eye lands here first. */}
+      {/* A HORIZONTAL tab bar under the header (admin only). Each tab is a section; clicking one
+          shows ONLY that section's panel below and updates the URL (`?section=`) so it's deep-
+          linkable. A viewer sees no bar — just the read-only Channel info. */}
+      {isAdmin && <ChannelNav sections={sections} activeId={activeId} onSelect={selectSection} />}
+
+      {/* One section at a time (tabs). The panel is centered at a comfortable width and scrolls
+          if its own content is tall — but the page never grows into a long stack, so there's no
+          scroll-to / scroll-spy machinery. `activeId` (from the URL) picks the panel. */}
+      <div className="flex-1 overflow-auto">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
+          {/* CHANNEL INFO — the read-only "is it working" at a glance. Always available (also the
+              viewer's only panel). */}
+          {(!isAdmin || activeId === "info") && (
             <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
               <div className="flex items-center gap-3">
                 <span className="font-mono text-3xl tabular-nums leading-none">
@@ -200,7 +226,9 @@ const ChannelDetailScreen = () => {
                 </span>
                 <div className="flex items-center gap-2">
                   <OnAirIndicator state={air.dot} />
-                  <span className="font-semibold text-lg">{air.label}</span>
+                  {/* The status is the info panel's heading (also what the reachability check
+                      keys on — a real heading proves the screen composed). */}
+                  <h2 className="font-semibold text-lg">{air.label}</h2>
                 </div>
               </div>
               <p className="text-muted-foreground text-sm">{air.detail}</p>
@@ -211,7 +239,6 @@ const ChannelDetailScreen = () => {
                 <NowNextRow label="Up next" entry={guide?.next} live={air.dot === "live"} />
               </div>
 
-              {/* How full — plain words, no "slots/flex/filler" jargon. */}
               <p className="border-border border-t pt-3 text-sm">
                 <span className="font-medium">{`${ready} of ${pluralize(total, "show")} ready`}</span>
                 {ready < total && (
@@ -222,56 +249,61 @@ const ChannelDetailScreen = () => {
                 )}
               </p>
             </section>
+          )}
 
-            {isAdmin && (
-              <ChannelDangerZone
-                channelName={ch.name}
-                status={ch.status}
-                busy={update.isPending || del.isPending}
-                onPause={() => update.mutate({ id, data: { status: "paused" } })}
-                onResume={() => update.mutate({ id, data: { status: "building" } })}
-                onDelete={({ purge }) => del.mutate({ id, params: { purge } })}
-              />
-            )}
-          </aside>
+          {/* Admin editing panels — each shown only when its tab is active. Rules/Advanced render
+              their fields directly under a section shell (the tab bar already names the section,
+              so no collapsible chrome); Filler keeps its internal sandbox, forced open. */}
+          {isAdmin && activeId === "refine" && (
+            <RefinePanel
+              channelId={id}
+              channelName={ch.name}
+              current={(ch.lineup ?? []).map((entry) => ({
+                name: entry.name,
+                year: entry.year,
+                key: entry.key,
+              }))}
+              onApplied={invalidate}
+            />
+          )}
 
-          {/* RIGHT COLUMN — the editing workbench (admin only). Refine → Lineup → Programming
-              rules → Filler → Advanced, each a section with its own header + breathing room. */}
-          {isAdmin && (
-            <div className="flex min-w-0 flex-col gap-6">
-              {/* Refine is the headline admin action — describe a change, review the diff, apply. */}
-              <RefinePanel
-                channelId={id}
-                channelName={ch.name}
-                current={(ch.lineup ?? []).map((entry) => ({
-                  name: entry.name,
-                  year: entry.year,
-                  key: entry.key,
-                }))}
-                onApplied={invalidate}
-              />
+          {isAdmin && activeId === "lineup" && (
+            <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
+          )}
 
-              {/* The direct, manual path alongside Refine: add/remove/reorder titles by hand.
-                  No diff, no rebuild — each edit commits and reconciles immediately (§9). */}
-              <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
+          {isAdmin && activeId === "rules" && (
+            <section className="flex flex-col gap-4 rounded-lg border border-border p-5">
+              <div>
+                <h2 className="font-semibold text-lg">Programming rules</h2>
+                <p className="text-muted-foreground text-sm">
+                  How this channel picks and orders what plays. Defaults follow your global settings.
+                </p>
+              </div>
+              <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
+            </section>
+          )}
 
-              {/* Programming rules — a settings-heavy section, so it's collapsible: opens calm,
-                  you expand it to tune ordering / audience / era / no-repeat. */}
-              <CollapsibleSection
-                title="Programming rules"
-                description="How this channel picks and orders what plays. Defaults follow your global settings."
-              >
-                <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
-              </CollapsibleSection>
+          {isAdmin && activeId === "filler" && <ChannelFiller channelId={id} policy={ch.policy} open />}
 
-              {/* Filler — its own collapsible sandbox (§10/§12); starts closed. */}
-              <ChannelFiller channelId={id} policy={ch.policy} />
+          {isAdmin && activeId === "advanced" && (
+            <section className="flex flex-col gap-4 rounded-lg border border-border p-5">
+              <div>
+                <h2 className="font-semibold text-lg">Advanced</h2>
+                <p className="text-muted-foreground text-sm">How this channel is built.</p>
+              </div>
+              <ChannelAdvanced channel={ch} />
+            </section>
+          )}
 
-              {/* Advanced — the scheduler internals, collapsed so the surface above stays plain. */}
-              <CollapsibleSection title="Advanced" description="How this channel is built.">
-                <ChannelAdvanced channel={ch} />
-              </CollapsibleSection>
-            </div>
+          {isAdmin && activeId === "danger" && (
+            <ChannelDangerZone
+              channelName={ch.name}
+              status={ch.status}
+              busy={update.isPending || del.isPending}
+              onPause={() => update.mutate({ id, data: { status: "paused" } })}
+              onResume={() => update.mutate({ id, data: { status: "building" } })}
+              onDelete={({ purge }) => del.mutate({ id, params: { purge } })}
+            />
           )}
         </div>
       </div>
@@ -313,6 +345,12 @@ const NowNextRow = ({
 };
 
 const Route = createFileRoute("/_authed/channels/$id")({
+  // The active tab is deep-linkable via `?section=`. Narrow an unknown/absent value to "info"
+  // so a stale or hand-typed link lands on a valid tab rather than a blank panel.
+  validateSearch: (search: Record<string, unknown>): ChannelDetailSearch => ({
+    // Keep a valid section; drop anything else (absent → the component defaults to "info").
+    section: SECTION_IDS.includes(search.section as SectionId) ? (search.section as SectionId) : undefined,
+  }),
   component: ChannelDetailScreen,
 });
 

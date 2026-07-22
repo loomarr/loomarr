@@ -277,17 +277,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(found.length).toBeGreaterThan(0);
   });
 
-  // The §12 pod preview lives in the channel-detail "Filler" section (admin-only), a
-  // collapsible that starts closed. This guards that the section is WIRED + reachable: the
-  // Filler header is present, and expanding it reveals the live draft-sandbox break preview.
-  it("/channels/ch-1 mounts the §12 filler section with its break preview", async () => {
+  // The §12 pod preview lives in the channel-detail "Filler" tab (admin-only) — the detail page
+  // is now a tabbed layout, one section shown at a time. This guards the tab is WIRED +
+  // reachable: the Filler tab is present, and selecting it reveals the live draft-sandbox break.
+  it("/channels/ch-1 reaches the §12 filler section (its tab) with the break preview", async () => {
     stubFetch();
     renderAt("/channels/ch-1");
-    // The collapsible Filler header is always present for an admin.
-    const fillerHeader = await screen.findByRole("button", { name: /^filler/i });
-    expect(fillerHeader).toBeInTheDocument();
-    // Expand it → the break preview inside is reachable.
-    await userEvent.click(fillerHeader);
+    // The Filler tab in the section bar is always present for an admin.
+    const fillerTab = await screen.findByRole("button", { name: "Filler" });
+    expect(fillerTab).toBeInTheDocument();
+    // Selecting it swaps to the Filler panel → the break preview inside is reachable.
+    await userEvent.click(fillerTab);
     const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
