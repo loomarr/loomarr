@@ -9,6 +9,7 @@ import { useAuth } from "@/auth";
 import type { OnAirState } from "@/components/loomarr";
 import {
   ChannelDangerZone,
+  ChannelLineupEditor,
   ChannelPolicyFields,
   ErrorState,
   OnAirIndicator,
@@ -215,6 +216,11 @@ const ChannelDetailScreen = () => {
               }))}
               onApplied={invalidate}
             />
+
+            {/* The direct, manual path alongside Refine: add/remove/reorder titles by
+                hand. No diff to review and no rebuild step — each edit commits and
+                reconciles immediately (§9), same as every other admin control here. */}
+            <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
 
             <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
               <div>

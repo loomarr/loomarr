@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -445,6 +446,228 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/nope", adminToken, `{"name":"X"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
+	}
+}
+
+// --- P3: manual lineup edits (add / remove / reorder via PATCH lineup) ---
+
+// seedChannelWithLineup writes a channel carrying a lineup directly (the create endpoint
+// needs an approved proposal for a real lineup; these tests exercise the edit path, so
+// they seed the starting state in the store).
+func seedChannelWithLineup(t *testing.T, st store.Store, id string, entries ...schedule.LineupEntry) {
+	t.Helper()
+	err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{
+			ID: id, Name: "Seed", Number: 5, Strategy: schedule.Sequential,
+			Status: schedule.StatusBuilding,
+		},
+		Lineup: entries,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func keysOf(entries []schedule.LineupEntry) []string {
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = string(e.Key)
+	}
+	return out
+}
+
+// A reorder is a whole-list replace with the same keys in a new order. The lineup order
+// must follow the payload (sequential/syndication play in order), and it auto-reconciles.
+func TestUpdateChannel_LineupReorder(t *testing.T) {
+	srv, st, chSvc, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
+		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+	)
+	before := chSvc.reconciles
+
+	// Swap the order.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	got := keysOf(ch.Lineup)
+	want := []string{"movie:tmdb:165", "movie:tmdb:603"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("lineup order after reorder = %v, want %v", got, want)
+	}
+	if chSvc.reconciles != before+1 {
+		t.Errorf("lineup edit should auto-reconcile once: %d → %d", before, chSvc.reconciles)
+	}
+}
+
+// Adding a key and removing another, in one payload. A newly-added key that isn't in the
+// library is accepted — it becomes a pending slot at reconcile (§9), the point of P3.
+func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
+		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+	)
+
+	// Keep The Matrix, drop Terminator 2, add Predator (not in this store — a pending add).
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("add/remove → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	got := keysOf(ch.Lineup)
+	want := []string{"movie:tmdb:603", "movie:tmdb:106"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("lineup after add/remove = %v, want %v", got, want)
+	}
+}
+
+// A non-nil empty array clears the lineup (distinct from omitting the field, which leaves
+// it unchanged — the pointer-optional partial contract).
+func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+
+	// Omitting lineup leaves it untouched (renames only).
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"name":"Renamed"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rename → %d", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if len(ch.Lineup) != 1 {
+		t.Fatalf("omitting lineup cleared it: %d entries, want 1", len(ch.Lineup))
+	}
+
+	// An explicit empty array clears it.
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, `{"lineup":[]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear → %d", resp.StatusCode)
+	}
+	ch, _ = st.GetChannel(context.Background(), "c1")
+	if len(ch.Lineup) != 0 {
+		t.Errorf("explicit [] should clear the lineup: %d entries, want 0", len(ch.Lineup))
+	}
+}
+
+// A malformed key fails the WHOLE edit (422) — a junk entry must never land, and the
+// existing lineup must be untouched on rejection.
+func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("malformed key → %d, want 422", resp.StatusCode)
+	}
+	// The rejection left the original lineup intact (no partial write).
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:603") {
+		t.Errorf("a rejected edit changed the lineup: %v", keysOf(ch.Lineup))
+	}
+}
+
+// The read DTO is lossy (no season range / rating / runtime), so an edit that reuses a key
+// must PRESERVE those fields from the existing entry — a reorder must not silently reset a
+// series' season scope. This is the correctness crux of P3.
+func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	// A series scoped to seasons 1–3 with a rating + runtime the DTO can't carry.
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{
+			Key: "series:tvdb:81189", Title: "Breaking Bad", Year: 2008,
+			SeasonMin: 1, SeasonMax: 3, OfficialRating: "TV-MA", RuntimeSec: 2880,
+		},
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+
+	// Reorder (series now second) using ONLY the lossy DTO fields — season/rating/runtime
+	// are not in the payload.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
+			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	var bb *schedule.LineupEntry
+	for i := range ch.Lineup {
+		if ch.Lineup[i].Key == provision.Key("series:tvdb:81189") {
+			bb = &ch.Lineup[i]
+		}
+	}
+	if bb == nil {
+		t.Fatal("series entry vanished after reorder")
+	}
+	if bb.SeasonMin != 1 || bb.SeasonMax != 3 {
+		t.Errorf("season scope reset on reorder: got [%d,%d], want [1,3] — the lossy DTO dropped it",
+			bb.SeasonMin, bb.SeasonMax)
+	}
+	if bb.OfficialRating != "TV-MA" {
+		t.Errorf("rating reset on reorder: %q, want TV-MA", bb.OfficialRating)
+	}
+	if bb.RuntimeSec != 2880 {
+		t.Errorf("runtime reset on reorder: %d, want 2880", bb.RuntimeSec)
+	}
+}
+
+// A duplicate key in one payload is rejected (422) — a lineup is a set of distinct titles;
+// two entries for the same key would double-schedule and confuse the backfill correlation.
+func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
+			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("duplicate key → %d, want 422", resp.StatusCode)
+	}
+}
+
+// Keys are trimmed before validation + dedupe, so surrounding whitespace neither
+// smuggles a "distinct" duplicate past the set nor breaks ParseKey.
+func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1")
+
+	// A padded key must validate (trimmed) and land canonicalized.
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("padded key → %d, want 200", resp.StatusCode)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:603") {
+		t.Errorf("padded key not trimmed to canonical form: %v", keysOf(ch.Lineup))
+	}
+
+	// The same key padded differently in two entries is still one key → duplicate → 422.
+	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		`{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("whitespace-disguised duplicate → %d, want 422", resp.StatusCode)
+	}
+}
+
+// Lineup editing is admin-only (same gate as every other channel mutation).
+func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	seedChannelWithLineup(t, st, "c1",
+		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", "",
+		`{"lineup":[]}`)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("member lineup edit → %d, want 403", resp.StatusCode)
 	}
 }
 
