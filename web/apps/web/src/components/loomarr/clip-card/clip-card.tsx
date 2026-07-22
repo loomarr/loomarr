@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
-import { Sparkles, Tag } from "lucide-react";
+import { Pin, Sparkles, Tag } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ClipCardProps } from "./clip-card.type";
@@ -26,7 +26,7 @@ const AUDIENCE_LABEL: Record<string, string> = {
   late_night: "Late night",
 };
 
-const ClipCard = ({ clip, onConfirmTags, onTag, className }: ClipCardProps) => (
+const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProps) => (
   <Card className={cn("flex flex-col gap-2.5 p-3", className)}>
     <div className="flex items-start justify-between gap-2">
       <p className="min-w-0 truncate font-medium text-sm">{clip.name}</p>
@@ -49,21 +49,32 @@ const ClipCard = ({ clip, onConfirmTags, onTag, className }: ClipCardProps) => (
       {!clip.tagged && !clip.aiTagged && <Badge variant="caution">Untagged</Badge>}
     </div>
 
-    {clip.aiTagged && onConfirmTags && (
-      <Button variant="outline" size="sm" onClick={onConfirmTags} className="self-start">
-        Confirm tags
-      </Button>
-    )}
-    {/* Offered for EVERY clip, not just untagged ones. A fully-tagged clip can still be
-        wrong — §10's likely error is a trailer scanned as a commercial, which arrives
-        with era/audience/category filled in and therefore counts as "tagged". Gating the
-        edit on `!tagged` left exactly that clip uncorrectable, and kind drives pod role,
-        so a wrong one yields structurally wrong pods. */}
-    {!clip.aiTagged && onTag && (
-      <Button variant="outline" size="sm" onClick={onTag} className="self-start">
-        <Tag aria-hidden />
-        {clip.tagged ? "Edit tags" : "Tag clip"}
-      </Button>
+    {(onConfirmTags || onTag || onPin) && (
+      <div className="flex flex-wrap gap-2">
+        {clip.aiTagged && onConfirmTags && (
+          <Button variant="outline" size="sm" onClick={onConfirmTags}>
+            Confirm tags
+          </Button>
+        )}
+        {/* Offered for EVERY clip, not just untagged ones. A fully-tagged clip can still be
+            wrong — §10's likely error is a trailer scanned as a commercial, which arrives
+            with era/audience/category filled in and therefore counts as "tagged". Gating the
+            edit on `!tagged` left exactly that clip uncorrectable, and kind drives pod role,
+            so a wrong one yields structurally wrong pods. */}
+        {!clip.aiTagged && onTag && (
+          <Button variant="outline" size="sm" onClick={onTag}>
+            <Tag aria-hidden />
+            {clip.tagged ? "Edit tags" : "Tag clip"}
+          </Button>
+        )}
+        {/* Pin into a channel's filler (P3 cohesion) — the catalog → channel bridge. */}
+        {onPin && (
+          <Button variant="ghost" size="sm" onClick={onPin}>
+            <Pin aria-hidden />
+            Use in a channel
+          </Button>
+        )}
+      </div>
     )}
   </Card>
 );
