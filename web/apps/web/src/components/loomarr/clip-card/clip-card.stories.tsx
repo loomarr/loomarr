@@ -24,5 +24,9 @@ const TaggedEditable: Story = { args: { clip: taggedClip, onTag: noop } };
 const Untagged: Story = { args: { clip: untaggedClip, onTag: noop } };
 const AiSuggestedTags: Story = { args: { clip: aiTaggedClip, onConfirmTags: noop } };
 
+// The admin view on the Filler catalog: edit the tags AND pin the clip straight into a
+// channel's filler (P3 cohesion) — the two actions sit together in the card's action row.
+const AdminActions: Story = { args: { clip: taggedClip, onTag: noop, onPin: noop } };
+
 export default meta;
-export { AiSuggestedTags, Tagged, TaggedEditable, Untagged };
+export { AdminActions, AiSuggestedTags, Tagged, TaggedEditable, Untagged };

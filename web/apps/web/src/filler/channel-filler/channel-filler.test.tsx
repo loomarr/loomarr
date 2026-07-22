@@ -5,19 +5,26 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { RouterHarness } from "@/test/story-utils";
 import { ChannelFiller } from "./channel-filler";
 
-// The clip-list remove buttons carry tooltips (Radix → needs a provider), and the section
-// owns live generated-API hooks, so wrap renders with both a QueryClient and a
-// TooltipProvider — the same isolation harness ChannelLineupEditor's test uses.
-const makeWrapper = () => {
+// The section needs three contexts in isolation: a QueryClient (live generated-API hooks),
+// a TooltipProvider (the clip-list remove buttons), and a RouterProvider (the header/empty-
+// state cross-links to /filler use TanStack `Link`, which throws without a router even in a
+// unit). RouterHarness renders `content` AS its route, so the query+tooltip providers wrap
+// the component INSIDE it — all three resolve.
+const renderSection = (ui: ReactNode) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
-    </QueryClientProvider>
+  return render(
+    <RouterHarness
+      content={
+        <QueryClientProvider client={client}>
+          <TooltipProvider>{ui}</TooltipProvider>
+        </QueryClientProvider>
+      }
+    />,
   );
 };
 
@@ -70,9 +77,11 @@ afterEach(() => vi.restoreAllMocks());
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubFetch();
-    render(<ChannelFiller channelId="ch-1" policy={policy()} />, { wrapper: makeWrapper() });
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
-    expect(screen.getByLabelText("Audience")).toBeInTheDocument();
+    // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
+    // transition, so the content isn't in the DOM on the first synchronous pass).
+    expect(await screen.findByLabelText("Audience")).toBeInTheDocument();
     expect(screen.getByText("Categories")).toBeInTheDocument();
     expect(screen.getByText("Clip kinds")).toBeInTheDocument();
     // The mount preview assembles the (saved) selection and renders the pod timeline.
@@ -82,13 +91,13 @@ describe("ChannelFiller", () => {
   it("editing a criterion re-previews and reveals Apply", async () => {
     const user = userEvent.setup();
     const { previews } = stubFetch();
-    render(<ChannelFiller channelId="ch-1" policy={policy()} />, { wrapper: makeWrapper() });
-
-    // No Apply until the draft diverges from saved.
-    expect(screen.queryByRole("button", { name: /apply filler/i })).not.toBeInTheDocument();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
-    await user.click(screen.getByRole("button", { name: "Toys" }));
+    // (findBy awaits the router-harness mount.) No Apply until the draft diverges.
+    const toys = await screen.findByRole("button", { name: "Toys" });
+    expect(screen.queryByRole("button", { name: /apply filler/i })).not.toBeInTheDocument();
+    await user.click(toys);
 
     await waitFor(() =>
       expect(previews.some((p) => (p as { filler?: { categories?: string[] } }).filler?.categories?.includes("toys"))).toBe(true),
@@ -99,11 +108,9 @@ describe("ChannelFiller", () => {
   it("Apply PATCHes the draft merged onto the saved policy; Discard clears the dirty state", async () => {
     const user = userEvent.setup();
     const { patches } = stubFetch();
-    render(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />, {
-      wrapper: makeWrapper(),
-    });
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
 
-    await user.click(screen.getByRole("button", { name: "Candy" }));
+    await user.click(await screen.findByRole("button", { name: "Candy" }));
     const apply = await screen.findByRole("button", { name: /apply filler/i });
     await user.click(apply);
 
@@ -121,9 +128,7 @@ describe("ChannelFiller", () => {
 
   it("resolves a pinned clip's id to its name via the catalog", async () => {
     stubFetch({ clips: [{ tunarrProgramId: "p9", name: "Frosted Flakes", kind: "commercial", durationMs: 30000, tagged: true, aiTagged: false }] });
-    render(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9"] })} />, {
-      wrapper: makeWrapper(),
-    });
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
   });
@@ -139,7 +144,7 @@ describe("ChannelFiller", () => {
         return Promise.resolve(jsonResponse(200, { clips: [] }));
       }),
     );
-    render(<ChannelFiller channelId="ch-1" policy={policy()} />, { wrapper: makeWrapper() });
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
   });
 });

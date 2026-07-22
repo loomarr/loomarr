@@ -1,6 +1,7 @@
 import { fillerApi, settingsApi } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { IngestPanel } from "../ingest-panel";
+import { PinClipDialog } from "../pin-clip-dialog";
 
 // FillerPage — the §10 clip catalog: browse, search, tag, sync, and (on the filler image)
 // download. Filtering is client-driven but server-executed: the store already indexes
@@ -25,12 +27,14 @@ import { IngestPanel } from "../ingest-panel";
 // holding thousands of clips in memory to filter locally (§7.2 — no client index).
 const FillerPage = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("");
   const [audience, setAudience] = useState("");
   const [untagged, setUntagged] = useState(false);
   const [tagging, setTagging] = useState<string>();
+  const [pinning, setPinning] = useState<string>();
 
   const settings = settingsApi.useSettingsList();
   const features = settings.data?.status === 200 ? settings.data.data.features : undefined;
@@ -55,6 +59,9 @@ const FillerPage = () => {
         <EmptyState
           title="No filler folder configured"
           description="Add a folder of commercials, bumpers, and station IDs under Settings → Filler. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
+          {...(isAdmin
+            ? { action: { label: "Open Filler settings", onClick: () => navigate({ to: "/settings/filler" }) } }
+            : {})}
         />
       </div>
     );
@@ -202,6 +209,7 @@ const FillerPage = () => {
                 {...(isAdmin && clip.aiTagged
                   ? { onConfirmTags: () => setTagging(clip.tunarrProgramId) }
                   : {})}
+                {...(isAdmin ? { onPin: () => setPinning(clip.tunarrProgramId) } : {})}
               />
             ))}
           </div>
@@ -219,17 +227,33 @@ const FillerPage = () => {
         />
       )}
 
+      {pinning && rows && (
+        <PinClipDialog
+          clip={rows.find((c) => c.tunarrProgramId === pinning)}
+          onClose={() => setPinning(undefined)}
+        />
+      )}
+
       {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}
     </div>
   );
 };
 
+// PageHeading — orients the two-surface model the per-channel filler feature introduced:
+// this page is the CATALOG (every clip, its tags), while each channel CHOOSES from it on
+// its own Filler section (theme + pin/exclude, with a live preview). Tagging here is what
+// makes a clip matchable there; the link makes that relationship navigable rather than
+// implicit — the cohesion gap that made filler feel "disjointed".
 const PageHeading = () => (
   <div>
     <h1 className="font-semibold text-xl">Filler</h1>
-    <p className="mt-1 text-muted-foreground text-sm">
-      The commercials, bumpers, and station IDs that play between programs. Tags are what let the scheduler
-      match a clip to a channel.
+    <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+      Your whole library of commercials, bumpers, and station IDs — browse and tag them here. Tags are what
+      let the scheduler match a clip to a channel. Each channel then{" "}
+      <Link to="/channels" className="text-signal underline-offset-2 hover:underline">
+        picks and previews its own filler
+      </Link>{" "}
+      from this catalog.
     </p>
   </div>
 );
