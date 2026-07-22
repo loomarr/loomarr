@@ -68,6 +68,32 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByText(/nothing in the lineup yet/i)).toBeInTheDocument();
   });
 
+  // The state badge is DURABLE: it reads each entry's server-derived `state` straight off
+  // the lineup prop (not client-only memory), so a channel loaded fresh with an acquiring/
+  // unavailable title shows the right badge without ever having added it this session.
+  it("renders each entry's server-provided state badge (durable across reloads)", () => {
+    stubFetch();
+    render(
+      <ChannelLineupEditor
+        channelId="ch-1"
+        lineup={[
+          { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
+          { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "pending" },
+          { key: "movie:tmdb:603", name: "The Matrix", year: 1999, state: "acquiring" },
+          { key: "movie:tmdb:11", name: "Star Wars", year: 1977, state: "unavailable" },
+        ]}
+      />,
+      { wrapper: makeWrapper() },
+    );
+
+    // available → no badge; the other three each show their state.
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("Acquiring…")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    // Heat (available) wears none of them.
+    expect(screen.queryByText("Available")).not.toBeInTheDocument();
+  });
+
   it("add: searching, picking a result appends it and commits the full ordered list", async () => {
     const { patches } = stubFetch({
       candidates: [{ mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true }],
@@ -83,8 +109,10 @@ describe("ChannelLineupEditor", () => {
     await userEvent.click(result);
 
     await waitFor(() => expect(patches).toHaveLength(1));
+    // The added entry carries an optimistic `state` seeded from the candidate's inLibrary
+    // (here true ⇒ "available"); the backend re-derives the authoritative value on refetch.
     expect(patches[0]).toEqual({
-      lineup: [heat, pointBreak, { key: "movie:tmdb:106", name: "Predator", year: 1987 }],
+      lineup: [heat, pointBreak, { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "available" }],
     });
   });
 
@@ -101,11 +129,13 @@ describe("ChannelLineupEditor", () => {
     await userEvent.click(await screen.findByText("Breaking Bad"));
 
     await waitFor(() => expect(patches).toHaveLength(1));
+    // A candidate the search marked !inLibrary is added with an optimistic state "pending".
     expect(patches[0]).toEqual({
-      lineup: [heat, { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008 }],
+      lineup: [heat, { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008, state: "pending" }],
     });
     // The add closed the palette and returned to the populated list, where the new
-    // pick — added from a candidate the search marked !inLibrary — now shows Pending.
+    // pick reads Pending (from its state, which now rides on the entry — durable, not
+    // client-only memory).
     expect(screen.getByText("Pending")).toBeInTheDocument();
   });
 
