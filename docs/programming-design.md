@@ -99,7 +99,7 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
 ## 8. Pipeline placement & proposal surface
 
 - **Suggester (§8):** output contract gains `policy` (schema above), grounded like everything else; templates ship pre-filled policies ("90s Saturday Morning" carries `TV-Y7` + era + genres out of the box); intent-hint copy teaches the constraint vocabulary.
-- **Proposal review (§12):** policy renders as editable chips (ceiling, seasons, era, ordering, seasonal mode) + the exclusion report (§4) + a **cycle preview** (first N slots with separation annotations) so "did old-school bind?" is answerable by looking.
+- **Proposal review + channel editor (§12):** policy renders as editable chips (ceiling, seasons, era, ordering, seasonal mode) + the exclusion report (§4) + a **cycle preview** (first N slots with separation annotations) so "did old-school bind?" is answerable by looking. The same chip surface is the **per-channel rules editor** on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
 
 ## 9. Extensibility — the checklist for "I'm sure I can think of more"

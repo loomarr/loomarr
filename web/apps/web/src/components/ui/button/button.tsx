@@ -23,7 +23,10 @@ const buttonVariants = cva(
         // primary carries dark text. (§2.1's calibration is stricter than the prototype's
         // white-on-magenta; the a11y gate enforces it.)
         suggest: "bg-suggest text-static-950 hover:bg-suggest/90",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        // DARK text on the onair red, same AA calibration as `suggest`: white on solid
+        // onair (#E5484D) is only 3.91:1 (fails AA for <18px — caught by the a11y gate on
+        // the danger zone), while static-950 clears it comfortably.
+        destructive: "bg-destructive text-static-950 hover:bg-destructive/90",
         outline: "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",

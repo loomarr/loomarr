@@ -29,11 +29,12 @@ RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline
 
 // Postgres channel claim: FOR UPDATE SKIP LOCKED so two replicas never reconcile
 // the same channel (§18 single-leader-per-channel). Keyed on reconcile_deadline,
-// excludes detached channels. Placeholders: $1=leaseUntil, $2=now, $3=limit.
+// excludes detached + paused channels (both off the sweep). Placeholders:
+// $1=leaseUntil, $2=now, $3=limit.
 const postgresChannelClaimSQL = `
 WITH due AS (
     SELECT id FROM channels
-    WHERE status <> 'detached' AND reconcile_deadline <= $2 AND reconcile_deadline > 0
+    WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= $2 AND reconcile_deadline > 0
     ORDER BY reconcile_deadline
     LIMIT $3
     FOR UPDATE SKIP LOCKED

@@ -46,8 +46,8 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	if err != nil {
 		return fmt.Errorf("load channel %s: %w", channelID, err)
 	}
-	if ch.Status == schedule.StatusDetached {
-		return nil // no longer managed (§9 ownership)
+	if ch.Status == schedule.StatusDetached || ch.Status == schedule.StatusPaused {
+		return nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
 	}
 
 	// Heal any entry that reached us UNRATED but whose title is now in the library
@@ -139,6 +139,13 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		return fmt.Errorf("persist channel %s: %w", channelID, err)
 	}
 
+	// Tell the UI the channel changed so it updates live (no manual refresh — the
+	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a
+	// latency concern, never a correctness one (GET /v1/channels is the truth on load).
+	if e.notify != nil {
+		e.notify.ChannelChanged(ch.ID, string(ch.Status))
+	}
+
 	// 7: media-server freshness (best-effort; never fails the reconcile). A NEW
 	// channel needs a tuner re-scan so the media server discovers it in its channel
 	// list (a guide refresh alone won't surface it, §9); a lineup-only change needs
@@ -149,6 +156,29 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		e.pokeGuide(ctx, channelID)
 	}
 	return nil
+}
+
+// Purge fully removes a channel: it deletes the Tunarr channel (if one was ever
+// pushed) and then hard-deletes the store row — the `?purge=true` path of DELETE
+// /v1/channels/{id} (§7), as opposed to the default detach (which keeps both). It
+// takes the per-channel lock so a concurrent reconcile can't race the deletion, and
+// the Tunarr delete is idempotent (a 404 is already-gone). A channel that was never
+// reconciled has no TunarrID, so only the store row is removed.
+func (e *Engine) Purge(ctx context.Context, channelID string) error {
+	lock := e.lockFor(channelID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	ch, err := e.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("load channel %s: %w", channelID, err)
+	}
+	if ch.TunarrID != "" && e.prog != nil {
+		if derr := e.prog.DeleteChannel(ctx, ch.TunarrID); derr != nil {
+			return fmt.Errorf("delete tunarr channel %s: %w", ch.TunarrID, derr)
+		}
+	}
+	return e.store.DeleteChannel(ctx, channelID)
 }
 
 // attachFillerList builds the channel's matched clip pool via the assembler and

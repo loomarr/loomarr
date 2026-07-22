@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -22,7 +23,7 @@ type ChannelDTO struct {
 	Number       int    `json:"number" example:"42" doc:"Guide channel number"`
 	Group        string `json:"group,omitempty" example:"Kids"`
 	Strategy     string `json:"strategy" enum:"sequential,shuffle,time_slot"`
-	Status       string `json:"status" enum:"building,live,drifted,detached" doc:"Loomarr-side channel status (§9)"`
+	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
 	IntentRef    string `json:"intentRef,omitempty"`
 	ProgramCount int    `json:"programCount" doc:"Real playable programs in the desired lineup"`
@@ -130,6 +131,13 @@ func (s *Server) registerChannels(api huma.API) {
 		Summary: "Create a channel", Description: "Admin only. From an approved proposal or hand-made.",
 		Tags: []string{"channels"},
 	}, s.createChannel)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-channel", Method: http.MethodPatch, Path: "/v1/channels/{id}",
+		Summary:     "Edit a channel",
+		Description: "Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.",
+		Tags:        []string{"channels"},
+	}, s.updateChannel)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
@@ -276,6 +284,114 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	return &channelOutput{Body: channelToDTO(fresh)}, nil
 }
 
+// updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
+// omitting a field and setting it to its zero value are distinguishable (a rename to
+// "" is rejected by Validate, not silently ignored). Operator-owned fields + the
+// per-channel policy + pause/resume via status; lineup edits arrive with the lineup
+// read shape (Phase 3).
+type updateChannelInput struct {
+	ID   string `path:"id" example:"ch_abc123"`
+	Body struct {
+		Name     *string                 `json:"name,omitempty"`
+		Number   *int                    `json:"number,omitempty" minimum:"1"`
+		Group    *string                 `json:"group,omitempty"`
+		Strategy *string                 `json:"strategy,omitempty" enum:"sequential,shuffle,time_slot"`
+		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write."`
+		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
+		// "building" resumes it. Other lifecycle values (live/drifted/detached) are the
+		// reconciler's/delete's to set, never a client's.
+		Status *string `json:"status,omitempty" enum:"paused,building" doc:"Pause (off air, keep the channel) or resume."`
+	}
+}
+
+// updateChannel edits a channel (§7 PATCH). It mirrors createChannel's validate →
+// uniqueness → upsert → auto-reconcile shape, but as a partial update that preserves
+// operator/proposal ownership: a client may set name/number/group/strategy/policy and
+// pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
+// The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
+func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+
+	if in.Body.Name != nil {
+		ch.Name = strings.TrimSpace(*in.Body.Name)
+	}
+	if in.Body.Group != nil {
+		ch.Group = *in.Body.Group
+	}
+	if in.Body.Strategy != nil {
+		ch.Strategy = schedule.Strategy(*in.Body.Strategy)
+	}
+	// Renumber: unique-check EXCLUDING self (a no-op renumber to the channel's own
+	// number must not 409). The store's unique index would also reject, but a clean
+	// 409 beats a 500 (matches createChannel's rationale).
+	if in.Body.Number != nil && *in.Body.Number != ch.Number {
+		if other, gerr := s.store.GetChannelByNumber(ctx, *in.Body.Number); gerr == nil {
+			if other.ID != ch.ID {
+				return nil, huma.Error409Conflict("channel number already in use")
+			}
+		} else if !errors.Is(gerr, store.ErrNotFound) {
+			return nil, gerr
+		}
+		ch.Number = *in.Body.Number
+	}
+	// Policy merge: take the client's policy but PRESERVE the reconcile-owned `applied`
+	// (a client can't set relaxations; they're recomputed each reconcile). Validate
+	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
+	if in.Body.Policy != nil {
+		next := *in.Body.Policy
+		next.Applied = ch.Policy.Applied // reconcile owns this; never client-set
+		if verr := next.Validate(); verr != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid policy", verr)
+		}
+		ch.Policy = next
+	}
+	// Pause/resume. Only paused↔building; the transition is deliberately narrow so a
+	// client can't force a channel `live`/`detached` out from under the reconciler.
+	if in.Body.Status != nil {
+		switch schedule.ChannelStatus(*in.Body.Status) {
+		case schedule.StatusPaused:
+			ch.Status = schedule.StatusPaused
+		case schedule.StatusBuilding:
+			// Resume only makes sense from paused; from any other state it's a no-op-ish
+			// nudge back onto the sweep, which the reconcile below will settle.
+			ch.Status = schedule.StatusBuilding
+		default:
+			return nil, huma.Error422UnprocessableEntity("status may only be set to paused or building", nil)
+		}
+	}
+
+	if err := ch.Validate(); err != nil {
+		return nil, huma.Error422UnprocessableEntity("invalid channel", err)
+	}
+	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
+	if err := s.store.UpsertChannel(ctx, ch); err != nil {
+		return nil, err
+	}
+
+	// Auto-reconcile so the edit reaches Tunarr with no user action (§9 "self-
+	// maintaining"; there is no manual rebuild). Best-effort + skipped while paused or
+	// Tunarr-unconfigured: the edit is durable regardless, and the sweep is the
+	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
+	if ch.Status != schedule.StatusPaused && s.channels != nil && !s.unconfigured("tunarr.url") {
+		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
+			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
+		}
+	}
+	fresh, err := s.store.GetChannel(ctx, ch.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &channelOutput{Body: channelToDTO(fresh)}, nil
+}
+
 type reconcileOutput struct{ Body ChannelDTO }
 
 func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*reconcileOutput, error) {
@@ -317,11 +433,21 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	if err != nil {
 		return nil, err
 	}
-	// Default: detach (stop managing; leave the Tunarr channel). Detached channels
-	// are never reconciled again (§9 ownership). Purge (Tunarr deletion) is a
-	// Phase-10 follow-on wired through the Programmer; for now detach is the
-	// safe default and purge is recorded on the status.
+	// Purge (?purge=true): delete the Tunarr channel AND hard-delete the store row,
+	// through the engine (which holds the programmer). Idempotent on the Tunarr side.
+	if in.Purge {
+		if s.channels == nil {
+			return nil, huma.Error501NotImplemented("scheduler not configured (cannot purge the Tunarr channel)")
+		}
+		if err := s.channels.Purge(ctx, in.ID); err != nil {
+			return nil, huma.Error502BadGateway("purge failed", err)
+		}
+		return &deleteChannelOutput{}, nil
+	}
+	// Default: detach (stop managing; leave the Tunarr channel + the store row).
+	// Detached channels are never reconciled again (§9 ownership).
 	ch.Status = schedule.StatusDetached
+	ch.UpdatedAt = time.Now().Unix()
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
 		return nil, err
 	}

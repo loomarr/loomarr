@@ -58,6 +58,12 @@ const (
 	// StatusDetached: Loomarr no longer manages this channel (soft-deleted; the
 	// Tunarr channel may still exist unless purge=true).
 	StatusDetached ChannelStatus = "detached"
+	// StatusPaused: the operator deliberately took the channel off the sweep — a
+	// resumable "off air, but keep it" state, distinct from detached (which is "no
+	// longer managed"). Like detached it is never auto-reconciled (the sweep skips
+	// it), but unlike detached it is a normal, non-error state that resumes to
+	// `building` via a PATCH. v1 leaves the Tunarr channel playing its last lineup.
+	StatusPaused ChannelStatus = "paused"
 )
 
 // Channel is a Loomarr-managed Tunarr channel (§9 scheduler domain). Identity is

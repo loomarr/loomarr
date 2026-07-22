@@ -230,6 +230,9 @@ type ChannelService interface {
 	// Reconcile forces a desired→Tunarr reconciliation for one channel (§9,
 	// POST /v1/channels/{id}/reconcile).
 	Reconcile(ctx context.Context, channelID string) error
+	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
+	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
+	Purge(ctx context.Context, channelID string) error
 }
 
 // LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and

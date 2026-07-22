@@ -134,6 +134,7 @@ components:
             - live
             - drifted
             - detached
+            - paused
           type: string
         strategy:
           enum:
@@ -1358,14 +1359,23 @@ components:
           format: int64
           type: integer
         episodeNoRepeat:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         movieNoRepeat:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         seriesMinGap:
-          format: int64
-          type: integer
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
       type: object
     SeriesStruct:
       additionalProperties: false
@@ -2007,6 +2017,40 @@ components:
         - sourceId
         - librariesEnabled
       type: object
+    UpdateChannelInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UpdateChannelInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        group:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          minimum: 1
+          type: integer
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+          description: Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write.
+        status:
+          description: Pause (off air, keep the channel) or resume.
+          enum:
+            - paused
+            - building
+          type: string
+        strategy:
+          enum:
+            - sequential
+            - shuffle
+            - time_slot
+          type: string
+      type: object
     UserBody:
       additionalProperties: false
       properties:
@@ -2243,6 +2287,39 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Get a channel definition + status
+      tags:
+        - channels
+    patch:
+      description: Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.
+      operationId: update-channel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a channel
       tags:
         - channels
   /v1/channels/{id}/pods:
