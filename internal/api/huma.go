@@ -203,6 +203,10 @@ type SuggestService interface {
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
 	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
+	// Refine re-runs an existing suggestion job (the channel's IntentRef) with a
+	// refine-flavored intent, so the new proposal binds back to the same channel
+	// (§7 POST /v1/channels/{id}/refine). Returns the job id to poll.
+	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM

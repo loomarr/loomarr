@@ -11,6 +11,7 @@ const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
   programCount: 10,
   slotCount: 10,
   policy: {},
+  lineup: [],
   ...over,
 });
 

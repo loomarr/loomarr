@@ -193,6 +193,113 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// --- refine (POST /v1/channels/{id}/refine) ---
+
+// newServerWithSchedulerAndSuggest wires BOTH the channel service and a fake suggest
+// service, so refine (which needs the suggester) can be exercised end to end.
+func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/refine.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	fs := &fakeSuggest{}
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:    st,
+		Auth:     api.NewTokenAuthorizer(adminToken),
+		Log:      slog.New(slog.DiscardHandler),
+		Channels: &fakeChannelSvc{},
+		Suggest:  fs,
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv, st, fs
+}
+
+func TestRefineChannel_RequiresAdmin(t *testing.T) {
+	srv, _, _ := newServerWithSchedulerAndSuggest(t)
+	for _, tok := range []string{"", "wrong"} {
+		resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", tok, `{"change":"more action"}`)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("refine with token %q → %d, want 403", tok, resp.StatusCode)
+		}
+	}
+}
+
+func TestRefineChannel_HandMadeChannel422(t *testing.T) {
+	srv, st, _ := newServerWithSchedulerAndSuggest(t)
+	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
+	ch := store.Channel{}
+	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
+	if err := st.UpsertChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/channels/handmade/refine", adminToken, `{"change":"more action"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("refine hand-made channel → %d, want 422", resp.StatusCode)
+	}
+}
+
+func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
+	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	ctx := context.Background()
+
+	// A channel bound to a suggestion job, with a current lineup.
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-orig", Kind: "suggest", Status: "done",
+		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ch := store.Channel{
+		Lineup: []schedule.LineupEntry{
+			{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
+			{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+		},
+	}
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
+	if err := st.UpsertChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken,
+		`{"change":"add more Schwarzenegger, drop the slow ones"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("refine → %d, want 200", resp.StatusCode)
+	}
+	var body struct{ JobID string }
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	// Returns the channel's OWN job id (re-queued in place), so the refined proposal binds
+	// back to this channel — the whole point of "reuse the intentRef job".
+	if body.JobID != "job-orig" {
+		t.Errorf("refine returned jobId %q, want the channel's IntentRef job-orig", body.JobID)
+	}
+	if fs.refines != 1 || fs.lastJobID != "job-orig" {
+		t.Errorf("Refine called %d times on job %q, want 1 on job-orig", fs.refines, fs.lastJobID)
+	}
+	// The refine intent carried the change + the current lineup as context + kept the
+	// original description.
+	if fs.last.RefineText != "add more Schwarzenegger, drop the slow ones" {
+		t.Errorf("refine intent RefineText = %q", fs.last.RefineText)
+	}
+	if fs.last.Description != "90s action" {
+		t.Errorf("refine intent kept original description? got %q, want '90s action'", fs.last.Description)
+	}
+	if len(fs.last.CurrentLineup) != 2 || fs.last.CurrentLineup[0].Name != "The Matrix" {
+		t.Errorf("refine intent CurrentLineup = %+v, want the 2 seeded titles", fs.last.CurrentLineup)
+	}
+}
+
+func TestRefineChannel_NotFound(t *testing.T) {
+	srv, _, _ := newServerWithSchedulerAndSuggest(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels/nope/refine", adminToken, `{"change":"x"}`)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("refine missing channel → %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestUpdateChannel_RenameAndRenumber(t *testing.T) {
 	srv, st, chSvc, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "Old Name", 5)

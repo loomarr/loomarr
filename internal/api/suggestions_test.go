@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
@@ -21,14 +22,23 @@ import (
 // WHOLE intent survives the wire — the hand-mirrored body this replaced had silently
 // dropped RuntimeTgt, and nothing caught it.
 type fakeSuggest struct {
-	submits int
-	last    suggest.Intent
+	submits   int
+	refines   int
+	lastJobID string
+	last      suggest.Intent
 }
 
 func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string) (string, error) {
 	f.submits++
 	f.last = intent
 	return "job-1", nil
+}
+
+func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
+	f.refines++
+	f.lastJobID = jobID
+	f.last = intent
+	return jobID, nil // Refine re-runs the same job, so it returns the job id it was given
 }
 
 // fakeSearch returns a fixed candidate.
@@ -392,6 +402,92 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 	again, _ := st.GetChannel(context.Background(), first.ChannelID)
 	if again.Name != "Cartoon Corner" || again.Number != 42 {
 		t.Errorf("re-approval clobbered operator edits: name=%q number=%d", again.Name, again.Number)
+	}
+}
+
+// TestRefine_NewestApprovedWins is the binding regression for the refine flow (§7).
+// A refine re-runs the channel's OWN job, so over its life a single job accumulates
+// several APPROVED proposals — the original lineup and each refined one. The channel
+// binds on IntentRef (== JobID), and approvedProposalForJob must resolve the *newest*
+// approved proposal, not the first ever approved. If it picked the original, approving
+// a refine would silently re-apply the pre-refine lineup — the user's change lost.
+//
+// This is distinct from TestApprove_ReApprovalPatchesRatherThanDuplicating (which
+// approves sequentially and never leaves two APPROVED rows to choose between): here
+// BOTH proposals are approved and coexist, so the test actually exercises the
+// created_at DESC ordering that the binding leans on.
+func TestRefine_NewestApprovedWins(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	ctx := context.Background()
+
+	// Both proposals belong to the SAME job — as a refine re-run would produce.
+	const job = "job-refine"
+	mk := func(id, tmdb, name string, created time.Time) {
+		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
+			`"tmdbId":` + tmdb + `,"name":"` + name + `","year":1999,"inLibrary":true,` +
+			`"libraryItemId":"lib-` + tmdb + `"}],"acquisitions":[]}`
+		if err := st.CreateProposal(ctx, store.Proposal{
+			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Explicit timestamps an hour apart so "newest" is a property of the data, not of
+	// same-second scheduling luck (created_at persists as epoch seconds).
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk("p-orig", "603", "The Matrix", base)                 // original lineup
+	mk("p-refined", "106", "Predator", base.Add(time.Hour)) // the refine result (newer)
+
+	// Approve the ORIGINAL first → binds a channel to the job with The Matrix.
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-orig/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve original → %d, want 200", resp.StatusCode)
+	}
+	var first struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&first)
+	if first.ChannelID == "" {
+		t.Fatal("original approve returned no channelId")
+	}
+
+	// Now approve the REFINED proposal. Same job → must patch the SAME channel, and the
+	// lineup must become the refined one (Predator), not stay the original (Matrix).
+	resp = do(t, srv, http.MethodPost, "/v1/suggestions/p-refined/approve", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve refined → %d, want 200", resp.StatusCode)
+	}
+	var second struct {
+		ChannelID string `json:"channelId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&second)
+
+	// Same channel — a refine shapes the existing channel, it does not mint a new one.
+	if second.ChannelID != first.ChannelID {
+		t.Fatalf("refine made a NEW channel (%s vs %s) — it must patch the existing one",
+			second.ChannelID, first.ChannelID)
+	}
+	if all, _ := st.ListChannels(ctx); len(all) != 1 {
+		t.Errorf("channel count = %d, want 1 (refine must not duplicate)", len(all))
+	}
+
+	ch, err := st.GetChannel(ctx, first.ChannelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Binding preserved so a FURTHER refine still finds this channel.
+	if ch.IntentRef != job {
+		t.Errorf("IntentRef = %q, want %q (binding must survive refine)", ch.IntentRef, job)
+	}
+	// The load-bearing assertion: the lineup is the NEWEST approved proposal's, so the
+	// refine's change actually took. A single Predator entry, no Matrix.
+	if len(ch.Lineup) != 1 {
+		t.Fatalf("lineup has %d entries, want 1 (the refined pick)", len(ch.Lineup))
+	}
+	got := string(ch.Lineup[0].Key)
+	if got != "movie:tmdb:106" {
+		t.Errorf("channel bound to %q — want the REFINED pick movie:tmdb:106 (Predator), "+
+			"not the original Matrix; approvedProposalForJob picked the wrong proposal", got)
 	}
 }
 

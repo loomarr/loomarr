@@ -7,7 +7,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import type { OnAirState } from "@/components/loomarr";
-import { ChannelDangerZone, ChannelPolicyFields, ErrorState, OnAirIndicator } from "@/components/loomarr";
+import {
+  ChannelDangerZone,
+  ChannelPolicyFields,
+  ErrorState,
+  OnAirIndicator,
+  RefinePanel,
+} from "@/components/loomarr";
 import { Input } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelAdvanced } from "./-channel-advanced";
@@ -196,6 +202,20 @@ const ChannelDetailScreen = () => {
         {/* Admin editing + internals, below the viewer surface. */}
         {isAdmin && (
           <>
+            {/* Refine is the headline admin action — describe a change, review the diff,
+                apply — so it sits above the programming-rules editor rather than beside
+                the internals. */}
+            <RefinePanel
+              channelId={id}
+              channelName={ch.name}
+              current={(ch.lineup ?? []).map((entry) => ({
+                name: entry.name,
+                year: entry.year,
+                key: entry.key,
+              }))}
+              onApplied={invalidate}
+            />
+
             <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
               <div>
                 <h2 className="font-semibold text-lg">Programming rules</h2>
