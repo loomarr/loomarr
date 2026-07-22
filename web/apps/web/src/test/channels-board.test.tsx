@@ -126,6 +126,18 @@ describe("Channels", () => {
     expect(screen.queryByRole("button", { name: /rebuild/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
   });
+
+  it("offers the admin add/remove affordances — prominent Suggest, New channel, and a per-row menu", async () => {
+    stubFetch();
+    renderAt("/channels");
+
+    // Each row carries a ⋮ actions menu (pause/resume + delete) so removing a channel doesn't
+    // require opening it — awaited because the rows depend on the channels query resolving.
+    expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+    // The two header actions: Suggest is the headline path, New channel the hand-made one.
+    expect(screen.getByRole("button", { name: /suggest a channel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new channel/i })).toBeInTheDocument();
+  });
 });
 
 describe("Board", () => {

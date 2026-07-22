@@ -313,7 +313,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 
 type createChannelInput struct {
 	Body struct {
-		ID        string `json:"id" doc:"Loomarr channel id (caller-assigned, stable)" example:"ch_abc123"`
+		ID        string `json:"id,omitempty" doc:"Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id." example:"ch_abc123"`
 		Name      string `json:"name" example:"Saturday Morning Cartoons"`
 		Number    int    `json:"number" minimum:"1" example:"42"`
 		Group     string `json:"group,omitempty" example:"Kids"`
@@ -338,7 +338,14 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 		return nil, err
 	}
 	ch := store.Channel{}
+	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
+	// id, or omit it and let the server mint one — same `ch_…` scheme channelForIntent
+	// uses, so a hand-made channel is indistinguishable from an approved one. This is what
+	// lets the "New channel" UI action create without a client-side id scheme.
 	ch.ID = in.Body.ID
+	if ch.ID == "" {
+		ch.ID = newChannelID()
+	}
 	ch.Name = in.Body.Name
 	ch.Number = in.Body.Number
 	ch.Group = in.Body.Group
