@@ -3,10 +3,12 @@ import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr";
 import { cn } from "@/lib";
 
-// Settings (config-design §5) — Sonarr's shape: grouped pages down the side, an explicit
-// save bar per page. It is also the troubleshooting console for the life of the install
-// (§13), which is why the connection checklist lives on Connections rather than only in
-// the first-run wizard.
+// Settings (config-design §5) — Sonarr's shape: grouped pages, an explicit save bar per page.
+// It is also the troubleshooting console for the life of the install (§13), which is why the
+// connection checklist lives on Connections rather than only in the first-run wizard. The page
+// nav is a HORIZONTAL tab bar (not a vertical rail beside the app's sidebar — two parallel
+// menus read as cluttered); each page is its own route, so the tabs are real links with
+// native active-state + deep-linking.
 const PAGES = [
   { to: "/settings/connections", label: "Connections" },
   { to: "/settings/ai", label: "AI" },
@@ -28,22 +30,27 @@ const SettingsLayout = () => {
   }
 
   return (
-    <div className="grid h-full grid-cols-[14rem_1fr]">
-      <nav aria-label="Settings" className="flex flex-col gap-1 border-border border-r p-4">
+    <div className="flex h-full flex-col">
+      {/* Horizontal tab bar — the same tab idiom the channel detail page uses. Scrolls
+          sideways on narrow screens; the active page glows brand amber (signal). */}
+      <nav
+        aria-label="Settings"
+        className="flex gap-1 overflow-x-auto border-border border-b bg-background px-6 py-2"
+      >
         {PAGES.map((p) => (
           <Link
             key={p.to}
             to={p.to}
             className={cn(
-              "rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground",
-              "data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal",
+              "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-accent hover:text-foreground",
+              "data-[status=active]:bg-signal-tint-15 data-[status=active]:font-medium data-[status=active]:text-signal",
             )}
           >
             {p.label}
           </Link>
         ))}
       </nav>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </div>
     </div>

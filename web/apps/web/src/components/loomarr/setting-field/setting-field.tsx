@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui";
 import { cn } from "@/lib";
+import { FieldHelp } from "../field-help";
 import type { SettingFieldProps } from "./setting-field.type";
 
 // SettingField — one registry key as a form control (config-design §2, §3, §6). The
@@ -85,6 +86,10 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
     <div className={cn("flex flex-col gap-1.5", className)}>
       <div className="flex items-center gap-2">
         <Label htmlFor={id}>{humanizeSettingKey(entry.key)}</Label>
+        {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
+            so the form isn't a wall of helper paragraphs. It stays programmatically associated
+            via the sr-only doc below (aria-describedby), so screen readers still get it. */}
+        {entry.doc && <FieldHelp label={humanizeSettingKey(entry.key)}>{entry.doc}</FieldHelp>}
         {pinned && (
           <Badge className="gap-1">
             <Lock className="size-3" aria-hidden />
@@ -116,9 +121,13 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
         control()
       )}
 
-      <p id={describedBy} className="text-muted-foreground text-xs">
-        {entry.doc}
-      </p>
+      {/* The doc, kept in the DOM for `aria-describedby` (screen readers) but visually hidden —
+          the visible affordance is the FieldHelp (i) tooltip in the label row. */}
+      {entry.doc && (
+        <p id={describedBy} className="sr-only">
+          {entry.doc}
+        </p>
+      )}
 
       {entry.caution && (
         <p className="flex items-center gap-1 text-onair-300 text-xs">

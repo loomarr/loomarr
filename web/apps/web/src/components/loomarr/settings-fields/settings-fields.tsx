@@ -13,13 +13,21 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 //
 // Advanced keys stay behind a per-group toggle (§5) — that is a property of the group's
 // presentation, so it does belong here.
+// Kinds that need the FULL row width in the 2-col grid: secrets (the masked value + Replace
+// button), urls (long addresses), and string_list. The compact controls (bool/int/enum) sit
+// two-per-row.
+const spansFullWidth = (kind: string, secret: boolean): boolean =>
+  secret || kind === "url" || kind === "string_list";
+
 const SettingsFields = ({ entries, values, onChange, results, className }: SettingsFieldsProps) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const advancedCount = entries.filter((e) => e.advanced).length;
   const resultFor = (key: string) => results?.find((r) => r.key === key);
 
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    // A responsive 2-col field grid (was a single-column stack): compact controls pair up,
+    // wide ones (secrets/urls/lists) span both columns. gap-x for columns, gap-y for rows.
+    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       {entries.map((entry) =>
         entry.advanced && !showAdvanced ? null : (
           <SettingField
@@ -28,6 +36,7 @@ const SettingsFields = ({ entries, values, onChange, results, className }: Setti
             value={values[entry.key] ?? entry.value ?? ""}
             onChange={(v) => onChange(entry.key, v)}
             result={resultFor(entry.key)}
+            className={spansFullWidth(entry.kind, entry.secret) ? "sm:col-span-2" : undefined}
           />
         ),
       )}
@@ -36,7 +45,7 @@ const SettingsFields = ({ entries, values, onChange, results, className }: Setti
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+          className="w-fit cursor-pointer text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline sm:col-span-2"
         >
           {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
         </button>
