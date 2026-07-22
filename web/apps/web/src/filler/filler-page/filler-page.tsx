@@ -54,7 +54,7 @@ const FillerPage = () => {
         <PageHeading />
         <EmptyState
           title="No filler folder configured"
-          description="Point Loomarr at a folder of commercials and bumpers under Settings → Filler. Tunarr scans it directly."
+          description="Add a folder of commercials, bumpers, and station IDs under Settings → Filler. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
         />
       </div>
     );
@@ -174,7 +174,7 @@ const FillerPage = () => {
           description={
             filtered
               ? "Try a wider filter, or clear the search."
-              : "Drop files into the filler folder, then Sync. Tunarr scans the folder and assigns each clip its duration."
+              : "Drop files into the filler folder, then Sync — Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
           }
           {...(filtered
             ? {

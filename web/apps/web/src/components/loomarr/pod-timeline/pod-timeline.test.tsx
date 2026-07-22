@@ -27,6 +27,12 @@ describe("PodTimeline", () => {
     expect(screen.getByRole("list", { name: /pod segments/i })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(screen.getByText("1990s")).toBeInTheDocument();
+    // A legend spells out the codes actually present (bumper + commercial here), so BMP/AD
+    // don't read as mystery tokens — and only those two, not every possible kind. The legend
+    // text is split across <span>s (CODE = word), so match on the container's text content.
+    const legend = screen.getByText((_, el) => el?.textContent === "BMP = bumper · AD = commercial");
+    expect(legend).toBeInTheDocument();
+    expect(legend.textContent).not.toContain("trailer");
   });
 
   // An exact match is the quiet case: no chip, because there is nothing to explain.

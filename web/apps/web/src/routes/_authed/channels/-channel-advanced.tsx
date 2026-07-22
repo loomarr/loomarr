@@ -1,7 +1,29 @@
 import type { ChannelDTO } from "@loomarr/api";
 import { humanizeRelaxation } from "@loomarr/core";
-import { Badge } from "@/components/ui";
 import { ChannelPods } from "@/filler";
+
+// relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
+// a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
+// phrasing because "loosened" means something different for each: a no-repeat window shrank,
+// a gap disappeared, a per-block cap lifted. Falls back to the humanized label + values for
+// any kind without a bespoke sentence, so a new ladder step never renders as raw JSON.
+const relaxationSentence = (step: { kind: string; from: string; to: string }): string => {
+  const { label, from, to } = humanizeRelaxation(step);
+  switch (step.kind) {
+    case "episodeNoRepeat":
+      return `Episodes can come back around a bit sooner — after ${to}, not ${from}.`;
+    case "movieNoRepeat":
+      return `Movies can come back around a bit sooner — after ${to}, not ${from}.`;
+    case "seriesMinGap":
+      return to === "none"
+        ? `A series can play a few in a row now (it used to wait ${from}).`
+        : `A series waits less between episodes now — ${to} instead of ${from}.`;
+    case "blockMax":
+      return `No cap on how many episodes run back-to-back (was ${from}).`;
+    default:
+      return `${label}: ${from} → ${to}.`;
+  }
+};
 
 // ChannelAdvanced — the scheduler internals, shown only inside the admin-only "Advanced"
 // disclosure on the channel-detail page. This is deliberately the place for the things a
@@ -19,18 +41,16 @@ const ChannelAdvanced = ({ channel, channelId }: { channel: ChannelDTO; channelI
         {applied.length > 0 ? (
           <>
             <p className="text-muted-foreground text-sm">
-              To keep this channel full, Loomarr eased a few of its own scheduling rules:
+              A few rules Loomarr relaxed so the channel always has something to play:
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {applied.map((step) => {
-                const r = humanizeRelaxation(step);
-                return (
-                  <Badge key={`${step.kind}:${step.from}->${step.to}`} variant="caution">
-                    {r.label}: {r.from} → {r.to}
-                  </Badge>
-                );
-              })}
-            </div>
+            <ul className="flex flex-col gap-1.5">
+              {applied.map((step) => (
+                <li key={`${step.kind}:${step.from}->${step.to}`} className="flex gap-2 text-caution text-sm">
+                  <span aria-hidden>•</span>
+                  <span>{relaxationSentence(step)}</span>
+                </li>
+              ))}
+            </ul>
           </>
         ) : (
           <p className="text-muted-foreground text-sm">
@@ -55,7 +75,7 @@ const ChannelAdvanced = ({ channel, channelId }: { channel: ChannelDTO; channelI
           <p className="font-mono text-muted-foreground text-xs">Tunarr channel: {channel.tunarrId}</p>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Not on Tunarr yet — the first rebuild creates the channel there.
+            Not on Tunarr yet — it's created there automatically once Tunarr is connected.
           </p>
         )}
       </section>
