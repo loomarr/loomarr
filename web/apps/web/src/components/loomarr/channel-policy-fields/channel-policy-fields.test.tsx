@@ -1,8 +1,14 @@
 import type { ChannelPolicy } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui";
 import { ChannelPolicyFields } from "./channel-policy-fields";
+
+// Each field's help is a FieldHelp tooltip now, which needs a TooltipProvider ancestor (the
+// app mounts one at the root). Wrap every render so the fields mount without a Radix error.
+const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 
 const EMPTY: ChannelPolicy = {};
 

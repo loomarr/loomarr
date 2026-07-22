@@ -35,7 +35,9 @@ const ChannelAdvanced = ({ channel }: { channel: ChannelDTO }) => {
   const applied = channel.policy?.applied ?? [];
 
   return (
-    <div className="flex flex-col gap-5 border-border border-t px-4 py-4">
+    // Just the body content — the container (border + padding) is provided by the
+    // CollapsibleSection this renders inside on the channel page.
+    <div className="flex flex-col gap-5">
       {/* Programming rules that were eased (the relaxation ladder). */}
       <section className="flex flex-col gap-2">
         <h3 className="font-medium text-sm">Programming rules</h3>
