@@ -31,11 +31,11 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 	const channelID, era = "ch-1", 1992
 	const seed int64 = 424242
 
-	pod, err := adapter.Preview(ctx, channelID, era, seed)
+	pod, err := adapter.Preview(ctx, channelID, seed, filler.Selection{Era: era})
 	if err != nil {
 		t.Fatal(err)
 	}
-	attached, ok := adapter.BuildFillerList(ctx, channelID, era, seed)
+	attached, ok := adapter.BuildFillerList(ctx, channelID, seed, filler.Selection{Era: era})
 	if !ok {
 		t.Fatal("BuildFillerList returned not-ok for a catalog that previewed fine")
 	}
@@ -73,7 +73,7 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 // used to yield nothing.
 func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
-	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 1992, 42)
+	ids, ok := adapter.BuildFillerList(context.Background(), "ch-1", 42, filler.Selection{Era: 1992})
 	if !ok {
 		t.Fatal("no filler list built from a catalog full of era-matching commercials")
 	}
@@ -100,11 +100,11 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: sampleCatalog()}, filler.Policy{}, discardLogger())
 	ctx := context.Background()
 
-	first, err := adapter.Preview(ctx, "ch-1", 1992, 99)
+	first, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: 1992})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := adapter.Preview(ctx, "ch-1", 1992, 99)
+	second, err := adapter.Preview(ctx, "ch-1", 99, filler.Selection{Era: 1992})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +123,14 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 // and not a reason for the channel to fail. Reconcile treats it as "attach nothing".
 func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{}, filler.Policy{}, discardLogger())
-	pod, err := adapter.Preview(context.Background(), "ch-1", 0, 1)
+	pod, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{})
 	if err != nil {
 		t.Fatalf("empty catalog returned an error: %v", err)
 	}
 	if len(pod.Entries) != 0 {
 		t.Errorf("empty catalog produced %d entries", len(pod.Entries))
 	}
-	if _, ok := adapter.BuildFillerList(context.Background(), "ch-1", 0, 1); ok {
+	if _, ok := adapter.BuildFillerList(context.Background(), "ch-1", 1, filler.Selection{}); ok {
 		t.Error("empty catalog should mean nothing to attach")
 	}
 }
@@ -142,10 +142,10 @@ func TestPreviewSurfacesCatalogErrorWhileReconcileDegrades(t *testing.T) {
 	boom := errors.New("store is down")
 	adapter := filler.NewPodAdapter(stubCatalog{err: boom}, filler.Policy{}, discardLogger())
 
-	if _, err := adapter.Preview(context.Background(), "ch-1", 0, 1); !errors.Is(err, boom) {
+	if _, err := adapter.Preview(context.Background(), "ch-1", 1, filler.Selection{}); !errors.Is(err, boom) {
 		t.Errorf("preview swallowed the catalog error: %v", err)
 	}
-	if _, ok := adapter.BuildFillerList(context.Background(), "ch-1", 0, 1); ok {
+	if _, ok := adapter.BuildFillerList(context.Background(), "ch-1", 1, filler.Selection{}); ok {
 		t.Error("reconcile should report not-ok on a catalog failure and leave the channel on flex")
 	}
 }

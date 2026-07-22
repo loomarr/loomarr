@@ -280,8 +280,20 @@ func (s *Server) channelForIntent(ctx context.Context, p store.Proposal) (string
 	// Re-approval refreshes what the proposal owns (lineup + policy) and leaves what the
 	// OPERATOR owns alone — name, number, group, logo, strategy are editable fields
 	// (§7 PATCH), and silently reverting an edit on re-approve would be a data loss.
+	existingFiller := existing.Policy.Filler // operator-owned; must survive re-approval
 	ch.Lineup = lineup
 	ch.Policy = policy
+	// Filler selection (§10) is operator-owned but rides on the proposal-owned policy, so
+	// carry the existing one forward across a re-approval (never clobber a tuned filler).
+	// On a FIRST approval there's none yet → seed the filler era from the channel's program
+	// scope era, so a "90s action" channel gets 90s ads out of the box (the default-from-
+	// theme). audience/category/kinds stay "any" — the user narrows those on the page.
+	switch {
+	case existingFiller != nil:
+		ch.Policy.Filler = existingFiller
+	case ch.Policy.Scope.Era != nil:
+		ch.Policy.Filler = &schedule.FillerSelection{Era: ch.Policy.Scope.Era}
+	}
 	ch.Status = schedule.StatusBuilding
 
 	if err := ch.Validate(); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/testkit"
@@ -26,12 +27,14 @@ func chTunarrID(t *testing.T, st store.Store, id string) string {
 type fakePods struct {
 	calls int
 	seeds []int64
-	ids   []string // the pool to return; nil → ok=false (no filler)
+	sels  []filler.Selection // the selection each call received
+	ids   []string           // the pool to return; nil → ok=false (no filler)
 }
 
-func (f *fakePods) BuildFillerList(_ context.Context, channelID string, era int, seed int64) ([]string, bool) {
+func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int64, sel filler.Selection) ([]string, bool) {
 	f.calls++
 	f.seeds = append(f.seeds, seed)
+	f.sels = append(f.sels, sel)
 	if len(f.ids) == 0 {
 		return nil, false
 	}

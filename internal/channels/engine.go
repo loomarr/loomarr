@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -50,11 +51,12 @@ type Availability interface {
 // reproduces across reconciles (§10/§19), which is what makes the filler-list
 // attach idempotent.
 type PodFiller interface {
-	// BuildFillerList returns the Tunarr program uuids of the matched clip pool for
-	// a channel, given its era and a deterministic seed. ok=false → no pool (empty
-	// catalog / only the fallback card): the engine skips the attach and the
-	// channel's flex falls back to the bumper card (never dead air).
-	BuildFillerList(ctx context.Context, channelID string, era int, seed int64) (programIDs []string, ok bool)
+	// BuildFillerList returns the Tunarr program uuids of the matched clip pool for a
+	// channel, given a deterministic seed and the channel's per-channel filler
+	// Selection (§10 — era/audience/category/kinds + pinned/excluded). ok=false → no
+	// pool (empty catalog / only the fallback card): the engine skips the attach and
+	// the channel's flex falls back to the bumper card (never dead air).
+	BuildFillerList(ctx context.Context, channelID string, seed int64, sel filler.Selection) (programIDs []string, ok bool)
 }
 
 // Engine reconciles channels against Tunarr. One per process; the per-channel

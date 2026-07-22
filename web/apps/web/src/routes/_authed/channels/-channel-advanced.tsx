@@ -1,6 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api";
 import { humanizeRelaxation } from "@loomarr/core";
-import { ChannelPods } from "@/filler";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
@@ -28,9 +27,11 @@ const relaxationSentence = (step: { kind: string; from: string; to: string }): s
 // ChannelAdvanced — the scheduler internals, shown only inside the admin-only "Advanced"
 // disclosure on the channel-detail page. This is deliberately the place for the things a
 // VIEWER should never see: which programming rules Loomarr had to ease to fill the channel,
-// the commercial-break breakdown, and the Tunarr id. Keeping them here is what lets the page
-// above speak in plain language. Everything is explained in a sentence, not left as a code.
-const ChannelAdvanced = ({ channel, channelId }: { channel: ChannelDTO; channelId: string }) => {
+// and the Tunarr id. Keeping them here is what lets the page above speak in plain language.
+// Everything is explained in a sentence, not left as a code. (The commercial-break preview
+// moved up into the channel's Filler section — it's now part of choosing filler, not a
+// scheduler internal.)
+const ChannelAdvanced = ({ channel }: { channel: ChannelDTO }) => {
   const applied = channel.policy?.applied ?? [];
 
   return (
@@ -57,15 +58,6 @@ const ChannelAdvanced = ({ channel, channelId }: { channel: ChannelDTO; channelI
             Running exactly as specified — nothing had to be eased.
           </p>
         )}
-      </section>
-
-      {/* The commercial-break breakdown — the same assembly the channel actually plays. */}
-      <section className="flex flex-col gap-2">
-        <h3 className="font-medium text-sm">Commercial break</h3>
-        <p className="text-muted-foreground text-sm">
-          The clips that play during a break, in order, assembled exactly as the channel builds them.
-        </p>
-        <ChannelPods channelId={channelId} />
       </section>
 
       {/* The Tunarr link — pure plumbing, useful only for debugging. */}
