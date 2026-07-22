@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,34 @@ func TestCreateChannelAdmin(t *testing.T) {
 	// Creation kicks an initial reconcile (§9 live-immediately).
 	if chSvc.reconciles != 1 {
 		t.Errorf("create should kick 1 reconcile, got %d", chSvc.reconciles)
+	}
+}
+
+// A create with NO id is a hand-made channel: the server assigns a stable `ch_…` id (§7),
+// so the "New channel" UI action needs no client-side id scheme. An explicit id is still
+// honored (the proposal-approval path relies on that), which TestCreateChannelAdmin covers.
+func TestCreateChannelServerAssignsIDWhenOmitted(t *testing.T) {
+	srv, st, _, _ := newServerWithScheduler(t)
+	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
+		`{"name":"Hand-made","number":7,"strategy":"sequential"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create without id → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		ID, Name string
+		Number   int
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if !strings.HasPrefix(body.ID, "ch_") {
+		t.Errorf("server-assigned id = %q, want a ch_ prefix", body.ID)
+	}
+	// The channel is really persisted under that id (an empty, hand-made channel — no lineup).
+	ch, err := st.GetChannel(context.Background(), body.ID)
+	if err != nil {
+		t.Fatalf("GetChannel(%q): %v", body.ID, err)
+	}
+	if ch.Name != "Hand-made" || len(ch.Lineup) != 0 {
+		t.Errorf("hand-made channel = %+v (want empty lineup)", ch)
 	}
 }
 

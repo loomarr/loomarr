@@ -1,9 +1,13 @@
 import { channelsApi } from "@loomarr/api";
 import { formatEpgTime } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { channelHealth, channelOnAir } from "@/channels";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Plus, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/auth";
+import { ChannelCreateDialog, ChannelRowMenu, channelHealth, channelOnAir } from "@/channels";
 import { ChannelCard, EmptyState, ErrorState } from "@/components/loomarr";
+import { Button } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 
 // Channels (§12) — the "is my TV working" screen. Everything here is Loomarr's own state
@@ -14,8 +18,20 @@ import { useLoomarrEventListener } from "@/events";
 // both queries so the page updates on its own.
 const ChannelsScreen = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const [creating, setCreating] = useState(false);
   const channels = channelsApi.useListChannels();
   const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });
+
+  const goSuggest = () => navigate({ to: "/suggest" });
+  // A freshly-created channel is empty — drop the user on its page, where Refine-with-AI and
+  // the manual lineup editor fill it (the "create shell → then Suggest" flow).
+  const onCreated = (id: string) => {
+    setCreating(false);
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
+    void navigate({ to: "/channels/$id", params: { id } });
+  };
 
   // Live update: any `channel` frame refreshes the list + guide (no refresh button).
   useLoomarrEventListener({
@@ -42,33 +58,57 @@ const ChannelsScreen = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">Channels</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Every channel Loomarr manages, and what's on right now.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3 border-border border-b px-6 py-4">
+        <div>
+          <h1 className="font-semibold text-xl">Channels</h1>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Every channel Loomarr manages, and what's on right now.
+          </p>
+        </div>
+        {/* Admin actions. Suggest is the prominent, headline path (describe a channel →
+            build it); New channel is the direct hand-made alternative. Both always visible,
+            not just when the list is empty. */}
+        {isAdmin && (
+          <div className="flex gap-2">
+            <Button variant="suggest" size="sm" onClick={goSuggest}>
+              <Sparkles aria-hidden />
+              Suggest a channel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+              <Plus aria-hidden />
+              New channel
+            </Button>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 overflow-auto p-6">
+        {creating && (
+          <div className="mb-4">
+            <ChannelCreateDialog onCreated={onCreated} onClose={() => setCreating(false)} />
+          </div>
+        )}
         {rows.length === 0 && !channels.isLoading ? (
-          // Every list gets exactly one next action (§6) — and the only way to make a
-          // channel is to describe one.
+          // Every list gets exactly one next action (§6). Describing a channel is the
+          // headline path, so the empty state's hero action is Suggest (now wired) — the
+          // "New channel" hand-made path lives in the header for when you'd rather build
+          // one directly.
           <EmptyState
             title="Dead air"
             description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
-            action={{ label: "Suggest a channel" }}
+            {...(isAdmin ? { action: { label: "Suggest a channel", onClick: goSuggest } } : {})}
           />
         ) : (
           <ul className="flex flex-col gap-3">
             {rows.map((ch) => {
               const nn = byChannel.get(ch.id);
               return (
-                <li key={ch.id}>
+                <li key={ch.id} className="relative">
                   {/* The whole card is the link to the channel's page (where all editing +
-                      refine lives) — there is no per-row action button; edits apply
-                      seamlessly and this list live-updates. Hover feedback lives on the
-                      Link, not ChannelCard (the card is reused non-clickably on the detail
-                      page). cursor-pointer because a <Link> gets no pointer by default. */}
+                      refine lives). The per-row ⋮ menu (admin) overlays the top-right corner
+                      as a SIBLING, not a child, and swallows its own clicks so pause/delete
+                      don't also follow the link. Edits still apply seamlessly + the list
+                      live-updates. cursor-pointer because a <Link> gets no pointer by default. */}
                   <Link
                     to="/channels/$id"
                     params={{ id: ch.id }}
@@ -94,6 +134,11 @@ const ChannelsScreen = () => {
                       }
                     />
                   </Link>
+                  {isAdmin && (
+                    <div className="absolute top-3 right-3">
+                      <ChannelRowMenu channel={{ id: ch.id, name: ch.name, status: ch.status }} />
+                    </div>
+                  )}
                 </li>
               );
             })}

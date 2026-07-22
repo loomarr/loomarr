@@ -267,7 +267,7 @@ components:
             - Kids
           type: string
         id:
-          description: Loomarr channel id (caller-assigned, stable)
+          description: Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id.
           examples:
             - ch_abc123
           type: string
@@ -294,7 +294,6 @@ components:
             - time_slot
           type: string
       required:
-        - id
         - name
         - number
         - strategy
