@@ -39,9 +39,28 @@ const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
   interstitial: "INT",
 };
 
+// The full word behind each abbreviation, for the legend. The segments stay abbreviated
+// (they're narrow, sized by duration), but a legend beneath spells out the codes actually
+// present in THIS pod — so "BMP"/"AD" don't read as mystery tokens, without explaining
+// kinds the break doesn't contain.
+const SEGMENT_WORD: Record<PodEntryDTO["kind"], string> = {
+  bumper: "bumper",
+  station_id: "station ID",
+  commercial: "commercial",
+  trailer: "trailer",
+  psa: "PSA",
+  interstitial: "interstitial",
+};
+
 const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }: PodTimelineProps) => {
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
+  // The distinct segment kinds in THIS pod, in first-appearance order — the legend
+  // explains only the codes on screen.
+  const kinds = entries.reduce<PodEntryDTO["kind"][]>((acc, e) => {
+    if (!acc.includes(e.kind)) acc.push(e.kind);
+    return acc;
+  }, []);
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
@@ -79,6 +98,17 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
           </li>
         ))}
       </ul>
+
+      {kinds.length > 0 && (
+        <p className="text-muted-foreground text-xs">
+          {kinds.map((kind, i) => (
+            <span key={kind}>
+              {i > 0 && " · "}
+              <span className="font-mono">{SEGMENT_ABBR[kind]}</span> = {SEGMENT_WORD[kind]}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 };
