@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MoreVertical } from "lucide-react";
+import { Button } from "@/components/ui";
 import { ChannelCard } from "./channel-card";
 
 // ChannelCard states (§3): healthy · pending-slots · drift · error · creating. The story
@@ -48,5 +50,23 @@ const Creating: Story = {
   args: { number: 46, name: "New Channel", onAir: "off", health: "creating" },
 };
 
+// With a trailing action (the admin per-row ⋮ menu on the Channels list). It clusters with
+// the on-air dot in the top-right, inside the card — a stand-in button here since the real
+// menu owns live hooks; the slot placement is what this snapshots.
+const WithMenu: Story = {
+  args: {
+    number: 42,
+    name: "90s Action",
+    onAir: "live",
+    nowNext: { now: { title: "Heat", until: "9:42 PM" }, next: { title: "Con Air" } },
+    health: "healthy",
+    trailing: (
+      <Button variant="ghost" size="icon" className="size-8" aria-label="Actions">
+        <MoreVertical className="size-4" aria-hidden />
+      </Button>
+    ),
+  },
+};
+
 export default meta;
-export { Creating, Drift, Errored, Healthy, PendingSlots };
+export { Creating, Drift, Errored, Healthy, PendingSlots, WithMenu };

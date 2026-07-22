@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { NowNext } from "../now-next-strip";
 import type { OnAirState } from "../on-air-indicator";
 
@@ -13,6 +14,10 @@ interface ChannelCardProps {
   nowNext?: NowNext;
   managed?: boolean;
   health?: ChannelHealth;
+  // An optional action rendered in the top-right cluster, to the RIGHT of the on-air dot
+  // (e.g. a row's ⋮ menu). Lives inside the card so a per-row action reads as part of the
+  // row it acts on, rather than floating in a margin beside it. Omitted → just the dot.
+  trailing?: ReactNode;
   className?: string;
 }
 
