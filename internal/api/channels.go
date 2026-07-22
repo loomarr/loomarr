@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 )
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
@@ -33,16 +35,36 @@ type ChannelDTO struct {
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
 	// relaxation banners. Empty ⇒ the channel runs on built-in defaults.
 	Policy schedule.ChannelPolicy `json:"policy" doc:"Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations"`
+	// Lineup is the intent-level "what should play" — the titles the channel is built
+	// from, in order (distinct from the summarized Desired slots above). Read-only here;
+	// the diff a refine shows (kept/added/removed) is computed against this. Editing the
+	// lineup entries is Phase 3.
+	Lineup []LineupEntryDTO `json:"lineup" doc:"The channel's titles, in order (the intent-level lineup, not the expanded slots)"`
+}
+
+// LineupEntryDTO is one title on the channel — enough to display and to diff a refine
+// against (a real key + human name/year). Not the full scheduler entry.
+type LineupEntryDTO struct {
+	Key    string   `json:"key" doc:"Provisioning key, e.g. movie:tmdb:603"`
+	Name   string   `json:"name"`
+	Year   int      `json:"year,omitempty"`
+	Genres []string `json:"genres,omitempty"`
 }
 
 func channelToDTO(ch store.Channel) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
+	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
+	for _, e := range ch.Lineup {
+		lineup = append(lineup, LineupEntryDTO{
+			Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres,
+		})
+	}
 	return ChannelDTO{
 		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
-		Policy: ch.Policy,
+		Policy: ch.Policy, Lineup: lineup,
 	}
 }
 
@@ -138,6 +160,13 @@ func (s *Server) registerChannels(api huma.API) {
 		Description: "Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.",
 		Tags:        []string{"channels"},
 	}, s.updateChannel)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "refine-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/refine",
+		Summary:     "Refine a channel with the LLM",
+		Description: "Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).",
+		Tags:        []string{"channels", "suggestions"},
+	}, s.refineChannel)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
@@ -390,6 +419,74 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		return nil, err
 	}
 	return &channelOutput{Body: channelToDTO(fresh)}, nil
+}
+
+type refineChannelInput struct {
+	ID   string `path:"id" example:"ch_abc123"`
+	Body struct {
+		Change string `json:"change" minLength:"1" doc:"What to change, in plain words: \"add more Schwarzenegger, drop the slow ones\"." example:"add more Schwarzenegger"`
+	}
+}
+type refineChannelOutput struct {
+	Body struct {
+		JobID string `json:"jobId" doc:"Poll /v1/suggestions for the refined proposal (matched on this jobId), then approve to apply."`
+	}
+}
+
+// refineChannel re-runs the channel's suggestion with a plain-language change (§7). It
+// seeds a refine intent from the channel's CURRENT lineup + the original description + the
+// change, and re-queues the channel's OWN suggestion job (its IntentRef) so the refined
+// proposal binds back to this channel — approving it patches in place, no duplicate.
+// Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
+// grounded.
+func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
+		return nil, huma.Error501NotImplemented("suggester not configured")
+	}
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, huma.Error404NotFound("no such channel")
+	} else if err != nil {
+		return nil, err
+	}
+	// Refine only makes sense for an LLM-created channel: it re-runs that channel's own
+	// suggestion job. A hand-made channel (no IntentRef) has no job to re-run.
+	if ch.IntentRef == "" {
+		return nil, huma.Error422UnprocessableEntity("this channel wasn't created from a suggestion, so it can't be refined")
+	}
+
+	// Seed the refine intent from the channel's original intent (for description/constraints)
+	// plus the current lineup as context and the requested change.
+	intent := suggest.Intent{Description: ch.Name}
+	if job, jerr := s.store.GetJob(ctx, ch.IntentRef); jerr == nil {
+		var orig suggest.Intent
+		if json.Unmarshal([]byte(job.IntentJSON), &orig) == nil {
+			intent = orig // keep the original description + era/tone/constraints
+		}
+	}
+	intent.RefineText = strings.TrimSpace(in.Body.Change)
+	intent.CurrentLineup = lineupContext(ch.Lineup)
+
+	jobID, err := s.suggest.Refine(ctx, ch.IntentRef, intent)
+	if err != nil {
+		return nil, err
+	}
+	out := &refineChannelOutput{}
+	out.Body.JobID = jobID
+	return out, nil
+}
+
+// lineupContext turns a channel's stored lineup entries into the lightweight
+// name/year/key context the refiner reasons about.
+func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
+	out := make([]suggest.LineupContext, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, suggest.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+	}
+	return out
 }
 
 type reconcileOutput struct{ Body ChannelDTO }

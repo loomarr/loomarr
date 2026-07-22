@@ -136,6 +136,37 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 	return job.ID, nil
 }
 
+// Refine re-runs an EXISTING suggestion job with a refine-flavored intent (§7 refine).
+// It re-queues the channel's own `IntentRef` job rather than minting a new one, so the
+// refined proposal lands on that job — and approving it patches the SAME channel via the
+// existing `channelForIntent`/newest-approved-proposal path (no new schema, no duplicate
+// channel). Bypasses the intent-hash cache deliberately: a refine always re-generates
+// (the operator asked for a change; a cached identical run would be surprising). Returns
+// the job id (== the channel's IntentRef) for the caller to poll for the new proposal.
+func (s *Service) Refine(ctx context.Context, jobID string, intent Intent) (string, error) {
+	job, err := s.store.GetJob(ctx, jobID)
+	if err != nil {
+		return "", fmt.Errorf("refine: load job %q: %w", jobID, err)
+	}
+	blob, err := json.Marshal(intent)
+	if err != nil {
+		return "", fmt.Errorf("refine: marshal intent: %w", err)
+	}
+	now := s.now()
+	// Re-queue in place: swap in the refine intent and make it due immediately. The worker
+	// picks it up, generates a fresh proposal on this job, and the newest-approved wins.
+	job.IntentJSON = string(blob)
+	job.IntentHash = IntentHash(intent)
+	job.Status = "queued"
+	job.LastError = ""
+	job.Deadline = now
+	job.UpdatedAt = now
+	if err := s.store.UpdateJob(ctx, job); err != nil {
+		return "", fmt.Errorf("refine: requeue job: %w", err)
+	}
+	return job.ID, nil
+}
+
 // Run starts the worker pool and blocks until ctx is cancelled (§8). Each worker
 // polls for due jobs and runs them; the pool shares the ClaimDueJobs lease so no
 // job runs twice.
@@ -257,16 +288,36 @@ func IntentHash(i Intent) string {
 		Desc, Era, Tone  string
 		Rt, Max          int
 		Include, Exclude []string
+		// Refine inputs are part of the identity so a refine ("drop the slow ones") never
+		// collides in the 24h cache with the original suggestion or a prior refine of the
+		// same channel. The current lineup is folded in via its keys (order-independent).
+		Refine     string
+		LineupKeys []string
 	}{
 		Desc: strings.ToLower(strings.TrimSpace(i.Description)),
 		Era:  strings.ToLower(strings.TrimSpace(i.Era)),
 		Tone: strings.ToLower(strings.TrimSpace(i.Tone)),
 		Rt:   i.RuntimeTgt, Max: i.MaxAcquire,
 		Include: normSlice(i.MustInclude), Exclude: normSlice(i.MustExclude),
+		Refine:     strings.ToLower(strings.TrimSpace(i.RefineText)),
+		LineupKeys: lineupKeys(i.CurrentLineup),
 	}
 	blob, _ := json.Marshal(norm)
 	sum := sha256.Sum256(blob)
 	return hex.EncodeToString(sum[:])
+}
+
+// lineupKeys extracts + sorts the current-lineup keys for a stable, order-independent
+// contribution to the intent hash.
+func lineupKeys(ctx []LineupContext) []string {
+	out := make([]string, 0, len(ctx))
+	for _, e := range ctx {
+		if e.Key != "" {
+			out = append(out, e.Key)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func normSlice(s []string) []string {
