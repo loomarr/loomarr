@@ -1,9 +1,18 @@
 import type { SettingEntry } from "@loomarr/api";
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
+import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
 import { SettingField } from "./setting-field";
 
 const noop = () => {};
+
+// The field's doc is a FieldHelp (i) tooltip now, which needs a TooltipProvider ancestor
+// (mounted at the app root; supplied here for isolation).
+const withTooltip: Decorator = (Story) => (
+  <TooltipProvider>
+    <Story />
+  </TooltipProvider>
+);
 
 const base: SettingEntry = {
   key: "library.url",
@@ -22,7 +31,7 @@ const meta = {
   title: "Loomarr/SettingField",
   component: SettingField,
   args: { entry: base, value: "http://emby.local:8096", onChange: noop },
-  decorators: [widthFrame(420)],
+  decorators: [withTooltip, widthFrame(420)],
 } satisfies Meta<typeof SettingField>;
 
 type Story = StoryObj<typeof meta>;

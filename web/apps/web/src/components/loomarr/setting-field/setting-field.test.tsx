@@ -1,8 +1,14 @@
 import type { SettingEntry } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui";
 import { SettingField } from "./setting-field";
+
+// The field's doc now shows in a FieldHelp (i) tooltip, which needs a TooltipProvider ancestor
+// (the app mounts one at the root). Wrap every render so the field mounts without a Radix error.
+const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   key: "library.url",
@@ -17,9 +23,12 @@ const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
 });
 
 describe("SettingField", () => {
-  it("labels the field from its key and shows the doc as help text", () => {
+  it("labels the field from its key and exposes the doc via a help affordance", () => {
     render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
     expect(screen.getByLabelText("Library URL")).toBeInTheDocument();
+    // The doc is now a FieldHelp (i) tooltip in the label row (visible on hover) …
+    expect(screen.getByRole("button", { name: /about library url/i })).toBeInTheDocument();
+    // … and still in the DOM (visually hidden) for the control's aria-describedby (a11y).
     expect(screen.getByText("Base URL of your Emby/Jellyfin server.")).toBeInTheDocument();
   });
 

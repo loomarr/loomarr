@@ -1,9 +1,17 @@
 import type { SettingEntry } from "@loomarr/api";
-import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
+import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
 import { SettingsFields } from "./settings-fields";
 
 const noop = () => {};
+
+// Fields carry FieldHelp (i) tooltips, which need a TooltipProvider ancestor.
+const withTooltip: Decorator = (Story) => (
+  <TooltipProvider>
+    <Story />
+  </TooltipProvider>
+);
 
 const entry = (over: Partial<SettingEntry> & Pick<SettingEntry, "key" | "kind" | "doc">): SettingEntry => ({
   group: "connections.media_server",
@@ -52,7 +60,7 @@ const meta = {
   title: "Loomarr/SettingsFields",
   component: SettingsFields,
   args: { entries: mediaServer, values: {}, onChange: noop },
-  decorators: [widthFrame(460)],
+  decorators: [withTooltip, widthFrame(460)],
 } satisfies Meta<typeof SettingsFields>;
 
 type Story = StoryObj<typeof meta>;
