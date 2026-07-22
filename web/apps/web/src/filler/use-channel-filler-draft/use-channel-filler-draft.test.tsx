@@ -16,7 +16,9 @@ const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const previewBody = {
-  entries: [{ tunarrProgramId: "p1", name: "Ad", kind: "commercial", durationMs: 30000, isFallbackCard: false }],
+  entries: [
+    { tunarrProgramId: "p1", name: "Ad", kind: "commercial", durationMs: 30000, isFallbackCard: false },
+  ],
   totalMs: 30000,
   matchLevel: "exact",
 };

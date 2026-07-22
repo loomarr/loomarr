@@ -208,8 +208,7 @@ const FillerCriteria = ({
           ))}
         </div>
         <p className="text-muted-foreground text-xs">
-          Which clips a break may use. None checked uses the default mix (commercials,
-          bumpers, station IDs).
+          Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).
         </p>
       </div>
     </div>

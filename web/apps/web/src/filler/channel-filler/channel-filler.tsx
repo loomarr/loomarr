@@ -33,8 +33,8 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
       <div>
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
-          Shape the commercials, bumpers, and station IDs that play between shows. Tweak and
-          watch the break update below — nothing saves until you apply. Clips come from your{" "}
+          Shape the commercials, bumpers, and station IDs that play between shows. Tweak and watch the break
+          update below — nothing saves until you apply. Clips come from your{" "}
           <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
             filler catalog
           </Link>

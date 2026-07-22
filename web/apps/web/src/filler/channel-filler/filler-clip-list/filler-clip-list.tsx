@@ -2,9 +2,9 @@ import { type ClipDTO, fillerApi } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import { SearchCommand } from "@/components/loomarr";
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib";
-import { SearchCommand } from "@/components/loomarr";
 
 // FillerClipList — one override list ("Always include" pins, or "Never include" excludes).
 // Add a clip via the filler search (SearchCommand's `clips` scope, fed by useListFiller),
