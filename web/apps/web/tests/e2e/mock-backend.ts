@@ -30,8 +30,6 @@ interface MockOptions {
   // Which setup/status checks are green before the operator does anything. The two
   // REQUIRED ones default green so the flow can reach the wiring steps.
   checks?: Record<string, boolean>;
-  // Per-app webhook receipts; the wizard renders these as "Last received …".
-  webhook?: Record<string, string>;
 }
 
 interface MockBackend {
@@ -57,7 +55,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     authed: opts.authed ?? false,
     bootstrapped: opts.bootstrapped ?? true,
     checks: { media_server: true, tunarr: true, ...(opts.checks ?? {}) } as Record<string, boolean>,
-    webhook: { ...(opts.webhook ?? {}) } as Record<string, string>,
     imported: [] as string[],
     edits: {} as Record<string, string>,
     enqueued: [] as string[],
@@ -112,11 +109,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         ok,
         hint: ok ? undefined : `${name} is not configured yet.`,
       }));
-      checks.push({ name: "webhook", ok: Object.keys(state.webhook).length > 0, hint: undefined });
-      const withReceipts = checks.map((c) =>
-        c.name === "webhook" ? { ...c, lastReceived: state.webhook } : c,
-      );
-      return json(route, { checks: withReceipts });
+      return json(route, { checks });
     }
 
     // --- one-click wirings: each turns its own check green -----------------------

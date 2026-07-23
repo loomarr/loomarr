@@ -44,14 +44,6 @@ var (
 		Help: "Login attempts by result.",
 	}, []string{"result"})
 
-	// webhookEvents counts received *arr webhooks by bounded type (§17). The
-	// caller passes an already-classified kind so an arbitrary payload can't
-	// inflate cardinality.
-	webhookEvents = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loomarr", Subsystem: "webhook", Name: "events_total",
-		Help: "Received Sonarr/Radarr webhook events by type.",
-	}, []string{"type"})
-
 	// storeScrapeErrors records when a state-gauge query fails during a scrape,
 	// so a silently-empty gauge is distinguishable from a broken one.
 	storeScrapeErrors = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -69,10 +61,6 @@ func LoginResult(success bool) {
 	}
 	logins.WithLabelValues(result).Inc()
 }
-
-// WebhookEvent records a received webhook under a caller-bounded type label
-// (e.g. "grab", "download", "test", "other").
-func WebhookEvent(kind string) { webhookEvents.WithLabelValues(kind).Inc() }
 
 // storeCollector emits the state gauges by querying the store at scrape time.
 // Reading on scrape (not on every mutation) keeps the gauges correct without

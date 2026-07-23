@@ -45,11 +45,6 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// the other ops probes; the metrics.Middleware below records every request.
 	mux.Handle("GET /metrics", metrics.Handler())
 
-	// Sonarr/Radarr ingest webhook (§6). Uses WEBHOOK_SECRET, not /v1 auth.
-	if opts.Ingest != nil {
-		mux.Handle("POST /hooks/arr", opts.Ingest)
-	}
-
 	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
 	cfg := humaConfig()

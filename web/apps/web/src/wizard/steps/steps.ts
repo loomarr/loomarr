@@ -21,7 +21,6 @@ const WIZARD_STEPS: WizardStep[] = [
       { id: "ai", label: "AI" },
     ],
   },
-  { id: "webhooks", title: "Webhooks" },
   { id: "library", title: "Library" },
   { id: "users", title: "Users", optional: true },
   { id: "channel", title: "First channel" },
@@ -36,7 +35,6 @@ const REQUIRED_CHECKS = ["media_server", "tunarr"];
 // them (§6 step→group mapping). `livetv` has no step of its own — it's auto-wired on the
 // Tunarr save and reflected on that connection, not gated behind a wizard step.
 const WIRING_CHECK_BY_STEP: Record<string, string> = {
-  webhooks: "webhook",
   library: "tunarr_library",
 };
 

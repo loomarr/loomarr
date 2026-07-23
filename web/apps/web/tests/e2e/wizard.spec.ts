@@ -41,38 +41,29 @@ test.describe("operator first-run wizard", () => {
     await shot(page, "step-2-checklist", /connect your services/i);
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // (The standalone "Live TV" step was removed — wiring auto-runs on a Connections
-    // save, so the wizard goes straight from the checklist to the webhook handshake.)
+    // (Neither a standalone "Live TV" step nor a "Webhooks" step: Live TV auto-wires on a
+    // Connections save, and availability is polled — no inbound webhook to hand-shake. The
+    // wizard goes straight from the checklist to the library step.)
 
-    // --- step 3: webhook handshake ----------------------------------------------
-    await expect(page.getByRole("heading", { name: /tell sonarr and radarr/i })).toBeVisible();
-    // The URL is built from the REVEALED secret — what the operator pastes, unrotated.
-    await expect(page.getByText(/\/hooks\/arr\?token=s3cr3t/)).toBeVisible();
-    // Neither app has reported yet: both listen, neither reads as failed.
-    await expect(page.getByText(/press Test in this app/i)).toHaveCount(2);
-    await shot(page, "step-4-webhooks", /tell sonarr and radarr/i);
-    // No *arr apps configured is a legitimate install — skipping must be possible.
-    await page.getByRole("button", { name: /skip for now/i }).click();
-
-    // --- step 5: tunarr library --------------------------------------------------
-    await shot(page, "step-5-library", /give tunarr your library/i);
+    // --- step 3: tunarr library --------------------------------------------------
+    await shot(page, "step-3-library", /give tunarr your library/i);
     await page.getByRole("button", { name: /wire tunarr to your library/i }).click();
     await expect(page.getByRole("button", { name: /run again/i })).toBeVisible();
     expect(backend.state.checks.tunarr_library).toBe(true);
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // --- step 6: import users -----------------------------------------------------
+    // --- step 4: import users -----------------------------------------------------
     await expect(page.getByRole("heading", { name: /import media-server users/i })).toBeVisible();
     await page.getByLabel("Ada").check();
-    await shot(page, "step-6-users", /import media-server users/i);
+    await shot(page, "step-4-users", /import media-server users/i);
     await page.getByRole("button", { name: /^import/i }).click();
     // Only the picked account is allowlisted — signing in is not self-provisioning (§11).
     await expect(page.getByText("imported")).toBeVisible();
     expect(backend.state.imported).toEqual(["u-ada"]);
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // --- step 7: guided first channel ---------------------------------------------
-    await shot(page, "step-7-first-channel", /your first channel/i);
+    // --- step 5: guided first channel ---------------------------------------------
+    await shot(page, "step-5-first-channel", /your first channel/i);
     await page.getByText("90s Saturday Morning Cartoons").click();
 
     // Finishing the wizard flips setup.completed (so `/` stops routing here) and hands

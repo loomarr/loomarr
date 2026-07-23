@@ -17,7 +17,6 @@ import (
 	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
-	"github.com/mantonx/loomarr/internal/ingest"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/metrics"
@@ -119,24 +118,6 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// this registry as each subsystem is wired below; the scheduler is built + started once
 	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
 	jobReg := scheduler.NewRegistry()
-
-	// Wire the ingest webhook handler when the store + library are configured
-	// (§6, Phase 6). Requires a store, the library flavor, and WEBHOOK_SECRET.
-	var ingestHandler http.Handler
-	webhookSecret := ""
-	if secrets != nil {
-		webhookSecret = secrets.Value(settings.SecretWebhook)
-	}
-	if st != nil && set.str("library.flavor") != "" && webhookSecret != "" {
-		flavor, ferr := library.ParseFlavor(set.str("library.flavor"))
-		if ferr != nil {
-			return nil, ferr
-		}
-		deviceID := instanceDeviceID(context.Background(), st)
-		lib := library.NewDynamic(flavor, set.libraryConn(), deviceID)
-		ingestHandler = ingest.New(st, lib, webhookSecret, set.dur("downloading.ttl"), emitter, time.Now, log)
-		log.Info("ingest webhook mounted", "path", "/hooks/arr")
-	}
 
 	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
 	// constructed given a store so acquisitions process the moment a requester is
@@ -494,7 +475,6 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Auth:          authorizer,
 		Log:           log,
 		BackupSQLite:  backup,
-		Ingest:        ingestHandler,
 		Ready:         ready,
 		Login:         loginSvc,
 		Sessions:      sessMgr,

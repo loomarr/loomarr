@@ -10,10 +10,10 @@ import (
 // parsers written in later phases depend on these exact files).
 func TestFixturesLoadable(t *testing.T) {
 	for _, rel := range []string{
-		"radarr/test_webhook.json",
-		"radarr/grab_webhook.json",
+		// radarr/import_webhook.json is retained for the provision.KeyFromWebhook parity
+		// tests (KeyFromWebhook is still used by channel lineup); the inbound webhook
+		// subsystem it originally fed has been retired.
 		"radarr/import_webhook.json",
-		"sonarr/test_webhook.json",
 		"emby/lookup_present.json",
 		"emby/lookup_absent.json",
 		"seerr/request_available_201.json",

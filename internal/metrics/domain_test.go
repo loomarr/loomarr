@@ -71,18 +71,12 @@ func TestStoreCollectorScrapeError(t *testing.T) {
 	}
 }
 
-// LoginResult and WebhookEvent increment their labelled counters. Deltas are
-// used because the vecs live on the process-global default registry.
+// LoginResult increments its labelled counter. Deltas are used because the vec
+// lives on the process-global default registry.
 func TestEventCounters(t *testing.T) {
 	before := testutil.ToFloat64(logins.WithLabelValues("success"))
 	LoginResult(true)
 	if got := testutil.ToFloat64(logins.WithLabelValues("success")); got != before+1 {
 		t.Errorf("LoginResult(true): success counter %v, want %v", got, before+1)
-	}
-
-	wbefore := testutil.ToFloat64(webhookEvents.WithLabelValues("grab"))
-	WebhookEvent("grab")
-	if got := testutil.ToFloat64(webhookEvents.WithLabelValues("grab")); got != wbefore+1 {
-		t.Errorf("WebhookEvent(grab): counter %v, want %v", got, wbefore+1)
 	}
 }

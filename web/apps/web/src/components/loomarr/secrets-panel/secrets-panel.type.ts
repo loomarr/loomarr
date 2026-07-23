@@ -1,6 +1,6 @@
-// The three generated secrets (config-design §4). Their display policy differs by
+// The generated secrets (config-design §4). Their display policy differs by
 // PURPOSE, which is why this is a closed set rather than a generic list.
-type SecretName = "api_token" | "webhook_secret" | "session_secret";
+type SecretName = "api_token" | "session_secret";
 
 interface SecretRow {
   name: SecretName;
