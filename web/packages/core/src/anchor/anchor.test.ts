@@ -19,7 +19,6 @@ const DOC_HREFS = [
   "troubleshooting#tmdb",
   "troubleshooting#filler",
   "troubleshooting#livetv",
-  "troubleshooting#webhooks",
 ];
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");
