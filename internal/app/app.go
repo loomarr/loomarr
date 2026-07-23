@@ -25,6 +25,7 @@ import (
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/setup"
 	"github.com/mantonx/loomarr/internal/store"
@@ -112,6 +113,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	eventBus := events.NewBus()
 	emitter := &eventEmitter{bus: eventBus}
 
+	// The background-job scheduler (§18.1): all recurring work — reconcile, the channel
+	// sweep, filler sync, session cleanup, and (later phases) the availability pollers —
+	// registers here as a named job with a settings-driven interval, then runs under ONE
+	// heartbeat loop that is also on-demand-triggerable ("Run now"). Jobs are appended to
+	// this registry as each subsystem is wired below; the scheduler is built + started once
+	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
+	jobReg := scheduler.NewRegistry()
+
 	// Wire the ingest webhook handler when the store + library are configured
 	// (§6, Phase 6). Requires a store, the library flavor, and WEBHOOK_SECRET.
 	var ingestHandler http.Handler
@@ -130,21 +139,32 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("ingest webhook mounted", "path", "/hooks/arr")
 	}
 
-	// Provisioning reconciler + janitor loop (§7). Always-constructed given a store
-	// so acquisitions process the moment a requester is configured — no restart
-	// (§8.1). Its dynamic seerr/library connections are empty until configured; with
-	// nothing `wanted` it's a no-op, and the janitor's session sweep runs regardless.
+	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
+	// constructed given a store so acquisitions process the moment a requester is
+	// configured — no restart (§8.1). Its dynamic seerr/library connections are empty
+	// until configured; with nothing `wanted` it's a no-op. Session cleanup is its own
+	// scheduler job now (was the janitor piggybacking the reconcile ticker).
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		req := requester.NewSeerrDynamic(set.seerrConn())
 		rec := reconcile.New(st, req, lib, emitter, reconcile.Config{
 			RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
 		}, time.Now, log)
-		// Janitor sweeps expired sessions (§5, §11); jobs/proposals join in P11.
-		janitor := reconcile.NewJanitor(log, time.Now, auth.NewSessionSweeper(st))
-		runner := reconcile.NewRunner(rec, janitor, set.dur("reconcile.every"), log).
-			WithInterval(func() time.Duration { return set.dur("reconcile.every") })
-		go runner.Run(rootCtx)
+		// The reconcile tick is now a scheduler job (§18.1) — same Tick logic, driven by the
+		// shared heartbeat on a cron schedule instead of its own ticker.
+		jobReg.Add(scheduler.Job{
+			Name: "reconcile", Title: "Reconcile downloads",
+			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
+			Run: func(ctx context.Context) error { _, err := rec.Tick(ctx); return err },
+		})
+		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
+		// ticker via the janitor).
+		sessionSweeper := auth.NewSessionSweeper(st)
+		jobReg.Add(scheduler.Job{
+			Name: "session-sweep", Title: "Clear expired sessions",
+			DefaultCron: "0 0 * * * *", ScheduleKey: "job.session_sweep.schedule",
+			Run: func(ctx context.Context) error { _, err := sessionSweeper.Sweep(ctx, time.Now()); return err },
+		})
 	}
 
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
@@ -212,10 +232,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		emitter.setEngine(engine)
 
 		chEvery := set.dur("channel.reconcile_every")
-		sweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log).
-			WithInterval(func() time.Duration { return set.dur("channel.reconcile_every") })
-		go sweep.Run(rootCtx)
-		log.Info("channel scheduler started", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
+		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
+		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
+		// lease/batch are still constructed; only its standalone loop is gone.
+		chSweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log)
+		jobReg.Add(scheduler.Job{
+			Name: "channel-sweep", Title: "Reconcile channels with Tunarr",
+			DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_sweep.schedule",
+			Run: func(ctx context.Context) error { chSweep.Sweep(ctx); return nil },
+		})
+		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
@@ -331,9 +357,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log.Info("filler pod assembler wired into the scheduler")
 		}
 
-		// Periodic filler catalog sync alongside the reconciler (§10).
-		go runFillerSync(rootCtx, syncer, set.dur("filler.sync_every"), log)
-		log.Info("filler catalog sync started", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
+		// shared heartbeat. Interval key: filler.sync_every.
+		fillerSyncer := syncer
+		jobReg.Add(scheduler.Job{
+			Name: "filler-sync", Title: "Sync filler catalog",
+			DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
+			Run: func(ctx context.Context) error { _, err := fillerSyncer.Sync(ctx); return err },
+		})
+		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	}
 
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
@@ -412,6 +444,23 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil {
 		liveConfig = set.str
 	}
+
+	// Build + start the job scheduler once every subsystem has registered its jobs (§18.1).
+	// Each job's CRON schedule resolves from its settings key (falling back to the job's
+	// default cron), so a changed schedule hot-applies on the next tick. The notifier emits a
+	// `job` SSE frame on each state change so the Tasks page updates live. Only with a store.
+	var jobsSvc api.JobService
+	if st != nil {
+		sched := scheduler.New(st, jobReg, func(key, def string) string {
+			if c := set.str(key); c != "" {
+				return c
+			}
+			return def
+		}, time.Now, log).WithNotifier(emitter)
+		go sched.Run(rootCtx)
+		jobsSvc = jobsAdapter{s: sched}
+	}
+
 	return api.Router(log, api.Options{
 		Store:         st,
 		Auth:          authorizer,
@@ -432,6 +481,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Filler:        fillerSvc,
 		Pods:          podPreview,
 		SystemLLM:     systemLLM,
+		Jobs:          jobsSvc,
 		Settings:      settingsSvc,
 		Guide:         guideSvc,
 		Provision:     provisionSvc,

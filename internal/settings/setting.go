@@ -25,6 +25,7 @@ const (
 	KindEnum       Kind = "enum"     // one of Setting.Enum
 	KindSecret     Kind = "secret"   // stored, masked on read, never echoed (§4)
 	KindStringList Kind = "string_list"
+	KindCron       Kind = "cron" // a 6-field seconds-leading cron expr (job schedules, §18.1)
 )
 
 // Group is a Settings-UI page (config-design §5). Every setting belongs to

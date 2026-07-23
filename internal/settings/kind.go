@@ -6,7 +6,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/adhocore/gronx"
 )
+
+// cronParser validates KindCron values (§18.1). gronx is stateless + goroutine-safe for
+// IsValid, so one shared instance is fine.
+var cronParser = gronx.New()
 
 // parse turns a raw string (from env or the DB) into the typed value for a
 // setting's Kind, then runs the setting's Validate hook (config-design §2, §3).
@@ -70,6 +76,12 @@ func (s Setting) parseKind(raw string) (any, error) {
 		return d, nil
 	case KindURL:
 		return normalizeURL(s.Key, raw)
+	case KindCron:
+		c := strings.TrimSpace(raw)
+		if !cronParser.IsValid(c) {
+			return nil, fmt.Errorf("%s: %q is not a valid cron expression (e.g. 0 */5 * * * *)", s.Key, raw)
+		}
+		return c, nil
 	case KindStringList:
 		return parseList(raw), nil
 	default:

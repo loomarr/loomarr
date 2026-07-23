@@ -52,18 +52,29 @@ interface FillerIngestEvent {
   [k: string]: unknown;
 }
 
+// Mirrors the BE's `job` frame (internal/app/emitter.go JobChanged): a scheduled job's
+// state changed (started, finished ok/error, or Run-now'd). Carries only the job name — the
+// Tasks page refetches GET /v1/jobs on this, keeping the BE the single source of timing truth
+// (§18.1).
+interface JobEvent {
+  name?: string;
+  [k: string]: unknown;
+}
+
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
   onChannel?: (e: ChannelEvent) => void;
   onSuggestion?: (e: SuggestionEvent) => void;
   onLlmPull?: (e: LlmPullEvent) => void;
   onFillerIngest?: (e: FillerIngestEvent) => void;
+  onJob?: (e: JobEvent) => void;
 }
 
 export type {
   ChannelEvent,
   EventHandlers,
   FillerIngestEvent,
+  JobEvent,
   LlmPullEvent,
   SuggestionEvent,
   SuggestionPhase,

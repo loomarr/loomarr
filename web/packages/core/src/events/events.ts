@@ -12,6 +12,7 @@ import type {
   ChannelEvent,
   EventHandlers,
   FillerIngestEvent,
+  JobEvent,
   LlmPullEvent,
   SuggestionEvent,
   TitleEvent,
@@ -39,6 +40,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<SuggestionEvent>("suggestion", handlers.onSuggestion);
   on<LlmPullEvent>("llm_pull", handlers.onLlmPull);
   on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
+  on<JobEvent>("job", handlers.onJob);
   return () => es.close();
 };
 
@@ -84,6 +86,12 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         // which is what actually changes /v1/filler. Invalidating here would refetch an
         // unchanged list and imply the clips had arrived.
         extraRef.current?.onFillerIngest?.(e);
+      },
+      onJob: (e) => {
+        // A scheduled job changed state (§18.1) — refetch /v1/jobs so the Tasks page
+        // renders the BE's fresh last/next-run + status. BE is the single timing source.
+        invalidateByPrefix(qc, "/v1/jobs");
+        extraRef.current?.onJob?.(e);
       },
     });
   }, [qc]);
