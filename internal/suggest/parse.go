@@ -65,9 +65,10 @@ type pickPolicy struct {
 // rationale + an optional policy. The suggester classifies picks into lineup/
 // acquisitions by their in_library flag, so the model needn't.
 type finalOutput struct {
-	Rationale string      `json:"rationale"`
-	Picks     []pick      `json:"picks"`
-	Policy    *pickPolicy `json:"policy,omitempty"`
+	ChannelName string      `json:"channelName"`
+	Rationale   string      `json:"rationale"`
+	Picks       []pick      `json:"picks"`
+	Policy      *pickPolicy `json:"policy,omitempty"`
 }
 
 // parsePicks parses the model's final JSON. A malformed final output is an error

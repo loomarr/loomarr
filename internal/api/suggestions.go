@@ -347,12 +347,16 @@ func (s *Server) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	}
 }
 
-// channelNameFromIntent derives a channel-sized label from the intent the operator
-// typed. It is a starting point, not a decision: name is an ordinary editable field
-// (§7 PATCH), and deriving one is what lets approving be sufficient on its own.
+// channelNameFromIntent derives a channel-sized label for a newly-approved channel. It
+// prefers the LLM's proposed channelName (a real network-style name — "Springfield
+// Classics" — §8), falling back to a truncated intent description, then a generic label.
+// A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
 func channelNameFromIntent(p store.Proposal) string {
 	var parsed suggest.Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &parsed); err == nil {
+		if n := strings.TrimSpace(parsed.ChannelName); n != "" {
+			return truncateLabel(n, 60)
+		}
 		if d := strings.TrimSpace(parsed.Intent.Description); d != "" {
 			return truncateLabel(d, 60)
 		}
