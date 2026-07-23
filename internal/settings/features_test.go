@@ -47,9 +47,16 @@ func TestFeatures_AcquisitionOrGate(t *testing.T) {
 		want bool
 	}{
 		{"nothing", nil, false},
+		// Provider defaults to seerr, so the Seerr URL is what counts unless the provider
+		// is switched to arr.
 		{"seerr only", map[string]string{"seerr.url": "http://seerr:5055"}, true},
-		{"sonarr only", map[string]string{"sonarr.url": "http://sonarr:8989"}, false},
-		{"sonarr+radarr", map[string]string{"sonarr.url": "http://sonarr:8989", "radarr.url": "http://radarr:7878"}, true},
+		// arr URLs present but provider still seerr → NOT configured: the provider is the
+		// explicit switch (§6), so stray arr fields don't silently enable acquisition.
+		{"arr urls but provider=seerr", map[string]string{"sonarr.url": "http://sonarr:8989", "radarr.url": "http://radarr:7878"}, false},
+		// provider=arr accepts EITHER arr (TV-only or movies-only homelab is valid).
+		{"provider=arr, sonarr only", map[string]string{"requester.provider": "arr", "sonarr.url": "http://sonarr:8989"}, true},
+		{"provider=arr, radarr only", map[string]string{"requester.provider": "arr", "radarr.url": "http://radarr:7878"}, true},
+		{"provider=arr, nothing set", map[string]string{"requester.provider": "arr"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

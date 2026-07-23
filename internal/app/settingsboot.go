@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -70,6 +71,28 @@ func (r resolved) libraryConn() func() (string, string) {
 // seerrConn / tunarrConn are the requester + Tunarr connection providers.
 func (r resolved) seerrConn() func() (string, string) {
 	return func() (string, string) { return r.str("seerr.url"), r.str("seerr.api_key") }
+}
+
+// arrConns builds the per-app connection + optional override resolvers for the direct
+// Sonarr/Radarr requester (all resolved per call for hot-apply, like seerrConn).
+func (r resolved) arrConns() requester.ArrConns {
+	return requester.ArrConns{
+		Sonarr:               func() (string, string) { return r.str("sonarr.url"), r.str("sonarr.api_key") },
+		Radarr:               func() (string, string) { return r.str("radarr.url"), r.str("radarr.api_key") },
+		SonarrQualityProfile: func() string { return r.str("sonarr.quality_profile") },
+		SonarrRootFolder:     func() string { return r.str("sonarr.root_folder") },
+		RadarrQualityProfile: func() string { return r.str("radarr.quality_profile") },
+		RadarrRootFolder:     func() string { return r.str("radarr.root_folder") },
+	}
+}
+
+// requesterFor builds the Requester the composition root uses, branching on
+// requester.provider (§6): the direct Sonarr/Radarr adapter when "arr", else Seerr.
+func (r resolved) requesterFor() requester.Requester {
+	if r.str("requester.provider") == "arr" {
+		return requester.NewArr(r.arrConns())
+	}
+	return requester.NewSeerrDynamic(r.seerrConn())
 }
 func (r resolved) tunarrConn() func() string {
 	return func() string { return r.str("tunarr.url") }

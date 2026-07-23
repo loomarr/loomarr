@@ -70,13 +70,23 @@ func (s *Service) allRequiredSet(feature Feature) bool {
 	return true
 }
 
-// requesterConfigured is the OR gate (config-design §7): Seerr configured, OR the
-// direct Sonarr+Radarr pair both configured. A requester URL is what "configured"
-// means (the key is present); keys are validated on save.
+// requesterConfigured is the acquisition gate (config-design §7), now provider-aware.
+// The `requester.provider` selects which backend counts: `seerr` → the Seerr URL;
+// `arr` → EITHER Sonarr or Radarr (a TV-only or movies-only homelab is valid — you
+// don't need both to acquire the one kind you have). Absent/unknown provider falls
+// back to the historical OR (Seerr, or either arr) so an install predating the
+// selector still reads as configured. A URL present is what "configured" means.
 func (s *Service) requesterConfigured() bool {
 	seerr := !s.isEmpty("seerr.url")
-	direct := !s.isEmpty("sonarr.url") && !s.isEmpty("radarr.url")
-	return seerr || direct
+	arr := !s.isEmpty("sonarr.url") || !s.isEmpty("radarr.url")
+	switch s.resolveString("requester.provider") {
+	case "seerr":
+		return seerr
+	case "arr":
+		return arr
+	default:
+		return seerr || arr
+	}
 }
 
 // resolveString resolves a key to its string value ("" when unset or non-string).
