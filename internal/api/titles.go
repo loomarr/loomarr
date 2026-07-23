@@ -57,6 +57,11 @@ type TitleDTO struct {
 	Year      int    `json:"year,omitempty" example:"2023"`
 	State     string `json:"state" enum:"wanted,requested,downloading,available,unavailable" doc:"Provisioning state (§4)"`
 	LibraryID string `json:"libraryId,omitempty"`
+	// Download progress (§18.1 arr-queue-poll), populated while downloading via the direct
+	// arr requester; zero on the Seerr path / once available.
+	Progress       float64 `json:"progress,omitempty" doc:"Download completion 0..1 (arr queue poll)"`
+	ETAText        string  `json:"etaText,omitempty" doc:"Human time-left from the download client"`
+	DownloadStatus string  `json:"downloadStatus,omitempty" doc:"Download-client status (downloading/warning/stalled/…)"`
 }
 
 func toDTO(r provision.Record) TitleDTO {
@@ -65,6 +70,7 @@ func toDTO(r provision.Record) TitleDTO {
 		TMDBID: r.Title.TMDBID, TVDBID: r.Title.TVDBID,
 		Name: r.Title.Name, Year: r.Title.Year,
 		State: string(r.State), LibraryID: r.LibraryID,
+		Progress: r.Progress, ETAText: r.ETAText, DownloadStatus: r.DownloadStatus,
 	}
 }
 

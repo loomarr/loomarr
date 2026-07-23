@@ -89,10 +89,20 @@ func (r resolved) arrConns() requester.ArrConns {
 // requesterFor builds the Requester the composition root uses, branching on
 // requester.provider (§6): the direct Sonarr/Radarr adapter when "arr", else Seerr.
 func (r resolved) requesterFor() requester.Requester {
-	if r.str("requester.provider") == "arr" {
-		return requester.NewArr(r.arrConns())
+	if a := r.arrRequester(); a != nil {
+		return a
 	}
 	return requester.NewSeerrDynamic(r.seerrConn())
+}
+
+// arrRequester returns the concrete direct-arr requester when requester.provider=arr, else nil.
+// The queue poller (§18.1) needs the concrete *Arr for its QueueStatus capability, which the
+// Requester interface doesn't expose.
+func (r resolved) arrRequester() *requester.Arr {
+	if r.str("requester.provider") != "arr" {
+		return nil
+	}
+	return requester.NewArr(r.arrConns())
 }
 func (r resolved) tunarrConn() func() string {
 	return func() string { return r.str("tunarr.url") }
