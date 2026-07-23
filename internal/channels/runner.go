@@ -8,38 +8,30 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// Runner drives the periodic channel-reconcile sweep (§9 CHANNEL_RECONCILE_EVERY,
-// §18). Each tick claims due channels (leased so replicas don't collide) and
-// reconciles each — re-deriving desired from the store, revalidating slots, and
-// pushing the minimal diff. This is what makes backfill crash-safe and
-// multi-replica correct: events only reduce latency; the sweep is the guarantee.
+// Runner performs the channel-reconcile SWEEP (§9, §18): claim due channels (leased so
+// replicas don't collide) and reconcile each — re-deriving desired from the store,
+// revalidating slots, and pushing the minimal diff. This is what makes backfill crash-safe
+// and multi-replica correct: events only reduce latency; the sweep is the guarantee.
+//
+// The loop that drove it is gone — the sweep is now a scheduler job (§18.1). This type keeps
+// the lease/batch config and the Sweep pass the scheduler calls.
 type Runner struct {
 	engine *Engine
 	store  claimer
-	every  time.Duration
 	batch  int
 	lease  time.Duration
 	log    *slog.Logger
 	now    func() time.Time
-	// intervalFn, when set, is re-read after each tick so a changed
-	// CHANNEL_RECONCILE_EVERY setting hot-applies next cycle (config-design §3).
-	intervalFn func() time.Duration
-}
-
-// WithInterval sets a provider read after every sweep so the interval hot-applies
-// (config-design §3). Returns the runner for chaining.
-func (r *Runner) WithInterval(fn func() time.Duration) *Runner {
-	r.intervalFn = fn
-	return r
 }
 
 // claimer is the slice of the store the sweep needs (ClaimDueChannels). Narrowed
-// to an interface so the runner is testable with a fake.
+// to an interface so the sweep is testable with a fake.
 type claimer interface {
 	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Channel, error)
 }
 
-// NewRunner wires the sweep loop.
+// NewRunner builds the sweep. `every` sizes the default lease (a claimed channel stays leased
+// across a slow reconcile); the scheduler owns cadence, so `every` is not a loop interval here.
 func NewRunner(e *Engine, st claimer, every, lease time.Duration, batch int, now func() time.Time, log *slog.Logger) *Runner {
 	if every <= 0 {
 		every = 10 * time.Minute
@@ -53,36 +45,12 @@ func NewRunner(e *Engine, st claimer, every, lease time.Duration, batch int, now
 	if now == nil {
 		now = time.Now
 	}
-	return &Runner{engine: e, store: st, every: every, batch: batch, lease: lease, log: log, now: now}
+	return &Runner{engine: e, store: st, batch: batch, lease: lease, log: log, now: now}
 }
 
-// Run blocks, ticking every `every` until ctx is done. Errors are logged, never
+// Sweep runs one pass: claim due channels and reconcile each. Returns the number of channels
+// reconciled. Called by the scheduler's channel-sweep job (§18.1). Errors are logged, never
 // fatal — a down Tunarr degrades freshness, never wedges the process (§6).
-func (r *Runner) Run(ctx context.Context) {
-	t := time.NewTicker(r.every)
-	defer t.Stop()
-	r.log.Info("channel sweep started", "every", r.every)
-	r.Sweep(ctx) // run once immediately so startup recovery doesn't wait an interval
-	for {
-		select {
-		case <-ctx.Done():
-			r.log.Info("channel sweep stopped")
-			return
-		case <-t.C:
-			r.Sweep(ctx)
-			if r.intervalFn != nil {
-				if next := r.intervalFn(); next > 0 && next != r.every {
-					r.every = next
-					t.Reset(next)
-					r.log.Info("channel sweep interval changed", "every", next)
-				}
-			}
-		}
-	}
-}
-
-// Sweep runs one pass: claim due channels and reconcile each. Returns the number
-// of channels reconciled. Exposed for tests and for a manual kick.
 func (r *Runner) Sweep(ctx context.Context) int {
 	claimed, err := r.store.ClaimDueChannels(ctx, r.now(), r.lease, r.batch)
 	if err != nil {

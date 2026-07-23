@@ -1,8 +1,11 @@
 import type { SetupCheck } from "@loomarr/api";
 import type { WizardStep, WizardStepStatus } from "@/components/loomarr";
 
-// The operator first-run path (§13, frontend-build-plan §5). The rail always shows all
-// seven so the operator can see the whole road; steps 3–7 land in 13.3c.
+// The operator first-run path (§13, frontend-build-plan §5). The rail shows the whole road
+// so the operator sees what's left. There is NO standalone "TV guide" step: saving the
+// Tunarr connection auto-wires Live TV into the media server's guide (config-design §6),
+// so a separate step would only re-run the same no-op — the `livetv` outcome surfaces on
+// the Tunarr connection's own verdict instead.
 const WIZARD_STEPS: WizardStep[] = [
   { id: "bootstrap", title: "Admin" },
   {
@@ -18,7 +21,6 @@ const WIZARD_STEPS: WizardStep[] = [
       { id: "ai", label: "AI" },
     ],
   },
-  { id: "guide", title: "TV guide" },
   { id: "webhooks", title: "Webhooks" },
   { id: "library", title: "Library" },
   { id: "users", title: "Users", optional: true },
@@ -31,9 +33,9 @@ const WIZARD_STEPS: WizardStep[] = [
 const REQUIRED_CHECKS = ["media_server", "tunarr"];
 
 // The wiring checks each own a later step, so the Connections step doesn't double-count
-// them (§6 step→group mapping).
+// them (§6 step→group mapping). `livetv` has no step of its own — it's auto-wired on the
+// Tunarr save and reflected on that connection, not gated behind a wizard step.
 const WIRING_CHECK_BY_STEP: Record<string, string> = {
-  guide: "livetv",
   webhooks: "webhook",
   library: "tunarr_library",
 };

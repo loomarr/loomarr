@@ -63,6 +63,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
+		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
 	}
@@ -75,6 +76,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSuggestions(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerFiller(humaAPI)
+	srv.registerJobs(humaAPI)
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)

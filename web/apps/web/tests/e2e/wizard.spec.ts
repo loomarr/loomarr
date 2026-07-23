@@ -41,15 +41,10 @@ test.describe("operator first-run wizard", () => {
     await shot(page, "step-2-checklist", /connect your services/i);
     await page.getByRole("button", { name: "Continue" }).click();
 
-    // --- step 3: live TV --------------------------------------------------------
-    await shot(page, "step-3-livetv", /put your channels in the tv guide/i);
-    await page.getByRole("button", { name: /connect tunarr to the guide/i }).click();
-    // The CHECK reports success, not the click (§6 "never silent").
-    await expect(page.getByRole("button", { name: /run again/i })).toBeVisible();
-    expect(backend.state.checks.livetv).toBe(true);
-    await page.getByRole("button", { name: "Continue" }).click();
+    // (The standalone "Live TV" step was removed — wiring auto-runs on a Connections
+    // save, so the wizard goes straight from the checklist to the webhook handshake.)
 
-    // --- step 4: webhook handshake ----------------------------------------------
+    // --- step 3: webhook handshake ----------------------------------------------
     await expect(page.getByRole("heading", { name: /tell sonarr and radarr/i })).toBeVisible();
     // The URL is built from the REVEALED secret — what the operator pastes, unrotated.
     await expect(page.getByText(/\/hooks\/arr\?token=s3cr3t/)).toBeVisible();

@@ -16,9 +16,11 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
       className,
     )}
   >
-    <TvStatic />
-    <BrandLockup variant="hero" />
-    <Card className="w-full max-w-sm">
+    {/* Static sits behind; content siblings get an explicit stacking context above it, since
+        a position:absolute layer paints OVER position:static content regardless of DOM order. */}
+    <TvStatic className="z-0" />
+    <BrandLockup variant="hero" className="relative z-10" />
+    <Card className="relative z-10 w-full max-w-sm">
       <CardContent className="p-8">{children}</CardContent>
     </Card>
   </main>

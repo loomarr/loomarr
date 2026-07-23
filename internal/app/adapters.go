@@ -10,6 +10,7 @@ import (
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/setup"
 )
 
@@ -22,6 +23,37 @@ func (a liveTVAdapter) Connect(ctx context.Context) (bool, bool, error) {
 	return res.TunerAdded, res.ListingAdded, err
 }
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) { return a.c.Wired(ctx) }
+
+// jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
+// api.JobView (so the api package doesn't import scheduler) and the unknown-job error to the
+// api sentinel. Thin, wiring-only.
+type jobsAdapter struct{ s *scheduler.Scheduler }
+
+func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
+	st, err := a.s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.JobView, 0, len(st))
+	for _, j := range st {
+		out = append(out, api.JobView{
+			Name: j.Name, Title: j.Title,
+			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
+			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
+			NextRun: j.NextRun, Running: j.Running,
+		})
+	}
+	return out, nil
+}
+
+func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
+	if err := a.s.Trigger(ctx, name); err == scheduler.ErrUnknownJob {
+		return api.ErrJobNotFound
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
 
 // episodeResolver adapts the library client's ListEpisodes to the scheduler's
 // EpisodeResolver, mapping library.Episode → schedule.ResolvedProgram so a series

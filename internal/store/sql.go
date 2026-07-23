@@ -15,11 +15,12 @@ import (
 // ClaimDueTitles SQL, injected as claimSQL. Placeholders differ too (? vs $1),
 // so each query is rebound via the backend's placeholder style.
 type sqlStore struct {
-	db              *sql.DB
-	ph              placeholder // rebinds ? -> the dialect's placeholder
-	claimSQL        string      // dialect-specific ClaimDueTitles statement (already rebound)
-	channelClaimSQL string      // dialect-specific ClaimDueChannels statement (already rebound)
-	jobClaimSQL     string      // dialect-specific ClaimDueJobs statement (already rebound)
+	db                   *sql.DB
+	ph                   placeholder // rebinds ? -> the dialect's placeholder
+	claimSQL             string      // dialect-specific ClaimDueTitles statement (already rebound)
+	channelClaimSQL      string      // dialect-specific ClaimDueChannels statement (already rebound)
+	jobClaimSQL          string      // dialect-specific ClaimDueJobs statement (already rebound)
+	scheduledJobClaimSQL string      // dialect-specific ClaimDueScheduledJobs statement (already rebound)
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's
