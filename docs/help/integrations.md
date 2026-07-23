@@ -19,8 +19,7 @@ wiring below, which you trigger).
 
 Plays the channels. Loomarr decides what plays; Tunarr streams it.
 
-- `TUNARR_URL` — e.g. `http://tunarr:8000`
-- `TUNARR_API_KEY` — optional
+- `TUNARR_URL` — e.g. `http://tunarr:8000` (Tunarr has no login; Loomarr talks to it directly)
 - `TUNARR_TRANSCODE_CONFIG_ID` — optional; leave empty and Loomarr uses your instance's
   `Default`
 

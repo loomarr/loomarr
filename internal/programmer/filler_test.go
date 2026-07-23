@@ -181,7 +181,7 @@ func localProgramFixture(id, title string, durationMs int64) map[string]any {
 // and is a no-op create on a second call (enumerate-first idempotency).
 func TestEnsureLocalFillerSource_Idempotent(t *testing.T) {
 	m := newFillerMock("/drop")
-	c := programmer.New(m.server(t).URL, "", "cfg")
+	c := programmer.New(m.server(t).URL, "cfg")
 
 	res, err := c.EnsureLocalFillerSource(context.Background(), "/drop")
 	if err != nil {
@@ -216,7 +216,7 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 		localProgramFixture("clip-a", "Frosted Flakes", 30000),
 		localProgramFixture("clip-b", "TMNT figures", 30000),
 	}
-	c := programmer.New(m.server(t).URL, "", "cfg")
+	c := programmer.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestEnsureFillerList_EqualCountDifferentPoolUpdates(t *testing.T) {
 	// A list already exists with the same COUNT (2) but different ids.
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
-	c := programmer.New(m.server(t).URL, "", "cfg")
+	c := programmer.New(m.server(t).URL, "cfg")
 
 	// New desired pool is also size 2 but a different set → must UPDATE, not no-op.
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-c"}); err != nil {
@@ -291,7 +291,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 	}
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
-	c := programmer.New(m.server(t).URL, "", "cfg")
+	c := programmer.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
 		t.Fatal(err)
@@ -305,7 +305,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 func TestEnsureFillerList_EmptyNoOp(t *testing.T) {
 	m := newFillerMock("/drop")
 	m.sourceExists = true
-	c := programmer.New(m.server(t).URL, "", "cfg")
+	c := programmer.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", nil); err != nil {
 		t.Fatal(err)

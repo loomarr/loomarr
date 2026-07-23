@@ -126,22 +126,31 @@ type SettingsService interface {
 
 // SettingEntry is the API view of one setting (config-design §8). For a secret,
 // Value is empty and Set/Preview carry the masked state — the value never appears.
+// SettingEnumOption is one choice of an enum setting: the stored value + its display
+// label (config-design §5). The label is registry-owned so the UI never re-derives it.
+type SettingEnumOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 type SettingEntry struct {
-	Key         string   `json:"key"`
-	Group       string   `json:"group"`
-	Kind        string   `json:"kind"`
-	Value       string   `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
-	Set         bool     `json:"set" doc:"For secrets: whether a value is stored."`
-	Preview     string   `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
-	Provenance  string   `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
-	Caution     bool     `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
-	Advanced    bool     `json:"advanced"`
-	Secret      bool     `json:"secret"`
-	Enum        []string `json:"enum,omitempty"`
-	RequiredFor string   `json:"requiredFor,omitempty"`
-	Doc         string   `json:"doc"`
-	UpdatedBy   string   `json:"updatedBy,omitempty"`
-	UpdatedAt   string   `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
+	Key         string              `json:"key"`
+	Group       string              `json:"group"`
+	Kind        string              `json:"kind"`
+	Value       string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
+	Set         bool                `json:"set" doc:"For secrets: whether a value is stored."`
+	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
+	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	Advanced    bool                `json:"advanced"`
+	Secret      bool                `json:"secret"`
+	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
+	EnumOptions []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	ShowWhen    map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
+	RequiredFor string              `json:"requiredFor,omitempty"`
+	Doc         string              `json:"doc"`
+	UpdatedBy   string              `json:"updatedBy,omitempty"`
+	UpdatedAt   string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
 // SettingResult is one key's PATCH outcome (config-design §8).

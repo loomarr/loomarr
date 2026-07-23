@@ -9,9 +9,13 @@
 
 **Tunarr 1.3.8 requires no API key.** The vendored spec declares
 `components.securitySchemes = {}` and no global `security`. Unauthenticated GET *and*
-POST/DELETE all succeed (channel create returned 201, delete 200). So `TUNARR_API_KEY`
-is confirmed **optional** for this version — matches design §6's hedge. Record the tested
+POST/DELETE all succeed (channel create returned 201, delete 200). Record the tested
 version in the README; re-verify if the target Tunarr version changes.
+
+> **Update (2026-07):** `TUNARR_API_KEY` / `tunarr.api_key` was **removed entirely** — the
+> optional bearer field only confused operators (Tunarr has no login to get a key *from*), and
+> Loomarr talks to Tunarr machine-to-machine on the same network. An operator fronting Tunarr with
+> their own auth proxy terminates that at the proxy; Loomarr no longer models a Tunarr key.
 
 ## Contract surprises (must inform the Phase-10 Programmer adapter)
 

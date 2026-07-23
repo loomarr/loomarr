@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   channelNumber,
   formatClipDuration,
+  formatCompactCount,
   formatDuration,
   formatEpgTime,
   formatGiB,
@@ -122,6 +123,24 @@ describe("pluralize", () => {
 describe("formatGiB", () => {
   it("renders the unit the model picker shows twice", () => {
     expect(formatGiB(5)).toBe("5 GiB");
+  });
+  it("rounds a raw probe size to one decimal, not the full float", () => {
+    expect(formatGiB(4.866521958261728)).toBe("4.9 GiB");
+    expect(formatGiB(8)).toBe("8 GiB");
+  });
+});
+
+describe("formatCompactCount", () => {
+  it("compacts thousands and millions, dropping trailing .0", () => {
+    expect(formatCompactCount(640)).toBe("640");
+    expect(formatCompactCount(1200)).toBe("1.2K");
+    expect(formatCompactCount(2000)).toBe("2K");
+    expect(formatCompactCount(2_854_700)).toBe("2.9M");
+    expect(formatCompactCount(1_000_000)).toBe("1M");
+  });
+  it("guards bad input to 0 rather than NaN", () => {
+    expect(formatCompactCount(-5)).toBe("0");
+    expect(formatCompactCount(Number.NaN)).toBe("0");
   });
 });
 

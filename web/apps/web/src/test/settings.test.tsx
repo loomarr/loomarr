@@ -72,13 +72,15 @@ const renderAt = (path: string) => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Settings", () => {
-  it("puts the re-runnable checklist on Connections (§13 troubleshooting console)", async () => {
+  it("self-diagnoses each connection on its own block (§5 status-per-block)", async () => {
     stubFetch();
     renderAt("/settings/connections");
-    expect(await screen.findByRole("heading", { name: /connection checklist/i })).toBeInTheDocument();
-    // The hint appears once the check settles to `fail` — while the query is in
-    // flight the row reads "running", which deliberately suppresses it.
+    // media_server's check fails, so its ConnectionBlock opens and shows the BE's hint
+    // inline — diagnosis on the thing that fixes it, not in a separate checklist above.
     expect(await screen.findByText("Emby refused the token.")).toBeInTheDocument();
+    // No standalone "connection checklist" duplicating the block statuses — the wiring
+    // actions self-report on their own blocks, quiet once set up (§5, §13).
+    expect(screen.queryByRole("heading", { name: /connection checklist/i })).not.toBeInTheDocument();
   });
 
   it("saves the whole page from one bar, sending only what changed", async () => {
@@ -118,6 +120,31 @@ describe("Settings", () => {
     const tests = await screen.findAllByRole("button", { name: /test connection/i });
     await userEvent.click(tests[0] as HTMLElement);
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/setup/test"))).toBe(true);
+  });
+
+  // Regression: /v1/setup/test evaluates PERSISTED settings, so testing an UNSAVED edit
+  // probes the OLD stored value — typing an Emby token then pressing Test 401'd against the
+  // empty stored token, even though the right value was on screen. Test must PATCH the dirty
+  // edits FIRST, then test. Asserted by call ORDER: the PATCH must precede the /setup/test.
+  it("saves a dirty edit before testing, so Test checks what's on screen", async () => {
+    const fetchMock = stubFetch();
+    renderAt("/settings/connections");
+
+    // Type into the media-server block (its Test button is the first), then Test WITHOUT Save.
+    await userEvent.type(await screen.findByLabelText("Library URL"), "9");
+    const tests = await screen.findAllByRole("button", { name: /test connection/i });
+    await userEvent.click(tests[0] as HTMLElement);
+
+    const order = fetchMock.mock.calls
+      .map(([u, i], idx) => ({ idx, u: String(u), method: String((i as RequestInit)?.method) }))
+      .filter(
+        (c) => (c.u.includes("/v1/settings") && c.method === "PATCH") || c.u.includes("/v1/setup/test"),
+      );
+    const patchIdx = order.find((c) => c.u.includes("/v1/settings"))?.idx ?? -1;
+    const testIdx = order.find((c) => c.u.includes("/v1/setup/test"))?.idx ?? -1;
+    expect(patchIdx, "a dirty edit must be saved before testing").toBeGreaterThanOrEqual(0);
+    expect(testIdx, "the test must still run").toBeGreaterThanOrEqual(0);
+    expect(patchIdx).toBeLessThan(testIdx);
   });
 
   it("locks an env-pinned key on its page", async () => {
@@ -214,18 +241,14 @@ describe("Settings page footers", () => {
   });
 });
 
-// The two one-click wiring actions live on Connections for the LIFE of the install
-// (§13, config-design §5), not only inside the first-run wizard.
-//
-// The regression this guards: they existed ONLY as wizard steps, and the wizard offers
-// just Back/Continue with a non-clickable rail — so a step that could not go green
-// stranded the operator on that screen. Worst on the library wiring, which sat behind
-// Live TV: an operator whose guide wiring failed could never reach the very thing that
-// stops channels scheduling slots with no program (§6). The maintainer smoke could not
-// reach it at all, which is how it surfaced.
-describe("Connections wiring actions", () => {
+// Wiring (Tunarr → the guide; Tunarr → the library) is no longer a manual button on
+// Connections: it's an idempotent effect the server runs on save (config-design §5). So the
+// Connections page must NOT show wiring actions, and saving a connection must just PATCH
+// settings — the BE auto-wires (its own test proves the connectors fire). This guards that
+// the confusing manual scaffolding stayed gone and didn't creep back.
+describe("Connections auto-wires on save (no manual wiring UI)", () => {
   const stubWiring = () => {
-    const mock = vi.fn((url: string) => {
+    const mock = vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
       if (u.includes("/v1/setup/status")) {
@@ -237,6 +260,9 @@ describe("Connections wiring actions", () => {
             ],
           }),
         );
+      }
+      if (u.includes("/v1/settings") && String(init?.method) === "PATCH") {
+        return Promise.resolve(json({ results: [] }));
       }
       if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
       return Promise.resolve(json({}));
@@ -252,26 +278,28 @@ describe("Connections wiring actions", () => {
     return mock;
   };
 
-  it("offers both wiring actions outside the wizard", async () => {
+  it("shows no manual wiring buttons on Connections", async () => {
     stubWiring();
     renderAt("/settings/connections");
-
-    expect(await screen.findByRole("button", { name: /connect tunarr to the guide/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /wire tunarr to your library/i })).toBeInTheDocument();
+    // Wait for the page to settle (the Tunarr block renders).
+    await screen.findByLabelText("Library URL");
+    expect(screen.queryByRole("button", { name: /connect tunarr to the guide/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /wire tunarr to your library/i })).not.toBeInTheDocument();
   });
 
-  it("POSTs the connect endpoint, and reports through the CHECK not the click", async () => {
+  it("saving a connection PATCHes settings and never calls a connect endpoint from the FE", async () => {
     const fetchMock = stubWiring();
     renderAt("/settings/connections");
 
-    // The red check's hint must be on screen — an action with no diagnosis is the dead
-    // end this panel exists to remove (§13). findAll, not find: the page's own checklist
-    // reports the same check above, so the hint legitimately appears twice.
-    expect((await screen.findAllByText("Tunarr has no media source.")).length).toBeGreaterThan(0);
+    await userEvent.type(await screen.findByLabelText("Library URL"), "9");
+    await userEvent.click(await screen.findByRole("button", { name: /save changes/i }));
 
-    await userEvent.click(await screen.findByRole("button", { name: /wire tunarr to your library/i }));
-
-    const posted = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/tunarr-connect"));
-    expect(posted, "clicking must actually call tunarr-connect").toBeTruthy();
+    // The FE only saves — the server does the wiring. No /v1/setup/*-connect from here.
+    const patched = fetchMock.mock.calls.find(
+      ([u, i]) => String(u).includes("/v1/settings") && String(i?.method) === "PATCH",
+    );
+    expect(patched, "saving must PATCH settings").toBeTruthy();
+    const connectCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/tunarr-connect"));
+    expect(connectCall, "the FE must not wire directly — the BE auto-wires on save").toBeFalsy();
   });
 });

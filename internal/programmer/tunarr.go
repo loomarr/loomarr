@@ -13,13 +13,13 @@ import (
 
 // Tunarr is the hand-written thin client for the Tunarr REST API (§6). It targets
 // only the endpoints the scheduler needs (channels CRUD + programming); the
-// version tested against is Tunarr 1.3.8 (Phase 0). TUNARR_API_KEY is optional
-// for 1.3.8 (Phase-0 finding: empty securitySchemes) — if set, it's sent as a
-// bearer token so a future key-requiring version works without code change.
+// version tested against is Tunarr 1.3.8 (Phase 0). Tunarr ships with no auth
+// (Phase-0 finding: empty securitySchemes) and Loomarr talks to it machine-to-
+// machine, so there is no API key — just the base URL.
 type Tunarr struct {
-	// conn resolves base URL + optional api key per request (config-design §3
-	// hot-apply): a Tunarr URL saved in Settings takes effect on the next push.
-	conn func() (baseURL, apiKey string)
+	// conn resolves the base URL per request (config-design §3 hot-apply): a Tunarr
+	// URL saved in Settings takes effect on the next push.
+	conn func() string
 	// transcodeConfigID references a real Tunarr transcode config (Phase-0
 	// finding 3: channel create requires a valid uuid; the instance ships a
 	// "Default"). EMPTY is the common case (§15: TUNARR_TRANSCODE_CONFIG_ID is an
@@ -50,15 +50,15 @@ func (t *Tunarr) WithFillerPolicy(weight, cooldownSeconds int) *Tunarr {
 
 // New builds a Tunarr client. transcodeConfigID must be a real config id from
 // the target instance (§6 / Phase-0 finding 3).
-func New(baseURL, apiKey, transcodeConfigID string) *Tunarr {
+func New(baseURL, transcodeConfigID string) *Tunarr {
 	base := strings.TrimRight(baseURL, "/")
-	return NewDynamic(func() (string, string) { return base, apiKey }, transcodeConfigID)
+	return NewDynamic(func() string { return base }, transcodeConfigID)
 }
 
-// NewDynamic builds a Tunarr client whose base URL + api key resolve per request
-// via conn (config-design §3 hot-apply). The composition root passes a closure
-// over the settings snapshot.
-func NewDynamic(conn func() (baseURL, apiKey string), transcodeConfigID string) *Tunarr {
+// NewDynamic builds a Tunarr client whose base URL resolves per request via conn
+// (config-design §3 hot-apply). The composition root passes a closure over the
+// settings snapshot.
+func NewDynamic(conn func() string, transcodeConfigID string) *Tunarr {
 	t := &Tunarr{
 		conn:              conn,
 		transcodeConfigID: transcodeConfigID,
@@ -68,8 +68,7 @@ func NewDynamic(conn func() (baseURL, apiKey string), transcodeConfigID string) 
 	return t
 }
 
-func (t *Tunarr) baseURL() string { u, _ := t.conn(); return strings.TrimRight(u, "/") }
-func (t *Tunarr) apiKey() string  { _, k := t.conn(); return k }
+func (t *Tunarr) baseURL() string { return strings.TrimRight(t.conn(), "/") }
 
 // --- wire types (pinned to the Phase-0 fixtures, not remembered field names) ---
 
@@ -284,9 +283,6 @@ func (t *Tunarr) doStatus(ctx context.Context, method, path string, in, out any)
 	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
-	}
-	if t.apiKey() != "" {
-		req.Header.Set("Authorization", "Bearer "+t.apiKey())
 	}
 	resp, err := t.http.Do(req)
 	if err != nil {

@@ -32,7 +32,7 @@ func TestGuide_ParsesPinnedCapture(t *testing.T) {
 	defer srv.Close()
 
 	from := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
-	guide, err := programmer.New(srv.URL, "", "cfg").Guide(context.Background(), from, from.Add(3*time.Hour))
+	guide, err := programmer.New(srv.URL, "cfg").Guide(context.Background(), from, from.Add(3*time.Hour))
 	if err != nil {
 		t.Fatalf("Guide over the pinned capture: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestGuide_UngeneratedGuideIsEmptyNotError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	guide, err := programmer.New(srv.URL, "", "cfg").Guide(context.Background(), time.Now(), time.Now())
+	guide, err := programmer.New(srv.URL, "cfg").Guide(context.Background(), time.Now(), time.Now())
 	if err != nil {
 		t.Fatalf("an ungenerated guide must not error: %v", err)
 	}

@@ -51,3 +51,42 @@ Durations/timestamps stripped (non-deterministic). No secrets — local model, s
   session. Adapter built against TMDB's documented v3 shape; pin real fixtures when a key is supplied
   (tracked like the Sonarr import fixture). Grounding gate is green on mocks regardless.
 - **Anthropic** tool-use shape: opt-in provider; captured when wired against a real key.
+
+## Hugging Face GGUF discovery (§8.1 "compatible to download" source)
+
+**Captured:** 2026-07-23, anonymous (no auth). Two endpoints:
+- List: `GET https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=N`
+- Files: `GET https://huggingface.co/api/models/<repo>?blobs=true` → `siblings[]` with each file's
+  `rfilename` + real `size` (bytes).
+
+Why HF: there is **no** first-party Ollama API for "what can I download" — `/api/search` is
+unshipped (404), ollama.com serves HTML only. HF's model API is a live, anonymous, popularity-ranked
+source of GGUF repos, AND — the key finding — the files endpoint exposes **each quant file's real
+size before any download**. So Loomarr can size a repo against detected VRAM up front and show only
+compatible models, ranked best-first — no search box. `ollama pull hf.co/<repo>:<quant>` pulls the
+specific chosen quant (verified). Tool-capability is confirmed AFTER pull via the Ollama probe
+(`/api/show capabilities`) — HF has no reliable tool-calling tag.
+
+Contract facts (inform `internal/llm/huggingface.go`):
+
+1. List response is a **JSON array**; fields bound: `id`, `downloads`, `tags[]`, `pipeline_tag`,
+   `private`. Files response: `siblings[].{rfilename,size}` (LFS files carry the real size).
+2. A repo holds **many quants** (BF16 ~8GB down to Q3 ~2GB for a 4B). `bestFittingQuant` picks the
+   largest quant whose size ≤ VRAM (bigger quant = better quality); repos where nothing fits are
+   dropped. Quant is parsed from the filename (`…-Q4_K_M.gguf` → `Q4_K_M`); `-of-` shards are skipped.
+3. `filter=gguf` is broad and some non-chat repos carry no telling tag/pipeline (a live check found an
+   `embeddinggemma` repo slipping through) — so `isChatGGUF` also rejects on obvious id substrings
+   (embedding/reranker/tts/whisper/bge) as a backstop. Err toward inclusion otherwise.
+4. Ranking: comfortable-fits before tight, then by **popularity** (downloads) — chosen-quant size is
+   a poor cross-model capability proxy (a 4B BF16 is larger on disk than a 9B Q8, not better).
+5. The pull bridge is `pullRef = "hf.co/" + id` (BARE — Ollama's implicit `:latest`). A
+   synthesized `:quant` tag is NOT reliable: Ollama resolves `hf.co/repo:TAG` against the
+   repo's own manifest, and many repos expose only `latest`, so `hf.co/repo:Q8_0` returns
+   `400 "tag not available"` (found live pulling deepseek-v4). `latest` always resolves and
+   is the Q4_K_M-class build we size against, so what we show == what pulls. `quant` is kept
+   as an informational label only (the file we sized), never appended to the pull ref.
+
+## Fixtures (this dir)
+
+- `huggingface_model_files.json` — a pinned `?blobs=true` capture (one repo's quant files + sizes)
+  the size parser + `bestFittingQuant` run against.

@@ -148,8 +148,9 @@ func TestAddTuner_SendsM3UShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sent struct {
-		Type string `json:"Type"`
-		URL  string `json:"Url"`
+		Type         string `json:"Type"`
+		URL          string `json:"Url"`
+		FriendlyName string `json:"FriendlyName"`
 	}
 	_ = json.Unmarshal(body, &sent)
 	if sent.Type != "m3u" {
@@ -157,6 +158,11 @@ func TestAddTuner_SendsM3UShape(t *testing.T) {
 	}
 	if sent.URL != "http://TUNARR_HOST:8000/api/channels.m3u" {
 		t.Errorf("tuner Url = %q", sent.URL)
+	}
+	// FriendlyName is part of the accepted payload — Emby 4.10 404s the add without it
+	// (fixtures/livetv/tuner_add_request.json). Regression guard for the missing field.
+	if sent.FriendlyName != "loomarr" {
+		t.Errorf("tuner FriendlyName = %q, want loomarr (capture) — Emby 404s the add without it", sent.FriendlyName)
 	}
 }
 

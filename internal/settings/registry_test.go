@@ -32,7 +32,12 @@ func TestRegistry_BuildsCleanly(t *testing.T) {
 // Registry invariants that catch drift: keys are dotted, envs are SCREAMING_SNAKE,
 // enum settings have values, secrets have no non-empty default (never ship a secret).
 func TestRegistry_Invariants(t *testing.T) {
-	for _, s := range NewRegistry().All() {
+	all := NewRegistry().All()
+	known := make(map[string]bool, len(all))
+	for _, s := range all {
+		known[s.Key] = true
+	}
+	for _, s := range all {
 		if strings.ToUpper(s.EnvVar) != s.EnvVar {
 			t.Errorf("%s: env var %q should be upper-case", s.Key, s.EnvVar)
 		}
@@ -42,6 +47,23 @@ func TestRegistry_Invariants(t *testing.T) {
 		if s.Kind == KindEnum && len(s.Enum) == 0 {
 			t.Errorf("%s: enum setting has no values", s.Key)
 		}
+		// Every enum option must carry both a value AND a display label (config-design §5):
+		// the label is registry-owned so the UI never re-derives proper-noun casing.
+		for _, o := range s.Enum {
+			if o.Value == "" || o.Label == "" {
+				t.Errorf("%s: enum option %+v must have a value and a label", s.Key, o)
+			}
+		}
+		// A ShowWhen controller must reference a real key, or the field's conditional
+		// visibility silently never (or always) fires.
+		for ctrlKey, allowed := range s.ShowWhen {
+			if !known[ctrlKey] {
+				t.Errorf("%s: ShowWhen references unknown key %q", s.Key, ctrlKey)
+			}
+			if len(allowed) == 0 {
+				t.Errorf("%s: ShowWhen[%q] lists no allowed values", s.Key, ctrlKey)
+			}
+		}
 		if s.IsSecret() {
 			if str, ok := s.Default.(string); ok && str != "" {
 				t.Errorf("%s: a secret must not ship a non-empty default", s.Key)
@@ -49,6 +71,22 @@ func TestRegistry_Invariants(t *testing.T) {
 		}
 		if s.Doc == "" {
 			t.Errorf("%s: missing Doc (UI help + generated docs derive from it)", s.Key)
+		}
+	}
+}
+
+// The AI provider keys are the conditional-field showcase (config-design §5): url + key
+// are hidden for Ollama (local, no key), shown for a hosted OpenAI-compatible service.
+func TestRegistry_AIConditionalFields(t *testing.T) {
+	reg := NewRegistry()
+	for _, key := range []string{"llm.url", "llm.api_key"} {
+		s, ok := reg.Get(key)
+		if !ok {
+			t.Fatalf("%s not declared", key)
+		}
+		allowed := s.ShowWhen["llm.provider"]
+		if len(allowed) != 1 || allowed[0] != "openai" {
+			t.Errorf("%s should ShowWhen llm.provider=openai, got %v", key, s.ShowWhen)
 		}
 	}
 }
@@ -162,7 +200,7 @@ func TestRegistry_SecretShapeGuard(t *testing.T) {
 
 // Enum validation is fail-closed: an off-list value is rejected.
 func TestRegistry_EnumFailClosed(t *testing.T) {
-	s := Setting{Key: "library.flavor", Kind: KindEnum, Enum: []string{"emby", "jellyfin"}}
+	s := Setting{Key: "library.flavor", Kind: KindEnum, Enum: []EnumOption{opt("emby", "Emby"), opt("jellyfin", "Jellyfin")}}
 	if _, err := s.parse("plex"); err == nil {
 		t.Error("expected error on off-enum value")
 	}

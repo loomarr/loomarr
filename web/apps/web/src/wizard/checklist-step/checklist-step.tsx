@@ -1,10 +1,8 @@
 import { settingsApi, setupApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ErrorState, SettingsFields } from "@/components/loomarr";
+import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
 import { Button } from "@/components/ui";
-import { cn } from "@/lib";
 import { useSettingsEntries } from "@/settings";
 import { REQUIRED_CHECKS } from "../steps";
 import type { ChecklistStepProps } from "./checklist-step.type";
@@ -99,71 +97,35 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
         const required = (REQUIRED_CHECKS as readonly string[]).includes(block.id);
 
         return (
-          <section
+          // Wrapped so the open block can still be scrolled into view (ConnectionBlock owns
+          // its own <section>; the wizard's rail-driven scroll targets this ref'd div).
+          <div
             key={block.id}
             ref={(el) => {
               sectionRefs.current[block.id] = el;
             }}
-            className="overflow-hidden rounded-lg border border-border"
           >
-            <button
-              type="button"
-              onClick={() => onToggle?.(block.id)}
-              aria-expanded={open}
-              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800"
+            <ConnectionBlock
+              title={block.title}
+              optional={!required}
+              verdict={verdict}
+              docHref={standing?.docHref}
+              open={open}
+              onToggle={() => onToggle?.(block.id)}
+              action={
+                <Button variant="outline" onClick={() => test(block.id)} disabled={testing !== undefined}>
+                  {testing === block.id ? "Testing…" : "Test connection"}
+                </Button>
+              }
             >
-              {/* Status dot: green when its check passes, muted otherwise. */}
-              <span
-                className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                  verdict?.ok ? "border-lock bg-lock-tint-15 text-lock" : "border-border text-static-400",
-                )}
-                aria-hidden
-              >
-                {verdict?.ok ? <Check className="size-3" /> : null}
-              </span>
-              <span className="font-medium text-sm">{block.title}</span>
-              {!required && <span className="text-static-400 text-xs">optional</span>}
-              <ChevronDown
-                className={cn(
-                  "ml-auto size-4 text-muted-foreground transition-transform",
-                  open && "rotate-180",
-                )}
-                aria-hidden
+              <SettingsFields
+                entries={blockEntries}
+                values={edits}
+                onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                results={patchResults}
               />
-            </button>
-
-            {/* The reveal: grid 0fr→1fr, so the form slides open with no fixed height. */}
-            <div className="reveal" data-open={open}>
-              <div className="reveal-inner">
-                <div className="flex flex-col gap-4 border-border border-t px-4 py-4">
-                  <SettingsFields
-                    entries={blockEntries}
-                    values={edits}
-                    onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
-                    results={patchResults}
-                  />
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button variant="outline" onClick={() => test(block.id)} disabled={testing !== undefined}>
-                      {testing === block.id ? "Testing…" : "Test connection"}
-                    </Button>
-                    {verdict && (
-                      <p
-                        role="status"
-                        className={cn(
-                          "flex items-center gap-1.5 text-sm",
-                          verdict.ok ? "text-lock" : "text-onair-300",
-                        )}
-                      >
-                        {!verdict.ok && <X className="size-3.5" aria-hidden />}
-                        {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+            </ConnectionBlock>
+          </div>
         );
       })}
 

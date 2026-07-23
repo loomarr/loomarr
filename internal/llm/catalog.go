@@ -1,60 +1,39 @@
 package llm
 
-import "sort"
+import (
+	"sort"
+	"strconv"
+	"strings"
+)
 
-// This file is the curated, in-code catalog of LOCAL (Ollama) models Loomarr knows
-// how to recommend (§8.1). It is deliberately NOT a live registry scrape: a fixed,
-// reviewable list makes the "best model for this machine" recommendation
-// deterministic and auditable, and lets us encode Loomarr-specific truth (which
-// models actually tool-call well, which need a newer Ollama) that a registry can't.
-//
-// Keep this list short and honest — every entry must be a model we've reason to
-// believe does grounded tool-calling + JSON. When a better current-gen model lands,
-// add it here (that's the sanctioned update path), don't reach for a registry API.
+// The LOCAL model catalog is discovered LIVE, not hardcoded (§8.1). There is no
+// registry API for "what can I download" — Ollama's /api/search is unshipped and no
+// tool (Open WebUI included) enumerates a downloadable list; the ecosystem pattern is
+// "browse ollama.com, pull by name, and let the app tell you what fits". So Loomarr
+// builds this catalog from what the operator has actually PULLED (probe.Installed via
+// /api/tags), keeps only models Ollama reports as TOOL-CAPABLE (/api/show capabilities
+// — the authoritative signal that replaces any hand-maintained "tool-callers" list),
+// and ranks by VRAM fit using each model's real on-disk size. A model like DeepSeek-R1
+// that doesn't advertise tools simply never appears — no curation needed, nothing to
+// go stale. Discovery + pull-by-name live in probe.go / the pull endpoint.
 
-// ModelInfo describes one catalog model. Sizes are approximate on-disk/VRAM
-// footprint for the default quant Ollama pulls (Q4_K_M unless noted) — enough to
-// rank fit, not an exact allocator.
+// ModelInfo describes one catalog model, built from the live probe.
 type ModelInfo struct {
 	// Tag is the exact Ollama pull tag (what `ollama pull <tag>` / LLM_MODEL wants).
 	Tag string `json:"tag"`
-	// Label is a human name for the UI.
+	// Label is a human name for the UI (derived from the tag).
 	Label string `json:"label"`
-	// ApproxVRAMGiB is the rough resident footprint of the default quant. Fit is
-	// judged against detected GPU VRAM; a model needs headroom for the context
-	// window on top of the weights, which the "tight" band accounts for.
+	// ApproxVRAMGiB is the resident footprint — the model's real on-disk size (a
+	// good VRAM proxy), from /api/tags. Fit is judged against detected GPU VRAM.
 	ApproxVRAMGiB float64 `json:"approxVramGiB"`
-	// MinOllama is the minimum Ollama version that runs this model well ("" = any
-	// reasonably current release). Compared lexically-by-segment (see versionAtLeast).
-	MinOllama string `json:"minOllama,omitempty"`
-	// Why is a one-line rationale shown in the UI ("current-gen, official Tools badge").
+	// Why is a one-line rationale shown in the UI (family · params · quant).
 	Why string `json:"why"`
 	// Rank orders recommendation preference among models that fit — higher is more
-	// preferred (better tool-caller / more current). The recommended default is the
-	// highest-ranked model that fits AND the runtime supports.
+	// preferred. Derived from parameter size (bigger ⇒ more capable, within fit).
 	Rank int `json:"-"`
 }
 
 // localCatalog is the curated truth. Ordered loosely best→simplest for readability;
-// Rank (not slice order) drives recommendation. Footprints are for the default quant.
-//
-// Rationale for the current picks (2026-07, RTX-3080-Ti-class 12GB target):
-//   - qwen3:8b            — strong tool-caller, current-gen, runs on today's Ollama.
-//   - qwen3.5:9b          — newer, official Tools badge, but needs a newer runtime.
-//   - llama3.1:8b         — reliable fallback, universally compatible.
-//   - qwen3:14b (Q6_K)    — best quality that still fits 12GB with a modest context;
-//     Q6 because stock Q4 degrades tool-calling/JSON (§8/§15).
-var localCatalog = []ModelInfo{
-	{Tag: "qwen3.5:9b", Label: "Qwen3.5 9B", ApproxVRAMGiB: 6.6, MinOllama: "0.14.0", Rank: 40,
-		Why: "Current-gen, official tool-calling; needs a newer Ollama runtime."},
-	{Tag: "qwen3:14b", Label: "Qwen3 14B (Q6_K)", ApproxVRAMGiB: 12.1, MinOllama: "", Rank: 35,
-		Why: "Highest quality that fits a 12GB card; use the Q6_K quant (Q4 degrades tool-use)."},
-	{Tag: "qwen3:8b", Label: "Qwen3 8B", ApproxVRAMGiB: 5.2, MinOllama: "", Rank: 30,
-		Why: "Strong tool-caller, current-gen, runs on today's Ollama — a safe default."},
-	{Tag: "llama3.1:8b", Label: "Llama 3.1 8B", ApproxVRAMGiB: 4.9, MinOllama: "", Rank: 10,
-		Why: "Reliable, universally compatible fallback."},
-}
-
 // Fit is a coarse verdict of whether a model fits the detected hardware.
 type Fit string
 
@@ -98,39 +77,45 @@ type CatalogEntry struct {
 	ModelInfo
 	Fit         Fit  `json:"fit"`
 	Pulled      bool `json:"pulled"`      // already present in the local Ollama
-	RuntimeOK   bool `json:"runtimeOk"`   // the detected Ollama version satisfies MinOllama
+	RuntimeOK   bool `json:"runtimeOk"`   // an installed model runs on the installed Ollama (always true here)
+	Tools       bool `json:"tools"`       // Ollama reports tool-calling — REQUIRED to ground suggestions
 	Recommended bool `json:"recommended"` // the single best-fit default for this machine
 }
 
-// annotateCatalog scores every catalog model against a probe result and flags the
-// single recommended default: the highest-Rank model that both fits comfortably AND
-// the runtime supports. If none "fits", it falls back to the highest-Rank "tight"
-// model the runtime supports (better a working tight model than no recommendation);
-// if the runtime supports none, nothing is recommended (the UI then explains why).
+// annotateCatalog builds the local catalog LIVE from the probe's installed models
+// (§8.1): only TOOL-CAPABLE models (Ollama's /api/show `capabilities`) are included —
+// grounding is impossible without tool-calling — each ranked by VRAM fit from its real
+// on-disk size. It flags the single recommended default: the largest model that fits
+// comfortably; failing that, the largest that fits tight; nothing if none fit.
 func annotateCatalog(p Probe) []CatalogEntry {
-	pulled := map[string]bool{}
-	for _, t := range p.PulledModels {
-		pulled[t] = true
-	}
-	entries := make([]CatalogEntry, 0, len(localCatalog))
-	for _, m := range localCatalog {
-		runtimeOK := versionAtLeast(p.OllamaVersion, m.MinOllama)
+	entries := make([]CatalogEntry, 0, len(p.Installed))
+	for _, m := range p.Installed {
+		if !m.Tools {
+			continue // not tool-capable → useless for grounded suggestions; omit it
+		}
+		info := ModelInfo{
+			Tag:           m.Tag,
+			Label:         modelLabel(m.Tag),
+			ApproxVRAMGiB: m.VRAMGiB,
+			Why:           installedWhy(m),
+			Rank:          paramRank(m.ParameterSize),
+		}
 		entries = append(entries, CatalogEntry{
-			ModelInfo: m,
-			Fit:       classifyFit(m, p.VRAMGiB),
-			Pulled:    pulled[m.Tag],
-			RuntimeOK: runtimeOK,
+			ModelInfo: info,
+			Fit:       classifyFit(info, p.VRAMGiB),
+			Pulled:    true, // everything discovered here is, by definition, pulled
+			RuntimeOK: true, // the installed model runs on the installed Ollama
+			Tools:     true,
 		})
 	}
-	// Pick the recommendation: prefer a comfortably-fitting, runtime-supported model
-	// with the highest Rank; fall back to a tight one if nothing fits comfortably.
+	// Recommend the largest comfortably-fitting model (bigger ⇒ more capable), falling
+	// back to the largest that at least fits tight; none fit ⇒ no recommendation.
 	best := -1
 	bestScore := -1
 	for i, e := range entries {
-		if !e.RuntimeOK || e.Fit == FitWontFit {
+		if e.Fit == FitWontFit {
 			continue
 		}
-		// Comfortable fit outranks a tight one regardless of Rank, then Rank breaks ties.
 		score := e.Rank
 		if e.Fit == FitFits {
 			score += 1000
@@ -164,4 +149,56 @@ func fitOrder(f Fit) int {
 	default:
 		return 2
 	}
+}
+
+// modelLabel turns an Ollama tag into a friendly display name: "qwen3:8b" → "Qwen3 8B".
+// Best-effort presentation only — the tag remains the identity everywhere.
+func modelLabel(tag string) string {
+	name, size, ok := strings.Cut(tag, ":")
+	label := strings.ToUpper(name[:1]) + name[1:]
+	if ok && size != "" && size != "latest" {
+		label += " " + strings.ToUpper(size)
+	}
+	return label
+}
+
+// installedWhy is the one-line rationale from what Ollama actually reports about the
+// model — family, parameter size, quant — rather than a hand-authored blurb.
+func installedWhy(m InstalledModel) string {
+	parts := make([]string, 0, 3)
+	if m.Family != "" {
+		parts = append(parts, m.Family)
+	}
+	if m.ParameterSize != "" {
+		parts = append(parts, m.ParameterSize)
+	}
+	if m.Quant != "" {
+		parts = append(parts, m.Quant)
+	}
+	if len(parts) == 0 {
+		return "Tool-capable local model."
+	}
+	return strings.Join(parts, " · ") + " · tool-calling"
+}
+
+// paramRank scores a model by parameter count so the recommendation prefers the most
+// capable model that fits (bigger ⇒ generally better grounding). Parses "7.6B"/"14B"/
+// "500M" → an integer millions-of-params; unknown → 0 (ranks last, still selectable).
+func paramRank(paramSize string) int {
+	s := strings.TrimSpace(strings.ToUpper(paramSize))
+	if s == "" {
+		return 0
+	}
+	mult := 1.0
+	switch {
+	case strings.HasSuffix(s, "B"):
+		mult, s = 1000, strings.TrimSuffix(s, "B")
+	case strings.HasSuffix(s, "M"):
+		mult, s = 1, strings.TrimSuffix(s, "M")
+	}
+	n, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0
+	}
+	return int(n * mult)
 }

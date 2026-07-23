@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,12 +15,15 @@ import (
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
 type fakeSystemLLM struct {
-	status    api.SystemLLMStatus
-	selectErr error
-	testErr   error
-	selected  api.SelectRequest
-	tested    string
-	pulled    string
+	status      api.SystemLLMStatus
+	selectErr   error
+	testErr     error
+	selected    api.SelectRequest
+	tested      string
+	pulled      string
+	discoverHit bool
+	discoverOut []api.DiscoverModelView
+	discoverErr error
 }
 
 func (f *fakeSystemLLM) Status(context.Context) (api.SystemLLMStatus, error) {
@@ -43,6 +47,10 @@ func (f *fakeSystemLLM) Test(_ context.Context, provider, _, _ string) error {
 func (f *fakeSystemLLM) Pull(_ context.Context, m string) (string, error) {
 	f.pulled = m
 	return "job-1", nil
+}
+func (f *fakeSystemLLM) Discover(_ context.Context) ([]api.DiscoverModelView, error) {
+	f.discoverHit = true
+	return f.discoverOut, f.discoverErr
 }
 
 func serverWithSystemLLM(t *testing.T, svc api.SystemLLMService) *httptest.Server {
@@ -252,5 +260,45 @@ func TestSystemLLM_Pull(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.JobID == "" || svc.pulled != "qwen3.5:9b" {
 		t.Errorf("pull jobID=%q pulled=%q", body.JobID, svc.pulled)
+	}
+}
+
+// Discover returns the machine-compatible candidates with quant-targeted pull refs.
+func TestSystemLLM_Discover(t *testing.T) {
+	svc := &fakeSystemLLM{discoverOut: []api.DiscoverModelView{
+		{ID: "unsloth/Qwen3.5-4B-GGUF", Quant: "Q4_K_M", PullRef: "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M", SizeGiB: 2.7, Fit: "fits", Downloads: 1089613},
+	}}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/discover", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover → %d, want 200", resp.StatusCode)
+	}
+	if !svc.discoverHit {
+		t.Error("service Discover was not called")
+	}
+	var body struct {
+		Models []api.DiscoverModelView `json:"models"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Models) != 1 || body.Models[0].PullRef != "hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M" {
+		t.Errorf("discover body = %+v", body.Models)
+	}
+}
+
+// A discovery source outage degrades to an empty list (200), never a 5xx — the UI
+// falls back to a "browse on huggingface.co" link (§8.1 best-effort).
+func TestSystemLLM_DiscoverDegradesOnError(t *testing.T) {
+	svc := &fakeSystemLLM{discoverErr: errors.New("hugging face unreachable")}
+	srv := serverWithSystemLLM(t, svc)
+	resp := do(t, srv, http.MethodGet, "/v1/system/llm/discover", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover on source error → %d, want 200 (degrade, not 5xx)", resp.StatusCode)
+	}
+	var body struct {
+		Models []api.DiscoverModelView `json:"models"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Models) != 0 {
+		t.Errorf("expected empty models on source error, got %+v", body.Models)
 	}
 }

@@ -32,7 +32,7 @@ func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := guideAdapter{tunarr: programmer.New(srv.URL, "", "cfg"), window: 3 * time.Hour}
+	a := guideAdapter{tunarr: programmer.New(srv.URL, "cfg"), window: 3 * time.Hour}
 	got, err := a.NowNext(context.Background(), now)
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)
@@ -64,7 +64,7 @@ func TestNowNext_OmitsChannelsWithNothingScheduled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := guideAdapter{tunarr: programmer.New(srv.URL, "", "cfg"), window: time.Hour}
+	a := guideAdapter{tunarr: programmer.New(srv.URL, "cfg"), window: time.Hour}
 	got, err := a.NowNext(context.Background(), time.Now())
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)

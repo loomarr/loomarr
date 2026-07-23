@@ -33,6 +33,10 @@ const mediaServer: SettingEntry[] = [
     key: "library.flavor",
     kind: "enum",
     enum: ["emby", "jellyfin"],
+    enumOptions: [
+      { value: "emby", label: "Emby" },
+      { value: "jellyfin", label: "Jellyfin" },
+    ],
     doc: "Which flavor to speak.",
     value: "emby",
   }),
@@ -88,5 +92,46 @@ const Invalid: Story = {
   },
 };
 
+// The AI group demonstrates conditional fields (config-design §5 ShowWhen): url + api_key are
+// shown only for a hosted OpenAI-compatible service, hidden for a local Ollama.
+const ai = (provider: string): SettingEntry[] => [
+  entry({
+    group: "ai",
+    key: "llm.provider",
+    kind: "enum",
+    enum: ["ollama", "openai"],
+    enumOptions: [
+      { value: "ollama", label: "Ollama" },
+      { value: "openai", label: "OpenAI-compatible" },
+    ],
+    doc: "Which AI to use.",
+    value: provider,
+  }),
+  entry({
+    group: "ai",
+    key: "llm.url",
+    kind: "url",
+    doc: "Base URL ending in /v1.",
+    value: "",
+    showWhen: { "llm.provider": ["openai"] },
+  }),
+  entry({ group: "ai", key: "llm.model", kind: "string", doc: "Which model.", value: "qwen3:8b" }),
+  entry({
+    group: "ai",
+    key: "llm.api_key",
+    kind: "secret",
+    secret: true,
+    doc: "Hosted key.",
+    value: "",
+    showWhen: { "llm.provider": ["openai"] },
+  }),
+];
+
+// Ollama (local) — provider + model only; url + key hidden.
+const AiOllama: Story = { args: { entries: ai("ollama") } };
+
+// OpenAI-compatible (hosted) — url + key revealed.
+const AiOpenAI: Story = { args: { entries: ai("openai") } };
+
 export default meta;
-export { Default, EnvPinned, Invalid, WithAudit };
+export { AiOllama, AiOpenAI, Default, EnvPinned, Invalid, WithAudit };

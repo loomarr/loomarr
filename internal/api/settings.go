@@ -91,7 +91,73 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 	}
 	out := &settingsPatchOutput{}
 	out.Body.Results = s.settings.Patch(ctx, in.Body.Edits, auditActor(ctx))
+	// Wiring Tunarr into the TV guide and pointing it at the library are pure
+	// consequences of the connection settings, not decisions an operator makes:
+	// they're idempotent and fully derived from the saved URL/token, so saving a
+	// connection IS the intent to wire it. Run them automatically here instead of
+	// making the operator find and click a button (config-design §5). Non-fatal —
+	// the save already succeeded; a wiring failure is not the save's failure, and
+	// it surfaces on the relevant connection's own status check.
+	s.autoWireAfterSave(ctx, in.Body.Edits)
 	return out, nil
+}
+
+// connectionKeys are the saved settings whose values the two wiring actions derive
+// from — a PATCH touching any of them may newly enable (or re-enable) wiring.
+var connectionKeys = map[string]struct{}{
+	"tunarr.url":     {},
+	"library.url":    {},
+	"library.token":  {},
+	"library.flavor": {},
+}
+
+// autoWireAfterSave runs the idempotent Live TV + media-source wiring when a save
+// touched a connection key and the prerequisites are now configured. Every path is
+// best-effort and logged, never returned: the wiring is a follow-on effect of a
+// save that already succeeded, and both connectors no-op when already wired, so
+// re-running on each connection save is harmless (§6 idempotent).
+func (s *Server) autoWireAfterSave(ctx context.Context, edits map[string]string) {
+	touched := false
+	for k := range edits {
+		if _, ok := connectionKeys[k]; ok {
+			touched = true
+			break
+		}
+	}
+	if !touched {
+		return
+	}
+
+	// Live TV: needs only the Tunarr URL (it derives Tunarr's guide/tuner URLs).
+	if s.livetv != nil && !s.unconfigured("tunarr.url") {
+		if tunerAdded, listingAdded, err := s.livetv.Connect(ctx); err != nil {
+			s.logw("auto-wire live TV failed after save", err)
+		} else if tunerAdded || listingAdded {
+			s.logi("auto-wired Tunarr into the TV guide after save")
+		}
+	}
+
+	// Media source: needs both Tunarr and the media server reachable.
+	if s.tunarrConnect != nil && !s.unconfigured("tunarr.url", "library.url") {
+		if _, enabled, err := s.tunarrConnect.Connect(ctx); err != nil {
+			s.logw("auto-wire Tunarr media source failed after save", err)
+		} else if enabled > 0 {
+			s.logi("auto-wired Tunarr's media source after save")
+		}
+	}
+}
+
+// logw / logi guard against a nil logger (unit tests wire deps directly).
+func (s *Server) logw(msg string, err error) {
+	if s.log != nil {
+		s.log.Warn(msg, "error", err)
+	}
+}
+
+func (s *Server) logi(msg string) {
+	if s.log != nil {
+		s.log.Info(msg)
+	}
 }
 
 type settingsClearInput struct {

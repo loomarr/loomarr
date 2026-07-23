@@ -249,6 +249,19 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 	}
 }
 
+// toAPIEnumOptions carries the registry's {value, label} enum choices to the API
+// so the UI shows registry-owned labels ("OpenAI") instead of re-deriving them.
+func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
+	if len(opts) == 0 {
+		return nil
+	}
+	out := make([]api.SettingEnumOption, len(opts))
+	for i, o := range opts {
+		out[i] = api.SettingEnumOption{Value: o.Value, Label: o.Label}
+	}
+	return out
+}
+
 // toAPIEntry converts a settings.Entry to the API view, stringifying the typed
 // value for transport and flattening the setting's declaration fields.
 func toAPIEntry(e settings.Entry) api.SettingEntry {
@@ -260,7 +273,9 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		Caution:     e.Caution,
 		Advanced:    e.Setting.Advanced,
 		Secret:      e.Setting.IsSecret(),
-		Enum:        e.Setting.Enum,
+		Enum:        e.Setting.EnumValues(),
+		EnumOptions: toAPIEnumOptions(e.Setting.Enum),
+		ShowWhen:    e.Setting.ShowWhen,
 		RequiredFor: string(e.Setting.Required),
 		Doc:         e.Setting.Doc,
 		UpdatedBy:   e.UpdatedBy,

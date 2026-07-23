@@ -14,7 +14,7 @@ func declared() []Setting {
 		// --- Connections: media server (§15, Phase 5) ---
 		{
 			Key: "library.flavor", EnvVar: "LIBRARY_FLAVOR", Group: GroupMediaServer,
-			Kind: KindEnum, Enum: []string{"emby", "jellyfin"}, Default: "",
+			Kind: KindEnum, Enum: []EnumOption{opt("emby", "Emby"), opt("jellyfin", "Jellyfin")}, Default: "",
 			Doc: "Emby or Jellyfin. They sign in differently, so Loomarr needs to know which one you run.",
 		},
 		{
@@ -29,7 +29,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "season.precision", EnvVar: "SEASON_PRECISION", Group: GroupMediaServer,
-			Kind: KindEnum, Enum: []string{"series", "seasons"}, Default: "series", Advanced: true,
+			Kind: KindEnum, Enum: []EnumOption{opt("series", "Whole series"), opt("seasons", "Requested seasons")}, Default: "series", Advanced: true,
 			Doc: "When adding a series, get the whole show (default) or just the seasons you asked for.",
 		},
 
@@ -72,11 +72,6 @@ func declared() []Setting {
 			Doc: "Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels.",
 		},
 		{
-			Key: "tunarr.api_key", EnvVar: "TUNARR_API_KEY", Group: GroupTunarr,
-			Kind: KindSecret, Default: "",
-			Doc: "Tunarr API key. Usually not needed — leave blank unless your Tunarr requires one.",
-		},
-		{
 			Key: "tunarr.transcode_config_id", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
@@ -92,23 +87,32 @@ func declared() []Setting {
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
 		{
 			Key: "llm.provider", EnvVar: "LLM_PROVIDER", Group: GroupAI,
-			Kind: KindEnum, Enum: []string{"ollama", "openai"}, Default: "ollama", Required: FeatureSuggestions,
+			Kind: KindEnum, Enum: []EnumOption{opt("ollama", "Ollama"), opt("openai", "OpenAI-compatible")}, Default: "ollama", Required: FeatureSuggestions,
 			Doc: "Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings.",
 		},
 		{
+			// A hosted (OpenAI-compatible) service needs its base URL; a local Ollama is
+			// reached at its own host, chosen in the model picker — so this is hidden for Ollama.
 			Key: "llm.url", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "The AI's address. For an OpenAI-compatible service, the base URL ending in /v1; for Ollama, its own host.",
+			Doc:      "The base URL of your OpenAI-compatible service, ending in /v1.",
+			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
+			// For a hosted service you type the model name; for Ollama the ranked model
+			// picker below is how you choose, so this free-text field is hidden there to
+			// avoid two controls setting the same thing.
 			Key: "llm.model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "",
-			Doc: "Which AI model to use (e.g. qwen3:8b). You can also pick one in the AI settings.",
+			Doc:      "The model name for your hosted AI service (e.g. gpt-4o-mini).",
+			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
+			// Ollama is local and needs no key — this only applies to a hosted service.
 			Key: "llm.api_key", EnvVar: "LLM_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "",
-			Doc: "API key for a hosted AI service (not needed for a local Ollama). Never shown again after saving.",
+			Doc:      "API key for your hosted AI service. Never shown again after saving.",
+			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
 			Key: "suggest.auto_approve", EnvVar: "SUGGEST_AUTO_APPROVE", Group: GroupAI,
@@ -124,12 +128,12 @@ func declared() []Setting {
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
 			Key: "sched.default_strategy", EnvVar: "SCHED_DEFAULT_STRATEGY", Group: GroupChannels,
-			Kind: KindEnum, Enum: []string{"sequential", "shuffle"}, Default: "shuffle",
+			Kind: KindEnum, Enum: []EnumOption{opt("sequential", "Sequential"), opt("shuffle", "Shuffle")}, Default: "shuffle",
 			Doc: "How channels order their programs by default, unless a channel sets its own.",
 		},
 		{
 			Key: "sched.backfill", EnvVar: "SCHED_BACKFILL", Group: GroupChannels,
-			Kind: KindEnum, Enum: []string{"stable", "reshuffle"}, Default: "stable",
+			Kind: KindEnum, Enum: []EnumOption{opt("stable", "Stable"), opt("reshuffle", "Reshuffle")}, Default: "stable",
 			Doc: "When new titles arrive, keep the lineup order (stable) or reshuffle it.",
 		},
 		{
@@ -161,12 +165,12 @@ func declared() []Setting {
 		},
 		{
 			Key: "sched.ordering", EnvVar: "SCHED_ORDERING", Group: GroupChannels,
-			Kind: KindEnum, Enum: []string{"sequential", "shuffle", "syndication"}, Default: "syndication",
+			Kind: KindEnum, Enum: []EnumOption{opt("sequential", "Sequential"), opt("shuffle", "Shuffle"), opt("syndication", "Syndication")}, Default: "syndication",
 			Doc: "Default program order (per-channel overridable). If a channel sets none, it uses its own strategy.",
 		},
 		{
 			Key: "seasonal.mode", EnvVar: "SEASONAL_MODE", Group: GroupChannels,
-			Kind: KindEnum, Enum: []string{"off", "auto", "exclusive"}, Default: "auto",
+			Kind: KindEnum, Enum: []EnumOption{opt("off", "Off"), opt("auto", "Auto (favor in-season)"), opt("exclusive", "In-season only")}, Default: "auto",
 			Doc: "How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season.",
 		},
 
@@ -241,7 +245,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "cookie.secure", EnvVar: "COOKIE_SECURE", Group: GroupUsersSecurity,
-			Kind: KindEnum, Enum: []string{"auto", "always", "never"}, Default: "auto",
+			Kind: KindEnum, Enum: []EnumOption{opt("auto", "Auto (match the request)"), opt("always", "Always"), opt("never", "Never (local dev only)")}, Default: "auto",
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
 		{
