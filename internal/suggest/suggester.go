@@ -263,7 +263,7 @@ func filterByMediaType(cands []catalog.Candidate, mt string) []catalog.Candidate
 // a candidate the tool actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
 func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate) (Proposal, error) {
-	prop := Proposal{Intent: intent, Rationale: out.Rationale}
+	prop := Proposal{Intent: intent, ChannelName: strings.TrimSpace(out.ChannelName), Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
 	maxAcq := s.maxAcq
@@ -349,6 +349,15 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem) schedule
 	// never passed through to enforcement).
 	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" {
 		p.Audience.Ceiling = c
+		// A ceiling STRICTER than a title the model actually grounded would silently
+		// empty the channel: the fail-closed audience gate (programming-design §4) drops
+		// every over-ceiling episode. Small models do this (e.g. a TV-G ceiling on a
+		// TV-PG Simpsons pick). Raise the ceiling to admit the grounded picks — the
+		// operator asked for THESE titles, so a self-contradiction resolves in favor of
+		// the content, not an empty channel.
+		if raised := ceilingAdmittingPicks(p.Audience.Ceiling, lineup); raised != "" {
+			p.Audience.Ceiling = raised
+		}
 	}
 	switch schedule.UnratedPolicy(raw.Audience.Unrated) {
 	case schedule.UnratedExclude, schedule.UnratedAllow:
@@ -385,6 +394,34 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem) schedule
 	return p
 }
 
+// tvGRank / tvPGRank are the "family" band on the audience ladder — the ONLY band within
+// which an auto-raise is safe (see ceilingAdmittingPicks).
+const (
+	tvGRank  = 2 // TV-G / G
+	tvPGRank = 3 // TV-PG / PG (== schedule.KidsCeilingRank)
+)
+
+// ceilingAdmittingPicks fixes a specific, common small-model self-contradiction: a TV-G
+// ceiling on a TV-PG pick (e.g. a Simpsons channel), which the fail-closed audience gate
+// would silently empty. In that narrow case it raises the ceiling one notch to TV-PG so the
+// grounded picks air. It is DELIBERATELY conservative — it ONLY raises a TV-G ceiling, and
+// ONLY to TV-PG, when a pick needs it. It never touches a young-kids ceiling (TV-Y/TV-Y7:
+// a TV-MA pick there is DROPPED by the enforcer, never admitted — kids-safety is fail-closed
+// and a prime directive, §4) and never widens a family ceiling into adult territory. Returns
+// "" when no change is warranted. Only rated, on-ladder picks participate.
+func ceilingAdmittingPicks(ceiling schedule.Rating, picks []ProposalItem) schedule.Rating {
+	ceilRank, ok := ceiling.Rank()
+	if !ok || ceilRank != tvGRank {
+		return "" // only a TV-G ceiling is eligible for the auto-raise
+	}
+	for _, it := range picks {
+		if rank, ok := schedule.NormalizeRating(it.OfficialRating).Rank(); ok && rank == tvPGRank {
+			return schedule.NormalizeRating("TV-PG") // a TV-PG pick under TV-G → raise one notch
+		}
+	}
+	return ""
+}
+
 // ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
 // the intent surfaced no themed, real content. The worker fails the job with this
 // (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
@@ -414,8 +451,9 @@ RULES:
   - genres.include/exclude: genre names implied by the intent.
   - ordering: "syndication" (rerun feel), "sequential" (in order), or "shuffle".
   - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
+- Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
-{"rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
+{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
