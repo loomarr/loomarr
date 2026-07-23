@@ -776,6 +776,65 @@ components:
       required:
         - description
       type: object
+    JobView:
+      additionalProperties: false
+      properties:
+        lastError:
+          description: Error detail when lastResult is error
+          type: string
+        lastResult:
+          description: ok | error | '' (never run)
+          type: string
+        lastRun:
+          description: When the job last started (zero = never)
+          format: date-time
+          type: string
+        name:
+          description: Stable job id (also the run/trigger key)
+          type: string
+        nextRun:
+          description: When the job is next due
+          format: date-time
+          type: string
+        running:
+          description: True while the job is currently executing
+          type: boolean
+        schedule:
+          description: Effective cron expression (settings override or default)
+          type: string
+        scheduleKey:
+          description: Settings key to PATCH to change the schedule
+          type: string
+        title:
+          description: Human label for the Tasks page
+          type: string
+      required:
+        - name
+        - title
+        - schedule
+        - scheduleKey
+        - lastResult
+        - running
+      type: object
+    JobsListOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/JobsListOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobs:
+          items:
+            $ref: "#/components/schemas/JobView"
+          type:
+            - array
+            - "null"
+      required:
+        - jobs
+      type: object
     LLMModelView:
       additionalProperties: false
       properties:
@@ -987,30 +1046,6 @@ components:
             - "null"
       required:
         - users
-      type: object
-    LivetvConnectOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/LivetvConnectOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        alreadyWired:
-          description: Nothing changed — Tunarr was already wired (§6 idempotent)
-          type: boolean
-        listingAdded:
-          description: An xmltv guide was registered this call
-          type: boolean
-        tunerAdded:
-          description: An m3u tuner was registered this call
-          type: boolean
-      required:
-        - tunerAdded
-        - listingAdded
-        - alreadyWired
       type: object
     LoginInputBody:
       additionalProperties: false
@@ -2905,6 +2940,50 @@ paths:
       summary: Edit a clip's tags
       tags:
         - filler
+  /v1/jobs:
+    get:
+      description: Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.
+      operationId: jobs-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobsListOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List background jobs
+      tags:
+        - jobs
+  /v1/jobs/{name}/run:
+    post:
+      description: "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it)."
+      operationId: jobs-run
+      parameters:
+        - description: The job's stable id (from GET /v1/jobs)
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The job's stable id (from GET /v1/jobs)
+            type: string
+      responses:
+        "202":
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Run a job now
+      tags:
+        - jobs
   /v1/search:
     get:
       operationId: search
@@ -3129,26 +3208,6 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Create the first admin
-      tags:
-        - setup
-  /v1/setup/livetv-connect:
-    post:
-      description: Admin only. One-time, idempotent (§6).
-      operationId: livetv-connect
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LivetvConnectOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Wire Tunarr as a tuner + guide
       tags:
         - setup
   /v1/setup/state:

@@ -4,6 +4,26 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Scheduler arc — Phase 1: cron scheduler + 4-loop migration (2026-07-23).** First phase of
+the direct-Sonarr/Radarr + poll-availability plan (retiring inbound webhooks, since verified
+research shows Overseerr/Seerr is entirely poll-driven). A real job scheduler like Sonarr's
+System → Tasks: `internal/scheduler` (code-defined registry + `scheduled_jobs` state table +
+a leased due-claim reusing the `ClaimDueTitles` idiom — SQLite guarded UPDATE / Postgres
+`FOR UPDATE SKIP LOCKED`). Schedules are **full cron** (6-field, seconds-leading, matching
+Overseerr) via a new `KindCron` setting validated by `github.com/adhocore/gronx` (pure-Go,
+zero transitive deps — added to design §14 + a new §18.1, doc-first). **All 4 existing loops
+(reconcile, channel-sweep, filler-sync, session-sweep) migrated to scheduler jobs** — their
+standalone `Run`/`WithInterval`/ticker plumbing deleted (`reconcile/runner.go`, `janitor.go`,
+the `channels.Runner` loop, `go runFillerSync`); each is now Run-now-triggerable with an
+editable cron from day one. `GET /v1/jobs` + `POST /v1/jobs/{name}/run` (admin-only); timing
+is BE-authored and pushed over a new `job` SSE frame (the FE never computes countdowns).
+FE: Settings → **Tasks** page (Sonarr-style table + "Run now") and a reusable **Modify Job**
+modal — human-readable cron presets by default, an **Advanced** toggle revealing the raw
+cron field. Also removed the redundant Live TV wizard step + `POST /v1/setup/livetv-connect`
+(auto-wires on Connections save; config-design §6). Gate: `make check` GREEN (`-race`); FE
+`biome + typecheck + vitest` GREEN (381 tests, 11 new). **Next (Phase 2):** poll-based
+availability — `RecentlyAdded`/`AllItems` library scan jobs driving `LibraryConfirmed`.
+
 **Phase 14 — domain metrics, tranche 3: §17 closed (2026-07-20).** The last non-latency,
 non-state counters, each hooked at its subsystem's natural point:
 `loomarr_llm_tokens_total{kind}` (prompt/completion, parsed from the provider usage block —

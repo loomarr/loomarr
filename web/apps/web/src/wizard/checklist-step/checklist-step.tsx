@@ -92,7 +92,9 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
     <div className="flex flex-col gap-3">
       {BLOCKS.map((block) => {
         const custom = "custom" in block && block.custom;
-        const blockEntries = custom ? [] : byGroup(block.group);
+        // "group" in block narrows the union so TS knows block.group exists (the AI block is
+        // custom and carries no group); a custom block has no settings-group entries.
+        const blockEntries = "group" in block ? byGroup(block.group) : [];
         // A settings-group block with no essentials to show is hidden; a custom block
         // (AI) has no group entries by design and always renders.
         if (!custom && blockEntries.length === 0) return null;

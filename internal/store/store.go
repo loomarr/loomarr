@@ -69,6 +69,17 @@ type Store interface {
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
 
+	// --- scheduled jobs (the background-job scheduler, §18.1) ---
+	// UpsertScheduledJob writes a job's runtime state (last-run/result + next-run lease).
+	UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
+	// GetScheduledJob returns one job's state, or ErrNotFound.
+	GetScheduledJob(ctx context.Context, name string) (ScheduledJob, error)
+	// ListScheduledJobs returns all job state rows for the Tasks page.
+	ListScheduledJobs(ctx context.Context) ([]ScheduledJob, error)
+	// ClaimDueScheduledJobs leases every job whose next_run is due (advancing next_run to
+	// now+lease) so only one replica runs it per tick — same SKIP LOCKED idiom as titles.
+	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]ScheduledJob, error)
+
 	// --- users & sessions (§11) ---
 	GetUser(ctx context.Context, id string) (User, error)
 	// GetUserByName resolves a username to its allowlist row (§11 local login).

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -178,28 +177,6 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.
 			"failed": res.Failed, "empty": res.Empty, "error": errMsg,
 		},
 	})
-}
-
-// runFillerSync runs the periodic filler catalog sync until ctx is done (§10).
-func runFillerSync(ctx context.Context, syncer *filler.Syncer, every time.Duration, log *slog.Logger) {
-	if every <= 0 {
-		every = 15 * time.Minute
-	}
-	t := time.NewTicker(every)
-	defer t.Stop()
-	if _, err := syncer.Sync(ctx); err != nil {
-		log.Warn("initial filler sync", "err", err)
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if _, err := syncer.Sync(ctx); err != nil {
-				log.Warn("filler sync", "err", err)
-			}
-		}
-	}
 }
 
 // podPreviewAdapter bridges filler.PodAdapter → api.PodPreviewer (§12). It exists to
