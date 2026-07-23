@@ -171,11 +171,14 @@ func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarr
 		return nil, err
 	}
 	if s.tunarrConnect == nil || s.unconfigured("tunarr.url", "library.url") {
-		return nil, huma.Error501NotImplemented("Tunarr + media server must be configured first")
+		return nil, errNotImplemented("Setup incomplete",
+			"Connect Tunarr and your media server in Settings before wiring them together.",
+			"troubleshooting#tunarr")
 	}
 	sourceID, enabled, err := s.tunarrConnect.Connect(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("wiring Tunarr's media source failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't wire Tunarr",
+			"Loomarr couldn't set your media server up as Tunarr's source. Check that both are reachable and try again.", err)
 	}
 	out := &tunarrConnectOutput{}
 	out.Body.SourceID, out.Body.LibrariesEnabled = sourceID, enabled
@@ -197,11 +200,14 @@ func (s *Server) livetvConnect(ctx context.Context, _ *struct{}) (*livetvConnect
 		return nil, err
 	}
 	if s.livetv == nil || s.unconfigured("tunarr.url") {
-		return nil, huma.Error501NotImplemented("Live TV wiring not configured")
+		return nil, errNotImplemented("Setup incomplete",
+			"Connect Tunarr in Settings before wiring up Live TV.",
+			"troubleshooting#livetv")
 	}
 	tunerAdded, listingAdded, err := s.livetv.Connect(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("Live TV wiring failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Live TV wiring failed",
+			"Loomarr couldn't register the Live TV tuner and guide with Tunarr. Check that Tunarr is reachable and try again.", err)
 	}
 	out := &livetvConnectOutput{}
 	out.Body.TunerAdded = tunerAdded

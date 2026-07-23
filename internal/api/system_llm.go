@@ -52,13 +52,16 @@ type SystemLLMService interface {
 // tool-capability is confirmed only after it is pulled and probed. PullRef is the exact
 // argument to hand back to Pull.
 type DiscoverModelView struct {
-	ID        string  `json:"id" doc:"Source repo id, e.g. unsloth/Qwen3.5-4B-GGUF"`
-	Label     string  `json:"label" doc:"Human-friendly name, e.g. Qwen3.5 4B"`
-	Quant     string  `json:"quant" doc:"The build we sized against — Ollama's latest resolves to it (e.g. Q4_K_M). Informational; the pull is by bare repo ref."`
-	PullRef   string  `json:"pullRef" doc:"Model ref to POST to /pull — the bare repo (e.g. hf.co/unsloth/Qwen3.5-4B-GGUF); Ollama pulls its latest tag"`
-	SizeGiB   float64 `json:"sizeGiB" doc:"Sized build's on-disk size (VRAM proxy) — what latest downloads"`
-	Fit       string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
-	Downloads int64   `json:"downloads" doc:"Source popularity (for ordering/display)"`
+	ID          string  `json:"id" doc:"Source repo id, e.g. unsloth/Qwen3.5-4B-GGUF"`
+	Label       string  `json:"label" doc:"Human-friendly name, e.g. Qwen3.5 4B"`
+	Quant       string  `json:"quant" doc:"The build we sized against — Ollama's latest resolves to it (e.g. Q4_K_M). Informational; the pull is by bare repo ref."`
+	PullRef     string  `json:"pullRef" doc:"Model ref to POST to /pull — the bare repo (e.g. hf.co/unsloth/Qwen3.5-4B-GGUF); Ollama pulls its latest tag"`
+	SizeGiB     float64 `json:"sizeGiB" doc:"Sized build's on-disk size (VRAM proxy) — what latest downloads"`
+	Fit         string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
+	Downloads   int64   `json:"downloads" doc:"Source popularity — a ranking tiebreak only; not shown to the user (§8.1)"`
+	Role        string  `json:"role" doc:"Plain-English job in the user's choice: balanced|faster|higher_quality (§8.1)"`
+	Recommended bool    `json:"recommended" doc:"True for the single safe-default pick for this machine — the hero card (§8.1). At most one per list."`
+	Note        string  `json:"note,omitempty" doc:"Plain-English why-pick-this hint derived from role + fit (§8.1). Presentation only; may be empty."`
 }
 
 // SelectRequest is a provider/model/key selection (§8.1). Provider "ollama" (or
@@ -183,7 +186,7 @@ func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
 		return nil, err
 	}
 	if s.systemLLM == nil {
-		return nil, huma.Error501NotImplemented("LLM model management not configured")
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	out := &struct {
 		Body struct {
@@ -212,11 +215,11 @@ func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {
 		return nil, err
 	}
 	if s.systemLLM == nil {
-		return nil, huma.Error501NotImplemented("LLM model management not configured")
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	st, err := s.systemLLM.Status(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("LLM probe failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "AI provider unreachable", "Loomarr couldn't reach the AI provider to check its status. Verify the connection and try again.", err)
 	}
 	return &struct{ Body SystemLLMStatus }{Body: st}, nil
 }
@@ -237,30 +240,30 @@ func (s *Server) systemLLMSelect(ctx context.Context, in *systemLLMSelectInput) 
 		return nil, err
 	}
 	if s.systemLLM == nil {
-		return nil, huma.Error501NotImplemented("LLM model management not configured")
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Model == "" {
-		return nil, huma.Error422UnprocessableEntity("model is required")
+		return nil, errUnprocessable("Model required", "Choose a model to activate.")
 	}
 	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
-		return nil, huma.Error422UnprocessableEntity("baseUrl is required for a custom endpoint")
+		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
 	}
 	req := SelectRequest{Provider: in.Body.Provider, Model: in.Body.Model, APIKey: in.Body.APIKey, BaseURL: in.Body.BaseURL}
 	switch err := s.systemLLM.Select(ctx, req); err {
 	case nil:
 	case ErrModelNotPulled:
-		return nil, huma.Error409Conflict("model not pulled yet — POST /v1/system/llm/pull first")
+		return nil, errConflict("Model not ready", "Download this model before selecting it.")
 	case ErrUnknownProvider:
-		return nil, huma.Error422UnprocessableEntity("unknown provider — choose one from GET /v1/system/llm")
+		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	case ErrKeyInvalid:
-		return nil, huma.Error401Unauthorized("API key rejected — check the key (or POST /v1/system/llm/test)")
+		return nil, errUnauthorized("API key rejected", "That API key was rejected. Check the key and try again, or test it first.")
 	default:
-		return nil, huma.Error502BadGateway("select failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't select the model", "Loomarr couldn't activate that model. Check the AI provider connection and try again.", err)
 	}
 	// Return the fresh status so the UI reflects the new active model immediately.
 	st, err := s.systemLLM.Status(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("select applied but status re-read failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Model selected, status unavailable", "The model was activated, but Loomarr couldn't re-read the provider status. Refresh to see the current state.", err)
 	}
 	return &struct{ Body SystemLLMStatus }{Body: st}, nil
 }
@@ -284,13 +287,13 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 		return nil, err
 	}
 	if s.systemLLM == nil {
-		return nil, huma.Error501NotImplemented("LLM model management not configured")
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Provider == "" {
-		return nil, huma.Error422UnprocessableEntity("provider is required")
+		return nil, errUnprocessable("Provider required", "Choose which AI provider to test.")
 	}
 	if in.Body.Provider == "custom" && in.Body.BaseURL == "" {
-		return nil, huma.Error422UnprocessableEntity("baseUrl is required for a custom endpoint")
+		return nil, errUnprocessable("Base URL required", "A custom endpoint needs its base URL. Enter the OpenAI-compatible base URL for your provider.")
 	}
 	out := &struct {
 		Body struct {
@@ -302,7 +305,7 @@ func (s *Server) systemLLMTest(ctx context.Context, in *systemLLMTestInput) (*st
 	case nil:
 		out.Body.OK = true
 	case ErrUnknownProvider:
-		return nil, huma.Error422UnprocessableEntity("unknown provider — choose one from GET /v1/system/llm")
+		return nil, errUnprocessable("Unknown provider", "That AI provider isn't recognized. Pick one of the listed providers.")
 	default:
 		// A bad key / unreachable provider is a normal, reportable outcome (not a
 		// server error): 200 with ok=false + the reason, so the UI shows it inline.
@@ -327,17 +330,17 @@ func (s *Server) systemLLMPull(ctx context.Context, in *systemLLMPullInput) (*st
 		return nil, err
 	}
 	if s.systemLLM == nil {
-		return nil, huma.Error501NotImplemented("LLM model management not configured")
+		return nil, errNotImplemented("Model management unavailable", "Local model management isn't set up on this server.")
 	}
 	if in.Body.Model == "" {
-		return nil, huma.Error422UnprocessableEntity("model is required")
+		return nil, errUnprocessable("Model required", "Enter the model to download.")
 	}
 	jobID, err := s.systemLLM.Pull(ctx, in.Body.Model)
 	if err == ErrNotLocal {
-		return nil, huma.Error409Conflict("pull applies only to a local Ollama provider")
+		return nil, errConflict("Download not supported", "Downloading models only applies to a local Ollama provider.")
 	}
 	if err != nil {
-		return nil, huma.Error502BadGateway("pull failed to start", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't start the download", "Loomarr couldn't start downloading that model. Check the Ollama connection and try again.", err)
 	}
 	out := &struct {
 		Body struct {

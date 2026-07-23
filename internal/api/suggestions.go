@@ -94,10 +94,10 @@ type submitOutput struct {
 
 func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submitOutput, error) {
 	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
-		return nil, huma.Error501NotImplemented("suggester not configured")
+		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to build channels from a sentence.")
 	}
 	if in.Body.Description == "" {
-		return nil, huma.Error400BadRequest("description is required")
+		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
 	}
 	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
 	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)
@@ -171,7 +171,7 @@ type proposalOutput struct{ Body ProposalDTO }
 func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposalOutput, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such proposal")
+		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -202,20 +202,20 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 	}
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such proposal")
+		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err
 	}
 	if p.Status != "submitted" {
-		return nil, huma.Error409Conflict("proposal is not in the submitted state")
+		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
 
 	// The gate has ONE implementation, shared with the auto-approve path (§8, §11), so
 	// the two can never disagree about what approving means.
 	enqueued, err := suggest.Approve(ctx, s.store, p, userIDFromHuma(ctx), time.Now)
 	if errors.Is(err, suggest.ErrNotSubmitted) {
-		return nil, huma.Error409Conflict("proposal is not in the submitted state")
+		return nil, errConflict("Already handled", "This suggestion has already been approved or dismissed.")
 	}
 	if err != nil {
 		return nil, err
@@ -391,7 +391,7 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	}
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such proposal")
+		return nil, errNotFound("Suggestion not found", "That suggestion doesn't exist — it may have expired or been removed.")
 	}
 	if err != nil {
 		return nil, err

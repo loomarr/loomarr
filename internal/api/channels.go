@@ -303,7 +303,7 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOutput, error) {
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -357,14 +357,16 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	// approved proposal"). Empty intentRef ⇒ hand-made channel, no lineup yet.
 	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity("resolve intent lineup", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't build the lineup",
+			"Loomarr couldn't resolve the lineup for the approved suggestion. Try refining or re-approving it.", err)
 	}
 	// Bind the proposal's grounded ChannelPolicy (programming-design §8) onto the
 	// channel so enforcement (scope/audience/separation/seasonal) applies from the
 	// first reconcile. A hand-made channel / policy-less proposal → built-in defaults.
 	policy, err := s.policyFromIntent(ctx, in.Body.IntentRef)
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity("resolve intent policy", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't apply the policy",
+			"Loomarr couldn't resolve the programming policy for the approved suggestion. Try refining or re-approving it.", err)
 	}
 	ch.Policy = policy
 	// Hand-made single-series channel (§7 "or hand-made"): one series entry with an
@@ -372,7 +374,8 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if in.Body.IntentRef == "" && in.Body.Series != nil {
 		key := provision.Key(in.Body.Series.Key)
 		if !key.IsSeries() {
-			return nil, huma.Error422UnprocessableEntity("series.key must be a series key (e.g. series:tvdb:<id>)", nil)
+			return nil, errUnprocessable("Invalid series",
+				"For a single-series channel, pick a series (not a movie or episode).")
 		}
 		lineup = []schedule.LineupEntry{{
 			Key:       key,
@@ -383,17 +386,18 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	}
 	ch.Lineup = lineup
 	if err := ch.Validate(); err != nil {
-		return nil, huma.Error422UnprocessableEntity("invalid channel", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
+			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
 	// Reject a duplicate id or number up front (the store's unique index would
 	// also reject, but a clean 409 is friendlier than a 500).
 	if _, err := s.store.GetChannel(ctx, ch.ID); err == nil {
-		return nil, huma.Error409Conflict("channel id already exists")
+		return nil, errConflict("Channel already exists", "A channel with that id already exists.")
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
 	if _, err := s.store.GetChannelByNumber(ctx, ch.Number); err == nil {
-		return nil, huma.Error409Conflict("channel number already in use")
+		return nil, errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
@@ -452,7 +456,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -472,7 +476,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if in.Body.Number != nil && *in.Body.Number != ch.Number {
 		if other, gerr := s.store.GetChannelByNumber(ctx, *in.Body.Number); gerr == nil {
 			if other.ID != ch.ID {
-				return nil, huma.Error409Conflict("channel number already in use")
+				return nil, errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
 			}
 		} else if !errors.Is(gerr, store.ErrNotFound) {
 			return nil, gerr
@@ -486,7 +490,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		next := *in.Body.Policy
 		next.Applied = ch.Policy.Applied // reconcile owns this; never client-set
 		if verr := next.Validate(); verr != nil {
-			return nil, huma.Error422UnprocessableEntity("invalid policy", verr)
+			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
+				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
 		}
 		ch.Policy = next
 	}
@@ -501,7 +506,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 			// nudge back onto the sweep, which the reconcile below will settle.
 			ch.Status = schedule.StatusBuilding
 		default:
-			return nil, huma.Error422UnprocessableEntity("status may only be set to paused or building", nil)
+			return nil, errUnprocessable("Unsupported status",
+				"A channel can only be paused or resumed here.")
 		}
 	}
 	// Lineup edit (add/remove/reorder as a whole-list replace). Validate every key and
@@ -512,13 +518,15 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if in.Body.Lineup != nil {
 		next, lerr := mergeLineupEdit(ch.Lineup, *in.Body.Lineup)
 		if lerr != nil {
-			return nil, huma.Error422UnprocessableEntity("invalid lineup", lerr)
+			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid lineup",
+				"The lineup couldn't be saved. Check that each entry is a valid title, then try again.", lerr)
 		}
 		ch.Lineup = next
 	}
 
 	if err := ch.Validate(); err != nil {
-		return nil, huma.Error422UnprocessableEntity("invalid channel", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
+			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
 	}
 	ch.UpdatedAt = time.Now().Unix() // UpsertChannel does not stamp this
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
@@ -564,18 +572,19 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 		return nil, err
 	}
 	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
-		return nil, huma.Error501NotImplemented("suggester not configured")
+		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to refine channels.")
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
 	// Refine only makes sense for an LLM-created channel: it re-runs that channel's own
 	// suggestion job. A hand-made channel (no IntentRef) has no job to re-run.
 	if ch.IntentRef == "" {
-		return nil, huma.Error422UnprocessableEntity("this channel wasn't created from a suggestion, so it can't be refined")
+		return nil, errUnprocessable("Can't refine this channel",
+			"This channel was made by hand, not from an AI suggestion, so there's nothing to refine.")
 	}
 
 	// Seed the refine intent from the channel's original intent (for description/constraints)
@@ -616,15 +625,16 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 		return nil, err
 	}
 	if s.channels == nil || s.unconfigured("tunarr.url") {
-		return nil, huma.Error501NotImplemented("scheduler not configured")
+		return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before reconciling a channel.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
 	if err := s.channels.Reconcile(ctx, in.ID); err != nil {
-		return nil, huma.Error502BadGateway("reconcile failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
+			"Loomarr couldn't push this channel to Tunarr. Check its connection in Settings and try again.", err)
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if err != nil {
@@ -645,7 +655,7 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	}
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -654,10 +664,11 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 	// through the engine (which holds the programmer). Idempotent on the Tunarr side.
 	if in.Purge {
 		if s.channels == nil {
-			return nil, huma.Error501NotImplemented("scheduler not configured (cannot purge the Tunarr channel)")
+			return nil, errNotImplemented("Tunarr isn't set up", "Connect Tunarr in Settings before purging its channel.")
 		}
 		if err := s.channels.Purge(ctx, in.ID); err != nil {
-			return nil, huma.Error502BadGateway("purge failed", err)
+			return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach Tunarr",
+				"Loomarr couldn't delete this channel in Tunarr. Check its connection in Settings and try again.", err)
 		}
 		return &deleteChannelOutput{}, nil
 	}
@@ -704,10 +715,10 @@ type previewPodsOutput struct {
 // would be worse than none.
 func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (*previewPodsOutput, error) {
 	if s.pods == nil {
-		return nil, huma.Error501NotImplemented("filler pod assembly not configured")
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -760,17 +771,18 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 		return nil, err
 	}
 	if s.pods == nil {
-		return nil, huma.Error501NotImplemented("filler pod assembly not configured")
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such channel")
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
 	// Validate the draft with the same rules a policy write uses (bad audience/kind/
 	// category/era → 422) — the sandbox must reject a nonsense selection, not assemble it.
 	if err := (schedule.ChannelPolicy{Filler: &in.Body.Filler}).Validate(); err != nil {
-		return nil, huma.Error422UnprocessableEntity("invalid filler selection", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
+			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}
 
 	pod, err := s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(in.Body.Filler))

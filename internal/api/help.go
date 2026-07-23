@@ -72,7 +72,7 @@ type getDocOutput struct {
 func (s *Server) getDoc(_ context.Context, in *getDocInput) (*getDocOutput, error) {
 	page, ok := docs.Get(in.Slug)
 	if !ok {
-		return nil, huma.Error404NotFound("no such help page")
+		return nil, errNotFound("Help page not found", "That help page doesn't exist — it may have been moved or renamed.")
 	}
 	out := &getDocOutput{}
 	out.Body.Slug, out.Body.Title, out.Body.Markdown = page.Slug, page.Title, page.Markdown

@@ -147,7 +147,7 @@ func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserO
 	}
 	u, err := s.store.GetUser(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such user")
+		return nil, errNotFound("User not found", "That user doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -206,10 +206,10 @@ func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput
 		return nil, err
 	}
 	if s.sessions == nil {
-		return nil, huma.Error503ServiceUnavailable("sessions are not configured")
+		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so live sessions can't be listed right now.")
 	}
 	if _, err := s.store.GetUser(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such user")
+		return nil, errNotFound("User not found", "That user doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func (s *Server) revokeSession(ctx context.Context, in *revokeSessionInput) (*st
 		return nil, err
 	}
 	if s.sessions == nil {
-		return nil, huma.Error503ServiceUnavailable("sessions are not configured")
+		return nil, errServiceUnavailable("Sessions unavailable", "Session tracking isn't set up, so this session can't be revoked right now.")
 	}
 	// Deliberately idempotent: revoking an already-dead session is a success, not a 404.
 	// The list an admin is acting on can go stale between render and click (the session
