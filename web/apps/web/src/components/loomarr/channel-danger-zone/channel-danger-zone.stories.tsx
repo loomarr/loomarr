@@ -5,7 +5,7 @@ import { ChannelDangerZone } from "./channel-danger-zone";
 const noop = () => {};
 
 // The destructive-actions section (frontend-design §6): pause/resume plus a
-// typed-confirmation delete, isolated with onair styling.
+// two-step confirm delete, isolated with onair styling.
 const meta = {
   title: "Loomarr/ChannelDangerZone",
   component: ChannelDangerZone,
