@@ -58,9 +58,12 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {(entry.enum ?? []).map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
+            {/* Prefer the registry-owned {value,label} options (config-design §5) so the
+                dropdown shows "OpenAI"/"Emby", not the raw stored value. Fall back to the
+                bare value list for any enum that ships no labels. */}
+            {(entry.enumOptions ?? (entry.enum ?? []).map((v) => ({ value: v, label: v }))).map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -83,7 +86,8 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
   };
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    // `group` so the audit line can reveal on hover/focus of the whole field (below).
+    <div className={cn("group flex flex-col gap-1.5", className)}>
       <div className="flex items-center gap-2">
         <Label htmlFor={id}>{humanizeSettingKey(entry.key)}</Label>
         {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
@@ -136,11 +140,14 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
         </p>
       )}
 
-      {/* "changed by … · when" (§5 field anatomy). Only for a value a PERSON set: an
-          env pin or a built-in default has no author, and inventing one would imply a
-          human decision that never happened. */}
+      {/* "changed by … · when" (§5 field anatomy). Audit provenance is signal when you're
+          auditing, noise at rest — so it's revealed on hover/focus of the field rather than
+          costing a permanent line under every control (config-design §5). It stays in the DOM
+          (opacity, not conditional render) so it's reachable by keyboard (focus-within) and
+          screen readers; the transition is frozen under reduced-motion. Only for a value a
+          PERSON set: an env pin or built-in default has no author to name. */}
       {entry.updatedAt && (
-        <p className="text-muted-foreground text-xs">
+        <p className="pointer-events-none text-muted-foreground text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
           {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
           {formatRelative(entry.updatedAt)}
         </p>

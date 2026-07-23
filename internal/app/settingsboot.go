@@ -71,8 +71,8 @@ func (r resolved) libraryConn() func() (string, string) {
 func (r resolved) seerrConn() func() (string, string) {
 	return func() (string, string) { return r.str("seerr.url"), r.str("seerr.api_key") }
 }
-func (r resolved) tunarrConn() func() (string, string) {
-	return func() (string, string) { return r.str("tunarr.url"), r.str("tunarr.api_key") }
+func (r resolved) tunarrConn() func() string {
+	return func() string { return r.str("tunarr.url") }
 }
 
 // bootSettings builds the settings runtime at startup (config-design §11 Phase 1):

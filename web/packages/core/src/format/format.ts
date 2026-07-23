@@ -48,9 +48,24 @@ const formatPercent = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 // formatPercent, so a call site declares which convention its number follows.
 const formatPercentPoints = (points: number): string => `${Math.round(points)}%`;
 
-// "5 GiB" — VRAM and model sizes. Trivial today; centralized because it renders in the
-// model picker's summary AND per-row, and will render again in the Expo app.
-const formatGiB = (n: number): string => `${n} GiB`;
+// "5 GiB" — VRAM and model sizes. Rounds to one decimal: a raw probe size like
+// 4.866521958261728 must not leak into the UI (it did, in the model picker). Centralized
+// because it renders in the picker's summary AND per-row, and will render in the Expo app.
+const formatGiB = (n: number): string => `${Math.round(n * 10) / 10} GiB`;
+
+// A large count compacted: 2854700 → "2.9M", 1200 → "1.2K", 640 → "640". Used for the
+// Hugging Face download/like counts in the model-discover list, where the raw number is
+// noise — the operator only needs the order of magnitude to gauge popularity. Negative
+// or non-finite guards to "0" so a bad value never renders "NaN".
+const formatCompactCount = (n: number): string => {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n < 1000) return `${Math.round(n)}`;
+  if (n < 1_000_000) return `${trimZero(n / 1000)}K`;
+  return `${trimZero(n / 1_000_000)}M`;
+};
+
+// One decimal, but drop a trailing ".0": 2.0 → "2", 2.9 → "2.9".
+const trimZero = (n: number): string => n.toFixed(1).replace(/\.0$/, "");
 
 // "1 session" · "3 sessions". English-only, matching the rest of the UI copy.
 const pluralize = (n: number, singular: string, plural = `${singular}s`): string =>
@@ -142,6 +157,7 @@ export type { Instant };
 export {
   channelNumber,
   formatClipDuration,
+  formatCompactCount,
   formatDuration,
   formatEpgTime,
   formatGiB,

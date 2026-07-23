@@ -26,6 +26,12 @@ their accepted payloads captured, then DELETEd. **Emby verified reverted** to it
 1. **The xmltv provider URL field is `Path`** (not `Url`). Confirmed accepted (200). The adapter's
    `listingProvider{Type,Path}` shape was already correct.
 2. **The m3u tuner URL field is `Url`.** Correct as written.
+   - **`FriendlyName` is REQUIRED on the add** (the capture pins `"loomarr"`). Emby 4.10 **404s**
+     the add when it's omitted — a distinct failure from the fetch-validation 500 in #3. The
+     adapter's `tunerHost` struct originally modeled only `{Type, Url}` ("only the fields the
+     idempotency check needs"), which drifted from THIS captured payload and made every real
+     `AddTuner` 404. Re-added `FriendlyName` + a regression test (2026-07). Lesson: the struct is a
+     lossy remembering; `tuner_add_request.json` is the truth — model every field it carries.
 3. **Emby validates the M3U tuner by FETCHING the playlist synchronously at registration.** An
    unreachable URL → **HTTP 500, no row created** (verified: `localhost:8000` — Emby's own host —
    500s cleanly). So a real connect requires a Tunarr URL reachable from the media-server's network.

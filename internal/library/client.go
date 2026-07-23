@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -241,7 +242,15 @@ func (c *Client) do(req *http.Request, out any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("%s %s: status %d", req.Method, req.URL.Path, resp.StatusCode)
+		// Include a snippet of the response body — a bare "status 500" hides the
+		// media server's own explanation (e.g. Emby's reason for rejecting a tuner
+		// add), which is exactly what an operator needs to fix a wiring failure.
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := strings.TrimSpace(string(snippet))
+		if msg == "" {
+			return fmt.Errorf("%s %s: status %d", req.Method, req.URL.Path, resp.StatusCode)
+		}
+		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, msg)
 	}
 	if out == nil {
 		return nil

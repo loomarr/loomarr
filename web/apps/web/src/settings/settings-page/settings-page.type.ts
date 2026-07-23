@@ -18,8 +18,12 @@ interface SettingsPageProps {
   // Rendered above the blocks — Connections puts the re-runnable checklist here (§5).
   children?: ReactNode;
   // Rendered below the blocks, for things that read as a consequence of the settings
-  // above: the AI page's model picker only makes sense once a provider is chosen.
-  footer?: ReactNode;
+  // above: the AI page's model picker only makes sense once a provider is chosen. A
+  // render prop so the footer can react to LIVE edits — it receives `liveValue(key)`,
+  // the current value of any key honoring unsaved edits (so the model picker hides the
+  // instant the provider dropdown flips to OpenAI, not only after Save). A plain
+  // ReactNode is still accepted for footers that need no live state.
+  footer?: ReactNode | ((ctx: { liveValue: (key: string) => string }) => ReactNode);
 }
 
 export type { SettingsBlock, SettingsPageProps };

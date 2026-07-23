@@ -44,12 +44,19 @@ type LiveTV interface {
 
 // --- wire types (pinned to the Phase-10 capture; see fixtures/livetv/) ---
 
-// tunerHost is a /LiveTv/TunerHosts entry. Only the fields the idempotency check
-// and registration need are modeled.
+// tunerFriendlyName labels the Tunarr tuner host in the media server's dashboard.
+// Pinned lowercase to match the accepted Phase-0 capture (tuner_add_request.json).
+const tunerFriendlyName = "loomarr"
+
+// tunerHost is a /LiveTv/TunerHosts entry. FriendlyName is REQUIRED on the add:
+// the Phase-0 capture (fixtures/livetv/tuner_add_request.json) pins the accepted
+// body as {Type, Url, FriendlyName:"loomarr"}, and Emby 4.10 rejects an add that
+// omits it (404 — distinct from the 500 it returns for a valid-but-unreachable URL).
 type tunerHost struct {
-	ID   string `json:"Id,omitempty"`
-	Type string `json:"Type"` // "m3u"
-	URL  string `json:"Url"`
+	ID           string `json:"Id,omitempty"`
+	Type         string `json:"Type"` // "m3u"
+	URL          string `json:"Url"`
+	FriendlyName string `json:"FriendlyName,omitempty"`
 }
 
 // listingProvider is a /LiveTv/ListingProviders entry.
@@ -155,7 +162,10 @@ func (c *Client) RescanTuner(ctx context.Context, tunarrM3U string) error {
 // AddTuner registers Tunarr as an m3u tuner host (§6 — M3U preferred over
 // HDHomeRun emulation).
 func (c *Client) AddTuner(ctx context.Context, tunarrM3U string) error {
-	body := tunerHost{Type: "m3u", URL: tunarrM3U}
+	// FriendlyName is part of the pinned accepted payload — Emby 4.10 404s the add
+	// without it. The pinned capture used the lowercase "loomarr"
+	// (fixtures/livetv/tuner_add_request.json).
+	body := tunerHost{Type: "m3u", URL: tunarrM3U, FriendlyName: tunerFriendlyName}
 	req, err := c.newJSONRequest(ctx, http.MethodPost, "/LiveTv/TunerHosts", body)
 	if err != nil {
 		return err

@@ -326,6 +326,41 @@ components:
       required:
         - status
       type: object
+    DiscoverModelView:
+      additionalProperties: false
+      properties:
+        downloads:
+          description: Source popularity (for ordering/display)
+          format: int64
+          type: integer
+        fit:
+          description: fits|tight|wont_fit against detected VRAM
+          type: string
+        id:
+          description: Source repo id, e.g. unsloth/Qwen3.5-4B-GGUF
+          type: string
+        label:
+          description: Human-friendly name, e.g. Qwen3.5 4B
+          type: string
+        pullRef:
+          description: Model ref to POST to /pull — the bare repo (e.g. hf.co/unsloth/Qwen3.5-4B-GGUF); Ollama pulls its latest tag
+          type: string
+        quant:
+          description: The build we sized against — Ollama's latest resolves to it (e.g. Q4_K_M). Informational; the pull is by bare repo ref.
+          type: string
+        sizeGiB:
+          description: Sized build's on-disk size (VRAM proxy) — what latest downloads
+          format: double
+          type: number
+      required:
+        - id
+        - label
+        - quant
+        - pullRef
+        - sizeGiB
+        - fit
+        - downloads
+      type: object
     DocSummary:
       additionalProperties: false
       properties:
@@ -751,6 +786,9 @@ components:
           type: boolean
         tag:
           type: string
+        tools:
+          description: Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable
+          type: boolean
         why:
           type: string
       required:
@@ -760,6 +798,7 @@ components:
         - fit
         - pulled
         - runtimeOk
+        - tools
         - recommended
         - why
       type: object
@@ -1576,8 +1615,16 @@ components:
         doc:
           type: string
         enum:
+          description: Enum values (the closed set) — labels are in enumOptions.
           items:
             type: string
+          type:
+            - array
+            - "null"
+        enumOptions:
+          description: Enum choices with display labels (config-design §5).
+          items:
+            $ref: "#/components/schemas/SettingEnumOption"
           type:
             - array
             - "null"
@@ -1604,6 +1651,15 @@ components:
         set:
           description: "For secrets: whether a value is stored."
           type: boolean
+        showWhen:
+          additionalProperties:
+            items:
+              type: string
+            type:
+              - array
+              - "null"
+          description: "Conditional visibility: show only when a named key's current value is listed (§5)."
+          type: object
         updatedAt:
           description: RFC3339; empty for env/system writes.
           type: string
@@ -1621,6 +1677,17 @@ components:
         - advanced
         - secret
         - doc
+      type: object
+    SettingEnumOption:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+      required:
+        - value
+        - label
       type: object
     SettingResult:
       additionalProperties: false
@@ -1854,6 +1921,29 @@ components:
           type: integer
       required:
         - synced
+      type: object
+    System-llm-discoverResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/System-llm-discoverResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        models:
+          items:
+            $ref: "#/components/schemas/DiscoverModelView"
+          type:
+            - array
+            - "null"
+        sourceOk:
+          description: False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state
+          type: boolean
+      required:
+        - models
+        - sourceOk
       type: object
     System-llm-pullResponse:
       additionalProperties: false
@@ -3294,6 +3384,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: LLM host probe + model catalog
+      tags:
+        - system
+  /v1/system/llm/discover:
+    get:
+      description: "Admin only. Returns the most-popular downloadable GGUF models (Hugging Face) that are COMPATIBLE with this machine, ranked best-first (§8.1): each repo's best-fitting quant is chosen against detected VRAM and repos where nothing fits are dropped. Each result carries a pullRef to hand to POST /pull. Tool-capability is confirmed only AFTER the model is pulled and probed. Best-effort: if the source is unreachable the list is empty (browse on huggingface.co)."
+      operationId: system-llm-discover
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/System-llm-discoverResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Compatible downloadable local models
       tags:
         - system
   /v1/system/llm/pull:

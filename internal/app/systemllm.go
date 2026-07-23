@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
@@ -137,7 +139,20 @@ type systemLLMService struct {
 	bus          *events.Bus
 	log          *slog.Logger
 	newID        func() string
+
+	// discoverCache memoizes the machine-compatible download list. Building it fans out
+	// N per-repo calls to Hugging Face, and HF rate-limits an anonymous IP (429) — so a
+	// naive "fetch on every AI-page load" trips the limit fast. A short TTL keyed by
+	// detected VRAM makes reloads instant and keeps us a good HF citizen; a fresh pull
+	// (which changes what's installed, not what's downloadable) doesn't need to bust it.
+	discoverMu    sync.Mutex
+	discoverAt    time.Time
+	discoverVRAM  float64
+	discoverCache []api.DiscoverModelView
 }
+
+// discoverTTL is how long a compatible-download list is reused before re-hitting HF.
+const discoverTTL = 10 * time.Minute
 
 // prober builds a Prober against the CURRENT Ollama base (cheap; stateless).
 func (s *systemLLMService) prober() *llm.Prober { return llm.NewProber(s.ollamaBase()) }
@@ -165,7 +180,7 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 			out.Catalog = append(out.Catalog, api.LLMModelView{
 				Tag: e.Tag, Label: e.Label, VRAMGiB: e.ApproxVRAMGiB,
 				Fit: string(e.Fit), Pulled: e.Pulled, RuntimeOK: e.RuntimeOK,
-				Recommended: e.Recommended, Why: e.Why,
+				Tools: e.Tools, Recommended: e.Recommended, Why: e.Why,
 			})
 		}
 	}
@@ -317,6 +332,44 @@ func (s *systemLLMService) Test(ctx context.Context, provider, baseURL, apiKey s
 		apiKey = s.storedKeyFor(ctx, provider)
 	}
 	return llm.ValidateKey(ctx, hp.BaseURL, apiKey)
+}
+
+// Discover returns downloadable local models compatible with THIS machine (§8.1):
+// popular Hugging Face GGUF repos sized against detected VRAM, best-fitting quant
+// chosen, ranked best-first. It probes VRAM the same way the local catalog does, so
+// the ranking matches the installed list's fit verdicts. A source outage logs +
+// returns the error (the handler degrades it to an empty list + a "browse on
+// huggingface.co" link); it never fails the page.
+func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelView, error) {
+	probe := s.prober().Probe(ctx)
+	vram := probe.VRAMGiB
+
+	// Serve a fresh-enough cached list for the same VRAM without re-hitting HF. This is
+	// what stops repeated AI-page loads from tripping HF's anonymous rate limit (429).
+	s.discoverMu.Lock()
+	if s.discoverCache != nil && s.discoverVRAM == vram && time.Since(s.discoverAt) < discoverTTL {
+		cached := s.discoverCache
+		s.discoverMu.Unlock()
+		return cached, nil
+	}
+	s.discoverMu.Unlock()
+
+	models, err := llm.DiscoverCompatible(ctx, vram)
+	if err != nil {
+		s.log.Warn("llm discover failed", "err", err)
+		return nil, err
+	}
+	out := make([]api.DiscoverModelView, 0, len(models))
+	for _, m := range models {
+		out = append(out, api.DiscoverModelView{
+			ID: m.ID, Label: m.Label, Quant: m.Quant, PullRef: m.PullRef,
+			SizeGiB: m.SizeGiB, Fit: string(m.Fit), Downloads: m.Downloads,
+		})
+	}
+	s.discoverMu.Lock()
+	s.discoverCache, s.discoverVRAM, s.discoverAt = out, vram, time.Now()
+	s.discoverMu.Unlock()
+	return out, nil
 }
 
 func (s *systemLLMService) Pull(ctx context.Context, model string) (string, error) {

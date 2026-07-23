@@ -22,32 +22,60 @@ func TestClassifyFit(t *testing.T) {
 	}
 }
 
-func TestVersionAtLeast(t *testing.T) {
-	tests := []struct {
-		have, want string
-		ok         bool
-	}{
-		{"0.14.0", "0.14.0", true},
-		{"0.14.1", "0.14.0", true},
-		{"0.13.5", "0.14.0", false}, // the qwen3.5 gate
-		{"0.14.0", "", true},        // no minimum
-		{"", "0.14.0", false},       // unknown runtime, has a minimum → can't confirm
-		{"1.0.0", "0.14.0", true},
-		{"0.14.0-rc1", "0.14.0", true}, // pre-release suffix trimmed
-	}
-	for _, tt := range tests {
-		if got := versionAtLeast(tt.have, tt.want); got != tt.ok {
-			t.Errorf("versionAtLeast(%q,%q) = %v, want %v", tt.have, tt.want, got, tt.ok)
-		}
+// installed is a test helper: an InstalledModel with the size (in GiB) and params a
+// scenario needs, tool-capable by default. The catalog is built LIVE from these — the
+// whole point of §8.1 — so tests seed Probe.Installed, never a hardcoded catalog.
+func installed(tag string, gib float64, params string, tools bool) InstalledModel {
+	return InstalledModel{
+		Tag:           tag,
+		SizeBytes:     int64(gib * bytesPerGiB),
+		VRAMGiB:       gib,
+		ParameterSize: params,
+		Family:        "test",
+		Quant:         "Q4_K_M",
+		Tools:         tools,
 	}
 }
 
-// The recommendation must be the best model that BOTH fits and the runtime supports.
+// The catalog is built ONLY from installed models, and only the tool-capable ones —
+// a model Ollama doesn't report as tool-calling (e.g. a DeepSeek-R1 build) is useless
+// for grounded suggestions and must never appear (§8.1).
+func TestAnnotateCatalog_OnlyToolCapableInstalled(t *testing.T) {
+	p := Probe{
+		VRAMGiB:   12,
+		Reachable: true,
+		Installed: []InstalledModel{
+			installed("qwen3:8b", 5.2, "8B", true),
+			installed("deepseek-r1:14b", 9.0, "14B", false), // no tools → excluded
+		},
+	}
+	entries := annotateCatalog(p)
+	if len(entries) != 1 {
+		t.Fatalf("got %d catalog entries, want 1 (only the tool-capable model)", len(entries))
+	}
+	if entries[0].Tag != "qwen3:8b" {
+		t.Errorf("kept %q, want qwen3:8b (the only tool-capable model)", entries[0].Tag)
+	}
+	if !entries[0].Pulled || !entries[0].RuntimeOK {
+		t.Errorf("installed model must be Pulled + RuntimeOK, got pulled=%v runtimeOk=%v",
+			entries[0].Pulled, entries[0].RuntimeOK)
+	}
+}
+
+// Among the models that fit, the recommendation is the largest (bigger ⇒ more capable
+// grounding, within the VRAM budget). A model that won't fit is never recommended.
 func TestAnnotateCatalog_Recommendation(t *testing.T) {
-	// 12GB card, current Ollama that pre-dates qwen3.5's requirement (0.13.5 < 0.14.0),
-	// nothing pulled. Expect qwen3:8b recommended: qwen3.5 is runtime-blocked, qwen3:14b
-	// is "tight" at 12.1 vs 12 (needs headroom), so the best comfortable+supported is 8b.
-	p := Probe{VRAMGiB: 12, OllamaVersion: "0.13.5", Reachable: true}
+	// 12GB card. 8b (5.2) and 4b (2.6) both fit comfortably; 14b (12.1) is over the
+	// card. Best comfortable fit is the larger of {8b, 4b} → 8b.
+	p := Probe{
+		VRAMGiB:   12,
+		Reachable: true,
+		Installed: []InstalledModel{
+			installed("qwen3:4b", 2.6, "4B", true),
+			installed("qwen3:8b", 5.2, "8B", true),
+			installed("qwen3:14b", 12.1, "14B", true), // won't fit (weights > 12GB)
+		},
+	}
 	entries := annotateCatalog(p)
 	var rec *CatalogEntry
 	for i := range entries {
@@ -62,39 +90,34 @@ func TestAnnotateCatalog_Recommendation(t *testing.T) {
 		t.Fatal("no model recommended")
 	}
 	if rec.Tag != "qwen3:8b" {
-		t.Errorf("recommended = %q, want qwen3:8b (qwen3.5 runtime-blocked, 14b tight)", rec.Tag)
+		t.Errorf("recommended = %q, want qwen3:8b (largest that fits comfortably)", rec.Tag)
 	}
-	// qwen3.5 must be present but runtime-blocked (not recommended).
+	// The 14b must be present but flagged won't-fit and never recommended.
 	for _, e := range entries {
-		if e.Tag == "qwen3.5:9b" {
-			if e.RuntimeOK {
-				t.Error("qwen3.5:9b should be runtime-blocked on Ollama 0.13.5")
+		if e.Tag == "qwen3:14b" {
+			if e.Fit != FitWontFit {
+				t.Errorf("qwen3:14b fit = %q, want wont_fit on a 12GB card", e.Fit)
 			}
 			if e.Recommended {
-				t.Error("a runtime-blocked model must not be recommended")
+				t.Error("a won't-fit model must not be recommended")
 			}
 		}
 	}
 }
 
-// On a newer runtime, the current-gen qwen3.5 wins.
-func TestAnnotateCatalog_NewerRuntimePrefersCurrentGen(t *testing.T) {
-	p := Probe{VRAMGiB: 12, OllamaVersion: "0.14.2", Reachable: true, PulledModels: []string{"qwen3:8b"}}
-	entries := annotateCatalog(p)
-	for _, e := range entries {
-		if e.Recommended && e.Tag != "qwen3.5:9b" {
-			t.Errorf("recommended = %q, want qwen3.5:9b on a supporting runtime", e.Tag)
-		}
-		if e.Tag == "qwen3:8b" && !e.Pulled {
-			t.Error("qwen3:8b should be marked pulled")
-		}
-	}
-}
-
-// A tiny/no GPU: nothing "fits", but we still recommend the best tight+supported
-// model rather than leaving the user with no guidance.
+// A tiny/no GPU: nothing fits comfortably, but we still recommend the best tight fit
+// rather than leaving the user with no guidance.
 func TestAnnotateCatalog_LowVRAMStillRecommends(t *testing.T) {
-	p := Probe{VRAMGiB: 5.0, OllamaVersion: "0.13.5", Reachable: true}
+	// 5GB card. llama3.1:8b (4.9) fits tight (≤5 weights, but < headroom); the 14b
+	// (9.0) won't fit at all. Recommend the tight-but-runnable one.
+	p := Probe{
+		VRAMGiB:   5.0,
+		Reachable: true,
+		Installed: []InstalledModel{
+			installed("llama3.1:8b", 4.9, "8B", true),
+			installed("qwen3:14b", 9.0, "14B", true), // wont_fit
+		},
+	}
 	entries := annotateCatalog(p)
 	var rec string
 	for _, e := range entries {
@@ -105,8 +128,15 @@ func TestAnnotateCatalog_LowVRAMStillRecommends(t *testing.T) {
 	if rec == "" {
 		t.Fatal("expected a fallback recommendation even when nothing fits comfortably")
 	}
-	// llama3.1:8b (4.9) is the only one at/under 5.0GB weights → the others are wont_fit.
 	if rec != "llama3.1:8b" {
 		t.Errorf("low-VRAM recommendation = %q, want llama3.1:8b", rec)
+	}
+}
+
+// Nothing installed (or nothing tool-capable) → an empty catalog and no recommendation.
+// The UI shows the browse-to-download surface instead of a false recommendation.
+func TestAnnotateCatalog_NoneInstalled(t *testing.T) {
+	if got := annotateCatalog(Probe{VRAMGiB: 12, Reachable: true}); len(got) != 0 {
+		t.Errorf("empty Installed → %d entries, want 0", len(got))
 	}
 }

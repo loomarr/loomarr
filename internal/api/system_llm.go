@@ -40,6 +40,25 @@ type SystemLLMService interface {
 	// Pull starts a background Ollama pull of a catalog model, streaming progress
 	// over the event bus. Returns a job id. ErrNotLocal if not a local provider.
 	Pull(ctx context.Context, model string) (jobID string, err error)
+	// Discover returns downloadable local models that are COMPATIBLE with this machine,
+	// ranked best-first — the most-popular GGUF repos, each sized against detected VRAM
+	// with its best-fitting quant chosen, repos where nothing fits dropped. Best-effort:
+	// a source failure returns an empty list + error so the UI degrades to a link.
+	Discover(ctx context.Context) ([]DiscoverModelView, error)
+}
+
+// DiscoverModelView is one downloadable local-model candidate, already sized + fit-ranked
+// for this machine (§8.1). VRAM fit IS known (from the chosen quant's real file size);
+// tool-capability is confirmed only after it is pulled and probed. PullRef is the exact
+// argument to hand back to Pull.
+type DiscoverModelView struct {
+	ID        string  `json:"id" doc:"Source repo id, e.g. unsloth/Qwen3.5-4B-GGUF"`
+	Label     string  `json:"label" doc:"Human-friendly name, e.g. Qwen3.5 4B"`
+	Quant     string  `json:"quant" doc:"The build we sized against — Ollama's latest resolves to it (e.g. Q4_K_M). Informational; the pull is by bare repo ref."`
+	PullRef   string  `json:"pullRef" doc:"Model ref to POST to /pull — the bare repo (e.g. hf.co/unsloth/Qwen3.5-4B-GGUF); Ollama pulls its latest tag"`
+	SizeGiB   float64 `json:"sizeGiB" doc:"Sized build's on-disk size (VRAM proxy) — what latest downloads"`
+	Fit       string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
+	Downloads int64   `json:"downloads" doc:"Source popularity (for ordering/display)"`
 }
 
 // SelectRequest is a provider/model/key selection (§8.1). Provider "ollama" (or
@@ -100,6 +119,7 @@ type LLMModelView struct {
 	Fit         string  `json:"fit" doc:"fits|tight|wont_fit against detected VRAM"`
 	Pulled      bool    `json:"pulled" doc:"Already present in the local Ollama"`
 	RuntimeOK   bool    `json:"runtimeOk" doc:"Detected Ollama version supports this model"`
+	Tools       bool    `json:"tools" doc:"Ollama reports tool-calling — required to ground suggestions; a false model is shown but not selectable"`
 	Recommended bool    `json:"recommended"`
 	Why         string  `json:"why"`
 }
@@ -140,6 +160,49 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"background job; percent-complete streams over /v1/events (§8.1). Idempotent.",
 		Tags: []string{"system"},
 	}, s.systemLLMPull)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "system-llm-discover", Method: http.MethodGet, Path: "/v1/system/llm/discover",
+		Summary: "Compatible downloadable local models",
+		Description: "Admin only. Returns the most-popular downloadable GGUF models (Hugging Face) that " +
+			"are COMPATIBLE with this machine, ranked best-first (§8.1): each repo's best-fitting quant is " +
+			"chosen against detected VRAM and repos where nothing fits are dropped. Each result carries a " +
+			"pullRef to hand to POST /pull. Tool-capability is confirmed only AFTER the model is pulled and " +
+			"probed. Best-effort: if the source is unreachable the list is empty (browse on huggingface.co).",
+		Tags: []string{"system"},
+	}, s.systemLLMDiscover)
+}
+
+func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {
+	Body struct {
+		Models   []DiscoverModelView `json:"models"`
+		SourceOK bool                `json:"sourceOk" doc:"False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state"`
+	}
+}, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.systemLLM == nil {
+		return nil, huma.Error501NotImplemented("LLM model management not configured")
+	}
+	out := &struct {
+		Body struct {
+			Models   []DiscoverModelView `json:"models"`
+			SourceOK bool                `json:"sourceOk" doc:"False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state"`
+		}
+	}{}
+	models, err := s.systemLLM.Discover(ctx)
+	if err != nil {
+		// A source outage is a degraded, reportable state — not a 5xx, and NOT the same
+		// as "zero compatible models". sourceOk=false lets the UI say "couldn't reach the
+		// catalog, browse on huggingface.co" instead of the misleading "none found".
+		out.Body.SourceOK = false
+		out.Body.Models = nil
+		return out, nil
+	}
+	out.Body.SourceOK = true
+	out.Body.Models = models
+	return out, nil
 }
 
 func (s *Server) systemLLMStatus(ctx context.Context, _ *struct{}) (*struct {

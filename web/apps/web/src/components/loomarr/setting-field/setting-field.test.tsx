@@ -62,23 +62,45 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("");
   });
 
-  it("renders an enum as a select of its options", async () => {
+  it("renders an enum with registry-owned labels but emits the lowercase value", async () => {
     const onChange = vi.fn();
     render(
       <SettingField
-        entry={entry({ key: "library.flavor", kind: "enum", enum: ["emby", "jellyfin"] })}
+        entry={entry({
+          key: "library.flavor",
+          kind: "enum",
+          enum: ["emby", "jellyfin"],
+          enumOptions: [
+            { value: "emby", label: "Emby" },
+            { value: "jellyfin", label: "Jellyfin" },
+          ],
+        })}
         value="jellyfin"
         onChange={onChange}
       />,
     );
-    // The trigger shows the current value; the options are in a listbox opened on click.
+    // The trigger shows the capitalized LABEL, not the raw value.
     const trigger = screen.getByLabelText("Library flavor");
-    expect(trigger).toHaveTextContent("jellyfin");
+    expect(trigger).toHaveTextContent("Jellyfin");
 
     await userEvent.click(trigger);
-    expect(await screen.findByRole("option", { name: "emby" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("option", { name: "emby" }));
+    // Options show labels ("Emby"), not "emby".
+    expect(await screen.findByRole("option", { name: "Emby" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Emby" }));
+    // …but the stored value stays lowercase (the BE contract).
     expect(onChange).toHaveBeenCalledWith("emby");
+  });
+
+  it("falls back to the raw value when an enum ships no labels", async () => {
+    render(
+      <SettingField
+        entry={entry({ key: "sched.default_strategy", kind: "enum", enum: ["sequential", "shuffle"] })}
+        value="shuffle"
+        onChange={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Sched default strategy"));
+    expect(await screen.findByRole("option", { name: "sequential" })).toBeInTheDocument();
   });
 
   it("toggles a bool as a checkbox", async () => {

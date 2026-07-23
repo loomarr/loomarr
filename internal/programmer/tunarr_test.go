@@ -34,7 +34,7 @@ func TestEnsureChannel_Create_ReadsServerAssignedID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg-uuid")
+	c := programmer.New(srv.URL, "cfg-uuid")
 	id, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
 		Number: 42, Name: "Cartoons", Group: "Kids",
 	})
@@ -105,8 +105,8 @@ func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "") // EMPTY config id → resolve
-	for i := 0; i < 2; i++ {             // twice, to prove the resolve is cached
+	c := programmer.New(srv.URL, "") // EMPTY config id → resolve
+	for i := 0; i < 2; i++ {         // twice, to prove the resolve is cached
 		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: i + 1, Name: "Ch"}); err != nil {
 			t.Fatal(err)
 		}
@@ -128,7 +128,7 @@ func TestTranscodeConfigID_ErrorsWhenNoneExist(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "")
+	c := programmer.New(srv.URL, "")
 	if _, err := c.TranscodeConfigID(context.Background()); err == nil {
 		t.Error("expected an error when the instance reports no transcode configs")
 	}
@@ -142,7 +142,7 @@ func TestEnsureChannel_Update_PutsToID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	id, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
 		TunarrID: "existing-id", Number: 42, Name: "Renamed",
 	})
@@ -163,7 +163,7 @@ func TestGetChannel_404IsNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	_, ok, err := c.GetChannel(context.Background(), "gone")
 	if err != nil {
 		t.Fatalf("404 should not be an error: %v", err)
@@ -180,7 +180,7 @@ func TestGetChannel_ParsesFixture(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	ch, ok, err := c.GetChannel(context.Background(), "2540b613-10b1-4d78-ab35-ee48b313e359")
 	if err != nil || !ok {
 		t.Fatalf("GetChannel = ok=%v err=%v", ok, err)
@@ -256,7 +256,7 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 		"clip-9": "uuid-9",
 	})
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // → content uuid-1
 		{Kind: schedule.SlotPending, DurationMs: 0},                               // → flex
@@ -327,7 +327,7 @@ func TestGetLineup_EmptyChannel400IsEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	slots, err := c.GetLineup(context.Background(), "fresh")
 	if err != nil {
 		t.Fatalf("400-on-empty must be absorbed, got err: %v", err)
@@ -343,23 +343,8 @@ func TestDeleteChannel_404Idempotent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "", "cfg")
+	c := programmer.New(srv.URL, "cfg")
 	if err := c.DeleteChannel(context.Background(), "gone"); err != nil {
 		t.Fatalf("deleting an absent channel must be a no-op, got %v", err)
-	}
-}
-
-func TestAPIKey_SentWhenSet(t *testing.T) {
-	var authHeader string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader = r.Header.Get("Authorization")
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	c := programmer.New(srv.URL, "secret-key", "cfg")
-	_, _, _ = c.GetChannel(context.Background(), "x")
-	if authHeader != "Bearer secret-key" {
-		t.Errorf("Authorization = %q, want Bearer secret-key", authHeader)
 	}
 }

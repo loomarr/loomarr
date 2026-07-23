@@ -1,13 +1,19 @@
-import { settingsApi } from "@loomarr/api";
+import { settingsApi, setupApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ErrorState, SettingsFields, SettingsSaveBar } from "@/components/loomarr";
+import { useEffect, useState } from "react";
+import { ConnectionBlock, ErrorState, SettingsFields, SettingsSaveBar } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import type { SettingsPageProps } from "./settings-page.type";
 
 // One Settings page: several blocks, ONE save bar (config-design §5). The page owns the
 // edit state precisely because the save unit is the page — which is why SettingsFields is
 // controlled rather than owning a form of its own.
+//
+// A block that declares a `check` is a CONNECTION: it renders as a self-diagnosing
+// ConnectionBlock (the wizard's shell) — a status dot + inline Test verdict + Fix link,
+// collapsed when healthy and open when broken, so the page opens focused on what needs
+// attention. A block with no check (the AI/Channels/… field groups) stays a flat titled
+// section: there's no health state to triage, so collapsing it would only hide fields.
 //
 // Only CHANGED keys are sent, for the same reason the wizard does it: a stored secret
 // reads back empty (§4) and an empty-string PATCH would clear it (§9). Here that matters
@@ -17,33 +23,80 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
+  // Which connection blocks are expanded. Seeded once from the checklist (broken open,
+  // healthy collapsed); after that the operator drives it by clicking headers.
+  const [openBlocks, setOpenBlocks] = useState<Record<string, boolean> | undefined>();
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        // A saved connection key can flip its check — refresh both, like the wizard.
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
+        ]);
         setEdits({}); // saved values are the new baseline
       },
     },
   });
   const runTest = settingsApi.useSetupTest();
+  // Standing verdicts for connection blocks — only fetched when a block needs one (a page
+  // with no checks doesn't probe). The page reports each block's status without a click.
+  const hasChecks = blocks.some((b) => b.check);
+  const status = setupApi.useSetupStatus({ query: { enabled: hasChecks } });
+  const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+  const standingFor = (check?: string) => (check ? checks.find((c) => c.name === check) : undefined);
 
   const results = patch.data?.status === 200 ? (patch.data.data.results ?? []) : undefined;
   const byGroup = (group: string) => entries.filter((e) => e.group === group);
 
-  const test = (check: string) => {
+  // The live value of a key, honoring an unsaved edit over the resolved value — the same
+  // rule SettingsFields uses. Shared with the footer render prop so a consequence panel
+  // (the AI model picker) reacts to an unsaved provider switch immediately.
+  const liveValue = (key: string): string => edits[key] ?? entries.find((e) => e.key === key)?.value ?? "";
+
+  // Seed the open-set once the checklist first arrives: open the blocks whose check is
+  // failing/unknown, collapse the passing ones. If nothing is broken, open the first block
+  // so a fully-healthy page still shows one expanded connection rather than all-collapsed.
+  // Guarded by `openBlocks === undefined` so it runs exactly once — after that the operator
+  // owns which blocks are open, and a later refetch never yanks a block shut under them.
+  const checksReady = hasChecks && checks.length > 0;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed exactly once when checks first arrive; blocks/standingFor are read at that moment, never as reactive deps
+  useEffect(() => {
+    if (!checksReady || openBlocks !== undefined) return;
+    const connectionBlocks = blocks.filter((b) => b.check);
+    const broken = connectionBlocks.filter((b) => !standingFor(b.check)?.ok);
+    const initial: Record<string, boolean> = {};
+    for (const b of connectionBlocks) initial[b.group] = false;
+    if (broken.length > 0) for (const b of broken) initial[b.group] = true;
+    else if (connectionBlocks[0]) initial[connectionBlocks[0].group] = true;
+    setOpenBlocks(initial);
+  }, [checksReady]);
+
+  const toggleBlock = (group: string) =>
+    setOpenBlocks((p) => ({ ...(p ?? {}), [group]: !(p?.[group] ?? false) }));
+
+  // Test checks PERSISTED settings (/v1/setup/test takes only a check name and evaluates
+  // what's saved) — so unsaved edits would be tested against the OLD stored values. Typing a
+  // token and pressing Test would then probe with the empty stored token and 401, even though
+  // the right value is on screen. Save first when dirty, so Test always checks what you see.
+  // (This mirrors the wizard's checklist-step, which fixed the identical trap.) A save that
+  // fails surfaces via patch.error and leaves the edits for a retry.
+  const test = async (check: string) => {
     setTesting(check);
-    runTest.mutate(
-      { data: { check } },
-      {
-        onSuccess: (res) => {
-          if (res.status === 200)
-            setTestResult((p) => ({ ...p, [check]: { ok: res.data.ok, hint: res.data.hint } }));
-          setTesting(undefined);
-        },
-        onError: () => setTesting(undefined),
-      },
-    );
+    try {
+      if (Object.keys(edits).length > 0) {
+        await patch.mutateAsync({ data: { edits } });
+      }
+      const res = await runTest.mutateAsync({ data: { check } });
+      if (res.status === 200) {
+        setTestResult((p) => ({ ...p, [check]: { ok: res.data.ok, hint: res.data.hint } }));
+      }
+    } catch {
+      // patch/test surface their own error UI (patch.error below); the prior verdict stays.
+    } finally {
+      setTesting(undefined);
+    }
   };
 
   return (
@@ -56,40 +109,65 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
       <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
         {children}
 
-        {blocks.map((block) => {
-          const blockEntries = byGroup(block.group);
-          if (blockEntries.length === 0) return null;
-          const result = block.check ? testResult[block.check] : undefined;
-          return (
+        {/* Connection blocks (those with a check) stack tightly as self-diagnosing cards;
+            plain field groups keep their airy titled-section spacing. */}
+        {blocks.some((b) => b.check) && (
+          <div className="flex flex-col gap-3">
+            {blocks
+              .filter((b) => b.check && byGroup(b.group).length > 0)
+              .map((block) => {
+                const blockEntries = byGroup(block.group);
+                // A just-run Test wins; otherwise fall back to the checklist's standing
+                // verdict, so a block reports its health without a click (like the wizard).
+                const live = block.check ? testResult[block.check] : undefined;
+                const standing = standingFor(block.check);
+                const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+                return (
+                  <ConnectionBlock
+                    key={block.group}
+                    title={block.title}
+                    verdict={verdict}
+                    docHref={standing?.docHref}
+                    open={openBlocks?.[block.group] ?? false}
+                    onToggle={() => toggleBlock(block.group)}
+                    action={
+                      <Button
+                        variant="outline"
+                        onClick={() => test(block.check as string)}
+                        disabled={testing !== undefined}
+                      >
+                        {testing === block.check ? "Testing…" : "Test connection"}
+                      </Button>
+                    }
+                  >
+                    <SettingsFields
+                      entries={blockEntries}
+                      values={edits}
+                      onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                      results={results}
+                    />
+                  </ConnectionBlock>
+                );
+              })}
+          </div>
+        )}
+
+        {/* Plain field groups (no check) — a flat titled section each. */}
+        {blocks
+          .filter((b) => !b.check && byGroup(b.group).length > 0)
+          .map((block) => (
             <section key={block.group} className="flex flex-col gap-4">
               <h2 className="font-semibold text-lg">{block.title}</h2>
               <SettingsFields
-                entries={blockEntries}
+                entries={byGroup(block.group)}
                 values={edits}
                 onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
                 results={results}
               />
-              {block.check && (
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => test(block.check as string)}
-                    disabled={testing !== undefined}
-                  >
-                    {testing === block.check ? "Testing…" : "Test connection"}
-                  </Button>
-                  {result && (
-                    <p role="status" className={result.ok ? "text-lock text-sm" : "text-onair-300 text-sm"}>
-                      {result.hint ?? (result.ok ? "Connection OK" : "Connection failed")}
-                    </p>
-                  )}
-                </div>
-              )}
             </section>
-          );
-        })}
+          ))}
 
-        {footer}
+        {typeof footer === "function" ? footer({ liveValue }) : footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>

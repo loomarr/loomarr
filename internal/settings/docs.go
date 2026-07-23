@@ -63,7 +63,7 @@ func row(s Setting) string {
 		tags = append(tags, "required for "+string(s.Required))
 	}
 	if s.Kind == KindEnum {
-		tags = append(tags, "one of: "+strings.Join(s.Enum, " | "))
+		tags = append(tags, "one of: "+strings.Join(s.EnumValues(), " | "))
 	}
 	if len(tags) > 0 {
 		notes = notes + " _(" + strings.Join(tags, "; ") + ")_"

@@ -63,6 +63,18 @@ const (
 // error string (§4 redaction). A nil ValidateFunc means "any value of the Kind".
 type ValidateFunc func(any) error
 
+// EnumOption is one choice of a KindEnum setting: the stored VALUE (the closed-set
+// member the BE persists and validates) plus its display LABEL (config-design §5).
+// The label is a fact the registry owns — "openai" → "OpenAI", "emby" → "Emby" — so
+// it lives next to the value rather than being re-derived (and drifting) on the FE.
+type EnumOption struct {
+	Value string // the stored/validated value, e.g. "ollama"
+	Label string // the human label shown in the dropdown, e.g. "Ollama"
+}
+
+// opt is a terse constructor for the registry declarations: opt("ollama", "Ollama").
+func opt(value, label string) EnumOption { return EnumOption{Value: value, Label: label} }
+
 // Setting declares one app-managed configuration key (config-design §2). Declared
 // exactly once, in the registry; nothing constructs a Setting elsewhere.
 type Setting struct {
@@ -71,28 +83,43 @@ type Setting struct {
 	Group    Group
 	Kind     Kind
 	Default  any          // zero value of the Kind if a key has no default (e.g. a secret)
-	Enum     []string     // Kind == KindEnum: the closed set
+	Enum     []EnumOption // Kind == KindEnum: the closed set, each with a display label
 	Advanced bool         // hidden behind the per-page "Show advanced" toggle (§5)
 	Required Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
 	Validate ValidateFunc // shape validation; nil = Kind-default only
 	Doc      string       // one-liner: UI help text + generated docs (§2)
+	// ShowWhen makes a field CONDITIONAL (config-design §5): it is shown only when the
+	// current value of a named key is one of the listed values. Empty/nil = always shown.
+	// e.g. llm.api_key: {"llm.provider": {"openai"}} hides the key when Ollama is picked.
+	ShowWhen map[string][]string
 }
 
 // IsSecret reports whether the setting holds a secret (masked on read, never
 // echoed — §4). Kept as a method so callers don't special-case KindSecret.
 func (s Setting) IsSecret() bool { return s.Kind == KindSecret }
 
+// EnumValues returns just the stored values of an enum's options — for the
+// value-only consumers (validation, generated docs) that don't care about labels.
+func (s Setting) EnumValues() []string {
+	vals := make([]string, len(s.Enum))
+	for i, o := range s.Enum {
+		vals[i] = o.Value
+	}
+	return vals
+}
+
 // validateEnum checks a value against a KindEnum's closed set. Registry helper so
 // every enum setting gets the same fail-closed check without repeating it.
 func (s Setting) validateEnum(v any) error {
+	vals := s.EnumValues()
 	str, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("%s: expected one of %v, got non-string", s.Key, s.Enum)
+		return fmt.Errorf("%s: expected one of %v, got non-string", s.Key, vals)
 	}
-	for _, e := range s.Enum {
+	for _, e := range vals {
 		if str == e {
 			return nil
 		}
 	}
-	return fmt.Errorf("%s: %q is not one of %v", s.Key, str, s.Enum)
+	return fmt.Errorf("%s: %q is not one of %v", s.Key, str, vals)
 }

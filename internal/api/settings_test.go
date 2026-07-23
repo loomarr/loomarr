@@ -267,3 +267,111 @@ func TestSettings_SecretReveal(t *testing.T) {
 		t.Errorf("reveal rotated %q — reading a secret must never change it", fs.regen)
 	}
 }
+
+// fakeConnector records whether Connect fired and can be scripted to fail. It
+// stands in for both wiring connectors (LiveTV + media source) — enough surface
+// to prove the auto-wire fires (and stays non-fatal) after a connection save.
+type fakeConnector struct {
+	calls int
+	fail  bool
+}
+
+func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
+	c.calls++
+	if c.fail {
+		return false, false, context.DeadlineExceeded
+	}
+	return true, true, nil // something changed (tuner + listing added)
+}
+
+func (c *fakeConnector) Wired(context.Context) (bool, error) { return false, nil }
+
+func (c *fakeConnector) ConnectSource(context.Context) (string, int, error) {
+	c.calls++
+	if c.fail {
+		return "", 0, context.DeadlineExceeded
+	}
+	return "src1", 2, nil
+}
+
+// mediaSourceAdapter satisfies api.TunarrConnector (Connect returns id+count).
+type mediaSourceAdapter struct{ inner *fakeConnector }
+
+func (a mediaSourceAdapter) Connect(ctx context.Context) (string, int, error) {
+	return a.inner.ConnectSource(ctx)
+}
+
+func (a mediaSourceAdapter) LibrariesReady(context.Context) (bool, error) { return false, nil }
+
+func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string]string) *httptest.Server {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/s.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:         st,
+		Auth:          api.NewTokenAuthorizer(adminToken),
+		Log:           slog.New(slog.DiscardHandler),
+		Settings:      &fakeSettings{},
+		LiveTV:        live,
+		TunarrConnect: mediaSourceAdapter{inner: source},
+		LiveConfig:    func(k string) string { return cfg[k] },
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Saving a connection auto-wires Tunarr into the guide + library — no manual button
+// (config-design §5). Both connectors are idempotent, so running them on every
+// connection save is safe; the operator just saves and it's wired.
+func TestSettings_AutoWiresAfterConnectionSave(t *testing.T) {
+	configured := map[string]string{"tunarr.url": "http://tunarr:8000", "library.url": "http://emby:8096"}
+
+	t.Run("a connection save fires both wiring actions", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, configured)
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("patch → %d", resp.StatusCode)
+		}
+		if live.calls != 1 || source.calls != 1 {
+			t.Errorf("auto-wire didn't fire both: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+
+	t.Run("a non-connection save wires nothing", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		srv := newAutoWireServer(t, live, source, configured)
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"job.workers":"9"}}`)
+		if live.calls != 0 || source.calls != 0 {
+			t.Errorf("touched no connection key but wired: live=%d source=%d", live.calls, source.calls)
+		}
+	})
+
+	t.Run("a wiring failure never fails the save", func(t *testing.T) {
+		live, source := &fakeConnector{fail: true}, &fakeConnector{fail: true}
+		srv := newAutoWireServer(t, live, source, configured)
+		resp := do(t, srv, http.MethodPatch, "/v1/settings", adminToken,
+			`{"edits":{"library.url":"http://emby:8096"}}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("a wiring failure leaked into the save: %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("live TV wires even before the media server is set", func(t *testing.T) {
+		live, source := &fakeConnector{}, &fakeConnector{}
+		// Only Tunarr configured — livetv needs just tunarr.url; media source needs both.
+		srv := newAutoWireServer(t, live, source, map[string]string{"tunarr.url": "http://tunarr:8000"})
+		do(t, srv, http.MethodPatch, "/v1/settings", adminToken, `{"edits":{"tunarr.url":"http://tunarr:8000"}}`)
+		if live.calls != 1 {
+			t.Errorf("live TV should wire with only tunarr.url set: %d", live.calls)
+		}
+		if source.calls != 0 {
+			t.Errorf("media source should wait for library.url: %d", source.calls)
+		}
+	})
+}

@@ -30,7 +30,6 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `tunarr.url` (`TUNARR_URL`) | url | — | Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels. |
-| `tunarr.api_key` (`TUNARR_API_KEY`) | secret | (secret) | Tunarr API key. Usually not needed — leave blank unless your Tunarr requires one. |
 | `tunarr.transcode_config_id` (`TUNARR_TRANSCODE_CONFIG_ID`) | string | — | Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default. _(advanced)_ |
 
 ## Connections — TMDB
@@ -44,9 +43,9 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
 | `llm.provider` (`LLM_PROVIDER`) | enum | `ollama` | Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings. _(required for suggestions; one of: ollama \| openai)_ |
-| `llm.url` (`LLM_URL`) | url | — | The AI's address. For an OpenAI-compatible service, the base URL ending in /v1; for Ollama, its own host. |
-| `llm.model` (`LLM_MODEL`) | string | — | Which AI model to use (e.g. qwen3:8b). You can also pick one in the AI settings. |
-| `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for a hosted AI service (not needed for a local Ollama). Never shown again after saving. |
+| `llm.url` (`LLM_URL`) | url | — | The base URL of your OpenAI-compatible service, ending in /v1. |
+| `llm.model` (`LLM_MODEL`) | string | — | The model name for your hosted AI service (e.g. gpt-4o-mini). |
+| `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for your hosted AI service. Never shown again after saving. |
 | `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Automatically approve suggested downloads, with no review step. Off by default. _(advanced)_ |
 | `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |
 

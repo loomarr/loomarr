@@ -53,6 +53,11 @@ const ModelPicker = ({
             className={cn(
               "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
               isActive && "border-signal-tint-30",
+              // A model that can't run is dimmed as a whole — not merely a disabled
+              // button — so the row reads as "here but unavailable" at a glance (§8.1).
+              // Kept in the list on purpose: "why isn't X here?" is worse than seeing
+              // it greyed out with the reason next to it.
+              unusable && "opacity-55",
             )}
           >
             <div className="min-w-0 flex-1">

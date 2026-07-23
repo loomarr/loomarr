@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,7 +23,24 @@ type Probe struct {
 	GPUName       string   `json:"gpuName"`       // e.g. "NVIDIA GeForce RTX 3080 Ti"; "" = unknown
 	OllamaVersion string   `json:"ollamaVersion"` // e.g. "0.13.5"; "" = unreachable/unknown
 	PulledModels  []string `json:"pulledModels"`  // tags already present locally
-	Reachable     bool     `json:"reachable"`     // Ollama /api/version answered
+	// Installed is the RICH view of each pulled model — its on-disk size (a VRAM proxy),
+	// parameter size / family / quant (from /api/tags), and whether it advertises tool
+	// calling (from /api/show `capabilities`). The catalog is built LIVE from these, so
+	// there is no hardcoded model list to go stale: a model you pulled that can tool-call
+	// shows up, one that can't (e.g. DeepSeek-R1 in the official registry) does not.
+	Installed []InstalledModel `json:"installed"`
+	Reachable bool             `json:"reachable"` // Ollama /api/version answered
+}
+
+// InstalledModel is one locally-pulled model as reported by Ollama (§8.1).
+type InstalledModel struct {
+	Tag           string  `json:"tag"`           // exact pull tag, e.g. "qwen3:8b"
+	SizeBytes     int64   `json:"sizeBytes"`     // on-disk size — proxy for resident VRAM footprint
+	ParameterSize string  `json:"parameterSize"` // e.g. "7.6B" (details.parameter_size)
+	Family        string  `json:"family"`        // e.g. "qwen2" (details.family)
+	Quant         string  `json:"quant"`         // e.g. "Q4_K_M" (details.quantization_level)
+	Tools         bool    `json:"tools"`         // /api/show capabilities includes "tools"
+	VRAMGiB       float64 `json:"vramGiB"`       // SizeBytes → GiB (resident footprint proxy)
 }
 
 // Prober detects the machine + Ollama host. baseURL is the Ollama base
@@ -54,8 +72,91 @@ func (p *Prober) Probe(ctx context.Context) Probe {
 	if v, ok := p.ollamaVersion(ctx); ok {
 		out.OllamaVersion, out.Reachable = v, true
 	}
-	out.PulledModels = p.pulledModels(ctx) // nil on failure — fine
+	// Discover installed models live (tags → size/details; show → tool capability),
+	// then keep PulledModels as the flat tag list for the callers that only need it.
+	out.Installed = p.installedModels(ctx)
+	out.PulledModels = make([]string, 0, len(out.Installed))
+	for _, m := range out.Installed {
+		out.PulledModels = append(out.PulledModels, m.Tag)
+	}
 	return out
+}
+
+const bytesPerGiB = 1024 * 1024 * 1024
+
+// installedModels enumerates pulled models via /api/tags (name, size, details) and
+// annotates each with its tool-calling capability via /api/show. Best-effort: a model
+// whose /api/show fails is kept with Tools=false (it just won't be offered for grounding).
+func (p *Prober) installedModels(ctx context.Context) []InstalledModel {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/tags", nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var out struct {
+		Models []struct {
+			Name    string `json:"name"`
+			Size    int64  `json:"size"`
+			Details struct {
+				Family            string `json:"family"`
+				ParameterSize     string `json:"parameter_size"`
+				QuantizationLevel string `json:"quantization_level"`
+			} `json:"details"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil
+	}
+	models := make([]InstalledModel, 0, len(out.Models))
+	for _, m := range out.Models {
+		models = append(models, InstalledModel{
+			Tag:           m.Name,
+			SizeBytes:     m.Size,
+			ParameterSize: m.Details.ParameterSize,
+			Family:        m.Details.Family,
+			Quant:         m.Details.QuantizationLevel,
+			VRAMGiB:       float64(m.Size) / bytesPerGiB,
+			Tools:         p.modelHasTools(ctx, m.Name),
+		})
+	}
+	return models
+}
+
+// modelHasTools asks /api/show whether a model advertises tool calling. Ollama exposes
+// this as a `capabilities` array (values: completion, tools, vision, …). This is the
+// live, authoritative signal that replaces a hand-maintained "tool-callers" list.
+func (p *Prober) modelHasTools(ctx context.Context, model string) bool {
+	body, err := json.Marshal(map[string]string{"model": model})
+	if err != nil {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/show", strings.NewReader(string(body)))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var out struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false
+	}
+	return slices.Contains(out.Capabilities, "tools")
 }
 
 // Catalog returns the curated model catalog annotated for THIS machine (fit,
@@ -82,34 +183,6 @@ func (p *Prober) ollamaVersion(ctx context.Context) (string, bool) {
 		return "", false
 	}
 	return v.Version, true
-}
-
-func (p *Prober) pulledModels(ctx context.Context) []string {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/tags", nil)
-	if err != nil {
-		return nil
-	}
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-	var out struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil
-	}
-	tags := make([]string, 0, len(out.Models))
-	for _, m := range out.Models {
-		tags = append(tags, m.Name)
-	}
-	return tags
 }
 
 // nvidiaSMIVRAM reads the primary GPU's name + total VRAM via nvidia-smi. Returns
@@ -139,46 +212,6 @@ func nvidiaSMIVRAM(ctx context.Context) (string, float64, bool) {
 		return name, 0, false
 	}
 	return name, megs / 1024.0, true
-}
-
-// versionAtLeast reports whether have >= want, comparing dotted numeric segments
-// (0.14.0 >= 0.13.5). An empty want ⇒ true (no minimum). An unparseable/empty have
-// with a non-empty want ⇒ false (we can't confirm the runtime, so don't claim it).
-func versionAtLeast(have, want string) bool {
-	if want == "" {
-		return true
-	}
-	if have == "" {
-		return false
-	}
-	hs, ws := splitVersion(have), splitVersion(want)
-	for i := 0; i < len(ws); i++ {
-		var h int
-		if i < len(hs) {
-			h = hs[i]
-		}
-		if h != ws[i] {
-			return h > ws[i]
-		}
-	}
-	return true // equal through the compared segments
-}
-
-func splitVersion(v string) []int {
-	// Trim any pre-release/build suffix (e.g. "0.14.0-rc1" → "0.14.0").
-	if i := strings.IndexAny(v, "-+ "); i >= 0 {
-		v = v[:i]
-	}
-	segs := strings.Split(v, ".")
-	out := make([]int, 0, len(segs))
-	for _, s := range segs {
-		n, err := strconv.Atoi(strings.TrimSpace(s))
-		if err != nil {
-			break // stop at the first non-numeric segment
-		}
-		out = append(out, n)
-	}
-	return out
 }
 
 // pullProgress is one raw Ollama /api/pull streaming line.

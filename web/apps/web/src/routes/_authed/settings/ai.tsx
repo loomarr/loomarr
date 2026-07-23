@@ -7,7 +7,9 @@ const AiSettings = () => (
     description="The model that turns a sentence into a lineup, and the quota it works within."
     entries={useSettingsEntries()}
     blocks={[{ group: "ai", title: "Provider and model", check: "llm" }]}
-    footer={<AiModelSettings />}
+    // Render prop so the model picker reacts to the LIVE provider edit — it collapses to a
+    // hosted hint the moment the dropdown flips to OpenAI, not only after Save.
+    footer={({ liveValue }) => <AiModelSettings provider={liveValue("llm.provider")} />}
   />
 );
 

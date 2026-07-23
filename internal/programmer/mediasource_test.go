@@ -63,7 +63,7 @@ func (f *fakeTunarrMediaAPI) server(t *testing.T) *httptest.Server {
 }
 
 func newTunarrAt(url string) *Tunarr {
-	return NewDynamic(func() (string, string) { return url, "" }, "")
+	return NewDynamic(func() string { return url }, "")
 }
 
 func TestEnsureEmbySource_CreatesThenReuses(t *testing.T) {
