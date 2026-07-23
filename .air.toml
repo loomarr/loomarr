@@ -1,0 +1,37 @@
+# Air (github.com/air-verse/air) — dev-only live reload for the Loomarr backend.
+# Watches Go sources under cmd/ + internal/, rebuilds cmd/loomarr on change, and
+# restarts the running binary. Not a build/runtime dependency (§14): a dev tool, the
+# Go analogue of Vite's HMR — never imported, never shipped. Run from the repo root:
+#
+#   air
+#
+# The FE has its own Vite dev server (pnpm --filter @loomarr/web dev); Air only owns
+# the Go backend, so web/ is excluded to avoid pointless rebuilds on .ts edits.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build the dev binary into tmp/ (git-ignored). CGO off — the store uses modernc
+  # (pure-Go sqlite), so no C toolchain is needed for the dev build.
+  cmd = "go build -o ./tmp/loomarr-dev ./cmd/loomarr"
+  bin = "./tmp/loomarr-dev"
+  # Self-contained run command: the dev SQLite DB, same as the manual launch.
+  full_bin = "DATABASE_URL=sqlite://./loomarr-dev.db ./tmp/loomarr-dev"
+  # Rebuild only on backend Go source changes.
+  include_ext = ["go"]
+  exclude_dir = ["web", "tmp", "docs", "design", "node_modules", ".git", "internal/testkit/fixtures"]
+  exclude_regex = ["_test\\.go"]
+  # Don't restart on an in-progress rebuild; give the compile a moment to settle.
+  delay = 400
+  stop_on_error = true
+  # Send SIGINT so the server's graceful shutdown (context cancel) runs before restart.
+  send_interrupt = true
+  kill_delay = "2s"
+
+[log]
+  time = true
+
+[misc]
+  # Leave the last-built binary in place on exit for quick manual runs.
+  clean_on_exit = false
