@@ -16,11 +16,10 @@ func (s *Server) registerSetup(api huma.API) {
 		Tags: []string{"setup"},
 	}, s.setupStatus)
 
-	huma.Register(api, huma.Operation{
-		OperationID: "livetv-connect", Method: http.MethodPost, Path: "/v1/setup/livetv-connect",
-		Summary: "Wire Tunarr as a tuner + guide", Description: "Admin only. One-time, idempotent (§6).",
-		Tags: []string{"setup"},
-	}, s.livetvConnect)
+	// Note: there is no standalone livetv-connect route. Live TV wiring is idempotent and
+	// fully derived from the Tunarr connection, so it auto-runs on a Connections save
+	// (settings.go autoWireAfterSave) — a separate manual endpoint would be a redundant
+	// no-op. The wiring STATUS still surfaces via the `livetv` setup check above.
 
 	huma.Register(api, huma.Operation{
 		OperationID: "tunarr-connect", Method: http.MethodPost, Path: "/v1/setup/tunarr-connect",
@@ -92,9 +91,11 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 		check := SetupCheck{Name: "livetv", OK: wired, DocHref: "troubleshooting#livetv"}
 		if err != nil {
 			check.OK = false
-			check.Hint = "could not reach the media server's Live TV settings: " + err.Error()
+			check.Hint = "Couldn't reach the media server's Live TV settings. Check the media-server connection."
 		} else if !wired {
-			check.Hint = "Tunarr is not wired as a tuner + guide — run Connect (POST /v1/setup/livetv-connect)"
+			// Wiring is automatic on a Tunarr-connection save (config-design §6), so the fix
+			// is to (re)save that connection, not to run a separate action.
+			check.Hint = "Tunarr isn't registered as a tuner + guide yet. Re-save the Tunarr connection to wire it up."
 		}
 		out.Body.Checks = append(out.Body.Checks, check)
 	}
@@ -182,37 +183,6 @@ func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarr
 	}
 	out := &tunarrConnectOutput{}
 	out.Body.SourceID, out.Body.LibrariesEnabled = sourceID, enabled
-	return out, nil
-}
-
-type livetvConnectOutput struct {
-	Body struct {
-		TunerAdded   bool `json:"tunerAdded" doc:"An m3u tuner was registered this call"`
-		ListingAdded bool `json:"listingAdded" doc:"An xmltv guide was registered this call"`
-		AlreadyWired bool `json:"alreadyWired" doc:"Nothing changed — Tunarr was already wired (§6 idempotent)"`
-	}
-}
-
-// livetvConnect performs the one-time, idempotent Live TV wiring (§6). A second
-// call with Tunarr already registered is a no-op (alreadyWired=true).
-func (s *Server) livetvConnect(ctx context.Context, _ *struct{}) (*livetvConnectOutput, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	if s.livetv == nil || s.unconfigured("tunarr.url") {
-		return nil, errNotImplemented("Setup incomplete",
-			"Connect Tunarr in Settings before wiring up Live TV.",
-			"troubleshooting#livetv")
-	}
-	tunerAdded, listingAdded, err := s.livetv.Connect(ctx)
-	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Live TV wiring failed",
-			"Loomarr couldn't register the Live TV tuner and guide with Tunarr. Check that Tunarr is reachable and try again.", err)
-	}
-	out := &livetvConnectOutput{}
-	out.Body.TunerAdded = tunerAdded
-	out.Body.ListingAdded = listingAdded
-	out.Body.AlreadyWired = !tunerAdded && !listingAdded
 	return out, nil
 }
 
