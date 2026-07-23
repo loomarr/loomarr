@@ -1858,11 +1858,6 @@ components:
         hint:
           description: Actionable hint when not OK (§13)
           type: string
-        lastReceived:
-          additionalProperties:
-            type: string
-          description: Per-app webhook last-received (webhook check only)
-          type: object
         name:
           description: Integration key
           examples:
@@ -3108,7 +3103,7 @@ paths:
         - settings
   /v1/settings/secrets/{name}:
     get:
-      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN, WEBHOOK_SECRET — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
+      description: Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.
       operationId: secret-reveal
       parameters:
         - description: Which generated secret to reveal.
@@ -3120,7 +3115,6 @@ paths:
             enum:
               - session_secret
               - api_token
-              - webhook_secret
             type: string
       responses:
         "200":
@@ -3140,7 +3134,7 @@ paths:
         - settings
   /v1/settings/secrets/{name}/regenerate:
     post:
-      description: Admin only. Rotates SESSION_SECRET | API_TOKEN | WEBHOOK_SECRET with the §4 side-effects; the new value is returned only if displayable.
+      description: Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.
       operationId: secret-regenerate
       parameters:
         - description: Which generated secret to rotate.
@@ -3152,7 +3146,6 @@ paths:
             enum:
               - session_secret
               - api_token
-              - webhook_secret
             type: string
       responses:
         "200":

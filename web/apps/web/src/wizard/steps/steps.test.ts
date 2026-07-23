@@ -7,7 +7,6 @@ const green: SetupCheck[] = [
   check("media_server", true),
   check("tunarr", true),
   check("livetv", true),
-  check("webhook", true),
   check("tunarr_library", true),
 ];
 
@@ -27,9 +26,8 @@ describe("wizard step derivation", () => {
 
   it("maps each wiring check to its own step (livetv has no step — auto-wired on save)", () => {
     const ctx = { checks: green, isAuthenticated: true };
-    expect(isStepDone("webhooks", ctx)).toBe(true);
     expect(isStepDone("library", ctx)).toBe(true);
-    expect(isStepDone("webhooks", { ...ctx, checks: [check("webhook", false)] })).toBe(false);
+    expect(isStepDone("library", { ...ctx, checks: [check("tunarr_library", false)] })).toBe(false);
     // livetv is not a step — its check is reflected on the Tunarr connection, not gated here.
   });
 
@@ -37,12 +35,12 @@ describe("wizard step derivation", () => {
     const statuses = deriveStepStatuses({
       checks: [check("media_server", true), check("tunarr", true)],
       isAuthenticated: true,
-      currentId: "webhooks",
+      currentId: "library",
       skipped: new Set(["users"]),
     });
     expect(statuses.bootstrap).toBe("done");
     expect(statuses.checklist).toBe("done");
-    expect(statuses.webhooks).toBe("current");
+    expect(statuses.library).toBe("current");
     expect(statuses.users).toBe("skipped");
     expect(statuses.channel).toBe("pending");
   });

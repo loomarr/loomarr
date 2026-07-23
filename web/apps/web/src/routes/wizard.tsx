@@ -13,7 +13,6 @@ import {
   isStepDone,
   TunarrLibraryStep,
   UsersStep,
-  WebhookStep,
   WIZARD_STEPS,
 } from "@/wizard";
 
@@ -31,10 +30,6 @@ const COPY: Record<string, { title: string; description: string }> = {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
   },
-  webhooks: {
-    title: "Tell Sonarr and Radarr where to report",
-    description: "So Loomarr knows the moment a download lands, instead of polling and guessing.",
-  },
   library: {
     title: "Give Tunarr your library",
     description: "Without this, channels schedule slots that have no program to play.",
@@ -51,16 +46,13 @@ const COPY: Record<string, { title: string; description: string }> = {
 
 // A step the operator may pass on. Skipped reads neutral, never red (§6).
 //
-// Every WIRING step is here, not just webhooks. The blocking set is media_server +
-// tunarr (§13, config-design §6) — "the shortest honest path to a live channel" — and a
-// step that gates on a check the operator cannot satisfy is a dead end, because the
-// wizard offers only Back/Continue and the rail is not clickable: they are stranded on
-// that screen for good. An install with no *arr apps can never turn `webhook` green.
-//
-// It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling
-// slots with no program. (Live TV is no longer a step — it auto-wires on the Tunarr save —
-// so it can't strand anyone here either.)
-const SKIPPABLE = new Set(["webhooks", "library", "users"]);
+// The blocking set is media_server + tunarr (§13, config-design §6) — "the shortest honest
+// path to a live channel" — and a step that gates on a check the operator cannot satisfy is
+// a dead end, because the wizard offers only Back/Continue and the rail is not clickable:
+// they'd be stranded on that screen for good. It bit hardest on `library`, whose entire
+// purpose (§6) is to stop channels scheduling slots with no program. (Live TV is no longer a
+// step — it auto-wires on the Tunarr save — so it can't strand anyone here either.)
+const SKIPPABLE = new Set(["library", "users"]);
 
 const WizardScreen = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -99,8 +91,6 @@ const WizardScreen = () => {
         return <BootstrapStep onDone={() => goTo("checklist")} />;
       case "checklist":
         return <ChecklistStep openId={openConn} onToggle={toggleConn} />;
-      case "webhooks":
-        return <WebhookStep />;
       case "library":
         return <TunarrLibraryStep check={checkFor("tunarr_library")} />;
       case "users":

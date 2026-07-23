@@ -8,9 +8,9 @@ import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 // elsewhere are viewable on demand; the one with nothing to paste never is.
 //
 // Regeneration states its consequence BEFORE the click and requires a second confirm.
-// That is not ceremony: rotating WEBHOOK_SECRET silently breaks every Sonarr/Radarr hook
-// already configured, and rotating SESSION_SECRET signs everyone out including the person
-// clicking. An operator should learn that from the button, not from the aftermath.
+// That is not ceremony: rotating API_TOKEN breaks every script/automation using it, and
+// rotating SESSION_SECRET signs everyone out including the person clicking. An operator
+// should learn that from the button, not from the aftermath.
 const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, className }: SecretsPanelProps) => {
   const [confirming, setConfirming] = useState<SecretName | undefined>();
   const { copied, copy } = useCopied<SecretName>();
