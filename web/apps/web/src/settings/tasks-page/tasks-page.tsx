@@ -1,7 +1,9 @@
-import { type JobView, jobsApi } from "@loomarr/api";
+import { type JobView, jobsApi, toProblem } from "@loomarr/api";
 import { formatRelative, formatUntil } from "@loomarr/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil, Play } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
@@ -27,8 +29,23 @@ const zero = "0001-01-01T00:00:00Z"; // the Go zero time the BE omits/sends for 
 const isZero = (t?: string) => !t || t.startsWith("0001-01-01");
 
 const TasksPage = () => {
+  const queryClient = useQueryClient();
   const jobs = jobsApi.useJobsList({ query: { retry: false } });
-  const run = jobsApi.useJobsRun();
+  // After a Run-now, the job flips to running then records a fresh last-run/next-run. The
+  // scheduler also emits a `job` SSE frame that refetches the list, but that races a fast
+  // job (start→finish in ms); invalidating on the mutation's own success guarantees the
+  // table re-reads the outcome even when the frame is missed.
+  const run = jobsApi.useJobsRun({
+    mutation: {
+      onSuccess: (_data, { name }) => {
+        // A fast job finishes in ms with no obvious visual change, so confirm it ran and
+        // refetch the list (the SSE `job` frame does too, but this covers a missed frame).
+        toast.success(`Ran ${name}`);
+        return queryClient.invalidateQueries({ queryKey: jobsApi.getJobsListQueryKey() });
+      },
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't run the task"),
+    },
+  });
   const [editing, setEditing] = useState<JobView | undefined>();
 
   if (jobs.error) {

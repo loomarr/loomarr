@@ -44,6 +44,7 @@ const jobs: JobView[] = [
 // names that were triggered so the test can assert the right job was run.
 const stubFetch = () => {
   const runs: string[] = [];
+  let listGets = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
@@ -54,10 +55,11 @@ const stubFetch = () => {
         runs.push(run[1] as string);
         return Promise.resolve(jsonResponse(202, {}));
       }
+      if (method === "GET" && /\/v1\/jobs$/.test(u)) listGets += 1;
       return Promise.resolve(jsonResponse(200, { jobs }));
     }),
   );
-  return { runs };
+  return { runs, listCount: () => listGets };
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -75,16 +77,20 @@ describe("TasksPage", () => {
     expect(screen.getByText("no FILLER_DIR configured")).toBeInTheDocument();
   });
 
-  it("fires POST /v1/jobs/{name}/run when Run now is clicked", async () => {
+  it("fires POST /v1/jobs/{name}/run and refetches the list on success", async () => {
     const user = userEvent.setup();
-    const { runs } = stubFetch();
+    const { runs, listCount } = stubFetch();
     render(<TasksPage />, { wrapper: makeWrapper() });
 
     await screen.findByText("Reconcile acquisitions");
+    const initialGets = listCount(); // the mount fetch
     const runButtons = screen.getAllByRole("button", { name: /Run now/ });
     await user.click(runButtons[0] as HTMLElement);
 
     await waitFor(() => expect(runs).toEqual(["reconcile"]));
+    // The fix: run-now invalidates ["/v1/jobs"], so the list re-reads the fresh outcome.
+    // A wrong/absent key (the original bug) would leave the count unchanged.
+    await waitFor(() => expect(listCount()).toBeGreaterThan(initialGets));
   });
 
   it("opens the modify modal for a job", async () => {
