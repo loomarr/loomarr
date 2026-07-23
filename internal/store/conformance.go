@@ -34,6 +34,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
 	t.Run("ClaimDueJobs", func(t *testing.T) { testClaimDueJobs(t, newStore) })
 	t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
+	t.Run("ScheduledJobRoundTrip", func(t *testing.T) { testScheduledJobRoundTrip(t, newStore) })
+	t.Run("ClaimDueScheduledJobs", func(t *testing.T) { testClaimDueScheduledJobs(t, newStore) })
 	t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
 	t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
 	t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
@@ -455,6 +457,62 @@ func testClaimDueJobs(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Leased: second claim returns nothing.
 	again, _ := s.ClaimDueJobs(ctx, now, time.Minute, 10)
+	if len(again) != 0 {
+		t.Errorf("re-claim returned %d leased jobs, want 0", len(again))
+	}
+}
+
+// testScheduledJobRoundTrip: upsert creates then updates a job's state row; list + get read
+// it back; a missing row is ErrNotFound.
+func testScheduledJobRoundTrip(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	if _, err := s.GetScheduledJob(ctx, "nope"); err != ErrNotFound {
+		t.Errorf("missing scheduled job = %v, want ErrNotFound", err)
+	}
+	if err := s.UpsertScheduledJob(ctx, ScheduledJob{Name: "reconcile", NextRun: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	// Update in place (same name) — last_result + next_run change.
+	next := now.Add(5 * time.Minute)
+	if err := s.UpsertScheduledJob(ctx, ScheduledJob{
+		Name: "reconcile", LastRun: now, LastResult: "ok", NextRun: next, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetScheduledJob(ctx, "reconcile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastResult != "ok" || !got.NextRun.Equal(next) || !got.LastRun.Equal(now) {
+		t.Errorf("round-tripped scheduled job = %+v, want ok/next=%v/last=%v", got, next, now)
+	}
+	all, _ := s.ListScheduledJobs(ctx)
+	if len(all) != 1 || all[0].Name != "reconcile" {
+		t.Errorf("list = %+v, want one 'reconcile'", all)
+	}
+}
+
+// testClaimDueScheduledJobs: only due rows (next_run <= now) are claimed, and claiming leases
+// next_run forward so a second claim returns nothing until rescheduled.
+func testClaimDueScheduledJobs(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	_ = s.UpsertScheduledJob(ctx, ScheduledJob{Name: "due", NextRun: now.Add(-time.Minute), UpdatedAt: now})
+	_ = s.UpsertScheduledJob(ctx, ScheduledJob{Name: "future", NextRun: now.Add(time.Hour), UpdatedAt: now})
+
+	claimed, err := s.ClaimDueScheduledJobs(ctx, now, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 || claimed[0].Name != "due" {
+		t.Fatalf("ClaimDueScheduledJobs = %d, want just 'due': %+v", len(claimed), claimed)
+	}
+	// Leased forward → an immediate re-claim returns nothing.
+	again, _ := s.ClaimDueScheduledJobs(ctx, now, time.Minute)
 	if len(again) != 0 {
 		t.Errorf("re-claim returned %d leased jobs, want 0", len(again))
 	}

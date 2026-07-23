@@ -44,6 +44,8 @@ type Server struct {
 	events  EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
 	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	pods    PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
+	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
 	systemLLM SystemLLMService
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
@@ -329,6 +331,7 @@ type Options struct {
 	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods          PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Jobs          JobService       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent

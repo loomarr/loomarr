@@ -14,6 +14,7 @@ const PAGES = [
   { to: "/settings/ai", label: "AI" },
   { to: "/settings/channels", label: "Channels & playback" },
   { to: "/settings/filler", label: "Filler" },
+  { to: "/settings/tasks", label: "Tasks" },
   { to: "/settings/users", label: "Users & security" },
   { to: "/settings/advanced", label: "Advanced" },
 ] as const;

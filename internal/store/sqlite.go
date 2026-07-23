@@ -50,6 +50,16 @@ WHERE id IN (
 RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error,
           deadline, attempts, created_at, updated_at`
 
+// sqliteScheduledJobClaimSQL leases every due scheduled job (§18.1): advance next_run to the
+// lease so a concurrent tick/replica won't re-claim it until this run finishes and reschedules
+// (the scheduler upserts the real next_run after running). Placeholders: 1=leaseUntil, 2=now.
+const sqliteScheduledJobClaimSQL = `
+UPDATE scheduled_jobs SET next_run = ?1
+WHERE name IN (
+    SELECT name FROM scheduled_jobs WHERE next_run <= ?2
+)
+RETURNING name, last_run, last_result, last_error, next_run, updated_at`
+
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
@@ -67,5 +77,5 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL}, nil
+	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}, nil
 }

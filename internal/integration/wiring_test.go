@@ -37,7 +37,6 @@ func TestWiring_FreshInstall(t *testing.T) {
 		{http.MethodGet, "/v1/search?q=matrix", ""},
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 		{http.MethodPost, "/v1/filler/sync", ""},
-		{http.MethodPost, "/v1/setup/livetv-connect", ""},
 		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
 	}
 	for _, r := range unconfigured {

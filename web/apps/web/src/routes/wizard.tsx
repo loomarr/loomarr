@@ -11,7 +11,6 @@ import {
   FirstChannelStep,
   firstIncompleteStep,
   isStepDone,
-  LiveTvStep,
   TunarrLibraryStep,
   UsersStep,
   WebhookStep,
@@ -31,10 +30,6 @@ const COPY: Record<string, { title: string; description: string }> = {
   checklist: {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
-  },
-  guide: {
-    title: "Put your channels in the TV guide",
-    description: "The step that makes Loomarr show up on the family's TV, not just in this app.",
   },
   webhooks: {
     title: "Tell Sonarr and Radarr where to report",
@@ -60,14 +55,12 @@ const COPY: Record<string, { title: string; description: string }> = {
 // tunarr (§13, config-design §6) — "the shortest honest path to a live channel" — and a
 // step that gates on a check the operator cannot satisfy is a dead end, because the
 // wizard offers only Back/Continue and the rail is not clickable: they are stranded on
-// that screen for good. An install with no *arr apps can never turn `webhook` green, and
-// one that doesn't use its media server's Live TV can never turn `livetv` green.
+// that screen for good. An install with no *arr apps can never turn `webhook` green.
 //
 // It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling
-// slots with no program: gating it behind Live TV meant an operator whose guide wiring
-// failed could never reach the guard against dead-air channels. Found by the maintainer
-// smoke, which could not reach step 5 at all.
-const SKIPPABLE = new Set(["guide", "webhooks", "library", "users"]);
+// slots with no program. (Live TV is no longer a step — it auto-wires on the Tunarr save —
+// so it can't strand anyone here either.)
+const SKIPPABLE = new Set(["webhooks", "library", "users"]);
 
 const WizardScreen = () => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -106,8 +99,6 @@ const WizardScreen = () => {
         return <BootstrapStep onDone={() => goTo("checklist")} />;
       case "checklist":
         return <ChecklistStep openId={openConn} onToggle={toggleConn} />;
-      case "guide":
-        return <LiveTvStep check={checkFor("livetv")} />;
       case "webhooks":
         return <WebhookStep />;
       case "library":

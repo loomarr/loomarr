@@ -805,41 +805,13 @@ func TestDeleteChannel_PurgeCallsEngine(t *testing.T) {
 
 // --- setup routes ---
 
-func TestLiveTVConnectIdempotentOverAPI(t *testing.T) {
-	srv, _, _, ltv := newServerWithScheduler(t)
-
-	first := do(t, srv, http.MethodPost, "/v1/setup/livetv-connect", adminToken, "")
-	if first.StatusCode != http.StatusOK {
-		t.Fatalf("connect → %d", first.StatusCode)
-	}
-	var fb struct{ TunerAdded, ListingAdded, AlreadyWired bool }
-	_ = json.NewDecoder(first.Body).Decode(&fb)
-	if !fb.TunerAdded || fb.AlreadyWired {
-		t.Errorf("first connect body = %+v, want added+not-already-wired", fb)
-	}
-
-	// Second call is a no-op (§6 second-call-no-op gate, over the wire).
-	second := do(t, srv, http.MethodPost, "/v1/setup/livetv-connect", adminToken, "")
-	var sb struct{ TunerAdded, ListingAdded, AlreadyWired bool }
-	_ = json.NewDecoder(second.Body).Decode(&sb)
-	if sb.TunerAdded || !sb.AlreadyWired {
-		t.Errorf("second connect body = %+v, want no-op already-wired", sb)
-	}
-	if ltv.connects != 2 {
-		t.Errorf("connect called %d times, want 2", ltv.connects)
-	}
-}
-
-func TestLiveTVConnectRequiresAdmin(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
-	resp := do(t, srv, http.MethodPost, "/v1/setup/livetv-connect", "", "")
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member connect → %d, want 403", resp.StatusCode)
-	}
-}
-
+// Live TV wiring is no longer a standalone endpoint (config-design §6): it auto-runs on a
+// Connections save (settings.autoWireAfterSave) and its status surfaces via the `livetv`
+// setup check. The idempotent Connect/Wired behavior is exercised through the settings
+// auto-wire path (see settings_test.go) and the connector's own tests; here we only assert
+// the check reflects the wired state.
 func TestSetupStatusReportsLiveTVCheck(t *testing.T) {
-	srv, _, _, _ := newServerWithScheduler(t)
+	srv, _, _, ltv := newServerWithScheduler(t)
 
 	// Before wiring: livetv check present and not OK, with a hint.
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
@@ -854,31 +826,31 @@ func TestSetupStatusReportsLiveTVCheck(t *testing.T) {
 		}
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	var ltv *struct {
+	var check *struct {
 		Name string
 		OK   bool
 		Hint string
 	}
 	for i := range body.Checks {
 		if body.Checks[i].Name == "livetv" {
-			ltv = &body.Checks[i]
+			check = &body.Checks[i]
 		}
 	}
-	if ltv == nil {
+	if check == nil {
 		t.Fatal("status missing livetv check")
 	}
-	if ltv.OK || ltv.Hint == "" {
-		t.Errorf("unwired livetv check = %+v, want not-OK with a hint", *ltv)
+	if check.OK || check.Hint == "" {
+		t.Errorf("unwired livetv check = %+v, want not-OK with a hint", *check)
 	}
 
-	// After connecting, the check flips to OK.
-	_ = do(t, srv, http.MethodPost, "/v1/setup/livetv-connect", adminToken, "")
+	// Once wiring has happened (auto-wired on a Tunarr save), the check flips to OK.
+	ltv.wired = true
 	resp = do(t, srv, http.MethodGet, "/v1/setup/status", adminToken, "")
 	body.Checks = nil
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	for _, c := range body.Checks {
 		if c.Name == "livetv" && !c.OK {
-			t.Error("livetv check should be OK after connect")
+			t.Error("livetv check should be OK once Tunarr is wired")
 		}
 	}
 }

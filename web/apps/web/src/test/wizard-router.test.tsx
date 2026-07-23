@@ -241,12 +241,13 @@ describe("wizard", () => {
   it("resumes past the checklist when only optional integrations are red", async () => {
     // media_server + tunarr green, llm red: the checklist is satisfied (config-design §6
     // — Seerr/AI/TMDB are feature-gating, not blocking), so the wizard moves the operator
-    // on to the next unfinished step rather than stranding them on a red X.
+    // on to the next unfinished step rather than stranding them on a red X. With no
+    // standalone Live TV step (auto-wired on the Tunarr save), that next step is Webhooks.
     stubFetch({ authed: true, setupCompleted: false });
     renderAt("/wizard");
 
     expect(
-      await screen.findByRole("heading", { name: /put your channels in the tv guide/i }),
+      await screen.findByRole("heading", { name: /tell sonarr and radarr where to report/i }),
     ).toBeInTheDocument();
   });
 });

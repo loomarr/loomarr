@@ -156,6 +156,22 @@ func TestRegistry_URLNormalization(t *testing.T) {
 	}
 }
 
+// KindCron validates via the cron parser (§18.1): a valid 6-field expr passes through; an
+// invalid one is rejected like any bad setting.
+func TestRegistry_CronValidation(t *testing.T) {
+	s := Setting{Key: "job.reconcile.schedule", Kind: KindCron}
+	got, err := s.parse("0 */5 * * * *")
+	if err != nil {
+		t.Fatalf("valid cron rejected: %v", err)
+	}
+	if got != "0 */5 * * * *" {
+		t.Errorf("cron = %q, want passed through", got)
+	}
+	if _, err := s.parse("every 5 minutes plz"); err == nil {
+		t.Error("expected error on an invalid cron expression")
+	}
+}
+
 // Secret shape sanity guard (config-design §9): trims surrounding whitespace,
 // rejects internal whitespace or a too-short value — so a stray error string or a
 // fat-fingered fragment can't be stored as a token/key. The message is secret-safe

@@ -53,13 +53,14 @@ const ModelPicker = ({
             className={cn(
               "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
               isActive && "border-signal-tint-30",
-              // A model that can't run is dimmed as a whole — not merely a disabled
-              // button — so the row reads as "here but unavailable" at a glance (§8.1).
-              // Kept in the list on purpose: "why isn't X here?" is worse than seeing
-              // it greyed out with the reason next to it.
-              unusable && "opacity-55",
             )}
           >
+            {/* A model that can't run reads as "here but unavailable" at a glance (§8.1) —
+                kept in the list on purpose ("why isn't X here?" is worse than a greyed row).
+                Its unavailability is carried by the fit Badge + reason text below, NOT by a
+                whole-row `opacity`: opacity composites every descendant (incl. the muted tag)
+                below the WCAG AA contrast floor, which the a11y gate rejects (frontend-design
+                §7 — express state with color/semantics, never opacity over text). */}
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 font-medium text-sm">
                 {model.label}

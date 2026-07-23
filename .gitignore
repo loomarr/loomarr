@@ -31,6 +31,10 @@ web/apps/web/dist/
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep
 
+# Air (dev live-reload) build output — the compiled dev binary, never committed.
+/tmp/
+/build-errors.log
+
 # Editor / OS
 .DS_Store
 *.swp

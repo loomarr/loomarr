@@ -270,6 +270,44 @@ func declared() []Setting {
 			Kind: KindDuration, Default: "5m",
 			Doc: "How often Loomarr checks on in-progress downloads.",
 		},
+		// The background-job scheduler's per-job CRON schedules (§18.1). Sonarr/Overseerr-style
+		// 6-field seconds-leading cron; edited via the Tasks page's Modify Job modal (presets
+		// + an advanced raw-cron field). These OVERRIDE each job's built-in default cron.
+		{
+			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr checks on in-progress downloads (cron).",
+		},
+		{
+			Key: "job.channel_sweep.schedule", EnvVar: "JOB_CHANNEL_SWEEP_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */10 * * * *",
+			Doc: "How often Loomarr reconciles channels with Tunarr (cron).",
+		},
+		{
+			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */15 * * * *",
+			Doc: "How often Loomarr syncs the filler catalog (cron).",
+		},
+		{
+			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 * * * *",
+			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",
+		},
+		{
+			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr scans the media server for newly-added titles to mark requested items available (cron).",
+		},
+		{
+			Key: "job.library_full_scan.schedule", EnvVar: "JOB_LIBRARY_FULL_SCAN_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 3 * * *",
+			Doc: "How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron).",
+		},
+		{
+			Key: "job.library_scan.lookback", EnvVar: "JOB_LIBRARY_SCAN_LOOKBACK", Group: GroupAdvanced,
+			Kind: KindDuration, Default: "1h",
+			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
+		},
 		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 2,
