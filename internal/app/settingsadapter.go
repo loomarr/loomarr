@@ -189,10 +189,17 @@ func connectionTests(set resolved) map[string]func(ctx context.Context) (bool, s
 		// URL + API key. Direct Sonarr/Radarr is a separate requester (not yet a Test
 		// target) — guide the user to Seerr when only that pair is set.
 		"requester": func(ctx context.Context) (bool, string) {
-			if set.str("seerr.url") == "" {
-				if set.str("sonarr.url") != "" || set.str("radarr.url") != "" {
-					return false, "connection testing is available for Seerr; set the Seerr URL"
+			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
+			if set.str("requester.provider") == "arr" {
+				if set.str("sonarr.url") == "" && set.str("radarr.url") == "" {
+					return false, "set a Sonarr and/or Radarr URL"
 				}
+				if err := requester.NewArr(set.arrConns()).Reachable(ctx); err != nil {
+					return false, "could not reach Sonarr/Radarr: " + err.Error()
+				}
+				return true, ""
+			}
+			if set.str("seerr.url") == "" {
 				return false, "set the Seerr URL"
 			}
 			if err := requester.NewSeerrDynamic(set.seerrConn()).Reachable(ctx); err != nil {

@@ -23,7 +23,6 @@ import (
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
-	"github.com/mantonx/loomarr/internal/requester"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -146,7 +145,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// scheduler job now (was the janitor piggybacking the reconcile ticker).
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
-		req := requester.NewSeerrDynamic(set.seerrConn())
+		req := set.requesterFor() // Seerr or direct Sonarr/Radarr, per requester.provider (§6)
 		rec := reconcile.New(st, req, lib, emitter, reconcile.Config{
 			RequestTTL: set.dur("request.ttl"), DownloadingTTL: set.dur("downloading.ttl"),
 		}, time.Now, log)

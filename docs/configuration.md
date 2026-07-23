@@ -18,12 +18,17 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `seerr.url` (`SEERR_URL`) | url | — | Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles (or connect Sonarr and Radarr directly below). _(required for acquisition)_ |
+| `requester.provider` (`REQUESTER_PROVIDER`) | enum | `seerr` | How Loomarr downloads missing titles: through Seerr, or Sonarr and Radarr directly. _(one of: seerr \| arr)_ |
+| `seerr.url` (`SEERR_URL`) | url | — | Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles. _(required for acquisition)_ |
 | `seerr.api_key` (`SEERR_API_KEY`) | secret | (secret) | Your Seerr API key. |
-| `sonarr.url` (`SONARR_URL`) | url | — | Sonarr address, if you'd rather connect it directly than go through Seerr (for TV). _(advanced)_ |
-| `sonarr.api_key` (`SONARR_API_KEY`) | secret | (secret) | Your Sonarr API key. _(advanced)_ |
-| `radarr.url` (`RADARR_URL`) | url | — | Radarr address, if you'd rather connect it directly than go through Seerr (for movies). _(advanced)_ |
-| `radarr.api_key` (`RADARR_API_KEY`) | secret | (secret) | Your Radarr API key. _(advanced)_ |
+| `sonarr.url` (`SONARR_URL`) | url | — | Sonarr address (for TV), e.g. http://sonarr:8989. |
+| `sonarr.api_key` (`SONARR_API_KEY`) | secret | (secret) | Your Sonarr API key (Settings → General in Sonarr). |
+| `sonarr.quality_profile` (`SONARR_QUALITY_PROFILE`) | string | — | Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile. _(advanced)_ |
+| `sonarr.root_folder` (`SONARR_ROOT_FOLDER`) | string | — | Optional Sonarr root folder path. Blank = Sonarr's first root folder. _(advanced)_ |
+| `radarr.url` (`RADARR_URL`) | url | — | Radarr address (for movies), e.g. http://radarr:7878. |
+| `radarr.api_key` (`RADARR_API_KEY`) | secret | (secret) | Your Radarr API key (Settings → General in Radarr). |
+| `radarr.quality_profile` (`RADARR_QUALITY_PROFILE`) | string | — | Optional Radarr quality profile (name or id). Blank = Radarr's first profile. _(advanced)_ |
+| `radarr.root_folder` (`RADARR_ROOT_FOLDER`) | string | — | Optional Radarr root folder path. Blank = Radarr's first root folder. _(advanced)_ |
 
 ## Connections — Tunarr
 

@@ -34,35 +34,72 @@ func declared() []Setting {
 		},
 
 		// --- Connections: requester (§15, Phase 6) ---
+		// How Loomarr acquires missing titles: through Seerr (default), or Sonarr + Radarr
+		// directly. The provider gates which fields show (ShowWhen), mirroring llm.provider.
+		{
+			Key: "requester.provider", EnvVar: "REQUESTER_PROVIDER", Group: GroupRequester,
+			Kind: KindEnum, Enum: []EnumOption{opt("seerr", "Seerr / Jellyseerr"), opt("arr", "Sonarr + Radarr (direct)")}, Default: "seerr",
+			Doc: "How Loomarr downloads missing titles: through Seerr, or Sonarr and Radarr directly.",
+		},
 		{
 			Key: "seerr.url", EnvVar: "SEERR_URL", Group: GroupRequester,
 			Kind: KindURL, Default: "", Required: FeatureAcquisition,
-			Doc: "Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles (or connect Sonarr and Radarr directly below).",
+			Doc:      "Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles.",
+			ShowWhen: map[string][]string{"requester.provider": {"seerr"}},
 		},
 		{
 			Key: "seerr.api_key", EnvVar: "SEERR_API_KEY", Group: GroupRequester,
 			Kind: KindSecret, Default: "",
-			Doc: "Your Seerr API key.",
+			Doc:      "Your Seerr API key.",
+			ShowWhen: map[string][]string{"requester.provider": {"seerr"}},
 		},
 		{
 			Key: "sonarr.url", EnvVar: "SONARR_URL", Group: GroupRequester,
-			Kind: KindURL, Default: "", Advanced: true,
-			Doc: "Sonarr address, if you'd rather connect it directly than go through Seerr (for TV).",
+			Kind: KindURL, Default: "",
+			Doc:      "Sonarr address (for TV), e.g. http://sonarr:8989.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "sonarr.api_key", EnvVar: "SONARR_API_KEY", Group: GroupRequester,
-			Kind: KindSecret, Default: "", Advanced: true,
-			Doc: "Your Sonarr API key.",
+			Kind: KindSecret, Default: "",
+			Doc:      "Your Sonarr API key (Settings → General in Sonarr).",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
+		},
+		{
+			Key: "sonarr.quality_profile", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc:      "Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
+		},
+		{
+			Key: "sonarr.root_folder", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc:      "Optional Sonarr root folder path. Blank = Sonarr's first root folder.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "radarr.url", EnvVar: "RADARR_URL", Group: GroupRequester,
-			Kind: KindURL, Default: "", Advanced: true,
-			Doc: "Radarr address, if you'd rather connect it directly than go through Seerr (for movies).",
+			Kind: KindURL, Default: "",
+			Doc:      "Radarr address (for movies), e.g. http://radarr:7878.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "radarr.api_key", EnvVar: "RADARR_API_KEY", Group: GroupRequester,
-			Kind: KindSecret, Default: "", Advanced: true,
-			Doc: "Your Radarr API key.",
+			Kind: KindSecret, Default: "",
+			Doc:      "Your Radarr API key (Settings → General in Radarr).",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
+		},
+		{
+			Key: "radarr.quality_profile", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc:      "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
+		},
+		{
+			Key: "radarr.root_folder", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc:      "Optional Radarr root folder path. Blank = Radarr's first root folder.",
+			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 
 		// --- Connections: Tunarr (§15, Phase 10) ---

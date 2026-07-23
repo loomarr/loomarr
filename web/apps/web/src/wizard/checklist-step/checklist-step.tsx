@@ -1,9 +1,9 @@
-import { settingsApi, setupApi } from "@loomarr/api";
+import { type SettingEntry, settingsApi, setupApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
 import { Button } from "@/components/ui";
-import { useSettingsEntries } from "@/settings";
+import { blockTitle, useSettingsEntries } from "@/settings";
 import { REQUIRED_CHECKS } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
 import type { ChecklistStepProps } from "./checklist-step.type";
@@ -22,10 +22,20 @@ import type { ChecklistStepProps } from "./checklist-step.type";
 const BLOCKS = [
   { id: "media_server", group: "connections.media_server", title: "Media server" },
   { id: "tunarr", group: "connections.tunarr", title: "Tunarr" },
-  { id: "requester", group: "connections.requester", title: "Requester (Seerr)" },
+  // Requester + AI titles gain the SAVED provider suffix at render (see titleFor); the base
+  // here carries no suffix until one is chosen + saved (§6).
+  { id: "requester", group: "connections.requester", title: "Requester" },
   { id: "tmdb", group: "connections.tmdb", title: "TMDB" },
-  { id: "ai", title: "AI (Ollama)", custom: true },
+  { id: "ai", title: "AI", custom: true },
 ] as const;
+
+// titleFor appends the chosen-provider suffix for the provider-selected blocks (requester,
+// AI), reading the saved value from the settings entries; every other block keeps its title.
+const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): string => {
+  if (block.id === "requester") return blockTitle(entries, block.title, "requester.provider");
+  if (block.id === "ai") return blockTitle(entries, block.title, "llm.provider");
+  return block.title;
+};
 
 const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
   const queryClient = useQueryClient();
@@ -118,7 +128,7 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
             }}
           >
             <ConnectionBlock
-              title={block.title}
+              title={titleFor(block, entries)}
               optional={!required}
               verdict={verdict}
               docHref={standing?.docHref}
