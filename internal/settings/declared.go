@@ -294,6 +294,21 @@ func declared() []Setting {
 			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",
 		},
 		{
+			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr scans the media server for newly-added titles to mark requested items available (cron).",
+		},
+		{
+			Key: "job.library_full_scan.schedule", EnvVar: "JOB_LIBRARY_FULL_SCAN_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 3 * * *",
+			Doc: "How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron).",
+		},
+		{
+			Key: "job.library_scan.lookback", EnvVar: "JOB_LIBRARY_SCAN_LOOKBACK", Group: GroupAdvanced,
+			Kind: KindDuration, Default: "1h",
+			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
+		},
+		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 2,
 			Doc: "How many channel suggestions can be worked on at once.",

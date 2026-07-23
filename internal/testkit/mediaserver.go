@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -17,6 +18,10 @@ import (
 // can be asserted.
 type MediaServer struct {
 	*httptest.Server
+	// mu guards the mutable fields below against the httptest handler goroutine racing a
+	// test goroutine — needed once a background job (e.g. the library scan) issues requests
+	// concurrently with the test. Header captures + SearchItems reads take it.
+	mu sync.RWMutex
 	// LastAuthHeader / LastEmbyToken / LastEmbyAuthz capture what the adapter sent
 	// on the most recent request, for header-shape assertions.
 	LastAuthHeader string
@@ -57,6 +62,7 @@ type SearchStub struct {
 	Type           string // "Movie" | "Series"
 	Year           int
 	TMDBID         int
+	TVDBID         int // for series correlation (the scan keys series on tvdb); 0 → omitted
 	Genres         []string
 	OfficialRating string
 	// RunTimeTicks is the item's runtime (Emby ticks; 1 tick = 100ns) returned by
@@ -68,7 +74,7 @@ type SearchStub struct {
 // stubRuntime returns the RunTimeTicks a scripted stub declares for a library item
 // id (the Ids-filtered duration lookup), or 0 if none.
 func (ms *MediaServer) stubRuntime(libraryItemID string) int64 {
-	for _, s := range ms.SearchItems {
+	for _, s := range ms.searchItems() {
 		if s.LibraryItemID == libraryItemID {
 			return s.RunTimeTicks
 		}
@@ -81,7 +87,7 @@ func (ms *MediaServer) stubRuntime(libraryItemID string) int64 {
 // rating and all — exactly as the real library does. This is what lets the
 // in-library backfill carry the rating through discovery (FINDING 6).
 func (ms *MediaServer) stubForProv(prov string) (SearchStub, bool) {
-	for _, s := range ms.SearchItems {
+	for _, s := range ms.searchItems() {
 		if s.TMDBID > 0 && strings.EqualFold(prov, "tmdb."+strconv.Itoa(s.TMDBID)) {
 			return s, true
 		}
@@ -103,6 +109,12 @@ func (s SearchStub) matches(term string) bool {
 // search adapter parses: Id/Name/Type/ProductionYear/Genres/Overview/OfficialRating/
 // ProviderIds).
 func (s SearchStub) itemJSON() string {
+	// Tvdb is rendered only when set (series correlation), matching real Emby, which
+	// omits an id namespace an item doesn't carry.
+	tvdb := ""
+	if s.TVDBID > 0 {
+		tvdb = strconv.Itoa(s.TVDBID)
+	}
 	b, _ := json.Marshal(struct {
 		Id             string   `json:"Id"`
 		Name           string   `json:"Name"`
@@ -111,16 +123,27 @@ func (s SearchStub) itemJSON() string {
 		Genres         []string `json:"Genres"`
 		OfficialRating string   `json:"OfficialRating"`
 		ProviderIds    struct {
-			Tmdb string `json:"Tmdb"`
+			Tmdb string `json:"Tmdb,omitempty"`
+			Tvdb string `json:"Tvdb,omitempty"`
 		} `json:"ProviderIds"`
 	}{
 		Id: s.LibraryItemID, Name: s.Name, Type: s.Type, ProductionYear: s.Year,
 		Genres: s.Genres, OfficialRating: s.OfficialRating,
 		ProviderIds: struct {
-			Tmdb string `json:"Tmdb"`
-		}{Tmdb: strconv.Itoa(s.TMDBID)},
+			Tmdb string `json:"Tmdb,omitempty"`
+			Tvdb string `json:"Tvdb,omitempty"`
+		}{Tmdb: tmdbOrEmpty(s.TMDBID), Tvdb: tvdb},
 	})
 	return string(b)
+}
+
+// tmdbOrEmpty renders a positive TMDB id, else "" so ProviderIds omits it (a series stub may
+// carry only a tvdb id). Mirrors real Emby, which never emits a "0" provider id.
+func tmdbOrEmpty(id int) string {
+	if id > 0 {
+		return strconv.Itoa(id)
+	}
+	return ""
 }
 
 // Account is a media-server login the mock accepts.
@@ -166,12 +189,25 @@ func NewMediaServer(t testing.TB) *MediaServer {
 			_, _ = fmt.Fprintf(w, `{"Items":[{"Id":%q,"RunTimeTicks":%d}],"TotalRecordCount":1}`, ids, ticks)
 			return
 		}
+		// Bulk scan (poll-based availability, §4): RecentlyAdded/AllItems send SortBy=DateCreated
+		// with no SearchTerm/Ids/ParentId/AnyProviderIdEquals. Return the scriptable SearchItems
+		// as the "library contents" so a test can say which titles are present and drive the scan
+		// job's LibraryConfirmed correlation. Date filtering (MinDateLastSaved) is not modeled —
+		// correlation is by provider id, and tests control membership via SearchItems directly.
+		if sb := r.URL.Query().Get("SortBy"); strings.Contains(sb, "DateCreated") {
+			var items []string
+			for _, s := range ms.searchItems() {
+				items = append(items, s.itemJSON())
+			}
+			_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":%d}`, strings.Join(items, ","), len(items))
+			return
+		}
 		if term := r.URL.Query().Get("SearchTerm"); term != "" {
 			// Scriptable stubs (with OfficialRating/genres) take precedence when set,
 			// so a test can drive a themed intent through real in-library titles.
-			if len(ms.SearchItems) > 0 {
+			if len(ms.searchItems()) > 0 {
 				var items []string
-				for _, s := range ms.SearchItems {
+				for _, s := range ms.searchItems() {
 					if s.matches(term) {
 						items = append(items, s.itemJSON())
 					}
@@ -262,7 +298,24 @@ func NewMediaServer(t testing.TB) *MediaServer {
 }
 
 func (ms *MediaServer) capture(r *http.Request) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.LastAuthHeader = r.Header.Get("Authorization")
 	ms.LastEmbyToken = r.Header.Get("X-Emby-Token")
 	ms.LastEmbyAuthz = r.Header.Get("X-Emby-Authorization")
+}
+
+// SetSearchItems sets the scriptable in-library items under the lock — use this (not a direct
+// field write) when a background job may hit the mock concurrently with the test goroutine.
+func (ms *MediaServer) SetSearchItems(items ...SearchStub) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.SearchItems = items
+}
+
+// searchItems reads the scriptable items under the read lock, for the handlers.
+func (ms *MediaServer) searchItems() []SearchStub {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return ms.SearchItems
 }
