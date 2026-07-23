@@ -15,6 +15,7 @@ const WIZARD_STEPS: WizardStep[] = [
       { id: "tunarr", label: "Tunarr" },
       { id: "requester", label: "Requester" },
       { id: "tmdb", label: "TMDB" },
+      { id: "ai", label: "AI" },
     ],
   },
   { id: "guide", title: "TV guide" },
