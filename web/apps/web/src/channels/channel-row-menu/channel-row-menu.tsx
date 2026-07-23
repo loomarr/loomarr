@@ -3,8 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { MoreVertical, Pause, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, Input, Label } from "@/components/ui";
-import { cn } from "@/lib";
+import { Button } from "@/components/ui";
+import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
 
 // swallow — stop a click from bubbling to the row's <Link> (the whole card navigates). Every
@@ -18,8 +18,8 @@ const swallow = (e: React.MouseEvent) => {
 
 // ChannelRowMenu — the per-row ⋮ menu on the channels list: pause/resume and delete without
 // opening the channel. Pause/resume is reversible → a single click. Delete is irreversible →
-// a typed-confirm (the exact channel name), the SAME gate the detail page's ChannelDangerZone
-// uses, so the list can't delete a channel more casually than the danger zone does.
+// a two-step confirm (arm, then execute) via the shared useDeleteConfirm hook — the SAME gate
+// the detail page's ChannelDangerZone uses, so the confirm flow lives in one place.
 //
 // Self-contained (no dropdown primitive in the kit, no new dep): a trigger + a floating panel
 // over a full-bleed backdrop that closes on an outside click — which also keeps the outside-
@@ -27,8 +27,7 @@ const swallow = (e: React.MouseEvent) => {
 const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [typed, setTyped] = useState("");
+  const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
 
   const paused = channel.status === "paused";
 
@@ -37,8 +36,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
 
   const close = () => {
     setOpen(false);
-    setConfirming(false);
-    setTyped("");
+    resetConfirm();
   };
 
   const update = channelsApi.useUpdateChannel({
@@ -64,7 +62,6 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   });
 
   const busy = update.isPending || del.isPending;
-  const canDelete = typed === channel.name;
 
   // No handlers on this wrapper div — each interactive child (the trigger, the backdrop, the
   // menu items, the confirm input) swallows its own click, so the wrapper stays a plain
@@ -129,7 +126,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
                 disabled={busy}
                 onClick={(e) => {
                   swallow(e);
-                  setConfirming(true);
+                  arm();
                 }}
                 className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-onair-300 text-sm transition-colors hover:bg-onair-tint-15 disabled:opacity-50"
               >
@@ -138,23 +135,12 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               </button>
             ) : (
               <div className="flex flex-col gap-2 rounded border border-onair-tint-15 bg-onair-tint-15 p-2">
-                <Label htmlFor={`del-${channel.id}`} className="text-xs">
-                  {`Type "${channel.name}" to delete`}
-                </Label>
-                <Input
-                  id={`del-${channel.id}`}
-                  value={typed}
-                  autoComplete="off"
-                  disabled={busy}
-                  className={cn("h-8", "bg-background/60")}
-                  onClick={swallow}
-                  onChange={(e) => setTyped(e.target.value)}
-                />
+                <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="destructive"
                     size="sm"
-                    disabled={!canDelete || busy}
+                    disabled={busy}
                     onClick={(e) => {
                       swallow(e);
                       // purge: a Delete from the LIST should remove the channel outright, not
@@ -171,8 +157,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
                     disabled={busy}
                     onClick={(e) => {
                       swallow(e);
-                      setConfirming(false);
-                      setTyped("");
+                      resetConfirm();
                     }}
                   >
                     Cancel
