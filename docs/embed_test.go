@@ -20,7 +20,6 @@ var docHrefs = []string{
 	"troubleshooting#tmdb",
 	"troubleshooting#filler",
 	"troubleshooting#livetv",
-	"troubleshooting#webhooks",
 	"troubleshooting#tunarr-library",
 }
 

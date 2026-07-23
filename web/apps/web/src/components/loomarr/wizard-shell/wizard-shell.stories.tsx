@@ -6,8 +6,6 @@ const noop = () => {};
 const steps = [
   { id: "bootstrap", title: "Admin" },
   { id: "checklist", title: "Connections" },
-  { id: "guide", title: "TV guide" },
-  { id: "webhooks", title: "Webhooks" },
   { id: "library", title: "Library" },
   { id: "users", title: "Users", optional: true },
   { id: "channel", title: "First channel" },
@@ -54,8 +52,6 @@ const WithSkippable: Story = {
     statusById: {
       bootstrap: "done",
       checklist: "done",
-      guide: "done",
-      webhooks: "skipped",
       library: "done",
       users: "current",
     },

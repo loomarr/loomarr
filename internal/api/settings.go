@@ -37,13 +37,13 @@ func (s *Server) registerSettings(api huma.API) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
-		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN, WEBHOOK_SECRET — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
+		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
 		Tags: []string{"settings"},
 	}, s.secretReveal)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
-		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN | WEBHOOK_SECRET with the §4 side-effects; the new value is returned only if displayable.",
+		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
 		Tags: []string{"settings"},
 	}, s.secretRegenerate)
 }
@@ -221,22 +221,21 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 }
 
 type secretRevealInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,webhook_secret" doc:"Which generated secret to reveal."`
+	Name string `path:"name" enum:"session_secret,api_token" doc:"Which generated secret to reveal."`
 }
 
 type secretRevealOutput struct {
 	Body struct {
-		// Value is present only for a displayable secret (API_TOKEN, WEBHOOK_SECRET).
-		// SESSION_SECRET has nothing to paste anywhere, so it is never returned (§4).
+		// Value is present only for a displayable secret (API_TOKEN). SESSION_SECRET
+		// has nothing to paste anywhere, so it is never returned (§4).
 		Value       string `json:"value,omitempty"`
 		Displayable bool   `json:"displayable" doc:"Whether the value is returned (config-design §4)."`
 	}
 }
 
-// secretReveal is the read half of §4's "viewable on demand" — the eye toggle, and
-// what the §13 webhook handshake shows. It must never rotate: an operator revealing
-// the webhook URL is looking at what they already pasted into Sonarr/Radarr, and
-// rotating would silently break those hooks.
+// secretReveal is the read half of §4's "viewable on demand" — the eye toggle for the
+// API_TOKEN an operator pastes into machine clients. It never rotates: revealing is
+// looking at what's already in use.
 func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secretRevealOutput, error) {
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
@@ -257,13 +256,13 @@ func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secr
 }
 
 type secretRegenerateInput struct {
-	Name string `path:"name" enum:"session_secret,api_token,webhook_secret" doc:"Which generated secret to rotate."`
+	Name string `path:"name" enum:"session_secret,api_token" doc:"Which generated secret to rotate."`
 }
 
 type secretRegenerateOutput struct {
 	Body struct {
-		// Value is the new secret, returned ONLY for displayable secrets (API_TOKEN,
-		// WEBHOOK_SECRET). For SESSION_SECRET it is withheld (§4) — Regenerate is the
+		// Value is the new secret, returned ONLY for displayable secrets (API_TOKEN).
+		// For SESSION_SECRET it is withheld (§4) — Regenerate is the
 		// only affordance and there is nothing to paste.
 		Value       string `json:"value,omitempty"`
 		Displayable bool   `json:"displayable" doc:"Whether the new value is returned (config-design §4)."`

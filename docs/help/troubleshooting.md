@@ -128,17 +128,16 @@ guide: Tunarr registered as a **tuner** (M3U) and a **guide provider** (XMLTV).
 - Loomarr's admin token needs privilege to register tuners — the same admin key used for
   the media-server connection.
 
-## Webhooks
+## Downloads not appearing
 
-**Check name:** `webhook`
+Loomarr learns a title finished by **polling** — a scheduled library scan (and, with the
+direct Sonarr/Radarr requester, a download-queue poll), not an inbound webhook. A title moves
+*downloading* → *available* once it shows up in the media-server library.
 
-Sonarr and Radarr tell Loomarr when a download finishes, which is what moves a title from
-*downloading* to *available* and fills it into your channels.
-
-- **Never received** — add a Webhook connection in Sonarr/Radarr pointing at Loomarr's
-  `/hooks/arr` URL (shown in Settings), and use its **Test** button. The check goes green on
-  receipt.
-- **Was green, now failing** — the webhook secret was regenerated. The URL contains the
-  secret, so every *arr connection must be updated with the new one.
-- **Without webhooks Loomarr still works**, just slower: it falls back to polling the
-  library, so newly-downloaded titles appear on a delay rather than immediately.
+- **Stuck in *requested* / *downloading*** — check the acquisition backend is reachable
+  (Settings → Connections → Test) and that Sonarr/Radarr actually grabbed a release. The
+  library scan runs every few minutes; the Tasks page (Settings → Tasks) shows each poll's
+  last run and lets you **Run now**.
+- **Downloaded but not showing** — confirm the item landed in the same media-server library
+  Loomarr and Tunarr read, and that the library has been scanned. Availability follows the
+  library, so a title the media server hasn't indexed yet won't flip to *available*.

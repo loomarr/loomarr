@@ -4,6 +4,27 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Scheduler arc — Phase 5: retire the inbound webhook subsystem (2026-07-23).** The final
+phase of the poll-availability arc. Availability + download progress now come entirely from
+polling (library scan §4, arr queue poll §18.1), so the inbound `POST /hooks/arr` webhook has
+no remaining job — deleted. Removed: `internal/ingest` (the whole package), the `/hooks/arr`
+mount + `api.Options.Ingest`, the app wiring, `SecretWebhook`/`WEBHOOK_SECRET` + its reveal/
+regenerate enums, the `webhook` setup check + `SetupCheck.LastReceived` + `webhook_last_received:`
+settings, the `loomarr_webhook_events_total` metric + `WebhookEvent()`, the four `{sonarr,radarr}/
+*_webhook.json` fixtures + `FINDINGS-arr-webhooks.md`, the FE wizard **Webhooks** step (+ its
+steps/routes/shell registrations + e2e handshake block), and the secrets-panel `webhook_secret`
+row. **Deliberately kept** (look-alikes, verified before deleting): filler-clip ingest
+(`clipfetch`/`filler.Ingest`/`FeatureIngest`/`INGEST_*`), the outbound `event.webhook_url`
+notifier, and **`provision.KeyFromWebhook` + `radarr/import_webhook.json`** (still used by the
+channel-lineup key-parity path). The retirement was authorized by the Phase-2 safety proof
+`TestScanAvailability_NoWebhook` (green — a `requested` title reaches `available` with no
+webhook), never by weakening a gate. Gate: `make check` GREEN (`-race`); `openapi-verify` +
+`config-docs` no drift; FE biome + typecheck + **382 vitest** GREEN; visual + e2e baselines
+regenerated in the Playwright Docker image (WizardShell + wizard-flow snapshots; webhook-step
+baselines removed). **NOTE (CI):** GitHub Actions is billing-blocked on the account (jobs fail
+in ~1s with a payments notice) — Phases 4–5 validated locally and merged on green-local per the
+maintainer's call; restore billing to re-enable CI.
+
 **Scheduler arc — Phase 1: cron scheduler + 4-loop migration (2026-07-23).** First phase of
 the direct-Sonarr/Radarr + poll-availability plan (retiring inbound webhooks, since verified
 research shows Overseerr/Seerr is entirely poll-driven). A real job scheduler like Sonarr's

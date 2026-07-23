@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -316,7 +315,6 @@ type Options struct {
 	Auth          Authorizer
 	Log           *slog.Logger
 	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
-	Ingest        http.Handler   // POST /hooks/arr (Phase 6); mounted outside Huma
 	Ready         ReadyFunc
 	Login         LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
 	Sessions      SessionManager   // /v1/auth/logout (Phase 9)
