@@ -354,7 +354,7 @@ func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelVie
 	}
 	s.discoverMu.Unlock()
 
-	models, err := llm.DiscoverCompatible(ctx, vram)
+	models, err := llm.DiscoverCompatible(ctx, vram, probe.PulledModels)
 	if err != nil {
 		s.log.Warn("llm discover failed", "err", err)
 		return nil, err
@@ -364,6 +364,7 @@ func (s *systemLLMService) Discover(ctx context.Context) ([]api.DiscoverModelVie
 		out = append(out, api.DiscoverModelView{
 			ID: m.ID, Label: m.Label, Quant: m.Quant, PullRef: m.PullRef,
 			SizeGiB: m.SizeGiB, Fit: string(m.Fit), Downloads: m.Downloads,
+			Role: string(m.Role), Recommended: m.Recommended, Note: m.Note,
 		})
 	}
 	s.discoverMu.Lock()

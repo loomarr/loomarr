@@ -330,7 +330,7 @@ components:
       additionalProperties: false
       properties:
         downloads:
-          description: Source popularity (for ordering/display)
+          description: Source popularity — a ranking tiebreak only; not shown to the user (§8.1)
           format: int64
           type: integer
         fit:
@@ -342,11 +342,20 @@ components:
         label:
           description: Human-friendly name, e.g. Qwen3.5 4B
           type: string
+        note:
+          description: Plain-English why-pick-this hint derived from role + fit (§8.1). Presentation only; may be empty.
+          type: string
         pullRef:
           description: Model ref to POST to /pull — the bare repo (e.g. hf.co/unsloth/Qwen3.5-4B-GGUF); Ollama pulls its latest tag
           type: string
         quant:
           description: The build we sized against — Ollama's latest resolves to it (e.g. Q4_K_M). Informational; the pull is by bare repo ref.
+          type: string
+        recommended:
+          description: True for the single safe-default pick for this machine — the hero card (§8.1). At most one per list.
+          type: boolean
+        role:
+          description: "Plain-English job in the user's choice: balanced|faster|higher_quality (§8.1)"
           type: string
         sizeGiB:
           description: Sized build's on-disk size (VRAM proxy) — what latest downloads
@@ -360,6 +369,8 @@ components:
         - sizeGiB
         - fit
         - downloads
+        - role
+        - recommended
       type: object
     DocSummary:
       additionalProperties: false
