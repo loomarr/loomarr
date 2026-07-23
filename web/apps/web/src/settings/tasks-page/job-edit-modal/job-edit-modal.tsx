@@ -1,6 +1,7 @@
-import { settingsApi } from "@loomarr/api";
+import { jobsApi, settingsApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr";
 import {
   Button,
@@ -39,8 +40,10 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
         // The scheduler re-reads the cron on its next tick; nudge /v1/jobs so the new
-        // schedule + next-run show immediately rather than on the next SSE frame.
-        await queryClient.invalidateQueries({ queryKey: ["jobsList"] });
+        // schedule + next-run show immediately rather than on the next SSE frame. Use the
+        // generated query key (["/v1/jobs"]) — a hand-written ["jobsList"] matches nothing.
+        await queryClient.invalidateQueries({ queryKey: jobsApi.getJobsListQueryKey() });
+        toast.success(`Updated ${job.title} schedule`);
         onOpenChange(false);
       },
     },
