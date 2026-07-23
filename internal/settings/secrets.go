@@ -18,7 +18,6 @@ type GeneratedSecret string
 const (
 	SecretSession GeneratedSecret = "session_secret" // signs session cookies (§11); never displayed
 	SecretAPI     GeneratedSecret = "api_token"      // machine + break-glass admin; viewable
-	SecretWebhook GeneratedSecret = "webhook_secret" // verifies /hooks/arr; viewable (as URL)
 )
 
 // dbKey is the settings-table key a generated secret persists under.
@@ -31,8 +30,6 @@ func (g GeneratedSecret) envVar() string {
 		return "SESSION_SECRET"
 	case SecretAPI:
 		return "API_TOKEN"
-	case SecretWebhook:
-		return "WEBHOOK_SECRET"
 	default:
 		return ""
 	}
@@ -40,8 +37,8 @@ func (g GeneratedSecret) envVar() string {
 
 // Displayable reports whether an admin may view the secret's value (§4). The
 // session secret has nothing to paste anywhere → never displayed (Regenerate is
-// the only affordance); the API token and webhook secret are operational values
-// pasted elsewhere → viewable.
+// the only affordance); the API token is an operational value pasted into machine
+// clients → viewable.
 func (g GeneratedSecret) Displayable() bool { return g != SecretSession }
 
 // SecretStore is the persistence the secrets lifecycle needs (accept-interfaces;
@@ -64,7 +61,7 @@ type Secrets struct {
 
 // allGenerated is the fixed set, in display order.
 func allGenerated() []GeneratedSecret {
-	return []GeneratedSecret{SecretSession, SecretAPI, SecretWebhook}
+	return []GeneratedSecret{SecretSession, SecretAPI}
 }
 
 // NewSecrets resolves (env) or generates+persists (idempotent) each secret, then

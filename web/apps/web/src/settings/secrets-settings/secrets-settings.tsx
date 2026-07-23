@@ -16,14 +16,6 @@ const SECRETS: SecretRow[] = [
     displayable: true,
   },
   {
-    name: "webhook_secret",
-    label: "Webhook secret",
-    purpose: "Authenticates the /hooks/arr URL you pasted into Sonarr and Radarr.",
-    consequence:
-      "Sonarr and Radarr will start failing to notify Loomarr until you paste the new URL into both and re-run the handshake.",
-    displayable: true,
-  },
-  {
     name: "session_secret",
     label: "Session secret",
     purpose: "Signs session cookies. There is nothing to paste anywhere, so it is never displayed.",

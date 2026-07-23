@@ -106,13 +106,13 @@ func TestSecrets_Regenerate(t *testing.T) {
 }
 
 // Display policy (config-design §4): the session secret is never displayable; the
-// API token and webhook secret are.
+// API token is.
 func TestSecrets_DisplayPolicy(t *testing.T) {
 	if SecretSession.Displayable() {
 		t.Error("SESSION_SECRET must never be displayable")
 	}
-	if !SecretAPI.Displayable() || !SecretWebhook.Displayable() {
-		t.Error("API_TOKEN and WEBHOOK_SECRET are operational values → displayable")
+	if !SecretAPI.Displayable() {
+		t.Error("API_TOKEN is an operational value → displayable")
 	}
 }
 
@@ -142,7 +142,7 @@ func TestRedactor_SecretNeverInLogs(t *testing.T) {
 }
 
 // The generated secrets feed the Redactor (config-design §4): a minted
-// SESSION_SECRET/API_TOKEN/WEBHOOK_SECRET is scrubbed from logs via RedactionValues.
+// SESSION_SECRET/API_TOKEN is scrubbed from logs via RedactionValues.
 func TestSecrets_FeedRedactor(t *testing.T) {
 	s, err := NewSecrets(context.Background(), newMemSecretStore(), noEnv)
 	if err != nil {

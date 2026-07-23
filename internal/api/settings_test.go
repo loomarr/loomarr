@@ -232,15 +232,14 @@ func TestSettings_ClearOutcomes(t *testing.T) {
 }
 
 // GET /v1/settings/secrets/{name} is §4's eye toggle: a displayable secret returns
-// its CURRENT value, SESSION_SECRET withholds — and crucially, reading never rotates
-// (the alternative was "regenerate to see it", which breaks live webhooks).
+// its CURRENT value, SESSION_SECRET withholds — and crucially, reading never rotates.
 func TestSettings_SecretReveal(t *testing.T) {
 	srv, fs := newSettingsServer(t)
 
-	// Displayable → value returned.
-	resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/webhook_secret", adminToken, "")
+	// Displayable → value returned (API_TOKEN is the operational, viewable secret).
+	resp := do(t, srv, http.MethodGet, "/v1/settings/secrets/api_token", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("reveal webhook_secret → %d", resp.StatusCode)
+		t.Fatalf("reveal api_token → %d", resp.StatusCode)
 	}
 	var w struct {
 		Value       string `json:"value"`
@@ -248,7 +247,7 @@ func TestSettings_SecretReveal(t *testing.T) {
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&w)
 	if !w.Displayable || w.Value == "" {
-		t.Errorf("webhook_secret should be revealable: %+v", w)
+		t.Errorf("api_token should be revealable: %+v", w)
 	}
 
 	// SESSION_SECRET has nothing to paste anywhere — withheld (§4).

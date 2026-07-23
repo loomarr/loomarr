@@ -36,10 +36,6 @@ type SetupCheck struct {
 	// DocHref deep-links this check to its Troubleshooting section so a red check
 	// is one click from the exact fix (§13 "failures never blame").
 	DocHref string `json:"docHref,omitempty" doc:"Anchor into the embedded Troubleshooting docs"`
-	// LastReceived carries per-app (sonarr/radarr) webhook receipt timestamps
-	// (RFC3339). Set only on the `webhook` check — powers the wizard's live
-	// handshake ("listening… → green on receipt", §13).
-	LastReceived map[string]string `json:"lastReceived,omitempty" doc:"Per-app webhook last-received (webhook check only)"`
 }
 
 // connectionChecklist is the ordered set of connection probes surfaced by
@@ -115,37 +111,7 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 		out.Body.Checks = append(out.Body.Checks, check)
 	}
 
-	// Webhook handshake (§13): green once Sonarr/Radarr have each delivered at least
-	// once, carrying per-app last-received so the wizard shows "listening…".
-	out.Body.Checks = append(out.Body.Checks, s.webhookCheck(ctx))
-
 	return out, nil
-}
-
-// webhookCheck reports the Sonarr/Radarr webhook handshake from the per-app
-// last-received timestamps the ingest handler records (§13). OK once at least one
-// app has delivered — the operator has proven the URL + secret are pasted right.
-func (s *Server) webhookCheck(ctx context.Context) SetupCheck {
-	check := SetupCheck{Name: "webhook", DocHref: "troubleshooting#webhooks"}
-	if s.store == nil {
-		check.Hint = "not configured"
-		return check
-	}
-	last := map[string]string{}
-	for _, app := range []string{"sonarr", "radarr"} {
-		if v, err := s.store.GetSetting(ctx, "webhook_last_received:"+app); err == nil && v != "" {
-			last[app] = v
-		}
-	}
-	if len(last) > 0 {
-		check.LastReceived = last
-	}
-	if len(last) == 0 {
-		check.Hint = "waiting for a test webhook — click Test in Sonarr and Radarr; the checklist flips green on receipt"
-		return check
-	}
-	check.OK = true
-	return check
 }
 
 // configValue reads a live setting for gating optional checks; empty when the
