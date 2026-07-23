@@ -20,7 +20,11 @@ import { useLoomarrEventListener } from "@/events";
 // `provider` is the LIVE (possibly unsaved) provider from the settings form, so the right
 // surface appears the instant the dropdown flips — it doesn't wait for Save, matching how
 // the URL/key fields already react live.
-const AiModelSettings = ({ provider }: { provider?: string }) => {
+// onModelChange fires after a successful model select OR a completed pull — the seam a host
+// (e.g. the wizard) uses to refresh things this component doesn't own, like the setup-status
+// checklist whose `llm` verdict flips green once a model is active. Settings passes nothing
+// (its own status invalidation is enough); the wizard passes a setup-status invalidation.
+const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onModelChange?: () => void }) => {
   const queryClient = useQueryClient();
   const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
   // A failed download must SAY so. Clearing the progress on error looked identical to
@@ -33,8 +37,13 @@ const AiModelSettings = ({ provider }: { provider?: string }) => {
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
+  // A model became active: refresh our own status AND notify the host (setup-status, etc.).
+  const modelChanged = () => {
+    invalidate();
+    onModelChange?.();
+  };
 
-  const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: invalidate } });
+  const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: modelChanged } });
   const pull = systemApi.useSystemLlmPull();
 
   // The compatible-to-download list: the BE ranks popular HF models against this

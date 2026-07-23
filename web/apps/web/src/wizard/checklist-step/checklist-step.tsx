@@ -5,6 +5,7 @@ import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomar
 import { Button } from "@/components/ui";
 import { useSettingsEntries } from "@/settings";
 import { REQUIRED_CHECKS } from "../steps";
+import { WizardAiBlock } from "../wizard-ai-block";
 import type { ChecklistStepProps } from "./checklist-step.type";
 
 // Wizard step 2 — "Connect your services" (config-design §6). The wizard IS the settings
@@ -16,11 +17,14 @@ import type { ChecklistStepProps } from "./checklist-step.type";
 // Each connection is a collapsible section: its header shows a status dot + summary, and
 // picking it (here or from the rail's sub-items) reveals its form with a slide-open. Blocks
 // mirror Settings/Connections, minus advanced keys (the wizard shows the short path).
+// `custom` blocks render a bespoke body (their own probe/action) instead of a settings-group
+// form + Test button — used by AI, which auto-detects Ollama and drives its own picker.
 const BLOCKS = [
   { id: "media_server", group: "connections.media_server", title: "Media server" },
   { id: "tunarr", group: "connections.tunarr", title: "Tunarr" },
   { id: "requester", group: "connections.requester", title: "Requester (Seerr)" },
   { id: "tmdb", group: "connections.tmdb", title: "TMDB" },
+  { id: "ai", title: "AI (Ollama)", custom: true },
 ] as const;
 
 const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
@@ -87,12 +91,18 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
   return (
     <div className="flex flex-col gap-3">
       {BLOCKS.map((block) => {
-        const blockEntries = byGroup(block.group);
-        if (blockEntries.length === 0) return null;
+        const custom = "custom" in block && block.custom;
+        const blockEntries = custom ? [] : byGroup(block.group);
+        // A settings-group block with no essentials to show is hidden; a custom block
+        // (AI) has no group entries by design and always renders.
+        if (!custom && blockEntries.length === 0) return null;
         const open = block.id === openId;
+        // The AI block's server-side check is named "llm" (§8.1); every other block's check
+        // name matches its id. Map so the AI block shows its real standing verdict.
+        const checkName = block.id === "ai" ? "llm" : block.id;
         // Prefer a just-run Test result; fall back to the checklist's standing verdict.
         const live = testResult[block.id];
-        const standing = checks.find((c) => c.name === block.id);
+        const standing = checks.find((c) => c.name === checkName);
         const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
         const required = (REQUIRED_CHECKS as readonly string[]).includes(block.id);
 
@@ -112,18 +122,26 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
               docHref={standing?.docHref}
               open={open}
               onToggle={() => onToggle?.(block.id)}
+              // A custom block owns its own actions (AI auto-detects + drives its picker),
+              // so it gets no shared Test button.
               action={
-                <Button variant="outline" onClick={() => test(block.id)} disabled={testing !== undefined}>
-                  {testing === block.id ? "Testing…" : "Test connection"}
-                </Button>
+                custom ? undefined : (
+                  <Button variant="outline" onClick={() => test(block.id)} disabled={testing !== undefined}>
+                    {testing === block.id ? "Testing…" : "Test connection"}
+                  </Button>
+                )
               }
             >
-              <SettingsFields
-                entries={blockEntries}
-                values={edits}
-                onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
-                results={patchResults}
-              />
+              {custom ? (
+                <WizardAiBlock />
+              ) : (
+                <SettingsFields
+                  entries={blockEntries}
+                  values={edits}
+                  onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                  results={patchResults}
+                />
+              )}
             </ConnectionBlock>
           </div>
         );
