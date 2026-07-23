@@ -38,11 +38,14 @@ const WizardShell = ({
   <main
     className={cn("relative grid min-h-screen grid-cols-1 bg-background md:grid-cols-[17rem_1fr]", className)}
   >
-    <TvStatic />
+    {/* Behind everything: the static is a positioned layer, so content siblings need an
+        explicit stacking context above it (relative z-10) — otherwise a position:absolute
+        layer paints OVER position:static content regardless of DOM order. */}
+    <TvStatic className="z-0" />
 
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
-    <aside className="flex flex-col gap-6 border-border border-b px-6 py-8 md:border-r md:border-b-0">
+    <aside className="relative z-10 flex flex-col gap-6 border-border border-b bg-card px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
       <div className="flex flex-col gap-1">
         <BrandLockup variant="compact" />
         <p className="mt-2 font-semibold text-base">Let's get you on the air</p>
@@ -113,8 +116,8 @@ const WizardShell = ({
       </ol>
     </aside>
 
-    {/* Content column: the current step. */}
-    <div className="flex min-w-0 flex-col">
+    {/* Content column: the current step. Stacked above the static like the rail. */}
+    <div className="relative z-10 flex min-w-0 flex-col">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
         <div className="flex flex-col gap-1">
           <h1 className="font-semibold text-2xl">{title}</h1>
