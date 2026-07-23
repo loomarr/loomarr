@@ -25,6 +25,9 @@ type Store interface {
 	// --- provisioning (§3–§4) ---
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	UpsertTitle(ctx context.Context, rec provision.Record) error
+	// UpdateTitleProgress writes only the poll-updated download fields (§18.1 arr-queue-poll),
+	// leaving state-machine columns untouched so it never races the state Upsert.
+	UpdateTitleProgress(ctx context.Context, key provision.Key, progress float64, eta, status string) error
 	ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error)
 	// ClaimDueTitles atomically claims up to limit non-terminal records
 	// (wanted/requested/downloading) whose deadline is at/before now, for the

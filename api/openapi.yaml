@@ -2228,6 +2228,12 @@ components:
           format: uri
           readOnly: true
           type: string
+        downloadStatus:
+          description: Download-client status (downloading/warning/stalled/…)
+          type: string
+        etaText:
+          description: Human time-left from the download client
+          type: string
         key:
           description: Stable identity key
           examples:
@@ -2246,6 +2252,10 @@ components:
           examples:
             - In Flames
           type: string
+        progress:
+          description: Download completion 0..1 (arr queue poll)
+          format: double
+          type: number
         state:
           description: Provisioning state (§4)
           enum:

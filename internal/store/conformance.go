@@ -21,6 +21,7 @@ type NewStoreFunc func(t *testing.T) Store
 // can call it.
 func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("TitleRoundTrip", func(t *testing.T) { testTitleRoundTrip(t, newStore) })
+	t.Run("UpdateTitleProgress", func(t *testing.T) { testUpdateTitleProgress(t, newStore) })
 	t.Run("UpsertIsIdempotent", func(t *testing.T) { testUpsertIdempotent(t, newStore) })
 	t.Run("GetMissingIsNotFound", func(t *testing.T) { testGetMissing(t, newStore) })
 	t.Run("ListByState", func(t *testing.T) { testListByState(t, newStore) })
@@ -72,6 +73,39 @@ func testTitleRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got.Deadline.Equal(want.Deadline) || !got.RequestedAt.Equal(want.RequestedAt) {
 		t.Errorf("epoch time round-trip lost precision: got dl=%v ra=%v", got.Deadline, got.RequestedAt)
+	}
+}
+
+// testUpdateTitleProgress proves the targeted progress write persists the download fields AND
+// leaves the state-machine columns untouched (§18.1 — the poller must not clobber state).
+func testUpdateTitleProgress(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	rec := sampleRecord("movie:tmdb:603", provision.Downloading, time.Unix(1_800_000_000, 0).UTC())
+	if err := s.UpsertTitle(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateTitleProgress(ctx, rec.Key, 0.42, "00:14:32", "downloading"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetTitle(ctx, rec.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Progress != 0.42 || got.ETAText != "00:14:32" || got.DownloadStatus != "downloading" {
+		t.Errorf("progress not persisted: got %+v", got)
+	}
+	// State-machine fields survive the targeted write.
+	if got.State != provision.Downloading || !got.Deadline.Equal(rec.Deadline) {
+		t.Errorf("progress write clobbered state/deadline: got state=%s dl=%v", got.State, got.Deadline)
+	}
+	// Updating with zeros clears it (e.g. an import completed) without touching state.
+	if err := s.UpdateTitleProgress(ctx, rec.Key, 0, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetTitle(ctx, rec.Key)
+	if got.Progress != 0 || got.ETAText != "" || got.State != provision.Downloading {
+		t.Errorf("progress reset failed or clobbered state: got %+v", got)
 	}
 }
 
