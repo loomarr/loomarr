@@ -71,3 +71,47 @@ func TestGroundPolicy_NilIsEmpty(t *testing.T) {
 		t.Errorf("nil policy should be fully empty, got %+v", p)
 	}
 }
+
+// THE empty-channel bug (live smoke): a small model set a TV-G ceiling but picked The
+// Simpsons (TV-PG). The fail-closed audience gate would drop every episode → an empty
+// channel. groundPolicy must RAISE the ceiling to admit the grounded picks.
+func TestGroundPolicy_CeilingRaisedToAdmitPicks(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Audience.Ceiling = "TV-G" // rank 2 — stricter than the pick
+	lineup := []ProposalItem{
+		{Name: "The Simpsons", OfficialRating: "TV-PG"}, // rank 3
+	}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Audience.Ceiling != "TV-PG" {
+		t.Errorf("ceiling = %q, want TV-PG (raised to admit the TV-PG pick)", p.Audience.Ceiling)
+	}
+}
+
+// The guard NEVER lowers a ceiling: a kids channel (TV-Y7) whose picks are all at/below
+// stays capped, so a stray adult title can't sneak in via a low-rated pick set.
+func TestGroundPolicy_CeilingNotLoweredBelowPicks(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Audience.Ceiling = "TV-PG" // rank 3
+	lineup := []ProposalItem{
+		{Name: "Kids Show", OfficialRating: "TV-Y7"}, // rank 1 — below the ceiling
+	}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Audience.Ceiling != "TV-PG" {
+		t.Errorf("ceiling = %q, want TV-PG (unchanged — picks are below it)", p.Audience.Ceiling)
+	}
+}
+
+// An unrated pick doesn't raise the ceiling (it's governed by UnratedPolicy, not the
+// ladder) — so an unrated title can't blow the roof off a kids ceiling.
+func TestGroundPolicy_UnratedPickDoesNotRaiseCeiling(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Audience.Ceiling = "TV-Y7"
+	lineup := []ProposalItem{
+		{Name: "Mystery", OfficialRating: ""},        // unrated → ignored by the guard
+		{Name: "Also Mystery", OfficialRating: "??"}, // off-ladder → ignored
+	}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Audience.Ceiling != "TV-Y7" {
+		t.Errorf("ceiling = %q, want TV-Y7 (unrated picks never raise it)", p.Audience.Ceiling)
+	}
+}

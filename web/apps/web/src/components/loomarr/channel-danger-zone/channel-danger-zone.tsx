@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { Button, Checkbox, Input, Label } from "@/components/ui";
+import { useDeleteConfirm } from "@/channels";
+import { Button, Checkbox, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ChannelDangerZoneProps } from "./channel-danger-zone.type";
 
 // ChannelDangerZone — the destructive-actions section (frontend-design §6: an isolated
-// danger zone with typed confirmation, onair styling). Pause/resume is reversible and
-// gets a plain button; delete is not, so it stays behind a confirm step the operator
-// cannot fat-finger past — typing the exact channel name is what enables the final button,
-// not a generic "yes/are you sure" dialog.
+// danger zone, onair styling). Pause/resume is reversible and gets a plain button; delete is
+// not, so it stays behind a two-step confirm the operator can't fat-finger past — one click
+// arms it, a second executes. (Previously this required typing the exact channel name; that
+// was tedious for a household app, so it's now a plain confirm step.)
 //
-// The confirm step is local UI state only: nothing here mutates until the operator
-// actually clicks "Delete permanently", so closing/canceling never partially applies.
+// The confirm step is local UI state only: nothing here mutates until the operator actually
+// clicks "Delete permanently", so closing/canceling never partially applies.
 const ChannelDangerZone = ({
   channelName,
   status,
@@ -20,16 +21,13 @@ const ChannelDangerZone = ({
   busy,
   className,
 }: ChannelDangerZoneProps) => {
-  const [confirming, setConfirming] = useState(false);
-  const [typed, setTyped] = useState("");
+  const { confirming, arm, cancel: cancelConfirm } = useDeleteConfirm();
   const [purge, setPurge] = useState(false);
 
   const paused = status === "paused";
-  const canDelete = typed === channelName;
 
   const cancel = () => {
-    setConfirming(false);
-    setTyped("");
+    cancelConfirm();
     setPurge(false);
   };
 
@@ -63,12 +61,12 @@ const ChannelDangerZone = ({
         )}
       </div>
 
-      {/* Delete — irreversible, so it is gated behind typing the exact channel name. */}
+      {/* Delete — irreversible, so it is gated behind a two-step confirm (arm, then execute). */}
       <div className="flex flex-col gap-3 border-onair-tint-15 border-t pt-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm">Permanently delete this channel. This can't be undone.</p>
           {!confirming && (
-            <Button variant="destructive" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+            <Button variant="destructive" size="sm" disabled={busy} onClick={arm}>
               Delete channel
             </Button>
           )}
@@ -76,18 +74,9 @@ const ChannelDangerZone = ({
 
         {confirming && (
           <div className="flex flex-col gap-3 rounded-md border border-onair-tint-15 bg-background/40 p-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="delete-confirm-name" className="text-xs">
-                {`Type "${channelName}" to confirm`}
-              </Label>
-              <Input
-                id="delete-confirm-name"
-                value={typed}
-                disabled={busy}
-                autoComplete="off"
-                onChange={(e) => setTyped(e.target.value)}
-              />
-            </div>
+            <p className="text-sm">
+              Delete <span className="font-medium">{channelName}</span> for good? This can't be undone.
+            </p>
 
             <div className="flex items-center gap-2">
               <Checkbox
@@ -102,12 +91,7 @@ const ChannelDangerZone = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={!canDelete || busy}
-                onClick={() => onDelete({ purge })}
-              >
+              <Button variant="destructive" size="sm" disabled={busy} onClick={() => onDelete({ purge })}>
                 Delete permanently
               </Button>
               <Button variant="ghost" size="sm" disabled={busy} onClick={cancel}>

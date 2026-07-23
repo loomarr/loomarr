@@ -91,7 +91,11 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 // and a rationale. Approved acquisitions feed the provisioner; the approved
 // lineup feeds the scheduler.
 type Proposal struct {
-	Intent       Intent         `json:"intent"`
+	Intent Intent `json:"intent"`
+	// ChannelName is the LLM's proposed channel name (§8) — a real title derived from the
+	// intent + grounded picks (e.g. "Springfield Classics"), not the raw prompt. Empty ⇒
+	// the API falls back to a truncated intent description.
+	ChannelName  string         `json:"channelName,omitempty"`
 	Lineup       []ProposalItem `json:"lineup"`       // in-library items, ordered
 	Acquisitions []ProposalItem `json:"acquisitions"` // missing titles to acquire
 	Alternates   []ProposalItem `json:"alternates"`   // ranked backups (§9 substitution)

@@ -86,7 +86,7 @@ describe("ChannelRowMenu", () => {
     expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ status: "building" });
   });
 
-  it("Delete is typed-confirm gated and DELETEs with purge=true", async () => {
+  it("Delete is a two-step confirm (no name typing) and DELETEs with purge=true", async () => {
     const user = userEvent.setup();
     const { calls } = stubFetch();
     render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
@@ -94,10 +94,9 @@ describe("ChannelRowMenu", () => {
     await user.click(screen.getByRole("button", { name: /actions for/i }));
     await user.click(screen.getByRole("menuitem", { name: /delete/i }));
 
-    // The confirm Delete is disabled until the exact name is typed.
+    // Step 2 is a plain confirm — no textbox to fill, the execute button is enabled.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     const confirm = screen.getByRole("button", { name: "Delete" });
-    expect(confirm).toBeDisabled();
-    await user.type(screen.getByLabelText(/type "late night noir" to delete/i), "Late Night Noir");
     expect(confirm).toBeEnabled();
     await user.click(confirm);
 

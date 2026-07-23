@@ -259,6 +259,11 @@ var ladderRank = map[Rating]int{
 // (TV-PG). At or below it, the default unrated policy is exclude (§4).
 const kidsCeilingRank = 3
 
+// KidsCeilingRank exposes the kids-ceiling boundary (TV-PG) so callers can keep an
+// auto-raise from crossing kids→adult — a kids channel must never be forced above
+// TV-PG just because a mis-rated pick slipped in (a TV-MA pick is dropped, not admitted).
+const KidsCeilingRank = kidsCeilingRank
+
 // NormalizeRating maps a raw media-server OfficialRating string into a ladder
 // Rating, for callers stamping the rating onto a lineup entry at create time. An
 // unmappable value normalizes to "" (unrated) — enforcement handles that
@@ -281,6 +286,12 @@ func normalizeRating(raw string) Rating {
 
 // mapped reports whether r is a known ladder rating (not unrated).
 func (r Rating) mapped() bool { _, ok := ladderRank[r]; return ok }
+
+// Rank returns r's position on the audience ladder (TV-Y=0 … TV-MA/R=5) and whether
+// r is a known ladder rating. Exposed so the suggester can guarantee its audience
+// ceiling admits the titles it actually grounded — a ceiling stricter than a picked
+// title would silently empty the channel at enforcement (programming-design §4).
+func (r Rating) Rank() (int, bool) { n, ok := ladderRank[r]; return n, ok }
 
 // atOrBelow reports whether r is at or below the ceiling on the ladder. Both must
 // be mapped; an unrated item is never "at or below" — it's decided by UnratedPolicy.
