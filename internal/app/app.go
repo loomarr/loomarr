@@ -181,6 +181,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := libScan.Full(ctx); return err },
 		})
+
+		// Arr queue poller (§18.1) — registered ONLY for the direct arr requester (Seerr has no
+		// queue). Promotes grabbed titles requested→downloading and persists download progress
+		// on the title record; availability itself still comes from the library scan.
+		if arr := set.arrRequester(); arr != nil {
+			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
+			jobReg.Add(scheduler.Job{
+				Name: "arr-queue-poll", Title: "Poll Sonarr/Radarr downloads",
+				DefaultCron: "0 * * * * *", ScheduleKey: "job.arr_queue_poll.schedule",
+				Run: func(ctx context.Context) error { _, err := queuePoll.Poll(ctx); return err },
+			})
+		}
 	}
 
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic

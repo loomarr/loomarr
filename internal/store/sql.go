@@ -31,7 +31,8 @@ func passthrough(q string) string { return q }
 
 func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at
+		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
+		        progress, eta_text, download_status
 		 FROM titles WHERE key = ?`), string(key))
 	return scanTitle(row)
 }
@@ -58,9 +59,25 @@ func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error 
 	return nil
 }
 
+// UpdateTitleProgress writes ONLY the poll-updated download fields for a title, leaving the
+// state-machine columns untouched (§18.1). The arr-queue-poll job owns these; keeping the
+// write targeted means a concurrent reconcile/scan Upsert never clobbers the latest progress
+// and vice versa. A no-op (no matching key) is not an error — a title may have moved to
+// available between the poll and the write.
+func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, progress float64, eta, status string) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE titles SET progress = ?, eta_text = ?, download_status = ? WHERE key = ?`),
+		progress, eta, status, string(key))
+	if err != nil {
+		return fmt.Errorf("update title progress %s: %w", key, err)
+	}
+	return nil
+}
+
 func (s *sqlStore) ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at
+		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
+		        progress, eta_text, download_status
 		 FROM titles WHERE state = ? ORDER BY key`), string(state))
 	if err != nil {
 		return nil, err
@@ -177,7 +194,8 @@ func scanTitle(sc scannable) (provision.Record, error) {
 		reqAt, deadline, updatedAt int64
 	)
 	err := sc.Scan(&rec.Key, &blob, &rec.State, &rec.LibraryID,
-		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt)
+		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt,
+		&rec.Progress, &rec.ETAText, &rec.DownloadStatus)
 	if err == sql.ErrNoRows {
 		return provision.Record{}, ErrNotFound
 	}

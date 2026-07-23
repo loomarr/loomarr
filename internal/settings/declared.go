@@ -346,6 +346,11 @@ func declared() []Setting {
 			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
 		},
 		{
+			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *",
+			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",
+		},
+		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 2,
 			Doc: "How many channel suggestions can be worked on at once.",
