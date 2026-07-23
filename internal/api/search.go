@@ -33,10 +33,10 @@ type searchOutput struct {
 
 func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, error) {
 	if s.search == nil || s.unconfigured("library.url") {
-		return nil, huma.Error501NotImplemented("search not configured")
+		return nil, errNotImplemented("Search isn't set up", "Connect your media library in Settings to search for titles.")
 	}
 	if in.Q == "" {
-		return nil, huma.Error400BadRequest("q is required")
+		return nil, errBadRequest("Search term required", "Enter something to search for.")
 	}
 	limit := in.Limit
 	if limit <= 0 {
@@ -44,7 +44,8 @@ func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, 
 	}
 	cands, err := s.search.Search(ctx, in.Q, in.Scope, limit)
 	if err != nil {
-		return nil, huma.Error502BadGateway("search failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Search failed",
+			"The search couldn't be completed. Check your media library connection and try again.", err)
 	}
 	out := &searchOutput{}
 	out.Body.Candidates = cands

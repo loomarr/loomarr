@@ -120,7 +120,8 @@ func (s *Server) enqueueTitle(ctx context.Context, in *enqueueInput) (*titleOutp
 	}
 	key, err := t.Key()
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity("invalid title identity", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid title",
+			"That title's identity couldn't be resolved. Check the media type and id, then try again.", err)
 	}
 	// Idempotent enqueue (§4 inv. 3): only create if absent, else return current.
 	if existing, err := s.store.GetTitle(ctx, key); err == nil {
@@ -142,7 +143,7 @@ type keyInput struct {
 func (s *Server) getTitle(ctx context.Context, in *keyInput) (*titleOutput, error) {
 	rec, err := s.store.GetTitle(ctx, provision.Key(in.Key))
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such title")
+		return nil, errNotFound("Title not found", "That title doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -161,7 +162,7 @@ type listOutput struct {
 
 func (s *Server) listTitles(ctx context.Context, in *listInput) (*listOutput, error) {
 	if in.State == "" {
-		return nil, huma.Error400BadRequest("state query param is required")
+		return nil, errBadRequest("State required", "Choose a state to filter titles by.")
 	}
 	recs, err := s.store.ListTitlesByState(ctx, provision.State(in.State))
 	if err != nil {
@@ -183,7 +184,7 @@ func (s *Server) deleteTitle(ctx context.Context, in *keyInput) (*deleteOutput, 
 	}
 	rec, err := s.store.GetTitle(ctx, provision.Key(in.Key))
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, huma.Error404NotFound("no such title")
+		return nil, errNotFound("Title not found", "That title doesn't exist — it may have been removed.")
 	}
 	if err != nil {
 		return nil, err
@@ -211,7 +212,7 @@ func isMutating(method string) bool {
 // requireAdmin returns a 403 unless the caller resolved to admin (§7).
 func requireAdmin(ctx context.Context) error {
 	if roleFromHuma(ctx) != RoleAdmin {
-		return huma.Error403Forbidden("admin role required")
+		return errForbidden("Not allowed", "This action needs an admin account.")
 	}
 	return nil
 }

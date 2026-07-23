@@ -64,10 +64,10 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 		case errors.Is(err, auth.ErrRateLimited):
 			// Rate-limited attempts are their own signal (HTTP 429); don't fold
 			// them into the credential success/failure ratio.
-			return nil, huma.Error429TooManyRequests("too many login attempts")
+			return nil, errTooManyRequests("Too many attempts", "You've tried to sign in too many times. Wait a moment and try again.")
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			metrics.LoginResult(false)
-			return nil, huma.Error401Unauthorized("invalid username or password")
+			return nil, errUnauthorized("Sign-in failed", "That username and password don't match. Check them and try again.")
 		default:
 			return nil, err
 		}
@@ -100,7 +100,7 @@ type meOnlyOutput struct{ Body meBody }
 func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, error) {
 	u, ok := userFrom(ctx)
 	if !ok {
-		return nil, huma.Error401Unauthorized("not signed in")
+		return nil, errUnauthorized("Not signed in", "You need to sign in to view this.")
 	}
 	return &meOnlyOutput{Body: meBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove,

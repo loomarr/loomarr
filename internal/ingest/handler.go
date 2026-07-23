@@ -50,18 +50,20 @@ func New(st store.Store, lib library.Library, secret string, downloadingTTL time
 // payloads (Test, tracked, or untracked) so the *arr app doesn't retry-storm;
 // only a bad secret (401) or malformed body (400) is non-200 (§6).
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// This endpoint is Sonarr/Radarr-facing (a machine, not a person), so the messages
+	// stay terse — but capitalized + specific enough to read in an *arr connection test log.
 	if !h.validSecret(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, "Invalid or missing webhook secret.", http.StatusUnauthorized)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		http.Error(w, "read body", http.StatusBadRequest)
+		http.Error(w, "Couldn't read the request body.", http.StatusBadRequest)
 		return
 	}
 	p, err := parse(body)
 	if err != nil {
-		http.Error(w, "bad payload", http.StatusBadRequest)
+		http.Error(w, "Couldn't parse the webhook payload.", http.StatusBadRequest)
 		return
 	}
 	metrics.WebhookEvent(webhookKind(p)) // §17: events by type (bounded)

@@ -52,7 +52,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 
 	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
-	humaAPI := humago.New(mux, humaConfig())
+	cfg := humaConfig()
+	// Stamp every error response with the request's correlation id + log its full cause
+	// (§7). A response Transformer is the one seam that sees EVERY error body — returned
+	// StatusErrors AND huma's own validation failures — with the request context.
+	cfg.Transformers = append(cfg.Transformers, errorTransformer(log))
+	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
@@ -95,7 +100,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {
-				http.Error(w, `{"title":"Not Found"}`, http.StatusNotFound)
+				srv.writeProblem(w, r, http.StatusNotFound, "Not found", "There's no endpoint at that address.")
 				return
 			}
 		}
@@ -103,8 +108,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}))
 
 	// Outermost so it observes total handling time; it reads r.Pattern after the
-	// mux has matched (§18 request metrics).
-	return metrics.Middleware(logRequests(log, mux))
+	// mux has matched (§18 request metrics). withRequestID wraps everything so the
+	// correlation id exists for every handler — typed Huma ops AND the plain-mux ones
+	// (/v1/events, /v1/backup) — and is echoed on the response header.
+	return withRequestID(metrics.Middleware(logRequests(log, mux)))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

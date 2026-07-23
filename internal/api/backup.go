@@ -10,13 +10,12 @@ import (
 // note; auth is checked inline. SQLite streams VACUUM INTO; Postgres → 501.
 func (s *Server) backupHandler(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil || s.auth.Authorize(r) != RoleAdmin {
-		http.Error(w, "admin role required", http.StatusForbidden)
+		s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
 		return
 	}
 	if s.backupSQLite == nil {
-		http.Error(w,
-			"backup is SQLite-only; on Postgres use pg_dump against the database directly (docs/design.md §16)",
-			http.StatusNotImplemented)
+		s.writeProblem(w, r, http.StatusNotImplemented, "Backup unavailable",
+			"In-app backup is available on SQLite installs. On Postgres, back up the database with your usual Postgres tools.")
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")

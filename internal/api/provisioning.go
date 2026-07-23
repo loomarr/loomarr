@@ -64,11 +64,12 @@ func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCand
 		return nil, err
 	}
 	if s.provision == nil {
-		return nil, huma.Error501NotImplemented("provisioning not configured")
+		return nil, errNotImplemented("Media server not connected", "Connect a media server in Settings to import its users.")
 	}
 	found, err := s.provision.Candidates(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("could not list media-server users", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't reach the media server",
+			"Loomarr couldn't list users from your media server. Check its connection in Settings and try again.", err)
 	}
 	out := &importCandidatesOutput{}
 	out.Body.Candidates = make([]ImportCandidate, 0, len(found))
@@ -102,7 +103,8 @@ func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput
 	}
 	done, err := s.provision.Bootstrapped(ctx)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("could not read setup state", err)
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't check setup state",
+			"Loomarr couldn't tell whether first-run setup is complete. Try again in a moment.", err)
 	}
 	out.Body.Bootstrapped = done
 	return out, nil
@@ -128,10 +130,10 @@ type bootstrapOutput struct {
 func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapOutput, error) {
 	u, err := s.provision.Bootstrap(ctx, in.Body.Username, in.Body.Password)
 	if errors.Is(err, auth.ErrBootstrapClosed) {
-		return nil, huma.Error409Conflict("an admin already exists — bootstrap is closed")
+		return nil, errConflict("Already set up", "An admin account already exists, so first-run setup is closed.")
 	}
 	if errors.Is(err, auth.ErrInvalidBootstrap) {
-		return nil, huma.Error422UnprocessableEntity("username and password are required")
+		return nil, errUnprocessable("Details required", "Enter both a username and a password to create the admin account.")
 	}
 	if err != nil {
 		return nil, err
@@ -161,7 +163,8 @@ func (s *Server) importUsers(ctx context.Context, in *importUsersInput) (*import
 	}
 	n, err := s.provision.Import(ctx, in.Body.IDs, in.Body.MakeAdmin)
 	if err != nil {
-		return nil, huma.Error502BadGateway("import failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Import failed",
+			"Loomarr couldn't import the selected users. Check the media-server connection and try again.", err)
 	}
 	out := &importUsersOutput{}
 	out.Body.Imported = n

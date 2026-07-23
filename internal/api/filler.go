@@ -130,7 +130,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// A manual edit clears the AI flag (a human tagged it).
 	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, huma.Error404NotFound("no such clip")
+			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if in.Body.Kind != "" {
 		if err := s.store.UpdateClipKind(ctx, in.ID, in.Body.Kind, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, huma.Error404NotFound("no such clip")
+				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			return nil, err
 		}
@@ -166,11 +166,12 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 		return nil, err
 	}
 	if s.filler == nil || s.featureOff(ctx, "filler") {
-		return nil, huma.Error501NotImplemented("filler not configured")
+		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("filler sync failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't sync filler",
+			"Loomarr couldn't sync the filler catalog from your media server. Check its connection in Settings and try again.", err)
 	}
 	out := &syncFillerOutput{}
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
@@ -191,11 +192,12 @@ func (s *Server) tagFiller(ctx context.Context, _ *struct{}) (*tagFillerOutput, 
 		return nil, err
 	}
 	if s.filler == nil || s.featureOff(ctx, "filler") {
-		return nil, huma.Error501NotImplemented("filler not configured")
+		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	considered, tagged, partial, skipped, err := s.filler.Tag(ctx)
 	if err != nil {
-		return nil, huma.Error502BadGateway("filler tagging failed", err)
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't tag filler",
+			"Loomarr couldn't AI-tag the filler clips. Check that an AI provider is connected in Settings and try again.", err)
 	}
 	out := &tagFillerOutput{}
 	out.Body.Considered, out.Body.Tagged, out.Body.Partial, out.Body.Skipped = considered, tagged, partial, skipped
@@ -224,15 +226,15 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 		return nil, err
 	}
 	if s.filler == nil {
-		return nil, huma.Error501NotImplemented("filler not configured")
+		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	jobID, err := s.filler.Ingest(ctx, in.Body.URLs)
 	if errors.Is(err, ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can open this gate. The message names
 		// the actual remedy (a different image), because pointing an operator at
 		// Settings for something Settings cannot fix is the dead end §7 warns about.
-		return nil, huma.Error409Conflict(
-			"this image has no ingest tooling — run the loomarr:filler image to download clips in-app (design §10, §16)")
+		return nil, errConflict("Downloads aren't available here",
+			"This build has no download tooling. Run the loomarr:filler image to download clips in-app.")
 	}
 	if err != nil {
 		return nil, err

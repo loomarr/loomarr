@@ -60,7 +60,7 @@ func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOu
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsListOutput{}
 	out.Body.Settings = s.settings.List(ctx)
@@ -87,7 +87,7 @@ func (s *Server) settingsPatch(ctx context.Context, in *settingsPatchInput) (*se
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsPatchOutput{}
 	out.Body.Results = s.settings.Patch(ctx, in.Body.Edits, auditActor(ctx))
@@ -172,13 +172,13 @@ func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*st
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	switch res := s.settings.Clear(ctx, in.Key); res.Status {
 	case "invalid":
-		return nil, huma.Error404NotFound("unknown setting")
+		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "pinned":
-		return nil, huma.Error409Conflict("set via environment; unset the variable to manage this key in the app")
+		return nil, errConflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
 	}
 	return nil, nil
 }
@@ -211,7 +211,7 @@ func (s *Server) settingsTest(ctx context.Context, in *settingsTestInput) (*sett
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	ok, hint := s.settings.Test(ctx, in.Body.Check)
 	out := &settingsTestOutput{}
@@ -242,11 +242,11 @@ func (s *Server) secretReveal(ctx context.Context, in *secretRevealInput) (*secr
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	value, displayable, err := s.settings.RevealSecret(ctx, in.Name)
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity("cannot reveal secret", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't reveal secret", "This secret can't be shown. It may not be a viewable secret.", err)
 	}
 	out := &secretRevealOutput{}
 	out.Body.Displayable = displayable
@@ -275,11 +275,11 @@ func (s *Server) secretRegenerate(ctx context.Context, in *secretRegenerateInput
 		return nil, err
 	}
 	if s.settings == nil {
-		return nil, huma.Error501NotImplemented("settings service not configured")
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	value, displayable, err := s.settings.RegenerateSecret(ctx, in.Name)
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity("cannot regenerate secret", err)
+		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Can't regenerate secret", "This secret couldn't be regenerated. Try again in a moment.", err)
 	}
 	out := &secretRegenerateOutput{}
 	out.Body.Displayable = displayable

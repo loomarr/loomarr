@@ -23,16 +23,16 @@ func (s *Server) eventsHandler(w http.ResponseWriter, r *http.Request) {
 	// Authenticate like any /v1 route (the Huma middleware doesn't wrap this plain
 	// handler, so check here). Anonymous → 401.
 	if s.auth != nil && s.auth.Authorize(r) == RoleAnonymous {
-		http.Error(w, "authentication required", http.StatusUnauthorized)
+		s.writeProblem(w, r, http.StatusUnauthorized, "Not signed in", "You need to sign in to receive live updates.")
 		return
 	}
 	if s.events == nil {
-		http.Error(w, "events not configured", http.StatusNotImplemented)
+		s.writeProblem(w, r, http.StatusNotImplemented, "Live updates unavailable", "The live-events stream isn't running right now.")
 		return
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		s.writeProblem(w, r, http.StatusInternalServerError, "Live updates unavailable", "Your connection doesn't support streaming updates.")
 		return
 	}
 
