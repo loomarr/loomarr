@@ -7,6 +7,7 @@ package library
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Flavor selects the media-server dialect (§15 LIBRARY_FLAVOR).
@@ -53,6 +54,16 @@ type Library interface {
 	// ListUsers returns all media-server users for import/sync (§11), using the
 	// admin LIBRARY_TOKEN.
 	ListUsers(ctx context.Context) ([]User, error)
+}
+
+// LibraryScanner is the narrow port the poll-based availability scan depends on (§4, §18.1):
+// bulk reads of the library with provider ids, so the scan job confirms every in-flight title
+// in one call instead of an N-lookup storm. Segregated from Library so consumers that only
+// need presence (ingest) or auth don't take on the scan surface; the concrete *Client
+// satisfies both. RecentlyAdded is the incremental path; AllItems the periodic full sweep.
+type LibraryScanner interface {
+	RecentlyAdded(ctx context.Context, since time.Time) ([]SearchResult, error)
+	AllItems(ctx context.Context) ([]SearchResult, error)
 }
 
 // ProviderKind is the external id namespace used in a Lookup (§6).

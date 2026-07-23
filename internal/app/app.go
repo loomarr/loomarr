@@ -165,6 +165,23 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			DefaultCron: "0 0 * * * *", ScheduleKey: "job.session_sweep.schedule",
 			Run: func(ctx context.Context) error { _, err := sessionSweeper.Sweep(ctx, time.Now()); return err },
 		})
+
+		// Poll-based availability (§4, §18.1): the PRIMARY path a requested title reaches
+		// `available`. The scan lists what the media server recently added and confirms any
+		// in-flight title now present — the same LibraryConfirmed transition the reconciler's
+		// deadline backstop applies, but continuous. `lib` (a *library.Client) satisfies
+		// LibraryScanner. Incremental runs often (recent window); Full is the daily safety net.
+		libScan := reconcile.NewLibraryScan(st, lib, emitter, set.dur("job.library_scan.lookback"), time.Now, log)
+		jobReg.Add(scheduler.Job{
+			Name: "library-scan", Title: "Scan library for new titles",
+			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
+			Run: func(ctx context.Context) error { _, err := libScan.Incremental(ctx); return err },
+		})
+		jobReg.Add(scheduler.Job{
+			Name: "library-full-scan", Title: "Full library sweep",
+			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
+			Run: func(ctx context.Context) error { _, err := libScan.Full(ctx); return err },
+		})
 	}
 
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
