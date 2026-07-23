@@ -22,6 +22,10 @@ type arrStub struct {
 	deletedID   int            // the queue id DELETEd by Cancel, if any
 	queueForID  int            // a queue record's movieId/seriesId to expose
 	queueRecID  int            // that queue record's own id
+	queueSize   float64        // queue record size / sizeleft → progress
+	queueLeft   float64        //
+	queueStatus string         // queue record status ("downloading"/"warning"/…)
+	queueTime   string         // queue record timeleft
 	profileName string         // name of the single quality profile (id 7)
 	lookupTerm  string         // the last lookup ?term= (proves tmdb/tvdb routing)
 }
@@ -55,7 +59,11 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 			field = "seriesId"
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"records": []map[string]any{{"id": s.queueRecID, field: s.queueForID}},
+			"records": []map[string]any{{
+				"id": s.queueRecID, field: s.queueForID,
+				"size": s.queueSize, "sizeleft": s.queueLeft,
+				"status": s.queueStatus, "timeleft": s.queueTime,
+			}},
 		})
 	})
 	mux.HandleFunc("/api/v3/queue/", func(w http.ResponseWriter, r *http.Request) {

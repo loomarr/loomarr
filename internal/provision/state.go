@@ -34,4 +34,11 @@ type Record struct {
 	Attempts    int
 	LastError   string
 	UpdatedAt   time.Time
+
+	// Download progress (§18.1 arr-queue-poll). Display-only, poll-updated via the store's
+	// targeted UpdateTitleProgress — NOT written by the state-machine Upsert, so a reconcile
+	// or scan pass never clobbers the latest progress. Zero on the Seerr path / once available.
+	Progress       float64 // 0..1 completion fraction
+	ETAText        string  // the arr's human time-left string
+	DownloadStatus string  // the arr's queue status ("downloading"/"warning"/"stalled"/…)
 }

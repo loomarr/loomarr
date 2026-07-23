@@ -25,7 +25,8 @@ WITH due AS (
 )
 UPDATE titles t SET deadline = $1
 FROM due WHERE t.key = due.key
-RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline, t.attempts, t.last_error, t.updated_at`
+RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline, t.attempts, t.last_error, t.updated_at,
+          t.progress, t.eta_text, t.download_status`
 
 // Postgres channel claim: FOR UPDATE SKIP LOCKED so two replicas never reconcile
 // the same channel (§18 single-leader-per-channel). Keyed on reconcile_deadline,
