@@ -246,6 +246,13 @@ func (s *Server) registerChannels(api huma.API) {
 	}, s.getChannel)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
+		Summary:     "Suggest channel icons from the lineup",
+		Description: "Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.",
+		Tags:        []string{"channels"},
+	}, s.channelIconSuggestions)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
 		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
@@ -326,6 +333,39 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 		return nil, err
 	}
 	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+}
+
+type iconSuggestionsOutput struct {
+	Body struct {
+		Suggestions []IconSuggestion `json:"suggestions"`
+	}
+}
+
+// channelIconSuggestions offers candidate icons drawn from the channel's OWN lineup
+// (§icon P2): a Star Trek channel's five series posters, rather than a generic
+// placeholder. Read-only — any authenticated user may call it, matching get-channel.
+func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
+	if s.icons == nil {
+		return nil, errNotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
+	}
+	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+
+	suggestions, err := s.icons.IconSuggestions(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := &iconSuggestionsOutput{}
+	// Always a slice, never null: a lineup with no resolvable posters (e.g. all-TVDB
+	// entries with no TMDB bridge match) is a normal state, not a failure.
+	out.Body.Suggestions = suggestions
+	if out.Body.Suggestions == nil {
+		out.Body.Suggestions = []IconSuggestion{}
+	}
+	return out, nil
 }
 
 type createChannelInput struct {

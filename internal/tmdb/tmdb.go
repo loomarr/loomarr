@@ -282,6 +282,61 @@ func (c *Client) ContentRating(ctx context.Context, mt provision.MediaType, tmdb
 	return "", nil
 }
 
+// imageBase is TMDB's image CDN + a mid-size width good for a channel icon (a poster at
+// w500 is crisp on a guide tile without being a full-res download). TMDB's /configuration
+// endpoint returns the canonical base, but it's stable and documented, so we hardcode it
+// (one fewer round-trip) — same pragmatism as the other pinned TMDB shapes.
+const imageBase = "https://image.tmdb.org/t/p/w500"
+
+// PosterURL returns a full, directly-fetchable poster image URL for a title (§icon), or ""
+// (no error) when TMDB has no poster — sparse coverage is normal, so an empty answer is a
+// legitimate result the caller falls back on (no icon), not a failure. Used to give a
+// channel a themed icon from its primary series/movie. Tunarr fetches this URL directly, so
+// no proxying is needed. A poster (portrait) reads better as a channel tile than a backdrop.
+func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
+	if tmdbID <= 0 {
+		return "", nil
+	}
+	path := "/movie/" + strconv.Itoa(tmdbID)
+	if mt == provision.Series {
+		path = "/tv/" + strconv.Itoa(tmdbID)
+	}
+	var body struct {
+		PosterPath string `json:"poster_path"`
+	}
+	if err := c.get(ctx, path, &body); err != nil {
+		return "", err
+	}
+	if p := strings.TrimSpace(body.PosterPath); p != "" {
+		return imageBase + p, nil // poster_path already has a leading "/"
+	}
+	return "", nil
+}
+
+// PosterURLByTVDB resolves a TVDB series id to a TMDB poster via the /find bridge
+// (/find/{tvdb_id}?external_source=tvdb_id → the matching tv result's poster_path). Our
+// series are often TVDB-keyed (Seerr's canonical id for series), but posters live on TMDB;
+// this is the one-hop bridge. Returns "" (no error) when no match / no poster.
+func (c *Client) PosterURLByTVDB(ctx context.Context, tvdbID int) (string, error) {
+	if tvdbID <= 0 {
+		return "", nil
+	}
+	var body struct {
+		TVResults []struct {
+			PosterPath string `json:"poster_path"`
+		} `json:"tv_results"`
+	}
+	if err := c.get(ctx, "/find/"+strconv.Itoa(tvdbID)+"?external_source=tvdb_id", &body); err != nil {
+		return "", err
+	}
+	for _, r := range body.TVResults {
+		if p := strings.TrimSpace(r.PosterPath); p != "" {
+			return imageBase + p, nil
+		}
+	}
+	return "", nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	status, err := c.getStatus(ctx, path, out)
 	if err != nil {
