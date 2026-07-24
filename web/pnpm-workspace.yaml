@@ -23,3 +23,8 @@ overrides:
   lodash: "^4.18.1"
   # GHSA: quadratic-complexity DoS via repeated aliases in merge keys.
   js-yaml: "^4.2.0"
+  # GHSA (high): fast-uri host confusion via a literal backslash authority delimiter,
+  # affecting >=3.0.0 <=3.1.3; patched in 3.1.4. Arrives transitively through ajv@8
+  # (JSON-schema validation in the codegen/OpenAPI chain). Range-scoped so it only
+  # rewrites the vulnerable versions, not a future fast-uri major ajv might ask for.
+  "fast-uri@>=3.0.0 <=3.1.3": "3.1.4"
