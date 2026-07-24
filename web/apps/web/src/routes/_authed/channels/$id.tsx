@@ -150,8 +150,11 @@ const ChannelDetailScreen = () => {
   const guide =
     nowNext.data?.status === 200 ? nowNext.data.data.channels?.find((c) => c.channelId === id) : undefined;
 
+  // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
+  // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
+  // pendingCount is the real title total; ready < total iff something is still acquiring.
   const ready = ch.programCount;
-  const total = ch.slotCount;
+  const total = ch.programCount + ch.pendingCount;
 
   const savePolicy = (policy: ChannelPolicy) => update.mutate({ id, data: { policy } });
 
@@ -251,11 +254,11 @@ const ChannelDetailScreen = () => {
               </div>
 
               <p className="border-border border-t pt-3 text-sm">
-                <span className="font-medium">{`${ready} of ${pluralize(total, "show")} ready`}</span>
+                <span className="font-medium">{`${ready} of ${pluralize(total, "title")} ready`}</span>
                 {ready < total && (
                   <span className="text-muted-foreground">
                     {" "}
-                    — the rest fill in as clips arrive, so the channel never goes dark.
+                    — the rest fill in as titles arrive, so the channel never goes dark.
                   </span>
                 )}
               </p>

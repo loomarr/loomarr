@@ -32,8 +32,10 @@ type ChannelDTO struct {
 	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
 	IntentRef    string `json:"intentRef,omitempty"`
-	ProgramCount int    `json:"programCount" doc:"Real playable programs in the desired lineup"`
-	SlotCount    int    `json:"slotCount" doc:"Total slots incl. filler/flex placeholders"`
+	ProgramCount int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
+	PendingCount int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
+	BreakCount   int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
+	SlotCount    int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
 	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
 	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
@@ -104,7 +106,8 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
-		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
+		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
+		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),
 		Policy: ch.Policy, Lineup: lineup,
 	}
 }

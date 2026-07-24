@@ -158,6 +158,59 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 	}
 }
 
+// TestDesiredCounts_BreaksAreNotPending is the P2 status-truth guarantee: a
+// fully-acquired, break-heavy channel has PendingCount 0 (so it reads healthy),
+// even though its total slot count is inflated by the commercial breaks. This is
+// the exact case that used to misread as "pending-slots forever".
+func TestDesiredCounts_BreaksAreNotPending(t *testing.T) {
+	min15 := int64(15 * 60 * 1000)
+	avail := durAvail{
+		"movie:tmdb:1": {id: "l1", dur: min15},
+		"movie:tmdb:2": {id: "l2", dur: min15},
+		"movie:tmdb:3": {id: "l3", dur: min15},
+		"movie:tmdb:4": {id: "l4", dur: min15},
+	}
+	entries := []schedule.LineupEntry{
+		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"),
+		entry("movie:tmdb:3", "C"), entry("movie:tmdb:4", "D"),
+	}
+	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+
+	if got.ProgramCount() != 4 {
+		t.Fatalf("want 4 programs, got %d", got.ProgramCount())
+	}
+	if got.BreakCount() != 3 {
+		t.Fatalf("want 3 commercial breaks, got %d", got.BreakCount())
+	}
+	if got.PendingCount() != 0 {
+		t.Fatalf("a fully-acquired break-heavy channel must have 0 pending; got %d (breaks miscounted as pending titles)", got.PendingCount())
+	}
+	if len(got.Slots) <= got.ProgramCount() {
+		t.Fatalf("slotCount (%d) should exceed programCount (%d) because of breaks — proving raw slotCount is not a readiness signal", len(got.Slots), got.ProgramCount())
+	}
+}
+
+// TestDesiredCounts_PodFillPlaceholderIsPending: a not-yet-available title
+// pod-fills to a SlotFiller that KEEPS its Key (pending.go). That slot is a
+// pending title, not a commercial break — the Key is what tells them apart.
+func TestDesiredCounts_PodFillPlaceholderIsPending(t *testing.T) {
+	min15 := int64(15 * 60 * 1000)
+	avail := durAvail{"movie:tmdb:1": {id: "l1", dur: min15}} // :2 absent → pod-fill pending
+	entries := []schedule.LineupEntry{entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B")}
+
+	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
+
+	if got.ProgramCount() != 1 {
+		t.Fatalf("want 1 program, got %d", got.ProgramCount())
+	}
+	if got.PendingCount() != 1 {
+		t.Fatalf("want 1 pending (the pod-fill placeholder), got %d", got.PendingCount())
+	}
+	if got.BreakCount() != 0 {
+		t.Fatalf("a keyed pod-fill placeholder must not count as a break; got %d breaks", got.BreakCount())
+	}
+}
+
 // TestComputeDesired_ShortProgramsFewerBreaks: duration-aware — 22-min sitcoms
 // accumulate slower, so 4×22min (88 min) at 4/hr (~every 15 min) yields breaks
 // after progs where the running total crosses 15/30/45/60/75 min → fewer than

@@ -128,6 +128,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        breakCount:
+          description: Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount
+          format: int64
+          type: integer
         group:
           examples:
             - Kids
@@ -158,15 +162,19 @@ components:
             - 42
           format: int64
           type: integer
+        pendingCount:
+          description: "Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."
+          format: int64
+          type: integer
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
           description: Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations
         programCount:
-          description: Real playable programs in the desired lineup
+          description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
         slotCount:
-          description: Total slots incl. filler/flex placeholders
+          description: Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics.
           format: int64
           type: integer
         status:
@@ -194,6 +202,8 @@ components:
         - strategy
         - status
         - programCount
+        - pendingCount
+        - breakCount
         - slotCount
         - policy
         - lineup

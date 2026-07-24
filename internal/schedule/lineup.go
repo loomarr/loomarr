@@ -42,6 +42,37 @@ func (d DesiredLineup) ProgramCount() int {
 	return n
 }
 
+// PendingCount returns how many slots hold a lineup title that is NOT yet
+// available — an explicit "coming soon" gap (SlotPending) or a pod-fill
+// placeholder (a SlotFiller that still carries the entry's Key, pending.go).
+// These are the slots genuinely "waiting on acquisition". A commercial-break
+// gap (keyless SlotFiller, §10 interleaveBreaks) is deliberately NOT one — that
+// distinction is the whole point: a fully-acquired channel with ad breaks has
+// PendingCount 0 and must read healthy, not "still filling in".
+func (d DesiredLineup) PendingCount() int {
+	n := 0
+	for _, s := range d.Slots {
+		if s.Kind == SlotPending || (s.Kind == SlotFiller && s.Key != "") {
+			n++
+		}
+	}
+	return n
+}
+
+// BreakCount returns how many slots are commercial-break gaps — keyless
+// SlotFiller inserted between programs by interleaveBreaks (§10). A pod-fill
+// placeholder (SlotFiller WITH a Key) is a pending title, not a break, so the
+// Key check keeps the two apart.
+func (d DesiredLineup) BreakCount() int {
+	n := 0
+	for _, s := range d.Slots {
+		if s.Kind == SlotFiller && s.Key == "" {
+			n++
+		}
+	}
+	return n
+}
+
 // Availability answers, for a provisioning Key, whether the title is available
 // and (if so) its library item id. The reconcile engine backs this with the
 // store/library; pure tests back it with a map. Mirrors §9's "compute desired
