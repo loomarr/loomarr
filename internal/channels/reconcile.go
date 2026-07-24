@@ -318,13 +318,18 @@ func PodSeed(channelID string) int64 {
 // recreate it.
 func (e *Engine) ensureChannel(ctx context.Context, spec programmer.ChannelSpec) (string, error) {
 	if spec.TunarrID != "" {
-		_, ok, err := e.prog.GetChannel(ctx, spec.TunarrID)
+		actual, ok, err := e.prog.GetChannel(ctx, spec.TunarrID)
 		if err != nil {
 			return "", fmt.Errorf("check channel %s: %w", spec.TunarrID, err)
 		}
 		if !ok {
 			// The channel was deleted in Tunarr out of band; recreate it.
 			spec.TunarrID = ""
+		} else {
+			// Preserve Tunarr's existing loop anchor across the update PUT (§9) — without
+			// this the channel's lineup would jump back to its start every reconcile. This
+			// reuses the GET we already make here, so it costs no extra round-trip.
+			spec.StartTime = actual.StartTime
 		}
 	}
 	id, err := e.prog.EnsureChannel(ctx, spec)
