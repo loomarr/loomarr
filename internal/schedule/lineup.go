@@ -515,6 +515,8 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 					DurationMs:    ep.DurationMs,
 					PartGroup:     ep.PartGroup,
 					PartIndex:     ep.PartIndex,
+					Season:        ep.Season,
+					Episode:       ep.Episode,
 				})
 			}
 			if len(out) > 0 {

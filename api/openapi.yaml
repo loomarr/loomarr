@@ -366,6 +366,10 @@ components:
     CycleSlotDTO:
       additionalProperties: false
       properties:
+        episode:
+          description: Series episode number (0 = movie/unknown)
+          format: int64
+          type: integer
         key:
           description: Provisioning key of the title (empty for a break)
           type: string
@@ -378,6 +382,10 @@ components:
           type: string
         part:
           description: Play order within a multi-part or franchise group (0 = standalone)
+          format: int64
+          type: integer
+        season:
+          description: Series season number (0 = movie/unknown)
           format: int64
           type: integer
         title:

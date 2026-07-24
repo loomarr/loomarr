@@ -106,7 +106,7 @@ const ChannelProgramming = ({
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
           wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
       <div className="border-border border-t pt-6">
-        <ChannelCyclePreview channelId={channelId} />
+        <ChannelCyclePreview channelId={channelId} lineupKeys={lineupKeys} />
       </div>
     </div>
   );

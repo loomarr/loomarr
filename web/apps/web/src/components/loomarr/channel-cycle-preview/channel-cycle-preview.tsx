@@ -72,10 +72,16 @@ const humanWindow = (windowMs: number): string => {
   return days === 1 ? "Showing ~24h" : `Showing ~${days} days`;
 };
 
-// One cycle slot: a program (title + optional part-N note), a pending acquisition
-// (muted "coming soon"), or a break (a thin divider — Tunarr owns the clip, this is
-// just the gap).
-const SlotRow = ({ slot, index }: { slot: CycleSlotDTO; index: number }) => {
+// seasonEpisode — "S1E5" from a slot's season/episode (both > 0), else "". A movie or an
+// unnumbered item carries 0s and gets no marker.
+const seasonEpisode = (slot: CycleSlotDTO): string =>
+  slot.season && slot.episode ? `S${slot.season}E${slot.episode}` : "";
+
+// One cycle slot: a program (show · SxxExx — episode), a pending acquisition (muted "coming
+// soon"), or a break (a thin divider — Tunarr owns the clip, this is just the gap). `showTitle`
+// is the show name resolved from the slot's key by the caller's lineup map (a series episode
+// otherwise reads as a bare episode title with no show context on a multi-show channel).
+const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number; showTitle?: string }) => {
   if (slot.kind === "break") {
     return (
       <li
@@ -89,6 +95,11 @@ const SlotRow = ({ slot, index }: { slot: CycleSlotDTO; index: number }) => {
     );
   }
   const pending = slot.kind === "pending";
+  const se = seasonEpisode(slot);
+  const episodeTitle = slot.title || "Untitled";
+  // Show the show-name prefix only when it adds information — a series episode ("Bluey" +
+  // "Grandad"), not a movie whose lineup name equals its own title ("Shrek" + "Shrek").
+  const showPrefix = showTitle && showTitle !== episodeTitle ? showTitle : "";
   return (
     <li
       className={cn(
@@ -102,9 +113,19 @@ const SlotRow = ({ slot, index }: { slot: CycleSlotDTO; index: number }) => {
       ) : (
         <Tv className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
-      <span className={cn("min-w-0 flex-1 truncate text-sm", pending && "text-muted-foreground italic")}>
-        {slot.title || "Untitled"}
-        {pending ? " (coming soon)" : ""}
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-baseline gap-1.5 text-sm",
+          pending && "text-muted-foreground italic",
+        )}
+      >
+        {showPrefix ? <span className="shrink-0 font-medium">{showPrefix}</span> : null}
+        {se ? <span className="shrink-0 font-mono text-muted-foreground text-xs">{se}</span> : null}
+        {/* The em dash separates the show/SxxExx from the episode title, only when there's a
+            show prefix to separate from — a movie (title == its own name) just shows its title. */}
+        {showPrefix ? <span className="shrink-0 text-muted-foreground">—</span> : null}
+        <span className="truncate">{episodeTitle}</span>
+        {pending ? <span className="shrink-0"> (coming soon)</span> : null}
       </span>
       {slot.part && slot.part > 0 ? <Badge variant="neutral">Part {slot.part}</Badge> : null}
     </li>
@@ -116,12 +137,15 @@ const SlotRow = ({ slot, index }: { slot: CycleSlotDTO; index: number }) => {
 // ComputeDesiredAt the reconciler runs. Its whole point is making first-match-by-
 // priority legible — "at Saturday 9am, the Weekend TNG marathon rule is active" — so the
 // active-rule attribution is the most prominent thing on the panel, not a footnote.
-const ChannelCyclePreview = ({ channelId, className }: ChannelCyclePreviewProps) => {
+const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCyclePreviewProps) => {
   const [at, setAt] = useState("");
 
   const preview = channelsApi.usePreviewChannelCycle(channelId, at ? { at } : undefined);
 
   const body = preview.data?.status === 200 ? preview.data.data : undefined;
+
+  // key → show title, from the channel's lineup, so each episode slot names its show.
+  const showByKey = new Map((lineupKeys ?? []).map((e) => [e.key, e.title]));
 
   return (
     <section className={cn("flex flex-col gap-3", className)}>
@@ -196,11 +220,16 @@ const ChannelCyclePreview = ({ channelId, className }: ChannelCyclePreviewProps)
               aria-label="Scheduled slots"
             >
               {body.slots.map((slot, i) => (
-                // The index is only a disambiguator here (multiple breaks, or the same key
-                // airing twice in a marathon share a `kind`+`key`) — position is otherwise
-                // stable within a single preview response, which never reorders in place.
-                // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
-                <SlotRow key={`${slot.kind}-${slot.key ?? ""}-${i}`} slot={slot} index={i} />
+                <SlotRow
+                  // The index is only a disambiguator here (multiple breaks, or the same key
+                  // airing twice in a marathon share a `kind`+`key`) — position is otherwise
+                  // stable within a single preview response, which never reorders in place.
+                  // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
+                  key={`${slot.kind}-${slot.key ?? ""}-${i}`}
+                  slot={slot}
+                  index={i}
+                  showTitle={slot.key ? showByKey.get(slot.key) : undefined}
+                />
               ))}
             </ul>
           )}

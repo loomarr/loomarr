@@ -221,7 +221,12 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       ) : (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <SortableContext items={entries.map((e) => e.key)} strategy={verticalListSortingStrategy}>
-            <ul className="flex flex-col gap-2">
+            {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
+                channel with many titles otherwise runs the page off. max-height means a short
+                lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
+                (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
+                dnd-kit auto-scrolls this container during a drag toward its edges. */}
+            <ul className="scroll-thin flex max-h-128 flex-col gap-2 overflow-y-auto">
               {entries.map((entry) => (
                 <SortableLineupRow
                   key={entry.key}
