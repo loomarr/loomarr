@@ -1,6 +1,7 @@
 package testkit
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,8 +15,11 @@ type Seerr struct {
 	// Status is the code /api/v1/request returns (default 201). Set to 409 to
 	// exercise the conflict-is-success path, or 500 for a failure.
 	Status int
-	// LastAPIKey / Requests capture what the requester sent.
+	// LastAPIKey / LastBody / Requests capture what the requester sent. LastBody is the
+	// raw POST /request body, so a test can assert the exact payload (e.g. that a series
+	// always sends `seasons`, "all" or an array — Jellyseerr 500s if it's omitted).
 	LastAPIKey string
+	LastBody   []byte
 	Requests   int
 }
 
@@ -27,6 +31,7 @@ func NewSeerr(t testing.TB) *Seerr {
 	mux.HandleFunc("POST /api/v1/request", func(w http.ResponseWriter, r *http.Request) {
 		s.Requests++
 		s.LastAPIKey = r.Header.Get("X-Api-Key")
+		s.LastBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(s.Status)
 		// The real body carries the media record (Phase 0); a minimal stub suffices.
 		_, _ = w.Write([]byte(`{"type":"movie","media":{"status":5}}`))
