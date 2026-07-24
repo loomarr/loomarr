@@ -54,6 +54,31 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for your hosted AI service. Never shown again after saving. |
 | `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Automatically approve suggested downloads, with no review step. Off by default. _(advanced)_ |
 | `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |
+| `recurate.min_score_pct` (`RECURATE_MIN_SCORE_PCT`) | int | `60` | Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser. _(advanced)_ |
+| `recurate.max_titles` (`RECURATE_MAX_TITLES`) | int | `40` | The most titles an auto-curate channel may grow to. Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser. _(advanced)_ |
+
+## Advanced
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `job.recurate.schedule` (`JOB_RECURATE_SCHEDULE`) | cron | `0 0 4 * * 0` | How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent. _(advanced)_ |
+| `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
+| `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
+| `reconcile.every` (`RECONCILE_EVERY`) | duration | `5m` | How often Loomarr checks on in-progress downloads. |
+| `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
+| `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
+| `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
+| `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
+| `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
+| `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
+| `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
+| `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
+| `job.workers` (`JOB_WORKERS`) | int | `2` | How many channel suggestions can be worked on at once. |
+| `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | How long one channel suggestion may run before it's stopped. |
+| `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
+| `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
+| `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip. |
+| `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 
 ## Channels & playback
 
@@ -93,26 +118,4 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `session.ttl` (`SESSION_TTL`) | duration | `720h` | How long you stay signed in before needing to log in again. |
 | `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
 | `user.sync_every` (`USER_SYNC_EVERY`) | duration | `1h` | How often Loomarr refreshes imported users from your media server. _(advanced)_ |
-
-## Advanced
-
-| Setting (env) | Kind | Default | Notes |
-| --- | --- | --- | --- |
-| `request.ttl` (`REQUEST_TTL`) | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
-| `downloading.ttl` (`DOWNLOADING_TTL`) | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
-| `reconcile.every` (`RECONCILE_EVERY`) | duration | `5m` | How often Loomarr checks on in-progress downloads. |
-| `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
-| `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
-| `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
-| `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
-| `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
-| `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
-| `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
-| `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
-| `job.workers` (`JOB_WORKERS`) | int | `2` | How many channel suggestions can be worked on at once. |
-| `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | How long one channel suggestion may run before it's stopped. |
-| `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
-| `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
-| `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip. |
-| `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 
