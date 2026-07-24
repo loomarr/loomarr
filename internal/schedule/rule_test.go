@@ -3,6 +3,8 @@ package schedule
 import (
 	"testing"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/provision"
 )
 
 // A fixed reference clock: 2026-07-25 is a Saturday, 2026-07-23 a Thursday. Using UTC
@@ -261,36 +263,83 @@ func TestWindowIndex_ConstantWithinAdvancesAcross(t *testing.T) {
 	}
 }
 
-func TestTruncateToWindow(t *testing.T) {
-	prog := func(ms int64) Slot { return Slot{Kind: SlotProgram, DurationMs: ms} }
+func TestWindowSlice(t *testing.T) {
+	prog := func(id string, ms int64) Slot { return Slot{Kind: SlotProgram, Key: provision.Key(id), DurationMs: ms} }
 	hour := int64(60 * 60 * 1000)
-	deck := []Slot{prog(hour), prog(hour), prog(hour), prog(hour)} // 4×1h
+	// 4×1h films — total 4h. With a 2h window this is BIGGER than the window (rotates).
+	deck := []Slot{prog("a", hour), prog("b", hour), prog("c", hour), prog("d", hour)}
+	keys := func(ss []Slot) string {
+		out := ""
+		for _, s := range ss {
+			out += string(s.Key)
+		}
+		return out
+	}
 
-	t.Run("keeps prefix meeting the window", func(t *testing.T) {
-		got := truncateToWindow(deck, 2*time.Hour) // first two hours meet the budget
-		if len(got) != 2 {
-			t.Fatalf("kept %d, want 2", len(got))
+	t.Run("index 0 keeps the head slice meeting the window budget", func(t *testing.T) {
+		got := windowSlice(deck, 2*time.Hour, 0) // first two hours meet the budget
+		if keys(got) != "ab" {
+			t.Fatalf("slice = %q, want ab", keys(got))
 		}
 	})
-	t.Run("window >= deck keeps all", func(t *testing.T) {
-		if got := truncateToWindow(deck, 10*time.Hour); len(got) != 4 {
+	t.Run("next window TILES the catalog (continues where it left off, not a slide)", func(t *testing.T) {
+		// Window holds 2 films; stride = 2, so window 1 airs films [c,d], window 2 wraps to [a,b].
+		if got := keys(windowSlice(deck, 2*time.Hour, 1)); got != "cd" {
+			t.Fatalf("window 1 = %q, want cd (tiles, not slides to bc)", got)
+		}
+		if got := keys(windowSlice(deck, 2*time.Hour, 2)); got != "ab" {
+			t.Fatalf("window 2 = %q, want ab (wrapped back to the head)", got)
+		}
+	})
+	t.Run("coverage: every film airs across a full cycle (no starved tail)", func(t *testing.T) {
+		seen := map[string]bool{}
+		for i := int64(0); i < 2; i++ { // ceil(4h/2h) = 2 windows cover the catalog
+			for _, s := range windowSlice(deck, 2*time.Hour, i) {
+				seen[string(s.Key)] = true
+			}
+		}
+		for _, want := range []string{"a", "b", "c", "d"} {
+			if !seen[want] {
+				t.Fatalf("film %q never aired across a full cycle (starvation)", want)
+			}
+		}
+	})
+	t.Run("idempotent within a window: same index → identical slice", func(t *testing.T) {
+		// Two independent calls at the same index must agree (idempotency / no thrash). Build
+		// a fresh deck for the second call so it's genuinely recomputed, not the same slice ref.
+		deck2 := append([]Slot(nil), deck...)
+		if keys(windowSlice(deck, 2*time.Hour, 3)) != keys(windowSlice(deck2, 2*time.Hour, 3)) {
+			t.Fatal("same index must yield the identical slice (idempotency / no thrash)")
+		}
+	})
+	t.Run("catalog fits in one window → whole deck every window (nothing to rotate)", func(t *testing.T) {
+		if got := windowSlice(deck, 10*time.Hour, 0); len(got) != 4 {
 			t.Fatalf("kept %d, want 4", len(got))
+		}
+		if got := windowSlice(deck, 10*time.Hour, 5); len(got) != 4 { // any index, still whole
+			t.Fatalf("kept %d at index 5, want 4 (small pool never rotates)", len(got))
 		}
 	})
 	t.Run("always keeps at least one program even if it exceeds the window", func(t *testing.T) {
-		got := truncateToWindow([]Slot{prog(3 * hour)}, 1*time.Hour) // single 3h program, 1h window
+		got := windowSlice([]Slot{prog("x", 3*hour)}, 1*time.Hour, 0) // single 3h program, 1h window
 		if len(got) != 1 {
 			t.Fatalf("kept %d, want 1 (never dark)", len(got))
 		}
 	})
 	t.Run("zero window keeps the whole deck (unbounded / WindowFull path)", func(t *testing.T) {
-		if got := truncateToWindow(deck, 0); len(got) != 4 {
-			t.Fatalf("kept %d, want 4 (unbounded)", len(got))
+		if got := windowSlice(deck, 0, 7); len(got) != 4 {
+			t.Fatalf("kept %d, want 4 (unbounded, no rotation)", len(got))
 		}
 	})
 	t.Run("empty deck stays empty", func(t *testing.T) {
-		if got := truncateToWindow(nil, time.Hour); len(got) != 0 {
+		if got := windowSlice(nil, time.Hour, 0); len(got) != 0 {
 			t.Fatalf("kept %d, want 0", len(got))
+		}
+	})
+	t.Run("zero-duration deck (unknown runtimes) plays whole, never a meaningless prefix", func(t *testing.T) {
+		zero := []Slot{prog("a", 0), prog("b", 0), prog("c", 0)}
+		if got := windowSlice(zero, 2*time.Hour, 1); len(got) != 3 {
+			t.Fatalf("kept %d, want 3 (0-runtime deck airs whole)", len(got))
 		}
 	})
 }
