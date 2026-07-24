@@ -260,3 +260,27 @@ func (c *Client) do(req *http.Request, out any) error {
 	}
 	return nil
 }
+
+// doTolerate404 runs a request whose target may already be gone, treating a 404 as
+// success so a delete stays idempotent (re-running the URL-change reconcile, or a
+// race, must not error on an already-removed tuner). All other non-2xx surface as
+// with do.
+func (c *Client) doTolerate404(req *http.Request) error {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := strings.TrimSpace(string(snippet))
+		if msg == "" {
+			return fmt.Errorf("%s %s: status %d", req.Method, req.URL.Path, resp.StatusCode)
+		}
+		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, msg)
+	}
+	return nil
+}

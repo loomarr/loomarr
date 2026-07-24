@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 // Live TV wiring (§6): register Tunarr as an M3U tuner + XMLTV guide source in
@@ -33,6 +35,20 @@ type LiveTV interface {
 	// AddListingProvider registers Tunarr's XMLTV guide as an xmltv listing
 	// provider.
 	AddListingProvider(ctx context.Context, tunarrXMLTV string) error
+	// StaleLoomarrTuners returns the ids of Loomarr-owned tuner hosts (those
+	// tagged FriendlyName=="loomarr") whose Url is NOT the desired M3U — i.e. the
+	// dead tuners left behind when the Tunarr URL changed. A tuner the household
+	// added by hand (any other FriendlyName) is never included (§6/§9 ownership).
+	StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]string, error)
+	// StaleLoomarrListings returns the ids of xmltv listing providers whose Path
+	// is a Tunarr guide URL other than the desired one. Listing providers carry no
+	// FriendlyName, so the Loomarr-shaped one is identified by its Tunarr-guide
+	// Path shape (…/api/xmltv.xml).
+	StaleLoomarrListings(ctx context.Context, desiredXMLTV string) ([]string, error)
+	// RemoveTuner deletes a tuner host by id (idempotent — a gone id is not an error).
+	RemoveTuner(ctx context.Context, id string) error
+	// RemoveListingProvider deletes a listing provider by id (idempotent).
+	RemoveListingProvider(ctx context.Context, id string) error
 	// RefreshGuide triggers the guide-refresh scheduled task (§9 guide freshness).
 	// Best-effort; the task id is version-fragile (pinned via capture).
 	RefreshGuide(ctx context.Context) error
@@ -183,6 +199,72 @@ func (c *Client) AddListingProvider(ctx context.Context, tunarrXMLTV string) err
 	}
 	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
 	return c.do(req, nil)
+}
+
+// StaleLoomarrTuners lists ids of Loomarr-owned tuner hosts whose Url is not the
+// desired M3U — the stale tuners a Tunarr-URL change leaves behind. Ownership is
+// FriendlyName=="loomarr" (what AddTuner stamps), so a hand-added tuner is never
+// returned even if it points at an old Tunarr (§6/§9).
+func (c *Client) StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]string, error) {
+	var cfg liveTVConfig
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, h := range cfg.TunerHosts {
+		if h.FriendlyName == tunerFriendlyName && h.URL != desiredM3U && h.ID != "" {
+			ids = append(ids, h.ID)
+		}
+	}
+	return ids, nil
+}
+
+// StaleLoomarrListings lists ids of xmltv listing providers whose Path is a Tunarr
+// guide URL other than the desired one. Listing providers have no FriendlyName, so
+// the Loomarr-shaped provider is identified by the Tunarr guide path suffix.
+func (c *Client) StaleLoomarrListings(ctx context.Context, desiredXMLTV string) ([]string, error) {
+	var cfg liveTVConfig
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, p := range cfg.ListingProviders {
+		if p.Type == "xmltv" && isTunarrGuidePath(p.Path) && p.Path != desiredXMLTV && p.ID != "" {
+			ids = append(ids, p.ID)
+		}
+	}
+	return ids, nil
+}
+
+// tunarrGuideSuffix is the path Tunarr serves its XMLTV guide at; a listing
+// provider whose Path ends with it is a Tunarr guide (see TunarrURLsFrom).
+const tunarrGuideSuffix = "/api/xmltv.xml"
+
+func isTunarrGuidePath(path string) bool {
+	return strings.HasSuffix(strings.TrimRight(path, "/"), tunarrGuideSuffix)
+}
+
+// RemoveTuner deletes a tuner host by id (§6 URL-change reconcile). The delete
+// takes ?Id= as a query param and returns 204 (Phase-0 capture). Idempotent: a
+// 404 (already gone) is not an error.
+func (c *Client) RemoveTuner(ctx context.Context, id string) error {
+	return c.deleteLiveTV(ctx, "/LiveTv/TunerHosts", id)
+}
+
+// RemoveListingProvider deletes a listing provider by id (idempotent).
+func (c *Client) RemoveListingProvider(ctx context.Context, id string) error {
+	return c.deleteLiveTV(ctx, "/LiveTv/ListingProviders", id)
+}
+
+// deleteLiveTV issues DELETE <path>?Id=<id>, tolerating a 404 as already-gone so
+// the reconcile stays idempotent.
+func (c *Client) deleteLiveTV(ctx context.Context, path, id string) error {
+	req, err := c.newRequest(ctx, http.MethodDelete, path+"?Id="+url.QueryEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+	return c.doTolerate404(req)
 }
 
 // Client satisfies the LiveTV capability.
