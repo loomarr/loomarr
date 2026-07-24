@@ -57,6 +57,11 @@ type Server struct {
 	// provision wires /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes
 	// absent. Implemented by auth.Provisioner.
 	provision Provisioner
+	// binder materializes an approved proposal onto a channel (§7) — the ONE
+	// implementation shared with the suggest worker's auto-approve path (§8/§11).
+	// Implemented by *binder.Binder; declared here as ChannelBinder so the api
+	// package doesn't import internal/binder's concrete type.
+	binder ChannelBinder
 	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
 	// a route gates on the CURRENT config (a saved connection enables it with no
@@ -309,6 +314,21 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
+// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
+// first approval, patch it (preserving operator-owned fields) on re-approval or
+// refine. Implemented by *binder.Binder — declared here (not imported concretely)
+// so the api package doesn't couple to the binder package's internals; it only
+// needs these methods.
+//
+// LineupFromIntent/PolicyFromIntent are also used directly by createChannel (§7 POST
+// /v1/channels with an intentRef), sharing the same approved-proposal resolution
+// BindApprovedChannel uses internally — one gate, not two.
+type ChannelBinder interface {
+	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
+	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
+	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
+}
+
 // UserSyncer refreshes already-imported users from the media server (§11).
 // Returns the count synced. It never ADDS users (import defines the allowlist).
 type UserSyncer interface {
@@ -374,6 +394,7 @@ type Options struct {
 	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
 	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Binder        ChannelBinder    // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

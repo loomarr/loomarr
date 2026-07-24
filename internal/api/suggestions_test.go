@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -56,13 +57,18 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+	log := slog.New(slog.DiscardHandler)
+	h := api.Router(log, api.Options{
 		Store:   st,
 		Auth:    api.NewTokenAuthorizer(adminToken),
-		Log:     slog.New(slog.DiscardHandler),
+		Log:     log,
 		Suggest: fs,
 		Search:  fakeSearch{},
 		Events:  events.NewBus(),
+		// No Reconciler wired here (channels isn't under test) — mirrors the
+		// composition root's nil-guard: the bind still creates/patches the
+		// channel row and just skips the immediate Tunarr reconcile push.
+		Binder: binder.New(st, nil, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

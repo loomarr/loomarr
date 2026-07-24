@@ -42,6 +42,27 @@ type ChannelPolicy struct {
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole
 	// run (no truncation). A per-rule Window overrides this for that rule's slice.
 	Window Duration `json:"window,omitempty"`
+	// AutoCurate is the per-channel self-updating opt-in (§8.2). Nil (the default) = OFF:
+	// the channel is frozen at its last-approved lineup and re-curation skips it. When set,
+	// the scheduled `channel-recurate` job re-evaluates the channel's intent against the
+	// current library and applies changes UNATTENDED — in-library matches added directly,
+	// net-new acquisitions requested through the approval gate (never a raw wanted write),
+	// bounded by the quality bar + title cap (global defaults, optionally overridden here).
+	// Rides policy_json (no schema change), so it round-trips like every other policy field.
+	AutoCurate *AutoCurate `json:"autoCurate,omitempty"`
+}
+
+// AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the
+// opt-in; the two optional overrides let a channel be stricter or looser than the global
+// recurate defaults. A zero-value (non-nil) AutoCurate means "opted in, use the global
+// defaults for both thresholds".
+type AutoCurate struct {
+	// MinScorePct overrides recurate.min_score_pct (the 0–100 quality bar a not-in-library
+	// title must clear before auto-curate REQUESTS it). 0 = inherit the global default.
+	MinScorePct int `json:"minScorePct,omitempty"`
+	// MaxTitles overrides recurate.max_titles (the cap on how large this channel may grow).
+	// 0 = inherit the global default.
+	MaxTitles int `json:"maxTitles,omitempty"`
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is
@@ -491,6 +512,14 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if err := p.Filler.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)
+	}
+	if p.AutoCurate != nil {
+		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {
+			return fmt.Errorf("channel policy: autoCurate.minScorePct %d out of range (0–100)", p.AutoCurate.MinScorePct)
+		}
+		if p.AutoCurate.MaxTitles < 0 {
+			return fmt.Errorf("channel policy: autoCurate.maxTitles %d must not be negative", p.AutoCurate.MaxTitles)
+		}
 	}
 	return nil
 }

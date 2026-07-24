@@ -47,12 +47,57 @@ type Service struct {
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
 	// which is the correct default: the gate is closed unless something opens it.
 	auto *AutoApprover
+	// binder materializes an approved proposal onto a channel (§7). nil ⇒ an
+	// auto-approval enqueues acquisitions but does not rebind the channel — the
+	// composition root always wires one alongside WithAutoApprove so that gap is
+	// closed in production; nil stays a safe default for unit tests that don't
+	// care about channels.
+	binder ChannelBinder
+	// autoCurate applies the §8.2 channel-scoped auto-curate grant to a re-curation
+	// proposal. nil ⇒ re-curation proposals wait for an admin (the closed default). Distinct
+	// from `auto` (per-user quota); this one is authorized by the channel's AutoCurate opt-in.
+	autoCurate ChannelAutoCurator
+}
+
+// ChannelAutoCurator applies the §8.2 channel-scoped auto-curate grant: it decides whether a
+// re-curation proposal may auto-approve because its CHANNEL opted in (AutoCurate), bounded by
+// the quality bar + title cap — never a user quota. The suggest package declares the interface
+// (dependency inversion); internal/recurate implements it, wired at the composition root, so
+// suggest never imports recurate. Returns the same Decision shape the per-user grant does.
+type ChannelAutoCurator interface {
+	Consider(ctx context.Context, p store.Proposal) (Decision, error)
+}
+
+// ChannelBinder materializes an approved proposal onto a channel (§7): create it on
+// first approval, patch it (preserving operator-owned fields) on re-approval or
+// refine. The suggest package declares this interface itself (dependency
+// inversion) — it needs exactly one method, and *binder.Binder satisfies it
+// structurally without suggest importing internal/binder.
+type ChannelBinder interface {
+	BindApprovedChannel(ctx context.Context, p store.Proposal) (channelID string, err error)
 }
 
 // WithAutoApprove enables the per-user auto-approve grant (§8, §11). Wired at the
 // composition root, where the settings service and the full store are both available.
 func (s *Service) WithAutoApprove(a *AutoApprover) *Service {
 	s.auto = a
+	return s
+}
+
+// WithChannelBinder wires the shared channel-binding logic (§7) so an auto-approved
+// proposal ALSO rebinds its channel — the fix for the gap where auto-approve
+// enqueued acquisitions but never touched the channel a refine was meant to update.
+// Mirrors WithAutoApprove's functional-option style.
+func (s *Service) WithChannelBinder(b ChannelBinder) *Service {
+	s.binder = b
+	return s
+}
+
+// WithAutoCurate wires the §8.2 channel-scoped auto-curate grant, so a re-curation proposal
+// for an auto-curate-opted-in channel auto-approves within its quality bar + title cap.
+// Mirrors WithAutoApprove; nil (unset) keeps re-curation proposals in the admin queue.
+func (s *Service) WithAutoCurate(c ChannelAutoCurator) *Service {
+	s.autoCurate = c
 	return s
 }
 
@@ -251,6 +296,7 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
+	approved := false
 	if s.auto != nil {
 		if d, aerr := s.auto.Consider(ctx, p); aerr != nil {
 			// A failed auto-approval must not fail the JOB: the proposal exists and an
@@ -258,10 +304,38 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 			s.log.Warn("auto-approve failed; proposal stays in the queue",
 				"proposal", p.ID, "user", p.CreatedBy, "err", aerr)
 		} else if d.Approved {
+			approved = true
 			s.log.Info("auto-approved within quota",
 				"proposal", p.ID, "user", p.CreatedBy, "enqueued", d.Enqueued)
 		} else {
 			s.log.Debug("not auto-approved", "proposal", p.ID, "reason", d.Reason)
+		}
+	}
+	// The channel-scoped auto-CURATE grant (§8.2): distinct from the per-user grant above.
+	// A re-curation job's proposal is authorized by the CHANNEL's AutoCurate opt-in, not a
+	// user's grant, and is bounded by the quality bar + title cap rather than the user quota.
+	// Only tried when the per-user path didn't already approve (a proposal is approved once).
+	// Same "never fail the job" contract.
+	if !approved && s.autoCurate != nil {
+		if d, aerr := s.autoCurate.Consider(ctx, p); aerr != nil {
+			s.log.Warn("auto-curate failed; proposal stays in the queue",
+				"proposal", p.ID, "job", job.ID, "err", aerr)
+		} else if d.Approved {
+			approved = true
+			s.log.Info("auto-curated within thresholds",
+				"proposal", p.ID, "job", job.ID, "enqueued", d.Enqueued)
+		} else if d.Reason != "" {
+			s.log.Debug("not auto-curated", "proposal", p.ID, "reason", d.Reason)
+		}
+	}
+	// Rebind the channel (§7/§8/§11) after ANY auto-approval — per-user or auto-curate. The
+	// manual-approve HTTP handler always did this; auto-approve previously stopped at
+	// enqueueing acquisitions, leaving the channel's lineup stale. Same non-fatal handling as
+	// the manual path: a bind failure must not undo or fail an approval that already stands.
+	if approved && s.binder != nil {
+		if _, berr := s.binder.BindApprovedChannel(ctx, p); berr != nil {
+			s.log.Warn("auto-approved, but the channel could not be bound",
+				"proposal", p.ID, "job", job.ID, "err", berr)
 		}
 	}
 

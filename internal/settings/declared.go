@@ -167,6 +167,23 @@ func declared() []Setting {
 			Doc: "The most titles a single suggestion may download.",
 		},
 
+		// --- Self-updating channels / re-curation (programming-design §8.2) ---
+		{
+			Key: "job.recurate.schedule", EnvVar: "JOB_RECURATE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 4 * * 0", Advanced: true,
+			Doc: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
+		},
+		{
+			Key: "recurate.min_score_pct", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
+			Kind: KindInt, Default: 60, Advanced: true,
+			Doc: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
+		},
+		{
+			Key: "recurate.max_titles", EnvVar: "RECURATE_MAX_TITLES", Group: GroupAI,
+			Kind: KindInt, Default: 40, Advanced: true,
+			Doc: "The most titles an auto-curate channel may grow to. Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser.",
+		},
+
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
 			Key: "sched.default_strategy", EnvVar: "SCHED_DEFAULT_STRATEGY", Group: GroupChannels,

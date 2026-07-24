@@ -67,6 +67,16 @@ components:
         unrated:
           type: string
       type: object
+    AutoCurate:
+      additionalProperties: false
+      properties:
+        maxTitles:
+          format: int64
+          type: integer
+        minScorePct:
+          format: int64
+          type: integer
+      type: object
     BootstrapInputBody:
       additionalProperties: false
       properties:
@@ -212,6 +222,8 @@ components:
             - "null"
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
+        autoCurate:
+          $ref: "#/components/schemas/AutoCurate"
         filler:
           $ref: "#/components/schemas/FillerSelection"
         ordering:
