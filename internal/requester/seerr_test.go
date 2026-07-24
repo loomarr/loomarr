@@ -117,3 +117,51 @@ func TestSeerrNoTMDBID(t *testing.T) {
 		t.Error("expected error for a title with no TMDB id")
 	}
 }
+
+// QueueStatus maps Seerr's /media processing enum to coarse status (§18.1): PROCESSING and
+// PARTIALLY_AVAILABLE are Grabbed (promote requested→downloading) with a label and NO
+// percentage; PENDING and titles absent from the set are not grabbed. Progress stays 0 —
+// Seerr has no byte count, the label carries the meaning.
+func TestSeerrQueueStatus(t *testing.T) {
+	ms := testkit.NewSeerr(t)
+	t.Cleanup(ms.Close)
+	// 82728 downloading, 65733 partly available, 3022 still pending; 999 not in the set at all.
+	ms.Processing = map[int]int{82728: 3, 65733: 4, 3022: 2}
+	r := NewSeerr(ms.URL, "k")
+
+	titles := []provision.Title{
+		{MediaType: provision.Series, TMDBID: 82728},
+		{MediaType: provision.Series, TMDBID: 65733},
+		{MediaType: provision.Series, TMDBID: 3022},
+		{MediaType: provision.Series, TMDBID: 999},
+	}
+	items, err := r.QueueStatus(context.Background(), titles)
+	if err != nil {
+		t.Fatalf("QueueStatus: %v", err)
+	}
+	byTMDB := map[int]QueueItem{}
+	for i, it := range items {
+		byTMDB[titles[i].TMDBID] = it
+	}
+
+	want := []struct {
+		tmdb    int
+		grabbed bool
+		label   string
+	}{
+		{82728, true, "Downloading"},
+		{65733, true, "Partly available"},
+		{3022, false, ""}, // pending — not grabbed
+		{999, false, ""},  // absent from the processing set — not grabbed
+	}
+	for _, w := range want {
+		got := byTMDB[w.tmdb]
+		if got.Grabbed != w.grabbed || got.Status != w.label {
+			t.Errorf("tmdb %d: got grabbed=%v status=%q, want grabbed=%v status=%q",
+				w.tmdb, got.Grabbed, got.Status, w.grabbed, w.label)
+		}
+		if got.Progress != 0 {
+			t.Errorf("tmdb %d: Progress=%v, want 0 (Seerr has no percentage)", w.tmdb, got.Progress)
+		}
+	}
+}

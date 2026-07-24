@@ -1030,6 +1030,12 @@ components:
     LineupEntryDTO:
       additionalProperties: false
       properties:
+        downloadStatus:
+          description: Coarse acquisition status label (e.g. Downloading, Partly available) or the arr download-client status
+          type: string
+        etaText:
+          description: Human time-left from the download client (direct arr only)
+          type: string
         genres:
           items:
             type: string
@@ -1041,6 +1047,10 @@ components:
           type: string
         name:
           type: string
+        progress:
+          description: Download completion 0..1 (arr queue poll); 0 = indeterminate on the Seerr path
+          format: double
+          type: number
         seasonMax:
           description: "series airing window: last season (0 = unbounded)"
           format: int64

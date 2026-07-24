@@ -63,6 +63,14 @@ type LineupEntryDTO struct {
 	// UI can show and edit "seasons 1–10". 0 = unbounded on that end (all seasons).
 	SeasonMin int `json:"seasonMin,omitempty" doc:"series airing window: first season (0 = unbounded)"`
 	SeasonMax int `json:"seasonMax,omitempty" doc:"series airing window: last season (0 = unbounded)"`
+	// Acquisition progress (§18.1), surfaced on an `acquiring` entry so the UI can show how
+	// far along a download is. Progress is a 0..1 fraction from the direct-arr queue poll; on
+	// the Seerr path it stays 0 and the meaning rides DownloadStatus ("Downloading" / "Partly
+	// available"), which the UI renders as an indeterminate indicator. Empty/zero once
+	// available or on a pending entry with no record yet.
+	Progress       float64 `json:"progress,omitempty" doc:"Download completion 0..1 (arr queue poll); 0 = indeterminate on the Seerr path"`
+	ETAText        string  `json:"etaText,omitempty" doc:"Human time-left from the download client (direct arr only)"`
+	DownloadStatus string  `json:"downloadStatus,omitempty" doc:"Coarse acquisition status label (e.g. Downloading, Partly available) or the arr download-client status"`
 }
 
 // lineupEntryState collapses the provision.Record lifecycle (plus the no-record case) into
@@ -86,10 +94,20 @@ func lineupEntryState(rec provision.Record, found bool) string {
 	}
 }
 
+// entryAcq is what the per-entry resolver returns: the collapsed lineup state plus the
+// acquisition progress fields (§18.1) for an in-flight entry, so a single GetTitle populates
+// both the badge and the progress indicator.
+type entryAcq struct {
+	State          string
+	Progress       float64
+	ETAText        string
+	DownloadStatus string
+}
+
 // channelToDTO renders a channel for the API. entryState, when non-nil, resolves each
-// lineup entry's acquisition state by key (the single-channel handlers pass a store-backed
-// resolver; the list passes nil to skip the per-entry lookups it does not need).
-func channelToDTO(ch store.Channel, entryState func(provision.Key) string) ChannelDTO {
+// lineup entry's acquisition state + progress by key (the single-channel handlers pass a
+// store-backed resolver; the list passes nil to skip the per-entry lookups it does not need).
+func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq) ChannelDTO {
 	d := schedule.DesiredLineup{Slots: ch.Desired}
 	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
@@ -98,7 +116,9 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 			SeasonMin: e.SeasonMin, SeasonMax: e.SeasonMax,
 		}
 		if entryState != nil {
-			dto.State = entryState(e.Key)
+			acq := entryState(e.Key)
+			dto.State = acq.State
+			dto.Progress, dto.ETAText, dto.DownloadStatus = acq.Progress, acq.ETAText, acq.DownloadStatus
 		}
 		lineup = append(lineup, dto)
 	}
@@ -118,10 +138,18 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 // not a list fan-out. A key with no Record resolves to `pending` (lineupEntryState), so a
 // manually-added, not-yet-requested title reads as pending durably rather than only at
 // add-time. The list endpoint deliberately does NOT use this (it shows counts, not entries).
-func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) string {
-	return func(key provision.Key) string {
+func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) entryAcq {
+	return func(key provision.Key) entryAcq {
 		rec, err := s.store.GetTitle(ctx, key)
-		return lineupEntryState(rec, err == nil)
+		found := err == nil
+		acq := entryAcq{State: lineupEntryState(rec, found)}
+		// Surface progress only for an in-flight entry (acquiring). An available/pending/
+		// unavailable entry has no meaningful live progress, and the record's stale
+		// download fields (e.g. a lingering label after success) must not leak onto it.
+		if found && acq.State == "acquiring" {
+			acq.Progress, acq.ETAText, acq.DownloadStatus = rec.Progress, rec.ETAText, rec.DownloadStatus
+		}
+		return acq
 	}
 }
 

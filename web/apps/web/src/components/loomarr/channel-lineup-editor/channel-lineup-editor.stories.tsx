@@ -55,13 +55,21 @@ type Story = StoryObj<typeof meta>;
 // (no badge, plays now), pending (added, nothing requested it), acquiring (on its way),
 // and unavailable (gave up). Each state rides on the entry (LineupEntryDTO.state, server-
 // derived), so this is a plain initial render — the badges are durable, not the result of
-// a click, which is why the gallery can snapshot them directly (no play()).
+// a click, which is why the gallery can snapshot them directly (no play()). The acquiring
+// entry carries a coarse downloadStatus (§18.1), so its chip reads the stage ("Downloading…")
+// rather than the generic "Acquiring…" — the Seerr acquisition-status path on a lineup row.
 const Populated: Story = {
   args: {
     lineup: [
       { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
       { key: "movie:tmdb:9426", name: "Point Break", year: 1991, state: "pending" },
-      { key: "movie:tmdb:1892", name: "Return of the Jedi", year: 1983, state: "acquiring" },
+      {
+        key: "movie:tmdb:1892",
+        name: "Return of the Jedi",
+        year: 1983,
+        state: "acquiring",
+        downloadStatus: "Downloading",
+      },
       { key: "movie:tmdb:11", name: "Star Wars", year: 1977, state: "unavailable" },
     ],
   },
