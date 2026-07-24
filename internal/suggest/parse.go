@@ -65,6 +65,21 @@ type pickPolicy struct {
 		Mode     string   `json:"mode"` // "off" | "auto" | "exclusive"
 		Holidays []string `json:"holidays"`
 	} `json:"seasonal"`
+	// Rules are the model's proposed curation rules (§6.5/§6.6) from the closed preset
+	// vocabulary — e.g. a weekend TNG marathon, December holiday programming. Each is a
+	// {when, what, how} token triple; groundPolicy lowers + clamps them (unknown tokens
+	// dropped, window bounded, daypart ceilings stricter-only). Optional.
+	Rules []pickRule `json:"rules,omitempty"`
+}
+
+// pickRule is one UNTRUSTED curation rule the model proposes as preset TOKENS (§6.6): the
+// model names WHEN/WHAT/HOW, deterministic code supplies the predicate/scope/ordering. The
+// model never emits a raw hour range or predicate (that would be the model scheduling, §8).
+type pickRule struct {
+	When     string `json:"when"`               // e.g. "weekend", "primetime", "holiday:christmas"
+	What     string `json:"what,omitempty"`     // e.g. "series:<key>", "kids", "all"; "" = inherit channel scope
+	How      string `json:"how,omitempty"`      // e.g. "marathon", "syndication"; "" = inherit channel ordering
+	Priority int    `json:"priority,omitempty"` // optional override; 0 = use the WHEN token's default
 }
 
 // finalOutput is the model's final JSON shape (§8 output contract): picks +
