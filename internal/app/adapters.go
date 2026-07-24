@@ -12,6 +12,7 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/setup"
+	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
 // liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface
@@ -128,6 +129,24 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 		return "", false, err
 	}
 	return d.OfficialRating, true, nil
+}
+
+// tmdbFranchises adapts the tmdb.Client to channels.FranchiseResolver: it resolves a MOVIE
+// entry's TMDB collection (franchise) id from the entry's Key, for the reconcile-time heal
+// (§5 franchise ordering). Only a tmdb-keyed movie can be resolved — a tvdb-keyed movie or a
+// series returns ok=false (no lookup), so the entry stays ungrouped (harmless).
+type tmdbFranchises struct{ tmdb *tmdb.Client }
+
+func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int, bool, error) {
+	mt, provider, id, ok := provision.ParseKey(key)
+	if !ok || mt == provision.Series || provider != "tmdb" {
+		return 0, false, nil // only a tmdb-keyed movie has a resolvable collection
+	}
+	cid, err := a.tmdb.CollectionID(ctx, mt, id)
+	if err != nil {
+		return 0, false, err
+	}
+	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
 }
 
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so

@@ -3,8 +3,54 @@ package schedule
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
+
+	"github.com/mantonx/loomarr/internal/provision"
 )
+
+// franchiseTag is a movie entry's franchise-group assignment (§5): the shared PartGroup id
+// and the film's 1-based release-order index within it.
+type franchiseTag struct {
+	group string
+	index int
+}
+
+// assignFranchiseGroups groups MOVIE entries that share a TMDB collection (CollectionID > 0)
+// into a franchise, so a franchise's films play together in release-year order as an atomic
+// block (§5 — the movie analogue of the multi-part episode floor). Returns a map from each
+// grouped movie's Key to its (group, index); an ungrouped movie / any series is absent from
+// the map (no franchise constraint). Only a collection with ≥2 present films is a group — a
+// lone film of a franchise isn't "kept together" with anything. Deterministic: films are
+// ordered by Year (ties broken by Key) so the same lineup always yields the same order.
+func assignFranchiseGroups(entries []LineupEntry) map[provision.Key]franchiseTag {
+	// Collect the movie entries per collection id.
+	byCollection := map[int][]LineupEntry{}
+	for _, e := range entries {
+		if e.CollectionID > 0 && !e.Key.IsSeries() {
+			byCollection[e.CollectionID] = append(byCollection[e.CollectionID], e)
+		}
+	}
+	tags := map[provision.Key]franchiseTag{}
+	for cid, films := range byCollection {
+		if len(films) < 2 {
+			continue // a single film of a franchise has nothing to be kept together with
+		}
+		// Release order: Year ascending, Key as a stable tiebreaker (same-year films / a
+		// missing year still get a deterministic order).
+		sort.Slice(films, func(i, j int) bool {
+			if films[i].Year != films[j].Year {
+				return films[i].Year < films[j].Year
+			}
+			return films[i].Key < films[j].Key
+		})
+		group := fmt.Sprintf("collection:%d", cid)
+		for idx, f := range films {
+			tags[f.Key] = franchiseTag{group: group, index: idx + 1}
+		}
+	}
+	return tags
+}
 
 // Multi-part episode detection (§5 multi-part adjacency floor): a two-parter must air
 // as an atomic, in-order block. Detection is deterministic and runs at episode-resolution
