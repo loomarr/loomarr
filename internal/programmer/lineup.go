@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/mantonx/loomarr/internal/schedule"
 )
@@ -49,10 +50,14 @@ type lineupResponse struct {
 // practice slots is non-empty, but SetLineup itself must be total).
 func (t *Tunarr) SetLineup(ctx context.Context, tunarrID string, slots []schedule.Slot) error {
 	items := make([]tunarrLineupItem, 0, len(slots))
+	misses := 0 // program slots that couldn't resolve to Tunarr content (item not indexed yet)
 	for _, s := range slots {
-		item, err := t.slotToItem(ctx, s)
+		item, resolved, err := t.slotToItem(ctx, s)
 		if err != nil {
 			return fmt.Errorf("resolve slot for %s: %w", tunarrID, err)
+		}
+		if s.Kind == schedule.SlotProgram && !resolved {
+			misses++
 		}
 		items = append(items, item)
 	}
@@ -60,7 +65,53 @@ func (t *Tunarr) SetLineup(ctx context.Context, tunarrID string, slots []schedul
 	if err := t.doJSON(ctx, http.MethodPost, "/api/channels/"+tunarrID+"/programming", body, nil); err != nil {
 		return fmt.Errorf("set lineup for %s: %w", tunarrID, err)
 	}
+	// A program slot that didn't resolve means Tunarr hasn't indexed a title that IS in the
+	// media server (a just-downloaded show — §18.1's TMDB/scan chain got it `available`, but
+	// Tunarr scans its own libraries on its own cadence). Trigger a Tunarr media-library scan
+	// so a LATER reconcile resolves those slots into real content instead of flex. Best-effort
+	// and debounced to one pass per reconcile-with-misses: scanning is idempotent and Tunarr
+	// coalesces overlapping scans, so a persistent miss re-triggers next reconcile without
+	// storming (one scan per cycle). Never fails the push — the flex fallback already played.
+	if misses > 0 {
+		t.rescanMediaLibraries(ctx)
+	}
 	return nil
+}
+
+// rescanMediaLibraries triggers a Tunarr scan of every non-local (emby/jellyfin) media
+// library, so a just-downloaded title Tunarr hasn't indexed yet gets picked up and a LATER
+// reconcile can resolve its slots to real content (this reconcile already degraded them to
+// flex). It is entirely best-effort — Tunarr scanning is asynchronous and idempotent, the
+// content is safely on-air as flex meanwhile, and a scan failure must never fail the push —
+// so this returns nothing and only logs. `local` sources are skipped: they hold filler
+// clips (§10), carry no emby/jellyfin ids, and their per-library scan sub-path 400s (the
+// same trap EnsureLocalFillerSource documents).
+func (t *Tunarr) rescanMediaLibraries(ctx context.Context) {
+	var sources []mediaSourceSummary
+	if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources", nil, &sources); err != nil {
+		// Best-effort: the programmer package carries no logger (logging lives at the engine
+		// layer), and the scan retries next reconcile — so a failure here is silently tolerated.
+		return
+	}
+	for _, src := range sources {
+		if strings.EqualFold(src.Type, "local") {
+			continue // filler source — no media content to index here (its scan sub-path 400s)
+		}
+		var libs []tunarrLibrary
+		if err := t.doJSON(ctx, http.MethodGet, "/api/media-sources/"+src.ID+"/libraries", nil, &libs); err != nil {
+			continue // can't enumerate this source — best-effort, try the next one
+		}
+		for _, lib := range libs {
+			if !lib.Enabled {
+				continue // an unscanned/disabled library has nothing to index
+			}
+			// POST the per-library scan (verified: 202 accepted, ingests newly-landed content).
+			// Fully best-effort: whatever the status or a transport error, keep going — one
+			// library failing must not stop the rest, and none of it fails the reconcile.
+			_, _, _ = t.doStatus(ctx, t.http, http.MethodPost,
+				"/api/media-sources/"+src.ID+"/libraries/"+lib.ID+"/scan", nil, nil)
+		}
+	}
 }
 
 // GetLineup implements Programmer: reads current programming back as slots. It
@@ -100,7 +151,10 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 // lands. (Caught by the live smoke: a flex slot with duration 0 → 400.)
 const minFlexMs = 30_000
 
-func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, error) {
+// slotToItem maps one domain slot to a Tunarr lineup item. The bool reports whether a PROGRAM
+// slot resolved to real content (true) vs degraded to flex because Tunarr hasn't indexed it
+// (false); it is always true for a non-program slot (flex is the intended render, not a miss).
+func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupItem, bool, error) {
 	dur := float64(s.DurationMs)
 	// Only a program is content. Filler is no longer inlined here (§10 redesign):
 	// commercials live in a Tunarr filler-list attached to the channel, which
@@ -109,7 +163,7 @@ func (t *Tunarr) slotToItem(ctx context.Context, s schedule.Slot) (tunarrLineupI
 	if s.Kind == schedule.SlotProgram {
 		return t.contentItem(ctx, s.LibraryItemID, dur)
 	}
-	return flexItem(dur), nil
+	return flexItem(dur), true, nil
 }
 
 // flexItem builds a flex lineup entry with a duration Tunarr will accept (≥ minFlexMs).
@@ -120,18 +174,19 @@ func flexItem(dur float64) tunarrLineupItem {
 	return tunarrLineupItem{Type: "flex", Duration: dur}
 }
 
-// contentItem resolves a media-server item id to a Tunarr content entry, or
-// degrades to flex if Tunarr hasn't indexed the item yet.
-func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (tunarrLineupItem, error) {
+// contentItem resolves a media-server item id to a Tunarr content entry, or degrades to flex
+// if Tunarr hasn't indexed the item yet. The bool is the resolution result: true = real
+// content, false = degraded to flex (a miss the caller counts to trigger a Tunarr rescan).
+func (t *Tunarr) contentItem(ctx context.Context, itemID string, dur float64) (tunarrLineupItem, bool, error) {
 	uuid, ok, err := t.resolver.resolve(ctx, itemID)
 	if err != nil {
-		return tunarrLineupItem{}, err
+		return tunarrLineupItem{}, false, err
 	}
 	if !ok {
 		// Not in Tunarr's index yet → flex now, resolves on a later reconcile.
-		return flexItem(dur), nil
+		return flexItem(dur), false, nil
 	}
-	return tunarrLineupItem{Type: "content", ID: uuid, Duration: dur}, nil
+	return tunarrLineupItem{Type: "content", ID: uuid, Duration: dur}, true, nil
 }
 
 // itemToSlot maps a Tunarr lineup item back to a domain slot for the diff. Tunarr
