@@ -82,9 +82,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	if ch.ID == "" || ch.Policy.AutoCurate == nil {
 		return suggest.Decision{Reason: "channel not opted into auto-curate"}, nil
 	}
-	// A detached/paused channel is not being managed — don't grow it unattended.
-	if ch.Status != schedule.StatusLive && ch.Status != schedule.StatusBuilding {
-		return suggest.Decision{Reason: "channel not live"}, nil
+	// A paused/detached channel is not being managed — don't grow it unattended. Every other
+	// state (live/building/DRIFTED) is managed and curatable — drifted is a transient reconcile
+	// state, not a hands-off one (mirrors runner.eligible's deny-list).
+	if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
+		return suggest.Decision{Reason: "channel paused or detached"}, nil
 	}
 
 	minScore := effectiveMinScore(ctx, ch.Policy.AutoCurate, c.thresholds)

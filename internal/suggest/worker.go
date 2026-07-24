@@ -332,8 +332,18 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	// manual-approve HTTP handler always did this; auto-approve previously stopped at
 	// enqueueing acquisitions, leaving the channel's lineup stale. Same non-fatal handling as
 	// the manual path: a bind failure must not undo or fail an approval that already stands.
+	//
+	// RE-READ the proposal from the store before binding: the grant mutated it in place
+	// (Status→approved, ApprovedBy set, and — for auto-curate — the acquisition list filtered).
+	// Our local `p` is the pre-approval copy (ApprovedBy ""), so binding it would take the
+	// full-REPLACE path and lose the auto-curate additive semantics (§8.2). The persisted
+	// proposal is the source of truth for what was approved.
 	if approved && s.binder != nil {
-		if _, berr := s.binder.BindApprovedChannel(ctx, p); berr != nil {
+		bindP := p
+		if fresh, ferr := s.store.GetProposal(ctx, p.ID); ferr == nil {
+			bindP = fresh
+		}
+		if _, berr := s.binder.BindApprovedChannel(ctx, bindP); berr != nil {
 			s.log.Warn("auto-approved, but the channel could not be bound",
 				"proposal", p.ID, "job", job.ID, "err", berr)
 		}
