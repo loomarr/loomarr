@@ -1,7 +1,7 @@
 import { settingsApi } from "@loomarr/api";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr";
-import { cn } from "@/lib";
+import { cn, useDocumentTitle } from "@/lib";
 
 // Settings (config-design §5) — Sonarr's shape: grouped pages, an explicit save bar per page.
 // It is also the troubleshooting console for the life of the install (§13), which is why the
@@ -20,6 +20,7 @@ const PAGES = [
 ] as const;
 
 const SettingsLayout = () => {
+  useDocumentTitle("Settings");
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
 
   if (settings.error) {
