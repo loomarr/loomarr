@@ -8,9 +8,14 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/httpx"
 )
+
+// now is the clock for stamping a new channel's loop anchor (StartTime). A package var so
+// a test can freeze it; production is time.Now.
+var now = time.Now
 
 // Tunarr is the hand-written thin client for the Tunarr REST API (§6). It targets
 // only the endpoints the scheduler needs (channels CRUD + programming); the
@@ -177,7 +182,10 @@ func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, e
 	}
 	body.TranscodeID = transcodeID
 	if spec.TunarrID == "" {
-		// Create: POST /api/channels with the {type:"new",channel:{…}} envelope.
+		// Create: anchor the looping lineup at NOW (epoch ms). Leaving it 0 anchored the
+		// loop at epoch 0 (1970), which surfaced in the guide as a ~1960 start.
+		body.StartTime = now().UnixMilli()
+		// POST /api/channels with the {type:"new",channel:{…}} envelope.
 		env := createEnvelope{Type: "new", Channel: body}
 		var created tunarrChannel
 		if err := t.doJSON(ctx, http.MethodPost, "/api/channels", env, &created); err != nil {
@@ -188,8 +196,20 @@ func (t *Tunarr) EnsureChannel(ctx context.Context, spec ChannelSpec) (string, e
 		}
 		return created.ID, nil
 	}
-	// Update: PUT /api/channels/{id} with the full channel (id preserved).
+	// Update: PUT /api/channels/{id} with the full channel (id preserved). Preserve the
+	// EXISTING loop anchor the caller threaded (spec.StartTime) so the lineup doesn't jump
+	// back to its start every reconcile. If the caller didn't supply one (0 — e.g. a spec
+	// built without a read-back), fall back to stamping now rather than re-writing epoch 0.
 	body.ID = spec.TunarrID
+	if spec.StartTime > 0 {
+		body.StartTime = spec.StartTime // preserve a valid anchor (stable loop across reconciles)
+	} else {
+		// 0 means either no read-back OR a channel created before this fix (the broken
+		// epoch-0 anchor). Either way, stamp NOW to HEAL it — a channel's anchor should never
+		// be epoch 0, so re-anchoring to now on the next reconcile fixes pre-fix channels
+		// without a manual recreate. (Costs one loop-seam jump, once, on the healing sweep.)
+		body.StartTime = now().UnixMilli()
+	}
 	if err := t.doJSON(ctx, http.MethodPut, "/api/channels/"+spec.TunarrID, body, nil); err != nil {
 		return "", fmt.Errorf("update channel %s: %w", spec.TunarrID, err)
 	}
@@ -234,6 +254,7 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 		Group:        ch.GroupTitle,
 		Logo:         ch.Icon.Path,
 		ProgramCount: ch.ProgramCount,
+		StartTime:    ch.StartTime, // preserve the loop anchor across updates
 	}, true, nil
 }
 
