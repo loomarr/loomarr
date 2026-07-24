@@ -109,6 +109,105 @@ func (s *Seerr) Request(ctx context.Context, t provision.Title) error {
 	return fmt.Errorf("seerr request: unexpected status %d", resp.StatusCode)
 }
 
+// Jellyseerr/Overseerr MediaStatus enum (their MediaStatus TS enum). Loomarr only cares about
+// the in-flight middle: PROCESSING (a release is being fetched) and PARTIALLY_AVAILABLE (some
+// but not all episodes have landed). PENDING is "requested, nothing grabbed yet"; AVAILABLE is
+// the library scan's job, not ours.
+const (
+	seerrMediaPending    = 2
+	seerrMediaProcessing = 3
+	seerrMediaPartial    = 4
+	seerrMediaAvailable  = 5
+)
+
+// seerrMediaItem is the slice of a /api/v1/media record we read: the TMDB id correlates back to
+// a Loomarr title (Seerr keys on TMDB, §6), and status is the coarse lifecycle enum. Seerr does
+// expose a `downloadStatus` array that *can* carry byte-level size/sizeleft, but it is empty on
+// the deployments observed (Jellyseerr doesn't reliably proxy the arr queue back), so this path
+// deliberately reads only the enum — a coarse, always-present signal — never a fake percentage.
+type seerrMediaItem struct {
+	TMDBID int `json:"tmdbId"`
+	Status int `json:"status"`
+}
+
+type seerrMediaPage struct {
+	Results []seerrMediaItem `json:"results"`
+}
+
+// QueueStatus implements reconcile.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
+// (one /queue fetch + one lookup per title), Seerr answers the whole in-flight set in ONE call:
+// GET /api/v1/media?filter=processing returns every media item Seerr considers in progress. We
+// index those by TMDB id and, for each requested title, map the enum to a coarse QueueItem.
+//
+// Because Seerr surfaces no byte percentage (see seerrMediaItem), Progress stays 0 for a
+// downloading title and the meaning rides the Status LABEL ("Downloading" / "Partly available") —
+// the FE renders an indeterminate bar for a grabbed title whose Progress is 0, rather than a
+// misleading "0% of a known download". A title not in the processing set is returned Grabbed=false
+// (still merely `requested`, or already available — the library scan owns that transition).
+func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]QueueItem, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL()+"/api/v1/media?filter=processing&take=200", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Api-Key", s.apiKey())
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("seerr media: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("seerr media: unexpected status %d", resp.StatusCode)
+	}
+	var page seerrMediaPage
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		return nil, fmt.Errorf("seerr media: decode: %w", err)
+	}
+
+	// Index the processing set by TMDB id → status.
+	byTMDB := make(map[int]int, len(page.Results))
+	for _, m := range page.Results {
+		if m.TMDBID != 0 {
+			byTMDB[m.TMDBID] = m.Status
+		}
+	}
+
+	out := make([]QueueItem, 0, len(titles))
+	for _, t := range titles {
+		key, err := t.Key()
+		if err != nil {
+			continue // no usable key → can't correlate
+		}
+		status, present := byTMDB[t.TMDBID]
+		grabbed, label := seerrCoarse(status, present)
+		out = append(out, QueueItem{Key: key, Grabbed: grabbed, Status: label})
+	}
+	return out, nil
+}
+
+// seerrCoarse maps a media status (and whether the title was in the processing set at all) to the
+// two fields Seerr can honestly fill: whether the title is in flight (Grabbed → promotes
+// requested→downloading), and a human label. Progress is intentionally left 0 (indeterminate) —
+// Seerr has no percentage. A title absent from the processing set is not grabbed.
+func seerrCoarse(status int, present bool) (grabbed bool, label string) {
+	if !present {
+		return false, ""
+	}
+	switch status {
+	case seerrMediaProcessing:
+		return true, "Downloading"
+	case seerrMediaPartial:
+		return true, "Partly available"
+	case seerrMediaPending:
+		// Queued inside Seerr but nothing grabbed yet — still merely `requested`.
+		return false, ""
+	case seerrMediaAvailable:
+		// Fully available is the library scan's transition to make, not the poller's.
+		return false, ""
+	default:
+		return false, ""
+	}
+}
+
 // Reachable is a cheap, side-effect-free connection probe for the "test my Seerr"
 // button (§8 setup): a GET on an admin-authed endpoint validates BOTH reachability
 // and the API key — a dead host is a transport error, a bad key is 401/403. Unlike

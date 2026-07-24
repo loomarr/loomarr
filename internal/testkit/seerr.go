@@ -1,6 +1,7 @@
 package testkit
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,10 @@ type Seerr struct {
 	LastAPIKey string
 	LastBody   []byte
 	Requests   int
+	// Processing is what GET /api/v1/media?filter=processing returns: tmdbId → MediaStatus
+	// enum (3=processing, 4=partially available). Drives the Seerr coarse queue-status path
+	// (§18.1). Empty ⇒ the endpoint returns no results.
+	Processing map[int]int
 }
 
 // NewSeerr starts a mock Seerr.
@@ -35,6 +40,19 @@ func NewSeerr(t testing.TB) *Seerr {
 		w.WriteHeader(s.Status)
 		// The real body carries the media record (Phase 0); a minimal stub suffices.
 		_, _ = w.Write([]byte(`{"type":"movie","media":{"status":5}}`))
+	})
+	// Processing set for the coarse queue-status path (§18.1): GET /media?filter=processing
+	// returns {results:[{tmdbId,status}]} from s.Processing. Empty ⇒ no results.
+	mux.HandleFunc("GET /api/v1/media", func(w http.ResponseWriter, _ *http.Request) {
+		type item struct {
+			TMDBID int `json:"tmdbId"`
+			Status int `json:"status"`
+		}
+		results := make([]item, 0, len(s.Processing))
+		for id, st := range s.Processing {
+			results = append(results, item{TMDBID: id, Status: st})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
 	// Admin-authed endpoint the "test my Seerr" probe hits (Seerr.Reachable): 200 with
 	// a key, 403 without — so the connection test validates the key, not just reachability.

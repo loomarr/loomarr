@@ -165,14 +165,24 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			Run: func(ctx context.Context) error { _, err := libScan.Full(ctx); return err },
 		})
 
-		// Arr queue poller (§18.1) — registered ONLY for the direct arr requester (Seerr has no
-		// queue). Promotes grabbed titles requested→downloading and persists download progress
-		// on the title record; availability itself still comes from the library scan.
+		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
+		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
+		// status (Downloading / Partly available, no percentage). Both promote grabbed titles
+		// requested→downloading and persist what they know; availability stays the library
+		// scan's job. The two branches are mutually exclusive (a provider is arr XOR seerr), so
+		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
 			jobReg.Add(scheduler.Job{
 				Name: "arr-queue-poll", Title: "Poll Sonarr/Radarr downloads",
 				DefaultCron: "0 * * * * *", ScheduleKey: "job.arr_queue_poll.schedule",
+				Run: func(ctx context.Context) error { _, err := queuePoll.Poll(ctx); return err },
+			})
+		} else if seerr := set.seerrRequester(); seerr != nil {
+			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
+			jobReg.Add(scheduler.Job{
+				Name: "seerr-queue-poll", Title: "Poll Seerr acquisition status",
+				DefaultCron: "0 * * * * *", ScheduleKey: "job.seerr_queue_poll.schedule",
 				Run: func(ctx context.Context) error { _, err := queuePoll.Poll(ctx); return err },
 			})
 		}
