@@ -76,6 +76,8 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				Title:         e.Name,
 				DurationMs:    e.DurationMs,
 				Season:        e.Season,
+				Episode:       e.Episode,
+				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 			})
 		}
 		return out, nil
