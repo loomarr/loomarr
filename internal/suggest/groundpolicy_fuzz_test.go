@@ -59,8 +59,12 @@ func FuzzGroundPolicy(f *testing.F) {
 
 		// Exercise the actual boundary. Lineup/acquisitions are irrelevant to the
 		// scalar-policy safety property under test (they only affect series scoping,
-		// which groundPolicy does not derive from these fields), so pass nil.
-		p := groundPolicy(&raw, nil, nil)
+		// which groundPolicy does not derive from these fields), so pass nil. Use a
+		// kids-signaling intent so a proposed ceiling is KEPT (and thus canonicalized) —
+		// the property under test is ceiling CANONICALIZATION; the drop-when-no-kids-signal
+		// path (§4/§8) has its own dedicated tests. The no-signal case would simply drop
+		// every ceiling to "", which trivially satisfies Validate but exercises nothing.
+		p := groundPolicy(&raw, nil, nil, Intent{Description: "for kids"})
 
 		// CORE SAFETY PROPERTY: whatever the model emitted, the returned policy is
 		// always enforcement-valid. groundPolicy's final net drops to the empty
