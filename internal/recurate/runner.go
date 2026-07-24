@@ -73,13 +73,17 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 }
 
 // eligible reports whether a channel participates in scheduled re-curation (§8.2): it must be
-// intent-backed (has a suggestion job to re-run), opted into auto-curate, and actively managed
-// (live/building — not paused, not detached, not hand-made).
+// intent-backed (has a suggestion job to re-run), opted into auto-curate, and actively managed.
+// "Actively managed" is a DENY-LIST of the two hands-off states — paused (the operator
+// deliberately took it off the sweep) and detached (soft-deleted) — so every managed state
+// qualifies: live, building, AND drifted. drifted is a TRANSIENT reconcile state ("the guide is
+// catching up to the desired lineup"), not a reason to stop curating; excluding it would freeze
+// re-curation on any channel whose Tunarr push is momentarily behind.
 func eligible(ch store.Channel) bool {
 	if ch.IntentRef == "" || ch.Policy.AutoCurate == nil {
 		return false
 	}
-	return ch.Status == schedule.StatusLive || ch.Status == schedule.StatusBuilding
+	return ch.Status != schedule.StatusPaused && ch.Status != schedule.StatusDetached
 }
 
 // refreshIntent builds the intent for a re-curation refine: the channel's ORIGINAL intent
