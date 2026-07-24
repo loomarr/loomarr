@@ -21,6 +21,13 @@ type DesiredLineup struct {
 	// written back onto the channel's policy by the reconcile engine and surfaced in
 	// the UI. Empty when the eligible pool satisfied the policy with no relaxation.
 	Applied []AppliedRelaxation
+	// EligibleKeys is the set of program keys the library can currently supply for this
+	// channel — the resolved programs BEFORE the rolling-window truncation and any rule
+	// narrowing removed some from the aired slice (§6.5). Drift detection compares
+	// against THIS, not Slots: a key that left Slots but is still eligible was rotated
+	// out by the window/rule (normal, not drift); a key gone from Eligible truly vanished
+	// from the library (real drift → StatusDrifted).
+	EligibleKeys map[provision.Key]bool
 }
 
 // ProgramCount returns how many slots are real playable programs (§9: a channel
@@ -154,10 +161,26 @@ func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, polic
 // breaks (§10, unchanged). The channel's Strategy supplies the ordering when the
 // policy omits it (a policy-less channel keeps its existing behavior).
 func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pending PendingPolicy, policy ChannelPolicy, now time.Time) DesiredLineup {
+	// Curation rules (§6.5): pick the active rule for this wall-clock, if any. Its WHAT
+	// narrows the pool and its HOW/Window override ordering + the horizon. No matching
+	// rule ⇒ the channel's base whole-policy behavior (rule == zero value).
+	rule, _ := pickRule(policy.Rules, now)
+
 	rp := policy.Resolved(ch.Strategy, singleSeriesEntries(entries))
+	rp = applyRuleHow(rp, rule.How) // overlay the active rule's ordering/separation
 
 	// Hard filters first (§4 audience fail-closed + scope) — the never-relaxed gate.
-	eligible, report := filterEntries(entries, rp)
+	// The rule's WHAT can only NARROW this set (applied next), never widen it. This
+	// channel-eligible set (post-audience/scope, PRE-rule-narrowing) is what "the
+	// library can supply for this channel" means for drift detection (§6.5): a program
+	// rotated out by a rule or the window is still eligible; only a library loss makes a
+	// key drop out of it.
+	channelEligible, report := filterEntries(entries, rp)
+
+	// Rule WHAT: intersect the channel scope with the active rule's scope (§6.5). This
+	// is what makes "weekend = only TNG" or "mornings = kids genre" work — it can only
+	// subtract from the already-audience-safe channel-eligible set.
+	eligible := applyRuleScope(channelEligible, rule.What)
 	// Seasonal bench/boost (§6): out-of-window seasonal items are benched (removed);
 	// in-window ones are marked for a scheduling boost. A zero clock ⇒ no-op.
 	eligible, seasonalReport := applySeasonal(eligible, rp, now)
@@ -170,16 +193,113 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 		slots = append(slots, resolveEntry(e, avail, pending)...)
 	}
 
+	// EligibleKeys: the distinct program keys the library can currently supply, captured
+	// from the CHANNEL-eligible set (post-audience/scope, but PRE-rule-narrowing, PRE-
+	// seasonal-bench, and PRE-window-truncation). The reconcile drift check compares against
+	// THIS, so a key rotated out by the active rule, a seasonal bench, or the rolling window
+	// reads as "rotated" (normal), not "vanished" (drift). We resolve `channelEligible`
+	// directly rather than reusing the aired `slots` precisely because `slots` is already
+	// post-rule/post-seasonal — reusing it would mis-flag a benched-but-in-library program
+	// as drift. A pending/filler placeholder is not "supplied", so only program slots count.
+	eligibleKeys := make(map[provision.Key]bool, len(channelEligible))
+	for _, e := range channelEligible {
+		for _, s := range resolveEntry(e, avail, pending) {
+			if s.IsProgram() {
+				eligibleKeys[s.Key] = true
+			}
+		}
+	}
+
+	// Rolling window (§6.5): resolve the horizon (rule > channel > global default) and
+	// the coarse window index for this moment. The index folds into the deck seed so the
+	// ordering is IDENTICAL within a window (idempotent reconcile — no re-push every
+	// sweep) and ADVANCES to the next slice of episodes at a window boundary.
+	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
+	seed := ch.Shuffle.Seed ^ windowIndex(now, window)
+
 	// Policy-aware ordering + separation (§3/§5), then the relaxation ladder (§7)
 	// records any windows it had to loosen to fill the cycle.
-	ordered, applied := slotWithRelaxation(slots, rp, ch.Shuffle.Seed)
+	ordered, applied := slotWithRelaxation(slots, rp, seed)
+
+	// Truncate the ordered deck to ~window of runtime (§6.5) — materialize a manageable
+	// horizon, not the whole ~800-episode run. window <= 0 (WindowFull / unbounded) keeps
+	// the whole deck (backward compat + the "full binge" sentinel).
+	ordered = truncateToWindow(ordered, window)
+
+	// Breaks: the active rule may suppress them (a marathon runs uninterrupted, §6.5).
+	brk := ch
+	if rule.How.NoBreaks {
+		brk.BreaksPerHour = 0
+	}
 
 	return DesiredLineup{
-		ChannelID: ch.ID,
-		Slots:     interleaveBreaks(ch, ordered),
-		Excluded:  report,
-		Applied:   applied,
+		ChannelID:    ch.ID,
+		Slots:        interleaveBreaks(brk, ordered),
+		Excluded:     report,
+		Applied:      applied,
+		EligibleKeys: eligibleKeys,
 	}
+}
+
+// resolveWindow picks the effective rolling-window horizon: a rule's Window wins, then
+// the channel policy's Window, then the global default. WindowFull (< 0) at any level
+// means "no truncation" (the whole run). 0 means "inherit the next level"; a 0 at the
+// global default too ⇒ unbounded (the policy-free path preserves today's behavior).
+func resolveWindow(ruleW, channelW Duration, defaultW time.Duration) time.Duration {
+	pick := func(d Duration) (time.Duration, bool) {
+		switch {
+		case d == WindowFull:
+			return 0, true // explicit "whole run" → no truncation
+		case d > 0:
+			return d.Std(), true
+		default:
+			return 0, false // 0 → inherit
+		}
+	}
+	if w, ok := pick(ruleW); ok {
+		return w
+	}
+	if w, ok := pick(channelW); ok {
+		return w
+	}
+	if defaultW > 0 {
+		return defaultW
+	}
+	return 0 // unbounded
+}
+
+// windowIndex is the coarse, deterministic index of the window `now` falls in — a
+// floor of the wall-clock by the window duration. Constant within a window (so two
+// reconciles in the same window fold the SAME value into the seed → identical order →
+// no Tunarr re-push) and +1 across a boundary (advancing the deck to the next slice).
+// A zero window or zero clock ⇒ 0 (no advance), preserving the un-windowed behavior.
+func windowIndex(now time.Time, window time.Duration) int64 {
+	if window <= 0 || now.IsZero() {
+		return 0
+	}
+	return now.Unix() / int64(window/time.Second)
+}
+
+// truncateToWindow keeps the deck prefix whose summed program runtime first meets the
+// window (§6.5). window <= 0 ⇒ the whole deck (unbounded). Always keeps at least one
+// program so a channel is never dark, even if that one program exceeds the window.
+func truncateToWindow(slots []Slot, window time.Duration) []Slot {
+	if window <= 0 || len(slots) == 0 {
+		return slots
+	}
+	budget := window.Milliseconds()
+	var acc int64
+	kept := 0
+	for i, s := range slots {
+		kept = i + 1
+		if s.IsProgram() {
+			acc += s.DurationMs
+			if acc >= budget {
+				break
+			}
+		}
+	}
+	return slots[:kept]
 }
 
 // breakGapMs is the placeholder duration for an inserted commercial break — the

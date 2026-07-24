@@ -270,6 +270,13 @@ func (s *Server) channelForIntent(ctx context.Context, p store.Proposal) (string
 	if ch.ID == "" { // first approval of this intent → a new channel
 		ch.ID = newChannelID()
 		ch.IntentRef = intentRef
+		// Sequential is the channel Strategy that decides ordering ONLY when the grounded
+		// policy leaves Ordering == OrderInherit — i.e. a single-series channel, where
+		// episodes-in-order is correct. A multi-series channel's grounded policy carries
+		// OrderSyndication explicitly (groundPolicy multiSeries default), and policy ordering
+		// WINS over the strategy inherit (policy.Resolved) — so this does NOT force a Star
+		// Trek channel chronological. Don't "simplify" this to syndication: that would make a
+		// genuinely single-series channel intermix nothing-but-itself and lose episode order.
 		ch.Strategy = schedule.Sequential
 		ch.Name = channelNameFromIntent(p)
 		ch.Number, err = s.nextFreeChannelNumber(ctx)

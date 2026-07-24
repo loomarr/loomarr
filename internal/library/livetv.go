@@ -40,6 +40,11 @@ type LiveTV interface {
 	// dead tuners left behind when the Tunarr URL changed. A tuner the household
 	// added by hand (any other FriendlyName) is never included (§6/§9 ownership).
 	StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]string, error)
+	// LoomarrTuners returns the ids of ALL Loomarr-owned tuner hosts (FriendlyName
+	// "loomarr"), regardless of URL — for a FORCED re-wire that removes and re-adds
+	// the tuner at the same URL, which is what makes the media server re-read the M3U
+	// and drop a stale channel→stream binding (a deleted-channel id it still streams).
+	LoomarrTuners(ctx context.Context) ([]string, error)
 	// StaleLoomarrListings returns the ids of xmltv listing providers whose Path
 	// is a Tunarr guide URL other than the desired one. Listing providers carry no
 	// FriendlyName, so the Loomarr-shaped one is identified by its Tunarr-guide
@@ -213,6 +218,23 @@ func (c *Client) StaleLoomarrTuners(ctx context.Context, desiredM3U string) ([]s
 	var ids []string
 	for _, h := range cfg.TunerHosts {
 		if h.FriendlyName == tunerFriendlyName && h.URL != desiredM3U && h.ID != "" {
+			ids = append(ids, h.ID)
+		}
+	}
+	return ids, nil
+}
+
+// LoomarrTuners lists ids of ALL Loomarr-owned tuner hosts (FriendlyName "loomarr"),
+// regardless of URL — for a forced re-wire (remove + re-add at the same URL) that
+// makes the media server re-read the M3U and drop a stale channel→stream binding.
+func (c *Client) LoomarrTuners(ctx context.Context) ([]string, error) {
+	var cfg liveTVConfig
+	if err := c.liveTVConfig(ctx, &cfg); err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, h := range cfg.TunerHosts {
+		if h.FriendlyName == tunerFriendlyName && h.ID != "" {
 			ids = append(ids, h.ID)
 		}
 	}

@@ -191,12 +191,24 @@ components:
           $ref: "#/components/schemas/FillerSelection"
         ordering:
           type: string
+        rules:
+          items:
+            $ref: "#/components/schemas/SchedulingRule"
+          type:
+            - array
+            - "null"
         scope:
           $ref: "#/components/schemas/ScopePolicy"
         seasonal:
           $ref: "#/components/schemas/SeasonalPolicy"
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+        window:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
       type: object
     ClipDTO:
       additionalProperties: false
@@ -1055,6 +1067,23 @@ components:
       required:
         - users
       type: object
+    LivetvReconnectOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/LivetvReconnectOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tunersReset:
+          description: Loomarr tuners removed + re-added in the media server
+          format: int64
+          type: integer
+      required:
+        - tunersReset
+      type: object
     LoginInputBody:
       additionalProperties: false
       properties:
@@ -1453,6 +1482,37 @@ components:
           type: string
       required:
         - jobId
+      type: object
+    RuleOrdering:
+      additionalProperties: false
+      properties:
+        noBreaks:
+          type: boolean
+        ordering:
+          type: string
+        separation:
+          $ref: "#/components/schemas/SeparationPolicy"
+      type: object
+    SchedulingRule:
+      additionalProperties: false
+      properties:
+        how:
+          $ref: "#/components/schemas/RuleOrdering"
+        id:
+          type: string
+        priority:
+          format: int64
+          type: integer
+        what:
+          $ref: "#/components/schemas/ScopePolicy"
+        when:
+          $ref: "#/components/schemas/WhenPredicate"
+        window:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
       type: object
     ScopePolicy:
       additionalProperties: false
@@ -2408,6 +2468,35 @@ components:
         - autoApprove
         - local
       type: object
+    WhenPredicate:
+      additionalProperties: false
+      properties:
+        dateFrom:
+          format: date-time
+          type: string
+        dateTo:
+          format: date-time
+          type: string
+        days:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        holiday:
+          type: string
+        hourFrom:
+          format: int64
+          type: integer
+        hourTo:
+          format: int64
+          type: integer
+        weekday:
+          type: boolean
+        weekend:
+          type: boolean
+      type: object
 info:
   description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
   title: Loomarr API
@@ -3235,6 +3324,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Create the first admin
+      tags:
+        - setup
+  /v1/setup/livetv-reconnect:
+    post:
+      description: Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).
+      operationId: livetv-reconnect
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LivetvReconnectOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Force-re-wire the Tunarr tuner
       tags:
         - setup
   /v1/setup/state:

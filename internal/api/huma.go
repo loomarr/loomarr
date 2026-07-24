@@ -263,6 +263,10 @@ type ChannelService interface {
 // the "wired?" status check. Implemented by setup.LiveTVConnector.
 type LiveTVService interface {
 	Connect(ctx context.Context) (tunerAdded, listingAdded bool, err error)
+	// Reconnect force-re-wires the tuner (remove + re-add + re-scan) to clear a stale
+	// channel→stream binding — the media server streaming a since-deleted channel id
+	// ("guide right, plays wrong"). Returns how many tuners were reset.
+	Reconnect(ctx context.Context) (tunersReset int, err error)
 	Wired(ctx context.Context) (bool, error)
 }
 

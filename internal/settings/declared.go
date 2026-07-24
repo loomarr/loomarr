@@ -206,6 +206,11 @@ func declared() []Setting {
 			Doc: "Default program order (per-channel overridable). If a channel sets none, it uses its own strategy.",
 		},
 		{
+			Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Group: GroupChannels,
+			Kind: KindDuration, Default: "24h",
+			Doc: "How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything).",
+		},
+		{
 			Key: "seasonal.mode", EnvVar: "SEASONAL_MODE", Group: GroupChannels,
 			Kind: KindEnum, Enum: []EnumOption{opt("off", "Off"), opt("auto", "Auto (favor in-season)"), opt("exclusive", "In-season only")}, Default: "auto",
 			Doc: "How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season.",
