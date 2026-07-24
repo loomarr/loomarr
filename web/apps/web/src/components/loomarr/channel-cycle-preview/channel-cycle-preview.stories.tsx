@@ -67,6 +67,38 @@ const BasePolicy: Story = {
   ],
 };
 
+// A whole-run marathon resolves to many slots — this is the case the slot list's inner
+// scroll (max-h-96 + .scroll-thin, styles.css) exists for. Interleaving breaks and a
+// trailing pending row proves those row variants still render correctly INSIDE the
+// overflowing, clipped region (not just plain program rows). Slots are index-derived so
+// the snapshot is deterministic (no dates/random — the visual suite is pixel-diffed).
+const LongList: Story = {
+  decorators: [
+    withStubbedPreview({
+      at: "2026-12-25T09:00:00Z",
+      activeRule: { id: "r1", label: "Weekend · TNG Marathon", priority: 60, matched: true },
+      windowMs: 0,
+      slots: [
+        ...Array.from({ length: 12 }, (_, i) => ({
+          kind: "program" as const,
+          title: `The Next Generation S1E${i + 1}`,
+          key: `series:tvdb:655:1:${i + 1}`,
+          part: 0,
+        })),
+        { kind: "break" as const },
+        ...Array.from({ length: 12 }, (_, i) => ({
+          kind: "program" as const,
+          title: `The Next Generation S2E${i + 1}`,
+          key: `series:tvdb:655:2:${i + 1}`,
+          part: 0,
+        })),
+        { kind: "break" as const },
+        { kind: "pending" as const, title: "The Next Generation S3E1", key: "series:tvdb:655:3:1" },
+      ],
+    }),
+  ],
+};
+
 // Nothing resolved for this moment — the empty state, not an error.
 const Empty: Story = {
   decorators: [
@@ -80,4 +112,4 @@ const Empty: Story = {
 };
 
 export default meta;
-export { BasePolicy, Empty, Matched };
+export { BasePolicy, Empty, LongList, Matched };
