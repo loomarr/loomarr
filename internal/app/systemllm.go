@@ -22,6 +22,12 @@ const (
 	setLLMURL      = "llm.url"
 	setLLMModel    = "llm.model"
 	setLLMAPIKey   = "llm.api_key" //nolint:gosec // settings key name, not a credential
+	// setLLMHosted preserves the BRANDED hosted provider key (openrouter, custom, …)
+	// across restart. llm.provider only stores the wire kind (ollama|openai) — its
+	// enum can't hold a brand — so without this the brand (and thus the namespaced key
+	// + catalog Active match) would be lost on reload. A raw store setting, not a
+	// declared enum, so it accepts any catalog key. Empty ⇒ a plain ollama/openai.
+	setLLMHosted = "llm.hosted_provider"
 )
 
 // buildLLM constructs the suggester's provider (an llm.Swappable so an in-app
@@ -96,6 +102,15 @@ func resolveSelection(set resolved) llm.Selection {
 		URL:      set.str(setLLMURL),
 		Model:    set.str(setLLMModel),
 		APIKey:   set.str(setLLMAPIKey),
+	}
+	// Restore the BRANDED provider (openrouter, custom, …) that llm.provider flattened
+	// to the "openai" wire kind: llm.hosted_provider holds the brand persisted at
+	// select time. This keeps the namespaced-key lookup and catalog Active match
+	// working across restart (an env-pinned openai with no brand stays "openai").
+	if sel.Provider == "openai" {
+		if v, err := set.svc.LoadRaw(setLLMHosted); err == nil && v != "" {
+			sel.Provider = v
+		}
 	}
 	if sel.Provider != "" && sel.Provider != "ollama" {
 		if v, err := set.svc.LoadRaw(setLLMAPIKey + "." + sel.Provider); err == nil && v != "" {
@@ -189,6 +204,20 @@ func (s *systemLLMService) Status(ctx context.Context) (api.SystemLLMStatus, err
 	// that has a key (stored or the active one), fetch its LIVE model list; else the
 	// curated fallback. Keys are never included in the response.
 	out.Hosted = s.hostedCatalog(ctx, sel)
+
+	// Reachability for a HOSTED active provider (§8.1): the Ollama probe above only
+	// runs for local, so without this a working OpenRouter/OpenAI reported
+	// reachable:false and the "Test connection" button lied. A hosted provider is
+	// reachable iff we just fetched its LIVE model list (ModelsLive) — a real GET of
+	// its /models with the configured key, so no extra call and no key in the reply.
+	if !local {
+		for _, hv := range out.Hosted {
+			if hv.Active {
+				out.Reachable = hv.ModelsLive
+				break
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -318,6 +347,11 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 			return err
 		}
 	}
+	// Persist the branded key so the brand survives restart (llm.provider only held
+	// the wire kind). resolveSelection reads this back to restore Selection.Provider.
+	if err := s.store.SetSetting(ctx, setLLMHosted, provider); err != nil {
+		return err
+	}
 	s.swap.Set(sel)
 	s.log.Info("llm selected", "provider", provider, "model", model)
 	return nil
@@ -402,10 +436,27 @@ func (s *systemLLMService) Pull(ctx context.Context, model string) (string, erro
 // not a registry key, so it cannot go through the registry-validated PATCH path.
 func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error {
 	return s.saveSettings(ctx, map[string]string{
-		setLLMProvider: sel.Provider,
+		// The `llm.provider` setting is the WIRE KIND (enum: ollama | openai), not the
+		// branded catalog key. Every hosted provider (openrouter, custom, …) is an
+		// OpenAI-compatible client (see buildProviderFor + hosted.go), so it persists as
+		// "openai". Persisting the branded key here 502'd on the enum ("openrouter is
+		// not one of [ollama openai]") — the bug that made the hosted picker unusable.
+		// The branded key still lives on the in-memory Selection (for the openai/…
+		// model ids) and namespaces the stored API key; only the coarse setting is
+		// normalized to the wire kind.
+		setLLMProvider: wireKind(sel.Provider),
 		setLLMURL:      sel.URL,
 		setLLMModel:    sel.Model,
 	})
+}
+
+// wireKind maps a (possibly branded) provider to the llm.provider setting enum: a
+// local Ollama stays "ollama"; every hosted provider is an OpenAI-compatible client.
+func wireKind(provider string) string {
+	if provider == "ollama" || provider == "" {
+		return "ollama"
+	}
+	return "openai"
 }
 
 // publishPull emits one pull-progress frame on the SSE bus (§7, type=llm_pull).
