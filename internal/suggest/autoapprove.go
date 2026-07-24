@@ -13,6 +13,11 @@ import (
 // able to answer "did a person decide this?" without inferring it.
 const AutoApprovedBy = "auto"
 
+// AutoCuratedBy is the audit value recorded when the §8.2 scheduled re-curation, authorized
+// by a channel's AutoCurate opt-in, approved a proposal. Distinct from AutoApprovedBy so the
+// trail separates "a user's auto-approve grant" from "the channel's auto-curate loop".
+const AutoCuratedBy = "auto-curate"
+
 // GrantStore reads the requester's grant + cap.
 type GrantStore interface {
 	GetUser(ctx context.Context, id string) (store.User, error)

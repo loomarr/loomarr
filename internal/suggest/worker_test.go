@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -272,5 +273,133 @@ func TestRefine_MissingJob(t *testing.T) {
 	svc := buildService(t, st, testkit.NewLLM())
 	if _, err := svc.Refine(context.Background(), "nope", suggest.Intent{}); err == nil {
 		t.Error("refine on a missing job should error")
+	}
+}
+
+// fakeBinder records every proposal it was asked to bind — a fake, not a mock: the
+// assertion is about what it was CALLED WITH, not about verifying call order/count
+// beyond "did it happen".
+type fakeBinder struct {
+	calls []store.Proposal
+	err   error
+}
+
+func (f *fakeBinder) BindApprovedChannel(_ context.Context, p store.Proposal) (string, error) {
+	f.calls = append(f.calls, p)
+	if f.err != nil {
+		return "", f.err
+	}
+	return "ch_bound", nil
+}
+
+// TestWorker_AutoApproveRebindsChannel is the regression test for the gap this
+// extraction closes: previously, an auto-approved proposal (the §11 per-user
+// grant) enqueued its acquisitions via suggest.Approve but NEVER rebound the
+// channel — only the manual-approve HTTP handler did that. A per-user
+// auto-approved REFINE would therefore enqueue acquisitions and leave the
+// channel's lineup stale. With WithChannelBinder wired, a successful
+// auto-approval must also call BindApprovedChannel for that exact proposal.
+func TestWorker_AutoApproveRebindsChannel(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+
+	// A user holding the auto-approve grant, comfortably within quota.
+	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	svc := buildService(t, st, llmMock)
+	fb := &fakeBinder{}
+	svc = svc.
+		WithAutoApprove(suggest.NewAutoApprover(st, func(context.Context) int { return 100 }, time.Now, testkit.Logger())).
+		WithChannelBinder(fb)
+
+	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		j, _ := st.GetJob(ctx, jobID)
+		if j.Status == "done" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	j, _ := st.GetJob(ctx, jobID)
+	if j.Status != "done" {
+		t.Fatalf("job did not complete: status=%s err=%s", j.Status, j.LastError)
+	}
+
+	// The proposal must have been auto-approved (not left in the queue)...
+	approved, _ := st.ListProposalsByStatus(ctx, "approved")
+	if len(approved) != 1 {
+		t.Fatalf("approved proposals = %d, want 1 (auto-approved within quota)", len(approved))
+	}
+	if approved[0].JobID != jobID {
+		t.Fatalf("approved proposal's job = %q, want %q", approved[0].JobID, jobID)
+	}
+
+	// ...AND the binder must have been called for that SAME proposal. This is the
+	// fix: before WithChannelBinder existed, nothing rebuilt the channel here.
+	if len(fb.calls) != 1 {
+		t.Fatalf("binder called %d times, want 1", len(fb.calls))
+	}
+	if fb.calls[0].ID != approved[0].ID {
+		t.Errorf("binder called with proposal %q, want the auto-approved one %q", fb.calls[0].ID, approved[0].ID)
+	}
+}
+
+// A binder failure must not fail the job or unwind the approval — the approval
+// (and its enqueued acquisitions) is durable regardless of whether the channel
+// could be rebuilt, mirroring the manual-approve HTTP handler's contract.
+func TestWorker_AutoApproveBinderFailureDoesNotFailJob(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	if err := st.UpsertUser(ctx, store.User{ID: "grace", AutoApprove: true, Quota: 100}); err != nil {
+		t.Fatal(err)
+	}
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "matrix"}),
+		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix"}]}`),
+	)
+	svc := buildService(t, st, llmMock)
+	fb := &fakeBinder{err: fmt.Errorf("tunarr unreachable")}
+	svc = svc.
+		WithAutoApprove(suggest.NewAutoApprover(st, func(context.Context) int { return 100 }, time.Now, testkit.Logger())).
+		WithChannelBinder(fb)
+
+	jobID, err := svc.Submit(ctx, suggest.Intent{Description: "sci-fi"}, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		j, _ := st.GetJob(ctx, jobID)
+		if j.Status == "done" || j.Status == "failed" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	j, _ := st.GetJob(ctx, jobID)
+	if j.Status != "done" {
+		t.Fatalf("a binder failure must not fail the job: status=%s err=%s", j.Status, j.LastError)
+	}
+	approved, _ := st.ListProposalsByStatus(ctx, "approved")
+	if len(approved) != 1 {
+		t.Fatalf("the approval must stand even though binding failed: approved = %d, want 1", len(approved))
 	}
 }

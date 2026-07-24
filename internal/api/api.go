@@ -61,6 +61,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
+		binder: opts.Binder,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)

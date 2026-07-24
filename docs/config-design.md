@@ -23,6 +23,8 @@ Loomarr's model is the *arr convention with one addition:
 
 The test for which tier a new knob belongs to: *would two channels sensibly want different values?* Yes → policy field with a registry default. No → plain registry setting.
 
+**Self-updating channels (`programming-design.md` §8.2) follow this tier exactly.** A channel opts into scheduled re-curation via a per-channel `policy.autoCurate` field (rides `policy_json`, no schema change — like `rules`/`filler`/`window` before it), and the two thresholds it's bounded by have the classic split: the global defaults `recurate.min_score_pct` (the quality bar a net-new title must clear) and `recurate.max_titles` (the growth cap) are **registry settings** (env-pinnable, hot-applied per call), while `policy.autoCurate` may carry a per-channel **override** of either. `job.recurate.schedule` is a plain global `KindCron` job knob (all channels re-curate on one clock). The registry values are read live inside the re-curation grant, so raising the fleet-wide bar takes effect on the next run with no restart.
+
 ---
 
 ## 2. The registry — every setting declared exactly once

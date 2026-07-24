@@ -15,6 +15,16 @@ import (
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
 
+// recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
+// PER CALL (resolved.intv resolves live), so raising recurate.min_score_pct / recurate.max_titles
+// takes effect without a restart, like every other setting (config-design §3).
+type recurateThresholds struct{ set resolved }
+
+func (t recurateThresholds) MinScorePct(context.Context) int {
+	return t.set.intv("recurate.min_score_pct")
+}
+func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
+
 // liveTVAdapter adapts setup.LiveTVConnector to the api.LiveTVService interface
 // (Connect returns a struct there, a tuple here). Thin, wiring-only.
 type liveTVAdapter struct{ c *setup.LiveTVConnector }

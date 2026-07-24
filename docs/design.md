@@ -39,7 +39,7 @@ The app has **five cooperating subsystems**:
 - **Not a transcoder/streamer.** Tunarr (and Emby/Jellyfin) do playback, transcoding, EPG, and HDHomeRun/M3U output. `loomarr` decides *what plays and in what order* and hands that to Tunarr.
 - **Does not manage indexers, download clients, or quality profiles** — that's Sonarr/Radarr's job.
 - **Does not replace the media server or Tunarr** — it orchestrates them.
-- **The provisioner core never chooses titles or auto-acquires** — the suggester proposes and a human (or a quota-gated auto-approve) confirms before anything is acquired or scheduled.
+- **The provisioner core never chooses titles or auto-acquires** — the suggester proposes and a human (or a quota-gated auto-approve, or a channel's opted-in auto-curate grant — `programming-design.md` §8.2) confirms before anything is acquired or scheduled. Every one of those paths routes through the single `Approve` gate; none writes a `wanted` title directly.
 
 ### Design envelope
 Sized for a household/homelab, and tests should assume it: **~100k library items, ≤50 channels, ≤20 users, ≤10k filler clips, single media server.** These bounds justify several deliberate simplicities (federated search over indexes, `LIKE` over FTS, client-side list filtering, in-process jobs). Anything beyond the envelope is future work, not a v1 requirement.

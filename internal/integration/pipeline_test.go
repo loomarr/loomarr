@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -115,12 +116,17 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Cleanup(cancel)
 	go svc.Run(ctx)
 
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+	log := slog.New(slog.DiscardHandler)
+	// engine (*channels.Engine) satisfies binder.Reconciler directly, so the shared
+	// binder here reconciles through the SAME real engine the rig otherwise wires —
+	// no drift between what the API's approve/create paths and the binder see.
+	h := api.Router(log, api.Options{
 		Store:    st,
 		Auth:     api.NewTokenAuthorizer(adminToken),
-		Log:      slog.New(slog.DiscardHandler),
+		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
+		Binder:   binder.New(st, engine, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

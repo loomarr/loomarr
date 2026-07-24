@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -403,12 +404,12 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	}
 	ch := store.Channel{}
 	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
-	// id, or omit it and let the server mint one — same `ch_…` scheme channelForIntent
+	// id, or omit it and let the server mint one — same `ch_…` scheme binder.BindApprovedChannel
 	// uses, so a hand-made channel is indistinguishable from an approved one. This is what
 	// lets the "New channel" UI action create without a client-side id scheme.
 	ch.ID = in.Body.ID
 	if ch.ID == "" {
-		ch.ID = newChannelID()
+		ch.ID = binder.NewChannelID()
 	}
 	ch.Name = in.Body.Name
 	ch.Number = in.Body.Number
