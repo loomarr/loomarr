@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
 import { WizardShell } from "@/components/loomarr";
+import { useDocumentTitle } from "@/lib";
 import {
   BootstrapStep,
   ChecklistStep,
@@ -55,6 +56,7 @@ const COPY: Record<string, { title: string; description: string }> = {
 const SKIPPABLE = new Set(["library", "users"]);
 
 const WizardScreen = () => {
+  useDocumentTitle("Setup");
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const status = setupApi.useSetupStatus({ query: { enabled: isAuthenticated, retry: false } });
   const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];

@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr";
 import { Card, Input, Label } from "@/components/ui";
+import { useDocumentTitle } from "@/lib";
 import { DocView } from "../doc-view";
 import { docMatches } from "../search-docs";
 
@@ -14,6 +15,7 @@ import { docMatches } from "../search-docs";
 // emits deep-links of exactly that shape on every failed setup check — a red check must
 // be able to land the operator on the right section, not just the right page.
 const HelpPage = () => {
+  useDocumentTitle("Help");
   const navigate = useNavigate();
   const { page, section } = useSearch({ from: "/_authed/help" });
   const [q, setQ] = useState("");
