@@ -1,7 +1,7 @@
 import { fillerApi, settingsApi } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
@@ -17,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui";
+import { useDocumentTitle } from "@/lib";
+import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { IngestPanel } from "../ingest-panel";
 import { PinClipDialog } from "../pin-clip-dialog";
@@ -26,13 +28,16 @@ import { PinClipDialog } from "../pin-clip-dialog";
 // these columns, so a query per filter change is cheaper and always correct, versus
 // holding thousands of clips in memory to filter locally (§7.2 — no client index).
 const FillerPage = () => {
+  useDocumentTitle("Filler");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [q, setQ] = useState("");
-  const [kind, setKind] = useState("");
-  const [audience, setAudience] = useState("");
-  const [untagged, setUntagged] = useState(false);
+  // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
+  // validateSearch narrows them. setFilters merges a partial change and writes with
+  // `replace: true` so typing in the search box doesn't stack a history entry per keystroke.
+  const { q = "", kind = "", audience = "", untagged = false } = useSearch({ from: "/_authed/filler" });
+  const setFilters = (next: Partial<FillerSearch>) =>
+    navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
 
@@ -131,12 +136,20 @@ const FillerPage = () => {
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-48 flex-1">
           <Label htmlFor="clip-search">Search</Label>
-          <Input id="clip-search" value={q} placeholder="Clip name" onChange={(e) => setQ(e.target.value)} />
+          <Input
+            id="clip-search"
+            value={q}
+            placeholder="Clip name"
+            onChange={(e) => setFilters({ q: e.target.value || undefined })}
+          />
         </div>
         <div>
           <Label htmlFor="clip-kind">Kind</Label>
           {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-          <Select value={kind || "any"} onValueChange={(v) => setKind(v === "any" ? "" : v)}>
+          <Select
+            value={kind || "any"}
+            onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+          >
             <SelectTrigger id="clip-kind">
               <SelectValue />
             </SelectTrigger>
@@ -153,7 +166,10 @@ const FillerPage = () => {
         </div>
         <div>
           <Label htmlFor="clip-audience">Audience</Label>
-          <Select value={audience || "any"} onValueChange={(v) => setAudience(v === "any" ? "" : v)}>
+          <Select
+            value={audience || "any"}
+            onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
+          >
             <SelectTrigger id="clip-audience">
               <SelectValue />
             </SelectTrigger>
@@ -169,7 +185,7 @@ const FillerPage = () => {
         <Button
           variant={untagged ? "default" : "outline"}
           size="sm"
-          onClick={() => setUntagged((v) => !v)}
+          onClick={() => setFilters({ untagged: untagged ? undefined : true })}
           // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
           // without era/audience, so they are never counted as needing work (§10).
           title="Commercials missing era, audience, or category"
@@ -192,12 +208,8 @@ const FillerPage = () => {
             ? {
                 action: {
                   label: "Clear filters",
-                  onClick: () => {
-                    setQ("");
-                    setKind("");
-                    setAudience("");
-                    setUntagged(false);
-                  },
+                  onClick: () =>
+                    setFilters({ q: undefined, kind: undefined, audience: undefined, untagged: undefined }),
                 },
               }
             : {})}

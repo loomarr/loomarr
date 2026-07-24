@@ -1,0 +1,21 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loomarr">
+  <title>Loomarr</title>
+  <!-- Loomarr favicon: the SMPTE test-card color bars — the brand mark ("the mark IS the
+       palette") — filling a rounded broadcast-console card on the app's #0B0C0E ground.
+       Seven accents in token order: signal · caution · lock · tune · suggest · onair ·
+       static-400. Deliberately just the bars: legible down to 16px. -->
+  <defs>
+    <clipPath id="card"><rect x="2" y="2" width="28" height="28" rx="6.5" /></clipPath>
+  </defs>
+  <rect x="2" y="2" width="28" height="28" rx="6.5" fill="#0B0C0E" />
+  <g clip-path="url(#card)">
+    <rect x="2"  y="2" width="4" height="28" fill="#FFB020" />
+    <rect x="6"  y="2" width="4" height="28" fill="#F5D90A" />
+    <rect x="10" y="2" width="4" height="28" fill="#3DD68C" />
+    <rect x="14" y="2" width="4" height="28" fill="#4CC9E8" />
+    <rect x="18" y="2" width="4" height="28" fill="#D6409F" />
+    <rect x="22" y="2" width="4" height="28" fill="#E5484D" />
+    <rect x="26" y="2" width="4" height="28" fill="#8B93A3" />
+  </g>
+  <rect x="2.5" y="2.5" width="27" height="27" rx="6" fill="none" stroke="#2A2E37" stroke-width="1" />
+</svg>

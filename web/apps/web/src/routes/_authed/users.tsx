@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/auth";
 import { EmptyState } from "@/components/loomarr";
+import { useDocumentTitle } from "@/lib";
 import { UsersPage } from "@/users";
 
 // Users is admin-only. The server enforces it (every /v1/users route 403s for a member —
 // §11, §19); this check exists so a member who follows a link sees an explanation instead
 // of a page of failed requests.
 const UsersScreen = () => {
+  useDocumentTitle("Users");
   const { isAdmin, isLoading } = useAuth();
   if (isLoading) return null;
   if (!isAdmin) {

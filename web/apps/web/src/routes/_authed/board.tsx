@@ -6,6 +6,7 @@ import { RotateCw } from "lucide-react";
 import { journeyProgress, stageOf } from "@/board";
 import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
 import { Button } from "@/components/ui";
+import { useDocumentTitle } from "@/lib";
 
 // Board / My proposals (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of
@@ -28,6 +29,7 @@ const ORDER = ["acquiring", "waiting", "ready"] as const;
 const STATES = Object.values(TitleDTOState);
 
 const BoardScreen = () => {
+  useDocumentTitle("Board");
   const queryClient = useQueryClient();
   const stateQueries = useQueries({
     queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),

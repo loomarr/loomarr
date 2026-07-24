@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { meQueryOptions, needsBootstrap } from "@/auth";
 import { LoginForm, LoginShell } from "@/components/loomarr";
+import { useDocumentTitle } from "@/lib";
 
 // Login — the public sign-in screen (§11, §13). An idle surface (dark broadcast frame).
 // beforeLoad bounces an already-signed-in visitor to where they were headed; the
@@ -14,6 +15,7 @@ interface LoginSearch {
 }
 
 const LoginScreen = () => {
+  useDocumentTitle("Sign in");
   const router = useRouter();
   const queryClient = useQueryClient();
   const { redirect: dest } = Route.useSearch();
