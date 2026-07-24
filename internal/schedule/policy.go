@@ -31,6 +31,17 @@ type ChannelPolicy struct {
 	// catalog — the additive default). Edited on the channel page; seeded from Scope.Era
 	// at channel creation.
 	Filler *FillerSelection `json:"filler,omitempty"`
+	// Rules is the ordered set of curation rules (§6.5): wall-clock-conditional
+	// programming (weekend marathons, holiday blocks, dayparts). Empty = today's
+	// single-deck behavior. The active rule at reconcile time narrows the pool + drives
+	// ordering; §5/§6 compose into this. LLM-proposed (closed preset vocabulary) +
+	// user-refined; every rule VALUE is grounded/clamped, evaluation is deterministic.
+	Rules []SchedulingRule `json:"rules,omitempty"`
+	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
+	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
+	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole
+	// run (no truncation). A per-rule Window overrides this for that rule's slice.
+	Window Duration `json:"window,omitempty"`
 }
 
 // FillerSelection is a channel's per-channel filler choice (§10). Every field is

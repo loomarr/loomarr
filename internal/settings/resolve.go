@@ -62,11 +62,24 @@ func (s *Service) resolve(set Setting, hasDB bool, dbRaw string) Resolved {
 	return s.defaultResolved(set, false)
 }
 
-// defaultResolved builds a Resolved from the registry default (always valid).
+// defaultResolved builds a Resolved from the registry default. The default MUST parse
+// to the setting's typed Value (e.g. a KindDuration default "24h" → time.Duration), same
+// as the env/db paths — a caller doing Resolve(key).Value.(time.Duration) must get a real
+// Duration no matter which provenance won, or a typed accessor silently returns the zero
+// value (the rolling-window horizon bug: an unparsed "24h" string failed the assertion in
+// set.dur → window 0 → no truncation). The registry guarantees every default is valid
+// (registry_test), so parse cannot fail; if it somehow does, fall back to the raw string
+// rather than panic a read path.
 func (s *Service) defaultResolved(set Setting, caution bool) Resolved {
+	v := set.Default
+	if raw, ok := set.Default.(string); ok {
+		if parsed, err := set.parse(raw); err == nil {
+			v = parsed
+		}
+	}
 	return Resolved{
 		Setting:    set,
-		Value:      set.Default,
+		Value:      v,
 		Provenance: ProvenanceDefault,
 		Caution:    caution,
 	}

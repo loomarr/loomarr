@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeLoader is an in-memory Loader for resolution tests (no store dependency).
@@ -52,6 +53,34 @@ func TestResolve_Precedence(t *testing.T) {
 	s = newTestService(t, map[string]string{"JOB_WORKERS": "9"}, map[string]string{"job.workers": "5"})
 	if r := s.Resolve("job.workers"); r.Value != 9 || r.Provenance != ProvenanceEnv {
 		t.Errorf("env: got %v/%s, want 9/env", r.Value, r.Provenance)
+	}
+}
+
+// A default resolves to the setting's TYPED value, not the raw string, exactly like the
+// env/db paths — because the real registry (declared.go) stores every default as a raw
+// STRING ("24h", "2", "true"), and a typed accessor (set.dur/intv/boolv → Value.(T)) must
+// still get a real T. Regression for the rolling-window bug: an unparsed "24h" default
+// failed the time.Duration assertion in set.dur → window 0 → no truncation → the whole
+// 800-episode run materialized. (The prior tests hid this by hand-typing their defaults
+// e.g. Default: 2; the real registry never does.)
+func TestResolve_StringDefaultParsesToTypedValue(t *testing.T) {
+	reg := newRegistry([]Setting{
+		{Key: "sched.window_hours", EnvVar: "SCHED_WINDOW_HOURS", Kind: KindDuration, Default: "24h", Doc: "x"},
+		{Key: "job.workers", EnvVar: "JOB_WORKERS", Kind: KindInt, Default: "2", Doc: "x"},
+		{Key: "flag.on", EnvVar: "FLAG_ON", Kind: KindBool, Default: "true", Doc: "x"},
+	})
+	s, err := New(context.Background(), reg, fakeLoader{m: nil}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if r := s.Resolve("sched.window_hours"); r.Value != 24*time.Hour {
+		t.Errorf("duration default: got %v (%T), want 24h time.Duration", r.Value, r.Value)
+	}
+	if r := s.Resolve("job.workers"); r.Value != 2 {
+		t.Errorf("int default: got %v (%T), want int 2", r.Value, r.Value)
+	}
+	if r := s.Resolve("flag.on"); r.Value != true {
+		t.Errorf("bool default: got %v (%T), want bool true", r.Value, r.Value)
 	}
 }
 
