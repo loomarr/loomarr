@@ -1,4 +1,4 @@
-import type { ChannelPolicy, LineupEntryDTO } from "@loomarr/api";
+import { type ChannelPolicy, channelsApi, type LineupEntryDTO } from "@loomarr/api";
 import {
   ChannelCyclePreview,
   ChannelLineupEditor,
@@ -53,6 +53,14 @@ const ChannelProgramming = ({
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
 
+  // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
+  // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
+  // it lands (a gate below), so its drafts are never derived against an empty vocabulary.
+  const vocabQuery = channelsApi.useGetProgrammingVocabulary({
+    query: { staleTime: Number.POSITIVE_INFINITY },
+  });
+  const vocabulary = vocabQuery.data?.status === 200 ? vocabQuery.data.data : undefined;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -83,7 +91,16 @@ const ChannelProgramming = ({
         title="When it changes"
         hint="Play different things at different times — weekend marathons, holiday blocks, day-parts."
       >
-        <ChannelRulesEditor policy={policy} onChange={onPolicyChange} lineupKeys={lineupKeys} />
+        {vocabulary ? (
+          <ChannelRulesEditor
+            policy={policy}
+            onChange={onPolicyChange}
+            lineupKeys={lineupKeys}
+            vocabulary={vocabulary}
+          />
+        ) : (
+          <p className="text-muted-foreground text-sm">Loading rule options…</p>
+        )}
       </Block>
 
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule

@@ -293,6 +293,13 @@ type ChannelService interface {
 	// `at` means "now". Read-only; safe for any authenticated caller.
 	CyclePreview(ctx context.Context, channelID string, at time.Time) (
 		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
+	// CyclePreviewDraft is CyclePreview over an UNSAVED draft (P6 programming/preview): a
+	// draftLineup / draftPolicy (nil = use the saved value) stand in for the channel's own,
+	// so the editor previews what an edit WOULD air before applying it. Same purity as
+	// CyclePreview — read-only, nothing persists.
+	CyclePreviewDraft(ctx context.Context, channelID string, at time.Time,
+		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
+		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
 }
 
 // LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and

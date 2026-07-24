@@ -137,6 +137,19 @@ func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) str
 // junk entry. A key not `available` in the library is fine: it renders as a pending slot
 // until the title lands (§9), so this never plays or acquires unapproved content.
 func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	incoming, err := lineupEntriesFromDTOs(edit)
+	if err != nil {
+		return nil, err
+	}
+	return schedule.ApplyLineup(current, incoming, schedule.LineupReplace,
+		schedule.ApplyOpts{PreserveByKey: true}), nil
+}
+
+// lineupEntriesFromDTOs validates + converts the lossy edit DTOs into partial LineupEntries
+// (display fields + an optional season window; rich scheduling metadata is carried forward
+// from the current entry by ApplyLineup's PreserveByKey, §7). Shared by the PATCH merge and
+// the programming/preview draft so a preview lowers the edit exactly as the save would.
+func lineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
 	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {
@@ -148,18 +161,12 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 			return nil, fmt.Errorf("entry %d: duplicate key %q in lineup", i, dto.Key)
 		}
 		seen[key] = struct{}{}
-		// The DTO owns the display fields + an optional season window. Rich scheduling
-		// metadata (rating/runtime/duration/collection) and an omitted season window are
-		// carried forward from the existing entry by ApplyLineup's PreserveByKey — the
-		// lossy-read-DTO guard the §7 PATCH contract calls out (a reorder must not silently
-		// wipe a season scope). To clear a window, a client sets the full range explicitly.
 		incoming = append(incoming, schedule.LineupEntry{
 			Key: key, Title: dto.Name, Year: dto.Year, Genres: dto.Genres,
 			SeasonMin: dto.SeasonMin, SeasonMax: dto.SeasonMax,
 		})
 	}
-	return schedule.ApplyLineup(current, incoming, schedule.LineupReplace,
-		schedule.ApplyOpts{PreserveByKey: true}), nil
+	return incoming, nil
 }
 
 // NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes
@@ -756,19 +763,24 @@ type PodEntryDTO struct {
 type previewPodsInput struct {
 	ID string `path:"id"`
 }
+
+// PodPoolDTO is a channel's assembled filler pool (§10) — the break preview. Named (not an
+// inline body) so the pods endpoints AND the programming/preview endpoint share one shape.
+type PodPoolDTO struct {
+	Entries []PodEntryDTO `json:"entries"`
+	TotalMs int64         `json:"totalMs"`
+	// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
+	// is the answer to "why are my commercials wrong": exact means era+audience
+	// matched, and bumper_card means nothing matched and the channel is running on
+	// the embedded card alone.
+	// Enumerated so orval generates a union the FE can switch on exhaustively. Left
+	// as a bare string, the frontend would hand-mirror these values — and the one
+	// that already did drifted out of sync with the ladder's real levels.
+	MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
+}
+
 type previewPodsOutput struct {
-	Body struct {
-		Entries []PodEntryDTO `json:"entries"`
-		TotalMs int64         `json:"totalMs"`
-		// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
-		// is the answer to "why are my commercials wrong": exact means era+audience
-		// matched, and bumper_card means nothing matched and the channel is running on
-		// the embedded card alone.
-		// Enumerated so orval generates a union the FE can switch on exhaustively. Left
-		// as a bare string, the frontend would hand-mirror these values — and the one
-		// that already did drifted out of sync with the ladder's real levels.
-		MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
-	}
+	Body PodPoolDTO
 }
 
 // previewChannelPods shows the filler pool a channel would receive, without touching
@@ -894,12 +906,17 @@ func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
 // podToPreviewOutput renders an assembled pod into the preview response — shared by the
 // saved (GET) and draft (POST) preview handlers so their shapes cannot drift.
 func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
-	out := &previewPodsOutput{}
+	return &previewPodsOutput{Body: podToPoolDTO(pod)}
+}
+
+// podToPoolDTO maps an assembled pod to its DTO. Shared by the pods endpoints and the
+// programming/preview endpoint (which embeds the pool alongside the cycle slots).
+func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 	// Always a slice, never null: an empty catalog is a normal state the UI renders as
 	// "no clips yet", and a null here would make the FE guard a case that isn't an error.
-	out.Body.Entries = make([]PodEntryDTO, 0, len(pod.Entries))
+	entries := make([]PodEntryDTO, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
-		out.Body.Entries = append(out.Body.Entries, PodEntryDTO{
+		entries = append(entries, PodEntryDTO{
 			TunarrProgramID: e.TunarrProgramID,
 			Name:            e.Name,
 			Kind:            string(e.Kind),
@@ -907,9 +924,7 @@ func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
 			IsFallbackCard:  e.IsFallbackCard,
 		})
 	}
-	out.Body.TotalMs = pod.TotalMs
-	out.Body.MatchLevel = string(pod.MatchLevel)
-	return out
+	return PodPoolDTO{Entries: entries, TotalMs: pod.TotalMs, MatchLevel: string(pod.MatchLevel)}
 }
 
 type previewDraftPodsInput struct {
