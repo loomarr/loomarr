@@ -72,6 +72,16 @@ type ResolvedProgram struct {
 	Title         string
 	DurationMs    int64
 	Season        int
+	// Episode / EpisodeEnd are the episode number and (for a single-file multi-part
+	// item) its last spanned number — the media server's IndexNumber/IndexNumberEnd.
+	// Feed multi-part detection (§5): 0 = unknown/movie. EpisodeEnd 0 = single episode.
+	Episode    int
+	EpisodeEnd int
+	// PartGroup / PartIndex are assigned by assignPartGroups (§5 multi-part): all parts of
+	// one two-parter share a PartGroup, PartIndex is their 1-based play order. "" = standalone.
+	// resolveEntry copies these onto the program Slot so the deck keeps a group atomic.
+	PartGroup string
+	PartIndex int
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet
@@ -217,14 +227,24 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
 	seed := ch.Shuffle.Seed ^ windowIndex(now, window)
 
+	// Multi-part atomicity (§5): collapse each two-parter into one super-slot so ordering
+	// can't split or reorder its parts and the window counts the group as one unit. Ordering
+	// + truncation run on the collapsed deck; expandGroups restores the real parts (adjacent,
+	// in PartIndex order) afterward.
+	collapsed, expand := collapseGroups(slots)
+
 	// Policy-aware ordering + separation (§3/§5), then the relaxation ladder (§7)
 	// records any windows it had to loosen to fill the cycle.
-	ordered, applied := slotWithRelaxation(slots, rp, seed)
+	ordered, applied := slotWithRelaxation(collapsed, rp, seed)
 
 	// Truncate the ordered deck to ~window of runtime (§6.5) — materialize a manageable
 	// horizon, not the whole ~800-episode run. window <= 0 (WindowFull / unbounded) keeps
-	// the whole deck (backward compat + the "full binge" sentinel).
+	// the whole deck (backward compat + the "full binge" sentinel). A super-slot carries the
+	// group's TOTAL runtime, so a two-parter is kept whole or dropped whole by the budget.
 	ordered = truncateToWindow(ordered, window)
+
+	// Expand super-slots back into their real parts now that ordering + windowing are done.
+	ordered = expandGroups(ordered, expand)
 
 	// Breaks: the active rule may suppress them (a marathon runs uninterrupted, §6.5).
 	brk := ch
@@ -346,17 +366,26 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slo
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
-			out := make([]Slot, 0, len(eps))
+			// Keep only the in-range episodes (in season/episode order), then tag multi-part
+			// groups over that ordered set (§5) so consecutive-episode detection sees the
+			// real neighbors. inRange preserves order, so parts stay contiguous for detection.
+			inRange := eps[:0:0]
 			for _, ep := range eps {
-				if !e.inSeasonRange(ep.Season) {
-					continue // outside the entry's season range (e.g. "old-school" only)
+				if e.inSeasonRange(ep.Season) { // outside the entry's season range → drop
+					inRange = append(inRange, ep)
 				}
+			}
+			assignPartGroups(string(e.Key), inRange)
+			out := make([]Slot, 0, len(inRange))
+			for _, ep := range inRange {
 				out = append(out, Slot{
 					Kind:          SlotProgram,
 					Key:           e.Key,
 					LibraryItemID: ep.LibraryItemID,
 					Title:         ep.Title,
 					DurationMs:    ep.DurationMs,
+					PartGroup:     ep.PartGroup,
+					PartIndex:     ep.PartIndex,
 				})
 			}
 			if len(out) > 0 {

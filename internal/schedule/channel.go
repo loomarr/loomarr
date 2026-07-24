@@ -149,6 +149,12 @@ type Slot struct {
 	LibraryItemID string        // media-server/Tunarr item id, set once available
 	Title         string        // display label (for the guide / logs)
 	DurationMs    int64         // program duration; 0 when unknown (pending) or flex-elastic
+	// PartGroup ties the slots of a multi-part story together (§5): all parts of one
+	// two-parter share a non-empty PartGroup, and PartIndex is their play order within it
+	// (1, 2, …). "" = a standalone program. The ordering layer treats a group as one
+	// atomic unit — parts stay adjacent + in-order, and the rolling window keeps them whole.
+	PartGroup string
+	PartIndex int
 }
 
 // IsProgram reports whether this slot is a real, playable program (not pending,

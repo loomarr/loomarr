@@ -19,6 +19,11 @@ type Episode struct {
 	DurationMs    int64
 	Season        int
 	Episode       int
+	// EpisodeEnd is the last episode number this item spans when it's a single file
+	// holding a multi-part story (the media server's IndexNumberEnd, e.g. a "25-26"
+	// double-episode). 0 when unset (a normal single episode). Used with the title-
+	// suffix heuristic to keep two-parters together (§5 multi-part adjacency floor).
+	EpisodeEnd int
 }
 
 // episodeItem mirrors the /Items slice fields we need. RunTimeTicks is the
@@ -29,6 +34,7 @@ type episodeItem struct {
 	RunTimeTicks int64  `json:"RunTimeTicks"`
 	SeasonNumber *int   `json:"ParentIndexNumber"`
 	EpisodeNum   *int   `json:"IndexNumber"`
+	EpisodeEnd   *int   `json:"IndexNumberEnd"` // set on a single-file multi-part episode
 }
 
 type episodesResponse struct {
@@ -49,7 +55,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", "Episode")
-	q.Set("Fields", "RunTimeTicks")
+	q.Set("Fields", "RunTimeTicks,IndexNumberEnd")
 	q.Set("SortBy", "ParentIndexNumber,IndexNumber")
 	q.Set("SortOrder", "Ascending")
 
@@ -75,6 +81,9 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 		}
 		if it.EpisodeNum != nil {
 			e.Episode = *it.EpisodeNum
+		}
+		if it.EpisodeEnd != nil {
+			e.EpisodeEnd = *it.EpisodeEnd
 		}
 		eps = append(eps, e)
 	}
