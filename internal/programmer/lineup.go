@@ -69,7 +69,7 @@ func (t *Tunarr) SetLineup(ctx context.Context, tunarrID string, slots []schedul
 // empty" rather than an error on a freshly-created channel.
 func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slot, error) {
 	var resp lineupResponse
-	status, err := t.doStatus(ctx, http.MethodGet,
+	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet,
 		"/api/channels/"+tunarrID+"/programming", nil, &resp)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (t *Tunarr) GetLineup(ctx context.Context, tunarrID string) ([]schedule.Slo
 	case status == http.StatusBadRequest || status == http.StatusNotFound:
 		return []schedule.Slot{}, nil // unprogrammed channel (Phase-0 finding 4)
 	case status < 200 || status >= 300:
-		return nil, fmt.Errorf("get lineup for %s: status %d", tunarrID, status)
+		return nil, statusErr("get lineup for "+tunarrID, status, snippet)
 	}
 	slots := make([]schedule.Slot, 0, len(resp.Lineup))
 	for _, it := range resp.Lineup {

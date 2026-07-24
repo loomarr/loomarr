@@ -108,6 +108,19 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		ch.TunarrID = tunarrID
 		channelAffecting = true   // created (or recreated after out-of-band delete)
 		channelListChanged = true // the media server must re-scan the tuner to discover it
+
+		// CHECKPOINT the new id NOW, before the lineup push (which can fail — e.g. a
+		// large library resolve timing out). Persisting the create separately makes it
+		// durable on its own: if a later step errors, the next reconcile finds this id,
+		// GetChannel confirms the channel exists, and it goes straight to the lineup —
+		// no recreate, no number collision. Without this, a failed push discarded the
+		// new id and every retry re-created channel N, orphaning a shell and 500ing on
+		// the collision. Best-effort: a checkpoint failure is non-fatal (the end-of-
+		// reconcile persist is the backstop), so it never blocks the push it precedes.
+		if err := e.store.UpsertChannel(ctx, ch); err != nil && e.log != nil {
+			e.log.Warn("checkpoint of new Tunarr id failed (reconcile continues)",
+				"channel", channelID, "tunarrId", tunarrID, "err", err)
+		}
 	}
 
 	// 4b: build + attach the channel's Tunarr filler-list from the matched clip

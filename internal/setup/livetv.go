@@ -47,20 +47,44 @@ func NewLiveTVConnector(lib library.LiveTV, urls TunarrURLs) *LiveTVConnector {
 // ConnectResult reports what the connect did — so the API/UI can distinguish
 // "just wired it" from "already wired" (§6 second-call-no-op) without guessing.
 type ConnectResult struct {
-	TunerAdded   bool // an m3u tuner host was registered this call
-	ListingAdded bool // an xmltv listing provider was registered this call
+	TunerAdded     bool  // an m3u tuner host was registered this call
+	ListingAdded   bool  // an xmltv listing provider was registered this call
+	TunerRemoved   int   // stale Loomarr tuner hosts retired this call (URL change)
+	ListingRemoved int   // stale Loomarr listing providers retired this call
+	Poked          bool  // a rescan+refresh was attempted (something changed)
+	PokeErr        error // best-effort poke failure; the connect still succeeded
 }
 
 // AlreadyWired reports whether nothing needed to change — the idempotent no-op
-// case the Phase-10 gate asserts on the second call.
-func (r ConnectResult) AlreadyWired() bool { return !r.TunerAdded && !r.ListingAdded }
+// case the Phase-10 gate asserts on the second call. A URL-change reconcile that
+// retired a stale tuner is NOT a no-op, so the removals count too.
+func (r ConnectResult) AlreadyWired() bool {
+	return !r.TunerAdded && !r.ListingAdded && r.TunerRemoved == 0 && r.ListingRemoved == 0
+}
 
 // Connect wires Tunarr as an M3U tuner + XMLTV guide in the media server,
-// idempotently (§6): it enumerates first and only registers what's missing, so a
-// second call with Tunarr already registered is a no-op. This is the guard
-// against duplicate tuners — a classic Emby mess.
+// idempotently and self-healing on a URL change (§6): it enumerates first and only
+// registers what's missing, so a second call with the SAME Tunarr URL is a no-op.
+// When the Tunarr URL has CHANGED, it also removes the Loomarr-owned tuner/listing
+// left pointing at the old URL (identity = FriendlyName "loomarr") before adding
+// the new — so a repoint moves the tuner instead of orphaning a dead one. A tuner
+// the household added by hand is never touched (§9 ownership).
 func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	var res ConnectResult
+
+	// Retire Loomarr-owned tuners pointing at a stale URL first, so we never leave a
+	// dead tuner beside the live one (the "classic Emby mess"). Done before the add
+	// so the desired tuner is the only Loomarr one when we finish.
+	staleTuners, err := c.lib.StaleLoomarrTuners(ctx, c.urls.M3U)
+	if err != nil {
+		return res, fmt.Errorf("enumerate stale tuner hosts: %w", err)
+	}
+	for _, id := range staleTuners {
+		if err := c.lib.RemoveTuner(ctx, id); err != nil {
+			return res, fmt.Errorf("remove stale tuner %s: %w", id, err)
+		}
+		res.TunerRemoved++
+	}
 
 	tunerThere, err := c.lib.TunerRegistered(ctx, c.urls.M3U)
 	if err != nil {
@@ -73,6 +97,17 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 		res.TunerAdded = true
 	}
 
+	staleListings, err := c.lib.StaleLoomarrListings(ctx, c.urls.XMLTV)
+	if err != nil {
+		return res, fmt.Errorf("enumerate stale listing providers: %w", err)
+	}
+	for _, id := range staleListings {
+		if err := c.lib.RemoveListingProvider(ctx, id); err != nil {
+			return res, fmt.Errorf("remove stale listing provider %s: %w", id, err)
+		}
+		res.ListingRemoved++
+	}
+
 	listingThere, err := c.lib.ListingRegistered(ctx, c.urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate listing providers: %w", err)
@@ -82,6 +117,28 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 			return res, fmt.Errorf("register listing provider: %w", err)
 		}
 		res.ListingAdded = true
+	}
+
+	// If anything changed (a fresh tuner was registered, or a stale one retired), poke
+	// the media server so the new tuner's channels are discovered and their EPG filled
+	// NOW rather than at the next nightly scan (§9). A newly-registered M3U tuner has
+	// no channels in the media server's view until it re-reads the playlist — the
+	// re-scan surfaces the channel LIST, the refresh fills the guide DATA. Both are
+	// best-effort: freshness degrades on failure, but the wiring itself already
+	// succeeded, so a poke error must not fail Connect (§6). A no-op connect skips
+	// them — nothing new to discover.
+	if !res.AlreadyWired() {
+		res.Poked = true
+		if err := c.lib.RescanTuner(ctx, c.urls.M3U); err != nil {
+			res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
+		}
+		if err := c.lib.RefreshGuide(ctx); err != nil {
+			// Keep the first poke error if the rescan already failed; either way
+			// the connect succeeds and the caller can log degraded freshness.
+			if res.PokeErr == nil {
+				res.PokeErr = fmt.Errorf("refresh guide: %w", err)
+			}
+		}
 	}
 
 	return res, nil

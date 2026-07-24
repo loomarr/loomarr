@@ -2,7 +2,6 @@ package programmer
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -75,7 +74,7 @@ func (t *Tunarr) Guide(ctx context.Context, from, to time.Time) (map[string][]Gu
 	q.Set("dateTo", to.UTC().Format(time.RFC3339))
 
 	var resp map[string]guideChannel
-	status, err := t.doStatus(ctx, http.MethodGet, "/api/guide/channels?"+q.Encode(), nil, &resp)
+	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/guide/channels?"+q.Encode(), nil, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +84,7 @@ func (t *Tunarr) Guide(ctx context.Context, from, to time.Time) (map[string][]Gu
 		return map[string][]GuideEntry{}, nil
 	}
 	if status < 200 || status >= 300 {
-		return nil, fmt.Errorf("get guide: status %d", status)
+		return nil, statusErr("get guide", status, snippet)
 	}
 
 	out := make(map[string][]GuideEntry, len(resp))

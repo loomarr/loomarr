@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -131,6 +133,30 @@ func TestTranscodeConfigID_ErrorsWhenNoneExist(t *testing.T) {
 	c := programmer.New(srv.URL, "")
 	if _, err := c.TranscodeConfigID(context.Background()); err == nil {
 		t.Error("expected an error when the instance reports no transcode configs")
+	}
+}
+
+// A non-2xx from Tunarr must carry Tunarr's own response body into the error, not
+// just a bare status code. This is the difference between debugging a "status 400"
+// mystery and reading Tunarr's reason (e.g. a version-drift field rejection) straight
+// from the log — the live 1.3.9 diagnostic that motivated surfacing the body.
+func TestEnsureChannel_SurfacesErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"Bad Request"}`))
+	}))
+	defer srv.Close()
+
+	c := programmer.New(srv.URL, "cfg-uuid")
+	_, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "X"})
+	if err == nil {
+		t.Fatal("expected an error on a 400 create")
+	}
+	if !strings.Contains(err.Error(), "Bad Request") {
+		t.Errorf("error must surface Tunarr's body, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("error must still carry the status code, got %q", err.Error())
 	}
 }
 
@@ -314,6 +340,51 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 		if item.Type == "flex" && item.Dur <= 0 {
 			t.Errorf("flex item %d has duration %v — Tunarr rejects ≤ 0 (must be floored)", i, item.Dur)
 		}
+	}
+}
+
+// The content-index build reads a library's ENTIRE program list with no paging,
+// which on a large library is a slow, large response (a live homelab: 52 MB / ~17 s
+// for 15,788 programs). It goes through the long-timeout bulk client, so a slow
+// /programs response still resolves rather than being cancelled mid-pull. This test
+// delays the /programs response and asserts the resolution succeeds.
+func TestSetLineup_SlowProgramsIndexStillResolves(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/media-sources", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "src-1", "type": "emby"}})
+	})
+	mux.HandleFunc("/api/media-sources/src-1/libraries", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "lib-A", "name": "Movies", "enabled": true}})
+	})
+	mux.HandleFunc("/api/media-libraries/lib-A/programs", func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(250 * time.Millisecond) // stand in for a slow, large bulk pull
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": "uuid-1", "program": map[string]any{"identifiers": []map[string]string{{"type": "emby", "id": "lib-1"}}}},
+		})
+	})
+	var got capture
+	mux.HandleFunc("/api/channels/ch-id/programming", func(w http.ResponseWriter, r *http.Request) {
+		got.method, got.path = r.Method, r.URL.Path
+		got.body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := programmer.New(srv.URL, "cfg")
+	slots := []schedule.Slot{{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}}
+	if err := c.SetLineup(context.Background(), "ch-id", slots); err != nil {
+		t.Fatalf("a slow /programs pull must still resolve via the bulk client, got %v", err)
+	}
+	var body struct {
+		Lineup []struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+		} `json:"lineup"`
+	}
+	_ = json.Unmarshal(got.body, &body)
+	if len(body.Lineup) != 1 || body.Lineup[0].Type != "content" || body.Lineup[0].ID != "uuid-1" {
+		t.Errorf("slow index did not resolve lib-1 → uuid-1, got %+v", body.Lineup)
 	}
 }
 

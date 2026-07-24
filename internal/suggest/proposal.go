@@ -44,16 +44,23 @@ type LineupContext struct {
 // Identity is always a real external id (the grounding guarantee); Name/Year are
 // for display only. It mirrors a catalog.Candidate plus the LLM's rationale.
 type ProposalItem struct {
-	MediaType     provision.MediaType `json:"mediaType"`
-	TMDBID        int                 `json:"tmdbId,omitempty"`
-	TVDBID        int                 `json:"tvdbId,omitempty"`
-	Name          string              `json:"name"`
-	Year          int                 `json:"year,omitempty"`
-	Seasons       []int               `json:"seasons,omitempty"` // series acquisitions
-	InLibrary     bool                `json:"inLibrary"`
-	LibraryItemID string              `json:"libraryItemId,omitempty"`
-	Rationale     string              `json:"rationale,omitempty"` // why-it-fits (LLM)
-	Confidence    float64             `json:"confidence,omitempty"`
+	MediaType provision.MediaType `json:"mediaType"`
+	TMDBID    int                 `json:"tmdbId,omitempty"`
+	TVDBID    int                 `json:"tvdbId,omitempty"`
+	Name      string              `json:"name"`
+	Year      int                 `json:"year,omitempty"`
+	Seasons   []int               `json:"seasons,omitempty"` // series ACQUISITION (what to download)
+	// SeasonMin/SeasonMax: optional AIRING season window for a series pick (which
+	// seasons play on the channel), distinct from Seasons (what to acquire). Set by
+	// the grounded suggester when the intent implies an era ("classic" → 1–10);
+	// carried onto LineupEntry.SeasonMin/Max and enforced at series expansion (§9).
+	// 0 = unbounded on that end. Validated + clamped by the suggester before it lands.
+	SeasonMin     int     `json:"seasonMin,omitempty"`
+	SeasonMax     int     `json:"seasonMax,omitempty"`
+	InLibrary     bool    `json:"inLibrary"`
+	LibraryItemID string  `json:"libraryItemId,omitempty"`
+	Rationale     string  `json:"rationale,omitempty"` // why-it-fits (LLM)
+	Confidence    float64 `json:"confidence,omitempty"`
 	// Genres + Overview carry from the grounded Candidate so deterministic theme
 	// scoring measures real metadata, not the title string (§8). Display/scoring
 	// only — never identity (Key ignores them).
