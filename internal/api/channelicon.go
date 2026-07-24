@@ -49,6 +49,14 @@ func (s *Server) uploadChannelIcon(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
 		return
 	}
+	// CSRF (§11): this is a raw mux handler, so the Huma CSRF middleware doesn't cover it —
+	// and a multipart POST is the classic CSRF vector (a cross-origin HTML form can send
+	// it). Require the header the FE always sends; a cross-origin form cannot set it. Closes
+	// form-based CSRF alongside SameSite=Strict, matching the middleware's contract.
+	if r.Header.Get("X-Loomarr-Csrf") != "1" {
+		s.writeProblem(w, r, http.StatusForbidden, "Missing CSRF header", "This request is missing the X-Loomarr-Csrf header.")
+		return
+	}
 	id := r.PathValue("id")
 	ch, err := s.store.GetChannel(r.Context(), id)
 	if err != nil {
