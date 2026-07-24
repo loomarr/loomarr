@@ -357,6 +357,14 @@ func TestWorker_AutoApproveRebindsChannel(t *testing.T) {
 	if fb.calls[0].ID != approved[0].ID {
 		t.Errorf("binder called with proposal %q, want the auto-approved one %q", fb.calls[0].ID, approved[0].ID)
 	}
+	// The binder must receive the APPROVED proposal (re-read from the store), NOT the stale
+	// pre-approval local copy. The pre-approval copy has Status "submitted" + ApprovedBy "";
+	// binding that would make the binder mis-detect the approval path (e.g. skip the §8.2
+	// auto-curate additive lineup merge, which keys on ApprovedBy). Guards that regression.
+	if fb.calls[0].Status != "approved" || fb.calls[0].ApprovedBy == "" {
+		t.Errorf("binder got a stale proposal (status=%q approvedBy=%q) — must be the re-read approved one",
+			fb.calls[0].Status, fb.calls[0].ApprovedBy)
+	}
 }
 
 // A binder failure must not fail the job or unwind the approval — the approval
