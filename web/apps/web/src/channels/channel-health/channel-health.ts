@@ -7,10 +7,15 @@ import type { ChannelHealth, OnAirState } from "@/components/loomarr";
 // than inline in the page, because "is this channel OK?" must mean the same thing on the
 // list, on the detail screen, and in any test that asserts it.
 //
-// The interesting case is `live` with unfilled slots: the channel IS on air (Tunarr plays
-// flex rather than dead air, §9) but it is not yet what the operator asked for, because
-// acquisitions are still landing. Calling that plain "healthy" would hide the backfill
-// they are waiting on, so it reads as pending-slots until every slot has a real program.
+// The interesting case is `live` with titles still landing: the channel IS on air (Tunarr
+// plays flex/filler rather than dead air, §9) but it is not yet what the operator asked
+// for, because acquisitions are still in flight. Calling that plain "healthy" would hide the
+// backfill they are waiting on, so it reads as pending-slots while any title is pending.
+//
+// Key on `pendingCount`, NOT `programCount < slotCount`: slotCount includes commercial-break
+// gaps (§10), so a fully-acquired channel with ad breaks has programCount < slotCount forever
+// and used to misread as "pending-slots" permanently. pendingCount counts only titles awaiting
+// acquisition, so a healthy break-heavy channel is 0.
 const channelHealth = (channel: ChannelDTO): ChannelHealth => {
   switch (channel.status) {
     case "building":
@@ -26,7 +31,7 @@ const channelHealth = (channel: ChannelDTO): ChannelHealth => {
       // which is a fault). Its own health value so the card can render "Paused" plainly.
       return "paused";
     default:
-      return channel.programCount < channel.slotCount ? "pending-slots" : "healthy";
+      return channel.pendingCount > 0 ? "pending-slots" : "healthy";
   }
 };
 

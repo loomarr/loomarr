@@ -145,23 +145,18 @@ func randomPolicy(r *rand.Rand) ChannelPolicy {
 		blockMax = 1 + r.Intn(8)
 	}
 
-	return ChannelPolicy{
-		Audience: AudiencePolicy{
-			Ceiling: ceiling,
-			Unrated: unrateds[r.Intn(len(unrateds))],
-		},
-		Separation: SeparationPolicy{
-			EpisodeNoRepeat: dur(),
-			MovieNoRepeat:   dur(),
-			SeriesMinGap:    dur(),
-			BlockMax:        blockMax,
-		},
-		Ordering: orderings[r.Intn(len(orderings))],
-		Seasonal: SeasonalPolicy{
-			Mode:      seasonalModes[r.Intn(len(seasonalModes))],
-			OffSeason: offSeasons[r.Intn(len(offSeasons))],
-		},
-	}
+	return ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{
+		Ceiling: ceiling,
+		Unrated: unrateds[r.Intn(len(unrateds))],
+	}, Separation: SeparationPolicy{
+		EpisodeNoRepeat: dur(),
+		MovieNoRepeat:   dur(),
+		SeriesMinGap:    dur(),
+		BlockMax:        blockMax,
+	}, Ordering: orderings[r.Intn(len(orderings))], Seasonal: SeasonalPolicy{
+		Mode:      seasonalModes[r.Intn(len(seasonalModes))],
+		OffSeason: offSeasons[r.Intn(len(offSeasons))],
+	}}}
 }
 
 // TestResolved_IsTotal is a seeded property loop asserting the core Resolved()
@@ -268,7 +263,7 @@ func TestResolved_UnratedExcludesUnderEveryKidsCeiling(t *testing.T) {
 		wantExclude := hasCeiling && ceiling != "" && rank <= kidsCeilingRank
 		for _, strategy := range allStrategies {
 			for _, single := range []bool{false, true} {
-				p := ChannelPolicy{Audience: AudiencePolicy{Ceiling: ceiling}}
+				p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: ceiling}}}
 				got := p.Resolved(strategy, single).Unrated
 				want := UnratedAllow
 				if wantExclude {

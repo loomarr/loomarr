@@ -15,6 +15,10 @@ interface ChannelLineup {
   // Moves the entry at `fromIndex` to `toIndex` (arrayMove semantics) and commits the
   // reordered list — the shape a dnd-kit `onDragEnd` hands you directly.
   reorder: (fromIndex: number, toIndex: number) => void;
+  // Merges `patch` into the entry with `key` and commits — for the per-series season
+  // window (§9 "seasons 1–10"). The backend preserves an omitted window by key (§7), so a
+  // 0/undefined here means "no constraint", never "season 0".
+  updateEntry: (key: string, patch: Partial<LineupEntryDTO>) => void;
 }
 
 export type { ChannelLineup };

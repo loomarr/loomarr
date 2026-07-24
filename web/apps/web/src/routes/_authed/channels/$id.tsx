@@ -7,21 +7,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
-import {
-  ChannelCyclePreview,
-  ChannelDangerZone,
-  ChannelIconField,
-  ChannelLineupEditor,
-  ChannelPolicyFields,
-  ChannelRulesEditor,
-  ErrorState,
-  OnAirIndicator,
-  RefinePanel,
-} from "@/components/loomarr";
+import { ChannelDangerZone, ChannelIconField, ErrorState, OnAirIndicator } from "@/components/loomarr";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
 import { useDocumentTitle } from "@/lib";
 import { ChannelAdvanced } from "./-channel-advanced";
+import { ChannelProgramming } from "./-channel-programming";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
 // what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,
@@ -32,7 +23,7 @@ import { ChannelAdvanced } from "./-channel-advanced";
 
 // The tab/section ids — the closed set the `?section=` deep-link accepts. Shared by
 // validateSearch (URL narrowing) and the component (the tab registry + which panel shows).
-const SECTION_IDS = ["info", "refine", "lineup", "rules", "filler", "advanced", "danger"] as const;
+const SECTION_IDS = ["info", "programming", "filler", "advanced", "danger"] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 
 // `section` is OPTIONAL so a plain link to the channel (from the list, the palette, the approval
@@ -121,9 +112,7 @@ const ChannelDetailScreen = () => {
   // The section registry drives BOTH the tab bar and which panel shows, so they can't drift.
   const sections: ChannelNavSection[] = [
     { id: "info", label: "Channel info" },
-    { id: "refine", label: "Refine with AI" },
-    { id: "lineup", label: "Lineup" },
-    { id: "rules", label: "Programming rules" },
+    { id: "programming", label: "Programming" },
     { id: "filler", label: "Filler" },
     { id: "advanced", label: "Advanced" },
     { id: "danger", label: "Danger zone" },
@@ -150,8 +139,11 @@ const ChannelDetailScreen = () => {
   const guide =
     nowNext.data?.status === 200 ? nowNext.data.data.channels?.find((c) => c.channelId === id) : undefined;
 
+  // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
+  // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
+  // pendingCount is the real title total; ready < total iff something is still acquiring.
   const ready = ch.programCount;
-  const total = ch.slotCount;
+  const total = ch.programCount + ch.pendingCount;
 
   const savePolicy = (policy: ChannelPolicy) => update.mutate({ id, data: { policy } });
 
@@ -251,11 +243,11 @@ const ChannelDetailScreen = () => {
               </div>
 
               <p className="border-border border-t pt-3 text-sm">
-                <span className="font-medium">{`${ready} of ${pluralize(total, "show")} ready`}</span>
+                <span className="font-medium">{`${ready} of ${pluralize(total, "title")} ready`}</span>
                 {ready < total && (
                   <span className="text-muted-foreground">
                     {" "}
-                    — the rest fill in as clips arrive, so the channel never goes dark.
+                    — the rest fill in as titles arrive, so the channel never goes dark.
                   </span>
                 )}
               </p>
@@ -268,46 +260,18 @@ const ChannelDetailScreen = () => {
             </section>
           )}
 
-          {/* Admin editing panels — each shown only when its tab is active. Rules/Advanced render
-              their fields directly under a section shell (the tab bar already names the section,
-              so no collapsible chrome); Filler keeps its internal sandbox, forced open. */}
-          {isAdmin && activeId === "refine" && (
-            <RefinePanel
+          {/* Admin editing panels — each shown only when its tab is active. Programming folds the
+              old Lineup + Programming-rules + Refine tabs into one surface; Advanced renders its
+              fields directly under a section shell; Filler keeps its internal sandbox. */}
+          {isAdmin && activeId === "programming" && (
+            <ChannelProgramming
               channelId={id}
               channelName={ch.name}
-              current={(ch.lineup ?? []).map((entry) => ({
-                name: entry.name,
-                year: entry.year,
-                key: entry.key,
-              }))}
-              onApplied={invalidate}
+              lineup={ch.lineup ?? []}
+              policy={ch.policy}
+              onPolicyChange={savePolicy}
+              onRefined={invalidate}
             />
-          )}
-
-          {isAdmin && activeId === "lineup" && (
-            <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
-          )}
-
-          {isAdmin && activeId === "rules" && (
-            <section className="flex flex-col gap-6 rounded-lg border border-border p-5">
-              <div>
-                <h2 className="font-semibold text-lg">Programming rules</h2>
-                <p className="text-muted-foreground text-sm">
-                  How this channel picks and orders what plays. Defaults follow your global settings.
-                </p>
-              </div>
-              <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
-              <div className="border-border border-t pt-6">
-                <ChannelRulesEditor
-                  policy={ch.policy}
-                  onChange={savePolicy}
-                  lineupKeys={(ch.lineup ?? []).map((entry) => ({ key: entry.key, title: entry.name }))}
-                />
-              </div>
-              <div className="border-border border-t pt-6">
-                <ChannelCyclePreview channelId={id} />
-              </div>
-            </section>
           )}
 
           {isAdmin && activeId === "filler" && <ChannelFiller channelId={id} policy={ch.policy} open />}

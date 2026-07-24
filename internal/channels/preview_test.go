@@ -30,7 +30,7 @@ func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 	ch.Number = 5
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
-	ch.Policy = schedule.ChannelPolicy{Rules: []schedule.SchedulingRule{weekend}}
+	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{weekend}}}
 	if err := st.UpsertChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}

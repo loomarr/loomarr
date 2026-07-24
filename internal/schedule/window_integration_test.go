@@ -137,7 +137,7 @@ func TestComputeDesiredAt_MoviePoolRotatesThroughWholeCatalog(t *testing.T) {
 	ch := schedule.Channel{ID: "action", Name: "80s Action", Number: 3, Strategy: schedule.Sequential, DefaultWindow: 24 * time.Hour}
 	// Sequential ordering is the case that starved before the fix (a stable order + a fixed
 	// prefix). syndication behaves the same way; shuffle also rotates now.
-	pol := schedule.ChannelPolicy{Ordering: "syndication"}
+	pol := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: "syndication"}}
 	base := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
 
 	seen := map[string]bool{}
@@ -171,7 +171,7 @@ func TestComputeDesiredAt_MovieWindowIsBounded(t *testing.T) {
 		entries = append(entries, schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)})
 	}
 	ch := schedule.Channel{ID: "a", Number: 3, Strategy: schedule.Sequential, DefaultWindow: 24 * time.Hour}
-	d := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, schedule.ChannelPolicy{Ordering: "syndication"}, time.Date(2026, 7, 24, 1, 0, 0, 0, time.UTC))
+	d := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: "syndication"}}, time.Date(2026, 7, 24, 1, 0, 0, 0, time.UTC))
 	progs := d.ProgramCount()
 	if progs < 1 || progs >= 15 {
 		t.Fatalf("window materialized %d films; want a bounded slice (>=1, <15 — the whole 30h run isn't one window)", progs)

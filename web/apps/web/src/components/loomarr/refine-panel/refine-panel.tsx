@@ -16,7 +16,14 @@ type PanelState = "idle" | "open" | "running" | "landed";
 // result lands as a diff to review before anything is applied. Nothing here mutates
 // the channel until Apply — the diff review IS the gate (§7), same as any other
 // suggestion.
-const RefinePanel = ({ channelId, channelName, current, onApplied, className }: RefinePanelProps) => {
+const RefinePanel = ({
+  channelId,
+  channelName,
+  current,
+  currentPolicy,
+  onApplied,
+  className,
+}: RefinePanelProps) => {
   const [state, setState] = useState<PanelState>("idle");
   const [change, setChange] = useState("");
 
@@ -139,6 +146,8 @@ const RefinePanel = ({ channelId, channelName, current, onApplied, className }: 
           proposed={landed.proposal.lineup ?? []}
           acquisitions={landed.proposal.acquisitions ?? []}
           current={current}
+          currentPolicy={currentPolicy}
+          proposedPolicy={landed.proposal.policy}
           busy={approve.isPending}
           onApply={() => approve.mutate({ id: landed.id })}
           onDiscard={close}

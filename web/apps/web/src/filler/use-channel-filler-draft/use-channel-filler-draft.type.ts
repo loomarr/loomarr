@@ -1,4 +1,4 @@
-import type { FillerSelection, PreviewPodsOutputBody } from "@loomarr/api";
+import type { FillerSelection, PodPoolDTO } from "@loomarr/api";
 
 // The draft the sandbox edits. It is exactly a FillerSelection — the same shape the
 // backend persists on `policy.filler` and previews at POST …/pods/preview — so "apply"
@@ -12,10 +12,10 @@ type ChannelFillerDraft = {
   // Replace the whole draft (the controls compute the next draft and hand it back, the
   // same controlled-parent idiom ChannelPolicyFields uses).
   setDraft: (next: FillerDraft) => void;
-  // The assembled break for the CURRENT draft — the same PreviewPodsOutputBody shape the
+  // The assembled break for the CURRENT draft — the same PodPoolDTO shape the
   // saved GET returns, so it drops straight into PodTimeline. Undefined until the first
   // preview lands.
-  preview?: PreviewPodsOutputBody;
+  preview?: PodPoolDTO;
   // A preview request is in flight (initial load or a debounced re-assemble).
   isPreviewing: boolean;
   // The last preview failed (e.g. a 422 the client-side guard missed) — surfaced inline

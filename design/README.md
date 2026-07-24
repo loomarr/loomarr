@@ -1,9 +1,20 @@
 # Loomarr design prototypes — Phase-13 visual reference
 
-These are the **authoritative visual reference** for the Phase-13 Web UI (CLAUDE.md
-"Seed docs"; `docs/frontend-design.md` §7). They are Claude Design mockups in the
-`.dc.html` format — a self-contained prototype runtime (`support.js`), NOT the shippable
-frontend.
+These are the **authoritative reference for palette, typography, and idiom** — the
+"transmitted test card" look (CLAUDE.md "Seed docs"; `docs/frontend-design.md` §7). They
+are Claude Design mockups in the `.dc.html` format — a self-contained prototype runtime
+(`support.js`), NOT the shippable frontend.
+
+> **They are NOT authoritative for structure / information architecture.** The prototypes
+> depict the channel detail as an *operator console* (a "Reconcile now" button, a scheduler
+> DRIFT banner, a desired-slot table) — a model `docs/design.md` §9/§12 deliberately
+> **rejected** in favor of a self-maintaining appliance with no rebuild button. Where a
+> prototype's *structure* disagrees with `design.md` §12, **§12 wins** (the channel detail is
+> the four-surface IA: Overview · Programming · Filler · Settings). The prototypes remain the
+> baseline for *look*; `design.md` §12 is the baseline for *what the page is and contains*.
+> (This supersedes the prior "authoritative visual reference" framing, which read as
+> authoritative for structure too — the state that let the console mock and the shipped app
+> silently disagree.)
 
 | File | Viewport | Screens |
 | --- | --- | --- |

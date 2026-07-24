@@ -30,6 +30,19 @@ import (
 func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Time) (
 	resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error,
 ) {
+	return e.CyclePreviewDraft(ctx, channelID, at, nil, nil)
+}
+
+// CyclePreviewDraft is CyclePreview over an UNSAVED draft (§8.1 / P6 programming/preview):
+// draftLineup / draftPolicy, when non-nil, stand in for the channel's saved lineup / policy so
+// the editor can see exactly what an edit WOULD air before applying it — the same
+// ComputeDesiredAt the reconciler runs, still read-only (nothing persists, no Tunarr call). Nil
+// means "use the saved value", so CyclePreview is just this with both nil. The break density is
+// computed from the DRAFT filler selection too, so a drafted filler change is reflected.
+func (e *Engine) CyclePreviewDraft(
+	ctx context.Context, channelID string, at time.Time,
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy,
+) (resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error) {
 	ch, err := e.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return time.Time{}, nil, schedule.ActiveRuleAttribution{}, 0, fmt.Errorf("load channel %s: %w", channelID, err)
@@ -38,8 +51,21 @@ func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Tim
 		at = e.now()
 	}
 
+	// Draft overrides (nil = saved). The draft lineup is applied the SAME way an operator
+	// PATCH would (ApplyLineup Replace + PreserveByKey, §9) — rich metadata carried forward by
+	// key, new entries as-is (unhealed, like the saved preview) — so the preview matches what
+	// the save→reconcile would actually produce. The drafted policy replaces ch.Policy so the
+	// filler-pool + window helpers read it exactly as they read the saved one.
+	lineup := ch.Lineup
+	if draftLineup != nil {
+		lineup = schedule.ApplyLineup(ch.Lineup, draftLineup, schedule.LineupReplace, schedule.ApplyOpts{PreserveByKey: true})
+	}
+	if draftPolicy != nil {
+		ch.Policy = *draftPolicy
+	}
+
 	// Mirror reconcile's chDomain assembly (reconcile.go step 2): break density only when a
-	// filler pool exists, and the settings-driven rolling-window horizon.
+	// filler pool exists (drafted selection), and the settings-driven rolling-window horizon.
 	hasFillerPool := false
 	if e.pods != nil {
 		if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch)); ok && len(ids) > 0 {
@@ -53,7 +79,7 @@ func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Tim
 	}
 	chDomain.DefaultWindow = e.defaultWindow
 
-	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, at)
+	desired := schedule.ComputeDesiredAt(chDomain, lineup, e.avail, e.policy, ch.Policy, at)
 	active = schedule.ActiveRuleAt(ch.Policy.Rules, at)
 	window = schedule.ResolveWindow(chDomain, ch.Policy, at)
 	return at, desired.Slots, active, window, nil

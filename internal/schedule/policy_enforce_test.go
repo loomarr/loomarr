@@ -58,7 +58,7 @@ func TestEnforce_EraBinds(t *testing.T) {
 		ratedEntry("movie:tmdb:3", "Too New", "", 2005),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
-	p := schedule.ChannelPolicy{Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
 	if !hasKey(keys, "movie:tmdb:1") {
@@ -75,9 +75,9 @@ func TestEnforce_GenreBinds(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Doc", "", 1994, "Documentary"),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{Scope: schedule.ScopePolicy{
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
 		Genres: schedule.GenreFilter{Include: []string{"Animation"}, Exclude: []string{"Documentary"}},
-	}}
+	}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
 	if !hasKey(keys, "movie:tmdb:1") || hasKey(keys, "movie:tmdb:2") {
@@ -94,7 +94,7 @@ func TestEnforce_AudienceFailsClosed(t *testing.T) {
 		ratedEntry("movie:tmdb:3", "No Rating", "", 1994), // unrated
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
-	p := schedule.ChannelPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}}
 
 	d := computeWithPolicy(entries, avail, p)
 	keys := programKeys(d)
@@ -125,10 +125,7 @@ func TestEnforce_TVMA_NeverUnderKidsCeiling_EvenAfterRelaxation(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Adult", "TV-MA", 1994),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{
-		Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y"},
-		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)},
-	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y"}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	d := computeWithPolicy(entries, avail, p)
 	for _, k := range programKeys(d) {
 		if k == "movie:tmdb:2" {
@@ -161,7 +158,7 @@ func TestEnforce_Deterministic(t *testing.T) {
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3", "movie:tmdb:4": "l4"}
 	ch := schedule.Channel{ID: "d", Name: "D", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 42}}
-	p := schedule.ChannelPolicy{Ordering: schedule.OrderSyndication}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}
 
 	a := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, p, time.Time{})
 	b := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, p, time.Time{})

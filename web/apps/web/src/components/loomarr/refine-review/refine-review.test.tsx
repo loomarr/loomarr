@@ -1,4 +1,4 @@
-import type { ProposalItem } from "@loomarr/api";
+import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RefineReview } from "./refine-review";
@@ -101,6 +101,41 @@ describe("RefineReview", () => {
     expect(screen.getByText("Adding · 2")).toBeInTheDocument();
     expect(screen.queryByText(/keeping/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/removing/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a programming-policy delta chip for an unpinned field the refine changes", () => {
+    // Lineup unchanged (Heat kept), but the refine changes the era — that policy change used
+    // to apply invisibly (the P3 data-loss bug); the chip is the visible half of the fix.
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat]}
+        currentPolicy={{ scope: { era: { from: 1980, to: 1989 } } } as ChannelPolicy}
+        proposedPolicy={{ scope: { era: { from: 1990, to: 1999 } } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Programming · 1")).toBeInTheDocument();
+    expect(screen.getByText("Era")).toBeInTheDocument();
+    expect(screen.getByText(/1980/)).toBeInTheDocument();
+    expect(screen.getByText(/1990/)).toBeInTheDocument();
+    // A policy-only change is still a change → Apply is offered, not "no changes".
+    expect(screen.getByRole("button", { name: /apply changes/i })).toBeInTheDocument();
+  });
+
+  it("marks a pinned field as kept — the refine cannot overwrite an operator's setting", () => {
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat]}
+        currentPolicy={{ scope: { era: { from: 1980, to: 1989 } }, operatorSet: ["scope"] } as ChannelPolicy}
+        proposedPolicy={{ scope: { era: { from: 1990, to: 1999 } } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/you set this/i)).toBeInTheDocument();
   });
 
   it("fires onApply and onDiscard", () => {

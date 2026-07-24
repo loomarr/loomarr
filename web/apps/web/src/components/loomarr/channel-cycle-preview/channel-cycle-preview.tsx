@@ -178,7 +178,23 @@ const ChannelCyclePreview = ({ channelId, className }: ChannelCyclePreviewProps)
           {!body.slots || body.slots.length === 0 ? (
             <EmptyState title="Nothing scheduled" description="No slots resolved for this moment yet." />
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            // A long cycle (a whole-run marathon resolves to 50 slots) would run off the
+            // page; cap the list to a comfortable window and let it scroll INSIDE. max-height
+            // means a short cycle isn't boxed — the scroll only appears once it's actually long.
+            // scroll-thin (styles.css) is the token-keyed slim scrollbar (thin thumb, no
+            // reserved gutter — short lists render unshifted; see the utility's note).
+            // tabIndex + aria-label make the scroll region keyboard-reachable (WCAG 2.1.1,
+            // scrollable-region-focusable): rows are non-focusable text, so without a Tab stop
+            // on the region itself a keyboard user couldn't scroll past the fold. NOTE: no
+            // role override — the <ul> keeps its implicit role="list" (a role="group" would
+            // orphan the <li> children and trip the `listitem` rule); aria-label names the
+            // list without changing that role.
+            <ul
+              className="scroll-thin flex max-h-96 flex-col gap-1.5 overflow-y-auto"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — axe's scrollable-region-focusable requires this tabIndex so keyboard users can scroll (see comment above)
+              tabIndex={0}
+              aria-label="Scheduled slots"
+            >
               {body.slots.map((slot, i) => (
                 // The index is only a disambiguator here (multiple breaks, or the same key
                 // airing twice in a marathon share a `kind`+`key`) — position is otherwise

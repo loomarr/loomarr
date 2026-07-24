@@ -23,6 +23,13 @@ import (
 type SchedulingRule struct {
 	// ID is a stable identifier for the rule (for the editor + preview attribution).
 	ID string `json:"id,omitempty"`
+	// Source is the rule's provenance (§8.2): RuleSourceLLM (the suggester's groundRules
+	// seeded it) or RuleSourceOperator (hand-authored in the rules editor). A refine/
+	// re-curation (ChannelPolicy.MergeFromProposal) replaces the LLM rules and preserves
+	// the operator's, so refine-authored and hand-authored rules COMPOSE. Empty is treated
+	// as "not LLM" (preserved) for back-compat — a rule authored before provenance existed
+	// was operator-locked-after-seed, so preserving it keeps the old behavior.
+	Source RuleSource `json:"source,omitempty"`
 	// Label is the human-readable name the editor/LLM assigns ("Weekend TNG marathon").
 	// Attribution in the cycle preview (§8.1) shows it so which rule is active at a moment
 	// is legible. Empty ⇒ Describe() synthesizes one from the predicate/how (below), so a
@@ -43,6 +50,24 @@ type SchedulingRule struct {
 	// 0 = inherit the channel/global default; a marathon sets it to WindowFull.
 	Window Duration `json:"window,omitempty"`
 }
+
+// RuleSource is a curation rule's provenance (§8.2) — who authored it, which decides
+// whether a refresh proposal may replace it.
+type RuleSource string
+
+const (
+	// RuleSourceLLM marks a rule the suggester seeded (groundRules). A refine/re-curation
+	// replaces these with the fresh proposal's rules.
+	RuleSourceLLM RuleSource = "llm"
+	// RuleSourceOperator marks a hand-authored rule from the channel's rules editor. A
+	// refine never touches these — operator authorship is sticky (§8.2).
+	RuleSourceOperator RuleSource = "operator"
+)
+
+// isLLM reports whether a refresh proposal may replace this rule. Only an explicitly
+// LLM-sourced rule is replaceable; operator rules AND unknown-provenance ("") rules are
+// preserved (fail safe — never silently drop authored work).
+func (s RuleSource) isLLM() bool { return s == RuleSourceLLM }
 
 // WindowFull is the sentinel that disables truncation for a rule/channel — the whole
 // run materializes (a binge/marathon). Distinct from 0, which means "inherit default".

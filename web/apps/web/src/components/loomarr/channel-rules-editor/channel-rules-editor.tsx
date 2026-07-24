@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SchedulingRule } from "@loomarr/api";
+import type { SchedulingRule, Vocabulary } from "@loomarr/api";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useId, useState } from "react";
 import {
@@ -32,15 +32,15 @@ import { cn } from "@/lib";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
 import { computeLabel } from "./label";
 import {
-  HOW_OPTIONS,
+  howOptions,
   lowerHow,
   lowerWhat,
   lowerWhen,
   tokenForHow,
   tokenForWhat,
   tokenForWhen,
-  WHAT_STATIC_OPTIONS,
-  WHEN_OPTIONS,
+  whatStaticOptions,
+  whenOptions,
 } from "./presets";
 
 // ChannelRulesEditor — the "Programming rules" authoring surface (programming-design
@@ -83,31 +83,38 @@ interface RuleDraft {
   howToken: string;
 }
 
-const draftFromRule = (rule: SchedulingRule, lineupKeys: { key: string; title: string }[]): RuleDraft => {
-  const whatToken = tokenForWhat(rule.what);
+const draftFromRule = (
+  rule: SchedulingRule,
+  lineupKeys: { key: string; title: string }[],
+  vocab: Vocabulary,
+): RuleDraft => {
+  const whatToken = tokenForWhat(vocab.what, rule.what);
   const seriesKey = rule.what?.series?.[0];
   const whatDisplay = seriesKey ? lineupKeys.find((l) => l.key === seriesKey)?.title : undefined;
   return {
     id: rule.id ?? crypto.randomUUID(),
-    whenToken: tokenForWhen(rule.when),
+    whenToken: tokenForWhen(vocab.when, rule.when),
     whatToken,
     whatDisplay,
-    howToken: tokenForHow(rule.how),
+    howToken: tokenForHow(vocab.how, rule.how),
   };
 };
 
-const ruleFromDraft = (draft: RuleDraft, index: number, total: number): SchedulingRule => {
-  const when = lowerWhen(draft.whenToken);
-  const what = lowerWhat(draft.whatToken);
-  const how = lowerHow(draft.howToken);
+const ruleFromDraft = (draft: RuleDraft, index: number, total: number, vocab: Vocabulary): SchedulingRule => {
+  const when = lowerWhen(vocab.when, draft.whenToken);
+  const what = lowerWhat(vocab.what, draft.whatToken);
+  const how = lowerHow(vocab.how, draft.howToken);
   return {
     id: draft.id,
-    label: computeLabel({
-      whenToken: draft.whenToken,
-      whatToken: draft.whatToken,
-      whatDisplay: draft.whatDisplay,
-      howToken: draft.howToken,
-    }),
+    label: computeLabel(
+      {
+        whenToken: draft.whenToken,
+        whatToken: draft.whatToken,
+        whatDisplay: draft.whatDisplay,
+        howToken: draft.howToken,
+      },
+      vocab,
+    ),
     priority: priorityFor(index, total),
     ...(when ? { when: when.predicate } : {}),
     ...(what ? { what: what.scope } : {}),
@@ -117,20 +124,22 @@ const ruleFromDraft = (draft: RuleDraft, index: number, total: number): Scheduli
 
 // rebuild — rewrites the whole rules array from drafts, re-deriving priority from
 // position every time (the one function every mutation funnels through).
-const rebuild = (drafts: RuleDraft[]): SchedulingRule[] =>
-  drafts.map((d, i) => ruleFromDraft(d, i, drafts.length));
+const rebuild = (drafts: RuleDraft[], vocab: Vocabulary): SchedulingRule[] =>
+  drafts.map((d, i) => ruleFromDraft(d, i, drafts.length, vocab));
 
 // One rule row: drag handle, WHEN/WHAT/HOW selects, computed label, remove.
 const RuleRow = ({
   draft,
   disabled,
   lineupKeys,
+  vocab,
   onChange,
   onRemove,
 }: {
   draft: RuleDraft;
   disabled: boolean;
   lineupKeys: { key: string; title: string }[];
+  vocab: Vocabulary;
   onChange: (next: RuleDraft) => void;
   onRemove: () => void;
 }) => {
@@ -141,15 +150,18 @@ const RuleRow = ({
 
   const style = { transform: CSS.Transform.toString(transform), transition };
 
-  const label = computeLabel({
-    whenToken: draft.whenToken,
-    whatToken: draft.whatToken,
-    whatDisplay: draft.whatDisplay,
-    howToken: draft.howToken,
-  });
+  const label = computeLabel(
+    {
+      whenToken: draft.whenToken,
+      whatToken: draft.whatToken,
+      whatDisplay: draft.whatDisplay,
+      howToken: draft.howToken,
+    },
+    vocab,
+  );
 
   const whatOptions = [
-    ...WHAT_STATIC_OPTIONS,
+    ...whatStaticOptions(vocab.what),
     ...lineupKeys.map((l) => ({ value: `series:${l.key}`, label: `Series: ${l.title}` })),
   ];
 
@@ -197,7 +209,7 @@ const RuleRow = ({
             <SelectValue placeholder="When…" />
           </SelectTrigger>
           <SelectContent>
-            {WHEN_OPTIONS.map((o) => (
+            {whenOptions(vocab.when).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
@@ -230,7 +242,7 @@ const RuleRow = ({
             <SelectValue placeholder="How…" />
           </SelectTrigger>
           <SelectContent>
-            {HOW_OPTIONS.map((o) => (
+            {howOptions(vocab.how).map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}
               </SelectItem>
@@ -242,9 +254,17 @@ const RuleRow = ({
   );
 };
 
-const ChannelRulesEditor = ({ policy, onChange, lineupKeys = [], className }: ChannelRulesEditorProps) => {
+const ChannelRulesEditor = ({
+  policy,
+  onChange,
+  lineupKeys = [],
+  vocabulary,
+  className,
+}: ChannelRulesEditorProps) => {
   const rules = policy.rules ?? [];
-  const [drafts, setDrafts] = useState<RuleDraft[]>(() => rules.map((r) => draftFromRule(r, lineupKeys)));
+  const [drafts, setDrafts] = useState<RuleDraft[]>(() =>
+    rules.map((r) => draftFromRule(r, lineupKeys, vocabulary)),
+  );
 
   // Keep local drafts in sync when the server hands back a genuinely different rule set
   // (another session edited it, or the LLM proposed a starter set) — same fingerprint-
@@ -256,13 +276,13 @@ const ChannelRulesEditor = ({ policy, onChange, lineupKeys = [], className }: Ch
   const idsFingerprint = rules.map((r) => r.id ?? "").join(" ");
   const [adoptedFingerprint, setAdoptedFingerprint] = useState(idsFingerprint);
   if (idsFingerprint !== adoptedFingerprint) {
-    setDrafts(rules.map((r) => draftFromRule(r, lineupKeys)));
+    setDrafts(rules.map((r) => draftFromRule(r, lineupKeys, vocabulary)));
     setAdoptedFingerprint(idsFingerprint);
   }
 
   const commit = (next: RuleDraft[]) => {
     setDrafts(next);
-    onChange({ ...policy, rules: rebuild(next) });
+    onChange({ ...policy, rules: rebuild(next, vocabulary) });
   };
 
   const sensors = useSensors(
@@ -320,6 +340,7 @@ const ChannelRulesEditor = ({ policy, onChange, lineupKeys = [], className }: Ch
                     draft={draft}
                     disabled={false}
                     lineupKeys={lineupKeys}
+                    vocab={vocabulary}
                     onChange={(next) => commit(drafts.map((d) => (d.id === draft.id ? next : d)))}
                     onRemove={() => commit(drafts.filter((d) => d.id !== draft.id))}
                   />
