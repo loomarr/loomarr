@@ -236,6 +236,12 @@ components:
           $ref: "#/components/schemas/AutoCurate"
         filler:
           $ref: "#/components/schemas/FillerSelection"
+        operatorSet:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         ordering:
           type: string
         rules:
@@ -1641,6 +1647,8 @@ components:
         priority:
           format: int64
           type: integer
+        source:
+          type: string
         what:
           $ref: "#/components/schemas/ScopePolicy"
         when:

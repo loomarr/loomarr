@@ -100,7 +100,8 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// Record the relaxation-ladder steps this pass applied (§7) back onto the
 	// channel's policy so the UI surfaces them; recomputed from scratch each
 	// reconcile, so a recovered pool automatically un-relaxes to an empty list.
-	ch.Policy.Applied = desired.Applied
+	// WithApplied is the reconcile-only writer — it touches Applied and nothing else (§2.1).
+	ch.Policy = ch.Policy.WithApplied(desired.Applied)
 
 	// NOTE (§10 redesign): filler is no longer inlined into the desired lineup. The
 	// interleaved SlotFiller break gaps (schedule.interleaveBreaks) flow through to

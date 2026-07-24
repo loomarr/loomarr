@@ -27,7 +27,7 @@ func TestSeasonal_AutoBenchesOutOfWindow(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Regular Show", "", 1994),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}}
 
 	// July: the Halloween item is benched; the regular show survives.
 	jul := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14)
@@ -49,7 +49,7 @@ func TestSeasonal_AutoBenchesOutOfWindow(t *testing.T) {
 func TestSeasonal_OffMode_NoBench(t *testing.T) {
 	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:1", "Halloween Special", "", 1994)}
 	avail := mapAvail{"movie:tmdb:1": "l1"}
-	p := schedule.ChannelPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}}}
 
 	jul := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14)
 	if !hasKey(programKeys(jul), "movie:tmdb:1") {
@@ -61,7 +61,7 @@ func TestSeasonal_OffMode_NoBench(t *testing.T) {
 func TestSeasonal_ZeroClock_NoOp(t *testing.T) {
 	entries := []schedule.LineupEntry{ratedEntry("movie:tmdb:1", "Christmas Special", "", 1994)}
 	avail := mapAvail{"movie:tmdb:1": "l1"}
-	p := schedule.ChannelPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}}
 
 	d := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, time.Time{})
 	if !hasKey(programKeys(d), "movie:tmdb:1") {
@@ -77,9 +77,9 @@ func TestSeasonal_Exclusive(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Summer Blockbuster", "", 1994),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{Seasonal: schedule.SeasonalPolicy{
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
 		Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}, OffSeason: schedule.OffSeasonDark,
-	}}
+	}}}
 
 	// December: only the Christmas item airs.
 	dec := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, dec20)

@@ -558,12 +558,13 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		}
 		ch.Number = *in.Body.Number
 	}
-	// Policy merge: take the client's policy but PRESERVE the reconcile-owned `applied`
-	// (a client can't set relaxations; they're recomputed each reconcile). Validate
+	// Policy merge goes through the single ownership site (schedule.MergeFromOperator, §2.1):
+	// the operator's values win, the reconcile-owned `applied` is force-preserved (never
+	// client-set), and every proposal-owned field the operator CHANGED is recorded in
+	// OperatorSet so a later refine can't silently revert it (§8.2 stickiness). Validate
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
-		next := *in.Body.Policy
-		next.Applied = ch.Policy.Applied // reconcile owns this; never client-set
+		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		if verr := next.Validate(); verr != nil {
 			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
@@ -954,7 +955,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	}
 	// Validate the draft with the same rules a policy write uses (bad audience/kind/
 	// category/era → 422) — the sandbox must reject a nonsense selection, not assemble it.
-	if err := (schedule.ChannelPolicy{Filler: &in.Body.Filler}).Validate(); err != nil {
+	if err := (schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Filler: &in.Body.Filler}}).Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}

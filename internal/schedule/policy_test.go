@@ -54,7 +54,7 @@ func TestResolved_OrderingInheritsStrategy(t *testing.T) {
 		t.Errorf("empty policy on a Sequential channel = %q, want sequential", got)
 	}
 	// An explicit policy ordering wins over the strategy.
-	p := ChannelPolicy{Ordering: OrderSyndication}
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}
 	if got := p.Resolved(Sequential, false).Ordering; got != OrderSyndication {
 		t.Errorf("explicit syndication = %q, want syndication", got)
 	}
@@ -63,7 +63,7 @@ func TestResolved_OrderingInheritsStrategy(t *testing.T) {
 // A single-series channel auto-relaxes series-level separation (separation there
 // is EPISODE spacing, not series spacing) — rule-based, not LLM judgment.
 func TestResolved_SingleSeriesRelaxesSeriesSeparation(t *testing.T) {
-	p := ChannelPolicy{Separation: SeparationPolicy{SeriesMinGap: Duration(2 * time.Hour), BlockMax: 2}}
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Separation: SeparationPolicy{SeriesMinGap: Duration(2 * time.Hour), BlockMax: 2}}}
 	r := p.Resolved(Sequential, true)
 	if r.Sep.SeriesMinGap != 0 || r.Sep.BlockMax != 0 {
 		t.Errorf("single-series should relax series gap/block: got gap=%v block=%d", r.Sep.SeriesMinGap, r.Sep.BlockMax)
@@ -88,13 +88,13 @@ func TestResolved_UnratedDefaultsByCeiling(t *testing.T) {
 		{"", UnratedAllow}, // no ceiling → adult/general
 	}
 	for _, c := range cases {
-		got := (ChannelPolicy{Audience: AudiencePolicy{Ceiling: c.ceiling}}).Resolved(Sequential, false).Unrated
+		got := (ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: c.ceiling}}}).Resolved(Sequential, false).Unrated
 		if got != c.want {
 			t.Errorf("ceiling %q → unrated %q, want %q", c.ceiling, got, c.want)
 		}
 	}
 	// An explicit unrated policy overrides the ceiling default.
-	p := ChannelPolicy{Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedAllow}}
+	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedAllow}}}
 	if got := p.Resolved(Sequential, false).Unrated; got != UnratedAllow {
 		t.Errorf("explicit allow under a kids ceiling = %q, want allow", got)
 	}
@@ -146,28 +146,30 @@ func TestValidate(t *testing.T) {
 		t.Errorf("empty policy should validate: %v", err)
 	}
 	valid := ChannelPolicy{
-		Ordering: OrderSyndication,
-		Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedExclude},
-		Seasonal: SeasonalPolicy{Mode: SeasonalAuto, OffSeason: OffSeasonLoop},
+		ProposalPolicy: ProposalPolicy{
+			Ordering: OrderSyndication,
+			Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedExclude},
+			Seasonal: SeasonalPolicy{Mode: SeasonalAuto, OffSeason: OffSeasonLoop},
+		},
 		// A fully-specified filler selection with every closed-set value valid.
-		Filler: &FillerSelection{
+		OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{
 			Era: &Range{From: 1990, To: 1999}, Audience: "kids",
 			Categories: []string{"toys", "cereal"}, Kinds: []string{"commercial", "bumper"},
 			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"},
-		},
+		}},
 	}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("valid policy rejected: %v", err)
 	}
 	bad := []ChannelPolicy{
-		{Ordering: "backwards"},
-		{Audience: AudiencePolicy{Ceiling: "TV-BOGUS"}},
-		{Audience: AudiencePolicy{Unrated: "maybe"}},
-		{Seasonal: SeasonalPolicy{Mode: "sometimes"}},
-		{Filler: &FillerSelection{Audience: "nobody"}},                // unknown audience
-		{Filler: &FillerSelection{Kinds: []string{"advert"}}},         // unknown kind
-		{Filler: &FillerSelection{Categories: []string{"widgets"}}},   // unknown category
-		{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}, // inverted era range
+		{ProposalPolicy: ProposalPolicy{Ordering: "backwards"}},
+		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-BOGUS"}}},
+		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Unrated: "maybe"}}},
+		{ProposalPolicy: ProposalPolicy{Seasonal: SeasonalPolicy{Mode: "sometimes"}}},
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Categories: []string{"widgets"}}}},   // unknown category
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
 	}
 	for i, p := range bad {
 		if err := p.Validate(); err == nil {

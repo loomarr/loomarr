@@ -23,10 +23,7 @@ func TestRelax_LadderDescendsAndRecords(t *testing.T) {
 	entries := []schedule.LineupEntry{{Key: "series:tvdb:1", Title: "Show"}}
 	sav := newSeriesAvail(map[string][]schedule.ResolvedProgram{"series:tvdb:1": eps})
 
-	p := schedule.ChannelPolicy{
-		Ordering:   schedule.OrderSyndication,
-		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)},
-	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	ch := schedule.Channel{ID: "r", Name: "R", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 3}}
 	d := schedule.ComputeDesiredAt(ch, entries, sav, schedule.PodFill, p, time.Time{})
 
@@ -53,10 +50,7 @@ func TestRelax_UnRelaxesWhenPoolRecovers(t *testing.T) {
 	// A 2h no-repeat window; the pool below is 4 series × 1h = 4h of cycle, which
 	// comfortably exceeds the window AND has enough distinct series to honor blockMax
 	// — so NO relaxation is needed.
-	p := schedule.ChannelPolicy{
-		Ordering:   schedule.OrderSyndication,
-		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(2 * time.Hour)},
-	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(2 * time.Hour)}}}
 	ch := schedule.Channel{ID: "u", Name: "U", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 1}}
 
 	entries := []schedule.LineupEntry{
@@ -86,10 +80,7 @@ func TestRelax_NeverRelaxesScope(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Out Of Era", "", 1980),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{
-		Scope:      schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
-		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)},
-	}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	d := schedule.ComputeDesiredAt(policyChannel(), entries, avail, schedule.PodFill, p, time.Time{})
 	if hasKey(programKeys(d), "movie:tmdb:2") {
 		t.Error("scope (era) must NEVER be relaxed to admit an out-of-era title")
