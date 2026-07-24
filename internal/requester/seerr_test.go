@@ -64,14 +64,47 @@ func TestSeerrServerErrorFails(t *testing.T) {
 	}
 }
 
-// Series requests map to mediaType "tv" and carry seasons.
+// Series requests map to mediaType "tv" and ALWAYS carry `seasons` — "all" when no
+// specific seasons are asked for, else the array. Jellyseerr 500s if `seasons` is omitted
+// (its TV handler filters over it), so the body is asserted, not just the no-error path.
 func TestSeerrSeries(t *testing.T) {
+	cases := []struct {
+		name    string
+		seasons []int
+		want    string // expected JSON body
+	}{
+		// The common path — "acquire all seasons". This is the one that broke in production:
+		// the old omitempty []int dropped `seasons` entirely and Jellyseerr returned 500.
+		{"all seasons (nil)", nil, `{"mediaType":"tv","mediaId":555,"seasons":"all"}`},
+		{"all seasons (empty)", []int{}, `{"mediaType":"tv","mediaId":555,"seasons":"all"}`},
+		{"specific seasons", []int{1, 2}, `{"mediaType":"tv","mediaId":555,"seasons":[1,2]}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ms := testkit.NewSeerr(t)
+			t.Cleanup(ms.Close)
+			r := NewSeerr(ms.URL, "k")
+			err := r.Request(context.Background(), provision.Title{MediaType: provision.Series, TMDBID: 555, Seasons: c.seasons})
+			if err != nil {
+				t.Fatalf("series request: %v", err)
+			}
+			if got := string(ms.LastBody); got != c.want {
+				t.Errorf("body\n got %s\nwant %s", got, c.want)
+			}
+		})
+	}
+}
+
+// A movie request omits `seasons` entirely (Jellyseerr only wants it for TV).
+func TestSeerrMovieOmitsSeasons(t *testing.T) {
 	ms := testkit.NewSeerr(t)
 	t.Cleanup(ms.Close)
 	r := NewSeerr(ms.URL, "k")
-	err := r.Request(context.Background(), provision.Title{MediaType: provision.Series, TMDBID: 555, Seasons: []int{1, 2}})
-	if err != nil {
-		t.Fatalf("series request: %v", err)
+	if err := r.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 42}); err != nil {
+		t.Fatalf("movie request: %v", err)
+	}
+	if got, want := string(ms.LastBody), `{"mediaType":"movie","mediaId":42}`; got != want {
+		t.Errorf("movie body\n got %s\nwant %s", got, want)
 	}
 }
 

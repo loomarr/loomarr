@@ -38,11 +38,30 @@ func NewSeerrDynamic(conn func() (baseURL, apiKey string)) *Seerr {
 func (s *Seerr) baseURL() string { u, _ := s.conn(); return strings.TrimRight(u, "/") }
 func (s *Seerr) apiKey() string  { _, k := s.conn(); return k }
 
-// seerrRequest is the POST body (§6): {mediaType, mediaId=TMDBID, seasons?}.
+// seerrSeasons serializes a series' requested seasons the way Jellyseerr's /request
+// endpoint demands: the literal string "all" when no specific seasons are asked for,
+// otherwise the [int] array. Omitting the field entirely (the old `omitempty` []int)
+// makes Jellyseerr 500 ("Cannot read properties of undefined (reading 'filter')") — its
+// TV handler assumes `seasons` is always present and filters over it. Verified live: an
+// all-seasons TV request with `seasons:"all"` returns 201; the same request with the field
+// omitted returns 500. Movies never send this field (Request() leaves it nil-and-omitted).
+type seerrSeasons []int
+
+func (s seerrSeasons) MarshalJSON() ([]byte, error) {
+	if len(s) == 0 {
+		return []byte(`"all"`), nil
+	}
+	return json.Marshal([]int(s))
+}
+
+// seerrRequest is the POST body (§6): {mediaType, mediaId=TMDBID, seasons}. `Seasons` is a
+// POINTER so presence tracks media type, not emptiness: a series ALWAYS sets it (non-nil,
+// even when empty → marshals "all"); a movie leaves it nil → omitted. `omitempty` alone
+// couldn't do this — it would drop the empty-but-series case that must send "all".
 type seerrRequest struct {
-	MediaType string `json:"mediaType"`         // "movie" | "tv"
-	MediaID   int    `json:"mediaId"`           // TMDB id (Seerr uses TMDB even for series)
-	Seasons   []int  `json:"seasons,omitempty"` // series only; omit = all
+	MediaType string        `json:"mediaType"`         // "movie" | "tv"
+	MediaID   int           `json:"mediaId"`           // TMDB id (Seerr uses TMDB even for series)
+	Seasons   *seerrSeasons `json:"seasons,omitempty"` // series: "all"|[ints]; movies: nil→omitted
 }
 
 // Request implements Requester against Seerr. Idempotent per §6.
@@ -53,7 +72,11 @@ func (s *Seerr) Request(ctx context.Context, t provision.Title) error {
 		body.MediaType = "movie"
 	case provision.Series:
 		body.MediaType = "tv"
-		body.Seasons = t.Seasons
+		// Always non-nil for a series so `seasons` is present in the body (empty → "all");
+		// nil would omit it and Jellyseerr 500s. Distinct from any airing-season window —
+		// this is what to ACQUIRE (all seasons unless the pick named specific ones).
+		seasons := seerrSeasons(t.Seasons)
+		body.Seasons = &seasons
 	default:
 		return fmt.Errorf("seerr: unsupported media type %q", t.MediaType)
 	}
