@@ -117,7 +117,10 @@ func (t *Tunarr) buildContentIndex(ctx context.Context) (map[string]string, erro
 				continue // an unscanned library has no programs to reference
 			}
 			var progs []persistedProgram
-			if err := t.doJSON(ctx, "GET", "/api/media-libraries/"+lib.ID+"/programs", nil, &progs); err != nil {
+			// The bulk client: this endpoint returns a library's ENTIRE program list
+			// with no paging (tens of MB, many seconds on a large library), so it needs
+			// the long TimeoutTunarrBulk — the standard 20 s ceiling cancels it mid-pull.
+			if err := t.doJSONBulk(ctx, "GET", "/api/media-libraries/"+lib.ID+"/programs", nil, &progs); err != nil {
 				return nil, fmt.Errorf("list programs for library %s: %w", lib.ID, err)
 			}
 			for _, p := range progs {
