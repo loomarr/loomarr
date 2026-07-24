@@ -23,6 +23,19 @@ const STATUS: Record<
   "partially-edited": { label: "Edited", variant: "caution" },
 };
 
+// seasonWindowLabel renders a series' airing season window (§8) as a human chip:
+// "Seasons 1–10", a single bound as "From season 11" / "Through season 10", or null
+// when unbounded (0/0 = all seasons — no chip). Lets a reviewer SEE that "classic
+// Simpsons" is scoped before approving, instead of the window being invisible.
+const seasonWindowLabel = (min?: number, max?: number): string | null => {
+  const lo = min ?? 0;
+  const hi = max ?? 0;
+  if (lo <= 0 && hi <= 0) return null;
+  if (lo > 0 && hi > 0) return lo === hi ? `Season ${lo}` : `Seasons ${lo}–${hi}`;
+  if (lo > 0) return `From season ${lo}`;
+  return `Through season ${hi}`;
+};
+
 const ItemRow = ({
   item,
   kind,
@@ -40,6 +53,9 @@ const ItemRow = ({
         <Badge variant={kind === "lineup" ? "lock" : "tune"}>
           {kind === "lineup" ? "In library" : "Will acquire"}
         </Badge>
+        {seasonWindowLabel(item.seasonMin, item.seasonMax) && (
+          <Badge variant="tune">{seasonWindowLabel(item.seasonMin, item.seasonMax)}</Badge>
+        )}
         {typeof item.confidence === "number" && (
           <span className="font-mono text-static-400 text-xs">{`${formatPercent(item.confidence)} fit`}</span>
         )}

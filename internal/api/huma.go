@@ -231,15 +231,20 @@ type SearchService interface {
 	Search(ctx context.Context, query, scope string, limit int) ([]SearchCandidate, error)
 }
 
-// SearchCandidate is the API view of a catalog candidate (§7.2).
+// SearchCandidate is the API view of a catalog candidate (§7.2). Genres +
+// officialRating carry the same theme/enforcement metadata the LLM grounding tool
+// gets, so the human search box can show and filter by genre — the doc's "humans and
+// the model see identical results" promise (§8) held on the read side too.
 type SearchCandidate struct {
-	MediaType     string `json:"mediaType"`
-	TMDBID        int    `json:"tmdbId,omitempty"`
-	TVDBID        int    `json:"tvdbId,omitempty"`
-	Name          string `json:"name"`
-	Year          int    `json:"year,omitempty"`
-	InLibrary     bool   `json:"inLibrary"`
-	LibraryItemID string `json:"libraryItemId,omitempty"`
+	MediaType      string   `json:"mediaType"`
+	TMDBID         int      `json:"tmdbId,omitempty"`
+	TVDBID         int      `json:"tvdbId,omitempty"`
+	Name           string   `json:"name"`
+	Year           int      `json:"year,omitempty"`
+	InLibrary      bool     `json:"inLibrary"`
+	LibraryItemID  string   `json:"libraryItemId,omitempty"`
+	Genres         []string `json:"genres,omitempty"`
+	OfficialRating string   `json:"officialRating,omitempty"`
 }
 
 // ChannelService is the channel-management surface the API depends on (§9).

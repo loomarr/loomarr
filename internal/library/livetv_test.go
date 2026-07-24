@@ -193,6 +193,89 @@ func TestAddListingProvider_SendsXMLTVPathShape(t *testing.T) {
 	}
 }
 
+// StaleLoomarrTuners returns the id of the Loomarr-owned tuner (FriendlyName
+// "loomarr") when its URL is no longer the desired one — the URL-change reconcile's
+// enumerate step. The captured config has one Loomarr tuner at .79:8001; against a
+// DIFFERENT desired URL it is stale; against its OWN URL it is not.
+func TestStaleLoomarrTuners_ByFriendlyNameAndURL(t *testing.T) {
+	_, c := serveLiveTVConfig(t)
+	ctx := context.Background()
+
+	// Desired URL differs from the captured tuner's → it is stale.
+	stale, err := c.StaleLoomarrTuners(ctx, "http://newhost:8000/api/channels.m3u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 || stale[0] != "f31d60f93a5d4affa67b67c8a51174cc" {
+		t.Fatalf("expected the captured Loomarr tuner id as stale, got %v", stale)
+	}
+
+	// Desired URL == the captured tuner's URL → nothing stale (the no-op case).
+	none, err := c.StaleLoomarrTuners(ctx, "http://192.168.1.79:8001/api/channels.m3u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Errorf("a matching URL must not be reported stale, got %v", none)
+	}
+}
+
+// StaleLoomarrListings identifies the Tunarr-guide xmltv provider (…/api/xmltv.xml)
+// whose Path is no longer desired, and ignores a matching one.
+func TestStaleLoomarrListings_ByGuidePath(t *testing.T) {
+	_, c := serveLiveTVConfig(t)
+	ctx := context.Background()
+
+	stale, err := c.StaleLoomarrListings(ctx, "http://newhost:8000/api/xmltv.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 || stale[0] != "b80c8842e8254f4ea56a2f8f2a43faa4" {
+		t.Fatalf("expected the captured guide provider id as stale, got %v", stale)
+	}
+
+	none, err := c.StaleLoomarrListings(ctx, "http://192.168.1.79:8001/api/xmltv.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Errorf("a matching guide URL must not be reported stale, got %v", none)
+	}
+}
+
+// RemoveTuner issues DELETE /LiveTv/TunerHosts?Id=<id> — the Phase-0 capture shape
+// (?Id= query param, 204). A 404 (already gone) is tolerated as idempotent.
+func TestRemoveTuner_DeletesByIDQueryParam(t *testing.T) {
+	var gotMethod, gotPath, gotID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotID = r.Method, r.URL.Path, r.URL.Query().Get("Id")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := newLiveTVClient(srv.URL)
+
+	if err := c.RemoveTuner(context.Background(), "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/LiveTv/TunerHosts" || gotID != "abc123" {
+		t.Errorf("delete hit %s %s?Id=%s, want DELETE /LiveTv/TunerHosts?Id=abc123 (Phase-0 capture)", gotMethod, gotPath, gotID)
+	}
+}
+
+// A delete of an already-absent tuner (404) is not an error — the reconcile stays
+// idempotent under re-runs and races.
+func TestRemoveTuner_Tolerates404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := newLiveTVClient(srv.URL)
+
+	if err := c.RemoveTuner(context.Background(), "gone"); err != nil {
+		t.Errorf("a 404 on delete must be tolerated as already-gone, got %v", err)
+	}
+}
+
 func TestRefreshGuide_ResolvesTaskIDByKey(t *testing.T) {
 	// Phase-10 finding 4: the run endpoint takes the per-install Id, resolved from
 	// the stable Key "RefreshGuide". The adapter must GET /ScheduledTasks, find the

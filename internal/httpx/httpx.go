@@ -22,8 +22,15 @@ const (
 	TimeoutTMDB    = 10 * time.Second
 	TimeoutArr     = 10 * time.Second // Sonarr/Radarr
 	TimeoutTunarr  = 20 * time.Second // lineup pushes are chunky
-	TimeoutLLM     = 120 * time.Second
-	TimeoutProbe   = 5 * time.Second // quick LLM-host probes (version/tags, §8.1)
+	// TimeoutTunarrBulk covers the ONE bulk read the programmer makes: the
+	// content-index build (GET /api/media-libraries/{id}/programs), which returns a
+	// library's ENTIRE persisted program list with no server-side paging. On a large
+	// library that is tens of MB and many seconds — a live homelab returned 52 MB /
+	// ~17 s for 15,788 programs — so it needs far more headroom than a channel CRUD
+	// call. Kept separate so the snappy 20 s ceiling still guards every other call.
+	TimeoutTunarrBulk = 120 * time.Second
+	TimeoutLLM        = 120 * time.Second
+	TimeoutProbe      = 5 * time.Second // quick LLM-host probes (version/tags, §8.1)
 
 	// dialBudget bounds connect + TLS for streaming clients that intentionally
 	// carry no whole-request budget (NewStreaming).

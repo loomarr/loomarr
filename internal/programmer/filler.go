@@ -142,7 +142,7 @@ func (t *Tunarr) EnsureLocalFillerSource(ctx context.Context, dir string) (Ensur
 		// listing already-scanned clips still works, and the scan retries next tick.
 		// Only a transport error (doStatus err) is worth surfacing, and even then we
 		// log via the returned error at the sync layer rather than failing the list.
-		status, err := t.doStatus(ctx, http.MethodPost,
+		status, _, err := t.doStatus(ctx, t.http, http.MethodPost,
 			"/api/media-sources/"+res.SourceID+"/libraries/"+lib.ID+"/scan", nil, nil)
 		if err == nil && status >= 200 && status < 300 {
 			res.Scanned = true
