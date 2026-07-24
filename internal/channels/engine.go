@@ -74,6 +74,9 @@ type Engine struct {
 	// fail-closed audience gate drops it). Bounded to unrated entries, so a
 	// normally-stamped channel never calls it.
 	ratings RatingResolver
+	// franchises heals a movie entry's TMDB collection id (§5 franchise ordering) so a
+	// franchise's films stay together, in release order. Optional (nil ⇒ no grouping).
+	franchises FranchiseResolver
 	// notify publishes a UI-facing `channel` SSE frame after a reconcile changes a
 	// channel, so the Channels/detail pages update live without a manual refresh
 	// (§9 self-maintaining; the "no rebuild button" model). Optional: nil ⇒ no emit
@@ -148,6 +151,22 @@ type RatingResolver interface {
 // engine for chaining; keeps New's signature stable.
 func (e *Engine) WithRatings(r RatingResolver) *Engine {
 	e.ratings = r
+	return e
+}
+
+// FranchiseResolver returns the TMDB collection (franchise) id a MOVIE belongs to (§5
+// franchise ordering), so the scheduler can keep a franchise's films together in release
+// order. id 0 = standalone (no collection) — a legitimate resolved answer, distinct from
+// "not yet resolved". ok=false ⇒ couldn't resolve (no TMDB / not a movie) — leave it to try
+// next pass. Implemented by a composition-root adapter over the tmdb.Client.
+type FranchiseResolver interface {
+	Collection(ctx context.Context, key provision.Key) (collectionID int, ok bool, err error)
+}
+
+// WithFranchises wires the resolver that heals a movie entry's franchise CollectionID at
+// reconcile (§5). Optional (nil ⇒ no franchise grouping). Returns the engine for chaining.
+func (e *Engine) WithFranchises(r FranchiseResolver) *Engine {
+	e.franchises = r
 	return e
 }
 

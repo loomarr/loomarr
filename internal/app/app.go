@@ -271,6 +271,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
 			tmdbClient = ov.TMDB
 		}
+		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
+		// collection id at reconcile, so a franchise's films play together in release order.
+		// Only when TMDB is configured; the engine was created in the earlier st-block, so
+		// reach it through channelSvc (the same type-assert the pods wiring uses).
+		if tmdbClient != nil {
+			if engine, ok := channelSvc.(*channels.Engine); ok {
+				engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
+			}
+		}
 		// catalog.New accepts nil corpora; a nil *tmdb.Client would be a non-nil
 		// interface, so pass the concrete nil only when configured.
 		var tmdbSearcher catalog.TMDBSearcher

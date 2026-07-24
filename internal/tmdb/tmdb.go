@@ -230,6 +230,31 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 	}
 }
 
+// CollectionID returns the TMDB collection (franchise) a MOVIE belongs to — the id of
+// belongs_to_collection on GET /movie/{id} — so the scheduler can keep a franchise's films
+// together, in release order (§5). Returns 0 (no error) for a standalone movie or a series
+// (TV has no belongs_to_collection). This is the authoritative franchise signal: it groups
+// "Raiders of the Lost Ark" with the "Indiana Jones and the…" films even though they share
+// no title base, which a title heuristic can't do. Fetched at reconcile-heal time and
+// stamped onto the lineup entry (like the rating heal), so the pure scheduler stays I/O-free.
+func (c *Client) CollectionID(ctx context.Context, mt provision.MediaType, tmdbID int) (int, error) {
+	if tmdbID <= 0 || mt == provision.Series {
+		return 0, nil
+	}
+	var body struct {
+		BelongsToCollection *struct {
+			ID int `json:"id"`
+		} `json:"belongs_to_collection"`
+	}
+	if err := c.get(ctx, "/movie/"+strconv.Itoa(tmdbID), &body); err != nil {
+		return 0, err
+	}
+	if body.BelongsToCollection != nil {
+		return body.BelongsToCollection.ID, nil
+	}
+	return 0, nil
+}
+
 // ContentRating returns the US content rating for a title — TV series via
 // /tv/{id}/content_ratings (the TV-* certifications), movies via
 // /movie/{id}/release_dates (the MPAA certification on a US release). It exists so a
