@@ -132,14 +132,28 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   exist (`marathon` = sequential + no breaks + unbounded block; `holiday-matched` = the
   §6 keyword engine; `syndication` = the §5 deck), so the engine is a composition +
   time-routing layer, not new scheduling math.
-- **Rolling window.** A channel materializes only ~`Window` of runtime (default **24h**,
-  per-channel/-rule overridable, global default `sched.window_hours`) rather than the
-  whole ~800-episode run — so a channel schedules a manageable timeframe and is curated
-  over time. The window START advances by a coarse time index folded into the deck seed
-  (`floor(now/window)`), so it is **identical within a window** (idempotent reconcile —
-  no re-push every sweep) and **advances at the boundary** (one re-push, the next slice
-  of episodes). `Window: 0` = the whole run (the "full binge" sentinel; a `marathon`
-  rule sets it). The window is floored to at least one program so a channel is never dark.
+- **Rolling window — a ROTATING slice of the catalog, not a fixed prefix.** A channel
+  materializes only ~`Window` of runtime (default **24h**, per-channel/-rule overridable,
+  global default `sched.window_hours`) rather than the whole run — so a channel schedules a
+  manageable timeframe and is *curated over time*. The window keeps a **rotating slice** of
+  the ordered deck whose start advances by the coarse window index (`floor(now/window)`):
+  window 0 airs the first ~`Window` of runtime, window 1 continues where it left off, and
+  the slice **wraps** past the end back to the deck head. A channel with 30h of films and a
+  24h window airs `[film k … end, start … ]` each day with `k` advancing daily, so over a
+  full cycle **every** title airs — the coverage invariant: across `ceil(totalRuntime /
+  window)` consecutive windows, no program is starved (the whole catalog rotates through).
+  This is what makes "continuously updated and curated within the window" true — without it,
+  keeping only the deck *prefix* would loop the same head every window and permanently starve
+  the tail (the bug this fixes). New titles (backfill / a manual add) join the deck and enter
+  the rotation on the window that reaches them — the auto-updating half is free.
+  **Idempotent + thrash-free:** the slice offset is a pure function of the window index, so it
+  is **identical within a window** (two reconciles → byte-identical desired → no Tunarr
+  re-push) and **advances exactly once at the boundary** (one re-push, the next slice). The
+  slice operates on the *collapsed* deck (multi-part/franchise super-slots, §5), so the window
+  seam never splits a two-parter or a franchise. `Window: 0` = the whole run (the "full binge"
+  sentinel; a `marathon` rule sets it — no rotation, plays everything). A pool smaller than one
+  window airs whole every window (nothing to rotate, nothing starved). The slice is floored to
+  at least one program so a channel is never dark.
 - **Authorship is hybrid (§8 boundary intact).** The **LLM proposes a starter rule set**
   from intent ("Star Trek with weekend TNG marathons and Christmas episodes") — from the
   closed preset vocabulary, grounded + clamped (unknown tokens dropped, window clamped to

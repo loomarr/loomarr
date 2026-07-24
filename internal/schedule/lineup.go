@@ -237,12 +237,13 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 		}
 	}
 
-	// Rolling window (§6.5): resolve the horizon (rule > channel > global default) and
-	// the coarse window index for this moment. The index folds into the deck seed so the
-	// ordering is IDENTICAL within a window (idempotent reconcile — no re-push every
-	// sweep) and ADVANCES to the next slice of episodes at a window boundary.
+	// Rolling window (§6.5): resolve the horizon (rule > channel > global default). The
+	// DECK ORDER is seed-stable per channel (no window index folded in) so a channel's
+	// guide isn't re-randomized every window; ROTATION comes from advancing the window
+	// SLICE OFFSET across the ordered deck (windowSlice below), which is what walks the
+	// whole catalog over a full cycle instead of looping a fixed prefix.
 	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
-	seed := ch.Shuffle.Seed ^ windowIndex(now, window)
+	seed := ch.Shuffle.Seed
 
 	// Multi-part atomicity (§5): collapse each two-parter into one super-slot so ordering
 	// can't split or reorder its parts and the window counts the group as one unit. Ordering
@@ -254,11 +255,13 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// records any windows it had to loosen to fill the cycle.
 	ordered, applied := slotWithRelaxation(collapsed, rp, seed)
 
-	// Truncate the ordered deck to ~window of runtime (§6.5) — materialize a manageable
-	// horizon, not the whole ~800-episode run. window <= 0 (WindowFull / unbounded) keeps
-	// the whole deck (backward compat + the "full binge" sentinel). A super-slot carries the
-	// group's TOTAL runtime, so a two-parter is kept whole or dropped whole by the budget.
-	ordered = truncateToWindow(ordered, window)
+	// Rolling window (§6.5): keep a ROTATING slice of ~window of runtime whose start
+	// advances with the window index and WRAPS the catalog — window 0 airs the first
+	// ~window, window 1 continues where it left off, and over a full cycle every program
+	// airs (no starved tail). window <= 0 (WindowFull / unbounded) keeps the whole deck
+	// (backward compat + the "full binge" sentinel). Runs on the collapsed deck, so a
+	// super-slot (two-parter/franchise) is kept whole and never split by the window seam.
+	ordered = windowSlice(ordered, window, windowIndex(now, window))
 
 	// Expand super-slots back into their real parts now that ordering + windowing are done.
 	ordered = expandGroups(ordered, expand)
@@ -327,26 +330,92 @@ func windowIndex(now time.Time, window time.Duration) int64 {
 	return now.Unix() / int64(window/time.Second)
 }
 
-// truncateToWindow keeps the deck prefix whose summed program runtime first meets the
-// window (§6.5). window <= 0 ⇒ the whole deck (unbounded). Always keeps at least one
-// program so a channel is never dark, even if that one program exceeds the window.
-func truncateToWindow(slots []Slot, window time.Duration) []Slot {
+// windowSlice keeps a ROTATING ~window-of-runtime slice of the ordered deck, advancing its
+// start by the window index and WRAPPING the catalog (§6.5). This is the fix for prefix
+// starvation: keeping only the deck head (`slots[:kept]`) would loop the same films every
+// window and never air the tail. Instead, window 0 airs programs [0..a), window 1 airs
+// [a..b), … wrapping past the end back to the head, so over a full cycle every program airs.
+//
+// Determinism/idempotency: the slice is a pure function of (slots, window, index) — identical
+// within a window (no Tunarr re-push) and advancing exactly one step at a boundary. The start
+// offset is measured in PROGRAM COUNT (not raw slot index) so a deck of mixed program/pending
+// slots rotates by whole programs; `index` is taken modulo the program count so it wraps.
+//
+// window <= 0 ⇒ the whole deck (unbounded / the "full binge" sentinel), no rotation. A deck
+// with no programs, or whose total runtime fits in one window, is returned whole (nothing to
+// rotate). Always yields ≥1 program so a channel is never dark.
+func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
 	if window <= 0 || len(slots) == 0 {
 		return slots
 	}
-	budget := window.Milliseconds()
-	var acc int64
-	kept := 0
+	// Index the program positions; a deck that is all-pending/filler has nothing to window.
+	progAt := make([]int, 0, len(slots))
+	var total int64
 	for i, s := range slots {
-		kept = i + 1
 		if s.IsProgram() {
-			acc += s.DurationMs
+			progAt = append(progAt, i)
+			total += s.DurationMs
+		}
+	}
+	nProg := len(progAt)
+	if nProg == 0 {
+		return slots
+	}
+	// If the whole catalog fits in one window (runtime <= budget), there's nothing to rotate:
+	// air it all every window. (A zero-runtime deck — durations unknown — also lands here and
+	// plays whole rather than looping a meaningless prefix.)
+	budget := window.Milliseconds()
+	if total <= budget || total == 0 {
+		return slots
+	}
+	// How many programs one window's runtime holds, starting from the deck head — the stride
+	// each window advances so consecutive windows TILE the catalog (window 1 continues where
+	// window 0 left off) rather than slide (which would re-air most of the same films). Floor
+	// 1 so a channel whose single next program exceeds the window still advances one per window.
+	stride := programsPerWindow(slots, budget)
+	if stride < 1 {
+		stride = 1
+	}
+	// Rotate the START by index*stride programs, wrapping the ring of program positions.
+	start := int(((index*int64(stride))%int64(nProg) + int64(nProg)) % int64(nProg)) // non-negative modulo
+	startSlot := progAt[start]
+
+	// Walk forward from startSlot, wrapping past the end, accumulating program runtime until
+	// the budget is met — collecting the (possibly wrapped) contiguous slice of slots. We keep
+	// non-program slots that fall between kept programs so pending/break placeholders ride along.
+	out := make([]Slot, 0, len(slots))
+	var acc int64
+	for count := 0; count < len(slots); count++ {
+		i := (startSlot + count) % len(slots)
+		out = append(out, slots[i])
+		if slots[i].IsProgram() {
+			acc += slots[i].DurationMs
 			if acc >= budget {
 				break
 			}
 		}
 	}
-	return slots[:kept]
+	return out
+}
+
+// programsPerWindow counts how many programs from the deck head fit within one window's
+// runtime budget — the per-window rotation stride (§6.5). Counts whole programs whose summed
+// runtime first meets the budget (the same "first meets, then stop" rule windowSlice fills
+// with), so a window and its stride stay consistent. Non-program slots don't count.
+func programsPerWindow(slots []Slot, budgetMs int64) int {
+	var acc int64
+	n := 0
+	for _, s := range slots {
+		if !s.IsProgram() {
+			continue
+		}
+		n++
+		acc += s.DurationMs
+		if acc >= budgetMs {
+			break
+		}
+	}
+	return n
 }
 
 // breakGapMs is the placeholder duration for an inserted commercial break — the
