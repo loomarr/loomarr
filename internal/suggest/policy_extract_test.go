@@ -3,6 +3,7 @@ package suggest
 import (
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -113,5 +114,59 @@ func TestGroundPolicy_UnratedPickDoesNotRaiseCeiling(t *testing.T) {
 	p := groundPolicy(raw, lineup, nil)
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("ceiling = %q, want TV-Y7 (unrated picks never raise it)", p.Audience.Ceiling)
+	}
+}
+
+func series(tmdbID int, name string) ProposalItem {
+	return ProposalItem{MediaType: provision.Series, TMDBID: tmdbID, Name: name}
+}
+func movie(tmdbID int, name string) ProposalItem {
+	return ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name}
+}
+
+// THE STAR TREK FIX: a lineup with ≥2 distinct series and NO ordering picked by the model
+// defaults to syndication, so the shows INTERMIX instead of playing one to completion then
+// the next (programming-design §5). This is what makes a multi-show channel feel like a
+// rerun network rather than a chronological box set.
+func TestGroundPolicy_MultiSeriesDefaultsToSyndication(t *testing.T) {
+	raw := &pickPolicy{} // model omitted ordering
+	lineup := []ProposalItem{series(1, "TNG"), series(2, "DS9"), series(3, "Voyager")}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Ordering != schedule.OrderSyndication {
+		t.Errorf("ordering = %q, want syndication (multi-series default)", p.Ordering)
+	}
+}
+
+// A SINGLE-series channel is NOT force-defaulted: ordering stays OrderInherit ("") so the
+// channel's Strategy decides (episodes in order — correct for one show). Defaulting a single
+// show to syndication would intermix it with nothing and pointlessly scramble episode order.
+func TestGroundPolicy_SingleSeriesStaysInherit(t *testing.T) {
+	raw := &pickPolicy{}
+	lineup := []ProposalItem{series(1, "The Simpsons"), series(1, "The Simpsons")} // same show twice → 1 distinct
+	p := groundPolicy(raw, lineup, nil)
+	if p.Ordering != schedule.OrderInherit {
+		t.Errorf("ordering = %q, want inherit (single distinct series is not multi-series)", p.Ordering)
+	}
+}
+
+// One series + several movies is NOT "multi-series" (only ≥2 distinct SERIES qualifies), so
+// it stays inherit. (Conservative reading of §5 — a one-show-plus-movies channel keeps order.)
+func TestGroundPolicy_OneSeriesPlusMoviesStaysInherit(t *testing.T) {
+	raw := &pickPolicy{}
+	lineup := []ProposalItem{series(1, "MST3K"), movie(10, "B-Movie A"), movie(11, "B-Movie B")}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Ordering != schedule.OrderInherit {
+		t.Errorf("ordering = %q, want inherit (one series + movies is not multi-series)", p.Ordering)
+	}
+}
+
+// The model's EXPLICIT ordering choice always wins over the multi-series default: a user who
+// asks for a chronological multi-show marathon gets sequential, not an override to syndication.
+func TestGroundPolicy_ExplicitOrderingWinsOverMultiSeriesDefault(t *testing.T) {
+	raw := &pickPolicy{Ordering: "sequential"}
+	lineup := []ProposalItem{series(1, "TNG"), series(2, "DS9")}
+	p := groundPolicy(raw, lineup, nil)
+	if p.Ordering != schedule.OrderSequential {
+		t.Errorf("ordering = %q, want sequential (explicit model choice wins)", p.Ordering)
 	}
 }

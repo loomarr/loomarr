@@ -385,6 +385,16 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem) schedule
 	case schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication:
 		p.Ordering = schedule.OrderingMode(raw.Ordering)
 	}
+	// Multi-series default: when the model didn't pick an ordering (or picked an unknown
+	// one → still OrderInherit here) AND the grounded lineup spans more than one series,
+	// default to syndication so distinct series INTERMIX (deck-deal) instead of playing
+	// one series to completion then the next (the chronological-per-series bug). A single-
+	// series or movie channel keeps OrderInherit → the channel's Strategy decides (usually
+	// sequential, correct for one show). The model's EXPLICIT choice still wins — this only
+	// fills an omission. See programming-design §5.
+	if p.Ordering == schedule.OrderInherit && multiSeries(lineup) {
+		p.Ordering = schedule.OrderSyndication
+	}
 
 	// Seasonal: keep only a known mode + holiday ids.
 	switch schedule.SeasonalMode(raw.Seasonal.Mode) {
@@ -407,6 +417,32 @@ const (
 	tvGRank  = 2 // TV-G / G
 	tvPGRank = 3 // TV-PG / PG (== schedule.KidsCeilingRank)
 )
+
+// multiSeries reports whether a grounded lineup spans more than one DISTINCT series —
+// the condition under which syndication (deck-deal intermix) is the sensible default
+// ordering rather than sequential (programming-design §5). It counts distinct series by
+// provisioning Key (the same identity the scheduler uses for single-series auto-relax and
+// the series allowlist), so a re-picked series counts once and two seasons of one show are
+// NOT two series. Movies are ignored for the count: a channel is "multi-series" only when
+// ≥2 different shows are present. A Key() error (an ungrounded item — shouldn't happen post-
+// validation) is skipped defensively rather than counted.
+func multiSeries(lineup []ProposalItem) bool {
+	seen := map[provision.Key]struct{}{}
+	for _, it := range lineup {
+		if it.MediaType != provision.Series {
+			continue
+		}
+		k, err := it.Key()
+		if err != nil {
+			continue
+		}
+		seen[k] = struct{}{}
+		if len(seen) >= 2 {
+			return true
+		}
+	}
+	return false
+}
 
 // ceilingAdmittingPicks fixes a specific, common small-model self-contradiction: a TV-G
 // ceiling on a TV-PG pick (e.g. a Simpsons channel), which the fail-closed audience gate
@@ -486,7 +522,7 @@ RULES:
   - audience.ceiling: the maturity ceiling ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; adult/no mention -> omit). Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
   - era.from/era.to: year range if the intent names one ("90s" -> from 1990 to 1999).
   - genres.include/exclude: genre names implied by the intent.
-  - ordering: "syndication" (rerun feel), "sequential" (in order), or "shuffle".
+  - ordering: "syndication" (rerun feel — different series INTERMIXED, like a rerun channel), "sequential" (strict order — one show start-to-finish), or "shuffle". RULE OF THUMB: if the lineup has MORE THAN ONE series, prefer "syndication" so the shows interleave instead of playing one series to the end before the next (a Star-Trek-style multi-show channel should feel like flipping between them, not a chronological box set). Use "sequential" only for a SINGLE show meant to play in episode order, or when the intent explicitly asks for chronological/marathon.
   - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):

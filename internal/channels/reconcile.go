@@ -66,6 +66,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// the wall-clock so seasonality (§6) evaluates against the container TZ.
 	chDomain := ch.Channel
 	chDomain.BreaksPerHour = e.breaksPerHour
+	chDomain.DefaultWindow = e.defaultWindow // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 
 	// Record the relaxation-ladder steps this pass applied (§7) back onto the
@@ -84,7 +85,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// desired and is no longer a program now means a scheduled item vanished
 	// (deleted / re-id'd). An old `available` is never trusted forever — surface
 	// it as StatusDrifted so the Channels view flags it.
-	staleCount := staleProgramCount(ch.Desired, desired.Slots)
+	staleCount := staleProgramCount(ch.Desired, desired.EligibleKeys)
 	drifted := staleCount > 0
 	metrics.SlotSubstitutions(staleCount) // §17: no-op when 0
 
@@ -342,21 +343,26 @@ func (e *Engine) rescanTuner(ctx context.Context, channelID string) {
 }
 
 // staleProgramCount reports how many Keys that were real programs in the
-// previously-persisted desired are no longer programs in the freshly-computed
-// desired (§9 slot revalidation). A non-zero count means scheduled items
-// vanished from the library since the last reconcile — the signal for
-// StatusDrifted and the §17 slot-substitution count. A first-ever reconcile
-// (empty prev) can't drift.
-func staleProgramCount(prev, next []schedule.Slot) int {
-	nowProgram := map[provision.Key]bool{}
-	for _, s := range next {
-		if s.IsProgram() && s.Key != "" {
-			nowProgram[s.Key] = true
-		}
-	}
+// previously-persisted desired the library can no longer supply (§9 slot
+// revalidation). A non-zero count means scheduled items genuinely vanished from
+// the library since the last reconcile — the signal for StatusDrifted and the §17
+// slot-substitution count. A first-ever reconcile (empty prev) can't drift.
+//
+// The comparison is against the freshly-computed ELIGIBLE set — every key the
+// library can currently supply for this channel — NOT the aired `Slots` (§6.5).
+// This is the curation-rule/rolling-window drift fix: with rules or a rolling
+// window, a program legitimately leaves `Slots` because the active rule narrowed
+// scope, a seasonal bench removed it, or the window rotated to a different slice —
+// none of which is drift. A key is stale ONLY when it is absent from `eligible`,
+// i.e. the library actually lost the title. Comparing against `Slots` (as an
+// earlier version did) would false-flag every daypart/window rotation as
+// StatusDrifted. A nil `eligible` (policy-free path never populates it) falls back
+// to treating any prev program as still-eligible (no drift) — the whole-run,
+// no-window case where prev ⊆ next holds anyway.
+func staleProgramCount(prev []schedule.Slot, eligible map[provision.Key]bool) int {
 	n := 0
 	for _, s := range prev {
-		if s.IsProgram() && s.Key != "" && !nowProgram[s.Key] {
+		if s.IsProgram() && s.Key != "" && eligible != nil && !eligible[s.Key] {
 			n++
 		}
 	}

@@ -144,6 +144,58 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	return res, nil
 }
 
+// Reconnect FORCE-re-wires the tuner: it removes every Loomarr-owned tuner (even at
+// the current URL, which Connect leaves alone) and re-adds it, then pokes a re-scan +
+// guide refresh. This is the repair for a stale channel→stream binding — the media
+// server keeps streaming a channel id Loomarr has since DELETED (its guide is fresh,
+// but playback resolves to a dead/other stream: "guide right, plays wrong"). A normal
+// Connect can't fix it (the tuner URL is unchanged, so nothing is stale); only a
+// remove+re-add makes the media server re-read the M3U and rebind. Returns how many
+// tuners were reset. Best-effort pokes, like Connect.
+func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) {
+	var res ConnectResult
+
+	tuners, err := c.lib.LoomarrTuners(ctx)
+	if err != nil {
+		return res, fmt.Errorf("enumerate loomarr tuners: %w", err)
+	}
+	for _, id := range tuners {
+		if err := c.lib.RemoveTuner(ctx, id); err != nil {
+			return res, fmt.Errorf("remove tuner %s: %w", id, err)
+		}
+		res.TunerRemoved++
+	}
+	if err := c.lib.AddTuner(ctx, c.urls.M3U); err != nil {
+		return res, fmt.Errorf("re-add tuner: %w", err)
+	}
+	res.TunerAdded = true
+
+	// Also re-wire the guide provider so both halves are freshly bound.
+	staleListings, err := c.lib.StaleLoomarrListings(ctx, c.urls.XMLTV)
+	if err == nil {
+		for _, id := range staleListings {
+			if rerr := c.lib.RemoveListingProvider(ctx, id); rerr == nil {
+				res.ListingRemoved++
+			}
+		}
+	}
+	if there, lerr := c.lib.ListingRegistered(ctx, c.urls.XMLTV); lerr == nil && !there {
+		if aerr := c.lib.AddListingProvider(ctx, c.urls.XMLTV); aerr == nil {
+			res.ListingAdded = true
+		}
+	}
+
+	// Poke so the re-added tuner's channels are re-read now (the whole point).
+	res.Poked = true
+	if err := c.lib.RescanTuner(ctx, c.urls.M3U); err != nil {
+		res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
+	}
+	if err := c.lib.RefreshGuide(ctx); err != nil && res.PokeErr == nil {
+		res.PokeErr = fmt.Errorf("refresh guide: %w", err)
+	}
+	return res, nil
+}
+
 // Wired reports whether Tunarr is already registered as both a tuner and a guide
 // — the "media server has Tunarr wired" check for GET /v1/setup/status (§7/§6).
 func (c *LiveTVConnector) Wired(ctx context.Context) (bool, error) {
