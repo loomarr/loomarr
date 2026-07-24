@@ -378,6 +378,11 @@ func declared() []Setting {
 			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",
 		},
 		{
+			Key: "job.seerr_queue_poll.schedule", EnvVar: "JOB_SEERR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *",
+			Doc: "How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only).",
+		},
+		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 2,
 			Doc: "How many channel suggestions can be worked on at once.",

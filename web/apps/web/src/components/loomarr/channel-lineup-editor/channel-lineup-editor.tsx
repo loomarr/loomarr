@@ -33,18 +33,21 @@ const keyOf = (c: SearchCandidate): string => {
   return `name:${c.name.trim().toLowerCase()}:${c.year ?? ""}`;
 };
 
-// The badge for a lineup entry's acquisition state (§7). `available` is the normal case
-// and wears no badge — a badge only calls out a title that isn't playing yet: `pending`
-// (added, nothing requested it), `acquiring` (on its way), or `unavailable` (gave up).
-// `unavailable` is the one problem state, so it wears the `onair` (attention) colour;
-// pending/acquiring are calm "not yet" states, never errors. The state is server-derived
-// (durable across reloads); an optimistic add seeds it from the search result's inLibrary.
-const LineupStateBadge = ({ state }: { state?: LineupEntryDTOState }) => {
+// The badge for a lineup entry's acquisition state (§7). `available` is the normal case and
+// wears no badge — a badge only calls out a title that isn't playing yet: `pending` (added,
+// nothing requested it), `acquiring` (on its way), or `unavailable` (gave up). `unavailable`
+// is the one problem state, so it wears the `onair` (attention) colour; pending/acquiring are
+// calm "not yet" states, never errors. For `acquiring`, the coarse acquisition status from the
+// queue poll (§18.1 — "Downloading" / "Partly available" via Seerr, or the arr's status) is
+// shown as the chip text when known, so the row says what stage it's at without a progress bar;
+// it falls back to "Acquiring…" before any status has landed. Server-derived (durable across
+// reloads); an optimistic add seeds state from the search result's inLibrary.
+const LineupStateBadge = ({ state, status }: { state?: LineupEntryDTOState; status?: string }) => {
   switch (state) {
     case "pending":
       return <Badge variant="tune">Pending</Badge>;
     case "acquiring":
-      return <Badge variant="tune">Acquiring…</Badge>;
+      return <Badge variant="tune">{status ? `${status}…` : "Acquiring…"}</Badge>;
     case "unavailable":
       return <Badge variant="onair">Unavailable</Badge>;
     default:
@@ -121,7 +124,7 @@ const SortableLineupRow = ({
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
-          <LineupStateBadge state={entry.state} />
+          <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </div>
         {isSeries && onSeasonChange && (
           <div className="mt-1.5 flex items-center gap-1.5">

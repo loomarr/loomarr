@@ -104,6 +104,18 @@ func (r resolved) arrRequester() *requester.Arr {
 	}
 	return requester.NewArr(r.arrConns())
 }
+
+// seerrRequester returns the concrete Seerr requester when Seerr is the active provider (the
+// default — anything other than "arr"), else nil. Mirrors arrRequester: the queue poller (§18.1)
+// needs the concrete *Seerr for its QueueStatus capability (coarse status from /media), which the
+// Requester interface doesn't expose. Only meaningful once seerr.url is set — an unconfigured
+// Seerr QueueStatus just errors and the poll pass is a harmless no-op.
+func (r resolved) seerrRequester() *requester.Seerr {
+	if r.str("requester.provider") == "arr" {
+		return nil
+	}
+	return requester.NewSeerrDynamic(r.seerrConn())
+}
 func (r resolved) tunarrConn() func() string {
 	return func() string { return r.str("tunarr.url") }
 }
