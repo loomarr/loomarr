@@ -283,7 +283,8 @@ func (c *fakeConnector) Connect(context.Context) (bool, bool, error) {
 	return true, true, nil // something changed (tuner + listing added)
 }
 
-func (c *fakeConnector) Wired(context.Context) (bool, error) { return false, nil }
+func (c *fakeConnector) Wired(context.Context) (bool, error)    { return false, nil }
+func (c *fakeConnector) Reconnect(context.Context) (int, error) { return 0, nil }
 
 func (c *fakeConnector) ConnectSource(context.Context) (string, int, error) {
 	c.calls++

@@ -49,6 +49,10 @@ func (f *fakeLiveTVSvc) Connect(ctx context.Context) (bool, bool, error) {
 	return true, true, nil
 }
 func (f *fakeLiveTVSvc) Wired(ctx context.Context) (bool, error) { return f.wired, nil }
+func (f *fakeLiveTVSvc) Reconnect(ctx context.Context) (int, error) {
+	f.connects++
+	return 1, nil // one tuner reset
+}
 
 func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeChannelSvc, *fakeLiveTVSvc) {
 	t.Helper()
