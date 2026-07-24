@@ -94,6 +94,22 @@ channels are wall-clock-conditional: weekend marathons, holiday programming, day
 — a `(WHEN, WHAT, HOW)` triple — and §5 ordering + §6 seasonality both compose into it
 (seasonality *is* a `(when=holiday-window, what=keyword-match, how=boost)` rule).
 
+**Seasonal-as-a-rule (the shared-calendar contract).** Seasonality (§6) is the *archetypal*
+time-conditional rule and it is **unified with the rule engine at the calendar layer, not
+rewritten as a generic rule** — a deliberate choice. `auto` mode does two asymmetric things
+at once (bench out-of-window seasonal items **and** boost in-window ones by light
+duplication) and `exclusive` mode has an `offSeason` fallback ladder (loop / dark); a
+rule's intersect-only `What` and ordering-only `How` cannot express boost-by-duplication or
+"bench items seasonal for a *different* holiday" without bloating the rule model. So the
+seasonal *mechanism* (`applySeasonal`) stays intact, and the unification is that **the
+holiday `When` predicate and the seasonal engine share ONE calendar** (`builtinCalendar`):
+`When{Holiday:"christmas"}` is active *exactly* when the seasonal engine considers christmas
+in-window — proven across every day of the year by a cross-consistency test, so the two can
+never silently diverge. In `ComputeDesiredAt` they **compose**: a rule's `What` narrows the
+pool first, then seasonal bench/boost runs on the narrowed set (so "a December holiday rule"
+and seasonal `auto` reinforce rather than contradict). This keeps the seasonal regression
+oracle green *by construction* — the mechanism is untouched; only the calendar is shared.
+
 - **A rule = `{Priority, When, What, How, Window}`.** `When` is a deterministic,
   composable predicate (weekend/weekday, day-of-week, an hour range that wraps for
   late-night, a holiday-calendar id, a date range; all-zero = always-match). `What`
