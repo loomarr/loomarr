@@ -11,10 +11,13 @@
 # placeholder and serves a "not built" notice — the UI would be missing. Runs on
 # the BUILD platform (native), never emulated: the output is portable static assets.
 # codegen reads the committed api/openapi.yaml (orval) — no running server needed.
-# Node 22 (not 20): pnpm 11.13 uses the built-in `node:sqlite` for its store index,
+# Node 26 (not 20): pnpm 11.13 uses the built-in `node:sqlite` for its store index,
 # which only exists on Node 22.5+ — Node 20 fails with ERR_UNKNOWN_BUILTIN_MODULE.
 FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS fe
-RUN corepack enable
+# corepack (the pnpm/yarn shim) was unbundled from the Node images in the 24+ line,
+# so node:26-bookworm-slim ships without it — install it before enabling. Pinned to
+# packageManager (pnpm@11.13.1 in web/package.json) once `corepack enable` runs.
+RUN npm install -g corepack@latest && corepack enable
 WORKDIR /src
 COPY web ./web
 COPY api/openapi.yaml ./api/openapi.yaml
