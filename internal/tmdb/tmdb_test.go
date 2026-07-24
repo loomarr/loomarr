@@ -2,6 +2,8 @@ package tmdb_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -59,6 +61,34 @@ func TestExists_ZeroIDIsFalse(t *testing.T) {
 	ok, err := c.Exists(context.Background(), provision.Movie, 0)
 	if err != nil || ok {
 		t.Errorf("Exists(_,0) = %v,%v want false,nil", ok, err)
+	}
+}
+
+// CollectionID reads belongs_to_collection.id from /movie/{id} (§5 franchise ordering): a
+// franchise film returns its collection id, a standalone returns 0, a series 0 (no lookup).
+func TestCollectionID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/movie/85": // Raiders — in the Indiana Jones Collection (84)
+			_, _ = w.Write([]byte(`{"id":85,"belongs_to_collection":{"id":84,"name":"Indiana Jones Collection"}}`))
+		case "/movie/700": // a standalone — belongs_to_collection is null
+			_, _ = w.Write([]byte(`{"id":700,"belongs_to_collection":null}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := tmdb.NewWithBase(srv.URL, "key")
+
+	if id, err := c.CollectionID(context.Background(), provision.Movie, 85); err != nil || id != 84 {
+		t.Errorf("CollectionID(movie,85) = %d,%v want 84,nil", id, err)
+	}
+	if id, err := c.CollectionID(context.Background(), provision.Movie, 700); err != nil || id != 0 {
+		t.Errorf("CollectionID(movie,700) = %d,%v want 0,nil (standalone)", id, err)
+	}
+	// A series never has a collection — no HTTP call, returns 0.
+	if id, err := c.CollectionID(context.Background(), provision.Series, 1396); err != nil || id != 0 {
+		t.Errorf("CollectionID(series,_) = %d,%v want 0,nil (no lookup)", id, err)
 	}
 }
 

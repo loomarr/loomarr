@@ -118,6 +118,14 @@ type LineupEntry struct {
 	Genres         []string // for genre scope + seasonal keyword matching
 	Year           int      // for era scope + seasonal windowing
 	RuntimeSec     int      // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
+	// CollectionID is the TMDB collection (franchise) a MOVIE belongs to (§5 franchise
+	// ordering): films sharing a CollectionID > 0 are kept together, in release-year order,
+	// as an atomic block. Tri-state so the reconcile heal is a ONE-TIME repair, not a
+	// per-sweep TMDB call: 0 = not resolved yet (heal it); >0 = a real collection id;
+	// -1 = resolved, standalone (no collection) — a settled answer, never re-fetched.
+	// assignFranchiseGroups groups only CollectionID > 0. Healed at reconcile like
+	// OfficialRating, so the scheduler reads it with no I/O.
+	CollectionID int
 }
 
 // inSeasonRange reports whether an episode season falls within the entry's
@@ -196,11 +204,18 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	eligible, seasonalReport := applySeasonal(eligible, rp, now)
 	report.merge(seasonalReport)
 
+	// Franchise grouping (§5): tag movie entries sharing a TMDB collection so a franchise
+	// (Raiders → Temple of Doom → Last Crusade) plays together, in release-year order, as an
+	// atomic block — the movie analogue of the multi-part episode floor. Assigned on the
+	// entries here (they carry CollectionID + Year); resolveEntry copies the tags onto each
+	// movie slot, and the same collapse/expand keeps the block whole under shuffle/window.
+	franchiseGroups := assignFranchiseGroups(eligible)
+
 	// Resolve each eligible entry to its program slot(s) — movie → one, series → one
 	// per in-range episode (§9 expansion).
 	slots := make([]Slot, 0, len(eligible))
 	for _, e := range eligible {
-		slots = append(slots, resolveEntry(e, avail, pending)...)
+		slots = append(slots, resolveEntry(e, avail, pending, franchiseGroups)...)
 	}
 
 	// EligibleKeys: the distinct program keys the library can currently supply, captured
@@ -213,7 +228,9 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// as drift. A pending/filler placeholder is not "supplied", so only program slots count.
 	eligibleKeys := make(map[provision.Key]bool, len(channelEligible))
 	for _, e := range channelEligible {
-		for _, s := range resolveEntry(e, avail, pending) {
+		// Franchise grouping is irrelevant to key eligibility (we only collect keys here), so
+		// pass nil — grouping only shapes the aired ORDER, not which titles are supplied.
+		for _, s := range resolveEntry(e, avail, pending, nil) {
 			if s.IsProgram() {
 				eligibleKeys[s.Key] = true
 			}
@@ -361,8 +378,10 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 	return out
 }
 
-// resolveEntry turns one approved lineup entry into its desired slot(s).
-func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slot {
+// resolveEntry turns one approved lineup entry into its desired slot(s). franchise carries
+// the movie-franchise group tags (§5) computed across the eligible set; a movie whose Key is
+// in it gets a PartGroup so its franchise stays together. Nil/absent ⇒ no franchise grouping.
+func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franchise map[provision.Key]franchiseTag) []Slot {
 	// A series expands into its episodes (each a program slot).
 	if e.Key.IsSeries() {
 		if eps, ok := avail.ResolveEpisodes(e.Key); ok && len(eps) > 0 {
@@ -403,13 +422,19 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy) []Slo
 		if durationMs == 0 {
 			durationMs = e.DurationMs // fall back to the entry's own duration
 		}
-		return []Slot{{
+		slot := Slot{
 			Kind:          SlotProgram,
 			Key:           e.Key,
 			LibraryItemID: itemID,
 			Title:         e.Title,
 			DurationMs:    durationMs,
-		}}
+		}
+		// A movie in a franchise group carries its collection PartGroup + release-order
+		// index, so collapse/expand keeps the franchise together, in order (§5).
+		if tag, ok := franchise[e.Key]; ok {
+			slot.PartGroup, slot.PartIndex = tag.group, tag.index
+		}
+		return []Slot{slot}
 	}
 	return []Slot{pendingSlot(e, policy)}
 }
