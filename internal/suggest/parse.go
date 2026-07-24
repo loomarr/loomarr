@@ -19,6 +19,12 @@ type pick struct {
 	Name       string  `json:"name"`
 	Rationale  string  `json:"rationale"`
 	Confidence float64 `json:"confidence"`
+	// SeasonMin/SeasonMax: an OPTIONAL airing season window the model proposes for a
+	// SERIES pick when the intent implies an era ("classic", "early", "first N
+	// seasons"). Untrusted — validated + clamped downstream (an inverted/non-positive
+	// range is dropped → all seasons). Airing scope only, NOT acquisition seasons.
+	SeasonMin int `json:"seasonMin"`
+	SeasonMax int `json:"seasonMax"`
 }
 
 // key derives the provisioning key a pick claims. Empty when the pick has no

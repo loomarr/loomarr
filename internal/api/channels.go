@@ -55,6 +55,10 @@ type LineupEntryDTO struct {
 	// populates it (the list omits it to avoid an N-query fan-out); "" ⇒ not resolved.
 	State  string   `json:"state,omitempty" enum:"available,acquiring,pending,unavailable" doc:"available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up."`
 	Genres []string `json:"genres,omitempty"`
+	// SeasonMin/SeasonMax surface a series entry's airing season window (§8/§9) so the
+	// UI can show and edit "seasons 1–10". 0 = unbounded on that end (all seasons).
+	SeasonMin int `json:"seasonMin,omitempty" doc:"series airing window: first season (0 = unbounded)"`
+	SeasonMax int `json:"seasonMax,omitempty" doc:"series airing window: last season (0 = unbounded)"`
 }
 
 // lineupEntryState collapses the provision.Record lifecycle (plus the no-record case) into
@@ -85,7 +89,10 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 	d := schedule.DesiredLineup{Slots: ch.Desired}
 	lineup := make([]LineupEntryDTO, 0, len(ch.Lineup))
 	for _, e := range ch.Lineup {
-		dto := LineupEntryDTO{Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres}
+		dto := LineupEntryDTO{
+			Key: string(e.Key), Name: e.Title, Year: e.Year, Genres: e.Genres,
+			SeasonMin: e.SeasonMin, SeasonMax: e.SeasonMax,
+		}
 		if entryState != nil {
 			dto.State = entryState(e.Key)
 		}
@@ -150,6 +157,15 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 		entry.Title = dto.Name
 		entry.Year = dto.Year
 		entry.Genres = dto.Genres
+		// Season window: SET when the edit provides one, PRESERVE the existing when the
+		// edit omits it (0/0). This lets the UI edit "seasons 1–10" without an old
+		// client that doesn't send the fields silently WIPING a scope on a reorder —
+		// the lossy-read-DTO hazard the §7 PATCH contract calls out. To clear a window,
+		// a client sets it explicitly to the full range, not by omission.
+		if dto.SeasonMin != 0 || dto.SeasonMax != 0 {
+			entry.SeasonMin = dto.SeasonMin
+			entry.SeasonMax = dto.SeasonMax
+		}
 		out = append(out, entry)
 	}
 	return out, nil

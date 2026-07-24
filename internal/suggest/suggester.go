@@ -281,6 +281,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)
+		// Grounding chokepoint: attach the model's proposed AIRING season window only
+		// for a series, and only after clamping (an inverted or non-positive range is
+		// dropped → all seasons, never an empty channel). The range can only NARROW an
+		// already-grounded series expansion — it never introduces content.
+		if min, max, ok := clampSeasonWindow(cand.MediaType, p.SeasonMin, p.SeasonMax); ok {
+			item.SeasonMin, item.SeasonMax = min, max
+		}
 
 		if cand.InLibrary {
 			prop.Lineup = append(prop.Lineup, item)
@@ -422,6 +429,32 @@ func ceilingAdmittingPicks(ceiling schedule.Rating, picks []ProposalItem) schedu
 	return ""
 }
 
+// clampSeasonWindow validates a model-proposed AIRING season window (§8 grounding
+// chokepoint). It returns (min, max, true) only for a series with a sane window;
+// otherwise (0,0,false) → the pick airs all seasons. Rules: series only (a movie has
+// no seasons); at least one bound must be positive (0/0 = "no window", not an empty
+// channel); an inverted window (min>max, both set) is nonsense and dropped. A single
+// bound is allowed (seasonMin:11 = "11 onward", seasonMax:10 = "through 10"). The
+// window only NARROWS a grounded series' expansion — it can never add content.
+func clampSeasonWindow(mt provision.MediaType, min, max int) (int, int, bool) {
+	if mt != provision.Series {
+		return 0, 0, false
+	}
+	if min < 0 {
+		min = 0
+	}
+	if max < 0 {
+		max = 0
+	}
+	if min == 0 && max == 0 {
+		return 0, 0, false // no window proposed
+	}
+	if min > 0 && max > 0 && min > max {
+		return 0, 0, false // inverted → drop (all seasons, never empty)
+	}
+	return min, max, true
+}
+
 // ErrNoGroundedTitles is returned when a run produced no grounded picks at all —
 // the intent surfaced no themed, real content. The worker fails the job with this
 // (a clear operator-facing reason), and it is NOT cached, so a re-submit re-runs.
@@ -443,8 +476,12 @@ RULES:
   - KNOWN TITLE → "query" with the title.
 - If a call returns few or no candidates, TRY THE OTHER MODE before giving up (a genre discovery that finds nothing → retry as a "query" keyword, and vice-versa). Never conclude "no content" after a single empty search.
 - Each result carries genres + a short overview — use them to judge which titles fit the intent.
+- HONOR EVERY QUALIFIER in the intent, not just the main noun. "cozy British murder mysteries" means British AND cozy AND mystery — a 1940s American noir or a Swedish thriller that merely has "murder" in the title does NOT fit; check the overview (setting, country, tone) and REJECT it. "classic Star Trek — the original series and Next Generation" names TWO specific shows: include those, not every Star Trek series. It is BETTER to return fewer, well-matched picks (or none) than to pad the lineup with titles that only match one keyword.
+- HONOR EXPLICITLY NAMED titles: if the intent names specific shows/movies, search for those by name and prefer them; don't substitute lookalikes.
+- A pick whose genres/overview CONTRADICT the intent (wrong country, wrong tone, wrong era, wrong subject) must be dropped even if its title contains the keyword. Matching one word is not fitting the intent.
 - Select ONLY from ids the tool returns. Never output a tmdbId or tvdbId that did not appear in a tool result.
 - Prefer titles already in the library (inLibrary:true) for the lineup; propose missing ones as acquisitions.
+- SEASON WINDOW for a series: when the intent implies an ERA of a long-running show, set "seasonMin"/"seasonMax" on that series pick so ONLY those seasons air. Examples: "Simpsons Classics" or "classic Simpsons" -> the golden-age run, seasonMin:1, seasonMax:10; "early Seinfeld" -> seasonMin:1, seasonMax:4; "first three seasons of X" -> seasonMin:1, seasonMax:3; "late-era X" -> seasonMin only. Use it ONLY when the intent scopes an era of a SERIES; omit both for movies and for "all of a show". This narrows which episodes play; it does NOT change what gets acquired.
 - Also infer a "policy" describing HOW the channel should behave, from the intent. Only include a field you can justify from the intent; omit the rest.
   - audience.ceiling: the maturity ceiling ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; adult/no mention -> omit). Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
   - era.from/era.to: year range if the intent names one ("90s" -> from 1990 to 1999).
@@ -453,7 +490,7 @@ RULES:
   - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
-{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
+{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.

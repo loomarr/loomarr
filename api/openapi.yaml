@@ -899,6 +899,14 @@ components:
           type: string
         name:
           type: string
+        seasonMax:
+          description: "series airing window: last season (0 = unbounded)"
+          format: int64
+          type: integer
+        seasonMin:
+          description: "series airing window: first season (0 = unbounded)"
+          format: int64
+          type: integer
         state:
           description: available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up.
           enum:
@@ -1291,6 +1299,8 @@ components:
           type:
             - array
             - "null"
+        channelName:
+          type: string
         intent:
           $ref: "#/components/schemas/Intent"
         lineup:
@@ -1372,6 +1382,12 @@ components:
           type: string
         rationale:
           type: string
+        seasonMax:
+          format: int64
+          type: integer
+        seasonMin:
+          format: int64
+          type: integer
         seasons:
           items:
             format: int64
@@ -1487,6 +1503,12 @@ components:
     SearchCandidate:
       additionalProperties: false
       properties:
+        genres:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         inLibrary:
           type: boolean
         libraryItemId:
@@ -1494,6 +1516,8 @@ components:
         mediaType:
           type: string
         name:
+          type: string
+        officialRating:
           type: string
         tmdbId:
           format: int64

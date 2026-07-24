@@ -60,6 +60,8 @@ const ApprovalQueue = () => {
               requestedBy={p.createdBy}
               summary={p.proposal.rationale}
               acquisitions={p.proposal.acquisitions?.length ?? 0}
+              lineup={p.proposal.lineup ?? []}
+              acquisitionItems={p.proposal.acquisitions ?? []}
               status={busy ? "approving" : "pending"}
               onApprove={() => approve.mutate({ id: p.id })}
               onDeny={() => deny.mutate({ id: p.id, data: {} })}
