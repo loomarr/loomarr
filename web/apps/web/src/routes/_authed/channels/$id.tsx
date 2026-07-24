@@ -7,21 +7,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
-import {
-  ChannelCyclePreview,
-  ChannelDangerZone,
-  ChannelIconField,
-  ChannelLineupEditor,
-  ChannelPolicyFields,
-  ChannelRulesEditor,
-  ErrorState,
-  OnAirIndicator,
-  RefinePanel,
-} from "@/components/loomarr";
+import { ChannelDangerZone, ChannelIconField, ErrorState, OnAirIndicator } from "@/components/loomarr";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
 import { useDocumentTitle } from "@/lib";
 import { ChannelAdvanced } from "./-channel-advanced";
+import { ChannelProgramming } from "./-channel-programming";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
 // what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,
@@ -32,7 +23,7 @@ import { ChannelAdvanced } from "./-channel-advanced";
 
 // The tab/section ids — the closed set the `?section=` deep-link accepts. Shared by
 // validateSearch (URL narrowing) and the component (the tab registry + which panel shows).
-const SECTION_IDS = ["info", "refine", "lineup", "rules", "filler", "advanced", "danger"] as const;
+const SECTION_IDS = ["info", "programming", "filler", "advanced", "danger"] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 
 // `section` is OPTIONAL so a plain link to the channel (from the list, the palette, the approval
@@ -121,9 +112,7 @@ const ChannelDetailScreen = () => {
   // The section registry drives BOTH the tab bar and which panel shows, so they can't drift.
   const sections: ChannelNavSection[] = [
     { id: "info", label: "Channel info" },
-    { id: "refine", label: "Refine with AI" },
-    { id: "lineup", label: "Lineup" },
-    { id: "rules", label: "Programming rules" },
+    { id: "programming", label: "Programming" },
     { id: "filler", label: "Filler" },
     { id: "advanced", label: "Advanced" },
     { id: "danger", label: "Danger zone" },
@@ -271,45 +260,19 @@ const ChannelDetailScreen = () => {
             </section>
           )}
 
-          {/* Admin editing panels — each shown only when its tab is active. Rules/Advanced render
-              their fields directly under a section shell (the tab bar already names the section,
-              so no collapsible chrome); Filler keeps its internal sandbox, forced open. */}
-          {isAdmin && activeId === "refine" && (
-            <RefinePanel
-              channelId={id}
-              channelName={ch.name}
-              current={(ch.lineup ?? []).map((entry) => ({
-                name: entry.name,
-                year: entry.year,
-                key: entry.key,
-              }))}
-              onApplied={invalidate}
-            />
-          )}
-
-          {isAdmin && activeId === "lineup" && (
-            <ChannelLineupEditor channelId={id} lineup={ch.lineup ?? []} />
-          )}
-
-          {isAdmin && activeId === "rules" && (
-            <section className="flex flex-col gap-6 rounded-lg border border-border p-5">
-              <div>
-                <h2 className="font-semibold text-lg">Programming rules</h2>
-                <p className="text-muted-foreground text-sm">
-                  How this channel picks and orders what plays. Defaults follow your global settings.
-                </p>
-              </div>
-              <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
-              <div className="border-border border-t pt-6">
-                <ChannelRulesEditor
-                  policy={ch.policy}
-                  onChange={savePolicy}
-                  lineupKeys={(ch.lineup ?? []).map((entry) => ({ key: entry.key, title: entry.name }))}
-                />
-              </div>
-              <div className="border-border border-t pt-6">
-                <ChannelCyclePreview channelId={id} />
-              </div>
+          {/* Admin editing panels — each shown only when its tab is active. Programming folds the
+              old Lineup + Programming-rules + Refine tabs into one surface; Advanced renders its
+              fields directly under a section shell; Filler keeps its internal sandbox. */}
+          {isAdmin && activeId === "programming" && (
+            <section className="rounded-lg border border-border p-5">
+              <ChannelProgramming
+                channelId={id}
+                channelName={ch.name}
+                lineup={ch.lineup ?? []}
+                policy={ch.policy}
+                onPolicyChange={savePolicy}
+                onRefined={invalidate}
+              />
             </section>
           )}
 

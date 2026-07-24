@@ -61,9 +61,13 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
   { value: "R", label: "R" },
 ];
 
-const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyFieldsProps) => {
+const ChannelPolicyFields = ({ policy, onChange, className, show }: ChannelPolicyFieldsProps) => {
   const era = policy.scope?.era;
   const separation = policy.separation;
+  // Split for the Programming surface's blocks (§12): scope = audience ceiling + era ("What
+  // plays"); ordering = ordering + no-repeat ("How it's ordered"). Omitted = show everything.
+  const showScope = show !== "ordering";
+  const showOrdering = show !== "scope";
 
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the two Selects sit side by side,
@@ -72,154 +76,162 @@ const ChannelPolicyFields = ({ policy, onChange, className }: ChannelPolicyField
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
           forbids an empty-string item value, so "inherit" is the sentinel. */}
-      <div className="flex flex-col gap-1.5">
-        <FieldLabel htmlFor="policy-ordering" help="How programs are sequenced on this channel.">
-          Ordering
-        </FieldLabel>
-        <Select
-          value={policy.ordering || "inherit"}
-          onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
-        >
-          <SelectTrigger id="policy-ordering">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ORDERING_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {showOrdering && (
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="policy-ordering" help="How programs are sequenced on this channel.">
+            Ordering
+          </FieldLabel>
+          <Select
+            value={policy.ordering || "inherit"}
+            onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
+          >
+            <SelectTrigger id="policy-ordering">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ORDERING_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Audience ceiling — a safety limit, never relaxed by the ladder (§8), so the
           help says so explicitly rather than leaving that guarantee implicit. */}
-      <div className="flex flex-col gap-1.5">
-        <FieldLabel
-          htmlFor="policy-ceiling"
-          help="Content stays at or below this — a safety limit Loomarr never loosens."
-        >
-          Audience ceiling
-        </FieldLabel>
-        <Select
-          value={policy.audience?.ceiling || "none"}
-          onValueChange={(v) =>
-            onChange({
-              ...policy,
-              audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
-            })
-          }
-        >
-          <SelectTrigger id="policy-ceiling">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CEILING_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {showScope && (
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel
+            htmlFor="policy-ceiling"
+            help="Content stays at or below this — a safety limit Loomarr never loosens."
+          >
+            Audience ceiling
+          </FieldLabel>
+          <Select
+            value={policy.audience?.ceiling || "none"}
+            onValueChange={(v) =>
+              onChange({
+                ...policy,
+                audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
+              })
+            }
+          >
+            <SelectTrigger id="policy-ceiling">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CEILING_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Era — two commit-on-blur year inputs. Blank on either side means unbounded, not 0.
           Spans both columns (it has its own nested 2-up row). */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Restrict content to titles released in this range. Leave blank for no restriction.">
-          Era
-        </FieldLabel>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="policy-era-from" className="text-muted-foreground text-xs">
-              From year
-            </Label>
-            <Input
-              id="policy-era-from"
-              type="number"
-              className="w-28"
-              defaultValue={era?.from ?? ""}
-              placeholder="Any"
-              onBlur={(e) => {
-                const next = e.target.value === "" ? undefined : Number(e.target.value);
-                if (next === era?.from) return;
-                onChange({
-                  ...policy,
-                  scope: { ...policy.scope, era: { ...era, from: next } },
-                });
-              }}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="policy-era-to" className="text-muted-foreground text-xs">
-              To year
-            </Label>
-            <Input
-              id="policy-era-to"
-              type="number"
-              className="w-28"
-              defaultValue={era?.to ?? ""}
-              placeholder="Any"
-              onBlur={(e) => {
-                const next = e.target.value === "" ? undefined : Number(e.target.value);
-                if (next === era?.to) return;
-                onChange({
-                  ...policy,
-                  scope: { ...policy.scope, era: { ...era, to: next } },
-                });
-              }}
-            />
+      {showScope && (
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <FieldLabel help="Restrict content to titles released in this range. Leave blank for no restriction.">
+            Era
+          </FieldLabel>
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="policy-era-from" className="text-muted-foreground text-xs">
+                From year
+              </Label>
+              <Input
+                id="policy-era-from"
+                type="number"
+                className="w-28"
+                defaultValue={era?.from ?? ""}
+                placeholder="Any"
+                onBlur={(e) => {
+                  const next = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (next === era?.from) return;
+                  onChange({
+                    ...policy,
+                    scope: { ...policy.scope, era: { ...era, from: next } },
+                  });
+                }}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="policy-era-to" className="text-muted-foreground text-xs">
+                To year
+              </Label>
+              <Input
+                id="policy-era-to"
+                type="number"
+                className="w-28"
+                defaultValue={era?.to ?? ""}
+                placeholder="Any"
+                onBlur={(e) => {
+                  const next = e.target.value === "" ? undefined : Number(e.target.value);
+                  if (next === era?.to) return;
+                  onChange({
+                    ...policy,
+                    scope: { ...policy.scope, era: { ...era, to: next } },
+                  });
+                }}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* No-repeat windows — commit-on-blur duration strings. Spans both columns (nested
           2-up row). */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="How long before the same title can play again (e.g. 168h = 7 days).">
-          No-repeat windows
-        </FieldLabel>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="policy-movie-norepeat" className="text-muted-foreground text-xs">
-              Movies
-            </Label>
-            <Input
-              id="policy-movie-norepeat"
-              className="w-28"
-              defaultValue={tidyDuration(separation?.movieNoRepeat)}
-              placeholder="e.g. 168h"
-              onBlur={(e) => {
-                const next = durationOrUndefined(e.target.value);
-                if (next === tidyDuration(separation?.movieNoRepeat) || next === separation?.movieNoRepeat)
-                  return;
-                onChange({ ...policy, separation: { ...separation, movieNoRepeat: next } });
-              }}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="policy-episode-norepeat" className="text-muted-foreground text-xs">
-              Episodes
-            </Label>
-            <Input
-              id="policy-episode-norepeat"
-              className="w-28"
-              defaultValue={tidyDuration(separation?.episodeNoRepeat)}
-              placeholder="e.g. 24h"
-              onBlur={(e) => {
-                const next = durationOrUndefined(e.target.value);
-                if (
-                  next === tidyDuration(separation?.episodeNoRepeat) ||
-                  next === separation?.episodeNoRepeat
-                )
-                  return;
-                onChange({ ...policy, separation: { ...separation, episodeNoRepeat: next } });
-              }}
-            />
+      {showOrdering && (
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <FieldLabel help="How long before the same title can play again (e.g. 168h = 7 days).">
+            No-repeat windows
+          </FieldLabel>
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="policy-movie-norepeat" className="text-muted-foreground text-xs">
+                Movies
+              </Label>
+              <Input
+                id="policy-movie-norepeat"
+                className="w-28"
+                defaultValue={tidyDuration(separation?.movieNoRepeat)}
+                placeholder="e.g. 168h"
+                onBlur={(e) => {
+                  const next = durationOrUndefined(e.target.value);
+                  if (next === tidyDuration(separation?.movieNoRepeat) || next === separation?.movieNoRepeat)
+                    return;
+                  onChange({ ...policy, separation: { ...separation, movieNoRepeat: next } });
+                }}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="policy-episode-norepeat" className="text-muted-foreground text-xs">
+                Episodes
+              </Label>
+              <Input
+                id="policy-episode-norepeat"
+                className="w-28"
+                defaultValue={tidyDuration(separation?.episodeNoRepeat)}
+                placeholder="e.g. 24h"
+                onBlur={(e) => {
+                  const next = durationOrUndefined(e.target.value);
+                  if (
+                    next === tidyDuration(separation?.episodeNoRepeat) ||
+                    next === separation?.episodeNoRepeat
+                  )
+                    return;
+                  onChange({ ...policy, separation: { ...separation, episodeNoRepeat: next } });
+                }}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
