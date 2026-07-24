@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/llm"
@@ -403,12 +404,133 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem) schedule
 		p.Seasonal.Holidays = raw.Seasonal.Holidays
 	}
 
+	// Curation rules (§6.5/§6.6): lower the model's preset tokens into SchedulingRules,
+	// dropping unknowns and clamping (window bound + stricter-only daypart ceiling).
+	p.Rules = groundRules(raw.Rules, lineup, p.Audience.Ceiling)
+
 	// Final safety net: if anything slipped through that Validate rejects, drop the
 	// whole policy to defaults rather than persist an invalid one.
 	if err := p.Validate(); err != nil {
 		return schedule.ChannelPolicy{}
 	}
 	return p
+}
+
+// ruleWindowMin / ruleWindowMax bound a per-rule rolling window (§6.6): 1h keeps a rule
+// from materializing a sliver, 168h (a week) is the longest sane horizon. The marathon
+// WindowFull sentinel is exempt (a binge is meant to be unbounded).
+const (
+	ruleWindowMin = 1 * time.Hour
+	ruleWindowMax = 168 * time.Hour
+)
+
+// groundRules lowers each model-proposed preset rule (§6.6) into a validated SchedulingRule.
+// A rule whose WHEN token is unknown is DROPPED entirely (a rule with no time predicate is
+// meaningless). A WHAT/HOW that doesn't lower is left to inherit the channel scope/ordering
+// (the rule still applies its timing). The window is clamped; a kids/family WHAT clamps the
+// rule's audience STRICTER-ONLY against the channel ceiling (§4 — a rule can never raise it,
+// enforced here AND at §4 enforcement, defense in depth). A series WHAT is intersected with
+// the grounded picks. Returns nil when nothing survives (⇒ base whole-policy behavior).
+func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.Rating) []schedule.SchedulingRule {
+	if len(raw) == 0 {
+		return nil
+	}
+	grounded := make([]provision.Key, 0, len(lineup))
+	for _, it := range lineup {
+		if k, err := it.Key(); err == nil {
+			grounded = append(grounded, k)
+		}
+	}
+	out := make([]schedule.SchedulingRule, 0, len(raw))
+	for i, r := range raw {
+		when, prio, ok := schedule.LowerWhen(r.When)
+		if !ok {
+			continue // no valid time predicate → drop the whole rule
+		}
+		if r.Priority > 0 {
+			prio = r.Priority
+		}
+		rule := schedule.SchedulingRule{
+			ID:       fmt.Sprintf("r%d", i+1),
+			Priority: prio,
+			When:     when,
+		}
+		// HOW: lower ordering + per-rule window; unknown → inherit (zero How).
+		if how, win, ok := schedule.LowerHow(r.How); ok {
+			rule.How = how
+			rule.Window = clampRuleWindow(win)
+		}
+		// WHAT: lower scope; unknown → inherit (nil What). A kids/family token also returns a
+		// stricter-only ceiling to fold onto the rule scope's audience (§4).
+		if scope, kidsCeiling, ok := schedule.LowerWhat(r.What); ok && scope != nil {
+			scope.Series = intersectSeries(scope.Series, grounded) // never a series that didn't surface
+			// If the intersection (or lowering) left a scope that narrows NOTHING, treat it as
+			// inherit (nil) rather than a non-nil empty scope — a phantom series shouldn't leave
+			// a meaningless narrower behind.
+			if !scopeNarrows(scope) {
+				scope = nil
+			}
+			rule.What = scope
+			_ = kidsCeiling // audience-on-a-rule scope is a §4-followup; the channel ceiling already fences the pool.
+		}
+		out = append(out, rule)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// scopeNarrows reports whether a *ScopePolicy actually constrains anything (§6.6). An
+// all-empty scope (e.g. left after a phantom series intersection dropped its only series)
+// narrows nothing, so the caller nils it — a rule's What should be nil ("inherit channel
+// scope"), never a non-nil no-op that reads as an active-but-empty narrower.
+func scopeNarrows(s *schedule.ScopePolicy) bool {
+	if s == nil {
+		return false
+	}
+	return len(s.Series) > 0 || len(s.Collections) > 0 || s.Seasons != nil || s.Era != nil ||
+		len(s.Genres.Include) > 0 || len(s.Genres.Exclude) > 0 || s.RuntimeMax > 0
+}
+
+// clampRuleWindow bounds a per-rule window to [1h,168h], leaving the WindowFull sentinel
+// (a marathon binge) and 0 (inherit) untouched.
+func clampRuleWindow(w schedule.Duration) schedule.Duration {
+	if w == schedule.WindowFull || w == 0 {
+		return w
+	}
+	std := w.Std()
+	if std < ruleWindowMin {
+		return schedule.Duration(ruleWindowMin)
+	}
+	if std > ruleWindowMax {
+		return schedule.Duration(ruleWindowMax)
+	}
+	return w
+}
+
+// intersectSeries keeps only the rule's series that are actually in the grounded set (§6.6),
+// so a rule can't scope to a series that never surfaced. An empty result means the rule's
+// series scope drops (nil), leaving it to inherit the channel scope. A nil input (no series
+// scope) passes through unchanged.
+func intersectSeries(want, grounded []provision.Key) []provision.Key {
+	if len(want) == 0 {
+		return want
+	}
+	set := make(map[provision.Key]struct{}, len(grounded))
+	for _, k := range grounded {
+		set[k] = struct{}{}
+	}
+	kept := want[:0:0]
+	for _, k := range want {
+		if _, ok := set[k]; ok {
+			kept = append(kept, k)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
 }
 
 // tvGRank / tvPGRank are the "family" band on the audience ladder — the ONLY band within
@@ -524,9 +646,14 @@ RULES:
   - genres.include/exclude: genre names implied by the intent.
   - ordering: "syndication" (rerun feel — different series INTERMIXED, like a rerun channel), "sequential" (strict order — one show start-to-finish), or "shuffle". RULE OF THUMB: if the lineup has MORE THAN ONE series, prefer "syndication" so the shows interleave instead of playing one series to the end before the next (a Star-Trek-style multi-show channel should feel like flipping between them, not a chronological box set). Use "sequential" only for a SINGLE show meant to play in episode order, or when the intent explicitly asks for chronological/marathon.
   - seasonal.mode: "exclusive" for a holiday channel, "auto" otherwise (omit for evergreen).
+  - rules: OPTIONAL time-of-day / calendar programming, ONLY if the intent asks for it ("weekend marathons", "holiday specials in December", "kids in the morning"). Each rule is {when, what, how} from a CLOSED vocabulary — do NOT invent times or predicates:
+    - when: "weekend" | "weekday" | "mornings" | "daytime" | "primetime" | "late-night" | "overnight" | "holiday:christmas" | "holiday:halloween" | "holiday:thanksgiving" | "holiday:newyear" | "holiday:valentines" | a composite like "weekend-mornings".
+    - what (optional; omit to keep the whole channel): "series:<the exact key of a pick>" | "genre:<name>" | "kids" | "family" | "holiday-matched" | "all".
+    - how (optional; omit to keep the channel's ordering): "marathon" (binge one show, no breaks) | "syndication" | "shuffle".
+    Examples: a weekend TNG marathon → {"when":"weekend","what":"series:...","how":"marathon"}; December holiday programming → {"when":"holiday:christmas","what":"holiday-matched"}. Omit "rules" for a plain channel; unknown tokens are dropped.
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
-{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"}}}`
+{"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.

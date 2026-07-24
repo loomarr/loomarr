@@ -171,6 +171,60 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   not promise episode-thematic precision the data can't back. Series-level and movie-level
   holiday matching *is* supported (the §6 keyword engine).
 
+## 6.6. The preset lowering table (the closed authoring vocabulary)
+
+The LLM and the UI author rules by composing **tokens** from a closed vocabulary; deterministic
+code lowers each token to concrete `SchedulingRule` fields. The model never emits a raw
+`WhenPredicate` or hour range — that would be the model doing scheduling math (§8 boundary
+violation, unvalidatable). It emits `{when, what, how, priority?}` token strings; `groundPolicy`
+lowers them, **drops unknown tokens**, and clamps. This is the exhaustive v1 table.
+
+**WHEN tokens → `WhenPredicate`** (broadcast-standard dayparts, Eastern-style boundaries; evaluated against the container wall-clock):
+
+| token | predicate | default priority |
+| --- | --- | --- |
+| `weekend` | Sat–Sun | 20 |
+| `weekday` | Mon–Fri | 20 |
+| `mornings` / `early-morning` | hours 6–10 | 30 |
+| `daytime` | hours 10–17 | 30 |
+| `primetime` | hours 20–23 | 40 |
+| `late-night` | hours 23–2 (wraps) | 40 |
+| `overnight` / `graveyard` | hours 2–6 | 40 |
+| `holiday:<id>` | the §6 calendar window for `<id>` (christmas/halloween/thanksgiving/newyear/valentines) | 60 |
+| `weekend-mornings` etc. | AND of the two (weekend ∧ mornings) | max of the two + 5 |
+
+Priorities encode a real programmer's precedence: **holiday (60) > daypart-hours (30–40) > weekend/weekday (20) > base (0)**. A token with no match falls through to the base policy. Ties break by list order (§6.5).
+
+**WHAT tokens → `*ScopePolicy`** (intersect-only, never widens; nil = inherit channel scope):
+
+| token | scope |
+| --- | --- |
+| `all` | nil (no extra narrowing — the base) |
+| `series:<key>` | `Series: [<key>]` (intersected with the channel's grounded picks; an ungrounded key is dropped) |
+| `genre:<name>` | `Genres.Include: [<name>]` |
+| `genre-not:<name>` | `Genres.Exclude: [<name>]` |
+| `kids` / `family` | `Genres.Include` kid-safe genres **and** a stricter-only audience clamp (below) |
+| `holiday-matched` | the §6 seasonal keyword filter (in-window seasonal items only) |
+| `era:<from>-<to>` | `Era: {from,to}` (clamped) |
+
+**HOW tokens → `RuleOrdering` + `Window`**:
+
+| token | ordering | separation | breaks | window |
+| --- | --- | --- | --- | --- |
+| `syndication` | `OrderSyndication` (the §5 deck) | inherit | inherit | inherit |
+| `shuffle` | `OrderShuffle` | inherit | inherit | inherit |
+| `marathon` | `OrderSequential` | `BlockMax: 0` (unbounded — binge one show) | `NoBreaks: true` | `WindowFull` (don't truncate a binge) |
+| `feature` | inherit | inherit | inherit | inherit + a light seasonal-style boost (future) |
+
+Every token lowers to primitives that already exist — nothing here is new scheduling math. `marathon` = the three fields above (all present since Phase 1); `holiday-matched` = the §6 keyword engine; `syndication` = the §5 deck.
+
+**Grounding + clamps (§8 / §4, in `groundPolicy`)** — the model proposes, deterministic code enforces:
+
+- **Unknown token → dropped** (never a raw predicate). A rule that loses its WHEN/WHAT/HOW to drops degrades to the base policy — same failure contract as a dropped ordering.
+- **Window clamp:** any per-rule window is clamped to `[1h, 168h]` (except the `marathon`/`WindowFull` sentinel).
+- **Daypart audience ceiling is stricter-only (a §4 prime directive).** A `kids`/`family` WHAT may only *tighten* the channel's ceiling (e.g. TV-14 channel → TV-PG mornings), **never raise it** — a rule can never make a kids channel show adult content. Enforced at BOTH grounding (clamp the lowered ceiling to ≤ the channel ceiling) and enforcement (the §4 fail-closed gate is never bypassed by a rule). Defense in depth.
+- **Series intersection:** a `series:<key>` WHAT is intersected with the channel's actually-grounded picks, so a rule can't scope to a series that never surfaced.
+
 ## 7. The relaxation ladder (constraints degrade predictably, never silently)
 
 When the eligible pool can't satisfy the policy (small library ∩ tight scope ∩ long no-repeat window), enforcement descends in order, and **every applied relaxation is recorded on the channel and surfaced in the UI** ("policy relaxed: repeat window 7d → 3d"):

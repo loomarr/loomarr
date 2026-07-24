@@ -2,6 +2,7 @@ package suggest
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -168,5 +169,68 @@ func TestGroundPolicy_ExplicitOrderingWinsOverMultiSeriesDefault(t *testing.T) {
 	p := groundPolicy(raw, lineup, nil)
 	if p.Ordering != schedule.OrderSequential {
 		t.Errorf("ordering = %q, want sequential (explicit model choice wins)", p.Ordering)
+	}
+}
+
+// --- §6.6 curation-rule grounding ---
+
+// A weekend marathon of a grounded series lowers into a real SchedulingRule: weekend When,
+// marathon How (sequential + unbounded + no breaks + WindowFull), the series scope
+// intersected with the grounded picks.
+func TestGroundRules_WeekendMarathon(t *testing.T) {
+	tng := series(1, "TNG")
+	key, _ := tng.Key()
+	raw := &pickPolicy{Rules: []pickRule{
+		{When: "weekend", What: "series:" + string(key), How: "marathon"},
+	}}
+	p := groundPolicy(raw, []ProposalItem{tng, series(2, "DS9")}, nil)
+	if len(p.Rules) != 1 {
+		t.Fatalf("want 1 grounded rule, got %d", len(p.Rules))
+	}
+	r := p.Rules[0]
+	if !r.When.Matches(time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)) { // Saturday
+		t.Error("weekend rule should match Saturday")
+	}
+	if r.How.Ordering != schedule.OrderSequential || !r.How.NoBreaks || r.Window != schedule.WindowFull {
+		t.Errorf("marathon How not applied: %+v window=%v", r.How, r.Window)
+	}
+	if r.What == nil || len(r.What.Series) != 1 || r.What.Series[0] != key {
+		t.Errorf("series scope not intersected onto the rule: %+v", r.What)
+	}
+}
+
+// A rule whose WHEN token is unknown is DROPPED entirely (no time predicate = meaningless).
+func TestGroundRules_UnknownWhenDropped(t *testing.T) {
+	raw := &pickPolicy{Rules: []pickRule{
+		{When: "whenever-i-feel-like-it", How: "marathon"},
+		{When: "primetime", How: "syndication"},
+	}}
+	p := groundPolicy(raw, nil, nil)
+	if len(p.Rules) != 1 || p.Rules[0].When.HourFrom != 20 {
+		t.Errorf("only the valid primetime rule should survive: %+v", p.Rules)
+	}
+}
+
+// A series WHAT that names a series NOT in the grounded picks drops the series scope (the
+// rule keeps its timing but inherits the channel scope) — a rule can't scope to a phantom.
+func TestGroundRules_SeriesScopeIntersectedWithGroundedPicks(t *testing.T) {
+	tng := series(1, "TNG")
+	raw := &pickPolicy{Rules: []pickRule{
+		{When: "weekend", What: "series:series:tvdb:99999", How: "marathon"}, // not a grounded pick
+	}}
+	p := groundPolicy(raw, []ProposalItem{tng}, nil)
+	if len(p.Rules) != 1 {
+		t.Fatalf("rule should survive (timing valid), got %d", len(p.Rules))
+	}
+	if p.Rules[0].What != nil {
+		t.Errorf("ungrounded series scope should drop to nil (inherit channel scope): %+v", p.Rules[0].What)
+	}
+}
+
+// No rules proposed → nil Rules (base whole-policy behavior, backward compatible).
+func TestGroundRules_NoneProposed(t *testing.T) {
+	p := groundPolicy(&pickPolicy{}, nil, nil)
+	if p.Rules != nil {
+		t.Errorf("no rules proposed should yield nil Rules, got %+v", p.Rules)
 	}
 }
