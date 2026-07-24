@@ -452,6 +452,7 @@ func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.
 		}
 		rule := schedule.SchedulingRule{
 			ID:       fmt.Sprintf("r%d", i+1),
+			Label:    ruleLabel(r.When, r.What, r.How), // legible attribution in the cycle preview (§8.1)
 			Priority: prio,
 			When:     when,
 		}
@@ -479,6 +480,41 @@ func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.
 		return nil
 	}
 	return out
+}
+
+// ruleLabel builds a legible display name for a grounded rule from its authoring tokens
+// (§8.1) — e.g. ("weekend","","marathon") → "Weekend · Marathon". Kept token-derived (not
+// predicate-derived) so it preserves the WHAT specificity a lowered *ScopePolicy loses
+// (a "series:tv:1396" reads as "series:tv:1396", not just "narrowed"). Empty tokens are
+// skipped; an all-empty rule falls back to "Rule".
+func ruleLabel(when, what, how string) string {
+	parts := make([]string, 0, 3)
+	for _, tok := range []string{when, what, how} {
+		if t := strings.TrimSpace(tok); t != "" && !strings.EqualFold(t, "all") {
+			parts = append(parts, titleToken(t))
+		}
+	}
+	if len(parts) == 0 {
+		return "Rule"
+	}
+	return strings.Join(parts, " · ")
+}
+
+// titleToken renders one authoring token for a label: "weekend" → "Weekend",
+// "holiday:christmas" → "Holiday: Christmas". Prefixed tokens keep their qualifier.
+func titleToken(tok string) string {
+	if i := strings.IndexByte(tok, ':'); i >= 0 {
+		return capitalizeASCII(tok[:i]) + ": " + capitalizeASCII(tok[i+1:])
+	}
+	return capitalizeASCII(tok)
+}
+
+// capitalizeASCII upper-cases the first byte of an ASCII token (labels only).
+func capitalizeASCII(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // scopeNarrows reports whether a *ScopePolicy actually constrains anything (§6.6). An

@@ -1,6 +1,8 @@
 package schedule
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -21,6 +23,12 @@ import (
 type SchedulingRule struct {
 	// ID is a stable identifier for the rule (for the editor + preview attribution).
 	ID string `json:"id,omitempty"`
+	// Label is the human-readable name the editor/LLM assigns ("Weekend TNG marathon").
+	// Attribution in the cycle preview (§8.1) shows it so which rule is active at a moment
+	// is legible. Empty ⇒ Describe() synthesizes one from the predicate/how (below), so a
+	// rule authored before this field still reads sensibly. Purely cosmetic — the engine
+	// never keys behavior on it.
+	Label string `json:"label,omitempty"`
 	// Priority orders overlapping matches — higher wins; ties break by list order.
 	Priority int `json:"priority,omitempty"`
 	// When is the time predicate; a zero predicate matches always (the base rule).
@@ -228,4 +236,99 @@ func pickRule(rules []SchedulingRule, now time.Time) (SchedulingRule, bool) {
 		return SchedulingRule{}, false
 	}
 	return rules[best], true
+}
+
+// ActiveRuleAttribution names which rule is active at a wall-clock — the cycle-preview
+// attribution (§8.1). Matched=false means no rule matched and the channel is on its base
+// whole-policy behavior (Label "Base policy", ID "", Priority 0). Derived from the SAME
+// pickRule the engine uses, so the preview can never disagree with what reconcile picks.
+type ActiveRuleAttribution struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Priority int    `json:"priority"`
+	Matched  bool   `json:"matched"`
+}
+
+// ActiveRuleAt reports the rule active at `now` for attribution (§8.1). It is the exported
+// window onto pickRule: the API's cycle preview calls it to label "what airs at this moment"
+// with the exact rule reconcile would select — one code path, so preview == reality.
+func ActiveRuleAt(rules []SchedulingRule, now time.Time) ActiveRuleAttribution {
+	r, ok := pickRule(rules, now)
+	if !ok {
+		return ActiveRuleAttribution{Label: "Base policy", Matched: false}
+	}
+	return ActiveRuleAttribution{ID: r.ID, Label: r.Describe(), Priority: r.Priority, Matched: true}
+}
+
+// Describe returns the rule's display label: its explicit Label if set, else a synthesized
+// one from the WHEN predicate + HOW ordering (so a rule authored before the Label field, or
+// one the LLM left unnamed, still reads sensibly in the preview). Deterministic + I/O-free.
+func (r SchedulingRule) Describe() string {
+	if strings.TrimSpace(r.Label) != "" {
+		return r.Label
+	}
+	when := r.When.describe()
+	how := r.How.describe()
+	switch {
+	case when != "" && how != "":
+		return when + " — " + how
+	case when != "":
+		return when
+	case how != "":
+		return how
+	default:
+		return "Rule"
+	}
+}
+
+// describe renders a WhenPredicate as a short human phrase for a synthesized rule label.
+func (w WhenPredicate) describe() string {
+	if w.isZero() {
+		return "Always"
+	}
+	parts := []string{}
+	if w.Holiday != "" {
+		parts = append(parts, capitalize(w.Holiday))
+	}
+	switch {
+	case w.Weekend:
+		parts = append(parts, "Weekends")
+	case w.Weekday:
+		parts = append(parts, "Weekdays")
+	}
+	if w.HourFrom != 0 || w.HourTo != 0 {
+		parts = append(parts, fmt.Sprintf("%02d:00–%02d:00", w.HourFrom, w.HourTo))
+	}
+	if len(parts) == 0 {
+		return "Scheduled"
+	}
+	return strings.Join(parts, " ")
+}
+
+// capitalize upper-cases the first byte of an ASCII holiday id ("christmas" → "Christmas").
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// describe renders a RuleOrdering as a short human phrase for a synthesized rule label.
+func (o RuleOrdering) describe() string {
+	switch o.Ordering {
+	case OrderSequential:
+		if o.NoBreaks {
+			return "Marathon"
+		}
+		return "In order"
+	case OrderShuffle:
+		return "Shuffle"
+	case OrderSyndication:
+		return "Syndication"
+	default:
+		if o.NoBreaks {
+			return "No breaks"
+		}
+		return ""
+	}
 }
