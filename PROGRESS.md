@@ -4,6 +4,27 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Curation-rule-engine arc — window rotation fix (2026-07-24).** A movie channel whose
+library exceeds its window (the maintainer's "1980s Action Heroes", 15 films ≈30h, 24h window)
+**repeated the same subset daily and never aired the tail**. Root cause: `truncateToWindow` kept
+the deck HEAD (`slots[:kept]`); the window index advanced the shuffle SEED (order) but not the
+slice OFFSET, so `sequential`/`syndication` channels (stable order) looped the same prefix.
+**Fix:** `windowSlice` — a ROTATING ~window-of-runtime slice whose start advances with the window
+index and WRAPS the catalog (window 1 continues where window 0 left off — TILES, not slides), so
+over a full cycle every program airs (coverage invariant). Deck order is now seed-stable per
+channel; rotation lives in the offset. Runs on the COLLAPSED deck (franchise/two-parter never
+split by the seam); idempotent within a window (no re-push). New tests: rotation coverage (the
+exact defect reproduction — 15/15 films air over a cycle), tiling-vs-sliding, idempotency,
+franchise-never-split-by-seam across all offsets. **Live-verified** on `ch_2986070a483d5cb0`:
+with an eligible pool > window, the aired set rotates and all 15 films air. **Also surfaced (not
+a bug):** the channel's **TV-14 ceiling excluded its 9 R-rated films** (Die Hard, Predator,
+Terminator, …) — the §4 audience filter working as designed — which is why it looked worse (only
+6 PG/PG-13 films, < one window). Maintainer chose to raise this channel to R. Gate: `make check`
+GREEN (`-race`); `openapi-verify` + `config-docs` no drift. This is the **catalog-rotation half of
+the rotation/re-curation plan** (`.claude/plans/curation-rotation-and-recuration.md`); **next: the
+scheduled re-curation job (Phase B, per-channel auto-curate opt-in decided)**. Merged on
+green-local (CI still billing-blocked).
+
 **Curation-rule-engine arc — Phase 4: "Programming rules" editor + time-travel preview (2026-07-24).**
 The authoring + legibility layer for the wall-clock curation engine (Phases 1–3 already
 shipped the deterministic core, seasonal-as-a-rule, and LLM preset authoring — commits
