@@ -1,6 +1,90 @@
 package schedule
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mantonx/loomarr/internal/provision"
+)
+
+func movieEntry(key string, year, collectionID int) LineupEntry {
+	return LineupEntry{Key: provision.Key(key), Title: key, Year: year, CollectionID: collectionID}
+}
+
+// assignFranchiseGroups: movies sharing a TMDB collection group together in RELEASE-YEAR
+// order; a collection with <2 present films isn't grouped; series never group.
+func TestAssignFranchiseGroups(t *testing.T) {
+	entries := []LineupEntry{
+		// Indiana Jones (collection 84), deliberately out of release order + interleaved.
+		movieEntry("movie:tmdb:87", 1984, 84),                                  // Temple of Doom
+		movieEntry("movie:tmdb:210577", 2001, 0),                               // a standalone
+		movieEntry("movie:tmdb:85", 1981, 84),                                  // Raiders (FIRST film, no shared title)
+		movieEntry("movie:tmdb:89", 1989, 84),                                  // Last Crusade
+		movieEntry("movie:tmdb:999", 1990, 555),                                // lone film of another franchise
+		LineupEntry{Key: "series:tvdb:1", Title: "A Series", CollectionID: 84}, // series ignored
+	}
+	tags := assignFranchiseGroups(entries)
+
+	// The three Indy films share one group, indexed by release year (Raiders 1 → Temple 2 → Crusade 3).
+	g := tags["movie:tmdb:85"]
+	if g.group == "" {
+		t.Fatal("Raiders should be in a franchise group")
+	}
+	if tags["movie:tmdb:87"].group != g.group || tags["movie:tmdb:89"].group != g.group {
+		t.Error("all three Indy films must share one group")
+	}
+	if tags["movie:tmdb:85"].index != 1 || tags["movie:tmdb:87"].index != 2 || tags["movie:tmdb:89"].index != 3 {
+		t.Errorf("release order wrong: Raiders=%d Temple=%d Crusade=%d",
+			tags["movie:tmdb:85"].index, tags["movie:tmdb:87"].index, tags["movie:tmdb:89"].index)
+	}
+	// A standalone, a lone-franchise film, and a series are NOT grouped.
+	if _, ok := tags["movie:tmdb:210577"]; ok {
+		t.Error("standalone must not group")
+	}
+	if _, ok := tags["movie:tmdb:999"]; ok {
+		t.Error("a lone film of a franchise must not group (nothing to keep it with)")
+	}
+	if _, ok := tags["series:tvdb:1"]; ok {
+		t.Error("a series must never franchise-group")
+	}
+}
+
+// The end-to-end guarantee: a franchise stays adjacent + in release order through the
+// shuffle deck (collapse/expand), never split by an unrelated film — the exact bug reported
+// (Temple → Crusade → [Top Gun] → Raiders).
+func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
+	entries := []LineupEntry{
+		movieEntry("movie:tmdb:85", 1981, 84), // Raiders
+		movieEntry("movie:tmdb:87", 1984, 84), // Temple
+		movieEntry("movie:tmdb:89", 1989, 84), // Crusade
+		movieEntry("movie:tmdb:t1", 1986, 0),  // Top Gun (standalone)
+		movieEntry("movie:tmdb:t2", 1989, 0),  // Batman (standalone)
+	}
+	tags := assignFranchiseGroups(entries)
+	// Build movie slots carrying the franchise tags (as resolveEntry would).
+	slots := make([]Slot, 0, len(entries))
+	for _, e := range entries {
+		s := Slot{Kind: SlotProgram, Key: e.Key, LibraryItemID: string(e.Key), Title: string(e.Key), DurationMs: 90 * 60 * 1000}
+		if tag, ok := tags[e.Key]; ok {
+			s.PartGroup, s.PartIndex = tag.group, tag.index
+		}
+		slots = append(slots, s)
+	}
+	rp := ChannelPolicy{Ordering: OrderShuffle}.Resolved(Shuffle, false)
+	for seed := int64(0); seed < 50; seed++ {
+		collapsed, expand := collapseGroups(slots)
+		ordered, _ := slotWithRelaxation(collapsed, rp, seed)
+		ordered = expandGroups(ordered, expand)
+		// Find the three Indy films; they must be at consecutive positions, in release order.
+		pos := map[string]int{}
+		for i, s := range ordered {
+			pos[string(s.Key)] = i
+		}
+		r, tm, c := pos["movie:tmdb:85"], pos["movie:tmdb:87"], pos["movie:tmdb:89"]
+		if tm != r+1 || c != r+2 {
+			t.Fatalf("seed %d: franchise split/out-of-order: Raiders=%d Temple=%d Crusade=%d", seed, r, tm, c)
+		}
+	}
+}
 
 func TestPartMarker(t *testing.T) {
 	cases := []struct {
