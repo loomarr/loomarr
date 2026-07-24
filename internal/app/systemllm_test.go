@@ -79,3 +79,21 @@ func TestPersistSelection_HotAppliesToSettingsReaders(t *testing.T) {
 		t.Errorf("llm.provider reads back %q, want %q", got, sel.Provider)
 	}
 }
+
+// wireKind maps a (possibly branded) provider to the llm.provider enum. Every hosted
+// provider is an OpenAI-compatible client, so it must persist as "openai" — the fix
+// for the 502 "openrouter is not one of [ollama openai]" that broke the hosted picker.
+func TestWireKind(t *testing.T) {
+	cases := map[string]string{
+		"":           "ollama", // back-compat default
+		"ollama":     "ollama",
+		"openai":     "openai",
+		"openrouter": "openai", // branded → wire kind
+		"custom":     "openai",
+	}
+	for in, want := range cases {
+		if got := wireKind(in); got != want {
+			t.Errorf("wireKind(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

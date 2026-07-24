@@ -92,6 +92,7 @@ func (a searchAdapter) Search(ctx context.Context, q, scope string, limit int) (
 		out = append(out, api.SearchCandidate{
 			MediaType: string(c.MediaType), TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 			Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
+			Genres: c.Genres, OfficialRating: c.OfficialRating,
 		})
 	}
 	return out, nil
