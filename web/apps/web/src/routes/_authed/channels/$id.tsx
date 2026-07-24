@@ -8,10 +8,12 @@ import { useAuth } from "@/auth";
 import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
 import {
+  ChannelCyclePreview,
   ChannelDangerZone,
   ChannelIconField,
   ChannelLineupEditor,
   ChannelPolicyFields,
+  ChannelRulesEditor,
   ErrorState,
   OnAirIndicator,
   RefinePanel,
@@ -287,7 +289,7 @@ const ChannelDetailScreen = () => {
           )}
 
           {isAdmin && activeId === "rules" && (
-            <section className="flex flex-col gap-4 rounded-lg border border-border p-5">
+            <section className="flex flex-col gap-6 rounded-lg border border-border p-5">
               <div>
                 <h2 className="font-semibold text-lg">Programming rules</h2>
                 <p className="text-muted-foreground text-sm">
@@ -295,6 +297,16 @@ const ChannelDetailScreen = () => {
                 </p>
               </div>
               <ChannelPolicyFields policy={ch.policy} onChange={savePolicy} />
+              <div className="border-border border-t pt-6">
+                <ChannelRulesEditor
+                  policy={ch.policy}
+                  onChange={savePolicy}
+                  lineupKeys={(ch.lineup ?? []).map((entry) => ({ key: entry.key, title: entry.name }))}
+                />
+              </div>
+              <div className="border-border border-t pt-6">
+                <ChannelCyclePreview channelId={id} />
+              </div>
             </section>
           )}
 

@@ -4,6 +4,32 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Curation-rule-engine arc — Phase 4: "Programming rules" editor + time-travel preview (2026-07-24).**
+The authoring + legibility layer for the wall-clock curation engine (Phases 1–3 already
+shipped the deterministic core, seasonal-as-a-rule, and LLM preset authoring — commits
+`2f39787`/`f0d01a9`/`22ec659`). Two halves, doc-first (`docs/programming-design.md` §8.1 written
+before code): **(BE)** a read-only **`GET /v1/channels/{id}/cycle?at=<rfc3339>`** cycle preview
+that runs the SAME pure `ComputeDesiredAt` reconcile runs (one code path — preview can't drift)
+at a chosen wall-clock, returning the resolved slots + **which curation rule is active then** +
+the resolved rolling-window horizon; makes first-match-by-priority legible ("at Saturday 9am the
+Weekend marathon rule wins"). New `schedule.ActiveRuleAt`/`SchedulingRule.Label`/`Describe`
+(attribution derived from the SAME `pickRule` the engine uses; suggester now names LLM-authored
+rules), `schedule.ResolveWindow`, `channels.Engine.CyclePreview` (read-only — heals/pushes
+nothing), and the `ChannelService.CyclePreview` interface method (returns `schedule` primitives, so
+`api` stays decoupled from `channels`). **(FE)** a `ChannelRulesEditor` (token-based WHEN/WHAT/HOW
+picker mirroring `internal/schedule/presets.go`, `@dnd-kit` drag-to-priority where **list order IS
+priority**, computed labels) + a `ChannelCyclePreview` (datetime-local + quick presets → the
+attribution callout + program/pending/break slot list), both wired into the channel "rules" tab.
+**Bug caught in FE review + fixed:** a hand-authored **marathon** wrote `window:"0s"` (Duration 0 =
+"inherit the window" ⇒ WOULD truncate the binge) instead of `"-1ns"` (the `schedule.WindowFull`
+sentinel = "whole run") — the opposite of intent; fixed + regression-guarded so a hand-authored
+marathon is byte-identical to an LLM-authored one (§8.1). Gate: `make check` GREEN (`-race`);
+`make openapi` regenerated + committed (`openapi-verify` clean post-commit); `config-docs` no drift;
+FE `biome + typecheck + 402 vitest + web build + storybook build` GREEN (new component stories +
+tests, `story-coverage` guard). **Next (Phase 5):** custom holiday calendars (the last §9 logged
+item). **CI note:** GitHub Actions still billing-blocked — validated locally + merged on green-local
+per the maintainer's standing call.
+
 **Scheduler arc — Phase 5: retire the inbound webhook subsystem (2026-07-23).** The final
 phase of the poll-availability arc. Availability + download progress now come entirely from
 polling (library scan §4, arr queue poll §18.1), so the inbound `POST /hooks/arr` webhook has
