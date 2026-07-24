@@ -9,6 +9,8 @@ const channel = (over: Partial<ChannelDTO> = {}): ChannelDTO => ({
   status: "live",
   strategy: "shuffle",
   programCount: 10,
+  pendingCount: 0,
+  breakCount: 0,
   slotCount: 10,
   policy: {},
   lineup: [],
@@ -23,14 +25,23 @@ describe("channelHealth", () => {
     expect(channelHealth(channel({ status: "detached" }))).toBe("error");
   });
 
-  it("is healthy only when every slot has a real program", () => {
-    expect(channelHealth(channel({ programCount: 10, slotCount: 10 }))).toBe("healthy");
+  it("is healthy when no title is pending", () => {
+    expect(channelHealth(channel({ programCount: 10, pendingCount: 0 }))).toBe("healthy");
+  });
+
+  it("is healthy on a break-heavy channel once every title is acquired", () => {
+    // The regression this fix exists for: slotCount is inflated by commercial-break gaps
+    // (§10), so programCount (12) < slotCount (20) forever — but nothing is pending, so it
+    // must read healthy, not "pending-slots" permanently.
+    expect(channelHealth(channel({ programCount: 12, pendingCount: 0, breakCount: 8, slotCount: 20 }))).toBe(
+      "healthy",
+    );
   });
 
   it("reports pending-slots while acquisitions are still landing", () => {
     // The channel IS airing (Tunarr plays flex, never dead air) but it is not yet what
     // was asked for. Calling this healthy would hide the backfill the operator awaits.
-    expect(channelHealth(channel({ programCount: 3, slotCount: 10 }))).toBe("pending-slots");
+    expect(channelHealth(channel({ programCount: 3, pendingCount: 7 }))).toBe("pending-slots");
   });
 });
 

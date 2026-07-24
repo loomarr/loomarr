@@ -455,6 +455,7 @@ func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.
 		}
 		rule := schedule.SchedulingRule{
 			ID:       fmt.Sprintf("r%d", i+1),
+			Source:   schedule.RuleSourceLLM,           // provenance (§8.2): a refine may replace these; operator rules are kept
 			Label:    ruleLabel(r.When, r.What, r.How), // legible attribution in the cycle preview (§8.1)
 			Priority: prio,
 			When:     when,

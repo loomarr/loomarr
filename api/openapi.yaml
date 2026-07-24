@@ -128,6 +128,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        breakCount:
+          description: Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount
+          format: int64
+          type: integer
         group:
           examples:
             - Kids
@@ -158,15 +162,19 @@ components:
             - 42
           format: int64
           type: integer
+        pendingCount:
+          description: "Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."
+          format: int64
+          type: integer
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
           description: Programming policy (scope/audience/separation/ordering/seasonal) + applied relaxations
         programCount:
-          description: Real playable programs in the desired lineup
+          description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
         slotCount:
-          description: Total slots incl. filler/flex placeholders
+          description: Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics.
           format: int64
           type: integer
         status:
@@ -194,6 +202,8 @@ components:
         - strategy
         - status
         - programCount
+        - pendingCount
+        - breakCount
         - slotCount
         - policy
         - lineup
@@ -226,6 +236,12 @@ components:
           $ref: "#/components/schemas/AutoCurate"
         filler:
           $ref: "#/components/schemas/FillerSelection"
+        operatorSet:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         ordering:
           type: string
         rules:
@@ -682,6 +698,26 @@ components:
         - active
         - modelsLive
         - models
+      type: object
+    HowVocab:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        ordering:
+          $ref: "#/components/schemas/RuleOrdering"
+        shortLabel:
+          type: string
+        token:
+          type: string
+        windowFull:
+          type: boolean
+      required:
+        - token
+        - label
+        - shortLabel
+        - ordering
+        - windowFull
       type: object
     IconSuggestion:
       additionalProperties: false
@@ -1360,6 +1396,38 @@ components:
         - durationMs
         - isFallbackCard
       type: object
+    PodPoolDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PodPoolDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        entries:
+          items:
+            $ref: "#/components/schemas/PodEntryDTO"
+          type:
+            - array
+            - "null"
+        matchLevel:
+          description: How far down the fallback ladder assembly went (§10)
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
+          type: string
+        totalMs:
+          format: int64
+          type: integer
+      required:
+        - entries
+        - totalMs
+        - matchLevel
+      type: object
     PreviewCycleOutputBody:
       additionalProperties: false
       properties:
@@ -1407,37 +1475,60 @@ components:
       required:
         - filler
       type: object
-    PreviewPodsOutputBody:
+    PreviewProgrammingInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewPodsOutputBody.json
+            - https://example.com/schemas/PreviewProgrammingInputBody.json
           format: uri
           readOnly: true
           type: string
-        entries:
+        lineup:
           items:
-            $ref: "#/components/schemas/PodEntryDTO"
+            $ref: "#/components/schemas/LineupEntryDTO"
           type:
             - array
             - "null"
-        matchLevel:
-          description: How far down the fallback ladder assembly went (§10)
-          enum:
-            - exact
-            - widened
-            - audience
-            - bumper_card
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+      type: object
+    PreviewProgrammingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PreviewProgrammingOutputBody.json
+          format: uri
+          readOnly: true
           type: string
-        totalMs:
+        activeRule:
+          $ref: "#/components/schemas/ActiveRuleDTO"
+        at:
+          description: The resolved wall-clock this preview was computed for (RFC3339)
+          type: string
+        pods:
+          $ref: "#/components/schemas/PodPoolDTO"
+          description: The assembled break pool for the draft filler selection (§10)
+        slots:
+          description: Leading slots of the resolved cycle, in play order (capped)
+          items:
+            $ref: "#/components/schemas/CycleSlotDTO"
+          type:
+            - array
+            - "null"
+        windowMs:
+          description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
           type: integer
       required:
-        - entries
-        - totalMs
-        - matchLevel
+        - at
+        - activeRule
+        - windowMs
+        - slots
+        - pods
       type: object
     Proposal:
       additionalProperties: false
@@ -1631,6 +1722,8 @@ components:
         priority:
           format: int64
           type: integer
+        source:
+          type: string
         what:
           $ref: "#/components/schemas/ScopePolicy"
         when:
@@ -2599,6 +2692,52 @@ components:
         - autoApprove
         - local
       type: object
+    Vocabulary:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Vocabulary.json
+          format: uri
+          readOnly: true
+          type: string
+        how:
+          items:
+            $ref: "#/components/schemas/HowVocab"
+          type:
+            - array
+            - "null"
+        what:
+          items:
+            $ref: "#/components/schemas/WhatVocab"
+          type:
+            - array
+            - "null"
+        when:
+          items:
+            $ref: "#/components/schemas/WhenVocab"
+          type:
+            - array
+            - "null"
+      required:
+        - when
+        - what
+        - how
+      type: object
+    WhatVocab:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        scope:
+          $ref: "#/components/schemas/ScopePolicy"
+        token:
+          type: string
+      required:
+        - token
+        - label
+      type: object
     WhenPredicate:
       additionalProperties: false
       properties:
@@ -2627,6 +2766,27 @@ components:
           type: boolean
         weekend:
           type: boolean
+      type: object
+    WhenVocab:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        predicate:
+          $ref: "#/components/schemas/WhenPredicate"
+        priority:
+          format: int64
+          type: integer
+        shortLabel:
+          type: string
+        token:
+          type: string
+      required:
+        - token
+        - label
+        - shortLabel
+        - predicate
+        - priority
       type: object
 info:
   description: "Turn a sentence into a self-maintaining Tunarr channel. Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
@@ -2929,7 +3089,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PreviewPodsOutputBody"
+                $ref: "#/components/schemas/PodPoolDTO"
           description: OK
         default:
           content:
@@ -2962,7 +3122,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PreviewPodsOutputBody"
+                $ref: "#/components/schemas/PodPoolDTO"
           description: OK
         default:
           content:
@@ -2974,6 +3134,45 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/programming/preview:
+    post:
+      description: Previews what a DRAFT {lineup?, policy?} would air — the cycle slots (which rule wins at `at`, the rolling window) AND the assembled break pool — WITHOUT saving or touching Tunarr. Runs the same ComputeDesiredAt + pod assembler as reconcile, so the preview cannot drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool).
+      operationId: preview-channel-programming
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: "RFC3339 wall-clock to preview (default: now). May be past or future."
+          explode: false
+          in: query
+          name: at
+          schema:
+            description: "RFC3339 wall-clock to preview (default: now). May be past or future."
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewProgrammingInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewProgrammingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview an unsaved programming draft
+      tags:
+        - channels
   /v1/channels/{id}/reconcile:
     post:
       description: Admin only. Idempotent (§9).
@@ -3294,6 +3493,26 @@ paths:
       summary: Run a job now
       tags:
         - jobs
+  /v1/programming/vocabulary:
+    get:
+      description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user."
+      operationId: get-programming-vocabulary
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vocabulary"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The closed rule authoring vocabulary
+      tags:
+        - channels
   /v1/search:
     get:
       operationId: search

@@ -31,6 +31,10 @@ type fakeChannelSvc struct {
 	cycleActive schedule.ActiveRuleAttribution // returned attribution
 	cycleWindow time.Duration                  // returned window
 	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
+
+	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
+	draftLineup []schedule.LineupEntry
+	draftPolicy *schedule.ChannelPolicy
 }
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
@@ -58,6 +62,17 @@ func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Ti
 		resolved = time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	}
 	return resolved, f.cycleSlots, f.cycleActive, f.cycleWindow, nil
+}
+
+// CyclePreviewDraft records the draft it was handed (so a test can assert the handler passed
+// the draft lineup/policy through) and otherwise mirrors CyclePreview's echo.
+func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at time.Time,
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (
+	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
+) {
+	f.draftLineup = draftLineup
+	f.draftPolicy = draftPolicy
+	return f.CyclePreview(ctx, id, at)
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
@@ -352,6 +367,85 @@ func TestCyclePreview_UnknownChannelIs404(t *testing.T) {
 	chSvc.cycleErr = store.ErrNotFound
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/nope/cycle", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown channel → %d, want 404", resp.StatusCode)
+	}
+}
+
+// --- programming/preview + vocabulary (P6) -------------------------------------------------
+
+// The whole-definition draft preview passes the DRAFT lineup + policy through to the engine
+// (so the preview reflects the unsaved edit) and renders slots + a never-null pods pool.
+func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	chSvc.cycleSlots = []schedule.Slot{{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "series:tvdb:655"}}
+	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
+
+	body := `{"lineup":[{"key":"series:tvdb:655","name":"TNG"}],"policy":{"ordering":"shuffle"}}`
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Slots []struct{ Kind, Title string } `json:"slots"`
+		Pods  struct {
+			Entries []struct{ Name string } `json:"entries"`
+		} `json:"pods"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if chSvc.draftPolicy == nil || chSvc.draftPolicy.Ordering != "shuffle" {
+		t.Errorf("draft policy not passed to the engine: %+v", chSvc.draftPolicy)
+	}
+	if len(chSvc.draftLineup) != 1 || chSvc.draftLineup[0].Key != "series:tvdb:655" {
+		t.Errorf("draft lineup not passed to the engine: %+v", chSvc.draftLineup)
+	}
+	if len(out.Slots) != 1 || out.Slots[0].Title != "Encounter at Farpoint" {
+		t.Errorf("slots = %+v, want the previewed program", out.Slots)
+	}
+	if out.Pods.Entries == nil {
+		t.Error("pods.entries must be a slice, never null (an empty pool is a normal state)")
+	}
+}
+
+// An invalid draft policy is a 422 (validated exactly like a policy write, §4).
+func TestProgrammingPreview_InvalidPolicyIs422(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	body := `{"policy":{"audience":{"ceiling":"TV-BOGUS"}}}`
+	if resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, body); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("bad ceiling → %d, want 422", resp.StatusCode)
+	}
+}
+
+// The vocabulary endpoint serves the closed WHEN/WHAT/HOW presets to any authenticated user.
+func TestProgrammingVocabulary_ServesTheClosedPresets(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	resp := do(t, srv, http.MethodGet, "/v1/programming/vocabulary", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("vocabulary → %d, want 200", resp.StatusCode)
+	}
+	var v struct {
+		When []struct{ Token string } `json:"when"`
+		What []struct{ Token string } `json:"what"`
+		How  []struct{ Token string } `json:"how"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.When) == 0 || len(v.What) == 0 || len(v.How) == 0 {
+		t.Fatalf("vocabulary empty: when=%d what=%d how=%d", len(v.When), len(v.What), len(v.How))
+	}
+	has := func(tokens []struct{ Token string }, want string) bool {
+		for _, x := range tokens {
+			if x.Token == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(v.When, "weekend") || !has(v.How, "marathon") || !has(v.What, "kids") {
+		t.Error("expected the weekend/marathon/kids tokens in the vocabulary")
 	}
 }
 

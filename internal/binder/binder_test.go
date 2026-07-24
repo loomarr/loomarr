@@ -111,7 +111,7 @@ func TestBind_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	putAvailable(t, st, 3, "Raiders")
 	seedChannel(t, st, "c1", "job1",
 		[]schedule.LineupEntry{entry(1, "RoboCop"), entry(2, "Terminator"), entry(3, "Raiders")},
-		schedule.ChannelPolicy{AutoCurate: &schedule.AutoCurate{}})
+		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	// The refresh re-picks only Raiders and adds a NEW film (Predator 2) — RoboCop + Terminator
 	// are simply omitted (not excluded, still available).
 	putAvailable(t, st, 4, "Predator 2")
@@ -148,7 +148,7 @@ func TestBind_AutoCurate_DropsUnavailable(t *testing.T) {
 	putUnavailable(t, st, 2, "Gone") // left the library
 	seedChannel(t, st, "c1", "job1",
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Gone")},
-		schedule.ChannelPolicy{AutoCurate: &schedule.AutoCurate{}})
+		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
 		[]suggest.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
 
@@ -199,7 +199,7 @@ func TestBind_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 	rules := []schedule.SchedulingRule{{ID: "r1", Label: "Weekend", When: schedule.WhenPredicate{Weekend: true}}}
 	seedChannel(t, st, "c1", "job1",
 		[]schedule.LineupEntry{entry(1, "Film")},
-		schedule.ChannelPolicy{AutoCurate: ac, Rules: rules, Window: schedule.WindowFull})
+		schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: rules}, OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac, Window: schedule.WindowFull}})
 	// The refreshed proposal's policy carries NONE of these operator-owned fields.
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy, []suggest.ProposalItem{inLib(1, "Film")}, nil)
 

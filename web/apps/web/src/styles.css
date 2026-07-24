@@ -142,6 +142,33 @@ body {
   overflow: hidden;
 }
 
+/* scroll-thin — a token-keyed slim scrollbar for inner-scroll regions (e.g. the cycle
+   preview's slot list when a marathon resolves to many rows). Standard properties drive
+   Firefox + modern Chromium; the ::-webkit fallback covers older WebKit. The thumb rides
+   the same static scale as --border, so it tracks any palette/theme change; the track is
+   transparent so the thumb floats over the card rather than sitting in a gutter. No
+   `scrollbar-gutter: stable` — it would reserve the track width even on short lists that
+   never scroll, shifting their content; the accepted cost is a one-time ~8px reflow the
+   moment a list actually grows past the cap (imperceptible for an overlay scrollbar). */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-static-700) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-static-700);
+  border-radius: 9999px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-static-600);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -124,17 +124,6 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 			return "", err
 		}
 	}
-	// Re-approval refreshes what the PROPOSAL owns (lineup + the LLM-extracted policy fields:
-	// scope/audience/ordering/seasonal) and leaves what the OPERATOR owns alone — name, number,
-	// group, logo, strategy are editable fields (§7 PATCH), and silently reverting an edit on
-	// re-approve would be data loss. `ch.Policy` MIXES the two: some fields are proposal-owned,
-	// some are operator-owned but ride the same policy_json. So capture the operator-owned ones
-	// BEFORE `ch.Policy = policy` overwrites the whole struct, then restore them.
-	existingFiller := existing.Policy.Filler         // operator-owned (§10 filler editor)
-	existingRules := existing.Policy.Rules           // operator-owned (§8.1 rules editor)
-	existingWindow := existing.Policy.Window         // operator-owned (§8.1 rules editor)
-	existingAutoCurate := existing.Policy.AutoCurate // operator-owned (§8.2 auto-curate opt-in)
-
 	// Lineup binding differs by WHO approved (§8.2). A human-in-the-loop approval (manual
 	// approve, or a manual refine the operator drove) REPLACES the lineup — a person decided,
 	// including to remove titles. Scheduled AUTO-CURATE runs unattended, so it must be
@@ -143,35 +132,25 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	// — never a still-available title the stochastic LLM just didn't re-pick this run. Without
 	// this, weekly re-curation would churn a channel, silently dropping good titles nobody chose
 	// to remove (the §8.2 "never drop a currently-airing available title just for churn" rule).
+	// Both branches go through the one lineup primitive (schedule.ApplyLineup, §9): the human
+	// path is a plain Replace, auto-curate is Additive with the store-backed Drop predicate.
 	if isAutoCurate(p) && existing.ID != "" {
-		ch.Lineup = b.mergeLineupAdditive(ctx, existing.Lineup, lineup, mustExcludeKeys(p))
+		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive,
+			schedule.ApplyOpts{Drop: b.dropPredicate(ctx, mustExcludeKeys(p))})
 	} else {
-		ch.Lineup = lineup
+		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupReplace, schedule.ApplyOpts{})
 	}
-	ch.Policy = policy
-	// Restore the operator-owned policy fields the proposal doesn't own. Without this, a refine
-	// or an auto-curate rebind would wipe a hand-tuned filler, hand-edited curation rules, or —
-	// most insidiously — the AutoCurate opt-in ITSELF (a channel would auto-curate once, then
-	// silently turn itself off). A refine/re-curation carries none of these in its proposal, so
-	// preserving them is the correct default; the operator changes them only on the channel page.
-	if existingRules != nil {
-		ch.Policy.Rules = existingRules
-	}
-	if existingWindow != 0 {
-		ch.Policy.Window = existingWindow
-	}
-	if existingAutoCurate != nil {
-		ch.Policy.AutoCurate = existingAutoCurate
-	}
-	// Filler selection (§10) is operator-owned but rides on the proposal-owned policy, so
-	// carry the existing one forward across a re-approval (never clobber a tuned filler).
-	// On a FIRST approval there's none yet → seed the filler era from the channel's program
-	// scope era, so a "90s action" channel gets 90s ads out of the box (the default-from-
-	// theme). audience/category/kinds stay "any" — the user narrows those on the page.
-	switch {
-	case existingFiller != nil:
-		ch.Policy.Filler = existingFiller
-	case ch.Policy.Scope.Era != nil:
+	// Policy ownership is enforced in ONE place (schedule.MergeFromProposal, §2.1/§8.2): the
+	// fresh proposal refreshes what it owns (scope/audience/separation/ordering/seasonal) —
+	// EXCEPT any field the operator pinned — while operator-owned fields (filler/window/
+	// autoCurate), operator-pinned fields, and the reconcile-owned Applied are preserved, and
+	// rules merge by provenance. This replaces the old capture-then-restore block; a refine can
+	// no longer silently revert an operator's era/ceiling edit or turn off its own AutoCurate.
+	ch.Policy = existing.Policy.MergeFromProposal(policy)
+	// On a FIRST approval the channel has no filler yet → seed it from the program scope era so
+	// a "90s action" channel gets 90s ads out of the box (audience/category/kinds stay "any").
+	// A re-approval keeps the operator's tuned filler (MergeFromProposal already preserved it).
+	if ch.Policy.Filler == nil && ch.Policy.Scope.Era != nil {
 		ch.Policy.Filler = &schedule.FillerSelection{Era: ch.Policy.Scope.Era}
 	}
 	ch.Status = schedule.StatusBuilding

@@ -15,28 +15,54 @@ import (
 // built-in default" — so it round-trips small and an LLM only emits what it means.
 // Enforcement never reads this directly; it goes through Resolved(), which fills
 // every default exactly once. Stored as policy_json on the channel row.
+// The struct groups its fields by OWNER via two anonymous embeds — encoding/json
+// flattens them, so policy_json stays a flat object (scope/audience/…, no nesting)
+// and every p.Scope / p.Filler access keeps working via field promotion. Ownership
+// is enforced in ONE place, the merge methods (MergeFromProposal / MergeFromOperator
+// / WithApplied), so no writer hand-restores fields (§8.2).
 type ChannelPolicy struct {
+	// ProposalPolicy — EXTRACTED by the suggester (§8) and refreshed by a refine/
+	// re-curation, EXCEPT any field the operator has pinned (see OperatorSet).
+	ProposalPolicy
+	// OperatorPolicy — never LLM-emitted; edited only on the channel page and always
+	// preserved across a re-approval.
+	OperatorPolicy
+	// Applied records the relaxation-ladder steps taken at the last reconcile (§7).
+	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
+	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
+	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
+	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
+	// ("scope.era", "audience.ceiling", "ordering", …). MergeFromProposal skips any field
+	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
+	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
+	OperatorSet []string `json:"operatorSet,omitempty"`
+}
+
+// ProposalPolicy is the suggester-extracted half of ChannelPolicy (embedded, flattened).
+type ProposalPolicy struct {
 	Scope      ScopePolicy      `json:"scope,omitempty"`      // WHAT is allowed (§2)
 	Audience   AudiencePolicy   `json:"audience,omitempty"`   // WHO it's for — safety-critical (§4)
 	Separation SeparationPolicy `json:"separation,omitempty"` // HOW OFTEN things recur (§3)
 	Ordering   OrderingMode     `json:"ordering,omitempty"`   // "" = inherit Channel.Strategy (§5)
 	Seasonal   SeasonalPolicy   `json:"seasonal,omitempty"`   // WHEN in the year (§6)
-	// Applied records the relaxation-ladder steps taken at the last reconcile (§7).
-	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
-	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
-	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// Rules is the ordered set of curation rules (§6.5): wall-clock-conditional
+	// programming (weekend marathons, holiday blocks, dayparts). Empty = today's
+	// single-deck behavior. Each rule carries a Source (llm|operator): the suggester
+	// seeds llm rules, the editor authors operator rules, and MergeFromProposal replaces
+	// only the llm rules — so refine-authored and hand-authored rules COMPOSE (§8.2).
+	// Every rule VALUE is grounded/clamped, evaluation is deterministic.
+	Rules []SchedulingRule `json:"rules,omitempty"`
+}
+
+// OperatorPolicy is the channel-page-edited half of ChannelPolicy (embedded, flattened).
+type OperatorPolicy struct {
 	// Filler is the channel's per-channel commercial-break selection (§10): which
 	// filler the channel draws from (theme) plus specific clips to always/never use.
 	// A pointer so an omitted selection serializes nothing and means "any" (the whole
 	// catalog — the additive default). Edited on the channel page; seeded from Scope.Era
 	// at channel creation.
 	Filler *FillerSelection `json:"filler,omitempty"`
-	// Rules is the ordered set of curation rules (§6.5): wall-clock-conditional
-	// programming (weekend marathons, holiday blocks, dayparts). Empty = today's
-	// single-deck behavior. The active rule at reconcile time narrows the pool + drives
-	// ordering; §5/§6 compose into this. LLM-proposed (closed preset vocabulary) +
-	// user-refined; every rule VALUE is grounded/clamped, evaluation is deterministic.
-	Rules []SchedulingRule `json:"rules,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole

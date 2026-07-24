@@ -1,4 +1,5 @@
 import type { ChannelPolicy } from "@loomarr/api";
+import { ruleVocabularyFixture } from "@loomarr/fixtures";
 import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -43,13 +44,13 @@ const POPULATED: ChannelPolicy = {
 
 describe("ChannelRulesEditor", () => {
   it("shows the empty-state explainer and Add affordance when there are no rules", () => {
-    render(<ChannelRulesEditor policy={{}} onChange={vi.fn()} />);
+    render(<ChannelRulesEditor vocabulary={ruleVocabularyFixture} policy={{}} onChange={vi.fn()} />);
     expect(screen.getByText(/no rules yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add rule/i })).toBeInTheDocument();
   });
 
   it("renders each rule's computed label", () => {
-    render(<ChannelRulesEditor policy={POPULATED} onChange={vi.fn()} />);
+    render(<ChannelRulesEditor vocabulary={ruleVocabularyFixture} policy={POPULATED} onChange={vi.fn()} />);
     expect(screen.getByText("Christmas · Marathon")).toBeInTheDocument();
     expect(screen.getByText("Weekend · Kids-safe genres")).toBeInTheDocument();
     expect(screen.getByText("Weekday · Syndication")).toBeInTheDocument();
@@ -57,7 +58,7 @@ describe("ChannelRulesEditor", () => {
 
   it("adding a rule prepends it and calls onChange with the rebuilt policy", async () => {
     const onChange = vi.fn();
-    render(<ChannelRulesEditor policy={POPULATED} onChange={onChange} />);
+    render(<ChannelRulesEditor vocabulary={ruleVocabularyFixture} policy={POPULATED} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: /add rule/i }));
 
@@ -69,7 +70,7 @@ describe("ChannelRulesEditor", () => {
   });
 
   it("priority is derived from list order: the top rule always has the highest priority", () => {
-    render(<ChannelRulesEditor policy={POPULATED} onChange={vi.fn()} />);
+    render(<ChannelRulesEditor vocabulary={ruleVocabularyFixture} policy={POPULATED} onChange={vi.fn()} />);
     // Just a static render check here — the reorder-changes-priority behavior itself is
     // exercised end to end below via the onChange assertion on remove/add, since jsdom
     // has no real pointer/drag geometry to drive dnd-kit's sensors in a unit test.
@@ -78,7 +79,7 @@ describe("ChannelRulesEditor", () => {
 
   it("removing a rule drops it and commits the remaining rules in order with re-derived priority", async () => {
     const onChange = vi.fn();
-    render(<ChannelRulesEditor policy={POPULATED} onChange={onChange} />);
+    render(<ChannelRulesEditor vocabulary={ruleVocabularyFixture} policy={POPULATED} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: /remove christmas · marathon/i }));
 
@@ -95,6 +96,7 @@ describe("ChannelRulesEditor", () => {
     const onChange = vi.fn();
     render(
       <ChannelRulesEditor
+        vocabulary={ruleVocabularyFixture}
         policy={{
           rules: [
             {
@@ -122,6 +124,7 @@ describe("ChannelRulesEditor", () => {
   it("lists the channel's own lineup keys as series: WHAT options", async () => {
     render(
       <ChannelRulesEditor
+        vocabulary={ruleVocabularyFixture}
         policy={POPULATED}
         onChange={vi.fn()}
         lineupKeys={[{ key: "series:tvdb:81189", title: "Breaking Bad" }]}
@@ -136,6 +139,7 @@ describe("ChannelRulesEditor", () => {
     const onChange = vi.fn();
     render(
       <ChannelRulesEditor
+        vocabulary={ruleVocabularyFixture}
         policy={{ rules: [{ id: "r1", label: "Weekend", priority: 10, when: { weekend: true } }] }}
         onChange={onChange}
         lineupKeys={[{ key: "series:tvdb:81189", title: "Breaking Bad" }]}
@@ -158,6 +162,7 @@ describe("ChannelRulesEditor", () => {
     const onChange = vi.fn();
     render(
       <ChannelRulesEditor
+        vocabulary={ruleVocabularyFixture}
         policy={{ rules: [{ id: "r1", label: "Weekend", priority: 10, when: { weekend: true } }] }}
         onChange={onChange}
       />,

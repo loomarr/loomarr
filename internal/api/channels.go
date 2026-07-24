@@ -32,8 +32,10 @@ type ChannelDTO struct {
 	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
 	IntentRef    string `json:"intentRef,omitempty"`
-	ProgramCount int    `json:"programCount" doc:"Real playable programs in the desired lineup"`
-	SlotCount    int    `json:"slotCount" doc:"Total slots incl. filler/flex placeholders"`
+	ProgramCount int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
+	PendingCount int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
+	BreakCount   int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
+	SlotCount    int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
 	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
 	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
@@ -104,7 +106,8 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
-		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
+		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
+		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),
 		Policy: ch.Policy, Lineup: lineup,
 	}
 }
@@ -134,11 +137,20 @@ func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) str
 // junk entry. A key not `available` in the library is fine: it renders as a pending slot
 // until the title lands (§9), so this never plays or acquires unapproved content.
 func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
-	byKey := make(map[provision.Key]schedule.LineupEntry, len(current))
-	for _, e := range current {
-		byKey[e.Key] = e
+	incoming, err := lineupEntriesFromDTOs(edit)
+	if err != nil {
+		return nil, err
 	}
-	out := make([]schedule.LineupEntry, 0, len(edit))
+	return schedule.ApplyLineup(current, incoming, schedule.LineupReplace,
+		schedule.ApplyOpts{PreserveByKey: true}), nil
+}
+
+// lineupEntriesFromDTOs validates + converts the lossy edit DTOs into partial LineupEntries
+// (display fields + an optional season window; rich scheduling metadata is carried forward
+// from the current entry by ApplyLineup's PreserveByKey, §7). Shared by the PATCH merge and
+// the programming/preview draft so a preview lowers the edit exactly as the save would.
+func lineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {
 		key := provision.Key(strings.TrimSpace(dto.Key))
@@ -149,28 +161,12 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 			return nil, fmt.Errorf("entry %d: duplicate key %q in lineup", i, dto.Key)
 		}
 		seen[key] = struct{}{}
-
-		entry, existed := byKey[key] // preserves SeasonMin/Max, OfficialRating, RuntimeSec, DurationMs
-		if !existed {
-			entry = schedule.LineupEntry{Key: key}
-		}
-		// The DTO owns the display-level fields; everything else rides through from the
-		// existing entry (or heals at reconcile for a new one).
-		entry.Title = dto.Name
-		entry.Year = dto.Year
-		entry.Genres = dto.Genres
-		// Season window: SET when the edit provides one, PRESERVE the existing when the
-		// edit omits it (0/0). This lets the UI edit "seasons 1–10" without an old
-		// client that doesn't send the fields silently WIPING a scope on a reorder —
-		// the lossy-read-DTO hazard the §7 PATCH contract calls out. To clear a window,
-		// a client sets it explicitly to the full range, not by omission.
-		if dto.SeasonMin != 0 || dto.SeasonMax != 0 {
-			entry.SeasonMin = dto.SeasonMin
-			entry.SeasonMax = dto.SeasonMax
-		}
-		out = append(out, entry)
+		incoming = append(incoming, schedule.LineupEntry{
+			Key: key, Title: dto.Name, Year: dto.Year, Genres: dto.Genres,
+			SeasonMin: dto.SeasonMin, SeasonMax: dto.SeasonMax,
+		})
 	}
-	return out, nil
+	return incoming, nil
 }
 
 // NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes
@@ -555,12 +551,13 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 		}
 		ch.Number = *in.Body.Number
 	}
-	// Policy merge: take the client's policy but PRESERVE the reconcile-owned `applied`
-	// (a client can't set relaxations; they're recomputed each reconcile). Validate
+	// Policy merge goes through the single ownership site (schedule.MergeFromOperator, §2.1):
+	// the operator's values win, the reconcile-owned `applied` is force-preserved (never
+	// client-set), and every proposal-owned field the operator CHANGED is recorded in
+	// OperatorSet so a later refine can't silently revert it (§8.2 stickiness). Validate
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
-		next := *in.Body.Policy
-		next.Applied = ch.Policy.Applied // reconcile owns this; never client-set
+		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		if verr := next.Validate(); verr != nil {
 			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
@@ -766,19 +763,24 @@ type PodEntryDTO struct {
 type previewPodsInput struct {
 	ID string `path:"id"`
 }
+
+// PodPoolDTO is a channel's assembled filler pool (§10) — the break preview. Named (not an
+// inline body) so the pods endpoints AND the programming/preview endpoint share one shape.
+type PodPoolDTO struct {
+	Entries []PodEntryDTO `json:"entries"`
+	TotalMs int64         `json:"totalMs"`
+	// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
+	// is the answer to "why are my commercials wrong": exact means era+audience
+	// matched, and bumper_card means nothing matched and the channel is running on
+	// the embedded card alone.
+	// Enumerated so orval generates a union the FE can switch on exhaustively. Left
+	// as a bare string, the frontend would hand-mirror these values — and the one
+	// that already did drifted out of sync with the ladder's real levels.
+	MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
+}
+
 type previewPodsOutput struct {
-	Body struct {
-		Entries []PodEntryDTO `json:"entries"`
-		TotalMs int64         `json:"totalMs"`
-		// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
-		// is the answer to "why are my commercials wrong": exact means era+audience
-		// matched, and bumper_card means nothing matched and the channel is running on
-		// the embedded card alone.
-		// Enumerated so orval generates a union the FE can switch on exhaustively. Left
-		// as a bare string, the frontend would hand-mirror these values — and the one
-		// that already did drifted out of sync with the ladder's real levels.
-		MatchLevel string `json:"matchLevel" enum:"exact,widened,audience,bumper_card" doc:"How far down the fallback ladder assembly went (§10)"`
-	}
+	Body PodPoolDTO
 }
 
 // previewChannelPods shows the filler pool a channel would receive, without touching
@@ -904,12 +906,17 @@ func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
 // podToPreviewOutput renders an assembled pod into the preview response — shared by the
 // saved (GET) and draft (POST) preview handlers so their shapes cannot drift.
 func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
-	out := &previewPodsOutput{}
+	return &previewPodsOutput{Body: podToPoolDTO(pod)}
+}
+
+// podToPoolDTO maps an assembled pod to its DTO. Shared by the pods endpoints and the
+// programming/preview endpoint (which embeds the pool alongside the cycle slots).
+func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 	// Always a slice, never null: an empty catalog is a normal state the UI renders as
 	// "no clips yet", and a null here would make the FE guard a case that isn't an error.
-	out.Body.Entries = make([]PodEntryDTO, 0, len(pod.Entries))
+	entries := make([]PodEntryDTO, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
-		out.Body.Entries = append(out.Body.Entries, PodEntryDTO{
+		entries = append(entries, PodEntryDTO{
 			TunarrProgramID: e.TunarrProgramID,
 			Name:            e.Name,
 			Kind:            string(e.Kind),
@@ -917,9 +924,7 @@ func podToPreviewOutput(pod filler.Pod) *previewPodsOutput {
 			IsFallbackCard:  e.IsFallbackCard,
 		})
 	}
-	out.Body.TotalMs = pod.TotalMs
-	out.Body.MatchLevel = string(pod.MatchLevel)
-	return out
+	return PodPoolDTO{Entries: entries, TotalMs: pod.TotalMs, MatchLevel: string(pod.MatchLevel)}
 }
 
 type previewDraftPodsInput struct {
@@ -951,7 +956,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	}
 	// Validate the draft with the same rules a policy write uses (bad audience/kind/
 	// category/era → 422) — the sandbox must reject a nonsense selection, not assemble it.
-	if err := (schedule.ChannelPolicy{Filler: &in.Body.Filler}).Validate(); err != nil {
+	if err := (schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Filler: &in.Body.Filler}}).Validate(); err != nil {
 		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid filler selection",
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}

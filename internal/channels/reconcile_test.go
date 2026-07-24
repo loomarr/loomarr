@@ -177,7 +177,7 @@ func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 		{Key: "movie:tmdb:1", Title: "Kids Pick", DurationMs: 3600000}, // OfficialRating unset
 	}}
 	ch.ID, ch.Number, ch.Strategy, ch.Status = "cheal", 7, schedule.Sequential, schedule.StatusBuilding
-	ch.Policy = schedule.ChannelPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}
+	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}}
 	if err := st.UpsertChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}

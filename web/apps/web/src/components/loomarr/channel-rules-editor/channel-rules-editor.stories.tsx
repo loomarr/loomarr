@@ -1,4 +1,5 @@
 import type { ChannelPolicy } from "@loomarr/api";
+import { ruleVocabularyFixture } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -19,7 +20,7 @@ const withTooltip: Decorator = (Story) => (
 const meta = {
   title: "Loomarr/ChannelRulesEditor",
   component: ChannelRulesEditor,
-  args: { onChange: noop },
+  args: { onChange: noop, vocabulary: ruleVocabularyFixture },
   decorators: [withTooltip, widthFrame(680)],
 } satisfies Meta<typeof ChannelRulesEditor>;
 

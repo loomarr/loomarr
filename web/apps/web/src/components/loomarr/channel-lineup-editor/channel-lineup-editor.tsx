@@ -60,10 +60,14 @@ const SortableLineupRow = ({
   entry,
   disabled,
   onRemove,
+  onSeasonChange,
 }: {
   entry: LineupEntryDTO;
   disabled: boolean;
   onRemove: () => void;
+  // Commit a season-window edit for THIS entry (series only). A blank/0 field clears that
+  // bound — "no constraint", never season 0 (§9). Omitted for a movie row.
+  onSeasonChange?: (patch: { seasonMin?: number; seasonMax?: number }) => void;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.key,
@@ -73,6 +77,25 @@ const SortableLineupRow = ({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  // Only a SERIES carries a season window (§9 series expansion) — a movie is one title.
+  const isSeries = entry.key.startsWith("series:");
+  const seasonInput = (bound: "seasonMin" | "seasonMax", value: number | undefined, placeholder: string) => (
+    <input
+      type="number"
+      min={1}
+      disabled={disabled}
+      defaultValue={value || ""}
+      placeholder={placeholder}
+      aria-label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
+      className="w-16 rounded border border-border bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      onBlur={(e) => {
+        const next = e.target.value === "" ? undefined : Number(e.target.value);
+        if (next === (value || undefined)) return;
+        onSeasonChange?.({ [bound]: next });
+      }}
+    />
+  );
 
   return (
     <li
@@ -100,6 +123,16 @@ const SortableLineupRow = ({
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} />
         </div>
+        {isSeries && onSeasonChange && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-muted-foreground text-xs">Seasons</span>
+            {seasonInput("seasonMin", entry.seasonMin, "1")}
+            <span className="text-muted-foreground text-xs" aria-hidden>
+              –
+            </span>
+            {seasonInput("seasonMax", entry.seasonMax, "latest")}
+          </div>
+        )}
       </div>
 
       <Tooltip>
@@ -138,7 +171,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
 
-  const { entries, isPending, add, remove, reorder } = useChannelLineup(channelId, lineup);
+  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -192,6 +225,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                   entry={entry}
                   disabled={isPending}
                   onRemove={() => remove(entry.key)}
+                  onSeasonChange={(patch) => updateEntry(entry.key, patch)}
                 />
               ))}
             </ul>

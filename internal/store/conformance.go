@@ -257,11 +257,13 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	// a separation window (Duration → "168h" JSON), an era range, and an applied
 	// relaxation (the enforcement-written field). Every column path must preserve it.
 	ch.Policy = schedule.ChannelPolicy{
-		Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y7"},
-		Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(168 * time.Hour)},
-		Scope:      schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
-		Ordering:   schedule.OrderSyndication,
-		Applied:    []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
+		ProposalPolicy: schedule.ProposalPolicy{
+			Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y7"},
+			Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(168 * time.Hour)},
+			Scope:      schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Ordering:   schedule.OrderSyndication,
+		},
+		Applied: []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
 	}
 	ch.ReconcileDeadline = deadline
 	return ch

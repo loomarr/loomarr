@@ -1,4 +1,4 @@
-import type { PodEntryDTO, PreviewPodsOutputBodyMatchLevel } from "@loomarr/api";
+import type { PodEntryDTO, PodPoolDTOMatchLevel } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib";
@@ -11,10 +11,7 @@ import type { PodTimelineProps } from "./pod-timeline.type";
 // shows nothing; every other level says how far down the §10 fallback ladder assembly had
 // to go, ending at `bumper_card` — the dead-air guard, where no ad matched and the
 // embedded card stands in rather than silence.
-const MATCH: Record<
-  PreviewPodsOutputBodyMatchLevel,
-  { label: string; variant: "caution" | "neutral" } | null
-> = {
+const MATCH: Record<PodPoolDTOMatchLevel, { label: string; variant: "caution" | "neutral" } | null> = {
   exact: null,
   widened: { label: "Era widened", variant: "caution" },
   audience: { label: "Any era", variant: "caution" },

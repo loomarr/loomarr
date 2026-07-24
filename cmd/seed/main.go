@@ -193,13 +193,15 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// explicitly (not left to the 720h/168h built-in defaults) to keep the count small
 	// and readable rather than the ladder emptying itself against an impossible default.
 	policy := schedule.ChannelPolicy{
-		Scope:    schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
-		Ordering: schedule.OrderSequential,
-		Separation: schedule.SeparationPolicy{
-			MovieNoRepeat:   schedule.Duration(15 * time.Hour),
-			EpisodeNoRepeat: schedule.Duration(30 * time.Hour),
-			SeriesMinGap:    schedule.Duration(24 * time.Hour),
-			BlockMax:        8,
+		ProposalPolicy: schedule.ProposalPolicy{
+			Scope:    schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Ordering: schedule.OrderSequential,
+			Separation: schedule.SeparationPolicy{
+				MovieNoRepeat:   schedule.Duration(15 * time.Hour),
+				EpisodeNoRepeat: schedule.Duration(30 * time.Hour),
+				SeriesMinGap:    schedule.Duration(24 * time.Hour),
+				BlockMax:        8,
+			},
 		},
 	}
 

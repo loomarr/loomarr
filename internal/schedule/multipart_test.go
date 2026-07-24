@@ -70,7 +70,7 @@ func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
 		}
 		slots = append(slots, s)
 	}
-	rp := ChannelPolicy{Ordering: OrderShuffle}.Resolved(Shuffle, false)
+	rp := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderShuffle}}.Resolved(Shuffle, false)
 	for seed := int64(0); seed < 50; seed++ {
 		collapsed, expand := collapseGroups(slots)
 		ordered, _ := slotWithRelaxation(collapsed, rp, seed)
@@ -108,7 +108,7 @@ func TestFranchiseNeverSplitByWindowSeam(t *testing.T) {
 		}
 		slots = append(slots, s)
 	}
-	rp := ChannelPolicy{Ordering: OrderSyndication}.Resolved(Sequential, false)
+	rp := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}.Resolved(Sequential, false)
 	collapsed, expand := collapseGroups(slots)
 	ordered, _ := slotWithRelaxation(collapsed, rp, 7)
 	indy := map[string]bool{"movie:tmdb:85": true, "movie:tmdb:87": true, "movie:tmdb:89": true}
@@ -271,7 +271,7 @@ func TestComputeDesired_MultiPartStaysTogether(t *testing.T) {
 	}
 
 	// Run collapse → shuffle deck → expand over many seeds; parts must always be adjacent + ordered.
-	rp2 := ChannelPolicy{Ordering: OrderShuffle}.Resolved(Shuffle, false)
+	rp2 := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderShuffle}}.Resolved(Shuffle, false)
 	for seed := int64(0); seed < 50; seed++ {
 		collapsed, expand := collapseGroups(slots)
 		ordered, _ := slotWithRelaxation(collapsed, rp2, seed)
