@@ -66,6 +66,7 @@ const ChannelProgramming = ({
         channelId={channelId}
         channelName={channelName}
         current={lineup.map((entry) => ({ name: entry.name, year: entry.year, key: entry.key }))}
+        currentPolicy={policy}
         onApplied={onRefined}
       />
 

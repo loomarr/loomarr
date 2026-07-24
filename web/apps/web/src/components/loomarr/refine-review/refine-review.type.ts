@@ -1,4 +1,4 @@
-import type { ProposalItem } from "@loomarr/api";
+import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
 
 // A row from the channel's current lineup (ChannelDTO.lineup / LineupEntryDTO) — only
 // the fields the diff needs. `key` is the provisioning key ("movie:tmdb:603",
@@ -17,6 +17,13 @@ interface RefineReviewProps {
   // ChannelDTO (§7 refine) — optional so the component stays testable/storyable without
   // it, but a real page always has it.
   current?: CurrentLineupItem[];
+  // The channel's current policy + the refined proposal's policy, for the programming-
+  // delta chips (§8.2): a refine can change scope/audience/ordering/seasonal, and those
+  // changes used to apply invisibly. Showing them — and marking a field the operator
+  // pinned as "kept" (operator-dirty stickiness) — is the visible half of that fix. Both
+  // optional so the component stays storyable without them.
+  currentPolicy?: ChannelPolicy;
+  proposedPolicy?: ChannelPolicy;
   onApply: () => void;
   onDiscard: () => void;
   busy?: boolean;

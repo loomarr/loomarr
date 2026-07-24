@@ -82,6 +82,7 @@ const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): Channel
     },
     remove: (key) => commit(entries.filter((e) => e.key !== key)),
     reorder: (fromIndex, toIndex) => commit(arrayMove(entries, fromIndex, toIndex)),
+    updateEntry: (key, patch) => commit(entries.map((e) => (e.key === key ? { ...e, ...patch } : e))),
   };
 };
 

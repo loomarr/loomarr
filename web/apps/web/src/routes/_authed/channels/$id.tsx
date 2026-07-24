@@ -264,16 +264,14 @@ const ChannelDetailScreen = () => {
               old Lineup + Programming-rules + Refine tabs into one surface; Advanced renders its
               fields directly under a section shell; Filler keeps its internal sandbox. */}
           {isAdmin && activeId === "programming" && (
-            <section className="rounded-lg border border-border p-5">
-              <ChannelProgramming
-                channelId={id}
-                channelName={ch.name}
-                lineup={ch.lineup ?? []}
-                policy={ch.policy}
-                onPolicyChange={savePolicy}
-                onRefined={invalidate}
-              />
-            </section>
+            <ChannelProgramming
+              channelId={id}
+              channelName={ch.name}
+              lineup={ch.lineup ?? []}
+              policy={ch.policy}
+              onPolicyChange={savePolicy}
+              onRefined={invalidate}
+            />
           )}
 
           {isAdmin && activeId === "filler" && <ChannelFiller channelId={id} policy={ch.policy} open />}
