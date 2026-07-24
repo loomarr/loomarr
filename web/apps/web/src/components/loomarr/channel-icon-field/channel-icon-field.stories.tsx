@@ -13,10 +13,22 @@ const jsonResponse = (body: unknown, status = 200) =>
 // story needs a QueryClient + a stubbed `fetch` to answer the icon-suggestions request
 // deterministically — no backend, no new dependency (the same approach refine-panel's
 // story uses).
+//
+// All image URLs here are inline data: URIs, NOT remote tmdb.org links — for BOTH the
+// suggestion grid (POSTERS) and the displayed `logo`. Reason: <img src> bypasses the
+// stubbed `fetch` and loads over the browser's own network, so a remote URL made these
+// stories flaky (the snapshot could fire before the image decoded/painted — worse for the
+// grid's `loading="lazy"` posters). A data URI paints synchronously with no network;
+// SuggestionsLoaded's play() additionally waits for decode. Three distinct solid-color
+// 1×1 PNGs keep the posters visually distinguishable in the grid.
+// biome-ignore format: data-URI payloads read better unwrapped
+const TNG_POSTER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 const POSTERS = [
-  { title: "The Next Generation", url: "https://image.tmdb.org/t/p/w342/tng.jpg" },
-  { title: "Deep Space Nine", url: "https://image.tmdb.org/t/p/w342/ds9.jpg" },
-  { title: "Voyager", url: "https://image.tmdb.org/t/p/w342/voy.jpg" },
+  { title: "The Next Generation", url: TNG_POSTER },
+  // biome-ignore format: data-URI payloads read better unwrapped
+  { title: "Deep Space Nine", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYPj/HwAEAQH/7uJ9WQAAAABJRU5ErkJggg==" },
+  // biome-ignore format: data-URI payloads read better unwrapped
+  { title: "Voyager", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQzwAEjP8ZAAoDAv8T7QhZAAAAAElFTkSuQmCC" },
 ];
 
 const withSuggestions =
@@ -65,7 +77,7 @@ const NoIcon: Story = {
 const WithIcon: Story = {
   args: {
     isAdmin: true,
-    logo: "https://image.tmdb.org/t/p/w342/tng.jpg",
+    logo: TNG_POSTER,
   },
   decorators: [withSuggestions()],
 };
@@ -74,7 +86,7 @@ const WithIcon: Story = {
 const ViewerOnly: Story = {
   args: {
     isAdmin: false,
-    logo: "https://image.tmdb.org/t/p/w342/tng.jpg",
+    logo: TNG_POSTER,
   },
   decorators: [withSuggestions()],
 };
@@ -83,9 +95,20 @@ const ViewerOnly: Story = {
 const SuggestionsLoaded: Story = {
   args: { isAdmin: true },
   decorators: [withSuggestions()],
-  play: async ({ canvas, userEvent }) => {
+  play: async ({ canvas, userEvent, expect, waitFor }) => {
     await userEvent.click(canvas.getByRole("button", { name: /change icon/i }));
     await canvas.findByRole("button", { name: /use the next generation's poster/i });
+    // The poster button existing ≠ its <img> having painted (the imgs are `loading="lazy"`).
+    // Wait until every poster image has actually decoded before the snapshot fires, so the
+    // grid is never captured half-blank. With the data: URIs above this resolves on the
+    // first tick, but the assertion keeps the story deterministic regardless of the source.
+    await waitFor(() => {
+      const imgs = canvas.getAllByRole("img");
+      for (const img of imgs) {
+        expect((img as HTMLImageElement).complete).toBe(true);
+        expect((img as HTMLImageElement).naturalWidth).toBeGreaterThan(0);
+      }
+    });
   },
 };
 
