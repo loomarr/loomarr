@@ -26,6 +26,12 @@ func (s *Server) registerSetup(api huma.API) {
 		Summary: "Wire the library as Tunarr's media source", Description: "Admin only. Ensures Tunarr's Emby/Jellyfin source (Loomarr's admin token) + enables/scans the movie/show libraries. One-time, idempotent (§6).",
 		Tags: []string{"setup"},
 	}, s.tunarrConnectHandler)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "livetv-reconnect", Method: http.MethodPost, Path: "/v1/setup/livetv-reconnect",
+		Summary: "Force-re-wire the Tunarr tuner", Description: "Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).",
+		Tags: []string{"setup"},
+	}, s.livetvReconnectHandler)
 }
 
 // SetupCheck is one integration's checklist result (§13).
@@ -149,6 +155,35 @@ func (s *Server) tunarrConnectHandler(ctx context.Context, _ *struct{}) (*tunarr
 	}
 	out := &tunarrConnectOutput{}
 	out.Body.SourceID, out.Body.LibrariesEnabled = sourceID, enabled
+	return out, nil
+}
+
+type livetvReconnectOutput struct {
+	Body struct {
+		TunersReset int `json:"tunersReset" doc:"Loomarr tuners removed + re-added in the media server"`
+	}
+}
+
+// livetvReconnectHandler force-re-wires the Tunarr tuner (§6): remove + re-add +
+// re-scan, to drop a stale channel→stream binding the media server holds after a
+// channel was deleted (its guide is fresh, but playback resolves to a dead/other
+// stream). Distinct from the idempotent auto-wire, which leaves a current-URL tuner
+// untouched and so can't fix this.
+func (s *Server) livetvReconnectHandler(ctx context.Context, _ *struct{}) (*livetvReconnectOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.livetv == nil || s.unconfigured("tunarr.url") {
+		return nil, errNotImplemented("Live TV isn't set up",
+			"Connect Tunarr in Settings before re-wiring the tuner.", "troubleshooting#livetv")
+	}
+	reset, err := s.livetv.Reconnect(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't re-wire the tuner",
+			"Loomarr couldn't re-register its Tunarr tuner in your media server. Check that both are reachable and try again.", err)
+	}
+	out := &livetvReconnectOutput{}
+	out.Body.TunersReset = reset
 	return out, nil
 }
 

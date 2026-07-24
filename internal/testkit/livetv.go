@@ -111,6 +111,19 @@ func (l *LiveTV) StaleLoomarrTuners(_ context.Context, desiredM3U string) ([]str
 	return ids, nil
 }
 
+// LoomarrTuners returns ids of ALL Loomarr-owned tuners (for a forced re-wire).
+func (l *LiveTV) LoomarrTuners(_ context.Context) ([]string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var ids []string
+	for id, t := range l.tuners {
+		if t.friendlyName == loomarrFriendlyName {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
 // StaleLoomarrListings returns ids of Tunarr-guide listing providers whose url is
 // not the desired XMLTV (the fake treats any /api/xmltv.xml path as Tunarr-shaped).
 func (l *LiveTV) StaleLoomarrListings(_ context.Context, desiredXMLTV string) ([]string, error) {

@@ -22,6 +22,10 @@ func (a liveTVAdapter) Connect(ctx context.Context) (bool, bool, error) {
 	res, err := a.c.Connect(ctx)
 	return res.TunerAdded, res.ListingAdded, err
 }
+func (a liveTVAdapter) Reconnect(ctx context.Context) (int, error) {
+	res, err := a.c.Reconnect(ctx)
+	return res.TunerRemoved, err
+}
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) { return a.c.Wired(ctx) }
 
 // jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
