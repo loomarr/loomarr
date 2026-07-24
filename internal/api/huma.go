@@ -11,6 +11,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
@@ -280,6 +281,13 @@ type ChannelService interface {
 	// Purge deletes the Tunarr channel (if pushed) and hard-deletes the store row —
 	// the DELETE /v1/channels/{id}?purge=true path (§7). Idempotent on the Tunarr side.
 	Purge(ctx context.Context, channelID string) error
+	// CyclePreview computes "what would air at `at`" for one channel WITHOUT touching
+	// Tunarr or the store beyond the read — the §8.1 time-travel preview (GET
+	// /v1/channels/{id}/cycle?at=). Returns the resolved cycle's slots, which curation
+	// rule is active at that moment, and the resolved rolling-window horizon. A zero
+	// `at` means "now". Read-only; safe for any authenticated caller.
+	CyclePreview(ctx context.Context, channelID string, at time.Time) (
+		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error)
 }
 
 // LiveTVService backs the Live TV setup routes (§6/§7): idempotent connect and

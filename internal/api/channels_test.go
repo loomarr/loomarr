@@ -17,11 +17,19 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// fakeChannelSvc records reconcile + purge calls.
+// fakeChannelSvc records reconcile + purge calls and returns canned cycle-preview output.
 type fakeChannelSvc struct {
 	reconciles int
 	purges     int
 	err        error
+
+	// cycle-preview stubs (§8.1)
+	cycleCalls  int
+	cycleAt     time.Time                      // the `at` the handler passed in
+	cycleSlots  []schedule.Slot                // returned slots
+	cycleActive schedule.ActiveRuleAttribution // returned attribution
+	cycleWindow time.Duration                  // returned window
+	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
 }
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
@@ -32,6 +40,23 @@ func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
 func (f *fakeChannelSvc) Purge(ctx context.Context, id string) error {
 	f.purges++
 	return f.err
+}
+
+func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Time) (
+	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
+) {
+	f.cycleCalls++
+	f.cycleAt = at
+	if f.cycleErr != nil {
+		return time.Time{}, nil, schedule.ActiveRuleAttribution{}, 0, f.cycleErr
+	}
+	// Echo "now" substitution the real engine does: a zero `at` resolves to a fixed
+	// deterministic instant so the handler's echoed `at` is assertable.
+	resolved := at
+	if resolved.IsZero() {
+		resolved = time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	}
+	return resolved, f.cycleSlots, f.cycleActive, f.cycleWindow, nil
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
@@ -197,6 +222,140 @@ func TestReconcileChannelRequiresAdmin(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("member reconcile → %d, want 403", resp.StatusCode)
 	}
+}
+
+// --- cycle preview (GET …/cycle?at=) — the §8.1 time-travel preview ---
+
+// The cycle preview renders the resolved slots + the active-rule attribution + the window,
+// and echoes the resolved moment. It passes `at` through to the engine verbatim.
+func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	chSvc.cycleSlots = []schedule.Slot{
+		{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "tv:655", PartIndex: 0},
+		{Kind: schedule.SlotFiller}, // a break gap
+		{Kind: schedule.SlotProgram, Title: "The Killing Game (1)", Key: "tv:74", PartIndex: 1},
+		{Kind: schedule.SlotPending, Title: "Not yet aired", Key: "tv:99"},
+	}
+	chSvc.cycleActive = schedule.ActiveRuleAttribution{ID: "r1", Label: "Weekends · Marathon", Priority: 20, Matched: true}
+	chSvc.cycleWindow = 24 * time.Hour
+
+	at := "2026-07-25T09:00:00Z" // a Saturday
+	resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle?at="+at, adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("cycle → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		At         string `json:"at"`
+		ActiveRule struct {
+			ID       string `json:"id"`
+			Label    string `json:"label"`
+			Priority int    `json:"priority"`
+			Matched  bool   `json:"matched"`
+		} `json:"activeRule"`
+		WindowMs int64 `json:"windowMs"`
+		Slots    []struct {
+			Kind, Title, Key string
+			Part             int
+		} `json:"slots"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !chSvc.cycleAt.Equal(mustTime(t, at)) {
+		t.Errorf("engine got at=%v, want %s (handler must pass `at` through)", chSvc.cycleAt, at)
+	}
+	if body.At != at {
+		t.Errorf("echoed at = %q, want %q", body.At, at)
+	}
+	if !body.ActiveRule.Matched || body.ActiveRule.Label != "Weekends · Marathon" || body.ActiveRule.Priority != 20 {
+		t.Errorf("attribution = %+v, want the marathon rule matched", body.ActiveRule)
+	}
+	if body.WindowMs != (24 * time.Hour).Milliseconds() {
+		t.Errorf("windowMs = %d, want %d", body.WindowMs, (24 * time.Hour).Milliseconds())
+	}
+	if len(body.Slots) != 4 {
+		t.Fatalf("slots = %d, want 4", len(body.Slots))
+	}
+	if body.Slots[0].Kind != "program" || body.Slots[0].Title != "Encounter at Farpoint" {
+		t.Errorf("slot[0] = %+v, want the program", body.Slots[0])
+	}
+	if body.Slots[1].Kind != "break" || body.Slots[1].Title != "" {
+		t.Errorf("slot[1] = %+v, want an empty-title break gap", body.Slots[1])
+	}
+	if body.Slots[2].Part != 1 {
+		t.Errorf("slot[2] part = %d, want 1 (multi-part index preserved)", body.Slots[2].Part)
+	}
+	if body.Slots[3].Kind != "pending" {
+		t.Errorf("slot[3] kind = %q, want pending", body.Slots[3].Kind)
+	}
+}
+
+// No rule matching → the base-policy attribution (matched:false), so the UI can say
+// "no rule is active — base policy" rather than mislabel a moment.
+func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy", Matched: false}
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("cycle → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		At         string `json:"at"`
+		ActiveRule struct {
+			Label   string `json:"label"`
+			Matched bool   `json:"matched"`
+		} `json:"activeRule"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.ActiveRule.Matched || body.ActiveRule.Label != "Base policy" {
+		t.Errorf("no-match attribution = %+v, want base policy", body.ActiveRule)
+	}
+	// A default (no `at`) request still echoes a concrete resolved moment.
+	if body.At == "" {
+		t.Error("default-time preview must echo the resolved 'now', not an empty at")
+	}
+	if chSvc.cycleCalls != 1 {
+		t.Errorf("cycle called %d times, want 1", chSvc.cycleCalls)
+	}
+}
+
+// The preview is a READ — visible to any authenticated user (matching pod preview §8.1).
+func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", "", ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("member cycle preview → %d, want 200 (read-only)", resp.StatusCode)
+	}
+}
+
+// A malformed `at` is a 400 — the model/UI must send RFC3339, not a re-implementation.
+func TestCyclePreview_BadTimeIs400(t *testing.T) {
+	srv, _, _, _ := newServerWithScheduler(t)
+	mkChannel(t, srv, "c1", "Trek", 5)
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle?at=saturday-9am", adminToken, ""); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("bad at → %d, want 400", resp.StatusCode)
+	}
+}
+
+// An unknown channel is a 404 (the engine reports store.ErrNotFound, the handler maps it).
+func TestCyclePreview_UnknownChannelIs404(t *testing.T) {
+	srv, _, chSvc, _ := newServerWithScheduler(t)
+	chSvc.cycleErr = store.ErrNotFound
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/nope/cycle", adminToken, ""); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown channel → %d, want 404", resp.StatusCode)
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatalf("parse %q: %v", s, err)
+	}
+	return tm
 }
 
 func TestDeleteChannelDetaches(t *testing.T) {

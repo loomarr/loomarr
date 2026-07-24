@@ -260,6 +260,13 @@ func (s *Server) registerChannels(api huma.API) {
 	}, s.previewChannelPods)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "preview-channel-cycle", Method: http.MethodGet, Path: "/v1/channels/{id}/cycle",
+		Summary:     "Preview what airs at a chosen time (curation rules)",
+		Description: "The time-travel cycle preview (§8.1): what this channel would air at `at` (default now), and WHICH curation rule is active then. Runs the SAME pure lineup builder as reconcile — preview and reality cannot disagree — WITHOUT touching Tunarr or the store beyond a read. Makes first-match-by-priority rule resolution legible (\"at Saturday 9am, the Weekend TNG marathon rule is active\"). Read-only, so any authenticated user may call it; `at` may be past or future.",
+		Tags:        []string{"channels"},
+	}, s.previewChannelCycle)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "preview-draft-channel-pods", Method: http.MethodPost, Path: "/v1/channels/{id}/pods/preview",
 		Summary:     "Preview a draft filler selection without saving it",
 		Description: "Assembles the pool a DRAFT filler selection would produce, without persisting it (§10, §12) — the live sandbox on the channel's Filler section. Same assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what will air once applied. Admin-only (an authoring tool); applying is a normal PATCH of policy.filler.",
@@ -792,6 +799,105 @@ func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (
 		return nil, err
 	}
 	return podToPreviewOutput(pod), nil
+}
+
+// CycleSlotDTO is one slot of the previewed cycle (§8.1): what airs, in play order. A
+// program carries its title + provisioning key + series identity + multi-part index; a break
+// gap is `kind:"break"` (Tunarr owns the clip that fills it — the preview shows the gap).
+type CycleSlotDTO struct {
+	Kind  string `json:"kind" enum:"program,pending,break" doc:"program = a playable title; pending = an acquisition not yet available; break = a commercial gap"`
+	Title string `json:"title,omitempty" doc:"Display label; empty for a break gap"`
+	Key   string `json:"key,omitempty" doc:"Provisioning key of the title (empty for a break)"`
+	// Part is the 1-based play order within a multi-part/franchise group (§5) — >0 when this
+	// slot is part of a two-parter or a movie franchise kept together, 0 for a standalone.
+	Part int `json:"part,omitempty" doc:"Play order within a multi-part or franchise group (0 = standalone)"`
+}
+
+// ActiveRuleDTO attributes the previewed cycle to the curation rule active at the previewed
+// moment (§8.1) — the answer to "which rule is playing right now". Matched=false means no
+// rule matched and the channel is on its base whole-policy behavior (label "Base policy").
+type ActiveRuleDTO struct {
+	ID       string `json:"id" doc:"Stable rule id ('' when no rule matched)"`
+	Label    string `json:"label" doc:"Human-readable rule name, or 'Base policy' when none matched"`
+	Priority int    `json:"priority" doc:"The rule's priority (higher wins overlaps); 0 for the base policy"`
+	Matched  bool   `json:"matched" doc:"Whether a curation rule matched (false = base whole-policy behavior)"`
+}
+
+type previewCycleInput struct {
+	ID string `path:"id"`
+	At string `query:"at" doc:"RFC3339 wall-clock to preview (default: now). May be past or future — 'what airs next Christmas morning?'"`
+}
+
+type previewCycleOutput struct {
+	Body struct {
+		At         string         `json:"at" doc:"The resolved wall-clock this preview was computed for (RFC3339)"`
+		ActiveRule ActiveRuleDTO  `json:"activeRule"`
+		WindowMs   int64          `json:"windowMs" doc:"Resolved rolling-window horizon in ms (0 = the whole run, no truncation)"`
+		Slots      []CycleSlotDTO `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
+	}
+}
+
+// cyclePreviewSlotCap bounds how many slots the preview returns — enough to see intermixing,
+// marathons, and franchise/two-parter adjacency at a glance without shipping an 800-item deck.
+const cyclePreviewSlotCap = 50
+
+// previewChannelCycle answers "what airs at this moment, and which rule is active" (§8.1). It
+// runs the SAME pure lineup builder as reconcile at the chosen wall-clock, so the preview and
+// the real guide cannot disagree — WITHOUT touching Tunarr or persisting anything. Read-only,
+// so any authenticated user may call it; the moment may be past or future.
+func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput) (*previewCycleOutput, error) {
+	if s.channels == nil {
+		return nil, errNotImplemented("Scheduling isn't set up", "Connect Tunarr in Settings → Connections to preview a channel's cycle.")
+	}
+	at := time.Time{} // zero ⇒ the engine uses "now"
+	if strings.TrimSpace(in.At) != "" {
+		t, err := time.Parse(time.RFC3339, in.At)
+		if err != nil {
+			return nil, errBadRequest("Invalid time", "`at` must be an RFC3339 timestamp like 2026-12-25T09:00:00Z.")
+		}
+		at = t
+	}
+
+	resolvedAt, slots, active, window, err := s.channels.CyclePreview(ctx, in.ID, at)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+
+	out := &previewCycleOutput{}
+	out.Body.At = resolvedAt.UTC().Format(time.RFC3339)
+	out.Body.ActiveRule = ActiveRuleDTO{ID: active.ID, Label: active.Label, Priority: active.Priority, Matched: active.Matched}
+	out.Body.WindowMs = window.Milliseconds()
+	out.Body.Slots = cycleSlotsToDTO(slots, cyclePreviewSlotCap)
+	return out, nil
+}
+
+// cycleSlotsToDTO maps the resolved cycle's slots to the preview DTO, capped at `limit`.
+// Only program/pending/break kinds are meaningful to the preview; a filler slot with no clip
+// yet renders as a "break" gap (that's what the guide shows). Franchise/multi-part order is
+// preserved via Part.
+func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
+	out := make([]CycleSlotDTO, 0, min(len(slots), limit))
+	for _, sl := range slots {
+		if len(out) >= limit {
+			break
+		}
+		dto := CycleSlotDTO{Title: sl.Title, Part: sl.PartIndex}
+		switch sl.Kind {
+		case schedule.SlotProgram:
+			dto.Kind = "program"
+			dto.Key = string(sl.Key)
+		case schedule.SlotPending:
+			dto.Kind = "pending"
+			dto.Key = string(sl.Key)
+		default: // SlotFiller / flex → a commercial break gap
+			dto.Kind = "break"
+			dto.Title = ""
+		}
+		out = append(out, dto)
+	}
+	return out
 }
 
 // podToPreviewOutput renders an assembled pod into the preview response — shared by the

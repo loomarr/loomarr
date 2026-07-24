@@ -153,6 +153,66 @@ func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 	})
 }
 
+// ActiveRuleAt is the exported attribution window onto pickRule (§8.1): it must name the
+// SAME rule pickRule selects, and report base-policy (matched:false) when nothing matches.
+func TestActiveRuleAt_Attribution(t *testing.T) {
+	weekend := SchedulingRule{ID: "w", Label: "Weekend TNG marathon", Priority: 10, When: WhenPredicate{Weekend: true}}
+	holiday := SchedulingRule{ID: "h", Label: "Spooky Season", Priority: 20, When: WhenPredicate{Holiday: "halloween"}}
+	rules := []SchedulingRule{weekend, holiday}
+
+	t.Run("no rule matches → base policy, matched false", func(t *testing.T) {
+		a := ActiveRuleAt(rules, thu9am) // Thursday, not a weekend or holiday
+		if a.Matched || a.Label != "Base policy" || a.ID != "" {
+			t.Fatalf("got %+v, want unmatched base policy", a)
+		}
+	})
+	t.Run("weekend matches → attributed to the weekend rule with its label", func(t *testing.T) {
+		a := ActiveRuleAt(rules, satNoon)
+		if !a.Matched || a.ID != "w" || a.Label != "Weekend TNG marathon" || a.Priority != 10 {
+			t.Fatalf("got %+v, want the weekend rule", a)
+		}
+	})
+	t.Run("highest priority wins the attribution", func(t *testing.T) {
+		octSat := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC) // Saturday in the Halloween window
+		a := ActiveRuleAt(rules, octSat)
+		if a.ID != "h" || a.Priority != 20 {
+			t.Fatalf("got %+v, want the higher-priority holiday rule", a)
+		}
+	})
+	t.Run("nil rules → base policy", func(t *testing.T) {
+		if a := ActiveRuleAt(nil, satNoon); a.Matched {
+			t.Fatalf("nil rules should never match, got %+v", a)
+		}
+	})
+}
+
+// Describe uses an explicit Label when set, else synthesizes one from the predicate + how,
+// so an unnamed/legacy rule still reads sensibly in the preview.
+func TestSchedulingRule_Describe(t *testing.T) {
+	cases := []struct {
+		name string
+		rule SchedulingRule
+		want string
+	}{
+		{"explicit label wins", SchedulingRule{Label: "My Rule", When: WhenPredicate{Weekend: true}}, "My Rule"},
+		{"synthesized weekend + marathon", SchedulingRule{
+			When: WhenPredicate{Weekend: true},
+			How:  RuleOrdering{Ordering: OrderSequential, NoBreaks: true},
+		}, "Weekends — Marathon"},
+		{"synthesized holiday", SchedulingRule{When: WhenPredicate{Holiday: "christmas"}}, "Christmas"},
+		{"synthesized hours", SchedulingRule{When: WhenPredicate{HourFrom: 6, HourTo: 10}}, "06:00–10:00"},
+		{"zero rule → Always", SchedulingRule{}, "Always"},
+		{"how only", SchedulingRule{How: RuleOrdering{Ordering: OrderSyndication}}, "Always — Syndication"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.rule.Describe(); got != tc.want {
+				t.Errorf("Describe() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveWindow_Inheritance(t *testing.T) {
 	const day = 24 * time.Hour
 	cases := []struct {
