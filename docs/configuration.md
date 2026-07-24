@@ -36,6 +36,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `tunarr.url` (`TUNARR_URL`) | url | — | Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels. |
 | `tunarr.transcode_config_id` (`TUNARR_TRANSCODE_CONFIG_ID`) | string | — | Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default. _(advanced)_ |
+| `server.public_url` (`SERVER_PUBLIC_URL`) | url | — | Loomarr's own address as Tunarr can reach it, e.g. http://loomarr:8080. Only needed for uploaded channel icons — Tunarr fetches them from this base. Leave empty if you set icons from TMDB or a full URL. _(advanced)_ |
 
 ## Connections — TMDB
 
