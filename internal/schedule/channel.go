@@ -155,6 +155,13 @@ type Slot struct {
 	// atomic unit — parts stay adjacent + in-order, and the rolling window keeps them whole.
 	PartGroup string
 	PartIndex int
+	// Season / Episode are the series episode's numbers (from the media server's
+	// IndexNumber), carried onto the slot purely for DISPLAY — the preview surfaces
+	// "Bluey · S1E5". 0 = a movie or unknown. They do not affect ordering or identity
+	// (the Key + PartGroup already govern that); a slot with the same Key airing twice in
+	// a marathon simply repeats its S/E.
+	Season  int
+	Episode int
 }
 
 // IsProgram reports whether this slot is a real, playable program (not pending,

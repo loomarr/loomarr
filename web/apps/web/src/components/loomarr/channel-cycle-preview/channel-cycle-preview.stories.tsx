@@ -51,6 +51,35 @@ const Matched: Story = {
   ],
 };
 
+// A multi-show kids channel: series episodes render as "Show · SxxExx — Episode" (the show
+// name resolved from lineupKeys by the slot's key, the season/episode from the slot), so a
+// bare episode title like "Grandad" reads as "Bluey · S1E5 — Grandad". A movie in the mix
+// (no season/episode, no lineup show name) shows just its title, proving the graceful mix.
+const SeriesEpisodes: Story = {
+  args: {
+    channelId: "ch-1",
+    lineupKeys: [
+      { key: "series:tmdb:82728", title: "Bluey" },
+      { key: "series:tmdb:3022", title: "Rugrats" },
+      { key: "movie:tmdb:9297", title: "Shrek" },
+    ],
+  },
+  decorators: [
+    withStubbedPreview({
+      at: "2026-07-25T09:00:00Z",
+      activeRule: { id: "", label: "Base policy", priority: 0, matched: false },
+      windowMs: 24 * 60 * 60 * 1000,
+      slots: [
+        { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
+        { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
+        { kind: "break" },
+        { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
+        { kind: "program", title: "Shrek", key: "movie:tmdb:9297", part: 0 }, // movie → title only
+      ],
+    }),
+  ],
+};
+
 // No rule matched — the base-policy fallthrough, the other half of the attribution.
 const BasePolicy: Story = {
   decorators: [
@@ -112,4 +141,4 @@ const Empty: Story = {
 };
 
 export default meta;
-export { BasePolicy, Empty, LongList, Matched };
+export { BasePolicy, Empty, LongList, Matched, SeriesEpisodes };

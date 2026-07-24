@@ -842,6 +842,12 @@ type CycleSlotDTO struct {
 	// Part is the 1-based play order within a multi-part/franchise group (§5) — >0 when this
 	// slot is part of a two-parter or a movie franchise kept together, 0 for a standalone.
 	Part int `json:"part,omitempty" doc:"Play order within a multi-part or franchise group (0 = standalone)"`
+	// Season / Episode are the episode's numbers for a series program, so the UI can show
+	// "S1E5" alongside the episode title. 0 for a movie or when the media server doesn't
+	// number the item. The show *name* is not here — the client maps Key → its lineup entry's
+	// name (it already has the lineup), so the DTO stays lookup-free.
+	Season  int `json:"season,omitempty" doc:"Series season number (0 = movie/unknown)"`
+	Episode int `json:"episode,omitempty" doc:"Series episode number (0 = movie/unknown)"`
 }
 
 // ActiveRuleDTO attributes the previewed cycle to the curation rule active at the previewed
@@ -919,6 +925,7 @@ func cycleSlotsToDTO(slots []schedule.Slot, limit int) []CycleSlotDTO {
 		case schedule.SlotProgram:
 			dto.Kind = "program"
 			dto.Key = string(sl.Key)
+			dto.Season, dto.Episode = sl.Season, sl.Episode
 		case schedule.SlotPending:
 			dto.Kind = "pending"
 			dto.Key = string(sl.Key)
