@@ -65,6 +65,53 @@ func TestWhenPredicate_Matches(t *testing.T) {
 	}
 }
 
+// Seasonality is the archetypal time-conditional rule (§6/§6.5): the rule engine's
+// holiday When-predicate and the seasonal engine MUST share one calendar, so a
+// When{Holiday:"christmas"} rule is active exactly when the seasonal engine considers
+// christmas in-window. This locks that invariant across the whole year — if a future edit
+// diverges the two (e.g. changes a window in one place only), this fails. It's the Phase-2
+// "seasonal-as-a-rule" guarantee: one calendar, two consumers, provably in agreement.
+func TestHolidayRuleAndSeasonalShareOneCalendar(t *testing.T) {
+	// Walk every day of a full year; for each builtin holiday, the rule predicate
+	// (inHoliday) and the seasonal engine (holidayActive) must agree.
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for _, h := range builtinCalendar {
+		for d := 0; d < 366; d++ {
+			now := base.AddDate(0, 0, d)
+			ruleSide := inHoliday(h.id, now)
+			seasonalSide := holidayActive(h, now)
+			if ruleSide != seasonalSide {
+				t.Fatalf("calendar divergence for %q on %s: rule=%v seasonal=%v",
+					h.id, now.Format("2006-01-02"), ruleSide, seasonalSide)
+			}
+		}
+	}
+}
+
+// A holiday When-rule and SeasonalPolicy resolve the SAME active-holiday set from the same
+// clock — the composition point in ComputeDesiredAt (rule scope then seasonal bench) relies
+// on this so a "December holiday rule" and seasonal `auto` never contradict each other.
+func TestHolidayRuleMatchesActiveHolidays(t *testing.T) {
+	dec20 := time.Date(2026, time.December, 20, 12, 0, 0, 0, time.UTC)
+	jul14 := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
+
+	// In December, the christmas rule matches AND christmas is in the seasonal active set.
+	if !inHoliday("christmas", dec20) {
+		t.Error("christmas rule should match Dec 20")
+	}
+	active := activeHolidays(dec20, []string{"christmas"})
+	if len(active) != 1 || active[0].id != "christmas" {
+		t.Errorf("seasonal should have christmas active on Dec 20, got %v", active)
+	}
+	// In July, neither fires.
+	if inHoliday("christmas", jul14) {
+		t.Error("christmas rule must not match Jul 14")
+	}
+	if len(activeHolidays(jul14, []string{"christmas"})) != 0 {
+		t.Error("seasonal should have no christmas active on Jul 14")
+	}
+}
+
 func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 	base := SchedulingRule{ID: "base"} // zero When → always matches
 	weekend := SchedulingRule{ID: "weekend", Priority: 10, When: WhenPredicate{Weekend: true}}
