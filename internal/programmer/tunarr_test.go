@@ -183,6 +183,75 @@ func TestEnsureChannel_Update_PutsToID(t *testing.T) {
 	}
 }
 
+// The loop-anchor fix (§9): a CREATE stamps startTime to ~now (epoch ms), never 0 (epoch 0
+// = 1970, which surfaced as a ~1960 guide start). An UPDATE preserves the caller-threaded
+// existing startTime so the lineup doesn't jump back to its start every reconcile.
+func TestEnsureChannel_StartTimeAnchor(t *testing.T) {
+	startTimeOf := func(body []byte, wrapped bool) int64 {
+		t.Helper()
+		if wrapped {
+			var env struct {
+				Channel struct {
+					StartTime int64 `json:"startTime"`
+				} `json:"channel"`
+			}
+			if err := json.Unmarshal(body, &env); err != nil {
+				t.Fatalf("body not JSON: %v", err)
+			}
+			return env.Channel.StartTime
+		}
+		var ch struct {
+			StartTime int64 `json:"startTime"`
+		}
+		if err := json.Unmarshal(body, &ch); err != nil {
+			t.Fatalf("body not JSON: %v", err)
+		}
+		return ch.StartTime
+	}
+
+	t.Run("create stamps a recent, non-zero anchor", func(t *testing.T) {
+		createResp := testkit.Fixture(t, "tunarr/channel_create_response.json")
+		var got capture
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got.body, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write(createResp)
+		}))
+		defer srv.Close()
+
+		before := time.Now().UnixMilli()
+		c := programmer.New(srv.URL, "cfg")
+		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "New"}); err != nil {
+			t.Fatal(err)
+		}
+		st := startTimeOf(got.body, true)
+		after := time.Now().UnixMilli()
+		if st < before || st > after {
+			t.Errorf("create startTime = %d, want a recent epoch-ms in [%d,%d] (not 0/1970)", st, before, after)
+		}
+	})
+
+	t.Run("update preserves the threaded anchor", func(t *testing.T) {
+		var got capture
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got.body, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		const existing int64 = 1_700_000_000_000 // the anchor Tunarr already has
+		c := programmer.New(srv.URL, "cfg")
+		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
+			TunarrID: "id", Number: 1, Name: "X", StartTime: existing,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if st := startTimeOf(got.body, false); st != existing {
+			t.Errorf("update startTime = %d, want the preserved %d", st, existing)
+		}
+	})
+}
+
 func TestGetChannel_404IsNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

@@ -26,6 +26,13 @@ type ChannelSpec struct {
 	Name     string
 	Group    string // Tunarr groupTitle
 	Logo     string // icon path; may be ""
+	// StartTime is the channel's loop anchor in epoch MILLISECONDS — the moment its
+	// looping lineup begins. 0 = "not set, stamp now on create". On an UPDATE the caller
+	// threads Tunarr's EXISTING startTime here so the anchor is preserved (a fresh
+	// time.Now() every reconcile would reset the loop origin, making the channel jump
+	// back to the start of its lineup each sweep). Left 0 anchored the loop at epoch 0
+	// (1970), which surfaced in the guide as a ~1960 programming start.
+	StartTime int64
 }
 
 // Programmer is the port the scheduler reconciles against (§9). All methods are
@@ -81,5 +88,6 @@ type ActualChannel struct {
 	Name         string
 	Group        string
 	Logo         string
-	ProgramCount int // Tunarr's programCount; 0 = unprogrammed
+	ProgramCount int   // Tunarr's programCount; 0 = unprogrammed
+	StartTime    int64 // loop anchor (epoch ms); read back so an update preserves it
 }

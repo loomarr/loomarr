@@ -27,6 +27,10 @@ type Tunarr struct {
 	FillerWrites int // EnsureFillerList calls that changed the attached list
 	// Injectable failures (nil = success).
 	SetLineupErr error
+	// NowMs is the fake's clock for stamping a new channel's loop anchor (epoch ms). 0 ⇒ a
+	// fixed non-zero default so a create always has a plausible, non-1970 anchor a test can
+	// assert against; a test can set it to script the "preserve on update" check.
+	NowMs int64
 	// fillerLists records the program ids last attached per channel, so the double
 	// models EnsureFillerList's internal idempotency (a second identical call is a
 	// no-op → FillerWrites unchanged), mirroring the real adapter (§10).
@@ -46,9 +50,10 @@ type msLibrary struct {
 }
 
 type tunarrChan struct {
-	spec   programmer.ChannelSpec
-	lineup []schedule.Slot
-	set    bool // whether programming has been set (else GetLineup mimics 400→empty)
+	spec      programmer.ChannelSpec
+	lineup    []schedule.Slot
+	set       bool  // whether programming has been set (else GetLineup mimics 400→empty)
+	startTime int64 // the loop anchor (epoch ms), stamped on create, preserved on update
 }
 
 // NewTunarr builds an empty in-memory Tunarr.
@@ -56,23 +61,37 @@ func NewTunarr() *Tunarr {
 	return &Tunarr{channels: map[string]*tunarrChan{}, fillerLists: map[string][]string{}}
 }
 
+// defaultNowMs is a fixed, plausible epoch-ms anchor (2023-11-14T22:13:20Z) used when a
+// test doesn't set NowMs — chosen far from 0/1970 so a "start time isn't epoch 0" assertion
+// is meaningful.
+const defaultNowMs int64 = 1_700_000_000_000
+
+func (m *Tunarr) nowMs() int64 {
+	if m.NowMs != 0 {
+		return m.NowMs
+	}
+	return defaultNowMs
+}
+
 func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if spec.TunarrID == "" {
 		// Create: assign a fresh server id, IGNORING any client-supplied id
-		// (Phase-0 finding 1). Return the assigned id.
+		// (Phase-0 finding 1). Stamp the loop anchor NOW (mirrors the real adapter's
+		// StartTime = now().UnixMilli()), so a later update can be checked for preserving it.
 		m.seq++
 		id := fmt.Sprintf("srv-%d", m.seq)
 		spec.TunarrID = id
-		m.channels[id] = &tunarrChan{spec: spec}
+		m.channels[id] = &tunarrChan{spec: spec, startTime: m.nowMs()}
 		m.Creates++
 		return id, nil
 	}
-	// Update: overwrite the stored spec (create it if the test pre-set an id).
+	// Update: overwrite the stored spec (create it if the test pre-set an id). Preserve the
+	// existing loop anchor — the whole point of the §9 start-time fix.
 	ch, ok := m.channels[spec.TunarrID]
 	if !ok {
-		ch = &tunarrChan{}
+		ch = &tunarrChan{startTime: m.nowMs()}
 		m.channels[spec.TunarrID] = ch
 	}
 	ch.spec = spec
@@ -100,6 +119,7 @@ func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.Actu
 		Group:        ch.spec.Group,
 		Logo:         ch.spec.Logo,
 		ProgramCount: pc,
+		StartTime:    ch.startTime,
 	}, true, nil
 }
 
