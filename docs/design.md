@@ -147,7 +147,12 @@ stateDiagram-v2
 `available` is the scheduled **library scan** (§6, §18.1): a `library-scan` job periodically
 lists what the media server has recently added and confirms any in-flight title now present —
 the same `LibraryConfirmed` transition the reconciler's deadline backstop applies, but
-continuous and not deadline-gated. This mirrors how Overseerr/Seerr work (they are entirely
+continuous and not deadline-gated. Correlation matches a scanned item to an in-flight record by
+**any** provider id the item carries, not just its preferred one: a series is keyed
+`series:tvdb:<id>` when a TVDB id is known but `series:tmdb:<id>` when it was added TMDB-only
+(the suggester/channel-add path), while the media server exposes *both* ids on the show — so the
+scan probes every key an item can produce, or a TMDB-keyed series would never confirm `available`
+even with its episodes present. This mirrors how Overseerr/Seerr work (they are entirely
 poll-based; verified). The inbound Sonarr/Radarr webhook (§6 Ingest) is a *latency
 optimization* on top of the scan, not the source of truth — and is retired once the scan path
 is proven (build plan). A `library-full-scan` runs less often as a safety net for anything the

@@ -94,6 +94,38 @@ func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 	}
 }
 
+// The Bluey scenario: a series was added TMDB-only (keyed series:tmdb:<id>, no TVDB id yet —
+// the suggester/channel-add path), and its episodes land in the library, which indexes the show
+// with BOTH a TVDB and a TMDB id. The scan must still confirm it available by matching on the
+// item's TMDB id, even though Title.Key() prefers the item's TVDB id. Without scanItemKeys
+// probing every id, a TMDB-keyed series is stuck `requested`/`downloading` forever despite being
+// present (the live bug this fixes).
+func TestLibraryScan_ConfirmsTMDBSeriesWhenItemHasBothIDs(t *testing.T) {
+	ls, st, ms, _ := setupScan(t)
+	key := provision.Key("series:tmdb:82728") // Bluey, TMDB-keyed (no TVDB id on the record)
+	if err := st.UpsertTitle(context.Background(), provision.Record{
+		Key: key, State: provision.Requested, Deadline: now.Add(12 * time.Hour),
+		Title: provision.Title{MediaType: provision.Series, TMDBID: 82728},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The library item carries BOTH ids (as Emby does) — Title.Key() would prefer tvdb:353546.
+	ms.SearchItems = []testkit.SearchStub{
+		{LibraryItemID: "lib-bluey", Name: "Bluey", Type: "Series", TMDBID: 82728, TVDBID: 353546},
+	}
+
+	n, err := ls.Incremental(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("confirmed %d, want 1 (TMDB-keyed series must match an item that has both ids)", n)
+	}
+	if got := getState(t, st, key); got != provision.Available {
+		t.Errorf("state = %s, want available", got)
+	}
+}
+
 // A library item that matches NO in-flight title is ignored — the scan never confirms a title
 // that isn't awaiting the library.
 func TestLibraryScan_IgnoresUntrackedItems(t *testing.T) {

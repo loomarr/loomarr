@@ -81,19 +81,22 @@ func (s *LibraryScan) confirm(ctx context.Context, items []library.SearchResult)
 	confirmed := 0
 	seen := make(map[provision.Key]bool, len(inflight)) // one confirm per title per scan
 	for _, it := range items {
-		key, ok := scanItemKey(it)
-		if !ok {
-			continue // no usable provider id → can't correlate
+		// A library item can carry BOTH a TVDB and a TMDB id (Emby exposes both for a series),
+		// so probe the in-flight set under EVERY key the item can produce. A record keyed by
+		// one namespace (e.g. a TMDB-only series, `series:tmdb:<id>`) then still matches the
+		// same show the library indexed under the other (`series:tvdb:<id>`) — without this,
+		// a TMDB-keyed series never confirms `available` even once its episodes are present.
+		for _, key := range scanItemKeys(it) {
+			rec, awaiting := inflight[key]
+			if !awaiting || seen[key] {
+				continue
+			}
+			seen[key] = true
+			next, emitted := provision.Apply(rec, provision.Event{Kind: provision.LibraryConfirmed, LibraryID: it.LibraryItemID}, now)
+			s.persist(ctx, next, emitted)
+			confirmed++
+			break // one confirm per scanned item
 		}
-		rec, awaiting := inflight[key]
-		if !awaiting || seen[key] {
-			continue
-		}
-		seen[key] = true
-
-		next, emitted := provision.Apply(rec, provision.Event{Kind: provision.LibraryConfirmed, LibraryID: it.LibraryItemID}, now)
-		s.persist(ctx, next, emitted)
-		confirmed++
 	}
 	return confirmed, nil
 }
@@ -130,17 +133,35 @@ func (s *LibraryScan) persist(ctx context.Context, rec provision.Record, emitted
 	}
 }
 
-// scanItemKey builds the provision.Key for a scanned library item via the SAME Title.Key()
-// path the store used to key the record — so a series keyed series:tvdb:<id> and a movie keyed
-// movie:tmdb:<id> match byte-for-byte. Returns false when the item carries no usable id.
-func scanItemKey(it library.SearchResult) (provision.Key, bool) {
+// scanItemKeys builds EVERY provision.Key a scanned library item can be identified by, via the
+// same Title.Key() path the store used to key the record — so the match is byte-for-byte in each
+// namespace. A library item often carries more than one provider id (Emby exposes both Tvdb and
+// Tmdb for a series), and a title record is keyed by whichever id it was born with — TMDB for a
+// suggester/channel-add series (no TVDB id yet), TVDB once known. Producing a key per id and
+// probing the in-flight set under each closes that gap: a `series:tmdb:<id>` record still matches
+// the same show the library indexed as `series:tvdb:<id>`. Order is TVDB-first (the library's
+// preferred series identity), then TMDB; deduped. Empty when the item carries no usable id.
+func scanItemKeys(it library.SearchResult) []provision.Key {
 	mt := provision.Movie
 	if it.MediaType == library.Series {
 		mt = provision.Series
 	}
-	key, err := provision.Title{MediaType: mt, TMDBID: it.TMDBID, TVDBID: it.TVDBID}.Key()
-	if err != nil {
-		return "", false
+	keys := make([]provision.Key, 0, 2)
+	seen := make(map[provision.Key]struct{}, 2)
+	add := func(t provision.Title) {
+		if k, err := t.Key(); err == nil {
+			if _, dup := seen[k]; !dup {
+				seen[k] = struct{}{}
+				keys = append(keys, k)
+			}
+		}
 	}
-	return key, true
+	// TVDB-preferred key (series only — Title.Key() picks tvdb when TVDBID>0).
+	add(provision.Title{MediaType: mt, TMDBID: it.TMDBID, TVDBID: it.TVDBID})
+	// The TMDB key explicitly, so a TMDB-keyed record matches even when the item also has a
+	// TVDB id (which Title.Key() would otherwise prefer, hiding the TMDB form).
+	if it.TMDBID > 0 {
+		add(provision.Title{MediaType: mt, TMDBID: it.TMDBID})
+	}
+	return keys
 }
