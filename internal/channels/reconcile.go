@@ -58,14 +58,38 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// the UpsertChannel below, so a future reconcile skips the lookup entirely.
 	e.healRatings(ctx, ch.Lineup)
 
+	// 1b: build the channel's matched filler-clip pool up front (§10) so the break
+	// decision below can see whether there's anything to fill a break with. The pod
+	// assembler is seed-deterministic, so this SAME (ids, ok) is reused for the Tunarr
+	// filler-list attach in step 4b — one build, not two. ok=false ⇒ empty catalog /
+	// only-fallback ⇒ no real pool. Nil e.pods (flex-only Phase-10 default / filler not
+	// wired) is also "no pool".
+	var fillerIDs []string
+	hasFillerPool := false
+	if e.pods != nil {
+		if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch)); ok && len(ids) > 0 {
+			fillerIDs = ids
+			hasFillerPool = true
+		}
+	}
+
 	// 2: recompute desired from the approved lineup + current availability under the
 	// channel's ChannelPolicy (programming-design §3–§7). ComputeDesiredAt resolves
 	// each entry against the library (a vanished title comes back a placeholder),
 	// applies the audience/scope/seasonal filters, and orders with separation. Apply
 	// the global commercial-break density (§10) so breaks are interleaved, and pass
 	// the wall-clock so seasonality (§6) evaluates against the container TZ.
+	//
+	// Breaks are only interleaved when a filler pool actually exists: inserting break
+	// gaps with no clips to fill them leaves empty flex that Tunarr renders as large
+	// channel-named blocks in the guide (dead-air-avoidance) — a promise of commercials
+	// we can't keep. No pool ⇒ BreaksPerHour 0 ⇒ programs play back-to-back. Self-heals:
+	// once clips land, the next reconcile sees a pool and re-inserts breaks.
 	chDomain := ch.Channel
-	chDomain.BreaksPerHour = e.breaksPerHour
+	chDomain.BreaksPerHour = 0
+	if hasFillerPool {
+		chDomain.BreaksPerHour = e.breaksPerHour
+	}
 	chDomain.DefaultWindow = e.defaultWindow // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 
@@ -124,13 +148,14 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		}
 	}
 
-	// 4b: build + attach the channel's Tunarr filler-list from the matched clip
-	// pool (§10), now that the channel exists (TunarrID is set). Tunarr plays these
-	// clips into the flex gaps SetLineup leaves between programs. Best-effort: a
-	// filler failure never fails the reconcile (§9 resilience — the channel still
-	// plays, just without commercials this pass; the next sweep retries).
+	// 4b: attach the channel's Tunarr filler-list from the clip pool computed in step 1b,
+	// now that the channel exists (TunarrID is set). Tunarr plays these clips into the flex
+	// gaps SetLineup leaves between programs. When there's no pool (hasFillerPool false),
+	// this detaches any stale list AND the lineup above already omitted the breaks, so the
+	// channel plays back-to-back with no empty flex. Best-effort: a filler failure never
+	// fails the reconcile (§9 resilience); the next sweep retries.
 	if e.pods != nil {
-		e.attachFillerList(ctx, ch)
+		e.attachFillerList(ctx, ch, fillerIDs)
 	}
 
 	// 5: diff desired lineup vs actual; push only on a difference.
@@ -196,17 +221,15 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 	return e.store.DeleteChannel(ctx, channelID)
 }
 
-// attachFillerList builds the channel's matched clip pool via the assembler and
-// hands its Tunarr program uuids to the Programmer, which builds + attaches the
-// channel's Tunarr filler-list (§10). Tunarr plays those clips into the flex gaps
-// the scheduler leaves between programs. Best-effort: a filler error is logged,
-// never returned — the channel still plays (§9 resilience), and EnsureFillerList
-// is internally idempotent so a stable pool makes no Tunarr write.
-func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel) {
-	ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch))
-	if !ok {
-		ids = nil // empty catalog / only-fallback → detach (channel falls back to flex)
-	}
+// attachFillerList hands the channel's matched clip-pool program uuids (assembled once
+// in reconcile step 1b) to the Programmer, which builds + attaches the channel's Tunarr
+// filler-list (§10). Tunarr plays those clips into the flex gaps the scheduler leaves
+// between programs. An empty ids (no pool) DETACHES any stale list — and since the lineup
+// also omits breaks when there's no pool (step 2), the channel plays back-to-back rather
+// than leaving empty flex. Best-effort: a filler error is logged, never returned — the
+// channel still plays (§9 resilience), and EnsureFillerList is internally idempotent so a
+// stable pool makes no Tunarr write.
+func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string) {
 	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids); err != nil && e.log != nil {
 		e.log.Warn("attach filler list (channel plays without commercials this pass)",
 			"channel", ch.ID, "err", err)
