@@ -4,6 +4,24 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Curation-rule-engine arc — audience ceiling is a kids/teen guardrail (2026-07-24).** The
+"1980s Action Heroes" channel came out capped at **TV-14**, silently dropping its 9 R-rated
+films (Die Hard, Predator, Terminator…) — a small model reflexively caps genre channels, and
+`groundPolicy` kept any proposed ceiling unconditionally. **Rule (maintainer):** the ceiling
+exists ONLY so a channel a user asked to be *for kids/teens* can never show adult content; an
+unqualified channel is **adult-default**. **Fix:** `groundPolicy(…, intent)` now keeps a
+proposed ceiling ONLY when `intentSignalsKids` matches the intent text (kids/family/cartoons/
+Bluey/Saturday-morning/teen/… across description/tone/era/refine/must-include); **no signal →
+the ceiling is dropped** (everything admitted). Safety asymmetry absolute: dropping an
+unjustified ceiling only *loosens*; when a kids signal IS present the ceiling stays + is
+enforced fail-closed, and the raise-to-admit-picks (generalized from TV-G→TV-PG to the whole
+kids band) **never crosses the kids→adult line** (`KidsCeilingRank`) — a stray R pick on a kids
+channel is dropped by §4, never admitted. Prompt reinforced to omit the ceiling for non-kids
+channels. Tests: no-kids→drop, 6 kids phrasings→keep, raise-never-crosses-kids-line, existing
+raise/never-lower + grounding fuzz still green. Doc-first §4/§8. **Live-verified:** "90s action
+heroes movies" → ceiling None; "cartoons for little kids" → TV-Y7. Gate: `make check` GREEN
+(`-race`); `openapi-verify` + `config-docs` no drift. Merged on green-local.
+
 **Curation-rule-engine arc — window rotation fix (2026-07-24).** A movie channel whose
 library exceeds its window (the maintainer's "1980s Action Heroes", 15 films ≈30h, 24h window)
 **repeated the same subset daily and never aired the tail**. Root cause: `truncateToWindow` kept
