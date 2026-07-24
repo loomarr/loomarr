@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -90,7 +91,47 @@ func (s *sqlStore) ListChannels(ctx context.Context) ([]Channel, error) {
 
 func (s *sqlStore) DeleteChannel(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM channels WHERE id = ?`), id)
-	return err
+	if err != nil {
+		return err
+	}
+	// Best-effort: drop any uploaded icon so a deleted channel leaves no orphaned blob.
+	// A failure here shouldn't fail the delete (the channel row is already gone), so it is
+	// logged by the caller path, not surfaced — mirror the delete's fire-and-forget shape.
+	_, _ = s.db.ExecContext(ctx, s.ph(`DELETE FROM channel_icons WHERE channel_id = ?`), id)
+	return nil
+}
+
+// PutChannelIcon upserts the channel's uploaded icon bytes. The upsert (one row per channel
+// PK) replaces on re-upload. epoch(updatedAt) stores the cache-bust stamp.
+func (s *sqlStore) PutChannelIcon(ctx context.Context, channelID, contentType string, data []byte, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO channel_icons (channel_id, content_type, bytes, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT (channel_id) DO UPDATE SET content_type = excluded.content_type,
+		     bytes = excluded.bytes, updated_at = excluded.updated_at`),
+		channelID, contentType, data, epoch(updatedAt))
+	if err != nil {
+		return fmt.Errorf("put channel icon %s: %w", channelID, err)
+	}
+	return nil
+}
+
+// GetChannelIcon reads a channel's uploaded icon. sql.ErrNoRows → ok=false (no icon stored).
+func (s *sqlStore) GetChannelIcon(ctx context.Context, channelID string) (string, []byte, time.Time, bool, error) {
+	var (
+		contentType string
+		data        []byte
+		updatedAt   int64
+	)
+	row := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT content_type, bytes, updated_at FROM channel_icons WHERE channel_id = ?`), channelID)
+	if err := row.Scan(&contentType, &data, &updatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil, time.Time{}, false, nil
+		}
+		return "", nil, time.Time{}, false, fmt.Errorf("get channel icon %s: %w", channelID, err)
+	}
+	return contentType, data, time.Unix(updatedAt, 0), true, nil
 }
 
 // ClaimDueChannels runs the dialect-specific channel-claim statement. Selects

@@ -9,6 +9,7 @@ import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/chan
 import type { OnAirState } from "@/components/loomarr";
 import {
   ChannelDangerZone,
+  ChannelIconField,
   ChannelLineupEditor,
   ChannelPolicyFields,
   ErrorState,
@@ -159,6 +160,12 @@ const ChannelDetailScreen = () => {
     update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
   const saveNumber = (number: string | number) =>
     update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
+  // The icon field's three "set" paths (TMDB suggestion, pasted URL) and its "clear" all
+  // converge on this — the SAME channel update mutation identity/number use, `logo` is just
+  // another field on it (§7 PATCH). Upload is the one path that doesn't call this directly
+  // for the value (the raw multipart endpoint already set `logo` server-side); it still uses
+  // this to trigger the shared invalidate.
+  const saveLogo = (logo: string) => update.mutateAsync({ id, data: { logo } }).then(() => undefined);
 
   return (
     <div className="flex h-full flex-col">
@@ -250,6 +257,12 @@ const ChannelDetailScreen = () => {
                   </span>
                 )}
               </p>
+            </section>
+          )}
+
+          {(!isAdmin || activeId === "info") && (
+            <section className="rounded-lg border border-border bg-card p-5">
+              <ChannelIconField channelId={id} logo={ch.logo} onSetLogo={saveLogo} isAdmin={isAdmin} />
             </section>
           )}
 
