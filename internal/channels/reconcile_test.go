@@ -102,6 +102,55 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	}
 }
 
+// A lineup-push failure right after channel creation must NOT lose the new Tunarr
+// id: the create is checkpointed to the store before the push. So the next reconcile
+// UPDATES the existing channel instead of re-creating it — the fix for the live-smoke
+// orphan loop, where a push timeout discarded the id and every retry re-created the
+// channel at the same number and collided (a 500). Regression guard for §9 atomicity.
+func TestReconcile_ChannelIDCheckpointedBeforeLineupPush(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	tun.SetLineupErr = context.DeadlineExceeded // simulate the big-library resolve timeout
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	e := newEngine(st, tun, avail, nil)
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+
+	// First reconcile: the channel IS created in Tunarr, but the lineup push fails →
+	// the reconcile returns an error.
+	if err := e.Reconcile(context.Background(), "c1"); err == nil {
+		t.Fatal("expected the reconcile to surface the lineup-push failure")
+	}
+	if tun.Creates != 1 {
+		t.Fatalf("channel should have been created once, got %d creates", tun.Creates)
+	}
+	// The critical assertion: despite the push failure, the new id was checkpointed.
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if ch.TunarrID == "" {
+		t.Fatal("new Tunarr id was NOT checkpointed — a retry will re-create and collide")
+	}
+	checkpointed := ch.TunarrID
+
+	// Clear the injected failure and reconcile again: it must UPDATE the same channel,
+	// never create a second one (no orphan, no number collision).
+	tun.SetLineupErr = nil
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatalf("retry reconcile should succeed once the push works, got %v", err)
+	}
+	if tun.Creates != 1 {
+		t.Errorf("retry RE-CREATED the channel (%d creates) — the orphan-loop bug", tun.Creates)
+	}
+	if tun.Pushes != 1 {
+		t.Errorf("retry should have pushed the lineup once, got %d", tun.Pushes)
+	}
+	ch, _ = st.GetChannel(context.Background(), "c1")
+	if ch.TunarrID != checkpointed {
+		t.Errorf("id changed across retry: %q → %q (should be stable)", checkpointed, ch.TunarrID)
+	}
+	if ch.Status != schedule.StatusLive {
+		t.Errorf("after a successful retry, status = %s, want live", ch.Status)
+	}
+}
+
 // fakeRatings is a RatingResolver over a fixed key→rating map (present = ok).
 type fakeRatings map[provision.Key]string
 

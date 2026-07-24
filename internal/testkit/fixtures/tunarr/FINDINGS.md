@@ -5,6 +5,15 @@
 **Vendored spec:** `api/vendor/tunarr-openapi.json` (OpenAPI 3.0.3, 117 paths).
 **Base URL used:** `http://localhost:8000`.
 
+> **Re-verified 2026-07-23 against Tunarr `1.3.9`** (live homelab). The `POST /api/channels`
+> create body Loomarr sends (`internal/programmer/tunarr.go` `channelBody` +
+> `tunarrChannel`) matches 1.3.9's `required` channel set — `disableFillerOverlay`,
+> `duration`, `groupTitle`, `guideMinimumDuration`, `icon`, `id`, `name`, `number`,
+> `offline`, `startTime`, `stealth`, `streamMode`, `transcodeConfigId`, `subtitlesEnabled`
+> — confirmed by a live `201` and a full channel create→reconcile→read-back. No payload
+> change needed for 1.3.8 → 1.3.9. `/api/media-sources` (tunarr-connect) is likewise
+> unchanged. `/api/version` and `/openapi.json` are the endpoints to re-run on the next bump.
+
 ## Settled: the §6 API-key question
 
 **Tunarr 1.3.8 requires no API key.** The vendored spec declares

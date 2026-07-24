@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ type Tunarr struct {
 	transcodeMu         sync.Mutex
 	resolvedTranscodeID string
 	http                *http.Client
+	bulkHTTP            *http.Client     // longer timeout for the content-index bulk read only
 	resolver            *contentResolver // media-server item id → Tunarr program uuid (§6)
 	// filler-list attach policy (§10/§15): weight = relative draw when a channel has
 	// multiple lists; cooldownSeconds = min seconds before a clip repeats. Zero
@@ -63,6 +65,7 @@ func NewDynamic(conn func() string, transcodeConfigID string) *Tunarr {
 		conn:              conn,
 		transcodeConfigID: transcodeConfigID,
 		http:              httpx.NewNamed("tunarr", httpx.TimeoutTunarr),
+		bulkHTTP:          httpx.NewNamed("tunarr-bulk", httpx.TimeoutTunarrBulk),
 	}
 	t.resolver = &contentResolver{refresh: t.buildContentIndex}
 	return t
@@ -214,7 +217,7 @@ func (t *Tunarr) channelBody(spec ChannelSpec) tunarrChannel {
 // GetChannel implements Programmer. A 404 → (zero, false, nil).
 func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel, bool, error) {
 	var ch tunarrChannel
-	status, err := t.doStatus(ctx, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch)
+	status, snippet, err := t.doStatus(ctx, t.http, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch)
 	if err != nil {
 		return ActualChannel{}, false, err
 	}
@@ -222,7 +225,7 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 		return ActualChannel{}, false, nil
 	}
 	if status < 200 || status >= 300 {
-		return ActualChannel{}, false, fmt.Errorf("get channel %s: status %d", tunarrID, status)
+		return ActualChannel{}, false, statusErr("get channel "+tunarrID, status, snippet)
 	}
 	return ActualChannel{
 		TunarrID:     ch.ID,
@@ -236,38 +239,61 @@ func (t *Tunarr) GetChannel(ctx context.Context, tunarrID string) (ActualChannel
 
 // DeleteChannel implements Programmer; a 404 is treated as already-gone (idempotent).
 func (t *Tunarr) DeleteChannel(ctx context.Context, tunarrID string) error {
-	status, err := t.doStatus(ctx, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)
+	status, snippet, err := t.doStatus(ctx, t.http, http.MethodDelete, "/api/channels/"+tunarrID, nil, nil)
 	if err != nil {
 		return err
 	}
 	if status == http.StatusNotFound || (status >= 200 && status < 300) {
 		return nil
 	}
-	return fmt.Errorf("delete channel %s: status %d", tunarrID, status)
+	return statusErr("delete channel "+tunarrID, status, snippet)
 }
 
 // --- HTTP helpers ---
 
 func (t *Tunarr) doJSON(ctx context.Context, method, path string, in, out any) error {
-	status, err := t.doStatus(ctx, method, path, in, out)
+	return t.doJSONClient(ctx, t.http, method, path, in, out)
+}
+
+// doJSONBulk is doJSON on the longer-timeout bulk client — for the one large read
+// (the content-index build) that a channel-CRUD timeout would cancel (§6).
+func (t *Tunarr) doJSONBulk(ctx context.Context, method, path string, in, out any) error {
+	return t.doJSONClient(ctx, t.bulkHTTP, method, path, in, out)
+}
+
+func (t *Tunarr) doJSONClient(ctx context.Context, client *http.Client, method, path string, in, out any) error {
+	status, snippet, err := t.doStatus(ctx, client, method, path, in, out)
 	if err != nil {
 		return err
 	}
 	if status < 200 || status >= 300 {
-		return fmt.Errorf("%s %s: status %d", method, path, status)
+		return statusErr(method+" "+path, status, snippet)
 	}
 	return nil
 }
 
+// statusErr formats a non-2xx Tunarr response, appending the body snippet when
+// present so the error carries Tunarr's own reason (a 400's "{"error":"..."}")
+// rather than a bare status code — the difference between "can't reach Tunarr,
+// status 400" and knowing exactly which field the request got wrong.
+func statusErr(what string, status int, snippet string) error {
+	if snippet != "" {
+		return fmt.Errorf("%s: status %d: %s", what, status, snippet)
+	}
+	return fmt.Errorf("%s: status %d", what, status)
+}
+
 // doStatus executes a request and returns the HTTP status; it decodes into out
 // only on a 2xx (so callers can special-case 404 without a decode error). in is
-// JSON-marshaled when non-nil.
-func (t *Tunarr) doStatus(ctx context.Context, method, path string, in, out any) (int, error) {
+// JSON-marshaled when non-nil. On a non-2xx it returns a bounded snippet of the
+// response body so callers can surface Tunarr's own error reason (e.g. a 400's
+// "{"error":"..."}") instead of a bare status code.
+func (t *Tunarr) doStatus(ctx context.Context, client *http.Client, method, path string, in, out any) (int, string, error) {
 	var reader *strings.Reader
 	if in != nil {
 		blob, err := json.Marshal(in)
 		if err != nil {
-			return 0, fmt.Errorf("marshal %s body: %w", path, err)
+			return 0, "", fmt.Errorf("marshal %s body: %w", path, err)
 		}
 		reader = strings.NewReader(string(blob))
 	}
@@ -279,22 +305,28 @@ func (t *Tunarr) doStatus(ctx context.Context, method, path string, in, out any)
 		req, err = http.NewRequestWithContext(ctx, method, t.baseURL()+path, nil)
 	}
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := t.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("%s %s: %w", method, path, err)
+		return 0, "", fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if out != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Read a bounded slice of the error body; Tunarr replies with a small JSON
+		// object, and we never want a runaway body in an error string.
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return resp.StatusCode, strings.TrimSpace(string(snippet)), nil
+	}
+	if out != nil {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return resp.StatusCode, fmt.Errorf("decode %s: %w", path, err)
+			return resp.StatusCode, "", fmt.Errorf("decode %s: %w", path, err)
 		}
 	}
-	return resp.StatusCode, nil
+	return resp.StatusCode, "", nil
 }
 
 var _ Programmer = (*Tunarr)(nil)
