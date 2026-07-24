@@ -26,6 +26,7 @@ type ChannelDTO struct {
 	Name         string `json:"name" example:"Saturday Morning Cartoons"`
 	Number       int    `json:"number" example:"42" doc:"Guide channel number"`
 	Group        string `json:"group,omitempty" example:"Kids"`
+	Logo         string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
 	Strategy     string `json:"strategy" enum:"sequential,shuffle,time_slot"`
 	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
@@ -99,7 +100,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 		lineup = append(lineup, dto)
 	}
 	return ChannelDTO{
-		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group,
+		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
@@ -446,6 +447,7 @@ type updateChannelInput struct {
 		Name     *string                 `json:"name,omitempty"`
 		Number   *int                    `json:"number,omitempty" minimum:"1"`
 		Group    *string                 `json:"group,omitempty"`
+		Logo     *string                 `json:"logo,omitempty" doc:"Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it."`
 		Strategy *string                 `json:"strategy,omitempty" enum:"sequential,shuffle,time_slot"`
 		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write."`
 		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
@@ -482,6 +484,12 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	if in.Body.Group != nil {
 		ch.Group = *in.Body.Group
+	}
+	if in.Body.Logo != nil {
+		// The icon URL is pushed to Tunarr's channel icon on the auto-reconcile below. An
+		// empty string clears it (Tunarr falls back to no icon). Trimmed so a stray space
+		// doesn't become a broken URL.
+		ch.Logo = strings.TrimSpace(*in.Body.Logo)
 	}
 	if in.Body.Strategy != nil {
 		ch.Strategy = schedule.Strategy(*in.Body.Strategy)
