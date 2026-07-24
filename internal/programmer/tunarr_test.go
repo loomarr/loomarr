@@ -21,6 +21,7 @@ type capture struct {
 	method string
 	path   string
 	body   []byte
+	scans  []string // library-scan endpoints POSTed (SetLineup's auto-rescan on unresolved slots)
 }
 
 func TestEnsureChannel_Create_ReadsServerAssignedID(t *testing.T) {
@@ -333,6 +334,12 @@ func mockTunarrWithIndex(t *testing.T, got *capture, index map[string]string) *h
 	mux.HandleFunc("/api/media-libraries/lib-A/programs", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(programs)
 	})
+	// The per-library scan endpoint SetLineup POSTs when a program slot didn't resolve — record
+	// each hit so a test can assert the auto-rescan fired (only) on a miss, and skipped `local`.
+	mux.HandleFunc("/api/media-sources/src-1/libraries/lib-A/scan", func(w http.ResponseWriter, _ *http.Request) {
+		got.scans = append(got.scans, "lib-A")
+		w.WriteHeader(http.StatusAccepted)
+	})
 	mux.HandleFunc("/api/channels/ch-id/programming", func(w http.ResponseWriter, r *http.Request) {
 		got.method, got.path = r.Method, r.URL.Path
 		got.body, _ = io.ReadAll(r.Body)
@@ -409,6 +416,30 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 		if item.Type == "flex" && item.Dur <= 0 {
 			t.Errorf("flex item %d has duration %v — Tunarr rejects ≤ 0 (must be floored)", i, item.Dur)
 		}
+	}
+	// The "gone" program slot didn't resolve (Tunarr hasn't indexed it), so SetLineup must
+	// have triggered a scan of the enabled emby library so a later reconcile can resolve it —
+	// and it must scan ONLY the emby library, never the skipped `local` filler source.
+	if len(got.scans) != 1 || got.scans[0] != "lib-A" {
+		t.Errorf("auto-rescan hit %v, want exactly [lib-A] (a miss triggers one media-library scan)", got.scans)
+	}
+}
+
+// SetLineup does NOT trigger a Tunarr rescan when every program slot resolves — the scan is
+// only worth its cost when something Tunarr hasn't indexed yet degraded to flex.
+func TestSetLineup_NoRescanWhenAllResolve(t *testing.T) {
+	var got capture
+	srv := mockTunarrWithIndex(t, &got, map[string]string{"lib-1": "uuid-1"})
+	c := programmer.New(srv.URL, "cfg")
+	slots := []schedule.Slot{
+		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // resolves → content
+		{Kind: schedule.SlotFlex, DurationMs: 60000},                              // flex is intended, not a miss
+	}
+	if err := c.SetLineup(context.Background(), "ch-id", slots); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.scans) != 0 {
+		t.Errorf("auto-rescan fired %v, want none (no program slot missed)", got.scans)
 	}
 }
 
