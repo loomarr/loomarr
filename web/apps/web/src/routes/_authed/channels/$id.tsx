@@ -17,6 +17,7 @@ import {
 } from "@/components/loomarr";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
+import { useDocumentTitle } from "@/lib";
 import { ChannelAdvanced } from "./-channel-advanced";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -75,6 +76,7 @@ const ChannelDetailScreen = () => {
   const queryClient = useQueryClient();
 
   const channel = channelsApi.useGetChannel(id);
+  useDocumentTitle(channel.data?.status === 200 ? channel.data.data.name : undefined);
   // Now/next is Tunarr's guide (§6) — absent until the channel is pushed, which is normal,
   // not an error, so it retries-false and simply shows an honest "nothing yet".
   const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });

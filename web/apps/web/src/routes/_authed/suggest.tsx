@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/auth";
 import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loomarr";
 import { Button } from "@/components/ui";
+import { useDocumentTitle } from "@/lib";
 import { ApprovalQueue, IntentForm, useSuggestionRun } from "@/suggest";
 
 // The Suggest workspace (§8, §12) — the product's core loop: a sentence becomes a
@@ -14,6 +15,7 @@ interface SuggestSearch {
 }
 
 const SuggestScreen = () => {
+  useDocumentTitle("Suggest");
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const { intent } = Route.useSearch();

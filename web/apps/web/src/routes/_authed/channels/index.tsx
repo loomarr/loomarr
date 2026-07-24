@@ -9,6 +9,7 @@ import { ChannelRowMenu, channelHealth, channelOnAir } from "@/channels";
 import { ChannelCard, EmptyState, ErrorState } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
+import { useDocumentTitle } from "@/lib";
 import { ChannelSuggestPanel } from "@/suggest";
 
 // Channels (§12) — the "is my TV working" screen. Everything here is Loomarr's own state
@@ -18,6 +19,7 @@ import { ChannelSuggestPanel } from "@/suggest";
 // or a title landing — emits a `channel` SSE frame, and the listener below live-invalidates
 // both queries so the page updates on its own.
 const ChannelsScreen = () => {
+  useDocumentTitle("Channels");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
