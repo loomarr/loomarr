@@ -13,7 +13,7 @@
 # codegen reads the committed api/openapi.yaml (orval) — no running server needed.
 # Node 22 (not 20): pnpm 11.13 uses the built-in `node:sqlite` for its store index,
 # which only exists on Node 22.5+ — Node 20 fails with ERR_UNKNOWN_BUILTIN_MODULE.
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS fe
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS fe
 RUN corepack enable
 WORKDIR /src
 COPY web ./web
