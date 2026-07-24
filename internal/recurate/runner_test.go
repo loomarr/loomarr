@@ -65,11 +65,14 @@ func TestRunner_TriggersOnlyEligibleChannels(t *testing.T) {
 	seedJob(t, st, "job-paused", "90s comedy")
 	seedJob(t, st, "job-notopted", "90s drama")
 
+	seedJob(t, st, "job-drifted", "90s horror")
+
 	seedChannelStatus(t, st, "c-live", "job-live", schedule.StatusLive, &schedule.AutoCurate{}, 1)
 	seedChannelStatus(t, st, "c-building", "job-building", schedule.StatusBuilding, &schedule.AutoCurate{}, 2)
-	seedChannelStatus(t, st, "c-paused", "job-paused", schedule.StatusPaused, &schedule.AutoCurate{}, 3) // skipped: paused
-	seedChannelStatus(t, st, "c-notopted", "job-notopted", schedule.StatusLive, nil, 4)                  // skipped: no opt-in
-	seedChannelStatus(t, st, "c-handmade", "", schedule.StatusLive, &schedule.AutoCurate{}, 5)           // skipped: no IntentRef
+	seedChannelStatus(t, st, "c-drifted", "job-drifted", schedule.StatusDrifted, &schedule.AutoCurate{}, 6) // ELIGIBLE: drifted is a transient managed state
+	seedChannelStatus(t, st, "c-paused", "job-paused", schedule.StatusPaused, &schedule.AutoCurate{}, 3)    // skipped: paused
+	seedChannelStatus(t, st, "c-notopted", "job-notopted", schedule.StatusLive, nil, 4)                     // skipped: no opt-in
+	seedChannelStatus(t, st, "c-handmade", "", schedule.StatusLive, &schedule.AutoCurate{}, 5)              // skipped: no IntentRef
 
 	fr := &fakeRefiner{}
 	r := recurate.NewRunner(st, fr, testkit.Logger())
@@ -77,15 +80,15 @@ func TestRunner_TriggersOnlyEligibleChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kicked != 2 {
-		t.Fatalf("kicked %d, want 2 (only live + building auto-curate channels)", kicked)
+	if kicked != 3 {
+		t.Fatalf("kicked %d, want 3 (live + building + drifted auto-curate channels)", kicked)
 	}
 	got := map[string]bool{}
 	for _, j := range fr.calls {
 		got[j] = true
 	}
-	if !got["job-live"] || !got["job-building"] {
-		t.Errorf("refined %v, want job-live + job-building", fr.calls)
+	if !got["job-live"] || !got["job-building"] || !got["job-drifted"] {
+		t.Errorf("refined %v, want job-live + job-building + job-drifted", fr.calls)
 	}
 	if got["job-paused"] || got["job-notopted"] {
 		t.Errorf("refined an ineligible channel: %v", fr.calls)

@@ -36,6 +36,9 @@ type Store interface {
 	ListChannels(ctx context.Context) ([]store.Channel, error)
 	UpsertChannel(ctx context.Context, ch store.Channel) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]store.Proposal, error)
+	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
+	// title only if it's still available, so it needs to read each title's state.
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 
 // Reconciler pushes a channel's desired state to Tunarr (§9). Satisfied by
@@ -121,12 +124,45 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 			return "", err
 		}
 	}
-	// Re-approval refreshes what the proposal owns (lineup + policy) and leaves what the
-	// OPERATOR owns alone — name, number, group, logo, strategy are editable fields
-	// (§7 PATCH), and silently reverting an edit on re-approve would be a data loss.
-	existingFiller := existing.Policy.Filler // operator-owned; must survive re-approval
-	ch.Lineup = lineup
+	// Re-approval refreshes what the PROPOSAL owns (lineup + the LLM-extracted policy fields:
+	// scope/audience/ordering/seasonal) and leaves what the OPERATOR owns alone — name, number,
+	// group, logo, strategy are editable fields (§7 PATCH), and silently reverting an edit on
+	// re-approve would be data loss. `ch.Policy` MIXES the two: some fields are proposal-owned,
+	// some are operator-owned but ride the same policy_json. So capture the operator-owned ones
+	// BEFORE `ch.Policy = policy` overwrites the whole struct, then restore them.
+	existingFiller := existing.Policy.Filler         // operator-owned (§10 filler editor)
+	existingRules := existing.Policy.Rules           // operator-owned (§8.1 rules editor)
+	existingWindow := existing.Policy.Window         // operator-owned (§8.1 rules editor)
+	existingAutoCurate := existing.Policy.AutoCurate // operator-owned (§8.2 auto-curate opt-in)
+
+	// Lineup binding differs by WHO approved (§8.2). A human-in-the-loop approval (manual
+	// approve, or a manual refine the operator drove) REPLACES the lineup — a person decided,
+	// including to remove titles. Scheduled AUTO-CURATE runs unattended, so it must be
+	// NON-DESTRUCTIVE: it ADDS the refreshed picks onto the existing lineup and only drops a
+	// title that's clearly off-intent (genuinely gone from the library, or explicitly excluded)
+	// — never a still-available title the stochastic LLM just didn't re-pick this run. Without
+	// this, weekly re-curation would churn a channel, silently dropping good titles nobody chose
+	// to remove (the §8.2 "never drop a currently-airing available title just for churn" rule).
+	if isAutoCurate(p) && existing.ID != "" {
+		ch.Lineup = b.mergeLineupAdditive(ctx, existing.Lineup, lineup, mustExcludeKeys(p))
+	} else {
+		ch.Lineup = lineup
+	}
 	ch.Policy = policy
+	// Restore the operator-owned policy fields the proposal doesn't own. Without this, a refine
+	// or an auto-curate rebind would wipe a hand-tuned filler, hand-edited curation rules, or —
+	// most insidiously — the AutoCurate opt-in ITSELF (a channel would auto-curate once, then
+	// silently turn itself off). A refine/re-curation carries none of these in its proposal, so
+	// preserving them is the correct default; the operator changes them only on the channel page.
+	if existingRules != nil {
+		ch.Policy.Rules = existingRules
+	}
+	if existingWindow != 0 {
+		ch.Policy.Window = existingWindow
+	}
+	if existingAutoCurate != nil {
+		ch.Policy.AutoCurate = existingAutoCurate
+	}
 	// Filler selection (§10) is operator-owned but rides on the proposal-owned policy, so
 	// carry the existing one forward across a re-approval (never clobber a tuned filler).
 	// On a FIRST approval there's none yet → seed the filler era from the channel's program
