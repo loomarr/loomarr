@@ -108,10 +108,72 @@ func TestComputeDesiredAt_WindowBoundaryAdvancesButStaysEligible(t *testing.T) {
 	if !cur.EligibleKeys[seriesKey] || !next.EligibleKeys[seriesKey] {
 		t.Fatal("series should stay eligible across a window boundary")
 	}
-	// The dealt slice generally rotates (seed advanced by exactly one window index). We
-	// don't over-assert exact contents, only that the boundary changed the seed path — the
+	// The dealt slice generally rotates (the window index advances the slice offset). We
+	// don't over-assert exact contents, only that the boundary changed the slice — the
 	// digests should differ for a 48-episode deck dealt into 6h windows.
 	if slotKeysDigest(cur) == slotKeysDigest(next) {
 		t.Fatal("window boundary did not advance the deck (expected a rotated slice)")
+	}
+}
+
+// THE ROTATION FIX (the "1980s Action Heroes repeats the same films" defect): a movie pool
+// bigger than the window must ROTATE THROUGH THE WHOLE CATALOG over consecutive windows —
+// not loop a fixed prefix that starves the tail. 15 films × 2h = 30h; a 24h window holds 12,
+// so over ceil(30h/24h)=2 windows EVERY film must air at least once. This is the regression
+// guard for the exact bug: before the fix, `truncateToWindow` kept films [0..12) every window
+// and films 12,13,14 never aired.
+func TestComputeDesiredAt_MoviePoolRotatesThroughWholeCatalog(t *testing.T) {
+	const nFilms = 15
+	avail := durAvail{}
+	var entries []schedule.LineupEntry
+	for i := 0; i < nFilms; i++ {
+		key := provision.Key("movie:tmdb:" + itoa(1000+i))
+		avail[key] = struct {
+			id  string
+			dur int64
+		}{id: "lib-" + itoa(i), dur: 2 * 60 * 60 * 1000} // 2h each
+		entries = append(entries, schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)})
+	}
+	ch := schedule.Channel{ID: "action", Name: "80s Action", Number: 3, Strategy: schedule.Sequential, DefaultWindow: 24 * time.Hour}
+	// Sequential ordering is the case that starved before the fix (a stable order + a fixed
+	// prefix). syndication behaves the same way; shuffle also rotates now.
+	pol := schedule.ChannelPolicy{Ordering: "syndication"}
+	base := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+
+	seen := map[string]bool{}
+	// Walk a full cycle of 24h windows (2 windows cover 30h of content). Sample each window
+	// once, well inside it, to collect what airs.
+	for w := int64(0); w < 2; w++ {
+		at := base.Add(time.Duration(w)*24*time.Hour + time.Hour)
+		d := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, pol, at)
+		for _, s := range d.Slots {
+			if s.IsProgram() {
+				seen[s.Title] = true
+			}
+		}
+	}
+	if len(seen) != nFilms {
+		t.Fatalf("only %d/%d films aired across a full cycle — the tail is starved (the rotation bug)", len(seen), nFilms)
+	}
+}
+
+// A single window over the movie pool must be a manageable slice (~12 films of 24h), not the
+// whole 15-film run — the window still bounds the horizon; rotation just moves WHICH slice.
+func TestComputeDesiredAt_MovieWindowIsBounded(t *testing.T) {
+	avail := durAvail{}
+	var entries []schedule.LineupEntry
+	for i := 0; i < 15; i++ {
+		key := provision.Key("movie:tmdb:" + itoa(2000+i))
+		avail[key] = struct {
+			id  string
+			dur int64
+		}{id: "lib-" + itoa(i), dur: 2 * 60 * 60 * 1000}
+		entries = append(entries, schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)})
+	}
+	ch := schedule.Channel{ID: "a", Number: 3, Strategy: schedule.Sequential, DefaultWindow: 24 * time.Hour}
+	d := schedule.ComputeDesiredAt(ch, entries, avail, schedule.PodFill, schedule.ChannelPolicy{Ordering: "syndication"}, time.Date(2026, 7, 24, 1, 0, 0, 0, time.UTC))
+	progs := d.ProgramCount()
+	if progs < 1 || progs >= 15 {
+		t.Fatalf("window materialized %d films; want a bounded slice (>=1, <15 — the whole 30h run isn't one window)", progs)
 	}
 }

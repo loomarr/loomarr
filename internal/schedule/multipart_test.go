@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
 )
@@ -82,6 +83,48 @@ func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
 		r, tm, c := pos["movie:tmdb:85"], pos["movie:tmdb:87"], pos["movie:tmdb:89"]
 		if tm != r+1 || c != r+2 {
 			t.Fatalf("seed %d: franchise split/out-of-order: Raiders=%d Temple=%d Crusade=%d", seed, r, tm, c)
+		}
+	}
+}
+
+// The rotating window must never split a franchise (or two-parter) at the window seam:
+// because windowSlice runs on the COLLAPSED deck (a franchise is one super-slot), it's kept
+// whole or excluded whole, at every window offset. Guards the plan Risk #2 for the window.
+func TestFranchiseNeverSplitByWindowSeam(t *testing.T) {
+	entries := []LineupEntry{
+		movieEntry("movie:tmdb:85", 1981, 84), // Raiders  ┐
+		movieEntry("movie:tmdb:87", 1984, 84), // Temple   │ Indy franchise (collection 84)
+		movieEntry("movie:tmdb:89", 1989, 84), // Crusade  ┘
+		movieEntry("movie:tmdb:s1", 1986, 0),
+		movieEntry("movie:tmdb:s2", 1988, 0),
+		movieEntry("movie:tmdb:s3", 1987, 0),
+	}
+	tags := assignFranchiseGroups(entries)
+	slots := make([]Slot, 0, len(entries))
+	for _, e := range entries {
+		s := Slot{Kind: SlotProgram, Key: e.Key, LibraryItemID: string(e.Key), Title: string(e.Key), DurationMs: 2 * 60 * 60 * 1000} // 2h each
+		if tag, ok := tags[e.Key]; ok {
+			s.PartGroup, s.PartIndex = tag.group, tag.index
+		}
+		slots = append(slots, s)
+	}
+	rp := ChannelPolicy{Ordering: OrderSyndication}.Resolved(Sequential, false)
+	collapsed, expand := collapseGroups(slots)
+	ordered, _ := slotWithRelaxation(collapsed, rp, 7)
+	indy := map[string]bool{"movie:tmdb:85": true, "movie:tmdb:87": true, "movie:tmdb:89": true}
+	// At every window offset (5h window, so the franchise's 6h block straddles a seam if split),
+	// the Indy films appear either ALL or NONE — never a lone member orphaned by truncation.
+	for idx := int64(0); idx < int64(len(entries))+2; idx++ {
+		sliced := windowSlice(ordered, 5*time.Hour, idx)
+		sliced = expandGroups(sliced, expand)
+		n := 0
+		for _, s := range sliced {
+			if indy[string(s.Key)] {
+				n++
+			}
+		}
+		if n != 0 && n != 3 {
+			t.Fatalf("index %d: franchise split by the window seam — %d/3 Indy films present", idx, n)
 		}
 	}
 }
@@ -248,7 +291,7 @@ func TestMultiPart_WindowKeepsPairWhole(t *testing.T) {
 		{Kind: SlotProgram, Key: "k", LibraryItemID: "s", Title: "Standalone", DurationMs: 45 * 60 * 1000},
 	}
 	collapsed, expand := collapseGroups(slots)
-	ordered := truncateToWindow(collapsed, 60*60*1000) // 1h window
+	ordered := windowSlice(collapsed, time.Hour, 0) // 1h window; group (90m) exceeds it → kept whole
 	ordered = expandGroups(ordered, expand)
 
 	// Both parts present (never a lone Part 2), adjacent + in order.
