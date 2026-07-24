@@ -93,7 +93,7 @@ Corresponds to the `frontend-design.md` §7 "Phase 1" deliverables, done now at 
 
 Every screen maps to existing endpoints + the 3 SSE types (see §8 coverage map).
 
-- **Channels + Channel detail** — `ChannelCard`, `OnAirIndicator`, `NowNextStrip`; "reconcile now" (`POST /v1/channels/{id}/reconcile`); "Managed by Loomarr" badge; drift flags. Live via `channel` SSE events.
+- **Channels + Channel detail** — `ChannelCard`, `OnAirIndicator`, `NowNextStrip`; "Managed by Loomarr" badge; drift flags. **No "reconcile now" button** — edits auto-reconcile (design.md §9/§12); the detail page is the four-surface IA (Overview · Programming · Filler · Settings, design.md §12), not an operator console. Live via `channel` SSE events.
 - **Board / My proposals** — titles by provisioning state (`GET /v1/titles?state=`), retry/cancel, member journey framing (*pending → acquiring (3/7) → live on N*). Live via `title` SSE.
 - **Suggestion workspace** — `IntentInput` (magenta focus, template chips) → `GenerationProgress` (real `searching/reasoning/scoring/done/failed` via `job` SSE) → `ProposalReview` (lineup + acquisitions + rationale + confidence + alternates; edit-via-search over `GET /v1/search`) → submit. **Approval queue** (admin) with `approve`/`deny`.
 - **Filler library** — `ClipCard`, `PodTimeline`; `GET /v1/filler`, `sync`, `tag`, `PATCH /v1/filler/{id}`.
