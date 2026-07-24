@@ -57,7 +57,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
-		suggest: opts.Suggest, search: opts.Search, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
+		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
@@ -84,6 +84,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
 	// bodies). Auth checked inline via the same authorizer.
 	mux.HandleFunc("GET /v1/events", srv.eventsHandler)
+
+	// Channel icon upload (multipart) + serve (raw image bytes) are plain mux handlers —
+	// neither fits Huma's typed-JSON model. Upload is admin-only (checked inline); serve is
+	// public so Tunarr can fetch the icon machine-to-machine, like a TMDB poster URL.
+	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
+	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
 
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)

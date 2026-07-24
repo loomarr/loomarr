@@ -45,6 +45,12 @@ type Store interface {
 	UpsertChannel(ctx context.Context, ch Channel) error
 	ListChannels(ctx context.Context) ([]Channel, error)
 	DeleteChannel(ctx context.Context, id string) error
+	// PutChannelIcon stores (or replaces) a channel's uploaded icon bytes + MIME (the
+	// upload icon source). One per channel; updatedAt drives cache-busting on serve.
+	PutChannelIcon(ctx context.Context, channelID, contentType string, data []byte, updatedAt time.Time) error
+	// GetChannelIcon returns a channel's uploaded icon. ok=false when none is stored (the
+	// channel uses a TMDB/URL logo, or has no icon). The serve endpoint 404s on !ok.
+	GetChannelIcon(ctx context.Context, channelID string) (contentType string, data []byte, updatedAt time.Time, ok bool, err error)
 	// ClaimDueChannels atomically claims up to limit channels whose
 	// reconcile_deadline is at/before now, for the periodic reconcile sweep
 	// (§9). Like ClaimDueTitles it *leases* each claimed channel (deadline →

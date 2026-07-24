@@ -261,6 +261,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
 	var systemLLM api.SystemLLMService
+	var iconSvc api.IconService
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
@@ -284,6 +285,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// library already owns as in-library (a lineup pick, not an acquisition).
 		cat := catalog.New(lib, tmdbSearcher).WithPresence(libraryPresence{lib})
 		searchSvc = searchAdapter{cat}
+
+		// Channel icon suggestions (§icon P2): gated on TMDB, same as search/suggest above —
+		// posters are TMDB-only, so no TMDB key means no suggestions, and the route 501s.
+		if tmdbClient != nil {
+			iconSvc = iconAdapter{store: st, tmdb: tmdbClient, log: log}
+		}
 
 		// The model is a config choice (§8/§14): ollama (local default) or the
 		// OpenAI-compatible client (hosted OR Ollama's own /v1). LLM_PROVIDER selects.
@@ -486,6 +493,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		TunarrConnect: tunarrConnectSvc,
 		Suggest:       suggestSvc,
 		Search:        searchSvc,
+		Icons:         iconSvc,
 		Events:        eventBus,
 		Filler:        fillerSvc,
 		Pods:          podPreview,

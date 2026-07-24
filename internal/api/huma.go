@@ -40,9 +40,12 @@ type Server struct {
 	// Phase 11 is configured.
 	suggest SuggestService
 	search  SearchService
-	events  EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
-	filler  FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	pods    PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
+	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
+	icons  IconService
+	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
+	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
@@ -247,6 +250,26 @@ type SearchCandidate struct {
 	OfficialRating string   `json:"officialRating,omitempty"`
 }
 
+// IconService backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate
+// channel-icon images drawn from the channel's OWN lineup — a Star Trek channel
+// offers its five series' posters, so the operator picks a themed icon without
+// leaving the channel page. Implemented by an adapter over the store + *tmdb.Client;
+// abstracted so the API package needn't import tmdb. nil ⇒ the route 501s (TMDB
+// unconfigured — matching every other TMDB-dependent feature's gate).
+type IconService interface {
+	// IconSuggestions returns candidate poster URLs for one channel, best-effort:
+	// a lookup failure on one lineup title is skipped, never fails the whole call
+	// (§icon — one bad title must not deny every other suggestion).
+	IconSuggestions(ctx context.Context, channelID string) ([]IconSuggestion, error)
+}
+
+// IconSuggestion is one candidate channel icon: a lineup title's display name paired
+// with a directly-fetchable poster image URL (TMDB's CDN — no proxying needed).
+type IconSuggestion struct {
+	Title string `json:"title" example:"Star Trek: The Next Generation"`
+	URL   string `json:"url" example:"https://image.tmdb.org/t/p/w500/xyz.jpg"`
+}
+
 // ChannelService is the channel-management surface the API depends on (§9).
 // Implemented by channels.Engine + the store; abstracted so the API doesn't
 // couple to the reconcile internals.
@@ -334,6 +357,7 @@ type Options struct {
 	TunarrConnect TunarrConnector  // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
 	Suggest       SuggestService   // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
 	Search        SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
+	Icons         IconService      // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	Events        EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods          PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501

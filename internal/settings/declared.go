@@ -113,6 +113,11 @@ func declared() []Setting {
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
 		},
+		{
+			Key: "server.public_url", EnvVar: "SERVER_PUBLIC_URL", Group: GroupTunarr,
+			Kind: KindURL, Default: "", Advanced: true,
+			Doc: "Loomarr's own address as Tunarr can reach it, e.g. http://loomarr:8080. Only needed for uploaded channel icons — Tunarr fetches them from this base. Leave empty if you set icons from TMDB or a full URL.",
+		},
 
 		// --- Connections: TMDB (§15, Phase 11) ---
 		{

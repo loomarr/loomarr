@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"testing"
@@ -30,6 +31,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("SettingsKV", func(t *testing.T) { testSettings(t, newStore) })
 	t.Run("ChannelRoundTrip", func(t *testing.T) { testChannelRoundTrip(t, newStore) })
 	t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
+	t.Run("ChannelIconRoundTrip", func(t *testing.T) { testChannelIconRoundTrip(t, newStore) })
 	t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 	t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
 	t.Run("JobRoundTrip", func(t *testing.T) { testJobRoundTrip(t, newStore) })
@@ -356,6 +358,51 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetChannel(ctx, "ch-2"); err != ErrNotFound {
 		t.Errorf("deleted channel still present: %v", err)
+	}
+}
+
+// testChannelIconRoundTrip covers the upload-icon blob store: put → get, replace-on-reput,
+// missing → ok=false, and delete-channel cleans up the icon (no orphaned blob).
+func testChannelIconRoundTrip(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertChannel(ctx, sampleChannel("ch-ico", 7, time.Time{}))
+
+	// Missing → ok=false.
+	if _, _, _, ok, err := s.GetChannelIcon(ctx, "ch-ico"); err != nil || ok {
+		t.Fatalf("no icon yet: ok=%v err=%v, want ok=false/nil", ok, err)
+	}
+
+	// Put → get round-trips bytes + content type.
+	png := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3}
+	at := time.Unix(1_700_000_000, 0)
+	if err := s.PutChannelIcon(ctx, "ch-ico", "image/png", png, at); err != nil {
+		t.Fatal(err)
+	}
+	ct, data, gotAt, ok, err := s.GetChannelIcon(ctx, "ch-ico")
+	if err != nil || !ok {
+		t.Fatalf("get after put: ok=%v err=%v", ok, err)
+	}
+	if ct != "image/png" || !bytes.Equal(data, png) || gotAt.Unix() != at.Unix() {
+		t.Errorf("round-trip mismatch: ct=%q len=%d at=%d", ct, len(data), gotAt.Unix())
+	}
+
+	// Replace on re-put (one row per channel PK).
+	jpg := []byte{0xFF, 0xD8, 0xFF, 9, 9}
+	if err := s.PutChannelIcon(ctx, "ch-ico", "image/jpeg", jpg, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	ct2, data2, _, _, _ := s.GetChannelIcon(ctx, "ch-ico")
+	if ct2 != "image/jpeg" || !bytes.Equal(data2, jpg) {
+		t.Errorf("replace didn't take: ct=%q len=%d", ct2, len(data2))
+	}
+
+	// Deleting the channel drops the icon (no orphan).
+	if err := s.DeleteChannel(ctx, "ch-ico"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, ok, _ := s.GetChannelIcon(ctx, "ch-ico"); ok {
+		t.Error("icon survived channel delete (orphaned blob)")
 	}
 }
 

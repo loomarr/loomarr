@@ -26,6 +26,7 @@ type ChannelDTO struct {
 	Name         string `json:"name" example:"Saturday Morning Cartoons"`
 	Number       int    `json:"number" example:"42" doc:"Guide channel number"`
 	Group        string `json:"group,omitempty" example:"Kids"`
+	Logo         string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
 	Strategy     string `json:"strategy" enum:"sequential,shuffle,time_slot"`
 	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
@@ -99,7 +100,7 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) string) Chann
 		lineup = append(lineup, dto)
 	}
 	return ChannelDTO{
-		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group,
+		ID: ch.ID, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
 		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
 		ProgramCount: d.ProgramCount(), SlotCount: len(ch.Desired),
@@ -245,6 +246,13 @@ func (s *Server) registerChannels(api huma.API) {
 	}, s.getChannel)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
+		Summary:     "Suggest channel icons from the lineup",
+		Description: "Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.",
+		Tags:        []string{"channels"},
+	}, s.channelIconSuggestions)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
 		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
@@ -325,6 +333,39 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 		return nil, err
 	}
 	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+}
+
+type iconSuggestionsOutput struct {
+	Body struct {
+		Suggestions []IconSuggestion `json:"suggestions"`
+	}
+}
+
+// channelIconSuggestions offers candidate icons drawn from the channel's OWN lineup
+// (§icon P2): a Star Trek channel's five series posters, rather than a generic
+// placeholder. Read-only — any authenticated user may call it, matching get-channel.
+func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
+	if s.icons == nil {
+		return nil, errNotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
+	}
+	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+
+	suggestions, err := s.icons.IconSuggestions(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := &iconSuggestionsOutput{}
+	// Always a slice, never null: a lineup with no resolvable posters (e.g. all-TVDB
+	// entries with no TMDB bridge match) is a normal state, not a failure.
+	out.Body.Suggestions = suggestions
+	if out.Body.Suggestions == nil {
+		out.Body.Suggestions = []IconSuggestion{}
+	}
+	return out, nil
 }
 
 type createChannelInput struct {
@@ -446,6 +487,7 @@ type updateChannelInput struct {
 		Name     *string                 `json:"name,omitempty"`
 		Number   *int                    `json:"number,omitempty" minimum:"1"`
 		Group    *string                 `json:"group,omitempty"`
+		Logo     *string                 `json:"logo,omitempty" doc:"Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it."`
 		Strategy *string                 `json:"strategy,omitempty" enum:"sequential,shuffle,time_slot"`
 		Policy   *schedule.ChannelPolicy `json:"policy,omitempty" doc:"Per-channel programming policy; merged onto the channel. policy.applied is reconcile-owned and ignored on write."`
 		// Status is limited to pause/resume: "paused" takes the channel off the sweep,
@@ -482,6 +524,12 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	}
 	if in.Body.Group != nil {
 		ch.Group = *in.Body.Group
+	}
+	if in.Body.Logo != nil {
+		// The icon URL is pushed to Tunarr's channel icon on the auto-reconcile below. An
+		// empty string clears it (Tunarr falls back to no icon). Trimmed so a stray space
+		// doesn't become a broken URL.
+		ch.Logo = strings.TrimSpace(*in.Body.Logo)
 	}
 	if in.Body.Strategy != nil {
 		ch.Strategy = schedule.Strategy(*in.Body.Strategy)

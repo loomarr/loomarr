@@ -113,6 +113,9 @@ components:
           type:
             - array
             - "null"
+        logo:
+          description: Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)
+          type: string
         name:
           examples:
             - Saturday Morning Cartoons
@@ -622,6 +625,40 @@ components:
         - active
         - modelsLive
         - models
+      type: object
+    IconSuggestion:
+      additionalProperties: false
+      properties:
+        title:
+          examples:
+            - "Star Trek: The Next Generation"
+          type: string
+        url:
+          examples:
+            - https://image.tmdb.org/t/p/w500/xyz.jpg
+          type: string
+      required:
+        - title
+        - url
+      type: object
+    IconSuggestionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/IconSuggestionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        suggestions:
+          items:
+            $ref: "#/components/schemas/IconSuggestion"
+          type:
+            - array
+            - "null"
+      required:
+        - suggestions
       type: object
     ImportCandidate:
       additionalProperties: false
@@ -2400,6 +2437,9 @@ components:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
           type: array
+        logo:
+          description: Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it.
+          type: string
         name:
           type: string
         number:
@@ -2720,6 +2760,34 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Edit a channel
+      tags:
+        - channels
+  /v1/channels/{id}/icon-suggestions:
+    get:
+      description: Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.
+      operationId: channel-icon-suggestions
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IconSuggestionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Suggest channel icons from the lineup
       tags:
         - channels
   /v1/channels/{id}/pods:
