@@ -278,6 +278,16 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	}
 }
 
+// ResolveWindow reports the effective rolling-window horizon a channel resolves at `now`
+// (§8.1 cycle preview): it picks the active rule for `now` and applies the same rule >
+// channel > global-default precedence ComputeDesiredAt uses internally. 0 = the whole run
+// (no truncation). Exported so the preview can explain "why ~24h and not 800 episodes"
+// without re-deriving the precedence — it calls the identical resolveWindow the builder does.
+func ResolveWindow(ch Channel, policy ChannelPolicy, now time.Time) time.Duration {
+	rule, _ := pickRule(policy.Rules, now)
+	return resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
+}
+
 // resolveWindow picks the effective rolling-window horizon: a rule's Window wins, then
 // the channel policy's Window, then the global default. WindowFull (< 0) at any level
 // means "no truncation" (the whole run). 0 means "inherit the next level"; a 0 at the
