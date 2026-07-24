@@ -3,7 +3,9 @@ package channels_test
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -124,6 +126,72 @@ func TestReconcile_EmptyCatalogNoFillerList(t *testing.T) {
 	}
 	if !emptyFiller {
 		t.Error("break gap should remain an empty (flex) filler slot")
+	}
+}
+
+// Breaks are only interleaved when a filler pool exists (the empty-filler fix):
+// inserting commercial-break gaps with no clips to fill them leaves empty flex that
+// Tunarr renders as large channel-named blocks in the guide. With BreaksPerHour set,
+// a channel with a pool gets break slots between its programs; the SAME channel with
+// an empty catalog gets NONE — its programs play back-to-back. Self-heals once clips land.
+func TestReconcile_NoBreaksWhenNoFillerPool(t *testing.T) {
+	// Two AVAILABLE programs so interleaveBreaks has a gap to fill (a single program
+	// never gets a trailing break). BreaksPerHour high enough to force a break between them.
+	seed := func() (store.Store, *testkit.Tunarr) {
+		st := newStore(t)
+		tun := testkit.NewTunarr()
+		seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		return st, tun
+	}
+	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	breaks := func(st store.Store, tun *testkit.Tunarr, pods *fakePods) *channels.Engine {
+		e := channels.New(st, tun, avail, nil,
+			channels.Config{ReconcileTTL: 10 * time.Minute, BreaksPerHour: 30}, // 30/hr → a break between hour-scale gaps
+			func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
+		if pods != nil {
+			e = e.WithPods(pods)
+		}
+		return e
+	}
+	countBreaks := func(ch store.Channel) int {
+		n := 0
+		for _, s := range ch.Desired {
+			if s.Kind == schedule.SlotFiller {
+				n++
+			}
+		}
+		return n
+	}
+
+	// With a real pool: breaks ARE interleaved (filler slots present).
+	stP, tunP := seed()
+	if err := breaks(stP, tunP, &fakePods{ids: []string{"clip-a"}}).Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	chP, _ := stP.GetChannel(context.Background(), "c1")
+	withPool := countBreaks(chP)
+	if withPool == 0 {
+		t.Fatal("with a filler pool + BreaksPerHour, expected break slots between programs, got none")
+	}
+
+	// With an empty catalog (ok=false): NO breaks — programs play back-to-back, no empty flex.
+	stE, tunE := seed()
+	if err := breaks(stE, tunE, &fakePods{}).Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	chE, _ := stE.GetChannel(context.Background(), "c1")
+	if got := countBreaks(chE); got != 0 {
+		t.Errorf("empty catalog must insert NO break slots (else empty flex → channel-named guide blocks), got %d", got)
+	}
+
+	// And with no PodFiller at all (nil pods): also no breaks.
+	stN, tunN := seed()
+	if err := breaks(stN, tunN, nil).Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	chN, _ := stN.GetChannel(context.Background(), "c1")
+	if got := countBreaks(chN); got != 0 {
+		t.Errorf("no PodFiller must insert NO break slots, got %d", got)
 	}
 }
 
