@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -88,12 +89,17 @@ func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeC
 	t.Cleanup(func() { _ = st.Close() })
 	chSvc := &fakeChannelSvc{}
 	ltv := &fakeLiveTVSvc{}
-	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+	log := slog.New(slog.DiscardHandler)
+	h := api.Router(log, api.Options{
 		Store:    st,
 		Auth:     api.NewTokenAuthorizer(adminToken),
-		Log:      slog.New(slog.DiscardHandler),
+		Log:      log,
 		Channels: chSvc,
 		LiveTV:   ltv,
+		// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
+		// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
+		// approved proposals in these tests, same as production wiring.
+		Binder: binder.New(st, chSvc, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

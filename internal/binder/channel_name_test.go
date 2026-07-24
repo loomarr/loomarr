@@ -1,4 +1,4 @@
-package api
+package binder
 
 import (
 	"encoding/json"

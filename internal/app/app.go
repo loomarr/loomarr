@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
+	"github.com/mantonx/loomarr/internal/binder"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/clipfetch"
@@ -22,6 +23,7 @@ import (
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
+	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -254,6 +256,25 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
+	// The channel binder (§7): the ONE "materialize an approved proposal onto a
+	// channel" implementation, shared by the manual-approve HTTP handler and the
+	// suggest worker's auto-approve path (§8/§11) — closes the gap where a
+	// per-user auto-approved refine enqueued acquisitions but never rebound its
+	// channel. Needs only the store, so it's constructed whenever one is open;
+	// channelSvc (if the scheduler/Tunarr block above wired it) satisfies
+	// binder.Reconciler directly — same Reconcile(ctx, channelID) signature. If
+	// channels isn't configured, channelSvc is a nil interface and the binder's
+	// nil-guard just skips the immediate reconcile push (same best-effort
+	// behavior createChannel/approveProposal always had).
+	var chBinder *binder.Binder
+	if st != nil {
+		var rec binder.Reconciler
+		if channelSvc != nil {
+			rec = channelSvc
+		}
+		chBinder = binder.New(st, rec, log)
+	}
+
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
 	// the LLM provider, the grounded suggester, and the worker pool. Wired when a
 	// store, the library, and the LLM are configured. The catalog + search share
@@ -334,6 +355,26 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			time.Now,
 			log,
 		))
+		// Same *binder.Binder the API's approve handler uses (wired into api.Options
+		// below) — so an auto-approved proposal ALSO rebinds its channel, closing the
+		// gap where auto-approve enqueued acquisitions but left the channel stale.
+		svc = svc.WithChannelBinder(chBinder)
+
+		// Self-updating channels (§8.2): the channel-scoped auto-curate grant + the
+		// scheduled re-curation job. The Curator approves a re-curation proposal because
+		// its CHANNEL opted in (schedule.AutoCurate), bounded by the quality bar + title
+		// cap (global settings, per-channel overridable) — through the SAME suggest.Approve
+		// gate, audit "auto-curate". The Runner (registered below) triggers the refresh
+		// refine that produces the proposal the Curator considers.
+		curator := recurate.NewCurator(st, recurateThresholds{set}, time.Now, log)
+		svc = svc.WithAutoCurate(curator)
+		recurateRunner := recurate.NewRunner(st, svc, log)
+		jobReg.Add(scheduler.Job{
+			Name: "channel-recurate", Title: "Re-curate self-updating channels",
+			DefaultCron: "0 0 4 * * 0", ScheduleKey: "job.recurate.schedule",
+			Run: func(ctx context.Context) error { _, err := recurateRunner.Run(ctx); return err },
+		})
+
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
 		go svc.Run(rootCtx)
@@ -511,6 +552,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Settings:      settingsSvc,
 		Guide:         guideSvc,
 		Provision:     provisionSvc,
+		Binder:        chBinder,
 		LiveConfig:    liveConfig,
 		LiveConfigInt: set.intv,
 	}), nil

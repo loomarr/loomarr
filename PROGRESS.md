@@ -4,6 +4,33 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**Curation-rule-engine arc — self-updating channels / re-curation (Phase B, 2026-07-24).** The
+second half of the rotation/re-curation plan (`.claude/plans/curation-rotation-and-recuration.md`):
+a channel built from an intent no longer freezes — an **opted-in** channel periodically
+re-evaluates its intent against the current library and evolves its lineup, **preferring
+in-library matches, weighting net-new acquisitions by quality + intent, and never bypassing the
+approval gate** (programming-design §8.2). Composed from existing parts: **B0** extracted a
+`ChannelBinder` (`internal/binder`) — the "materialize approved proposal → channel" logic — out of
+the API behind an interface the composition root wires ONCE, so manual-approve AND every
+auto-approve path bind identically (also **closed a latent gap**: a per-user auto-approved refine
+enqueued acquisitions but never rebound its channel). **Per-channel opt-in** = `policy.autoCurate`
+(rides `policy_json`, NO migration — like rules/filler/window) with optional MinScorePct/MaxTitles
+overrides; **global knobs** `job.recurate.schedule` (weekly), `recurate.min_score_pct` (60),
+`recurate.max_titles` (40). **`recurate.Curator`** = the channel-scoped auto-curate grant: filters a
+re-curation proposal's net-new acquisitions to those clearing the quality bar within the cap
+(in-library adds free), then approves through the ONE `suggest.Approve` gate (audit "auto-curate")
+— **never a raw `wanted` write**, fails closed. **`recurate.Runner`** + the `channel-recurate` job
+iterate eligible channels (live+intent-backed+auto-curate; skips paused/detached/hand-made/
+not-opted-in) → trigger a refresh refine → the worker's new `ChannelAutoCurator` considers it.
+Tests: quality bar, in-library-no-acquisition, **approval-gate negative** (not-opted-in never
+requests), title cap, per-channel override, runner eligibility, + the B0 fix. **Live-verified** on
+the homelab: opted the 1980s Action Heroes channel in, ran the job → refine → Curator approved
+(audit "auto-curate") → bound; **enqueued=0** (library already complete — the correct idempotent,
+conservative-spend outcome), **zero stray wanted titles** (gate honored). Doc-first §8.2 +
+config-design + design §8. Gate: `make check` (`-race`) + `test-pg` + `openapi-verify` +
+`config-docs` + FE `tsc` all GREEN. **The rotation/re-curation plan is now COMPLETE** (Phase A
+rotation + Phase B re-curation both shipped). Merged on green-local.
+
 **Curation-rule-engine arc — audience ceiling is a kids/teen guardrail (2026-07-24).** The
 "1980s Action Heroes" channel came out capped at **TV-14**, silently dropping its 9 R-rated
 films (Die Hard, Predator, Terminator…) — a small model reflexively caps genre channels, and

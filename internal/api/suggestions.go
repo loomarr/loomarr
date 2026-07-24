@@ -2,34 +2,16 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
-
-// newChannelID mints the id for a channel created by approving an intent. The
-// `ch_` prefix matches the ids the API documents and that callers assign by hand
-// via POST /v1/channels, so an approved channel is indistinguishable from one made
-// deliberately — it IS one.
-func newChannelID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "ch_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	}
-	return "ch_" + hex.EncodeToString(b[:])
-}
 
 // userIDFromHuma returns the authenticated user's id, or "" for a token
 // (break-glass) caller with no user record. Used to stamp created_by/approved_by.
@@ -233,155 +215,18 @@ func (s *Server) approveProposal(ctx context.Context, in *proposalIDInput) (*app
 	// Deliberately AFTER the gate and non-fatal: the approval and its acquisitions are
 	// durable regardless. If channel creation fails, the operator has an approved
 	// proposal and a logged error, not a half-applied approval that must be retried
-	// from scratch.
-	chID, err := s.channelForIntent(ctx, p)
+	// from scratch. A nil binder (unwired in a narrow unit test) is treated the same
+	// way — approval still stands, there's just no channel to report.
+	if s.binder == nil {
+		return out, nil
+	}
+	chID, err := s.binder.BindApprovedChannel(ctx, p)
 	if err != nil {
 		s.log.Error("approved, but the channel could not be created", "proposal", p.ID, "err", err)
 		return out, nil
 	}
 	out.Body.ChannelID = chID
 	return out, nil
-}
-
-// channelForIntent creates — or, on re-approval, patches — the channel an approved
-// proposal describes (§7). Idempotent on IntentRef (the suggestion job id), so
-// approving the same intent twice never mints a second channel.
-func (s *Server) channelForIntent(ctx context.Context, p store.Proposal) (string, error) {
-	intentRef := p.JobID
-	if intentRef == "" {
-		return "", fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
-	}
-
-	lineup, err := s.lineupFromIntent(ctx, intentRef)
-	if err != nil {
-		return "", fmt.Errorf("resolve lineup: %w", err)
-	}
-	policy, err := s.policyFromIntent(ctx, intentRef)
-	if err != nil {
-		return "", fmt.Errorf("resolve policy: %w", err)
-	}
-
-	existing, err := s.channelByIntent(ctx, intentRef)
-	if err != nil {
-		return "", err
-	}
-
-	ch := existing
-	if ch.ID == "" { // first approval of this intent → a new channel
-		ch.ID = newChannelID()
-		ch.IntentRef = intentRef
-		// Sequential is the channel Strategy that decides ordering ONLY when the grounded
-		// policy leaves Ordering == OrderInherit — i.e. a single-series channel, where
-		// episodes-in-order is correct. A multi-series channel's grounded policy carries
-		// OrderSyndication explicitly (groundPolicy multiSeries default), and policy ordering
-		// WINS over the strategy inherit (policy.Resolved) — so this does NOT force a Star
-		// Trek channel chronological. Don't "simplify" this to syndication: that would make a
-		// genuinely single-series channel intermix nothing-but-itself and lose episode order.
-		ch.Strategy = schedule.Sequential
-		ch.Name = channelNameFromIntent(p)
-		ch.Number, err = s.nextFreeChannelNumber(ctx)
-		if err != nil {
-			return "", err
-		}
-	}
-	// Re-approval refreshes what the proposal owns (lineup + policy) and leaves what the
-	// OPERATOR owns alone — name, number, group, logo, strategy are editable fields
-	// (§7 PATCH), and silently reverting an edit on re-approve would be a data loss.
-	existingFiller := existing.Policy.Filler // operator-owned; must survive re-approval
-	ch.Lineup = lineup
-	ch.Policy = policy
-	// Filler selection (§10) is operator-owned but rides on the proposal-owned policy, so
-	// carry the existing one forward across a re-approval (never clobber a tuned filler).
-	// On a FIRST approval there's none yet → seed the filler era from the channel's program
-	// scope era, so a "90s action" channel gets 90s ads out of the box (the default-from-
-	// theme). audience/category/kinds stay "any" — the user narrows those on the page.
-	switch {
-	case existingFiller != nil:
-		ch.Policy.Filler = existingFiller
-	case ch.Policy.Scope.Era != nil:
-		ch.Policy.Filler = &schedule.FillerSelection{Era: ch.Policy.Scope.Era}
-	}
-	ch.Status = schedule.StatusBuilding
-
-	if err := ch.Validate(); err != nil {
-		return "", fmt.Errorf("invalid channel: %w", err)
-	}
-	if err := s.store.UpsertChannel(ctx, ch); err != nil {
-		return "", err
-	}
-
-	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries.
-	if s.channels != nil && !s.unconfigured("tunarr.url") {
-		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			s.log.Warn("initial reconcile of an approved channel failed (sweep will retry)",
-				"channel", ch.ID, "err", err)
-		}
-	}
-	return ch.ID, nil
-}
-
-// channelByIntent finds the channel already bound to this intent, if any. Returns a
-// zero Channel when none exists.
-func (s *Server) channelByIntent(ctx context.Context, intentRef string) (store.Channel, error) {
-	all, err := s.store.ListChannels(ctx)
-	if err != nil {
-		return store.Channel{}, err
-	}
-	for _, c := range all {
-		if c.IntentRef == intentRef {
-			return c, nil
-		}
-	}
-	return store.Channel{}, nil
-}
-
-// nextFreeChannelNumber returns the lowest unused positive channel number, so an
-// operator never has to pick one to get on air (§7). Channel counts here are
-// household-scale, so a scan is cheaper and clearer than tracking a counter.
-func (s *Server) nextFreeChannelNumber(ctx context.Context) (int, error) {
-	all, err := s.store.ListChannels(ctx)
-	if err != nil {
-		return 0, err
-	}
-	used := make(map[int]bool, len(all))
-	for _, c := range all {
-		used[c.Number] = true
-	}
-	for n := 1; ; n++ {
-		if !used[n] {
-			return n, nil
-		}
-	}
-}
-
-// channelNameFromIntent derives a channel-sized label for a newly-approved channel. It
-// prefers the LLM's proposed channelName (a real network-style name — "Springfield
-// Classics" — §8), falling back to a truncated intent description, then a generic label.
-// A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
-func channelNameFromIntent(p store.Proposal) string {
-	var parsed suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &parsed); err == nil {
-		if n := strings.TrimSpace(parsed.ChannelName); n != "" {
-			return truncateLabel(n, 60)
-		}
-		if d := strings.TrimSpace(parsed.Intent.Description); d != "" {
-			return truncateLabel(d, 60)
-		}
-	}
-	return "Suggested channel"
-}
-
-// truncateLabel shortens on a word boundary so a long intent doesn't produce a name
-// cut mid-word in the middle of a TV guide.
-func truncateLabel(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	cut := s[:max]
-	if i := strings.LastIndex(cut, " "); i > max/2 {
-		cut = cut[:i]
-	}
-	return strings.TrimRight(cut, " ,.;:-") + "…"
 }
 
 type denyInput struct {
