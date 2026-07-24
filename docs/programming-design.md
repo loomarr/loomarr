@@ -73,6 +73,7 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 - `shuffle` — seeded random, separation-constrained.
 - `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
+- **Multi-series channels default to `syndication`.** A channel whose lineup is several series (a "Star Trek" franchise channel) should *intermix* them (the deck deal), not play all of one then all of the next. Two levers, both in the **grounded policy** (never the channel `Strategy`): (1) the suggester *prompt* guides the LLM to pick `syndication` when the lineup has more than one series; (2) `groundPolicy` applies a deterministic fallback — when the model stated no ordering **and** the grounded lineup spans ≥2 distinct series (by provisioning `Key`), it sets the policy `ordering` to `syndication`. Because an explicit policy `ordering` **wins over** the channel-`Strategy` inherit (`Resolved`), this overrides the approve-time `Strategy: sequential` default without changing it — that `sequential` remains the correct fallback for a genuinely single-series channel, which stays `OrderInherit` → chronological binge. The model's explicit ordering choice always wins over the fallback. One series plus movies is *not* multi-series (conservative: only ≥2 distinct series qualifies).
 
 ## 6. Seasonality ("holiday episodes at holiday time — and only then")
 
@@ -84,6 +85,75 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
 - Evaluation uses the container `TZ` wall-clock (main doc §9) at reconcile time; the periodic sweep naturally rolls channels into and out of windows within `CHANNEL_RECONCILE_EVERY` — seasonality needs no scheduler of its own.
+
+## 6.5. Curation rules ("play different things at different times, like a real network")
+
+The policy so far describes ONE deck that Tunarr loops forever — time-agnostic. Real
+channels are wall-clock-conditional: weekend marathons, holiday programming, day-parts
+(kids in the morning, drama at night). A **curation rule** is the unifying abstraction
+— a `(WHEN, WHAT, HOW)` triple — and §5 ordering + §6 seasonality both compose into it
+(seasonality *is* a `(when=holiday-window, what=keyword-match, how=boost)` rule).
+
+- **A rule = `{Priority, When, What, How, Window}`.** `When` is a deterministic,
+  composable predicate (weekend/weekday, day-of-week, an hour range that wraps for
+  late-night, a holiday-calendar id, a date range; all-zero = always-match). `What`
+  **reuses `ScopePolicy`** and only ever *narrows* the eligible pool (never widens —
+  it can't admit content the channel's own scope/audience excluded). `How` reuses the
+  ordering + separation vocabulary plus `noBreaks` and a `marathon` sugar. `Window` is
+  an optional per-rule override of the channel window (below).
+- **Overlap resolution is first-match by (Priority desc, then list order)** — NOT a
+  merge (merging two `What`s is unpredictable and can't be previewed). When several
+  rules match a moment ("Saturday morning in December"), the highest-priority one wins;
+  the natural default ordering mirrors a real programmer (holiday > weekend/daypart >
+  base). When no rule matches, the channel falls through to its base whole-policy
+  behavior. **Resolution is visible in the cycle preview** (§8, `?at=<time>`), so which
+  rule is active at a given moment is answerable by looking, never a mystery.
+- **Presets, not cron.** Users and the LLM compose from a closed, named vocabulary —
+  WHEN: `weekend`/`weekday`, `mornings`/`primetime`/`late-night`, `holiday:christmas`;
+  WHAT: `series:X`, `genre:kids`, `holiday-matched`, `all`; HOW: `marathon`,
+  `syndication`, `shuffle`, `feature`. Every preset lowers to primitives that already
+  exist (`marathon` = sequential + no breaks + unbounded block; `holiday-matched` = the
+  §6 keyword engine; `syndication` = the §5 deck), so the engine is a composition +
+  time-routing layer, not new scheduling math.
+- **Rolling window.** A channel materializes only ~`Window` of runtime (default **24h**,
+  per-channel/-rule overridable, global default `sched.window_hours`) rather than the
+  whole ~800-episode run — so a channel schedules a manageable timeframe and is curated
+  over time. The window START advances by a coarse time index folded into the deck seed
+  (`floor(now/window)`), so it is **identical within a window** (idempotent reconcile —
+  no re-push every sweep) and **advances at the boundary** (one re-push, the next slice
+  of episodes). `Window: 0` = the whole run (the "full binge" sentinel; a `marathon`
+  rule sets it). The window is floored to at least one program so a channel is never dark.
+- **Authorship is hybrid (§8 boundary intact).** The **LLM proposes a starter rule set**
+  from intent ("Star Trek with weekend TNG marathons and Christmas episodes") — from the
+  closed preset vocabulary, grounded + clamped (unknown tokens dropped, window clamped to
+  `[1h,168h]`, daypart audience ceilings **stricter-only** — a rule may never *raise* a
+  kids channel's ceiling, §4). The **user refines** rules in the channel "Programming
+  rules" editor (chips, drag-to-priority). The LLM still only proposes rule VALUES;
+  deterministic code evaluates `When` and enforces — the model never orders episodes.
+- **No new scheduler.** Rules evaluate against the container wall-clock at reconcile
+  time; the periodic channel-sweep (§main-doc) already re-runs the pure lineup builder
+  with a fresh `now`, so it *is* the refill loop — a rule/window boundary simply produces
+  a different desired lineup on the next sweep. Because the desired lineup stays a pure
+  function of `(seed, coarse-now, policy)`, reconcile idempotency holds within a slice.
+- **Drift vs. rotation (a correctness rule).** A rule swapping the active pool (kids AM →
+  drama PM) legitimately changes which programs air — this is NOT drift. Drift detection
+  (§9 slot revalidation) therefore compares against the *eligible* set (what the library
+  can currently supply), not the *selected* set, so "the library lost a title" (real
+  drift → StatusDrifted) is cleanly separated from "the active rule rotated a title out"
+  (normal, silent).
+- **Backward compatible.** A channel with no rules and no window (`Rules==nil ∧ Window==0`)
+  is byte-identical to today's behavior; existing channels are unaffected until a rule or
+  window is set.
+- **Known limitation — WHAT is series/movie-level, not episode-level.** A `holiday-matched`
+  or `genre` WHAT filter resolves against a title's genres and (once threaded, §6-followup)
+  keywords/overview — all of which live at the **series/movie** level. Neither our schedule
+  entries nor TMDB carry episode-level thematic tags (TMDB has no episode `keywords`
+  endpoint; keywords exist only on the series/movie). So a rule can say "in December, only
+  series/movies tagged Christmas" but *cannot* precisely say "in December, only the Christmas
+  *episodes* of an otherwise-evergreen series" — that would require per-episode `name`/
+  `overview` text heuristics, logged as future work. A rule author (and the LLM prompt) must
+  not promise episode-thematic precision the data can't back. Series-level and movie-level
+  holiday matching *is* supported (the §6 keyword engine).
 
 ## 7. The relaxation ladder (constraints degrade predictably, never silently)
 

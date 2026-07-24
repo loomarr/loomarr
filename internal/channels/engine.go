@@ -85,6 +85,7 @@ type Engine struct {
 	policy        schedule.PendingPolicy
 	reconcileTTL  time.Duration // how far ahead to set a channel's next sweep deadline
 	breaksPerHour int           // §10 commercial-break density applied per channel
+	defaultWindow time.Duration // §6.5 global rolling-window horizon (sched.window_hours)
 	now           func() time.Time
 
 	mu    sync.Mutex
@@ -102,6 +103,10 @@ type Config struct {
 	// BreaksPerHour is the commercial-break density (§10, FILLER_BREAKS_PER_HOUR)
 	// applied to every channel at reconcile time. 0 = no breaks.
 	BreaksPerHour int
+	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
+	// default 24h) — how far ahead each channel materializes before it rolls forward.
+	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
+	DefaultWindow time.Duration
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -125,6 +130,7 @@ func New(st store.Store, prog programmer.Programmer, avail Availability, guide G
 		policy:        cfg.Policy,
 		reconcileTTL:  cfg.ReconcileTTL,
 		breaksPerHour: cfg.BreaksPerHour,
+		defaultWindow: cfg.DefaultWindow,
 		now:           now,
 		locks:         map[string]*sync.Mutex{},
 	}

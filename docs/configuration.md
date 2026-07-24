@@ -66,6 +66,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `sched.series_min_gap` (`SCHED_SERIES_MIN_GAP`) | duration | `2h` | Default minimum gap between two episodes of the same series (per-channel overridable). |
 | `sched.block_max` (`SCHED_BLOCK_MAX`) | int | `2` | Default max consecutive programs from one series before another must air (per-channel overridable). |
 | `sched.ordering` (`SCHED_ORDERING`) | enum | `syndication` | Default program order (per-channel overridable). If a channel sets none, it uses its own strategy. _(one of: sequential \| shuffle \| syndication)_ |
+| `sched.window_hours` (`SCHED_WINDOW_HOURS`) | duration | `24h` | How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything). |
 | `seasonal.mode` (`SEASONAL_MODE`) | enum | `auto` | How channels handle seasonal content (per-channel overridable): off, auto (favor in-season), or only in-season. _(one of: off \| auto \| exclusive)_ |
 
 ## Filler / commercials

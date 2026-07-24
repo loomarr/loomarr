@@ -11,6 +11,7 @@ package schedule
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
 )
@@ -83,6 +84,12 @@ type Channel struct {
 	// Sourced from FILLER_BREAKS_PER_HOUR at channel build; empty breaks fill with
 	// matched pods at reconcile (fillPods), else stay flex (never dead air).
 	BreaksPerHour int
+	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
+	// default 24h) reconcile sets from settings before ComputeDesiredAt — the pure
+	// schedule package can't read settings, so this transient field carries the default
+	// the way BreaksPerHour does. A channel/rule Window overrides it; 0 here = the whole
+	// run (the policy-free path leaves it 0, preserving today's un-windowed behavior).
+	DefaultWindow time.Duration
 	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
 	TunarrID      string        // server-assigned Tunarr channel id; "" until first reconcile
 	Status        ChannelStatus // Loomarr-side status
