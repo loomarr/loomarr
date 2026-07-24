@@ -51,16 +51,14 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 		return nil // detached = no longer managed (§9 ownership); paused = deliberately off the sweep
 	}
 
-	// Heal any entry that reached us UNRATED but whose title is now in the library
-	// (§389 amendment): a fail-closed audience gate would otherwise drop it, taking
-	// the channel to dead air (§9). Self-healing and bounded — only empty ratings are
-	// looked up, and the healed value is stamped back onto ch.Lineup and persisted by
-	// the UpsertChannel below, so a future reconcile skips the lookup entirely.
-	e.healRatings(ctx, ch.Lineup)
-	// Heal each movie's TMDB collection id (§5 franchise ordering) the same way — a one-time
-	// per-entry TMDB lookup, stamped onto ch.Lineup + persisted below, so a franchise's films
-	// group + play in release order. Series and already-resolved entries are skipped.
-	e.healFranchises(ctx, ch.Lineup)
+	// Heal each entry's metadata in place through the one lineup primitive (§9 LineupHeal):
+	// fill an empty OfficialRating (§389 — a fail-closed audience gate would otherwise drop a
+	// now-in-library title to dead air) and settle each movie's TMDB CollectionID (§5 franchise
+	// ordering). Bounded, one-time lookups; the healed values are stamped onto ch.Lineup and
+	// persisted by the UpsertChannel below, so a future reconcile skips them. Membership + order
+	// are untouched — heal only enriches.
+	ch.Lineup = schedule.ApplyLineup(ch.Lineup, nil, schedule.LineupHeal,
+		schedule.ApplyOpts{Enrich: e.healEntry(ctx)})
 
 	// 1b: build the channel's matched filler-clip pool up front (§10) so the break
 	// decision below can see whether there's anything to fill a break with. The pod
@@ -241,65 +239,41 @@ func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []s
 	}
 }
 
-// healRatings fills the OfficialRating of any entry that reached the scheduler
-// unrated, looking it up against the library by the entry's Key (§389 amendment).
-// Mutates the slice in place — the caller persists ch.Lineup — so the heal is a
-// one-time repair: a future reconcile finds the entry rated and skips it.
+// healEntry returns the per-entry enrichment schedule.ApplyLineup(LineupHeal) applies to each
+// lineup entry in place (the caller persists ch.Lineup). It does two one-time repairs:
+//   - fill an empty OfficialRating by looking the title up against the library (§389): a
+//     fail-closed audience gate would otherwise drop a now-in-library title to dead air.
+//   - settle a MOVIE's TMDB CollectionID tri-state (§5 franchise ordering): >0 a real
+//     collection, -1 a resolved standalone (never re-fetched); series are skipped.
 //
-// Bounded and best-effort by design: only empty ratings are looked up (a stamped
-// channel makes ZERO calls), a not-yet-present title (ok=false) is left unrated to
-// try again next pass, and a lookup error never fails the reconcile — the channel
-// still plays (§9 resilience).
-func (e *Engine) healRatings(ctx context.Context, lineup []schedule.LineupEntry) {
-	if e.ratings == nil {
-		return
-	}
-	for i := range lineup {
-		if lineup[i].OfficialRating != "" {
-			continue
-		}
-		raw, ok, err := e.ratings.Rating(ctx, lineup[i].Key)
-		if err != nil {
-			if e.log != nil {
-				e.log.Warn("heal rating (entry stays unrated this pass)", "key", lineup[i].Key, "err", err)
+// Bounded + best-effort by design (§9 resilience): only empty/unresolved fields are looked up
+// (a stamped channel makes ZERO calls), a not-yet-present result leaves the field to retry next
+// pass, and a lookup error never fails the reconcile — it just leaves the field unhealed.
+// A nil source (ratings/franchises not wired) skips that half.
+func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
+	return func(en *schedule.LineupEntry) {
+		if e.ratings != nil && en.OfficialRating == "" {
+			if raw, ok, err := e.ratings.Rating(ctx, en.Key); err != nil {
+				if e.log != nil {
+					e.log.Warn("heal rating (entry stays unrated this pass)", "key", en.Key, "err", err)
+				}
+			} else if ok {
+				en.OfficialRating = schedule.NormalizeRating(raw)
 			}
-			continue
 		}
-		if ok {
-			lineup[i].OfficialRating = schedule.NormalizeRating(raw)
-		}
-	}
-}
-
-// healFranchises fills the CollectionID of any MOVIE entry not yet resolved (CollectionID
-// == 0), looking it up via TMDB by the entry's Key (§5 franchise ordering). Mutates the
-// slice in place — the caller persists ch.Lineup — so it's a one-time repair: a resolved
-// entry (>0 for a franchise, -1 for standalone) is skipped forever after. Series are skipped
-// (no belongs_to_collection). Bounded + best-effort: only unresolved movies are looked up (a
-// settled channel makes ZERO calls), and a lookup error leaves the entry unresolved to retry
-// next pass — never fails the reconcile (§9 resilience).
-func (e *Engine) healFranchises(ctx context.Context, lineup []schedule.LineupEntry) {
-	if e.franchises == nil {
-		return
-	}
-	for i := range lineup {
-		if lineup[i].CollectionID != 0 || lineup[i].Key.IsSeries() {
-			continue // already resolved (>0 or -1), or a series (no collections)
-		}
-		id, ok, err := e.franchises.Collection(ctx, lineup[i].Key)
-		if err != nil {
-			if e.log != nil {
-				e.log.Warn("heal franchise (entry unresolved this pass)", "key", lineup[i].Key, "err", err)
-			}
-			continue
-		}
-		if ok {
-			// Settle the tri-state: a real collection id, or -1 for a resolved standalone so
-			// it's never re-fetched (0 alone can't distinguish "standalone" from "unresolved").
-			if id > 0 {
-				lineup[i].CollectionID = id
-			} else {
-				lineup[i].CollectionID = -1
+		if e.franchises != nil && en.CollectionID == 0 && !en.Key.IsSeries() {
+			if id, ok, err := e.franchises.Collection(ctx, en.Key); err != nil {
+				if e.log != nil {
+					e.log.Warn("heal franchise (entry unresolved this pass)", "key", en.Key, "err", err)
+				}
+			} else if ok {
+				// Settle the tri-state: a real collection id, or -1 for a resolved standalone so
+				// it's never re-fetched (0 alone can't distinguish "standalone" from "unresolved").
+				if id > 0 {
+					en.CollectionID = id
+				} else {
+					en.CollectionID = -1
+				}
 			}
 		}
 	}

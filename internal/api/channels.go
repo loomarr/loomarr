@@ -137,11 +137,7 @@ func (s *Server) entryStateResolver(ctx context.Context) func(provision.Key) str
 // junk entry. A key not `available` in the library is fine: it renders as a pending slot
 // until the title lands (§9), so this never plays or acquires unapproved content.
 func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
-	byKey := make(map[provision.Key]schedule.LineupEntry, len(current))
-	for _, e := range current {
-		byKey[e.Key] = e
-	}
-	out := make([]schedule.LineupEntry, 0, len(edit))
+	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {
 		key := provision.Key(strings.TrimSpace(dto.Key))
@@ -152,28 +148,18 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 			return nil, fmt.Errorf("entry %d: duplicate key %q in lineup", i, dto.Key)
 		}
 		seen[key] = struct{}{}
-
-		entry, existed := byKey[key] // preserves SeasonMin/Max, OfficialRating, RuntimeSec, DurationMs
-		if !existed {
-			entry = schedule.LineupEntry{Key: key}
-		}
-		// The DTO owns the display-level fields; everything else rides through from the
-		// existing entry (or heals at reconcile for a new one).
-		entry.Title = dto.Name
-		entry.Year = dto.Year
-		entry.Genres = dto.Genres
-		// Season window: SET when the edit provides one, PRESERVE the existing when the
-		// edit omits it (0/0). This lets the UI edit "seasons 1–10" without an old
-		// client that doesn't send the fields silently WIPING a scope on a reorder —
-		// the lossy-read-DTO hazard the §7 PATCH contract calls out. To clear a window,
-		// a client sets it explicitly to the full range, not by omission.
-		if dto.SeasonMin != 0 || dto.SeasonMax != 0 {
-			entry.SeasonMin = dto.SeasonMin
-			entry.SeasonMax = dto.SeasonMax
-		}
-		out = append(out, entry)
+		// The DTO owns the display fields + an optional season window. Rich scheduling
+		// metadata (rating/runtime/duration/collection) and an omitted season window are
+		// carried forward from the existing entry by ApplyLineup's PreserveByKey — the
+		// lossy-read-DTO guard the §7 PATCH contract calls out (a reorder must not silently
+		// wipe a season scope). To clear a window, a client sets the full range explicitly.
+		incoming = append(incoming, schedule.LineupEntry{
+			Key: key, Title: dto.Name, Year: dto.Year, Genres: dto.Genres,
+			SeasonMin: dto.SeasonMin, SeasonMax: dto.SeasonMax,
+		})
 	}
-	return out, nil
+	return schedule.ApplyLineup(current, incoming, schedule.LineupReplace,
+		schedule.ApplyOpts{PreserveByKey: true}), nil
 }
 
 // NowNextEntry is one program on a channel's timeline (§9 guide freshness). Airtimes

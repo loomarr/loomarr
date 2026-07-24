@@ -132,10 +132,13 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	// — never a still-available title the stochastic LLM just didn't re-pick this run. Without
 	// this, weekly re-curation would churn a channel, silently dropping good titles nobody chose
 	// to remove (the §8.2 "never drop a currently-airing available title just for churn" rule).
+	// Both branches go through the one lineup primitive (schedule.ApplyLineup, §9): the human
+	// path is a plain Replace, auto-curate is Additive with the store-backed Drop predicate.
 	if isAutoCurate(p) && existing.ID != "" {
-		ch.Lineup = b.mergeLineupAdditive(ctx, existing.Lineup, lineup, mustExcludeKeys(p))
+		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive,
+			schedule.ApplyOpts{Drop: b.dropPredicate(ctx, mustExcludeKeys(p))})
 	} else {
-		ch.Lineup = lineup
+		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupReplace, schedule.ApplyOpts{})
 	}
 	// Policy ownership is enforced in ONE place (schedule.MergeFromProposal, §2.1/§8.2): the
 	// fresh proposal refreshes what it owns (scope/audience/separation/ordering/seasonal) —

@@ -37,51 +37,20 @@ func mustExcludeKeys(p store.Proposal) map[string]struct{} {
 	return out
 }
 
-// mergeLineupAdditive computes the auto-curate lineup (§8.2): the refreshed proposal's picks
-// UNIONED onto the channel's existing lineup, dropping an existing title ONLY when it is
-// "clearly off-intent" — genuinely gone from the library (not available) OR named by the
-// intent's MustExclude. A still-available title the LLM merely didn't re-pick this run is
-// KEPT (no churn). Order: existing kept-entries first (preserve the channel's shape), then
-// the genuinely-new picks appended.
-//
-// This is the non-destructive counterpart to a full replace: re-curation grows a channel
-// toward its intent and prunes only the clearly-wrong, never the merely-unrepicked.
-func (b *Binder) mergeLineupAdditive(
-	ctx context.Context,
-	existing, fresh []schedule.LineupEntry,
-	mustExclude map[string]struct{},
-) []schedule.LineupEntry {
-	freshByKey := make(map[provision.Key]struct{}, len(fresh))
-	for _, e := range fresh {
-		freshByKey[e.Key] = struct{}{}
-	}
-
-	out := make([]schedule.LineupEntry, 0, len(existing)+len(fresh))
-	kept := make(map[provision.Key]struct{}, len(existing))
-	for _, e := range existing {
-		// Re-picked by the refresh → definitely keep.
-		if _, repicked := freshByKey[e.Key]; !repicked {
-			// Not re-picked: keep UNLESS it's clearly off-intent (gone from the library, or
-			// explicitly excluded). A still-available, non-excluded title is kept — the LLM
-			// omitting it is not evidence it should leave (§8.2 "never drop for churn").
-			if b.droppable(ctx, e, mustExclude) {
-				b.log.Info("auto-curate dropped a clearly-off-intent title",
-					"title", e.Title, "key", e.Key)
-				continue
-			}
+// dropPredicate builds the LineupAdditive drop test the auto-curate rebind hands to
+// schedule.ApplyLineup (§8.2): an existing title the refresh did NOT re-pick is dropped ONLY
+// when it is clearly off-intent — gone from the library (unavailable) or named by the intent's
+// MustExclude. A still-available title the stochastic LLM merely didn't re-pick is KEPT (no
+// churn). The store read (droppable) lives here so ApplyLineup's union logic stays pure; each
+// drop is logged. The union/order (existing-kept first, new appended) is ApplyLineup's job.
+func (b *Binder) dropPredicate(ctx context.Context, mustExclude map[string]struct{}) func(schedule.LineupEntry) bool {
+	return func(e schedule.LineupEntry) bool {
+		if !b.droppable(ctx, e, mustExclude) {
+			return false
 		}
-		out = append(out, e)
-		kept[e.Key] = struct{}{}
+		b.log.Info("auto-curate dropped a clearly-off-intent title", "title", e.Title, "key", e.Key)
+		return true
 	}
-	// Append the genuinely-new picks (not already kept).
-	for _, e := range fresh {
-		if _, dup := kept[e.Key]; dup {
-			continue
-		}
-		out = append(out, e)
-		kept[e.Key] = struct{}{}
-	}
-	return out
 }
 
 // droppable reports whether an existing lineup entry the refresh did NOT re-pick is clearly
