@@ -281,6 +281,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// pod adapter is built further down (it needs the filler catalog, which is wired
 			// later) — see "playoutRes.pods" below.
 			fillerDir: func() string { return set.str("filler.dir") },
+			// The capability probe runs lazily on the first program that needs it, when
+			// playout.encoder is unset — so a box with a working GPU uses it instead of
+			// silently falling back to software.
+			ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
+			log:        log,
 		}
 		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
 		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in

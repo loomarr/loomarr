@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -153,5 +154,58 @@ func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
 	}
 	if src != "" {
 		t.Errorf("the fallback card resolved to a file: %q", src)
+	}
+}
+
+// --- Encoder selection (the silent-software-fallback bug) ---
+
+// An operator override wins outright and must NOT trigger a probe: probing trial-encodes every
+// candidate at ~5s apiece, which would be paid for nothing.
+func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
+	probed := false
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.encoder = func() string { return "h264_nvenc" }
+	r.ffmpegPath = func() string { probed = true; return "/nonexistent/ffmpeg" }
+
+	p := r.Profile(context.Background())
+	if p.Encoder != "h264_nvenc" {
+		t.Errorf("encoder = %q, want the operator's override", p.Encoder)
+	}
+	if probed {
+		t.Error("probed despite an explicit override — that is ~20s of trial encodes for nothing")
+	}
+}
+
+// With no override, the encoder is MEASURED rather than assumed. Previously this fell straight
+// through to libx264 with a comment claiming the wizard had stored a choice — nothing did, so a
+// box with a working GPU silently encoded in software forever.
+//
+// Detect never errors: "no hardware" is the expected outcome on most machines and software is a
+// correct answer. So with a bogus ffmpeg path the probe finds nothing and yields libx264 — which
+// is exactly the contract worth pinning.
+func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.encoder = func() string { return "" }
+	r.ffmpegPath = func() string { return "/nonexistent/ffmpeg" }
+
+	p := r.Profile(context.Background())
+	if p.Encoder != playout.EncoderSoftware {
+		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
+	}
+}
+
+// The probe runs ONCE. It is called per program boundary, and trial-encoding every candidate on
+// each one would make every program transition take ~20 seconds.
+func TestProfile_ProbesOnlyOnce(t *testing.T) {
+	calls := 0
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.encoder = func() string { return "" }
+	r.ffmpegPath = func() string { calls++; return "/nonexistent/ffmpeg" }
+
+	for i := 0; i < 5; i++ {
+		r.Profile(context.Background())
+	}
+	if calls != 1 {
+		t.Errorf("probed %d times across 5 programs, want 1 — each probe is ~20s", calls)
 	}
 }

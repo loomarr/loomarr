@@ -73,6 +73,20 @@ services:
       # must be mounted into your Tunarr container at the same path so Tunarr can
       # scan it (Tunarr is external — see compose.dev.yaml / your Tunarr deployment).
       FILLER_DIR: ${FILLER_DIR:-}
+      FILLER_BREAKS_PER_HOUR: ${FILLER_BREAKS_PER_HOUR:-}
+      # Loomarr's own address as your media server and Tunarr reach it (§9.1, §15).
+      # REQUIRED for internal playout: every stream URL is built from this base, and
+      # ffmpeg — a separate process fetching the playlist itself — has no notion of
+      # "the origin this came from", so there is no relative fallback. A wrong value
+      # means channels appear in the guide and never play.
+      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:-}
+      # Internal playout (§9.1). Defaults are deliberate: `internal` is the default
+      # backend, and an empty encoder means "use the best one the transcode check
+      # found". Set PLAYOUT_ENCODER only to override that choice.
+      PLAYOUT_BACKEND: ${PLAYOUT_BACKEND:-internal}
+      PLAYOUT_ENCODER: ${PLAYOUT_ENCODER:-}
+      PLAYOUT_MAX_CHANNELS: ${PLAYOUT_MAX_CHANNELS:-}
+      PLAYOUT_QUALITY_TIER: ${PLAYOUT_QUALITY_TIER:-}
       AUTO_MIGRATE: "true"
     ports: ["8080:8080"]
     # Mount the filler drop-folder so the core can hand its path to
