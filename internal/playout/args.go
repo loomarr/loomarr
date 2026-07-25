@@ -20,7 +20,7 @@ import (
 
 // Encoder is a video encoder ffmpeg can use. Not an exhaustive list of what ffmpeg
 // supports — only what playout offers, which is H.264 in software or via one of the
-// three common hardware paths (§15 `playout.encoder`).
+// eight hardware families below (§15 `playout.encoder`).
 type Encoder string
 
 // The families ErsatzTV maintains pipelines for, which is the breadth real deployments
@@ -72,9 +72,8 @@ func DefaultProfile() Profile {
 // videoEncodeArgs returns the codec + rate-control args for the profile's encoder.
 //
 // One switch, dispatching per encoder — the shape both reference implementations use.
-// Hardware paths differ enough in rate control that a shared "just set -b:v" would be
-// wrong (nvenc wants a preset name libx264 doesn't have, and vaapi's quality scale is
-// its own thing), but they share the bitrate/GOP helpers below.
+// Families differ enough in rate control that a shared "just set -b:v" would be wrong,
+// but they share the bitrate/GOP helpers below.
 func (p Profile) videoEncodeArgs() []string {
 	args := []string{"-c:v", string(p.Encoder)}
 	// Each family has its OWN preset vocabulary, and an unknown preset name fails at init
@@ -109,6 +108,11 @@ func (p Profile) videoEncodeArgs() []string {
 		args = append(args, "-b:v", kbps, "-maxrate", kbps, "-bufsize",
 			strconv.Itoa(p.VideoBitrate*2)+"k")
 	}
+	// Software additionally gets a CRF target (see qualityArgs): with maxrate/bufsize
+	// still set, libx264 holds quality steady and only spends bits up to the cap. On
+	// hardware this is omitted — most hardware rate control handles a bitrate target far
+	// better than a quality one, and v4l2m2m has no usable CRF at all.
+	args = append(args, p.qualityArgs()...)
 	return append(args, p.gopArgs()...)
 }
 
@@ -151,10 +155,13 @@ func (p Profile) audioEncodeArgs() []string {
 func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
-		// Progress on stdout as machine-readable key=value. NOT stderr scraping:
-		// viewra parsed 4096-byte reads for "frame=" and a chunked read can split a
-		// token across the boundary (prior-art, viewra §4).
-		"-progress", "pipe:3", "-nostats",
+		// Progress as machine-readable key=value on a DEDICATED fd — never stdout (which
+		// carries the MPEG-TS) and never stderr scraping (viewra parsed 4096-byte reads
+		// for "frame=" and a chunked read can split a token across the boundary,
+		// prior-art viewra §4). The fd comes from progressFD so this and the supervisor
+		// that wires it cannot drift apart; they did, and the symptom was ffmpeg failing
+		// at startup with "Bad file descriptor".
+		"-progress", progressPipeArg(), "-nostats",
 	}
 	// Video: a plain colour field, paced to realtime, looping forever.
 	args = append(args,
