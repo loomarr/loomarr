@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;}
+*{box-sizing:border-box;}
+a{color:#4CC9E8;text-decoration:none;} a:hover{color:#7FD9EF;}
+@keyframes lmPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+[data-lm-item]{transition:background 120ms ease-out;}
+[data-lm-item]:hover{background:#333945 !important;}
+::-webkit-scrollbar{height:0;width:0;}
+@media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</helmet>
+<div style="width:375px;height:812px;margin:0 auto;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;font-size:14px;line-height:1.5;display:flex;flex-direction:column;overflow:hidden;position:relative;border-left:1px solid #1B1E24;border-right:1px solid #1B1E24;">
+
+  <!-- Top bar: the rail collapses to a sheet trigger on mobile -->
+  <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #2A2E37;flex-shrink:0;">
+    <button onClick="{{ openNav }}" title="Menu" style="background:transparent;border:1px solid #2A2E37;border-radius:6px;width:44px;height:44px;color:#8B93A3;cursor:pointer;font-family:'Geist Mono',monospace;font-size:13px;line-height:1;padding:0;flex-shrink:0;">☰</button>
+    <div style="display:flex;width:22px;height:7px;border-radius:2px;overflow:hidden;flex-shrink:0;"><div style="flex:1;background:#FFB020;"></div><div style="flex:1;background:#3DD68C;"></div><div style="flex:1;background:#4CC9E8;"></div><div style="flex:1;background:#D6409F;"></div></div>
+    <div style="font-size:13.5px;font-weight:600;">{{ title }}</div>
+    <div style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:9.5px;color:#8B93A3;">{{ topStatus }}</div>
+    <button onClick="{{ goAccount }}" title="Your account" style="width:44px;height:44px;border-radius:50%;background:transparent;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex-shrink:0;"><span style="width:26px;height:26px;border-radius:50%;background:#1B1E24;border:1px solid {{ acctRing }};display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:10px;color:#FFB020;">AL</span></button>
+  </div>
+
+  <!-- Nav sheet -->
+  <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeNav }}" style="position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;">
+      <div onClick="{{ stopProp }}" style="width:252px;height:100%;background:#131519;border-right:1px solid #2A2E37;padding:16px 12px;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#8B93A3;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px 8px;">Loomarr</div>
+        <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="6">
+          <button onClick="{{ n.go }}" data-lm-item="1" style="display:flex;align-items:center;gap:11px;background:{{ n.bg }};border:none;border-radius:8px;padding:11px 12px;color:{{ n.color }};font-size:14px;font-weight:{{ n.weight }};cursor:pointer;font-family:'Geist',sans-serif;text-align:left;width:100%;min-height:44px;">
+            <span style="font-family:'Geist Mono',monospace;font-size:14px;width:18px;color:{{ n.iconColor }};text-align:center;">{{ n.icon }}</span>
+            <span>{{ n.label }}</span>
+            <sc-if value="{{ n.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;font-weight:600;background:#D6409F;color:#0B0C0E;border-radius:999px;padding:2px 9px;">{{ n.badge }}</span></sc-if>
+          </button>
+        </sc-for>
+        <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px;border-top:1px solid #1B1E24;padding-top:12px;">
+          <button onClick="{{ toggleRole }}" data-lm-item="1" style="background:transparent;color:#8B93A3;border:1px dashed #2A2E37;border-radius:6px;padding:8px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;min-height:44px;">▶ {{ roleToggleLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="flex:1;overflow-y:auto;min-height:0;">
+
+    <!-- DASHBOARD — the couch question: is the TV working? -->
+    <sc-if value="{{ rDash }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Dashboard" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <sc-for list="{{ stats }}" as="st2" hint-placeholder-count="4">
+          <div onClick="{{ st2.go }}" style="background:#131519;border:1px solid #2A2E37;border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:4px;">
+            <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#8B93A3;text-transform:uppercase;letter-spacing:.06em;">{{ st2.label }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:21px;font-weight:600;color:{{ st2.color }};line-height:1;">{{ st2.value }}</span>
+            <span style="font-size:11.5px;color:#8B93A3;line-height:1.4;">{{ st2.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+        <div style="padding:13px 14px;border-bottom:1px solid #1B1E24;display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;">
+            <div style="font-size:13.5px;font-weight:600;">Transcoding</div>
+            <div style="font-size:11.5px;color:#8B93A3;margin-top:2px;line-height:1.45;">{{ txLede }}</div>
+          </div>
+          <span style="font-family:'Geist Mono',monospace;font-size:12.5px;color:{{ txLoadColor }};">{{ txLoad }}</span>
+        </div>
+        <sc-for list="{{ transcodes }}" as="tr2" hint-placeholder-count="2">
+          <div style="padding:11px 14px;border-bottom:1px solid #1B1E24;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-family:'Geist Mono',monospace;font-size:14px;font-weight:600;color:#FFB020;width:22px;flex-shrink:0;">{{ tr2.num }}</span>
+              <span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ tr2.now }}</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ tr2.modeColor }};background:{{ tr2.modeBg }};border-radius:4px;padding:2px 7px;">{{ tr2.mode }}</span>
+            </div>
+            <div style="height:4px;background:#0B0C0E;border-radius:999px;overflow:hidden;"><div style="height:100%;width:{{ tr2.pct }}%;background:{{ tr2.barColor }};border-radius:999px;"></div></div>
+            <div style="display:flex;gap:10px;font-family:'Geist Mono',monospace;font-size:9.5px;color:#8B93A3;">
+              <span>{{ tr2.clock }}</span><span style="margin-left:auto;">{{ tr2.speed }}</span>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ txIdle }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:20px 14px;display:flex;flex-direction:column;gap:5px;align-items:center;">
+            <div style="font-size:12.5px;">Nothing is transcoding</div>
+            <div style="font-size:11.5px;color:#8B93A3;text-align:center;line-height:1.5;">Loomarr only starts an encoder when someone tunes in.</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+        <div style="padding:13px 14px;border-bottom:1px solid #1B1E24;font-size:13.5px;font-weight:600;">Services</div>
+        <sc-for list="{{ services }}" as="sv" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #1B1E24;">
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ sv.dot }};flex-shrink:0;"></span>
+            <span style="font-size:12.5px;flex:1;min-width:0;">{{ sv.name }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ sv.color }};">{{ sv.state }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:13px 14px;display:flex;align-items:center;gap:11px;">
+        <div style="flex:1;">
+          <div style="font-size:12.5px;">Restart Loomarr</div>
+          <div style="font-size:11.5px;color:#8B93A3;margin-top:2px;line-height:1.45;">Channels keep playing — desktop only, so you can read the consequences first.</div>
+        </div>
+        <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:2px 7px;white-space:nowrap;">DESKTOP</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- GUIDE — read-only, stacked instead of a grid -->
+    <sc-if value="{{ rGuide }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Mobile · Guide" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onClick="{{ dayPrev }}" style="background:transparent;border:1px solid #2A2E37;border-radius:6px;width:44px;height:44px;color:#8B93A3;cursor:pointer;font-family:'Geist Mono',monospace;font-size:12px;padding:0;">‹</button>
+        <div style="flex:1;text-align:center;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8B93A3;">{{ dayLabel }}</div>
+        <button onClick="{{ dayNext }}" style="background:transparent;border:1px solid #2A2E37;border-radius:6px;width:44px;height:44px;color:#8B93A3;cursor:pointer;font-family:'Geist Mono',monospace;font-size:12px;padding:0;">›</button>
+      </div>
+      <sc-for list="{{ channels }}" as="ch" hint-placeholder-count="5">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:11px;padding:13px 14px;border-bottom:1px solid #1B1E24;">
+            <sc-if value="{{ ch.hasLogo }}" hint-placeholder-val="{{ false }}">
+              <div role="img" aria-label="{{ ch.name }} logo" style="width:32px;height:32px;border-radius:6px;border:1px solid #2A2E37;background-image:{{ ch.logoCss }};background-size:cover;background-position:center;flex-shrink:0;"></div>
+            </sc-if>
+            <sc-if value="{{ ch.noLogo }}" hint-placeholder-val="{{ true }}">
+              <div style="width:32px;height:32px;border-radius:6px;flex-shrink:0;background:#1B1E24;border:1px solid {{ ch.iconBorder }};display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:11px;font-weight:600;color:{{ ch.iconColor }};">{{ ch.monogram }}</div>
+            </sc-if>
+            <div style="font-family:'Geist Mono',monospace;font-size:17px;font-weight:600;color:#FFB020;flex-shrink:0;">{{ ch.num }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ ch.name }}</div>
+              <sc-if value="{{ ch.hasChip }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ ch.chipColor }};text-transform:uppercase;margin-top:2px;">{{ ch.chip }}</div></sc-if>
+            </div>
+            <div style="width:8px;height:8px;border-radius:50%;background:{{ ch.dotColor }};animation:{{ ch.dotAnim }};flex-shrink:0;"></div>
+          </div>
+          <div style="padding:11px 14px;display:flex;flex-direction:column;gap:7px;">
+            <sc-for list="{{ ch.slots }}" as="sl" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;width:52px;flex-shrink:0;">{{ sl.time }}</span>
+                <span style="width:3px;align-self:stretch;border-radius:2px;background:{{ sl.accent }};flex-shrink:0;"></span>
+                <span style="font-size:12.5px;color:{{ sl.color }};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sl.name }}</span>
+                <sc-if value="{{ sl.isNow }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:9px;color:#E5484D;flex-shrink:0;">NOW</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <div style="font-size:12px;color:#8B93A3;text-align:center;padding:4px;">Creating and editing channels lives on desktop — mobile is for watching, approving and quick checks.</div>
+    </div>
+    </sc-if>
+
+    <!-- QUEUE -->
+    <sc-if value="{{ rQueue }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Queue" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;">
+      <sc-for list="{{ queue }}" as="q" hint-placeholder-count="2">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <div style="font-weight:600;font-size:14.5px;">{{ q.name }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;margin-top:3px;">{{ q.by }}</div>
+          </div>
+          <div style="font-size:12.5px;color:#8B93A3;background:#0B0C0E;border:1px solid #1B1E24;border-radius:8px;padding:10px 12px;line-height:1.5;">“{{ q.intent }}”</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <sc-for list="{{ q.chips }}" as="c" hint-placeholder-count="4">
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ c.color }};border:1px solid #2A2E37;border-radius:4px;padding:2px 7px;">{{ c.label }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ q.pending }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:9px;">
+              <button onClick="{{ q.deny }}" style="flex:1;background:transparent;color:#E5484D;border:1px solid rgba(229,72,77,.4);border-radius:8px;padding:12px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Deny</button>
+              <button onClick="{{ q.approve }}" style="flex:2;background:#3DD68C;color:#0B0C0E;border:none;border-radius:8px;padding:12px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Approve</button>
+            </div>
+            <div style="font-size:11.5px;color:#8B93A3;text-align:center;">Editing a request before approving is desktop-only.</div>
+          </sc-if>
+          <sc-if value="{{ q.decided }}" hint-placeholder-val="{{ false }}">
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ q.verdictColor }};background:{{ q.verdictBg }};border-radius:999px;padding:6px 12px;text-align:center;">{{ q.verdict }}</div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- PEOPLE — the row reflows into two lines with controls beneath -->
+    <sc-if value="{{ rPeople }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · People" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:12.5px;color:#8B93A3;line-height:1.5;">An account grants nothing until you add it here. Adding people is desktop-only; roles and quotas you can change anywhere.</div>
+      <sc-for list="{{ people }}" as="p" hint-placeholder-count="4">
+        <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:11px;opacity:{{ p.opacity }};">
+          <div style="display:flex;align-items:center;gap:11px;">
+            <div style="width:30px;height:30px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:11px;color:{{ p.color }};flex-shrink:0;">{{ p.initials }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:7px;">
+                <span style="font-size:13.5px;font-weight:500;">{{ p.name }}</span>
+                <sc-if value="{{ p.isSelf }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:9px;color:#FFB020;border:1px solid rgba(255,176,32,.4);border-radius:4px;padding:0 5px;">YOU</span></sc-if>
+              </div>
+              <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:{{ p.originColor }};margin-top:2px;">{{ p.origin }}</div>
+            </div>
+            <span style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ p.quotaColor }};">{{ p.quota }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select value="{{ p.role }}" onChange="{{ p.setRole }}" style="flex:1;background:#0B0C0E;border:1px solid #2A2E37;border-radius:6px;padding:9px;color:{{ p.roleColor }};font-size:12.5px;font-family:'Geist Mono',monospace;outline:none;min-height:44px;">
+              <sc-for list="{{ p.roleOptions }}" as="ro"><option value="{{ ro.v }}">{{ ro.v }}</option></sc-for>
+            </select>
+            <button onClick="{{ p.toggleAuto }}" style="display:flex;align-items:center;gap:8px;background:transparent;border:1px solid #2A2E37;border-radius:6px;padding:9px 11px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">
+              <span style="width:34px;height:19px;border-radius:999px;border:1px solid {{ p.autoBorder }};background:{{ p.autoBg }};position:relative;display:inline-block;flex-shrink:0;">
+                <span style="position:absolute;top:2px;left:{{ p.autoKnob }}px;width:13px;height:13px;border-radius:50%;background:{{ p.autoKnobColor }};transition:left .15s ease-out;"></span>
+              </span>
+              <span style="font-size:11.5px;color:#8B93A3;">auto</span>
+            </button>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+
+    <!-- SETTINGS — the tab bar scrolls sideways; one field group per screen -->
+    <sc-if value="{{ rSettings }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Settings" style="display:flex;flex-direction:column;">
+      <div style="display:flex;gap:3px;overflow-x:auto;padding:10px 16px 0;border-bottom:1px solid #2A2E37;">
+        <sc-for list="{{ setTabs }}" as="st" hint-placeholder-count="6">
+          <button onClick="{{ st.pick }}" style="flex-shrink:0;background:transparent;border:none;border-bottom:2px solid {{ st.underline }};padding:9px 14px;font-size:13px;cursor:pointer;font-family:'Geist',sans-serif;color:{{ st.color }};font-weight:{{ st.weight }};margin-bottom:-1px;white-space:nowrap;min-height:44px;min-width:44px;">{{ st.label }}</button>
+        </sc-for>
+      </div>
+      <div style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <sc-if value="{{ stConn }}" hint-placeholder-val="{{ true }}">
+          <sc-for list="{{ blocks }}" as="bk" hint-placeholder-count="5">
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:10px;overflow:hidden;">
+              <button onClick="{{ bk.toggle }}" data-lm-item="1" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 14px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:'Geist',sans-serif;color:#E7EAF0;min-height:48px;">
+                <span style="width:14px;height:14px;border-radius:50%;background:{{ bk.dotBg }};color:{{ bk.dotColor }};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;">{{ bk.mark }}</span>
+                <span style="font-size:13.5px;font-weight:500;flex:1;">{{ bk.name }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">{{ bk.chev }}</span>
+              </button>
+              <sc-if value="{{ bk.open }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:12px;">
+                  <sc-for list="{{ bk.fields }}" as="f">
+                    <div style="display:flex;flex-direction:column;gap:5px;">
+                      <div style="display:flex;align-items:center;gap:7px;">
+                        <label style="font-size:12px;color:#8B93A3;">{{ f.label }}</label>
+                        <sc-if value="{{ f.locked }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:8.5px;color:#8B93A3;background:#1B1E24;border-radius:3px;padding:1px 5px;">SET VIA ENV</span></sc-if>
+                      </div>
+                      <sc-if value="{{ f.locked }}" hint-placeholder-val="{{ false }}">
+                        <div style="background:#0B0C0E;border:1px solid #1B1E24;border-radius:6px;padding:11px;font-family:'Geist Mono',monospace;font-size:12.5px;color:#8B93A3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.val }}</div>
+                      </sc-if>
+                      <sc-if value="{{ f.editable }}" hint-placeholder-val="{{ true }}">
+                        <input value="{{ f.val }}" onInput="{{ f.set }}" placeholder="{{ f.ph }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:6px;padding:11px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;min-height:44px;" style-focus="border-color:#FFB020;" />
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                  <button onClick="{{ bk.test }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:11px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">{{ bk.testLabel }}</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ stTasks }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ tasks }}" as="tk" hint-placeholder-count="4">
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:10px;padding:13px 14px;display:flex;align-items:center;gap:11px;">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ tk.dot }};animation:{{ tk.dotAnim }};flex-shrink:0;"></span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;">{{ tk.name }}</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;margin-top:2px;">{{ tk.schedule }} · {{ tk.last }}</div>
+              </div>
+              <button onClick="{{ tk.run }}" data-lm-item="1" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Run</button>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ stSec }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <sc-for list="{{ secFields }}" as="sf" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:5px;">
+                <label style="font-size:12px;color:#8B93A3;">{{ sf.label }}</label>
+                <input value="{{ sf.val }}" onInput="{{ sf.set }}" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:6px;padding:11px;color:#E7EAF0;font-size:13px;font-family:'Geist Mono',monospace;outline:none;min-height:44px;" style-focus="border-color:#FFB020;" />
+              </div>
+            </sc-for>
+            <div style="background:#131519;border:1px solid #2A2E37;border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:9px;">
+              <div style="font-size:13px;font-weight:600;">Instance secrets</div>
+              <div style="font-size:12px;color:#8B93A3;line-height:1.5;">Regenerating a secret is desktop-only — it signs everyone out, so it asks for typed confirmation.</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ACCOUNT -->
+    <sc-if value="{{ rAccount }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Account" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;">
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:15px;display:flex;align-items:center;gap:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#1B1E24;border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',monospace;font-size:12px;color:#FFB020;">AL</div>
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="font-size:14.5px;font-weight:600;">alex</div>
+            <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#FFB020;border:1px solid rgba(255,176,32,.4);border-radius:4px;padding:1px 6px;">LOCAL</span>
+          </div>
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#FFB020;margin-top:3px;">ADMIN · OWNER</div>
+        </div>
+      </div>
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:13.5px;font-weight:600;">Change password</div>
+        <sc-for list="{{ pwFields }}" as="pf" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <label style="font-size:12px;color:#8B93A3;">{{ pf.label }}</label>
+            <input type="password" value="{{ pf.val }}" onInput="{{ pf.set }}" placeholder="••••••••" style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:6px;padding:11px;color:#E7EAF0;font-size:13px;outline:none;font-family:'Geist',sans-serif;min-height:44px;" style-focus="border-color:#FFB020;" />
+          </div>
+        </sc-for>
+        <sc-if value="{{ pwErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:#E85A5F;">{{ pwErrText }}</div></sc-if>
+        <button onClick="{{ changePassword }}" style="background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:12px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">Change password</button>
+      </div>
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+        <div style="padding:13px 14px;border-bottom:1px solid #1B1E24;font-size:13.5px;font-weight:600;">Where you're signed in</div>
+        <sc-for list="{{ mySessions }}" as="ms2" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #1B1E24;">
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ ms2.dot }};flex-shrink:0;"></span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12.5px;">{{ ms2.agent }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;margin-top:2px;">{{ ms2.ip }} · {{ ms2.seen }}</div>
+            </div>
+            <sc-if value="{{ ms2.isThis }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#3DD68C;">this device</span></sc-if>
+            <sc-if value="{{ ms2.canRevoke }}" hint-placeholder-val="{{ true }}"><button onClick="{{ ms2.revoke }}" style="background:transparent;border:1px solid #2A2E37;border-radius:6px;color:#E85A5F;cursor:pointer;font-size:11.5px;padding:7px 13px;font-family:'Geist',sans-serif;min-height:44px;">Revoke</button></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ rHelp }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Mobile · Help" style="padding:14px 16px 20px;display:flex;flex-direction:column;gap:14px;">
+      <select value="{{ helpPage }}" onChange="{{ setHelpPage }}" style="background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:11px;color:#E7EAF0;font-size:13px;font-family:'Geist',sans-serif;outline:none;min-height:44px;">
+        <sc-for list="{{ helpPages }}" as="hp2" hint-placeholder-count="4"><option value="{{ hp2.id }}">{{ hp2.title }}</option></sc-for>
+      </select>
+      <button onClick="{{ toggleToc }}" data-lm-item="1" style="display:flex;align-items:center;gap:9px;background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:11px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">
+        <span style="font-size:12.5px;color:#E7EAF0;flex:1;text-align:left;">On this page</span>
+        <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">{{ tocChev }}</span>
+      </button>
+      <sc-if value="{{ tocOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:2px;border-left:1px solid #2A2E37;padding-left:12px;">
+          <sc-for list="{{ toc }}" as="tc3" hint-placeholder-count="4">
+            <button onClick="{{ tc3.go }}" style="background:transparent;border:none;padding:11px 0;text-align:left;font-size:12.5px;color:{{ tc3.color }};cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;">{{ tc3.text }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#8B93A3;text-transform:uppercase;letter-spacing:.07em;">{{ docGroup }}</div>
+        <div style="font-size:24px;font-weight:600;line-height:1.2;">{{ docTitle }}</div>
+        <div style="font-size:15px;color:#8B93A3;line-height:1.6;">{{ docLede }}</div>
+      </div>
+      <sc-for list="{{ docBlocks }}" as="db" hint-placeholder-count="5">
+        <sc-if value="{{ db.isH2 }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:18px;font-weight:600;line-height:1.25;margin-top:8px;background:{{ db.flash }};border-radius:5px;">{{ db.text }}</div>
+        </sc-if>
+        <sc-if value="{{ db.isP }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:16px;line-height:1.65;color:#E7EAF0;text-wrap:pretty;">{{ db.text }}</div>
+        </sc-if>
+        <sc-if value="{{ db.isCode }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#0B0C0E;border:1px solid #2A2E37;border-radius:8px;overflow:hidden;">
+            <div style="display:flex;align-items:center;padding:7px 11px;border-bottom:1px solid #1B1E24;">
+              <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#8B93A3;text-transform:uppercase;">{{ db.lang }}</span>
+              <button onClick="{{ db.copy }}" data-lm-item="1" style="margin-left:auto;background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:5px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:'Geist',sans-serif;min-height:44px;min-width:64px;">{{ db.copyLabel }}</button>
+            </div>
+            <div style="padding:11px;overflow-x:auto;">
+              <sc-for list="{{ db.lines }}" as="cl3"><div style="font-family:'Geist Mono',monospace;font-size:12.5px;color:#E7EAF0;white-space:pre;line-height:1.6;">{{ cl3.line }}</div></sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ db.isCallout }}" hint-placeholder-val="{{ false }}">
+          <div style="border-left:2px solid {{ db.accent }};background:{{ db.ground }};border-radius:0 8px 8px 0;padding:12px 14px;display:flex;flex-direction:column;gap:5px;">
+            <div style="font-family:'Geist Mono',monospace;font-size:9px;color:{{ db.accent }};text-transform:uppercase;letter-spacing:.07em;">{{ db.kind }}</div>
+            <div style="font-size:14.5px;line-height:1.6;color:#E7EAF0;">{{ db.text }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ db.isList }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:7px;padding-left:4px;">
+            <sc-for list="{{ db.items }}" as="li3">
+              <div style="display:flex;gap:9px;font-size:15.5px;line-height:1.6;color:#E7EAF0;"><span style="color:#8B93A3;">·</span><span>{{ li3.text }}</span></div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </sc-for>
+    </div>
+    </sc-if>
+
+  </div>
+
+  <!-- Bottom tabs -->
+  <div style="display:flex;border-top:1px solid #2A2E37;flex-shrink:0;background:#0B0C0E;padding-bottom:6px;">
+    <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="4">
+      <button onClick="{{ tb.go }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:transparent;border:none;padding:10px 0 5px;cursor:pointer;font-family:'Geist',sans-serif;min-height:48px;position:relative;">
+        <span style="font-family:'Geist Mono',monospace;font-size:14px;color:{{ tb.iconColor }};">{{ tb.icon }}</span>
+        <span style="font-size:10px;color:{{ tb.color }};font-weight:{{ tb.weight }};">{{ tb.label }}</span>
+        <sc-if value="{{ tb.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:6px;right:calc(50% - 18px);width:14px;height:14px;border-radius:50%;background:#D6409F;color:#0B0C0E;font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:600;display:flex;align-items:center;justify-content:center;">{{ tb.badge }}</span></sc-if>
+      </button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:74px;left:14px;right:14px;background:#1B1E24;border:1px solid {{ toastBorder }};border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:50;">
+      <div style="width:7px;height:7px;border-radius:50%;background:{{ toastColor }};flex-shrink:0;"></div>
+      <div style="font-size:12.5px;">{{ toastMsg }}</div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:375,&quot;height&quot;:812}}">
+class Component extends DCLogic {
+  state = {
+    route: 'dashboard', navOpen: false, helpPage: 'troubleshooting', tocOpen: false, helpAnchor: '', copied: -1, role: 'admin', day: 0, setTab: 'connections',
+    openBlock: 'media_server', tested: {}, cfg: { libraryUrl: 'http://jellyfin:8096', libraryToken: '', tunarrUrl: 'http://tunarr:8000', seerrKey: '', tmdbKey: '' },
+    sec: { ttl: '720h', cookie: 'lax', sync: '15m' },
+    users: [
+      { name: 'alex', role: 'admin', cap: 10, used: 2, auto: true, local: true, color: '#FFB020' },
+      { name: 'sam', role: 'member', cap: 10, used: 5, auto: false, color: '#4CC9E8' },
+      { name: 'jordan', role: 'member', cap: 10, used: 1, auto: false, color: '#4CC9E8' },
+      { name: 'kiddo', role: 'member', cap: 3, used: 0, auto: false, color: '#3DD68C' },
+    ],
+    decided: {}, pwCur: '', pwNew: '', pwNew2: '', pwErrText: '', toast: null,
+  };
+  CH = [
+    { num: '3', name: 'Cozy Mystery Nights', mono: 'CM', hue: '#4CC9E8', tint: '#4CC9E8', onAir: 'live', chip: '',
+      slots: [['7:15 PM', 'Poirot', 'prog'], ['8:05 PM', 'pod', 'pod'], ['8:10 PM', 'Miss Marple', 'prog']] },
+    { num: '7', name: 'Late-Night Sci-Fi', logo: 'logos/ch7-late-night-scifi.png', mono: 'LN', hue: '#4CC9E8', tint: '#4CC9E8', onAir: 'live', chip: '',
+      slots: [['11:00 PM', 'Solaris', 'prog'], ['1:45 AM', 'pod', 'pod'], ['1:50 AM', 'Blade Runner', 'prog']] },
+    { num: '12', name: 'Action Movie Marathon', mono: 'AM', hue: '#E5484D', tint: '#E85A5F', onAir: 'live', chip: 'filling in',
+      slots: [['8:00 PM', 'Die Hard', 'now'], ['10:12 PM', 'pod', 'pod'], ['10:18 PM', 'Point Break', 'pending']] },
+    { num: '21', name: 'Nature Doc Ambience', logo: 'logos/ch21-nature-doc.png', mono: 'ND', hue: '#3DD68C', tint: '#3DD68C', onAir: 'off', chip: 'paused',
+      slots: [['—', 'Off air — resume on desktop', 'muted']] },
+    { num: '42', name: '90s Saturday Morning', mono: '90', hue: '#FFB020', tint: '#FFB020', onAir: 'live', chip: '',
+      slots: [['7:00 AM', 'X-Men: TAS', 'prog'], ['7:30 AM', 'pod', 'pod'], ['7:33 AM', 'Batman: TAS', 'prog']] },
+  ];
+  QUEUE = [
+    { id: 'q1', name: 'Cozy Mystery Nights', by: 'requested by sam · 2 in library · 3 acquisitions',
+      intent: 'Gentle evening whodunits — Poirot energy, nothing gory, episodes in order.',
+      chips: [['Poirot', '#3DD68C'], ['Miss Marple', '#3DD68C'], ['+ Columbo', '#4CC9E8'], ['+ Midsomer Murders', '#4CC9E8']] },
+    { id: 'q2', name: 'Weekend Wildlife', by: 'requested by jordan · 1 in library · 2 acquisitions',
+      intent: 'Calm nature documentaries for weekend mornings, nothing with hunting scenes.',
+      chips: [['Planet Earth', '#3DD68C'], ['+ Blue Planet', '#4CC9E8'], ['+ Life Story', '#4CC9E8']] },
+  ];
+  BLOCKS = [
+    { key: 'media_server', name: 'Media server', st: 'pass', fields: [['URL', 'libraryUrl', true, ''], ['API key', 'libraryToken', false, 'paste key']] },
+    { key: 'tunarr', name: 'Tunarr', st: 'pass', fields: [['URL', 'tunarrUrl', false, 'http://tunarr:8000']] },
+    { key: 'requester', name: 'Requester', st: 'pass', fields: [['API key', 'seerrKey', false, 'paste key']] },
+    { key: 'tmdb', name: 'TMDB', st: 'fail', fields: [['API key', 'tmdbKey', false, 'paste key']] },
+    { key: 'ai', name: 'AI', st: 'pass', fields: [] },
+  ];
+  TASKS = [
+    { name: 'Channel reconcile', schedule: 'Every 10 minutes', last: '2m ago', state: 'ok' },
+    { name: 'Library scan sweep', schedule: 'Every 5 minutes', last: '40s ago', state: 'running' },
+    { name: 'Filler catalog sync', schedule: 'Every 15 minutes', last: '6m ago', state: 'ok' },
+    { name: 'Acquisition deadline check', schedule: 'Every 30 minutes', last: '14m ago', state: 'failed' },
+  ];
+  timers = [];
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+  toast(msg, color) {
+    this.setState({ toast: { msg, color: color || '#3DD68C' } });
+    this.timers.push(setTimeout(() => this.setState({ toast: null }), 3000));
+  }
+  renderVals() {
+    const s = this.state;
+    const isMember = s.role === 'member';
+    const TITLES = { dashboard: 'Dashboard', guide: 'Guide', queue: 'Queue', people: 'People', settings: 'Settings', help: 'Help', account: 'Your account' };
+    const pending = this.QUEUE.filter(q => !s.decided[q.id]).length;
+    const navDefs = isMember
+      ? [['guide', 'Guide', '▶'], ['help', 'Help', '?'], ['account', 'Your account', '◎']]
+      : [['dashboard', 'Dashboard', '◧'], ['guide', 'Guide', '▶'], ['queue', 'Queue', '✓'], ['people', 'People', '◎'], ['settings', 'Settings', '⚙'], ['help', 'Help', '?'], ['account', 'Your account', '☺']];
+    const go = (r) => () => this.setState({ route: r, navOpen: false });
+    const DAYS = ['Today', 'Tomorrow', 'Fri · Jul 26', 'Sat · Jul 27'];
+    const SLOT = {
+      prog: ['#2A2E37', '#E7EAF0'], now: ['#FFB020', '#E7EAF0'], pod: ['#D6409F', '#8B93A3'],
+      pending: ['#4CC9E8', '#8B93A3'], muted: ['#1B1E24', '#8B93A3'],
+    };
+    return {
+      title: TITLES[s.route], topStatus: isMember ? 'MEMBER' : pending ? pending + ' TO APPROVE' : '4 CH ON AIR',
+      navOpen: s.navOpen, openNav: () => this.setState({ navOpen: true }),
+      closeNav: () => this.setState({ navOpen: false }), stopProp: e => e.stopPropagation(),
+      navItems: navDefs.map(([r, label, icon]) => ({
+        label, icon, go: go(r),
+        bg: s.route === r ? '#1B1E24' : 'transparent',
+        color: s.route === r ? '#E7EAF0' : '#8B93A3',
+        iconColor: s.route === r ? '#FFB020' : '#8B93A3',
+        weight: s.route === r ? '500' : '400',
+        hasBadge: r === 'queue' && pending > 0, badge: String(pending),
+      })),
+      roleToggleLabel: isMember ? 'View as admin' : 'View as member',
+      toggleRole: () => this.setState({ role: isMember ? 'admin' : 'member', route: 'guide', navOpen: false }),
+      acctRing: s.route === 'account' ? '#FFB020' : '#2A2E37',
+      goAccount: () => this.setState({ route: 'account' }),
+      rDash: s.route === 'dashboard' && !isMember, rHelp: s.route === 'help',
+      rGuide: s.route === 'guide', rQueue: s.route === 'queue', rPeople: s.route === 'people',
+      rSettings: s.route === 'settings', rAccount: s.route === 'account',
+      dayLabel: DAYS[s.day] + ' · America/New_York',
+      dayPrev: () => this.setState({ day: Math.max(0, s.day - 1) }),
+      dayNext: () => this.setState({ day: Math.min(DAYS.length - 1, s.day + 1) }),
+      channels: this.CH.map(c => ({
+        num: c.num, name: c.name, monogram: c.mono,
+        hasLogo: !!c.logo, noLogo: !c.logo, logoCss: c.logo ? "url('" + c.logo + "')" : 'none',
+        iconBorder: c.hue + '4D', iconColor: c.tint,
+        dotColor: c.onAir === 'live' ? '#E5484D' : '#5A6170',
+        dotAnim: c.onAir === 'live' ? 'lmPulse 2s ease-in-out infinite' : 'none',
+        hasChip: !!c.chip, chip: c.chip,
+        chipColor: c.chip === 'paused' ? '#8B93A3' : '#4CC9E8',
+        slots: c.slots.map(([time, name, kind]) => ({
+          time, name: kind === 'pod' ? 'Filler break' : name,
+          accent: SLOT[kind][0], color: SLOT[kind][1], isNow: kind === 'now',
+        })),
+      })),
+      queue: this.QUEUE.map(q => {
+        const d = s.decided[q.id];
+        return {
+          name: q.name, by: q.by, intent: q.intent,
+          chips: q.chips.map(([label, color]) => ({ label, color })),
+          pending: !d, decided: !!d,
+          verdict: d === 'approved' ? 'APPROVED · acquisitions started' : 'DENIED',
+          verdictColor: d === 'approved' ? '#3DD68C' : '#E85A5F',
+          verdictBg: d === 'approved' ? 'rgba(61,214,140,.12)' : 'rgba(229,72,77,.12)',
+          approve: () => { this.setState({ decided: { ...s.decided, [q.id]: 'approved' } }); this.toast('Approved · approved_by alex — acquisitions started.', '#3DD68C'); },
+          deny: () => { this.setState({ decided: { ...s.decided, [q.id]: 'denied' } }); this.toast('Denied — the requester sees it under My requests.', '#E5484D'); },
+        };
+      }),
+      people: s.users.map((u, i) => {
+        const setUser = (patch) => this.setState({ users: s.users.map((x, j) => j === i ? { ...x, ...patch } : x) });
+        return {
+          name: u.name, initials: u.name.slice(0, 2).toUpperCase(), color: u.color,
+          isSelf: u.name === 'alex', opacity: '1',
+          origin: u.local ? 'LOCAL ACCOUNT' : 'JELLYFIN ACCOUNT',
+          originColor: u.local ? '#FFB020' : '#4CC9E8',
+          role: u.role, roleColor: u.role === 'admin' ? '#FFB020' : '#8B93A3',
+          roleOptions: [{ v: 'admin' }, { v: 'member' }],
+          setRole: e => { setUser({ role: e.target.value }); this.toast(u.name + ' is now ' + e.target.value + '.', '#3DD68C'); },
+          quota: u.used + ' / ' + u.cap,
+          quotaColor: u.used >= u.cap ? '#E85A5F' : u.used > u.cap * 0.7 ? '#F5D90A' : '#8B93A3',
+          autoBg: u.auto ? 'rgba(255,176,32,.2)' : '#0B0C0E', autoBorder: u.auto ? '#FFB020' : '#2A2E37',
+          autoKnob: u.auto ? 17 : 2, autoKnobColor: u.auto ? '#FFB020' : '#5A6170',
+          toggleAuto: () => { setUser({ auto: !u.auto }); this.toast('Auto-approve ' + (u.auto ? 'revoked' : 'granted — gated by quota') + ' for ' + u.name + '.', u.auto ? '#8B93A3' : '#3DD68C'); },
+        };
+      }),
+      setTabs: [['connections', 'Connections'], ['ai', 'AI'], ['defaults', 'Defaults'], ['tasks', 'Tasks'], ['security', 'Security'], ['all', 'All settings']]
+        .map(([id, label]) => ({
+          label, pick: () => this.setState({ setTab: id }),
+          color: s.setTab === id ? '#E7EAF0' : '#8B93A3', weight: s.setTab === id ? '500' : '400',
+          underline: s.setTab === id ? '#FFB020' : 'transparent',
+        })),
+      stConn: s.setTab === 'connections', stTasks: s.setTab === 'tasks', stSec: s.setTab === 'security',
+      blocks: this.BLOCKS.map(b => {
+        const st = s.tested[b.key] || b.st, open = s.openBlock === b.key;
+        return {
+          name: b.name, open, chev: open ? '▾' : '▸',
+          mark: st === 'pass' ? '✓' : '✕',
+          dotBg: st === 'pass' ? 'rgba(61,214,140,.15)' : 'rgba(229,72,77,.15)',
+          dotColor: st === 'pass' ? '#3DD68C' : '#E85A5F',
+          toggle: () => this.setState({ openBlock: open ? null : b.key }),
+          testLabel: 'Test connection',
+          test: () => { this.setState({ tested: { ...s.tested, [b.key]: 'pass' } }); this.toast(b.name + ' reachable — saved to the registry.', '#3DD68C'); },
+          fields: b.fields.map(([label, key, locked, ph]) => ({
+            label, ph, locked: !!locked, editable: !locked, val: s.cfg[key],
+            set: e => this.setState({ cfg: { ...s.cfg, [key]: e.target.value } }),
+          })),
+        };
+      }),
+      tasks: this.TASKS.map(tk => ({
+        name: tk.name, schedule: tk.schedule, last: tk.last,
+        dot: { ok: '#3DD68C', running: '#FFB020', failed: '#E5484D' }[tk.state],
+        dotAnim: tk.state === 'running' ? 'lmPulse 1.4s ease-in-out infinite' : 'none',
+        run: () => this.toast(tk.name + ' started.', '#FFB020'),
+      })),
+      secFields: [['Session TTL', 'ttl'], ['Cookie mode', 'cookie'], ['Account sync', 'sync']].map(([label, key]) => ({
+        label, val: s.sec[key], set: e => this.setState({ sec: { ...s.sec, [key]: e.target.value } }),
+      })),
+      pwFields: [['Current password', 'pwCur'], ['New password', 'pwNew'], ['Confirm new password', 'pwNew2']]
+        .map(([label, key]) => ({ label, val: s[key], set: e => this.setState({ [key]: e.target.value, pwErrText: '' }) })),
+      pwErr: !!s.pwErrText, pwErrText: s.pwErrText,
+      changePassword: () => {
+        if (!s.pwCur) { this.setState({ pwErrText: 'Enter your current password.' }); return; }
+        if (s.pwNew.length < 8) { this.setState({ pwErrText: 'Use at least 8 characters.' }); return; }
+        if (s.pwNew !== s.pwNew2) { this.setState({ pwErrText: "New passwords don't match." }); return; }
+        this.setState({ pwCur: '', pwNew: '', pwNew2: '' });
+        this.toast('Password changed — other sessions revoked, this one kept.', '#3DD68C');
+      },
+      mySessions: [
+        { agent: 'Safari · iPhone', ip: '192.168.1.77', seen: 'now', dot: '#3DD68C', isThis: true, canRevoke: false, revoke: () => {} },
+        { agent: 'Firefox · macOS', ip: '192.168.1.24', seen: '2m ago', dot: '#8B93A3', isThis: false, canRevoke: true, revoke: () => this.toast('Session revoked.', '#8B93A3') },
+        { agent: 'Chrome · Windows', ip: '10.0.0.14', seen: '2d ago', dot: '#8B93A3', isThis: false, canRevoke: true, revoke: () => this.toast('Session revoked.', '#8B93A3') },
+      ],
+      tabs: (isMember
+        ? [['guide', 'Guide', '▶'], ['help', 'Help', '?'], ['account', 'You', '☺']]
+        : [['dashboard', 'Home', '◧'], ['guide', 'Guide', '▶'], ['queue', 'Queue', '✓'], ['settings', 'Settings', '⚙']]
+      ).map(([r, label, icon]) => ({
+        label, icon, go: go(r),
+        color: s.route === r ? '#E7EAF0' : '#8B93A3',
+        iconColor: s.route === r ? '#FFB020' : '#8B93A3',
+        weight: s.route === r ? '600' : '400',
+        hasBadge: r === 'queue' && pending > 0, badge: String(pending),
+      })),
+      stats: [
+        { label: 'On air', value: '5', note: 'channels in the guide', color: '#E5484D', go: () => this.setState({ route: 'guide' }) },
+        { label: 'Needs you', value: String(pending), note: pending ? 'requests to approve' : 'nothing waiting', color: pending ? '#D6409F' : '#8B93A3', go: () => this.setState({ route: 'queue' }) },
+        { label: 'Watching', value: '3', note: 'viewers right now', color: '#E7EAF0', go: () => {} },
+        { label: 'Acquiring', value: '2', note: 'titles in flight', color: '#4CC9E8', go: () => this.setState({ route: 'queue' }) },
+      ],
+      transcodes: [
+        { num: '42', now: 'X-Men: The Animated Series', mode: 'HARDWARE', modeColor: '#3DD68C', modeBg: 'rgba(61,214,140,.14)', pct: 33, clock: '7:12 of 22:00', speed: '12× rt', barColor: '#3DD68C' },
+        { num: '7', now: 'Blade Runner', mode: 'HARDWARE', modeColor: '#3DD68C', modeBg: 'rgba(61,214,140,.14)', pct: 41, clock: '48:20 of 1:57:00', speed: '11× rt', barColor: '#3DD68C' },
+      ],
+      txIdle: false, txLoad: '2 / 6', txLoadColor: '#E7EAF0',
+      txLede: '2 channels being watched, so 2 encoders are running.',
+      services: [
+        { name: 'Loomarr core', dot: '#3DD68C', state: 'healthy', color: '#3DD68C' },
+        { name: 'Media server', dot: '#3DD68C', state: 'healthy', color: '#3DD68C' },
+        { name: 'Requester', dot: '#3DD68C', state: 'healthy', color: '#3DD68C' },
+        { name: 'TMDB', dot: '#E85A5F', state: 'unreachable', color: '#E85A5F' },
+      ],
+      ...(() => {
+        const DOCS = {
+          troubleshooting: { group: "When something's wrong", title: 'Troubleshooting', lede: 'Organised by the check that failed.',
+            blocks: [
+              { t: 'h2', text: 'Media server', anchor: 'media-server' },
+              { t: 'p', text: "If the check is red, the key is wrong or the URL isn't reachable from Loomarr's container." },
+              { t: 'callout', kind: 'Note', text: 'Use the address the container can dial — the service name on your docker network, not localhost.' },
+              { t: 'code', lang: 'yaml', lines: ['LIBRARY_URL=http://jellyfin:8096', 'LIBRARY_TOKEN=<api key>'] },
+              { t: 'h2', text: 'Seerr', anchor: 'seerr' },
+              { t: 'p', text: 'Titles stuck in “requested” almost always mean the Loomarr user lacks auto-approve.' },
+              { t: 'list', items: ['Open Seerr → Users → the Loomarr account.', 'Grant auto-approve.', 'Re-run the check.'] },
+              { t: 'h2', text: 'Playout', anchor: 'playout' },
+              { t: 'p', text: 'Channels in the guide but nothing plays: the public URL is almost certainly wrong.' },
+              { t: 'callout', kind: 'Warning', text: 'Regenerating the playout token invalidates the media server’s wiring.' },
+            ] },
+          quickstart: { group: 'Start here', title: 'Quickstart', lede: 'Ten minutes to a channel on the air.',
+            blocks: [
+              { t: 'p', text: 'Bring the stack up and the wizard takes you through six steps.' },
+              { t: 'code', lang: 'shell', lines: ['docker compose up -d'] },
+              { t: 'callout', kind: 'Tip', text: 'Pick SQLite and internal playout unless you already run Postgres or Tunarr.' },
+            ] },
+        };
+        const doc = DOCS[s.helpPage] || DOCS.troubleshooting;
+        const heads = doc.blocks.filter(b => b.t === 'h2');
+        return {
+          helpPages: [['troubleshooting', 'Troubleshooting'], ['quickstart', 'Quickstart']].map(([id, title]) => ({ id, title })),
+          helpPage: s.helpPage,
+          setHelpPage: e => this.setState({ helpPage: e.target.value, tocOpen: false, helpAnchor: '' }),
+          tocOpen: s.tocOpen, tocChev: s.tocOpen ? '▴' : '▾',
+          toggleToc: () => this.setState({ tocOpen: !s.tocOpen }),
+          toc: heads.map(h => ({ text: h.text, color: s.helpAnchor === h.anchor ? '#FFB020' : '#8B93A3', go: () => this.setState({ helpAnchor: h.anchor, tocOpen: false }) })),
+          docGroup: doc.group, docTitle: doc.title, docLede: doc.lede,
+          docBlocks: doc.blocks.map((b, i) => ({
+            isH2: b.t === 'h2', isP: b.t === 'p', isCode: b.t === 'code', isCallout: b.t === 'callout', isList: b.t === 'list',
+            text: b.text || '', flash: b.t === 'h2' && s.helpAnchor === b.anchor ? 'rgba(255,176,32,.12)' : 'transparent',
+            lang: b.lang || '', lines: (b.lines || []).map(line => ({ line })),
+            items: (b.items || []).map(text => ({ text })),
+            kind: b.kind || '',
+            accent: b.kind === 'Warning' ? '#F5D90A' : b.kind === 'Tip' ? '#3DD68C' : '#4CC9E8',
+            ground: b.kind === 'Warning' ? 'rgba(245,217,10,.05)' : b.kind === 'Tip' ? 'rgba(61,214,140,.05)' : 'rgba(76,201,232,.05)',
+            copyLabel: s.copied === i ? 'Copied' : 'Copy',
+            copy: () => { this.setState({ copied: i }); this.timers.push(setTimeout(() => this.setState({ copied: -1 }), 1500)); this.toast('Copied.', '#3DD68C'); },
+          })),
+        };
+      })(),
+      hasToast: !!s.toast, toastMsg: s.toast ? s.toast.msg : '',
+      toastColor: s.toast ? s.toast.color : '#3DD68C',
+      toastBorder: s.toast ? s.toast.color + '55' : '#2A2E37',
+    };
+  }
+}
+</script>
+</body>
+</html>
