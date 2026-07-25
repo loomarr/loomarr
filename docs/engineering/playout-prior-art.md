@@ -317,6 +317,28 @@ output:  mpegts, h264 1280x720, aac stereo 48k, 4.03s, 819KB
 construction, no new API surface — and the `Slot.LibraryItemID` the scheduler already carries
 is enough to resolve it. No schema change, no path configuration, no shared mounts.
 
+## 5c. Mid-program tune-in — verified over HTTP
+
+A channel is a wall clock, not a playlist that starts when someone watches: a viewer joining
+40 minutes into a film must land 40 minutes in. That means seeking into an item, and seeking
+into an HTTP-streamed 4K remux is a materially different operation from seeking a local file.
+
+Verified against the live Emby:
+
+```
+-ss 2400 -i {emby stream URL}      # fast seek: -ss BEFORE -i
+→ 2.9s wall-clock, 3.02s of output, 71 real frames decoded
+```
+
+- **`-ss` before `-i` works over HTTP.** Placement matters: before `-i` ffmpeg seeks (the
+  server serves a byte range); after `-i` it decodes and discards from the start, which for
+  a 40-minute offset into 4K would take minutes and burn a core doing nothing.
+- ⚠ **Benign decoder noise is expected.** The seek emits `[hevc] PPS changed between slices`
+  repeatedly. Output is fine — 71 frames decoded — so this is exactly the class of message
+  viewra needed a non-fatal allowlist for (`session.go:383` allowlists Dolby Vision's
+  "Invalid Block Addition" for the same reason). Logging it as an error trains an operator to
+  ignore the log; `Process.readStderr` therefore logs at DEBUG.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
