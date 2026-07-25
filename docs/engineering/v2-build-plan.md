@@ -184,38 +184,34 @@ API-only*. Decide, don't defer indefinitely.
 
 ---
 
-## 4a. ⚠ `design.md` LEADS the code (opened by V2b, mostly closed by V6, fully by V6b)
+## 4a. ✅ CLOSED — `design.md` no longer leads the code on playout
 
-**V2b merged design amendments describing a system that does not exist yet.** §9.1 says
-Loomarr serves HLS + MPEG-TS segments, publishes `/playout/tuner.m3u` and
-`/playout/guide.xml`, and authenticates devices by `playout_token`. §1 lists playout as a
-goal. None of it is implemented, and V4's registry keys (`playout.*`, the `playout_token`
-secret) currently have **zero consumers**.
+**V2b merged design amendments describing a system that did not exist yet.** §9.1 said Loomarr
+serves HLS + MPEG-TS segments, publishes `/playout/tuner.m3u` and `/playout/guide.xml`, and
+authenticates devices by `playout_token`. §1 listed playout as a goal. None of it was
+implemented, and V4's registry keys had zero consumers.
 
 That was the right sequencing — V2b unblocked 28 phases and doc-first is the rule — but it
-opens a window where the doc is **intent, not description**. Recorded because that window is
-exactly how `design.md`'s §20 accumulated dead bullets: a claim nobody tracked until it read
-as history.
+opened a window where the doc was **intent, not description**. Recorded because that window is
+exactly how `design.md`'s §20 accumulated dead bullets: a claim nobody tracked until it read as
+history.
 
-**✅ MOSTLY CLOSED by V6 (merged 2026-07-25).** Loomarr serves its own channels: a real Emby
-tuner pulls `/playout/tuner.m3u`, real library films play, breaks cut to real commercials, and
-the whole transcode runs on the GPU. The routes, the token, the encoder and the registry keys
-all have live consumers now.
+**Closed by V6 + V6b (both merged 2026-07-25), verified on the maintainer's own Emby.** Every
+§9.1 claim now has a live consumer: a real Emby tuner pulls `/playout/tuner.m3u`, real library
+films play with the full transcode on the GPU, breaks cut to real commercials, and
+`/playout/guide.xml` serves real listings (7 channels / 252 programmes on the dev stack).
 
-**⚠ ONE CLAIM STILL LEADS THE CODE: `/playout/guide.xml`.** §9.1 lists an XMLTV guide among
-what internal playout serves, and it does not exist — a channel appears in the media server and
-plays with an **empty EPG**. This is precisely the failure mode this section warned about: a
-doc claim nobody tracked. It went unnoticed through V6 because the phase gate said "playing a
-test card", which the M3U tuner alone satisfies.
+**⚠ The lesson, kept because it will recur.** The XMLTV guide went unnoticed through V6 because
+that phase's gate said *"a channel playing a test card"* — which the M3U tuner alone satisfies.
+A doc claim only gets tracked if some phase's gate actually asserts it. When a phase implements
+part of a multi-part design promise, its gate should name the parts it does **not** cover, or
+the remainder becomes exactly the dead bullet this section exists to prevent.
 
-**Closing it is V6b**, added to the phase table for that reason rather than left as a §20-style
-dead bullet. Until V6b lands, read §9.1's XMLTV bullet as **planned, not shipped**.
-
-*Also worth separating, because the word "guide" means two different things here:* V13b's
+*Also worth separating, because the word "guide" means two different things:* V13b's
 `GET /v1/guide` is JSON for **Loomarr's own** time-grid UI (V14). It does **not** put listings
-in a media server's EPG — that is V6b's XMLTV file, a different format for a different
-consumer. They will likely share a data source (both need "what airs when, per channel, over a
-window"), so V6b before V13b is the cheaper order, but neither substitutes for the other.
+in a media server's EPG — that is V6b's XMLTV file, a different format for a different consumer.
+V6b shipped `playout.BroadcastsBetween`, which already answers "what airs when, per channel,
+over a window", so V13b is now mostly a JSON projection of an existing walk.
 
 ## 5. V2b in detail — the highest-leverage phase
 
