@@ -79,11 +79,20 @@ type xmlTVProgramme struct {
 	Start   string `xml:"start,attr"`
 	Stop    string `xml:"stop,attr"`
 	Channel string `xml:"channel,attr"`
-	Title   string `xml:"title"`
-	// EpisodeNum in xmltv_ns format when the slot carries season/episode numbers. Zero-based
-	// and dot-separated ("0.4." is S1E5), which is the format's own convention — a media server
-	// that understands it renders "S1E5" from this.
-	EpisodeNum *xmlTVEpisodeNum `xml:"episode-num,omitempty"`
+	// Title is the SERIES name for an episode, the film's name for a movie. A media server
+	// groups and searches by this, which is why an episode must not put its own name here.
+	Title string `xml:"title"`
+	// SubTitle is the EPISODE name, omitted for a movie.
+	SubTitle string `xml:"sub-title,omitempty"`
+	// EpisodeNums — TWO of them when season/episode are known, because clients disagree about
+	// which they read:
+	//
+	//	xmltv_ns  "6.1."  machine-readable, ZERO-BASED (S7E2), the format's own convention
+	//	onscreen  "S7E2"  what a client displays verbatim when it does not parse xmltv_ns
+	//
+	// Tunarr emits both, and it is the reason its guide shows "S7E2" where a xmltv_ns-only
+	// document shows nothing.
+	EpisodeNums []xmlTVEpisodeNum `xml:"episode-num,omitempty"`
 }
 
 type xmlTVEpisodeNum struct {
@@ -148,11 +157,20 @@ func RenderXMLTV(g Guide, now time.Time) ([]byte, error) {
 				Channel: ch.ID,
 				Title:   b.Title,
 			}
+			// SERIES/EPISODE SPLIT. `<title>` is what a media server groups and searches by,
+			// so an episode puts the SHOW there and its own name in `<sub-title>`. Emitting
+			// the episode name as the title is what made every Simpsons episode appear in the
+			// guide as an unrelated programme.
+			if b.SeriesTitle != "" {
+				p.Title = b.SeriesTitle
+				p.SubTitle = b.Title
+			}
 			if b.Season > 0 && b.Episode > 0 {
-				// xmltv_ns is zero-based: S1E5 is "0.4.".
-				p.EpisodeNum = &xmlTVEpisodeNum{
-					System: "xmltv_ns",
-					Value:  fmt.Sprintf("%d.%d.", b.Season-1, b.Episode-1),
+				p.EpisodeNums = []xmlTVEpisodeNum{
+					// Machine-readable, zero-based: S1E5 is "0.4.".
+					{System: "xmltv_ns", Value: fmt.Sprintf("%d.%d.", b.Season-1, b.Episode-1)},
+					// Displayed verbatim by clients that do not parse xmltv_ns.
+					{System: "onscreen", Value: fmt.Sprintf("S%dE%d", b.Season, b.Episode)},
 				}
 			}
 			doc.Programmes = append(doc.Programmes, p)

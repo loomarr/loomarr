@@ -228,6 +228,68 @@ func TestRenderXMLTV_EpisodeNumbersAreZeroBasedXmltvNs(t *testing.T) {
 	}
 }
 
+// THE SERIES/EPISODE SPLIT. XMLTV puts the SHOW in `<title>` and the EPISODE in `<sub-title>`.
+// A media server groups and searches by `<title>`, so emitting the episode name there makes
+// every episode look like an unrelated programme — which is exactly what the first version of
+// this guide did: "Life on the Fast Lane" appeared with no indication it was The Simpsons.
+func TestRenderXMLTV_SeriesGoesInTitleAndEpisodeInSubTitle(t *testing.T) {
+	b := programme("Life on the Fast Lane", guideNow, 22)
+	b.SeriesTitle = "The Simpsons"
+	b.Season, b.Episode = 1, 9
+
+	got := renderOne(t, Guide{
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Classic Simpsons", Number: 52}},
+		Programmes: map[string][]Broadcast{"ch1": {b}},
+	})
+
+	if !strings.Contains(got, "<title>The Simpsons</title>") {
+		t.Errorf("the SERIES is not the title — the guide will not group episodes:\n%s", got)
+	}
+	if !strings.Contains(got, "<sub-title>Life on the Fast Lane</sub-title>") {
+		t.Errorf("the EPISODE name is missing from sub-title:\n%s", got)
+	}
+	// The episode name must NOT also be the title, or grouping breaks again.
+	if strings.Contains(got, "<title>Life on the Fast Lane</title>") {
+		t.Errorf("the episode name is still in <title>:\n%s", got)
+	}
+}
+
+// A movie has no series, so its own name stays in `<title>` and there is no `<sub-title>`.
+func TestRenderXMLTV_MovieTitleIsNotDemotedToSubTitle(t *testing.T) {
+	got := renderOne(t, Guide{
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Last Action Hero", guideNow, 130)}},
+	})
+	if !strings.Contains(got, "<title>Last Action Hero</title>") {
+		t.Errorf("a movie lost its title:\n%s", got)
+	}
+	if strings.Contains(got, "sub-title") {
+		t.Errorf("a movie got a sub-title:\n%s", got)
+	}
+}
+
+// TWO episode-num systems, because clients disagree about which they read. `onscreen` is what a
+// client shows verbatim when it does not parse the zero-based xmltv_ns form — emitting only
+// xmltv_ns is why a guide can carry episode numbers and still display none.
+func TestRenderXMLTV_EmitsBothEpisodeNumberSystems(t *testing.T) {
+	b := programme("Radioactive Man", guideNow, 22)
+	b.SeriesTitle = "The Simpsons"
+	b.Season, b.Episode = 7, 2
+
+	got := renderOne(t, Guide{
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
+		Programmes: map[string][]Broadcast{"ch1": {b}},
+	})
+
+	if !strings.Contains(got, `<episode-num system="xmltv_ns">6.1.</episode-num>`) {
+		t.Errorf("missing the zero-based machine-readable form (S7E2 ⇒ 6.1.):\n%s", got)
+	}
+	if !strings.Contains(got, `<episode-num system="onscreen">S7E2</episode-num>`) {
+		t.Errorf("missing the onscreen form — clients that ignore xmltv_ns show no episode "+
+			"number at all:\n%s", got)
+	}
+}
+
 // A movie carries no season/episode, and must not get a bogus "-1.-1." entry.
 func TestRenderXMLTV_MoviesGetNoEpisodeNumber(t *testing.T) {
 	got := renderOne(t, Guide{
