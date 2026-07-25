@@ -462,6 +462,40 @@ handed to ffmpeg is in argv, full stop.
 
 Keep `?token=` in the URLs. If this is flagged again, the answer is here.
 
+## 5f. V6 end to end with real content — what the live smoke proved
+
+The final V6 verification, against the dev Emby (`100.75.125.45:8096`) 2026-07-25. A channel of
+three real movies, built through **`suggest.Approve`** — the approval gate, never a raw
+`available` write (CLAUDE.md).
+
+```
+approved: 3 in-library picks available, 0 acquisitions wanted
+  Disgrace       state=available  libraryID="641854"
+  Hunger         state=available  libraryID="641892"
+  Chasing Amy    state=available  libraryID="642132"
+```
+
+**Direct program fetch** (`/playout/program/live`) — 21 MB, `nb_streams=2`, h264 1920x1080 + aac.
+A decoded frame is a real film image, letterboxed, not the offline card.
+
+**Full tuner path** (`/playout/stream/live`, what a media server pulls) — h264 1080p + aac,
+frames decode, **3 program requests** logged, parent ffmpeg reported no stderr.
+
+Three properties confirmed that only real content can show:
+
+- ✅ **A channel is a WALL CLOCK.** Two program fetches 18s apart returned *different frames*
+  (differing md5). Playout resolves position from the clock, not from "wherever this request
+  started" — the property `AiringAt` exists to guarantee.
+- ✅ **The resolver picked a MID-CYCLE program.** Both fetches landed in *Hunger*, the second
+  lineup entry, not the first. A playlist-style implementation would always start at entry one.
+- ✅ **`pad` preserves profile dimensions.** *Hunger* is 2.35:1; the output is exactly 1920x1080
+  with black bars. A bare aspect-preserving scale would have emitted 1920x816 and broken the
+  parent's `-c copy` — the failure §5d predicted, now shown not to happen.
+
+⚠ **Byte counts are not throughput.** The tuner path yielded ~322 KB in 22s versus 21 MB for the
+direct fetch, which looks alarming and is correct: `-readrate 1.0` paces the parent to realtime,
+so 22s of wall-clock is ~22s of stream. The direct fetch was unpaced buffering. Do not "fix" this.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
