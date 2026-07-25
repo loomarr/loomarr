@@ -35,7 +35,17 @@ discover · edit-before-approve · All-settings search · cross-tab save bar.**
    seeding and channel-health **incorrectly** — see research §2i.1. Never port logic from it.
 5. **Surface map:** a PR adding a channel capability updates `design.md` §12 in the same PR.
 6. **Help grep:** a PR retiring or renaming a capability greps `docs/help/` in the same PR.
-7. **No new dependencies** (§14). Generated files are regenerated, never hand-edited.
+7. **A backend phase that adds user-facing capability MUST name its UI phase.** "The endpoint
+   exists" is not the gate — **reachability is**. A phase may legitimately ship backend-only, but
+   then it says so in its own row and points at the phase that finishes the job, and it does not
+   claim to close a user-facing defect.
+
+   *Learned the hard way, in this program:* V7 shipped `POST /v1/auth/password` with 19 tests and
+   **no Account screen**, and its PR claimed to close S2 — while a user still could not change their
+   password by clicking anything. That is the exact defect class the first eight phases existed to
+   close (a complete feature with one missing link), recreated while closing it. V7b/V7c/V25b were
+   added afterwards; this rule is so the next one is caught before merge, not after.
+8. **No new dependencies** (§14). Generated files are regenerated, never hand-edited.
 
 ---
 
@@ -46,7 +56,7 @@ discover · edit-before-approve · All-settings search · cross-tab save bar.**
 | #3/#4/#5 | IA renames | **RATIFIED** — `/people`, `System`, `Security`, `All settings`, `Defaults` |
 | — | Channels → **Guide**, + **Dashboard** landing | **RATIFIED** |
 | #6 | Bootstrap-file config tier (`env > file > default`) | **ADOPTED** — amends `config-design.md:72` |
-| #7 | Local account management | **IN v1** — closes S2 + S3 |
+| #7 | Local account management | **IN v1** — closes S3; **S2 needs the UI too** (V7 backend + V7b screen) |
 | #8 | Filler F3b live remote discovery | **v1** |
 | #10 | Playout backend default | **Internal-first** |
 | #11 | Playout transport | **Both** HLS + MPEG-TS |
@@ -74,9 +84,14 @@ card grid.
 
 ## 4. The phases
 
-39 phases, one PR each. `make check` · `make fe` · `make e2e` green is assumed throughout; the
+42 phases, one PR each. `make check` · `make fe` · `make e2e` green is assumed throughout; the
 **Gate** column is the *additional* proof. Dependency graph verified mechanically: acyclic, no
 dangling references, every register defect mapped.
+
+**Every v2 mock surface has a phase.** Guide → V14 (grid) + **V13b** (the endpoint it needs);
+Dashboard → V16; People → V14 + V7c; Settings → V9/V10/V11/V12/V13/V8; Account → **V7b**;
+Help → V15; Approvals → V27 + **V25b**; My requests → V26; Filler → V17b–d/V28–30/V33;
+Wizard → V20/V21/V22; Mobile → V18.
 
 ### Free to start now — no dependencies, no pending decisions
 
@@ -86,7 +101,9 @@ dangling references, every register defect mapped.
 | **V1** | `D-H` — mount `ChannelIconField` on the info panel | Story + visual baseline; §12 surface-map row cites the mount |
 | **V2** | `C3′` + `C10` + `A4` — Separation in the refine diff; drop the dead `channel-pods` export; delete the stale `TODO(learning)` at `ladder.go:57` | A refine test where **only** `separation` changes renders it; story-coverage green; no TODO above an implemented function |
 | **V2b** | **`D-I` — the design amendment, DOCS ONLY** | See §5 below. **Blocks 28 phases.** |
-| **V7** | `#7` — local accounts: create + change password (closes **S2**, **S3**) | The bootstrap admin changes their own password; §19 negatives extended |
+| **V7** | `#7` — local accounts **backend** (closes **S3**; **S2 only at the API layer** — see V7b) | The bootstrap admin changes their own password *via the API*; §19 negatives extended |
+| **V7b** | **Account screen** — change password, session list, revoke, sign out everywhere. **Closes S2 for real.** | A user changes their password by clicking; a reachability assertion proves the screen mounts; the copy says **all** sessions end, not "this one kept" (the code revokes every session — see `password.go`) |
+| **V7c** | **People: create local account + reset password** — the admin half of V7's surface | An admin mints a local account and resets a forgotten password from the UI; a member sees neither affordance |
 | **V17a** | `F1` — read the sidecars; stop passing the provenance enum as the LLM's source description | A tagging test asserts the prompt carries real metadata, **not** the literal `"tunarr-local"` |
 | **V19** | Per-title refine rationale (`why`) | The suggester emits per-title rationale; the diff renders it |
 | **V23** | `A1` — deny-reason UI (API field exists, unused) | Denying offers a reason; it reaches `Proposal.DenyReason`; no call site sends `data: {}` |
@@ -125,7 +142,8 @@ dangling references, every register defect mapped.
 
 | # | Phase | Deps | Gate |
 | --- | --- | --- | --- |
-| **V25** | `D-K` — edit-before-approve, one chokepoint | V4, V24 | `POST /approve` takes a body; **`suggest.Approve` remains the sole implementation** (a test asserts no second acquisition path); `modSummary`+`note`+`approvedBy` persist; member still 403s |
+| **V25** | `D-K` — edit-before-approve **backend**, one chokepoint | V4, V24 | `POST /approve` takes a body; **`suggest.Approve` remains the sole implementation** (a test asserts no second acquisition path); `modSummary`+`note`+`approvedBy` persist; member still 403s |
+| **V25b** | **Edit-before-approve UI** — drop titles with `✕`, add via search, note to the requester | V25 | An admin edits a proposal and approves the edited version from the queue; the note reaches `modSummary`; a reachability assertion proves the panel mounts |
 | **V26** | `A2` — "My requests": per-user proposal list + admin-edit provenance | V25 | A member sees their own submitted/denied/edited requests; *"CHANGED BY …"* renders; the denial line shows |
 | **V27** | Approvals queue as its own surface: tabs, bulk approve, audit rows | V25, V26 | Tab counts correct; bulk approve goes through the same chokepoint; history rows carry `approvedAt` |
 
