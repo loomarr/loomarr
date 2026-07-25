@@ -411,6 +411,57 @@ One test-writing note worth keeping: **count streams with `format=nb_streams`, n
 streams several times; a line-counting version of this test saw 5 streams and failed against
 completely correct output.
 
+## 5e. The playout token is in argv, and that is not fixable
+
+An automated security review flagged `?token=` in the parent's playlist URL: it lands in `argv`
+(readable by any local user via `ps`) and in access logs. The suggested fix was to move it to a
+header via `-headers` and read it server-side from there.
+
+**Both halves were investigated and measured. The finding is real; the fix does not work.**
+
+### `-headers` does not reach the playlist's entries
+
+Tested against real ffmpeg with an instrumented server that records the header on each request:
+
+```
+ffmpeg -headers "X-Playout-Token: secret123\r\n" -f concat -i http://…/playlist
+→ /playlist   X-Playout-Token=secret123
+→ /entry      X-Playout-Token=None
+```
+
+The concat demuxer opens entries **itself** and propagates no input options to them. There is no
+concat option to change this — `ffmpeg -h demuxer=concat` lists only `safe`, `auto_convert`,
+`segment_time_metadata`. So a header-only scheme authenticates the playlist and then 404s every
+entry: a channel that fetches its playlist and plays nothing. Tunarr puts the token in the entry
+URLs for exactly this reason (§1).
+
+### Moving the parent's own token to a header does not remove it from argv either
+
+The obvious partial fix — keep `?token=` on entries, header for the parent — was implemented and
+then **reverted after live verification**, because `ps` showed:
+
+```
+ffmpeg … -headers X-Playout-Token: <TOKEN> -i http://…/playout/playlist/sec
+```
+
+An ffmpeg header value **is itself a command-line argument**. The change moved the secret from one
+argv position to another. Every credential path ffmpeg offers (`-headers`, `-cookies`,
+`-auth_type`) is a `<string>` option; there is no file- or env-based alternative. Any credential
+handed to ffmpeg is in argv, full stop.
+
+### What is actually true
+
+- ⚠ **argv exposure is inherent** to a mechanism where *ffmpeg*, not Loomarr, issues the request.
+  It is not a coding mistake and cannot be coded around. Mitigation belongs at the deployment
+  layer (container/user isolation), not in the URL scheme.
+- ✅ **The log half was never a problem.** `logRequests` records `r.URL.Path` only, so the query
+  string is not logged — confirmed in a live run (`"path":"/playout/program/ch-test"`).
+- ✅ **The token is scoped to match.** §11 makes `playout_token` read-only and playout-only: a
+  local user who reads it from `ps` gains the streams their household already watches, and no API
+  access, no identity, no write.
+
+Keep `?token=` in the URLs. If this is flagged again, the answer is here.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
