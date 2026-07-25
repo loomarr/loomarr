@@ -31,6 +31,7 @@ const UserRow = ({
   onToggleDisabled,
   onToggleAutoApprove,
   onViewSessions,
+  onResetPassword,
   className,
 }: UserRowProps) => {
   const roleId = `role-${user.id}`;
@@ -137,6 +138,14 @@ const UserRow = ({
           <Button variant="ghost" size="sm" onClick={onViewSessions} disabled={busy}>
             <MonitorSmartphone aria-hidden />
             Sessions
+          </Button>
+        )}
+        {/* Local accounts only — Loomarr never held an imported user's password, so
+            offering a reset would imply it could change their media-server one. */}
+        {onResetPassword && user.local && (
+          <Button variant="ghost" size="sm" onClick={onResetPassword} disabled={busy}>
+            <KeyRound aria-hidden />
+            Reset password
           </Button>
         )}
         <Button
