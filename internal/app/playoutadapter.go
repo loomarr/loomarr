@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -63,6 +64,17 @@ type playoutResolver struct {
 	// fillerDir resolves a clip's relative id to a file on disk. A func so a settings change
 	// applies without a restart, like the other live reads above.
 	fillerDir func() string
+
+	// ffmpegPath is the binary the capability probe executes.
+	ffmpegPath func() string
+	log        *slog.Logger
+	// detectOnce / detected cache the measured encoder choice (detectedEncoder).
+	//
+	// Cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far too
+	// slow on the per-program path. NOT a plain field set at construction: probing eagerly
+	// would add ~20s to every boot for a value most installs never override.
+	detectOnce sync.Once
+	detected   playout.Encoder
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -180,16 +192,56 @@ func (r *playoutResolver) airingFiller(
 // steps everyone down as their next program begins. That is the "best picture the hardware
 // sustains, then adapt" policy §9.1 states, and it is only implementable because the child
 // processes are short-lived.
-func (r *playoutResolver) Profile(_ context.Context) playout.Profile {
+func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
-		// No operator override: the capability prober's choice was stored at wizard time. An
-		// empty setting here means "pick for me", and software is the honest fallback — it is
-		// the one encoder that is always present, and a wrong hardware guess fails at init
-		// rather than degrading.
-		enc = playout.EncoderSoftware
+		// No operator override ⇒ ASK THE HARDWARE, once.
+		//
+		// This used to fall straight through to libx264 with a comment claiming the
+		// capability prober's choice "was stored at wizard time" — but nothing ever stored
+		// it, so the fallback was unconditional and a box with a working GPU silently
+		// encoded in software forever. Detect trial-encodes each candidate, so its answer is
+		// measured rather than inferred from `ffmpeg -encoders` (which lists encoders the
+		// hardware cannot actually run — the exact trap that took a live channel down: the
+		// host listed h264_vulkan, the container had no /dev/dri).
+		enc = r.detectedEncoder(ctx)
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
+}
+
+// detectedEncoder returns the best encoder that actually WORKS here, probing once.
+//
+// Lazily and exactly once, which is the only workable timing: Detect trial-encodes every
+// candidate (~5s each), so it is far too slow for the per-program path and would add ~20s to
+// every boot if done eagerly — for a value most installs never need. The first program to need
+// it pays; everything after reads the cached answer.
+//
+// An operator who changes their hardware (adds GPU passthrough, which is a compose change and
+// needs a restart anyway) gets a fresh probe on the next start.
+func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
+	r.detectOnce.Do(func() {
+		bin := r.ffmpegPath()
+		if bin == "" {
+			bin = "ffmpeg"
+		}
+		cap := playout.Detect(ctx, bin, playout.DefaultProfile())
+		r.detected = cap.Chosen
+		if r.log != nil {
+			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
+			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
+			// skipped ("Device creation failed" vs "not in this ffmpeg build").
+			skipped := make([]string, 0, len(cap.All))
+			for _, c := range cap.All {
+				if !c.Works {
+					skipped = append(skipped, string(c.Encoder)+": "+c.Err)
+				}
+			}
+			r.log.Info("playout: encoder probed",
+				"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
+				"skipped", skipped)
+		}
+	})
+	return r.detected
 }
 
 // playoutEpoch anchors a channel's cycle on the wall clock.

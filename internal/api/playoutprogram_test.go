@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -348,4 +349,45 @@ func TestPlayoutProgram_DisconnectStopsTheEncoder(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Error("the encoder survived the client disconnect — an orphan burning a core")
+}
+
+// A channel that produces NO BYTES must say so loudly.
+//
+// This is the bug that took a live channel down silently: a misconfigured hardware encoder died
+// at startup, which closes stdout — so the copy saw a clean EOF, copyErr was nil, and the old
+// `copyErr != nil && n == 0` guard never fired. The viewer's player buffered forever with not
+// one line in the log at INFO, because ffmpeg's stderr goes to DEBUG.
+func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/zero.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
+	srv := httptest.NewServer(api.Router(logger, api.Options{
+		Store: st, Auth: api.NewTokenAuthorizer(adminToken), Log: logger,
+		PlayoutSecret:   func() string { return playoutToken },
+		PlayoutResolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		// An "encoder" that exits immediately without writing anything — exactly what a
+		// hardware encoder does when its device is missing.
+		PlayoutEncoder: func(ctx context.Context, _ []string) (*playout.Process, error) {
+			return playout.Start(ctx, "sh", []string{"-c", "exit 0"}, nil, nil)
+		},
+		LiveConfig: func(k string) string { return cfg[k] },
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	got := buf.String()
+	if !strings.Contains(got, "NO OUTPUT") {
+		t.Errorf("a channel that produced zero bytes logged nothing at INFO — the operator "+
+			"sees a buffering player and an empty log. Got:\n%s", got)
+	}
 }

@@ -149,12 +149,21 @@ func (s *Server) streamChild(w http.ResponseWriter, r *http.Request, channelID, 
 	cancel()
 	_ = proc.Wait()
 
-	if copyErr != nil && n == 0 {
-		// Zero bytes AND an error is the diagnosable case: the encoder failed at startup (a bad
-		// input URL, a missing hardware device) rather than mid-program. ffmpeg's own last line
-		// is far more useful than our wrapper's error.
-		s.log.Warn("playout: program produced no output",
-			"channel", channelID, "program", what, "ffmpeg", proc.LastError())
+	// ZERO BYTES IS ALWAYS WRONG, whether or not the copy reported an error.
+	//
+	// This condition was `copyErr != nil && n == 0` and it never fired for the case that
+	// matters most: an encoder that dies at startup closes its stdout, which the copy sees as
+	// a clean EOF — so copyErr is NIL and n is 0. The channel silently produced nothing while
+	// the viewer's player sat buffering, and the only clue (ffmpeg's stderr) was logged at
+	// DEBUG. Found the hard way: a misconfigured hardware encoder in a container with no GPU
+	// took a live channel down with not one line in the log at INFO.
+	//
+	// ffmpeg's own last stderr line is the useful part — "Device creation failed", "No such
+	// file or directory" — so it is surfaced here rather than left to a debug-level sink.
+	if n == 0 {
+		s.log.Warn("playout: the encoder produced NO OUTPUT — this channel will not play",
+			"channel", channelID, "program", what,
+			"ffmpeg", proc.LastError(), "copyErr", copyErr)
 	}
 }
 
