@@ -6,8 +6,10 @@ package app
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -405,7 +407,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
 			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
-			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, time.Now, log)
+			// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars
+			// ingest writes beside each clip (§10). An unset FILLER_DIR yields a nil FS
+			// and tagging falls back to filenames — the same result as a drop-folder
+			// clip that never had a sidecar.
+			var drop fs.FS
+			if dir := set.str("filler.dir"); dir != "" {
+				drop = os.DirFS(dir)
+			}
+			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log)
 		}
 		// Ingest tooling ships only in the loomarr:filler image (§16). Absent paths are
 		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error

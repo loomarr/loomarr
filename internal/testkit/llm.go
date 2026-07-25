@@ -2,6 +2,7 @@ package testkit
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,24 @@ type LLM struct {
 	// LastOpts captures the ChatOptions of the most recent call, so a test can
 	// assert sampling controls (temperature/max_tokens) are forwarded (T0.1).
 	LastOpts llm.ChatOptions
+	// LastMessages captures the prompt of the most recent call. Some defects live
+	// in the PROMPT rather than the response — filler tagging spent its life sending
+	// "Source description: tunarr-local" (a provenance enum where a description
+	// belonged), which no assertion about outputs could ever have caught.
+	LastMessages []llm.Message
+}
+
+// Prompt returns every message's content from the most recent Chat call, joined —
+// the convenient form for asserting that a signal did (or did not) reach the model.
+func (m *LLM) Prompt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var b strings.Builder
+	for _, msg := range m.LastMessages {
+		b.WriteString(msg.Content)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // NewLLM builds a scripted provider that returns the given responses in order,
@@ -33,7 +52,7 @@ func NewLLM(responses ...llm.Response) *LLM {
 
 func (m *LLM) Name() string { return "mock" }
 
-func (m *LLM) Chat(ctx context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	if m.Delay > 0 {
 		select {
 		case <-time.After(m.Delay):
@@ -44,6 +63,7 @@ func (m *LLM) Chat(ctx context.Context, _ []llm.Message, opts llm.ChatOptions) (
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.LastOpts = opts
+	m.LastMessages = messages
 	m.Calls++
 	if len(m.turns) == 0 {
 		return llm.Response{}, nil // no more scripted turns → empty final
