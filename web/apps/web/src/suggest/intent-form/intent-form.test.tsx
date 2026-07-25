@@ -47,9 +47,12 @@ describe("IntentForm", () => {
     openConstraints();
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    const intent = onSubmit.mock.calls[0][0];
-    expect(intent.mustInclude).toBeUndefined();
-    expect(intent.mustExclude).toBeUndefined();
+    // Asserted via objectContaining rather than indexing mock.calls: under
+    // noUncheckedIndexedAccess `calls[0]` is possibly-undefined, and this says the
+    // same thing without a non-null assertion.
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ mustInclude: undefined, mustExclude: undefined }),
+    );
   });
 
   it("ignores stray separators rather than sending empty terms", () => {
