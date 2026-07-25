@@ -1236,11 +1236,48 @@ and plays out its own channels. That reframes Track T from a parallel track into
 | V17a · Read the clip sidecars (`F1`) | done | `2eaaca4` (#73) — 4 tests, all verified failing with the old argument | Every AI-tagged clip's prompt read **`Source description: tunarr-local`** — `sync.go:131` sets a PROVENANCE enum and `tagjob.go` passed it as the *description*, so the classifier got a misleading constant while the real title/description sat unread. Both ingest paths were already writing info-JSON sidecars with a comment saying *"AI tagging reads, §10"*; nothing parsed them. New `internal/filler/sidecar.go`. **`upload_date` deliberately NOT used for Era** — it's when a clip was uploaded, not when it aired. Testkit gained `LLM.LastMessages`/`Prompt()`: the defect lived in the PROMPT, which no output assertion could catch. |
 | V23 · Deny-reason UI (`A1`) | in review | PR #74 — 4 tests; visual verified against a REBUILT storybook-static | `denyInput.Body.Reason` has always existed, persisted, and been **rendered** by `ApprovalQueueItem` with a story and a test — but all three call sites sent `data: {}`, so it was always empty and a denied member learned nothing. Deny is now two-step (arm → reason → send); **Approve stays one click** — approving needs no explanation, declining is where someone is left guessing. Reason is optional; empty sends `undefined`, not `""`. |
 
+| V6 · Internal playout to first frame | **done** | `2b0b9a4` … `c6aa0e7` — `make check` + `make test-ffmpeg` green; **verified on the maintainer's own Emby** | Loomarr serves its own channels. Emby pulls `/playout/tuner.m3u`, real library films play at 1080p, breaks cut to real commercials, and the full transcode runs on the GPU. Mechanism is Tunarr's HTTP ffconcat loop (prior-art §1): a `-c copy` parent over a 2-line playlist whose entries both resolve to "what's on now" — the demuxer's EOF-and-advance IS the program boundary, so there is no splicing code. Mid-program tune-in verified live (joined 39 min into a film). |
+| V6b · XMLTV listings | **done** | `ac17450`, `c8ed906`, `5382fda`, `7fccc63` — `make check` green; live guide 253 programmes / 541ms | `/playout/guide.xml`. Same `CyclePreview` the encoder reads, so listings cannot drift from playout (a test samples 200 instants and asserts they agree). Breaks are **not** advertised (#12). Full metadata: `<desc>` 253/253, `<date>` 253/253, `<category>` 249/253, `<rating>` 247/253 — one bulk `/Items?Ids=` call, 120 items in 24ms, so no cache was needed. |
+
 **Next up (free — no deps, no pending decisions):** V7 (local accounts — closes S2/S3, the largest
 remaining free phase), V19 (per-title refine rationale), V24 (`A3` — surface proposal data the DTO
 already carries but nothing renders: `channelName`, `eraBalance`, `overall`, and the
 `mustInclude`/`mustExclude` intent inputs).
-**The spine:** V3 (single-image rebase) → V4 → V5 → V6 (internal playout to first frame).
+**The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b. Next in the plan is **V13b**
+(`GET /v1/guide`, the JSON backend for Loomarr's own time-grid) → **V14** (IA rename + grid).
+V6b shipped `playout.BroadcastsBetween`, so V13b is mostly a JSON projection of an existing walk.
+
+### Playout: five traps that each cost a live channel
+
+Every one was found by RUNNING it, and four had green tests over them the whole time. A test can
+only assert what you already believe.
+
+1. **Probe the machine you will RUN on.** Verified `h264_vulkan` on the host, set
+   `PLAYOUT_ENCODER` for the *container* — which had no `/dev/dri` and no driver libs. Every
+   encode died instantly and the log said **nothing**, because a dying encoder closes stdout,
+   which reads as a clean EOF. Fixed the guard (`n == 0` regardless of error) and the image
+   (one vendor-neutral driver package set, ~120MB, serving Intel/AMD/Vulkan; NVENC needs nothing
+   in-image — `libcuda` is injected by the container toolkit).
+2. **`format=yuv420p` for every CPU-frame encoder, not just software.** A 10-bit HEVC source
+   reaches nvenc as `yuv420p10le` and it refuses with *"No capable devices found"* — a message
+   that names the DEVICE, so it reads as a missing GPU.
+3. **DECODE dominates on 4K, not encode.** CPU decode + GPU encode measured 341% CPU, *higher*
+   than all-software (260%), because the decode had merely been throttled by the slow encoder.
+   Adding `-hwaccel cuda` → 42%.
+4. **Never `-hwaccel_output_format`, and keep scale/pad on the CPU.** `scale_cuda` has **no pad
+   option** (verified: a 4:3 source emits 1440x1080, not letterboxed 1920x1080), which breaks the
+   parent's `-c copy` on any channel mixing aspect ratios.
+5. **Hardware CAN do quality-targeted rate control.** Capped CBR crushed hard scenes; a comment
+   in our own code claimed hardware could not use a quality target. Wrong about NVENC —
+   `-rc vbr -cq 21 -b:v 0` with a 2× ceiling took SSIM 0.98262 → 0.98581. `-b:v 0` is
+   load-bearing: a non-zero bitrate degenerates cq back to CBR.
+
+**Guide display, learned by two wrong answers against the real Emby.** XMLTV says `<title>` is the
+series and `<sub-title>` the episode. Emby parses both correctly but its guide GRID renders
+`Name` alone — so episode-in-title showed *"Bart the Mother"* with no show, and series-in-title
+showed *"The Simpsons"* with no episode. Now combined (`"The Simpsons: Bart the Mother"`), with
+`<sub-title>` still emitted for clients that use it. Tunarr can afford the strict split precisely
+because it emits `<desc>`; once ours landed, the constraint changed — revisiting is reasonable.
 
 **Pattern worth noting across V1/V17a/V23:** each was a *complete* feature with one missing link —
 a built component nobody imported, a sidecar nobody parsed, a persisted field nobody captured. All
