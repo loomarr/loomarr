@@ -131,7 +131,12 @@ describe("RefineReview", () => {
   it("shows the model's reason on an added title", () => {
     const withReason: ProposalItem = { ...predator, rationale: "Same era, same energy as Heat." };
     render(
-      <RefineReview proposed={[heat, withReason]} current={[currentHeat]} onApply={vi.fn()} onDiscard={vi.fn()} />,
+      <RefineReview
+        proposed={[heat, withReason]}
+        current={[currentHeat]}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
     );
     expect(screen.getByText("Same era, same energy as Heat.")).toBeInTheDocument();
   });
