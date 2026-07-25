@@ -25,7 +25,10 @@ type Config struct {
 	TZ         string `env:"TZ"`
 
 	// Store — needed to OPEN the database, so necessarily pre-registry.
-	DatabaseURL string `env:"DATABASE_URL"`
+	// Defaults to the SQLite volume path so `docker run -v loomarr-data:/data
+	// loomarr` boots into the wizard with zero required env (§15). Without the
+	// default the promise held only via compose, which sets the same value.
+	DatabaseURL string `env:"DATABASE_URL" envDefault:"sqlite:///data/loomarr.db"`
 	AutoMigrate bool   `env:"AUTO_MIGRATE" envDefault:"true"`
 }
 
