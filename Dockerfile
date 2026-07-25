@@ -54,18 +54,33 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
       -X github.com/mantonx/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
     -o /out/loomarr ./cmd/loomarr
 
-# ---- runtime variant: loomarr:filler ----------------------------------------
-# The SAME binary as above, in a base that also carries the §10 ingest tooling.
-# Build with `--target filler`; everything else — config, endpoints, migrations —
-# is identical, so moving between tags is a restart, not a topology change (§16).
+# ---- runtime ----------------------------------------------------------------
+# THE image. One tag, one binary, all the tooling (§16 — revised).
 #
-# Ported from the removed Dockerfile.ingest: the sidecar is gone (ingest runs in
-# the core now), but its hard-won base-image findings are not.
+# Loomarr previously published two tags: a 31MB distroless `loomarr:latest` with no
+# media tooling, and a 549MB `loomarr:filler` that added it for the §10 ingest job.
+# That split existed to keep media tooling out of the default image — the same goal
+# that had earlier motivated a separate ingest sidecar, itself already reversed in
+# favour of the opt-in tag.
+#
+# §9.1 makes `ffmpeg` load-bearing for PLAYOUT, not just ingest. A tag without an
+# encoder can no longer serve a channel, so the "slim" variant would not be a smaller
+# Loomarr — it would be a Loomarr that cannot do the main thing. Two tags where one is
+# functionally incomplete is a support burden, not a choice, so the split collapses.
+#
+# The cost, stated plainly: the default download grows ~18x (31MB → 549MB) and every
+# install carries an encoder whether or not it uses internal playout. This is the THIRD
+# time this packaging question has been decided (sidecar → opt-in tag → single image);
+# each reversal followed a change in what the tooling was FOR. If a future change makes
+# the encoder optional again, revisit it with that history in view.
+#
+# Ported from the removed Dockerfile.ingest: the sidecar is gone, but its hard-won
+# base-image findings are not.
 #
 # debian:stable-slim (glibc), NOT Alpine: the upstream yt-dlp + ffmpeg binaries are
 # built against glibc and fail on musl with "exec: no such file or directory"
-# (missing loader). Only THIS variant carries the tooling; loomarr:latest stays
-# static/distroless, so a glibc base here costs nothing there.
+# (missing loader). This is what costs us distroless — the static base cannot run
+# them, and §9.1 means we can no longer do without them.
 #
 # §14 tooling policy — bundle the LATEST upstream binaries, not distro packages:
 # distros ship yt-dlp months behind, and a stale yt-dlp is a real failure mode
@@ -86,7 +101,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 # time with "rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2" —
 # a broken image that looks healthy until someone actually ingests. Keep these
 # arch-aware, and never assume the build host is amd64.
-FROM debian:stable-slim AS filler
+FROM debian:stable-slim AS runtime
 ARG TARGETARCH
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
@@ -112,11 +127,13 @@ RUN set -eux; \
     curl -fsSL -o /tmp/ffmpeg.tar.xz \
       "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_BUILD}.tar.xz"; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
-    # ffmpeg ONLY, no ffprobe: it is ~99MB and Loomarr never probes media — Tunarr
-    # assigns duration during its `local`-source scan (§10). ffmpeg is here solely
-    # so yt-dlp can merge separate video/audio streams.
-    cp "/tmp/${FFMPEG_BUILD}/bin/ffmpeg" /usr/local/bin/; \
-    chmod +x /usr/local/bin/ffmpeg; \
+    # ffmpeg AND ffprobe (revised, §9.1). ffprobe was excluded to save ~99MB on the
+    # grounds that "Loomarr never probes media — Tunarr assigns duration during its
+    # `local`-source scan". Internal playout owns the encoder, so it owns duration and
+    # cut points too, and that premise is gone. ffmpeg now serves two callers: yt-dlp's
+    # stream merging (§10) and the playout encoder (§9.1).
+    cp "/tmp/${FFMPEG_BUILD}/bin/ffmpeg" "/tmp/${FFMPEG_BUILD}/bin/ffprobe" /usr/local/bin/; \
+    chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe; \
     rm -rf /tmp/ffmpeg.tar.xz "/tmp/${FFMPEG_BUILD}"; \
     apt-get purge -y curl xz-utils unzip; \
     apt-get autoremove -y; \
@@ -125,8 +142,22 @@ RUN set -eux; \
     # x86_64-on-arm64 mistake ships silently.
     /usr/local/bin/yt-dlp --version; \
     /usr/local/bin/ffmpeg -version | head -1; \
+    /usr/local/bin/ffprobe -version | head -1; \
     /usr/local/bin/deno --version | head -1
 COPY --from=build /out/loomarr /loomarr
+# Pre-create /data owned by nonroot. Docker seeds a fresh NAMED volume from the image's
+# directory at that path — including its ownership — so this is what makes the documented
+# zero-env `docker run -v loomarr-data:/data loomarr` actually work. Without it the volume
+# arrives root-owned, the app cannot create loomarr.db, and boot dies with
+# "unable to open database file (14)".
+#
+# Previously masked: DATABASE_URL had no default (S1), so the app never tried to open a
+# file and failed later and differently. Fixing the default made the real problem the
+# first thing that happens. compose works around it with a one-shot chown init container;
+# that stays for BIND mounts (host-owned paths the image cannot pre-seed), but a named
+# volume no longer needs it.
+RUN install -d -o 65532 -g 65532 /data
+VOLUME /data
 # These paths are what the `ingest` feature gate probes for. Set here rather than
 # discovered, so the gate is a config question with an operator override (§10).
 ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
@@ -135,33 +166,15 @@ ARG VERSION=""
 ARG COMMIT=""
 # licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the
 # bundled GPL ffmpeg. See THIRD_PARTY_NOTICES.md for the source offer.
-LABEL org.opencontainers.image.title="loomarr-filler" \
-      org.opencontainers.image.description="Loomarr + vendored yt-dlp/ffmpeg/deno for in-app clip ingest (§10)." \
+LABEL org.opencontainers.image.title="loomarr" \
+      org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
       org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
       org.opencontainers.image.licenses="MIT AND GPL-3.0-only" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
 EXPOSE 8080
-USER nonroot:nonroot
-ENTRYPOINT ["/loomarr"]
-
-# ---- runtime ----
-# distroless static: no shell, no package manager, non-root by default. This is
-# the LAST stage, so a plain `docker build` (no --target) produces loomarr:latest.
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
-COPY --from=build /out/loomarr /loomarr
-ARG VERSION=""
-ARG COMMIT=""
-LABEL org.opencontainers.image.title="loomarr" \
-      org.opencontainers.image.description="Turn a natural-language channel intent into a live, self-maintaining Tunarr channel." \
-      org.opencontainers.image.source="https://github.com/mantonx/loomarr" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.revision="${COMMIT}"
-EXPOSE 8080
-# distroless has no shell, so HEALTHCHECK uses the binary's own probe. Phase 1
-# ships /healthz; a `loomarr healthcheck` subcommand can replace this later.
-# For now rely on the orchestrator's HTTP check (compose below); keep the image
-# free of a wget/curl dependency.
+# The base now HAS a shell, so a HEALTHCHECK could shell out — but the orchestrator's
+# HTTP check (compose) still owns readiness, and keeping the image free of a
+# wget/curl dependency is worth more than an in-image probe. /healthz is the contract.
 USER nonroot:nonroot
 ENTRYPOINT ["/loomarr"]

@@ -27,9 +27,11 @@ window to ship a fix before any public write-up.
   runbook in `docs/design.md`). Reports should assume that deployment model.
 - The `/healthz`, `/readyz`, and `/metrics` endpoints are intentionally
   unauthenticated on the LAN.
-- The `loomarr:filler` image bundles third-party binaries (`yt-dlp`, `ffmpeg`,
+- The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`,
   `deno`) pinned by the `Dockerfile`; vulnerabilities in those upstreams are best
-  reported to their projects, but do let us know if a pin needs bumping.
+  reported to their projects, but do let us know if a pin needs bumping. These used
+  to ship only in an opt-in `loomarr:filler` variant; since internal playout (design
+  §9.1) they are in every image we publish, so their CVE surface is everyone's.
 
 ## Supported versions
 

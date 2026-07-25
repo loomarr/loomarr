@@ -29,21 +29,30 @@ The Apache-2.0 components (`prometheus/client_golang` and its transitive
 `prometheus/*`) carry a NOTICE requirement; their upstream NOTICE files are
 reproduced in the release SBOM.
 
-## Vendored binaries — `loomarr:filler` image only
+## Vendored binaries — the published image
 
-The default `loomarr:latest` image is a distroless, static Go binary and bundles
-**none** of the following. The **`loomarr:filler`** image variant additionally
-ships three external binaries so the in-app clip-ingest job (design §10) can run.
-Loomarr invokes each as a **separate process via `exec`** — it does not link
-against them. Under the GPL this is *mere aggregation*: it does **not** make
-Loomarr a derivative work, and Loomarr's own code remains MIT. However, because
-the `loomarr:filler` **image** redistributes these binaries, the image as a whole
-must honor each component's license, disclosed here.
+**Revised (design §9.1/§16): there is now ONE image.** Loomarr previously published a
+distroless `loomarr:latest` bundling none of the following, plus an opt-in
+`loomarr:filler` variant that added them for clip ingest. Internal playout made
+`ffmpeg` load-bearing for streaming, not just ingest, so the variant collapsed into the
+single published `loomarr:latest`.
+
+**This changes the scope of what follows.** These binaries used to ship only if an
+operator opted into a variant; they now ship in **everything we publish**, so the
+aggregate licensing below applies to the default image rather than an opt-in one.
+
+The image ships four external binaries: three for the in-app clip-ingest job (design
+§10) and `ffmpeg`/`ffprobe` additionally for playout (§9.1). Loomarr invokes each as a
+**separate process via `exec`** — it does not link against them. Under the GPL this is
+*mere aggregation*: it does **not** make Loomarr a derivative work, and Loomarr's own
+code remains MIT. However, because the image redistributes these binaries, the image as
+a whole must honor each component's license, disclosed here.
 
 | Binary | Upstream | License | Notes |
 | --- | --- | --- | --- |
 | `yt-dlp` | https://github.com/yt-dlp/yt-dlp | The Unlicense (public domain) | Self-contained `yt-dlp_linux` build (bundles its own Python via PyInstaller). |
-| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (the BtbN `-gpl-` build) | See the source-offer below. |
+| `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (the BtbN `-gpl-` build) | See the source-offer below. Serves BOTH yt-dlp stream merging (§10) and the playout encoder (§9.1). |
+| `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0** (same build) | Added with internal playout (§9.1) — Loomarr owns duration once it owns the encoder. Same source offer as `ffmpeg`. |
 | `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
 
 ### GPL source offer (ffmpeg)
