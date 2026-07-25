@@ -403,3 +403,51 @@ func TestSeconds_NeverUsesExponentNotation(t *testing.T) {
 		}
 	}
 }
+
+// EVERY encoder must get an explicit 8-bit pixel format, one way or another.
+//
+// This is the invariant that was missing, and it cost a live channel. The chain previously
+// added `format=yuv420p` for SOFTWARE ONLY, so nvenc/amf/videotoolbox/rkmpp/v4l2m2m — the
+// families that take CPU frames directly — received whatever the source had. A 10-bit HEVC
+// film then reached h264_nvenc as yuv420p10le and it refused:
+//
+//	[h264_nvenc] No capable devices found
+//
+// which names the DEVICE, not the format, so it reads as a missing GPU. The old test suite
+// asserted the upload step and the scale/pad/fps pins, but never that the OUTPUT FORMAT is
+// 8-bit — the one thing a 10-bit source can break.
+func TestScaleFilter_EveryEncoderPinsAnEightBitPixelFormat(t *testing.T) {
+	for _, enc := range encoderPreference {
+		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
+		vf, ok := argsAfter(p.scaleFilterArgs(), "-vf")
+		if !ok {
+			t.Errorf("%s: no filter chain at all", enc)
+			continue
+		}
+		// nv12 (hardware upload path) and yuv420p (everything else) are both 8-bit. What
+		// must never happen is NEITHER, which is what let 10-bit through.
+		if !strings.Contains(vf, "format=nv12") && !strings.Contains(vf, "format=yuv420p") {
+			t.Errorf("%s: no pixel-format pin — a 10-bit source reaches the encoder as "+
+				"yuv420p10le and is rejected with a message that blames the device: %q", enc, vf)
+		}
+	}
+}
+
+// And specifically for the families that accept CPU frames: they must get yuv420p, since they
+// have no upload filter to pin the format for them.
+func TestScaleFilter_CPUFrameEncodersGetYuv420p(t *testing.T) {
+	for _, enc := range []Encoder{
+		EncoderNVENC, EncoderAMF, EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M,
+	} {
+		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
+		vf, _ := argsAfter(p.scaleFilterArgs(), "-vf")
+		if !strings.Contains(vf, "format=yuv420p") {
+			t.Errorf("%s takes CPU frames and has no upload filter, so it needs an explicit "+
+				"8-bit format: %q", enc, vf)
+		}
+		// …and must NOT have an upload, which would fail with no hardware frame context.
+		if strings.Contains(vf, "hwupload") {
+			t.Errorf("%s: unexpected hwupload — it accepts CPU frames directly: %q", enc, vf)
+		}
+	}
+}
