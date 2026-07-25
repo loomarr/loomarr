@@ -34,11 +34,12 @@ The app has **five cooperating subsystems**:
 - **Multi-user login with Emby/Jellyfin accounts** (Seerr-style import/sync), roles, per-user quotas, and audited approvals (§11).
 - Self-documented HTTP API (§7.1) and an embedded web UI (§12).
 - Deploy as a single Docker container.
+- **Play out its own channels** (§9.1): serve HLS + MPEG-TS segments and publish an M3U tuner + XMLTV guide that the media server registers directly, with Tunarr as a supported alternative backend rather than a requirement.
 
 ### Explicit non-goals
-- **Not a transcoder/streamer.** Tunarr (and Emby/Jellyfin) do playback, transcoding, EPG, and HDHomeRun/M3U output. `loomarr` decides *what plays and in what order* and hands that to Tunarr.
 - **Does not manage indexers, download clients, or quality profiles** — that's Sonarr/Radarr's job.
-- **Does not replace the media server or Tunarr** — it orchestrates them.
+- **Does not replace the media server** — Emby/Jellyfin remain the client, the library, and the thing a viewer actually opens. Loomarr feeds them a tuner; it is not a player.
+- **Does not replace Tunarr** — Tunarr stays a first-class playout backend (§9.1), chosen per channel. Hardware that can't transcode, or an install already happy with Tunarr, keeps working unchanged.
 - **The provisioner core never chooses titles or auto-acquires** — the suggester proposes and a human (or a quota-gated auto-approve, or a channel's opted-in auto-curate grant — `programming-design.md` §8.2) confirms before anything is acquired or scheduled. Every one of those paths routes through the single `Approve` gate; none writes a `wanted` title directly.
 
 ### Design envelope
@@ -302,7 +303,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, plus `q` for a `name LIKE` search (§7.2 — clip search lives here, not in `/v1/search`). |
 | PATCH | `/v1/filler/{id}` | Edit a clip's tags. |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
-| POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` unless the running image carries the ingest tooling — `loomarr:filler` (§10, §16). |
+| POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/auth/login` | Sign in with media-server credentials (§11) → session cookie. |
 | POST | `/v1/auth/logout` | End session. |
@@ -494,6 +495,82 @@ So the poke is **operation-specific**: a reconcile that **added or removed a cha
 
 ---
 
+## 9.1 Playout backends — *Loomarr serves its own streams*
+
+> **This section reverses a founding non-goal, deliberately.** §1 previously read *"Not a
+> transcoder/streamer. Tunarr (and Emby/Jellyfin) do playback, transcoding, EPG, and HDHomeRun/M3U
+> output."* That is no longer true: Loomarr plays out its own channels, with Tunarr retained as an
+> alternative backend.
+>
+> **Why the reversal.** Every capability that distinguishes real TV from a playlist lives at the
+> encoder: mid-roll breaks (§10 — impossible at Tunarr's program boundaries), honest transcode
+> telemetry (§12's dashboard can only report on an encoder it owns), and per-channel control of cut
+> points. Handing playout to another service meant those were permanently out of reach, and the
+> workarounds were accumulating faster than the feature they avoided. The cost is real and stated
+> below — this is not a free win, and it is not reversible cheaply.
+
+**A channel names its backend.** `playout.backend` is a registry setting (§15) with a **per-channel
+override** — switching the global default affects *new* channels only; channels already on the other
+backend keep playing exactly as they are, and one can be moved from its own page. There is never a
+fleet-wide flip.
+
+| | **Loomarr (internal)** | **Tunarr** |
+| --- | --- | --- |
+| Streams | Loomarr, via bundled `ffmpeg` | Tunarr |
+| Break placement | between programs **and mid-roll** (§10) | between programs only |
+| Transcode telemetry | real, per-session (§12) | none — Loomarr can't see inside Tunarr |
+| Extra service to run | no | yes |
+| Right when | you want mid-roll, fewer moving parts, or visibility into playback | your hardware can't transcode, or your install already works |
+
+**Tunarr is not deprecated.** It remains first-class and supported: the honest answer for hardware
+that can't transcode is "let Tunarr do it", and an install that already works should never be forced
+to migrate.
+
+### What internal playout serves
+
+- **Segments** over **both HLS and MPEG-TS**. Both, because media servers differ in what they accept
+  and the compatibility matrix is not ours to police — MPEG-TS matches Tunarr's existing shape and
+  keeps latency low; HLS survives proxies.
+- **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
+- **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
+
+Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
+only the operator's media server can pull the stream. Regenerating it invalidates the media server's
+wiring — guide entries survive, playback stops until Live TV is re-connected — so the UI gates it
+behind a typed confirmation.
+
+**Segment auth is a second authorization path, and §11 says so explicitly.** A television cannot hold
+a session cookie, so segment routes authenticate a **device** by token, not a **person** by session.
+This is the only route family that bypasses the allowlist model, it is read-only, and it is scoped to
+playout. It is described in §11 alongside the credential paths rather than left implicit here.
+
+### Consequences recorded honestly
+
+1. **`ffmpeg` becomes a core runtime dependency** (§14) and ships in the single image (§16). The
+   previous "two tags, one binary" split — a 31 MB default plus a 549 MB `loomarr:filler` — collapses
+   into one 549 MB image. An 18× increase in the default download, accepted because a playout-capable
+   Loomarr without an encoder is not a coherent artifact.
+2. **`ffprobe` returns.** §16 excluded it on the grounds that *"Loomarr never probes media — Tunarr
+   assigns duration during its `local`-source scan."* Once Loomarr owns playout it owns duration, so
+   the premise no longer holds. This is the second reversal in this section; both follow from the
+   same root cause.
+3. **Loomarr publishes its own M3U/XMLTV**, so the §6 Live TV wiring points at Loomarr rather than
+   Tunarr for internal channels. `StaleLoomarrListings` currently identifies Loomarr's provider **by
+   its Tunarr-shaped path** — retargeting silently breaks stale cleanup unless that identification
+   changes with it.
+4. **Restart is no longer free.** Prior copy promised *"Channels keep playing — Tunarr streams them,
+   not Loomarr."* For internal-playout channels a restart **does** interrupt playback, and any
+   restart UI must say so rather than inherit the old reassurance.
+
+### What does not change
+
+The scheduler, the lineup, pod assembly, the relaxation ladder, determinism and the approval gate are
+**backend-agnostic**. A backend decides *how bytes reach the television*; it never decides what plays,
+in what order, or whether a title was allowed to be acquired. The same lineup produces the same
+schedule on either backend — that is the invariant that makes the choice safe to change per channel.
+
+---
+
 ## 10. Commercials & filler
 
 Commercials are core to the "feels like real TV" goal, not a garnish — this is a first-class capability with its own **sourcing pipeline** (deliberately *not* the *arr acquisition path) and its own **matching logic**. The scheduler (§9) inserts the results; this section defines where filler comes from, how it's described, and how pods are built.
@@ -502,7 +579,8 @@ Commercials are core to the "feels like real TV" goal, not a garnish — this is
 Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station IDs are **not** in TMDB and aren't "titles," so the provisioning loop (§3–§7) does not apply to them. Filler gets its own ingestion — designed so the **core stays a static binary** (no Python, no ffprobe; see §16):
 - **Sources:** Internet Archive collections; curated YouTube playlists (the dizqueTV-wiki-style filler repos); user-created bumpers / station IDs / "we'll be right back" cards.
 - **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via loomarr's own **ingest job** (yt-dlp for YouTube/playlists, plain `net/http` for Archive.org), which writes files + info-JSON sidecars into that folder.
-- **Ingest runs in the core, on an opt-in image variant (revised — the `loomarr-ingest` sidecar is removed).** Ingest is a normal job on the same job bus as every other long operation: it reports progress over SSE, is cancellable, and needs no service discovery, no compose profile, and no proxy hop from the API. The tooling it shells out to (`yt-dlp` + `ffmpeg`) is *not* in the default image; it ships in the **`loomarr:filler`** variant built from the same source and the same binary (§16). Availability is a computed **feature gate** (`FeatureIngest`, config-design §7) resolved from the presence of the binaries, so the API 409s and the Filler tab's empty state read the same signal as every other gated capability — the UI never offers an action the image can't perform. *Rationale for the reversal: the sidecar's only justification was keeping the media tooling out of the core image, and it bought that with a second image to publish, a compose profile, a distributed seam for the Filler page's primary action, and ingest progress that could not ride the existing SSE job bus. An opt-in image tag buys the same slimness without the seam.*
+- **Ingest runs in the core, in the single image (revised twice — see the history below).** Ingest is a normal job on the same job bus as every other long operation: it reports progress over SSE, is cancellable, and needs no service discovery, no compose profile, and no proxy hop from the API. The tooling it shells out to (`yt-dlp` + `ffmpeg`) **ships in the one published image** (§16), so ingest is always available. The `FeatureIngest` gate (config-design §7) remains — it now resolves from the binaries being *runnable* rather than from the image variant, and still drives the 409 and the Filler tab's empty state, so a broken vendored binary degrades honestly instead of erroring at the point of use.
+  - *History, because this question keeps being re-decided:* **(1)** a `loomarr-ingest` sidecar, removed because its only justification was keeping media tooling out of the core image, bought at the price of a second image, a compose profile, a distributed seam on the Filler page's primary action, and progress that couldn't ride the SSE job bus. **(2)** an opt-in `loomarr:filler` tag, which bought the same slimness without the seam. **(3)** the single image (§9.1, §16) — because `ffmpeg` became load-bearing for *playout*, so a variant without it is not a slimmer Loomarr but a broken one. Each step followed a change in what the tooling was **for**.
 - **Filler is Loomarr-owned, NOT a media-server library (revised — the media server is out of the filler path).** The drop-folder is registered in **Tunarr as a `local` media source** (Tunarr scans a plain folder directly — no Emby/Jellyfin involved) that Loomarr sets up idempotently at first filler sync (same enumerate-first pattern as the Live TV wiring, §6). This keeps filler a pure **Loomarr↔Tunarr** concern: the operator never creates or manages a commercials library in their media server, and program content (Emby) stays cleanly separated from filler (Tunarr-local) — filler *cannot* leak into a programming lineup because it isn't in the media server at all. Rationale: commercials aren't "library titles"; making the operator curate an Emby library for them was the wrong seam.
 - **Catalog sync (core):** loomarr syncs its clip catalog *from the Tunarr `local` filler source* — Tunarr scans the folder and assigns each clip a program id + **duration** (Tunarr probes media during its `local`-source scan, never loomarr). Clip identity = the **Tunarr program id** for that clip. `/v1/filler/sync` triggers it (setting up the local source on first run if absent); a periodic sync runs alongside the reconciler. **Probing stays out of loomarr entirely** — duration comes from Tunarr's scan, so the core never needs ffprobe even on the `filler` variant, where the bundled ffmpeg exists only for yt-dlp's stream merging.
 
@@ -526,8 +604,21 @@ The scheduler assembles realistic **ad pods**, not single random clips:
 - **Repeat avoidance:** don't repeat a clip within a session/window.
 - **Fallback ladder:** exact-era match → widen era → any appropriate-audience clip → channel bumper card (Tunarr's flex fallback). Never dead air. Loomarr **ships a default bumper-card asset** (embedded) and sets it as each channel's Tunarr fallback at creation, so the bottom of the ladder exists on day one; operators can replace it per channel.
 
-### Tunarr mechanics & an honest limitation
-Loomarr drives Tunarr's **Flex** (time between programs) + **Filler lists**. A channel's commercials live in a Tunarr **filler-list** (`/api/filler-lists`, referencing the Tunarr-`local`-source clip program ids) that Loomarr builds from its matched catalog and attaches to the channel; Tunarr then plays clips from that list into the flex gaps the scheduler leaves between programs (§9 break placement). Both the filler-list programs and the channel's flex gaps are Loomarr-managed, so pods reproduce deterministically. Tunarr inserts filler at **program boundaries** — breaks *between* episodes/movies — not true mid-episode cut-ins. Real TV cuts mid-show; Tunarr generally doesn't unless the content itself is pre-segmented into parts. **Design for between-program pods; treat mid-roll as out of scope** unless/until a content-segmentation feature exists. Be upfront about this in the UI so expectations match reality.
+### Break placement: a per-backend capability
+Loomarr drives Tunarr's **Flex** (time between programs) + **Filler lists**. A channel's commercials live in a Tunarr **filler-list** (`/api/filler-lists`, referencing the Tunarr-`local`-source clip program ids) that Loomarr builds from its matched catalog and attaches to the channel; Tunarr then plays clips from that list into the flex gaps the scheduler leaves between programs (§9 break placement). Both the filler-list programs and the channel's flex gaps are Loomarr-managed, so pods reproduce deterministically. Tunarr inserts filler at **program boundaries** — breaks *between* episodes/movies — not true mid-episode cut-ins. Real TV cuts mid-show; Tunarr generally doesn't unless the content itself is pre-segmented into parts.
+
+**Where breaks can go depends on the channel's playout backend (§9.1) — this is the clearest functional difference between the two:**
+
+| Backend | Break placement |
+| --- | --- |
+| **Tunarr** | **Between programs only.** The limitation above is Tunarr's, and it is not going away — design for between-program pods on these channels and be upfront about it in the UI. |
+| **Loomarr (internal)** | **Between programs *and* mid-roll.** Owning the encoder means owning the cut points, so a break can land inside a program. |
+
+**Mid-roll is therefore in scope for internal-playout channels** (it was previously out of scope everywhere, because Tunarr was the only backend — see the §20 note struck alongside this change). It carries its own costs, decided deliberately:
+
+- **Detection is opt-in per channel, not library-wide.** Finding cut points means decoding the file, which is minutes per title; running it across a whole library to serve a handful of channels is waste. Detect only for titles on channels with mid-roll enabled.
+- **The guide does not advertise mid-roll breaks.** Breaks stay an internal scheduling detail; a break rendering as its own EPG entry is confusing in the family's TV guide, and empty breaks have already caused exactly that (a bare channel name between episodes).
+- **Everything else is unchanged.** Pod assembly, the relaxation ladder, determinism and the shared assembler (below) are backend-agnostic — a mid-roll pod is assembled by the same code, from the same catalog, with the same seed, as a between-program one.
 
 ### AI assist (optional, opt-in)
 Two jobs the suggester (§8) can do here, both under the same grounding rule (can only reference clips that actually exist in the filler catalog):
@@ -556,6 +647,18 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 - Either path issues Loomarr's **own session**: HTTP-only, `SameSite=Strict` cookie signed with the generated `SESSION_SECRET` (config-design §4). Sessions are rows in the store (revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one), not stateless JWTs — disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Session tokens are random 256-bit values, **SHA-256-hashed at rest** (a DB read never yields a usable cookie). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
+
+### Device authentication for playout (§9.1) — the one path that isn't a person
+
+Internal playout (§9.1) serves segments to a **television**, which cannot hold a session cookie. Those routes therefore authenticate a **device** by token rather than a **person** by session — the only route family that does not resolve to a `users` row. Stated explicitly rather than left implicit, because §11's whole model is "identity is the DB":
+
+- **Scope is playout and nothing else:** the tuner M3U, the XMLTV guide, and segment reads. A valid `playout_token` grants **no** API access, no user identity, and no write of any kind.
+- **Read-only by construction.** There is no playout route that mutates state, so a leaked token exposes the streams — the same content the media server already serves to the household — and never the approval gate, settings, or user data.
+- **It does not touch the allowlist.** A device is not a user, is never provisioned as one, and cannot become one. The invariant that *"a login attempt for a username with no matching row is rejected"* is untouched, because this path has no username.
+- **Rotation is a deliberate, gated action.** Regenerating `playout_token` invalidates the media server's wiring: guide entries survive, playback stops until Live TV is re-connected. The UI requires a typed confirmation and says exactly that.
+- **Redaction applies** (config-design §4): the token never appears in logs, error bodies, or `setup/status`, and it is covered by the log-grep redaction test like every other secret.
+
+*Comparison:* `API_TOKEN` is break-glass **admin** — full authority, one secret, for a human or a script acting as one. `playout_token` is the opposite: no authority beyond reading streams, held by an appliance. They are separate secrets and must not be conflated.
 
 ### Explicit import & sync (admin-only, never implicit)
 - `GET {LIBRARY_URL}/Users` with Loomarr's admin `library.token` lists server users; `GET /v1/users/candidates` (admin-only) surfaces that list to the UI with an `imported` flag per account, so picking is a choice from real names rather than pasted ids. `POST /v1/users/import` (admin-only) takes an explicit set of media-server user ids and upserts them as allowlisted rows (`password_hash` null; media-server admins may map to `admin` at the importing admin's choice, default `member`). This is the **only** way a media-server user gains access.
@@ -680,7 +783,7 @@ Docs live as markdown in `docs/` in the repo and are **embedded and rendered as 
 - **Concepts** — the mental model: proposals, approval, provisioning states, backfill, pods, and the **programming heuristics** extract/enforce principle (`programming-design.md` §1). (Aimed at both personas.)
 - **Member guide** — writing good intents; what happens after submit; reading channel status.
 - **Programming guide** — the ChannelPolicy: scope/audience/separation/ordering/seasonal, and how the relaxation ladder keeps a channel filled (`programming-design.md`).
-- **Filler guide** — drop-folder, MeTube, the in-core ingest job and the `loomarr:filler` image variant it requires, tagging, pod policy.
+- **Filler guide** — drop-folder, MeTube, the in-core ingest job, tagging, pod policy.
 - **Troubleshooting** — organized by checklist item: every red check in the wizard deep-links to its section here. The checklist is executable documentation; this page is its narrative twin.
 
 **Companion design docs** (incorporated in Phase 14; authoritative for their own domains): `programming-design.md` (ChannelPolicy heuristics — §8/§9), `config-design.md` (settings registry mechanics — §13/§15), and `frontend-design.md` (the "Test Card" design system — §12/§14).
@@ -724,7 +827,9 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | FE tests | Vitest + Testing Library (jsdom units) + a story-coverage test; **Playwright** over `storybook-static` for the visual suite (`toHaveScreenshot`) **and** a11y (`@axe-core/playwright`), plus the e2e approve-flow smoke | Matches §19 |
 
 ### Ingest tooling & CI
-- **Ingest is core Go code** (`internal/clipfetch` — named so it is never confused with `internal/ingest`, the Sonarr/Radarr *webhook* handler of §6), shelling out to **`yt-dlp`** + **`ffmpeg`** (CLI) for YouTube/playlists and plain `net/http` for Archive.org; it writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Those binaries — plus **`deno`**, which modern yt-dlp requires for YouTube extraction — are the **only** vendored non-Go executables the project allows, and they are invoked via `exec`, never linked. They ship **only in the `loomarr:filler` image variant** (§16), built from the same source and the same Go binary as `loomarr:latest`; the default image omits them (31MB vs 549MB) and reports the `ingest` feature unavailable. **`ffprobe` is deliberately NOT bundled**: Loomarr never probes media — Tunarr assigns duration during its `local`-source scan — and omitting it saves ~99MB.
+- **Ingest is core Go code** (`internal/clipfetch` — named so it is never confused with `internal/ingest`, the Sonarr/Radarr *webhook* handler of §6), shelling out to **`yt-dlp`** + **`ffmpeg`** (CLI) for YouTube/playlists and plain `net/http` for Archive.org; it writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Those binaries — plus **`deno`** (modern yt-dlp requires it for YouTube extraction) and **`ffprobe`** — are the **only** vendored non-Go executables the project allows, and they are invoked via `exec`, never linked. **They ship in the single image** (§16); there is no variant that omits them, so the `ingest` feature is always available.
+  - **`ffmpeg` is a core runtime dependency, not an ingest-only tool** (revised — §9.1). It serves two callers now: yt-dlp's stream merging, and **internal playout's encoder**. A Loomarr that can't encode can't play out, so the previous opt-in-variant model (below) no longer describes a coherent artifact.
+  - **`ffprobe` is bundled** (revised — it was previously excluded to save ~99MB, on the grounds that *"Loomarr never probes media — Tunarr assigns duration during its `local`-source scan"*). Internal playout owns duration and cut points, so the premise is gone. Both reversals trace to the same root cause: §9.1.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 
@@ -780,7 +885,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | drop-folder Loomarr registers as a Tunarr `local` source / `15m` / `false` (§10) |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
-| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths on the `loomarr:filler` image, else empty ⇒ `ingest` feature off (§10). Overridable so an operator can run a newer yt-dlp than the image ships |
+| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; unset/unrunnable ⇒ `ingest` feature off (§10). Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too |
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
@@ -792,13 +897,21 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 
 Multi-stage build → **distroless static** or `scratch` (pure-Go SQLite driver ⇒ no cgo). Toolchain pins: **Go 1.22+** for the binary, **Node 20+** in the FE build stage. Non-root. `HEALTHCHECK` → `/healthz`. The web UI is embedded and served at `/`.
 
-**Two tags, one binary.** `loomarr:latest` is the image above and carries no media tooling. `loomarr:filler` is the *same* Go binary in a final stage that also vendors pinned **`yt-dlp`** + **`ffmpeg`** for the §10 ingest job (**~518MB** more — 31MB → 549MB, measured — and a non-distroless base, since those binaries are glibc-linked). Nothing else differs — same config, same endpoints, same migrations — so an operator moves between them with a tag change and a restart. **Loomarr still never probes media**: duration comes from Tunarr's `local`-source scan, and the bundled ffmpeg exists solely for yt-dlp's stream merging. Both binaries are invoked via `exec` and are the only vendored non-Go executables the project permits (§14).
+**One image (revised — supersedes "two tags, one binary").** `loomarr:latest` is the only published tag. It vendors pinned **`yt-dlp`** + **`ffmpeg`** + **`ffprobe`** + **`deno`** on a non-distroless base (those binaries are glibc-linked), at **~549MB**.
+
+*Superseded model, recorded because the reversal matters:* the project previously published a 31MB `loomarr:latest` with no media tooling plus a 549MB `loomarr:filler` variant that added it, so an operator opted in with a tag change and a restart. That split existed to keep media tooling out of the default image — the same goal that had earlier motivated a separate ingest sidecar, itself already reversed in favour of the opt-in tag.
+
+**Why one image now.** §9.1 makes `ffmpeg` load-bearing for *playout*, not just ingest. A tag without an encoder can't serve a channel, which means the "slim" variant would no longer be a smaller Loomarr — it would be a Loomarr that can't do the main thing. Two tags where one is functionally incomplete is a support burden, not a choice, so the split collapses.
+
+**The cost, stated plainly:** the default download grows **18×** (31MB → 549MB) and every install carries an encoder whether or not it uses internal playout. That is the price of the capability, and it is the third time this packaging question has been decided — sidecar → opt-in tag → single image. Each reversal followed a change in what the tooling was *for*; if a future change makes the encoder optional again, revisit it with that history in view rather than as a fresh question.
+
+Both binaries are invoked via `exec` and are the only vendored non-Go executables the project permits (§14).
 
 ### Compose (profiles: sqlite · postgres · ai)
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
 - **ai:** adds a local **Ollama** service (skip if using a hosted OpenAI-compatible provider or an external Ollama). The service ships **ready-to-use but model-less** — model choice is the wizard's job (§8.1: it depends on the user's GPU), so no model is baked in. Three deploy affordances, all optional and design-aligned: (1) a **healthcheck + `depends_on` gate** so `loomarr` waits for Ollama before its first probe (no transient "AI host unreachable" on first load) — the `depends_on` is `required:false`, so a hosted/external-LLM deploy that omits the `ai` profile skips it; (2) **opt-in GPU passthrough** via a separate overlay (`docker/compose.gpu.yaml`, NVIDIA + nvidia-container-toolkit; mirrors the dev Tunarr overlay) — without it Ollama runs on CPU (works, but slow); (3) **opt-in model preload** — set `LLM_MODEL` and a one-shot `ollama-pull` fetches it on first boot for a zero-wizard-step install; left empty (the default), the wizard picks the model, preserving the §8.1 "the user picks" default.
-**Filler ingest is not a profile — it is an image tag.** There is no ingest service to add or skip. To download clips in-app, run the **`loomarr:filler`** image instead of `loomarr:latest`: same binary, same config, same endpoints, plus vendored yt-dlp + ffmpeg + deno (**~518MB** more: 31MB → 549MB, measured arm64). Everything else is identical, so switching is a tag change and a restart, not a topology change. On `loomarr:latest` the `ingest` feature simply reports unavailable and the Filler tab explains that clips arrive via the drop-folder (manually or with MeTube). *Revised: this replaces the `filler` compose profile and the `loomarr-ingest` sidecar.*
+**Filler ingest needs no profile, no tag, and no service.** The vendored yt-dlp + ffmpeg + deno ship in the single image (§16), so in-app clip downloads work out of the box — mount a drop-folder and go. *Revised: this supersedes both the `filler` compose profile and the opt-in `loomarr:filler` tag that replaced it; see §10's history note for why the question moved three times.*
 
 The image is **non-root** (distroless `nonroot`, uid 65532). A freshly-created named
 volume is owned by `root:root`, so under the sqlite backend the container cannot create
@@ -850,9 +963,8 @@ services:
   # ollama:                        # ai profile
   #   image: ollama/ollama:latest
   #   volumes: [ollama:/root/.ollama]
-  # For in-app clip downloads, change the loomarr service's image to
-  # loomarr:filler (vendored yt-dlp + ffmpeg) and mount the drop-folder:
-  #   image: loomarr:filler
+  # For in-app clip downloads, mount the drop-folder (the tooling is already
+  # in the image — no tag change, no extra service):
   #   volumes: [/mnt/media/filler:/filler]      # the folder Tunarr scans as a `local` source
 
 volumes:
@@ -937,9 +1049,9 @@ Genuinely future work:
 - **Direct *arr requester** as a Seerr alternative (adds real `Cancel` via un-monitor).
 - **Local (non-media-server) accounts** and finer-grained permissions beyond admin/member (§11's v1 keeps two roles).
 - **Notification agents** (email/Discord/webhook on approval, channel-live, give-ups) — Seerr users will expect these; v1 is in-app status only (§13).
-- **DB-backed settings UI** as an alternative to env-only config, if demand warrants the dual-source complexity (§13's wizard deliberately validates rather than stores).
+- ~~**DB-backed settings UI** as an alternative to env-only config, if demand warrants the dual-source complexity (§13's wizard deliberately validates rather than stores).~~ **Resolved and superseded** by `config-design.md`: settings are DB-backed with `env > database > default` resolution, and the wizard **writes** through the same `PATCH` path as Settings (configure → validate → save → advance). The parenthetical above described the opposite rule and was dead text.
 - **Transcript/vision-based filler tagging** (whisper / video models) beyond v1's text-signal classification (§10).
-- **Mid-roll ad insertion** via content segmentation, if Tunarr ever supports it (§10's honest limitation).
+- ~~**Mid-roll ad insertion** via content segmentation, if Tunarr ever supports it (§10's honest limitation).~~ **Resolved:** internal playout (§9.1) owns the encoder and therefore the cut points, so mid-roll is in scope for internal-playout channels without waiting on Tunarr. See §10 "Break placement: a per-backend capability".
 - **Second Programmer target** (ErsatzTV) once the Tunarr adapter is proven.
 - **Leader election** if Postgres scale-out is needed beyond `SKIP LOCKED`.
 - **Postgres `LISTEN/NOTIFY`** as a faster cross-replica availability signal (the periodic sweep already makes replicas correct; this would only cut backfill latency).
