@@ -70,10 +70,6 @@ type Session struct {
 
 // Manager owns the live sessions. One per process.
 type Manager struct {
-	// resolve answers "what should channel X be playing at instant T". Injected rather
-	// than reached for, so the manager can be tested without a store and — more
-	// importantly — so playout consumes the SAME scheduler reconcile does (timeline.go).
-	resolve Resolver
 	// spawn starts an encoder. Injected so tests exercise the session lifecycle
 	// (refcounting, grace, the race) without executing ffmpeg; the live test supplies
 	// the real one.
@@ -90,23 +86,23 @@ type Manager struct {
 	sessions map[string]*Session
 }
 
-// Resolver answers what a channel is airing. Satisfied by the channels engine via
-// CyclePreview + AiringAt.
-type Resolver interface {
-	AiringNow(ctx context.Context, channelID string) (Airing, error)
-}
-
 // Spawner starts an encoder for a channel and returns the supervised process. The
 // implementation builds args from the resolved Airing and the load-aware Profile.
 type Spawner func(ctx context.Context, channelID string) (*Process, error)
 
 // NewManager builds a session manager.
-func NewManager(resolve Resolver, spawn Spawner, maxChannels int, grace time.Duration, log *slog.Logger) *Manager {
+//
+// There is deliberately NO resolver here. The manager owns the long-lived PARENT process (one
+// `-c copy` ffmpeg per channel, reading an ffconcat playlist); resolving "what is airing now"
+// happens in the /playout/program handler, once per program, because that is the request the
+// concat demuxer makes. An earlier draft gave the manager a Resolver seam and nothing ever read
+// it — dead surface whose only effect was a nil argument at the call site.
+func NewManager(spawn Spawner, maxChannels int, grace time.Duration, log *slog.Logger) *Manager {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
 	return &Manager{
-		resolve: resolve, spawn: spawn,
+		spawn:       spawn,
 		maxChannels: maxChannels, grace: grace, log: log,
 		sessions: map[string]*Session{},
 	}

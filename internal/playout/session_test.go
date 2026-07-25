@@ -73,7 +73,7 @@ func countingSpawner(t *testing.T) (Spawner, func() int) {
 
 func testManager(t *testing.T, spawn Spawner, maxChannels int, grace time.Duration) *Manager {
 	t.Helper()
-	m := NewManager(nil, spawn, maxChannels, grace, nil)
+	m := NewManager(spawn, maxChannels, grace, nil)
 	t.Cleanup(m.Stop)
 	return m
 }
@@ -364,7 +364,7 @@ func TestDetach_IsIdempotent(t *testing.T) {
 // without this they outlive the process that started them.
 func TestManagerStop_TearsDownEveryEncoder(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
-	m := NewManager(nil, spawn, 4, time.Minute, nil)
+	m := NewManager(spawn, 4, time.Minute, nil)
 
 	for _, id := range []string{"ch1", "ch2"} {
 		if _, _, err := m.Attach(context.Background(), id); err != nil {

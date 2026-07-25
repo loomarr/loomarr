@@ -161,6 +161,25 @@ func declared() []Setting {
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
 		},
 		{
+			Key: "playout.quality_tier", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("efficient", "Efficient — more channels"),
+				opt("balanced", "Balanced"),
+				opt("quality", "Quality — best picture"),
+			},
+			Default: "balanced",
+			Doc:     "The picture-versus-channel-count target. Resolved at each program boundary against your measured capacity and current load, so quality adapts as channels come and go rather than being fixed when a channel is made.",
+		},
+		{
+			// Separate from ingest.ffmpeg_path on purpose: the filler sidecar bundles its own
+			// ffmpeg+yt-dlp in a DIFFERENT image (§10), so one shared key would tie two
+			// independent deployments together — and a sidecar-shaped path would break playout
+			// on the core image.
+			Key: "playout.ffmpeg_path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
+			Kind: KindString, Default: "ffmpeg", Advanced: true,
+			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
+		},
+		{
 			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
 			Kind: KindInt, Default: "4",
 			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
