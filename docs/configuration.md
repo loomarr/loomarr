@@ -36,7 +36,24 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `tunarr.url` (`TUNARR_URL`) | url | — | Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels. |
 | `tunarr.transcode_config_id` (`TUNARR_TRANSCODE_CONFIG_ID`) | string | — | Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default. _(advanced)_ |
-| `server.public_url` (`SERVER_PUBLIC_URL`) | url | — | Loomarr's own address as Tunarr can reach it, e.g. http://loomarr:8080. Only needed for uploaded channel icons — Tunarr fetches them from this base. Leave empty if you set icons from TMDB or a full URL. _(advanced)_ |
+
+## Playout
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `server.public_url` (`SERVER_PUBLIC_URL`) | url | — | Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons. |
+| `playout.backend` (`PLAYOUT_BACKEND`) | enum | `internal` | Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel. _(one of: internal \| tunarr)_ |
+| `playout.transport` (`PLAYOUT_TRANSPORT`) | enum | `both` | Which stream formats internal playout offers. Media servers differ in what they accept, so both is the default: MPEG-TS matches Tunarr's existing shape and keeps latency low, HLS survives proxies. _(one of: both \| hls \| mpegts)_ |
+| `playout.encoder` (`PLAYOUT_ENCODER`) | string | — | ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice. |
+| `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `4` | How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate. |
+
+## Backup
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `backup.schedule` (`BACKUP_SCHEDULE`) | cron | `0 30 3 * * *` | When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential. |
+| `backup.retain` (`BACKUP_RETAIN`) | int | `7` | How many backups to keep before pruning the oldest. |
+| `backup.dir` (`BACKUP_DIR`) | string | `/data/backups` | Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database. |
 
 ## Connections — TMDB
 

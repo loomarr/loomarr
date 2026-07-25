@@ -267,6 +267,8 @@ components:
             - "null"
         ordering:
           type: string
+        playout:
+          $ref: "#/components/schemas/PlayoutPolicy"
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
@@ -1440,6 +1442,12 @@ components:
           enum:
             - admin
             - member
+          type: string
+      type: object
+    PlayoutPolicy:
+      additionalProperties: false
+      properties:
+        backend:
           type: string
       type: object
     PodEntryDTO:
