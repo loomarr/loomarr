@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/library"
@@ -49,6 +51,7 @@ func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServ
 		Log:          slog.New(slog.DiscardHandler),
 		Login:        loginSvc,
 		Sessions:     mgr,
+		Passwords:    auth.NewPasswordService(st, func() string { return "u-new" }, time.Now),
 		UserSync:     userSync,
 		CookieSecure: "false",
 	})
@@ -271,5 +274,168 @@ func TestBreakGlassToken(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("break-glass token POST → %d, want 200 (no CSRF needed for Bearer)", resp.StatusCode)
+	}
+}
+
+// --- local account management (§11, V7) -----------------------------------------
+//
+// The split between these routes IS the authorization model, so the negatives are
+// the gate: a member must not reach the admin paths, and the self path must not be
+// aimable at anyone else (it takes no target id, by construction).
+
+// seedLocalUser writes a user WITH a bcrypt hash — the credential-path discriminator
+// (§11). The harness otherwise seeds imported users, so a local one is explicit.
+func seedLocalUser(t *testing.T, st store.Store, id, name, password string, role store.Role) {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := store.User{
+		ID: id, Name: name, Role: role, PasswordHash: string(hash),
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := st.UpsertUser(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// §19: a member gets 403 on both admin password routes. Creating an account and
+// resetting someone else's credential are admin actions.
+func TestMemberForbiddenOnPasswordAdminRoutes(t *testing.T) {
+	srv, _, _ := authServer(t)
+	member := login(t, srv, "kid", "pw")
+
+	cases := []struct{ method, path, body string }{
+		{http.MethodPost, "/v1/users", `{"username":"sneaky","password":"a-good-password"}`},
+		{http.MethodPost, "/v1/users/u-boss/password", `{"next":"a-good-password"}`},
+	}
+	for _, tc := range cases {
+		resp := authed(t, tc.method, srv.URL+tc.path, member, tc.body)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("member %s %s → %d, want 403 (§19)", tc.method, tc.path, resp.StatusCode)
+		}
+	}
+}
+
+// A member CAN change their own password — the self route is not admin-gated, and
+// must not be. It simply has no way to name a different target.
+func TestChangeOwnPassword_MemberAllowed(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	sess := login(t, srv, "localkid", "original-pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", sess,
+		`{"current":"original-pw","next":"a-longer-new-pw"}`)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("self change → %d, want 204", resp.StatusCode)
+	}
+	// The new password works…
+	if c := login(t, srv, "localkid", "a-longer-new-pw"); c == nil {
+		t.Error("cannot sign in with the new password")
+	}
+	// …and the change revoked the session that made it (every session dies, so a
+	// compromise-driven change actually evicts the intruder).
+	if resp := authed(t, http.MethodGet, srv.URL+"/v1/auth/me", sess, ""); resp.StatusCode == http.StatusOK {
+		t.Error("the session that changed the password survived — an attacker's would too")
+	}
+}
+
+// The wrong current password is refused, and the stored credential is untouched.
+func TestChangeOwnPassword_WrongCurrentRejected(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	sess := login(t, srv, "localkid", "original-pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", sess,
+		`{"current":"not-it","next":"a-longer-new-pw"}`)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong current → %d, want 401", resp.StatusCode)
+	}
+	if c := login(t, srv, "localkid", "original-pw"); c == nil {
+		t.Error("original password stopped working after a REJECTED change")
+	}
+}
+
+// §19: an imported media-server user has no Loomarr-side password. The route says so
+// rather than pretending to succeed — a silent 204 would imply Loomarr had changed
+// their media-server password, which it cannot do.
+func TestChangeOwnPassword_ImportedUserConflicts(t *testing.T) {
+	srv, _, _ := authServer(t)
+	member := login(t, srv, "kid", "pw") // seeded as IMPORTED — no hash
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/auth/password", member,
+		`{"current":"pw","next":"a-longer-new-pw"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("imported self-change → %d, want 409", resp.StatusCode)
+	}
+}
+
+// An admin mints a local account, and it can sign in immediately — the install is no
+// longer stuck with the single bootstrap admin.
+func TestCreateLocalUser_AdminCanMintAnAccount(t *testing.T) {
+	srv, _, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/users", admin,
+		`{"username":"newcomer","password":"a-good-password","role":"member","quota":3}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create → %d, want 200", resp.StatusCode)
+	}
+	if c := login(t, srv, "newcomer", "a-good-password"); c == nil {
+		t.Error("the new local account cannot sign in")
+	}
+}
+
+// Role defaults to member: minting an admin must be deliberate, never what happens
+// when a field is omitted (§11 — roles gate the actions that spend real resources).
+func TestCreateLocalUser_DefaultsToMember(t *testing.T) {
+	srv, st, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/users", admin,
+		`{"username":"newcomer","password":"a-good-password"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create → %d", resp.StatusCode)
+	}
+	u, err := st.GetUserByName(context.Background(), "newcomer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != store.RoleMember {
+		t.Errorf("role = %q, want member when the field is omitted", u.Role)
+	}
+}
+
+// An admin resets a local user's password without knowing the current one — the
+// "someone forgot theirs" path — and the target's sessions die.
+func TestResetUserPassword_AdminPath(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedLocalUser(t, st, "u-local", "localkid", "original-pw", store.RoleMember)
+	admin := login(t, srv, "boss", "pw")
+	victim := login(t, srv, "localkid", "original-pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/u-local/password", admin,
+		`{"next":"an-admin-set-pw"}`)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("reset → %d, want 204", resp.StatusCode)
+	}
+	if c := login(t, srv, "localkid", "an-admin-set-pw"); c == nil {
+		t.Error("cannot sign in with the admin-set password")
+	}
+	if resp := authed(t, http.MethodGet, srv.URL+"/v1/auth/me", victim, ""); resp.StatusCode == http.StatusOK {
+		t.Error("target's session survived an admin password reset")
+	}
+}
+
+// §19: resetting an imported user's password conflicts — Loomarr never held it.
+func TestResetUserPassword_ImportedUserConflicts(t *testing.T) {
+	srv, _, _ := authServer(t)
+	admin := login(t, srv, "boss", "pw")
+
+	resp := authed(t, http.MethodPost, srv.URL+"/v1/users/u-kid/password", admin,
+		`{"next":"an-admin-set-pw"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("reset imported → %d, want 409", resp.StatusCode)
 	}
 }
