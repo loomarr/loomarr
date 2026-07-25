@@ -124,6 +124,48 @@ describe("RefineReview", () => {
     expect(screen.getByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
 
+  // V19: the model's why-it-fits was already on ProposalItem and already rendered by
+  // ProposalReview — the refine diff built its rows from the same items and dropped it
+  // one function before render. "Adding: Predator" with no reason is the refine asking
+  // for trust it hasn't earned.
+  it("shows the model's reason on an added title", () => {
+    const withReason: ProposalItem = { ...predator, rationale: "Same era, same energy as Heat." };
+    render(
+      <RefineReview proposed={[heat, withReason]} current={[currentHeat]} onApply={vi.fn()} onDiscard={vi.fn()} />,
+    );
+    expect(screen.getByText("Same era, same energy as Heat.")).toBeInTheDocument();
+  });
+
+  it("shows the reason on an acquisition too", () => {
+    const withReason: ProposalItem = { ...conAir, rationale: "Fills the late-block slot." };
+    render(
+      <RefineReview
+        proposed={[heat]}
+        acquisitions={[withReason]}
+        current={[currentHeat]}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Fills the late-block slot.")).toBeInTheDocument();
+  });
+
+  it("does not explain a removal — the model didn't choose it", () => {
+    // A removed title's row comes from the CURRENT lineup, which carries no model
+    // rationale; and justifying a removal isn't the model's to give. The assertion
+    // guards against a future refactor rendering a stale reason on the wrong row.
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat, currentPointBreak]}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Removing · 1")).toBeInTheDocument();
+    expect(screen.queryByText(/energy|slot|fills/i)).not.toBeInTheDocument();
+  });
+
   it("shows a separation delta when ONLY the no-repeat window changes", () => {
     // C3′: MergeFromProposal refreshes `separation` exactly like era/audience/ordering/seasonal,
     // but policyDeltas didn't diff it — so a refine could widen or drop a no-repeat window with
