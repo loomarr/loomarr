@@ -147,6 +147,53 @@ describe("Users page", () => {
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
   });
 
+  // V7c: the admin half of local accounts. V7 shipped the endpoints; without these the
+  // capability was reachable only by hand-crafting an API call — the same gap the
+  // Account screen (V7b) closed on the self-service side.
+  it("mounts the create-local-account panel and sends the typed role", async () => {
+    const mock = stubFetch();
+    renderAt("/users");
+    await userEvent.click(await screen.findByRole("button", { name: /create local account/i }));
+    await userEvent.type(screen.getByLabelText(/username/i), "newcomer");
+    await userEvent.type(screen.getByLabelText(/^password$/i), "a-good-password");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    const call = mock.mock.calls.find(
+      ([u, init]) => String(u).includes("/v1/users") && String((init as RequestInit)?.method) === "POST",
+    );
+    expect(call).toBeDefined();
+    expect(JSON.parse(String((call?.[1] as RequestInit)?.body))).toEqual(
+      expect.objectContaining({ username: "newcomer", password: "a-good-password", role: "member" }),
+    );
+  });
+
+  it("offers Reset password on a local row and not on an imported one", async () => {
+    // The row's local/media-server label has always existed to explain "whether a
+    // password reset is even meaningful". This is that action — and the negative is the
+    // point: Loomarr never held an imported user's credential, so offering to reset it
+    // would imply it could change their media-server password.
+    stubFetch();
+    renderAt("/users");
+    // Wait on a ROW affordance, not on "Ada" — that name also renders in the nav footer
+    // as the signed-in user, so it resolves before the users query settles.
+    await screen.findAllByRole("button", { name: /sessions/i });
+    const resets = screen.getAllByRole("button", { name: /reset password/i });
+    expect(resets).toHaveLength(1); // Ada is local; Grace is imported
+  });
+
+  it("sends the new password to the admin reset route", async () => {
+    const mock = stubFetch();
+    renderAt("/users");
+    await screen.findAllByRole("button", { name: /sessions/i });
+    await userEvent.click(screen.getByRole("button", { name: /reset password/i }));
+    await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
+    await userEvent.click(screen.getByRole("button", { name: /set new password/i }));
+
+    const call = mock.mock.calls.find(([u]) => String(u).includes("/v1/users/u1/password"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String((call?.[1] as RequestInit)?.body))).toEqual({ next: "an-admin-set-pw" });
+  });
+
   it("refuses the page to a member with an explanation, not failed requests", async () => {
     stubFetch({ me: { ...MEMBER } as typeof ADMIN });
     renderAt("/users");

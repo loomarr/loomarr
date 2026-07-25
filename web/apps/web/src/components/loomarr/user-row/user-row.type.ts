@@ -15,6 +15,12 @@ interface UserRowProps {
   onToggleAutoApprove?: (autoApprove: boolean) => void;
   // Opens this user's session list. Absent ⇒ the control is hidden.
   onViewSessions?: () => void;
+  // Reset this user's password (admin path — no current password required). Offered
+  // ONLY for a local account: an imported user's credential lives on the media server
+  // and Loomarr never held it. The row's local/media-server label has always existed
+  // to explain "whether a password reset is even meaningful" — this is the action it
+  // was explaining.
+  onResetPassword?: () => void;
   className?: string;
 }
 
