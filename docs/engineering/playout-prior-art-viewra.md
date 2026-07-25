@@ -1,5 +1,10 @@
 # Playout prior art — lessons from `mantonx/viewra`
 
+> **Start with [`playout-prior-art.md`](playout-prior-art.md)** — it covers Tunarr and
+> ErsatzTV, which solve *exactly* our problem, and settles V6's central mechanism. This
+> document is the viewra-specific detail: same language as us, but VOD, so it is mostly a
+> source of warnings rather than architecture.
+
 **Read before building V6.** The maintainer has already built and debugged a Go transcoding
 pipeline (`github.com/mantonx/viewra`, public). This records what transfers, what does not,
 and the bugs it paid for — so V6 does not rediscover them.
