@@ -9,6 +9,7 @@ import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/chan
 import type { OnAirState } from "@/components/loomarr";
 import {
   ChannelDangerZone,
+  ChannelIconField,
   ChannelUpcoming,
   CollapsibleSection,
   ErrorState,
@@ -161,6 +162,9 @@ const ChannelDetailScreen = () => {
     update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
   const saveNumber = (number: string | number) =>
     update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
+  // The icon is just another field on the same PATCH (§7) — not a bespoke endpoint — so it
+  // commits exactly like the identity fields above. `""` clears it.
+  const saveLogo = (logo: string) => update.mutateAsync({ id, data: { logo } }).then(() => undefined);
 
   return (
     <div className="flex h-full flex-col">
@@ -253,6 +257,14 @@ const ChannelDetailScreen = () => {
                   </span>
                 )}
               </p>
+
+              {/* The channel icon is what the family actually sees in the media server's guide,
+                  so it belongs on the info panel next to the number and status rather than behind
+                  an editing tab. The component gates its own affordances on `isAdmin` — a viewer
+                  sees the current artwork, an admin can change it. */}
+              <div className="border-border border-t pt-3">
+                <ChannelIconField channelId={id} logo={ch.logo} onSetLogo={saveLogo} isAdmin={isAdmin} />
+              </div>
             </section>
           )}
 
