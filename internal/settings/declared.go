@@ -163,12 +163,12 @@ func declared() []Setting {
 		{
 			Key: "playout.quality_tier", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
 			Kind: KindEnum, Enum: []EnumOption{
-				opt("efficient", "Efficient — more channels"),
-				opt("balanced", "Balanced"),
-				opt("quality", "Quality — best picture"),
+				opt("efficient", "Efficient — 720p, lowest bandwidth"),
+				opt("balanced", "Balanced — 1080p"),
+				opt("quality", "Quality — 1080p, best picture"),
 			},
 			Default: "balanced",
-			Doc:     "The picture-versus-channel-count target. Resolved at each program boundary against your measured capacity and current load, so quality adapts as channels come and go rather than being fixed when a channel is made.",
+			Doc:     "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
 		},
 		{
 			// Separate from ingest.ffmpeg_path on purpose: the filler sidecar bundles its own

@@ -88,9 +88,17 @@ func (p Profile) videoEncodeArgs() []string {
 		// would rather reorder — for live, latency beats compression.
 		args = append(args, "-preset", "veryfast", "-tune", "zerolatency")
 	case EncoderNVENC:
-		// p4/hq rather than p1/ll: viewra found p1+ll produced visible grain artifacts
-		// in tone-mapped content (prior-art, viewra §6).
-		args = append(args, "-preset", "p4", "-tune", "hq")
+		// p7 (slowest/best) rather than p4. Measured with SSIM against a near-lossless
+		// reference of a hard scene — dark, grainy, 4K HDR source:
+		//
+		//	p4  SSIM 0.98262   1656ms per 20s of 1080p
+		//	p7  SSIM 0.98295   3721ms per 20s of 1080p  ← 5.4x realtime, still ample
+		//
+		// The quality gain from the preset alone is small; the reason to take it is that a
+		// GPU sitting at ~14% utilisation has the headroom for free, and it compounds with
+		// the CQ rate control below. p1/ll is still avoided: viewra found it produced
+		// visible grain artifacts in tone-mapped content (prior-art, viewra §6).
+		args = append(args, "-preset", "p7", "-tune", "hq")
 	case EncoderAMF:
 		// AMF speaks quality presets, not numbered ones.
 		args = append(args, "-quality", "balanced")
@@ -102,29 +110,101 @@ func (p Profile) videoEncodeArgs() []string {
 		// another family's vocabulary is an init failure, and several of them (notably
 		// v4l2m2m on a Pi) are strict about unknown options.
 	}
-	if p.VideoBitrate > 0 {
-		kbps := strconv.Itoa(p.VideoBitrate) + "k"
-		// maxrate+bufsize as well as -b:v: without a cap a live encoder can spike far
-		// above target on a hard scene and blow a client's buffer.
-		args = append(args, "-b:v", kbps, "-maxrate", kbps, "-bufsize",
-			strconv.Itoa(p.VideoBitrate*2)+"k")
-	}
-	// Software additionally gets a CRF target (see qualityArgs): with maxrate/bufsize
-	// still set, libx264 holds quality steady and only spends bits up to the cap. On
-	// hardware this is omitted — most hardware rate control handles a bitrate target far
-	// better than a quality one, and v4l2m2m has no usable CRF at all.
-	args = append(args, p.qualityArgs()...)
+	args = append(args, p.rateControlArgs()...)
 	return append(args, p.gopArgs()...)
 }
 
-// gopArgs pins the keyframe interval to one per second.
+// rateControlArgs decides how the encoder spends its bits.
 //
-// Every segment boundary must be a keyframe or a client joining mid-stream sees nothing
-// until the next one. `-sc_threshold 0` disables scene-change detection, which would
-// otherwise insert keyframes at unpredictable places and make segment durations vary —
-// and a TARGETDURATION that lies is a player error, not a warning.
+// THE ARTIFACTS THIS FIXES. The first hardware-encoded channel looked worse than the software
+// one, and the cause was capped CBR: `-b:v N -maxrate N` gives the encoder no headroom at all,
+// so every hard scene — grain, fast motion, the shadow detail in a dark HDR film — is crushed
+// to fit the same budget as an easy one. Software never had this problem because it also got a
+// CRF target, and an earlier comment here claimed hardware could not use one. That was simply
+// wrong about NVENC, and SSIM against a near-lossless reference of a hard scene shows by how
+// much:
+//
+//	CBR 5000k          (shipped)  SSIM 0.98262   12MB / 20s
+//	VBR, cq 23, cap 8M            SSIM 0.98444   17MB
+//	VBR, cq 21, cap 10M           SSIM 0.98581   23MB  ← chosen
+//	VBR, cq 19, cap 12M           SSIM 0.98681   29MB
+//
+// cq 21 takes most of the available gain; 19 costs another 26% bitrate for a quarter as much
+// improvement. The MAXRATE CAP IS STILL THERE — quality-targeted does not mean unbounded, and
+// a live stream that spikes arbitrarily blows a client's buffer.
+func (p Profile) rateControlArgs() []string {
+	if p.VideoBitrate <= 0 {
+		return nil
+	}
+	kbps := strconv.Itoa(p.VideoBitrate) + "k"
+
+	if cq := p.constantQuality(); cq > 0 {
+		// Quality-targeted with a ceiling: the encoder holds picture quality steady and
+		// spends up to `maxrate` when a scene needs it. The cap is 2x the ladder's target
+		// rather than the target itself, which is what buys the headroom.
+		//
+		// `-b:v 0` is REQUIRED, not decorative: with a non-zero bitrate set, nvenc treats cq
+		// as an upper quality bound on a bitrate-targeted encode and the result is nearly
+		// indistinguishable from plain CBR.
+		return []string{
+			"-rc", "vbr", "-cq", strconv.Itoa(cq), "-b:v", "0",
+			"-maxrate", strconv.Itoa(p.VideoBitrate*2) + "k",
+			"-bufsize", strconv.Itoa(p.VideoBitrate*4) + "k",
+		}
+	}
+
+	// Bitrate-targeted for families with no usable quality mode. maxrate+bufsize as well as
+	// -b:v: without a cap a live encoder can spike far above target on a hard scene.
+	args := []string{"-b:v", kbps, "-maxrate", kbps, "-bufsize",
+		strconv.Itoa(p.VideoBitrate*2) + "k"}
+	// Software gets a CRF target on top; with maxrate/bufsize still set, libx264 holds
+	// quality steady and only spends bits up to the cap.
+	return append(args, p.qualityArgs()...)
+}
+
+// constantQuality returns the CQ/QP value for encoders with a usable quality mode, or 0.
+//
+// Only NVENC for now, and deliberately so — this is the one family measured. VAAPI has
+// `-rc_mode CQP`, QSV has `-global_quality`, and both are plausible next steps, but each needs
+// its own SSIM run against real content before being switched on: a wrong quality value is a
+// channel that either looks bad or saturates the operator's uplink, and neither fails loudly.
+func (p Profile) constantQuality() int {
+	if p.Encoder != EncoderNVENC {
+		return 0
+	}
+	// Derived from the ladder rung so the operator's tier choice still governs. The rungs
+	// descend in bitrate, so a lower rung means a busier box and a correspondingly looser
+	// quality target — the same "adapt to load" policy the ladder itself implements.
+	switch {
+	case p.VideoBitrate >= 6000:
+		return 19
+	case p.VideoBitrate >= 4000:
+		return 21
+	case p.VideoBitrate >= 2000:
+		return 23
+	default:
+		return 26
+	}
+}
+
+// gopKeyframeSeconds is how often a keyframe is forced.
+//
+// TWO seconds, not one. Keyframes are the most expensive frames in a stream, so a 1-second GOP
+// spends a large share of the bitrate re-sending full pictures instead of detail — measurable,
+// though modest next to the rate-control fix (SSIM 0.98262 → 0.98269 on its own).
+//
+// Two seconds is still short enough that a viewer tuning in mid-program waits at most ~2s for
+// a decodable frame, which is well inside the time a media server spends buffering anyway.
+const gopKeyframeSeconds = 2
+
+// gopArgs pins the keyframe interval.
+//
+// Every HLS segment boundary must land on a keyframe or a client joining mid-stream sees
+// nothing until the next one. `-sc_threshold 0` disables scene-change detection, which would
+// otherwise insert keyframes at unpredictable places and make segment durations vary — and a
+// TARGETDURATION that lies is a player error, not a warning.
 func (p Profile) gopArgs() []string {
-	gop := strconv.Itoa(p.Framerate)
+	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
 	return []string{"-g", gop, "-keyint_min", gop, "-sc_threshold", "0"}
 }
 
