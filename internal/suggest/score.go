@@ -127,12 +127,9 @@ func eraBalance(intent Intent, lineup, acquisitions []ProposalItem) float64 {
 
 // composite weights the sub-scores into the overall ranking score.
 //
-// TODO(learning): implement composite(). This weighting decides how proposals
-// rank against each other — the single most product-shaping number in the
-// suggester. Return a weighted average of s.ThemeFit, s.AvailabilityRatio, and
-// s.EraBalance in [0,1].
-//
-// The trade-off to weigh:
+// This weighting decides how proposals rank against each other — the single most
+// product-shaping number in the suggester, so the trade-off is recorded rather than
+// left to be re-derived:
 //   - ThemeFit is "does it match what they asked for" — arguably the point.
 //   - AvailabilityRatio is "how much is playable RIGHT NOW" — a channel that's
 //     90% acquisitions is dead air for days (§9 never-dead-air is downstream, but

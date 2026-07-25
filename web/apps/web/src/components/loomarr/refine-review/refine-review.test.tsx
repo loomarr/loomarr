@@ -124,6 +124,43 @@ describe("RefineReview", () => {
     expect(screen.getByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
 
+  it("shows a separation delta when ONLY the no-repeat window changes", () => {
+    // C3′: MergeFromProposal refreshes `separation` exactly like era/audience/ordering/seasonal,
+    // but policyDeltas didn't diff it — so a refine could widen or drop a no-repeat window with
+    // nothing shown before Approve. Lineup and every other policy field are identical here, so
+    // the ONLY thing that can produce a delta is separation.
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat]}
+        currentPolicy={{ separation: { movieNoRepeat: "168h" } } as ChannelPolicy}
+        proposedPolicy={{ separation: { movieNoRepeat: "24h" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Programming · 1")).toBeInTheDocument();
+    expect(screen.getByText("No-repeat · movies")).toBeInTheDocument();
+    expect(screen.getByText(/168h/)).toBeInTheDocument();
+    expect(screen.getByText(/24h/)).toBeInTheDocument();
+  });
+
+  it("does not report a separation delta when the backend just pads zero units", () => {
+    // "168h" and "168h0m0s" are the same window — Duration.String() pads. Comparing raw
+    // strings would show a phantom diff on every refine that touched nothing.
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat]}
+        currentPolicy={{ separation: { movieNoRepeat: "168h" } } as ChannelPolicy}
+        proposedPolicy={{ separation: { movieNoRepeat: "168h0m0s" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/no-repeat/i)).not.toBeInTheDocument();
+  });
+
   it("marks a pinned field as kept — the refine cannot overwrite an operator's setting", () => {
     render(
       <RefineReview
