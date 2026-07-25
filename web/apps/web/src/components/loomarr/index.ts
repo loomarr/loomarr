@@ -10,6 +10,7 @@ export * from "./channel-icon-field";
 export * from "./channel-lineup-editor";
 export * from "./channel-policy-fields";
 export * from "./channel-rules-editor";
+export * from "./channel-upcoming";
 export * from "./checklist-item";
 export * from "./clip-card";
 export * from "./collapsible-section";

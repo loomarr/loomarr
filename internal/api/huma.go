@@ -215,6 +215,11 @@ type GuideReader interface {
 	// NowNext returns, per TUNARR channel id, the program airing at `now` and the one
 	// following it. A channel with no generated guide is simply absent.
 	NowNext(ctx context.Context, now time.Time) (map[string]ChannelNowNext, error)
+	// Upcoming returns, for one TUNARR channel, the program airing now (if any) followed by
+	// the next programs in airtime order, up to `limit` entries; commercial/flex gaps are
+	// skipped (§9 guide freshness). Powers the Overview "what's on later" strip. An unknown
+	// id / empty guide yields an empty slice, not an error.
+	Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]NowNextEntry, error)
 }
 
 // SuggestService is the suggestion surface the API depends on (§8). Implemented

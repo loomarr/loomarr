@@ -1127,10 +1127,21 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 }
 
 // fakeGuide is a scripted api.GuideReader keyed by TUNARR id (as the real one is).
-type fakeGuide struct{ byTunarr map[string]api.ChannelNowNext }
+type fakeGuide struct {
+	byTunarr map[string]api.ChannelNowNext
+	upcoming map[string][]api.NowNextEntry // per-tunarr-id "what's on later"; nil ⇒ empty
+}
 
 func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
 	return f.byTunarr, nil
+}
+
+func (f fakeGuide) Upcoming(_ context.Context, tunarrID string, _ time.Time, limit int) ([]api.NowNextEntry, error) {
+	got := f.upcoming[tunarrID]
+	if limit > 0 && len(got) > limit {
+		got = got[:limit]
+	}
+	return got, nil
 }
 
 // GET /v1/channels/now-next must resolve to the now/next handler, NOT to
