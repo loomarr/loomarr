@@ -52,6 +52,44 @@ func (a guideAdapter) NowNext(ctx context.Context, now time.Time) (map[string]ap
 	return out, nil
 }
 
+// Upcoming reads one Tunarr channel's guide and returns the program airing now (if any)
+// followed by the next programs in airtime order, up to `limit` entries total. Commercial /
+// flex GAPS are skipped — a viewer's "what's on later" strip is a list of shows, not the
+// break padding between them (the gaps are still real playout, just not guide-worthy). Like
+// NowNext, the selection lives here so the strip is the same everywhere and the FE never does
+// interval math. Airtimes are Tunarr's (§6). tunarrID is the channel's Tunarr id; an unknown
+// id or an empty guide yields an empty slice, not an error (a fresh channel has no guide yet).
+func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Time, limit int) ([]api.NowNextEntry, error) {
+	if limit <= 0 {
+		limit = 6
+	}
+	// Ask for a wider window than NowNext (which only needs the next program) so several
+	// upcoming shows fit; the guide read is one upstream call regardless of window length.
+	guide, err := a.tunarr.Guide(ctx, now, now.Add(a.window))
+	if err != nil {
+		return nil, err
+	}
+	entries, ok := guide[tunarrID]
+	if !ok {
+		return []api.NowNextEntry{}, nil
+	}
+	nowMs := now.UnixMilli()
+	out := make([]api.NowNextEntry, 0, limit)
+	for _, e := range entries {
+		if e.IsGap() {
+			continue // skip commercial/flex gaps — the strip lists shows, not breaks
+		}
+		if e.StopMs <= nowMs {
+			continue // already finished — not "now or upcoming"
+		}
+		out = append(out, toNowNextEntry(e))
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 func toNowNextEntry(e programmer.GuideEntry) api.NowNextEntry {
 	return api.NowNextEntry{
 		Title:   e.Title,

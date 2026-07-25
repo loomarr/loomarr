@@ -1,5 +1,5 @@
 import { type ChannelDTO, type ChannelPolicy, channelsApi, toProblem } from "@loomarr/api";
-import { channelNumber, formatEpgTime, pluralize } from "@loomarr/core";
+import { channelNumber, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -7,7 +7,13 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import { ChannelIdentityField, ChannelNav, type ChannelNavSection } from "@/channels";
 import type { OnAirState } from "@/components/loomarr";
-import { ChannelDangerZone, ChannelIconField, ErrorState, OnAirIndicator } from "@/components/loomarr";
+import {
+  ChannelDangerZone,
+  ChannelUpcoming,
+  CollapsibleSection,
+  ErrorState,
+  OnAirIndicator,
+} from "@/components/loomarr";
 import { useLoomarrEventListener } from "@/events";
 import { ChannelFiller } from "@/filler";
 import { useDocumentTitle } from "@/lib";
@@ -23,7 +29,10 @@ import { ChannelProgramming } from "./-channel-programming";
 
 // The tab/section ids — the closed set the `?section=` deep-link accepts. Shared by
 // validateSearch (URL narrowing) and the component (the tab registry + which panel shows).
-const SECTION_IDS = ["info", "programming", "filler", "advanced", "danger"] as const;
+// "advanced" is intentionally NOT a tab: its content (relaxations + Tunarr id) is *status*,
+// not a settings surface, so it now lives as an admin-only diagnostics disclosure on the info
+// panel (P7). A stale ?section=advanced link narrows to the default info tab — where it is.
+const SECTION_IDS = ["info", "programming", "filler", "danger"] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 
 // `section` is OPTIONAL so a plain link to the channel (from the list, the palette, the approval
@@ -71,13 +80,14 @@ const ChannelDetailScreen = () => {
 
   const channel = channelsApi.useGetChannel(id);
   useDocumentTitle(channel.data?.status === 200 ? channel.data.data.name : undefined);
-  // Now/next is Tunarr's guide (§6) — absent until the channel is pushed, which is normal,
-  // not an error, so it retries-false and simply shows an honest "nothing yet".
-  const nowNext = channelsApi.useChannelsNowNext({ query: { retry: false } });
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) });
     void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelsNowNextQueryKey() });
+    // The Overview's "what's on later" strip reads its own per-channel guide endpoint, so a
+    // reconcile that reshuffles the lineup must refresh it too — otherwise the strip shows a
+    // stale timeline until a manual reload (P7 gate: the `channel` frame refreshes the strip).
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelUpcomingQueryKey(id) });
     // The saved pod preview (GET …/pods) lives under its own key, not the channel key, so
     // a reconcile that changes the break — including an applied filler edit — wouldn't
     // refresh it without this. The Filler section reads the saved break here.
@@ -114,7 +124,6 @@ const ChannelDetailScreen = () => {
     { id: "info", label: "Channel info" },
     { id: "programming", label: "Programming" },
     { id: "filler", label: "Filler" },
-    { id: "advanced", label: "Advanced" },
     { id: "danger", label: "Danger zone" },
   ];
 
@@ -136,8 +145,6 @@ const ChannelDetailScreen = () => {
   if (!ch) return <p className="p-6 text-muted-foreground text-sm">Loading channel…</p>;
 
   const air = airStateOf(ch);
-  const guide =
-    nowNext.data?.status === 200 ? nowNext.data.data.channels?.find((c) => c.channelId === id) : undefined;
 
   // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
   // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
@@ -154,12 +161,6 @@ const ChannelDetailScreen = () => {
     update.mutateAsync({ id, data: { name: String(name) } }).then(() => undefined);
   const saveNumber = (number: string | number) =>
     update.mutateAsync({ id, data: { number: Number(number) } }).then(() => undefined);
-  // The icon field's three "set" paths (TMDB suggestion, pasted URL) and its "clear" all
-  // converge on this — the SAME channel update mutation identity/number use, `logo` is just
-  // another field on it (§7 PATCH). Upload is the one path that doesn't call this directly
-  // for the value (the raw multipart endpoint already set `logo` server-side); it still uses
-  // this to trigger the shared invalidate.
-  const saveLogo = (logo: string) => update.mutateAsync({ id, data: { logo } }).then(() => undefined);
 
   return (
     <div className="flex h-full flex-col">
@@ -236,10 +237,11 @@ const ChannelDetailScreen = () => {
               </div>
               <p className="text-muted-foreground text-sm">{air.detail}</p>
 
+              {/* The viewer's "what's on later" — the program airing now, then the next few,
+                  with real Tunarr airtimes (the prototype's "Today's guide", P7). Shown to
+                  everyone; refreshes on the `channel` SSE frame via the invalidate below. */}
               <div className="border-border border-t pt-3">
-                <NowNextRow label="Now playing" entry={guide?.now} live={air.dot === "live"} />
-                <div className="my-2 border-border border-t" />
-                <NowNextRow label="Up next" entry={guide?.next} live={air.dot === "live"} />
+                <ChannelUpcoming channelId={id} live={air.dot === "live"} />
               </div>
 
               <p className="border-border border-t pt-3 text-sm">
@@ -254,10 +256,17 @@ const ChannelDetailScreen = () => {
             </section>
           )}
 
-          {(!isAdmin || activeId === "info") && (
-            <section className="rounded-lg border border-border bg-card p-5">
-              <ChannelIconField channelId={id} logo={ch.logo} onSetLogo={saveLogo} isAdmin={isAdmin} />
-            </section>
+          {/* Admin-only diagnostics disclosure on the info panel (P7): the relaxation ladder the
+              last reconcile applied + the Tunarr channel id are STATUS, not settings — so they
+              live here as a collapsed disclosure rather than a top-level "Advanced" tab. A viewer
+              never sees it; an admin expands it when they want the scheduler internals. */}
+          {isAdmin && activeId === "info" && (
+            <CollapsibleSection
+              title="Diagnostics"
+              description="How this channel is being built right now — relaxations applied and its Tunarr link."
+            >
+              <ChannelAdvanced channel={ch} />
+            </CollapsibleSection>
           )}
 
           {/* Admin editing panels — each shown only when its tab is active. Programming folds the
@@ -276,16 +285,6 @@ const ChannelDetailScreen = () => {
 
           {isAdmin && activeId === "filler" && <ChannelFiller channelId={id} policy={ch.policy} open />}
 
-          {isAdmin && activeId === "advanced" && (
-            <section className="flex flex-col gap-4 rounded-lg border border-border p-5">
-              <div>
-                <h2 className="font-semibold text-lg">Advanced</h2>
-                <p className="text-muted-foreground text-sm">How this channel is built.</p>
-              </div>
-              <ChannelAdvanced channel={ch} />
-            </section>
-          )}
-
           {isAdmin && activeId === "danger" && (
             <ChannelDangerZone
               channelName={ch.name}
@@ -298,39 +297,6 @@ const ChannelDetailScreen = () => {
           )}
         </div>
       </div>
-    </div>
-  );
-};
-
-// NowNextRow — a single "Now playing / Up next" line. An empty guide is the common, honest
-// case (nothing pushed yet), rendered as a plain em-dash rather than a scary blank.
-const NowNextRow = ({
-  label,
-  entry,
-  live,
-}: {
-  label: string;
-  entry?: { title: string; gap?: boolean; stopMs?: number };
-  live: boolean;
-}) => {
-  const value = !entry
-    ? live
-      ? "Nothing scheduled right now"
-      : "—"
-    : entry.gap
-      ? "A commercial break"
-      : entry.title;
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted-foreground text-sm">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-right text-sm">
-        {value}
-        {entry && !entry.gap && entry.stopMs ? (
-          <span className="ml-2 font-mono text-muted-foreground text-xs">
-            til {formatEpgTime(entry.stopMs)}
-          </span>
-        ) : null}
-      </span>
     </div>
   );
 };

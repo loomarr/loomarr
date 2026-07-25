@@ -251,6 +251,51 @@ func (s *Server) channelsNowNext(ctx context.Context, _ *struct{}) (*nowNextOutp
 	return out, nil
 }
 
+type upcomingInput struct {
+	ID    string `path:"id"`
+	Limit int    `query:"limit" doc:"How many programs to return (now + upcoming), default 6, max 24"`
+}
+
+type upcomingOutput struct {
+	Body struct {
+		Upcoming []NowNextEntry `json:"upcoming" doc:"The program airing now (first, if any) then the next ones in airtime order; gaps skipped"`
+	}
+}
+
+// channelUpcoming answers the Overview "what's on later" strip for ONE channel: the program
+// airing now followed by the next few, from Tunarr's generated guide (§6 airtimes). Any
+// authenticated user may read it (the guide is viewer-facing, §8.1). A channel with no guide
+// yet (never reconciled, or a Tunarr hiccup) returns an empty list, not an error — the strip
+// simply shows "nothing scheduled" rather than blanking the page.
+func (s *Server) channelUpcoming(ctx context.Context, in *upcomingInput) (*upcomingOutput, error) {
+	out := &upcomingOutput{}
+	out.Body.Upcoming = []NowNextEntry{}
+
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+	if s.guide == nil || ch.TunarrID == "" {
+		return out, nil // no guide reader, or never reconciled — nothing airing yet
+	}
+
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 6
+	}
+	if limit > 24 {
+		limit = 24
+	}
+	entries, err := s.guide.Upcoming(ctx, ch.TunarrID, time.Now(), limit)
+	if err != nil {
+		return out, nil // a Tunarr hiccup must not blank the Overview
+	}
+	out.Body.Upcoming = entries
+	return out, nil
+}
+
 // registerChannels mounts /v1/channels* (§7). Reads are visible to any
 // authenticated user; create/update/delete/reconcile require admin.
 func (s *Server) registerChannels(api huma.API) {
@@ -269,6 +314,13 @@ func (s *Server) registerChannels(api huma.API) {
 		OperationID: "get-channel", Method: http.MethodGet, Path: "/v1/channels/{id}",
 		Summary: "Get a channel definition + status", Tags: []string{"channels"},
 	}, s.getChannel)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "channel-upcoming", Method: http.MethodGet, Path: "/v1/channels/{id}/upcoming",
+		Summary:     "What's on this channel now and next",
+		Description: "The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
+		Tags:        []string{"channels"},
+	}, s.channelUpcoming)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",

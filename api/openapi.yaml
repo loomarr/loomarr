@@ -2622,6 +2622,26 @@ components:
         - sourceId
         - librariesEnabled
       type: object
+    UpcomingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/UpcomingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        upcoming:
+          description: The program airing now (first, if any) then the next ones in airtime order; gaps skipped
+          items:
+            $ref: "#/components/schemas/NowNextEntry"
+          type:
+            - array
+            - "null"
+      required:
+        - upcoming
+      type: object
     UpdateChannelInputBody:
       additionalProperties: false
       properties:
@@ -3254,6 +3274,40 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/upcoming:
+    get:
+      description: The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
+      operationId: channel-upcoming
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: How many programs to return (now + upcoming), default 6, max 24
+          explode: false
+          in: query
+          name: limit
+          schema:
+            description: How many programs to return (now + upcoming), default 6, max 24
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpcomingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What's on this channel now and next
+      tags:
+        - channels
   /v1/docs:
     get:
       description: The Help section's table of contents (§13). Pages ship inside the binary, so Help works air-gapped.
