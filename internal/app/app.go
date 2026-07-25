@@ -473,6 +473,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var sessMgr api.SessionManager
 	var userSync api.UserSyncer
 	var provisionSvc api.Provisioner
+	var passwordSvc api.PasswordService
 	if st != nil {
 		// Auth wires on the STORE alone (§11 rework): identity is Loomarr-owned, so
 		// bootstrap + local login work with zero media-server config. The library
@@ -495,6 +496,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			loginSvc = auth.NewLoginService(nil, st, mgr, limiter, time.Now)
 			provisionSvc = auth.NewProvisioner(st, nil, newID, time.Now)
 		}
+		// Local account management (§11) needs no media server — a local user is
+		// verified entirely in-app, exactly like the bootstrap admin. So it is wired
+		// unconditionally alongside the store, not inside the `lib != nil` branch.
+		passwordSvc = auth.NewPasswordService(st, newID, time.Now)
 		sessMgr = mgr
 		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
 	}
@@ -556,6 +561,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Ready:         ready,
 		Login:         loginSvc,
 		Sessions:      sessMgr,
+		Passwords:     passwordSvc,
 		UserSync:      userSync,
 		CookieSecure:  set.str("cookie.secure"),
 		Channels:      channelSvc,

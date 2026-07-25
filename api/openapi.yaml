@@ -118,6 +118,29 @@ components:
         - name
         - role
       type: object
+    ChangePasswordInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ChangePasswordInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        current:
+          description: Your current password.
+          format: password
+          type: string
+        next:
+          description: The new password (min 8 characters).
+          format: password
+          minLength: 8
+          type: string
+      required:
+        - current
+        - next
+      type: object
     ChannelDTO:
       additionalProperties: false
       properties:
@@ -362,6 +385,37 @@ components:
         - name
         - number
         - strategy
+      type: object
+    CreateLocalUserInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateLocalUserInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        password:
+          format: password
+          minLength: 8
+          type: string
+        quota:
+          description: Pending-acquisition cap; 0 = the default.
+          format: int64
+          type: integer
+        role:
+          description: Defaults to member.
+          enum:
+            - admin
+            - member
+          type: string
+        username:
+          minLength: 1
+          type: string
+      required:
+        - username
+        - password
       type: object
     CycleSlotDTO:
       additionalProperties: false
@@ -1718,6 +1772,23 @@ components:
       required:
         - jobId
       type: object
+    ResetPasswordInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ResetPasswordInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        next:
+          format: password
+          minLength: 8
+          type: string
+      required:
+        - next
+      type: object
     RuleOrdering:
       additionalProperties: false
       properties:
@@ -2897,6 +2968,27 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Current user, role, and quotas
+      tags:
+        - auth
+  /v1/auth/password:
+    post:
+      operationId: change-password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Change your own password
       tags:
         - auth
   /v1/channels:
@@ -4320,6 +4412,30 @@ paths:
       summary: List users (admin)
       tags:
         - users
+    post:
+      operationId: create-local-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLocalUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a local account (admin)
+      tags:
+        - users
   /v1/users/candidates:
     get:
       description: Admin only. The media-server accounts available to import, each flagged whether it is already allowlisted (§11). Read-only — listing never provisions.
@@ -4414,6 +4530,33 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Update a user's role/quota/disabled (admin)
+      tags:
+        - users
+  /v1/users/{id}/password:
+    post:
+      operationId: reset-user-password
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Reset a local user's password (admin)
       tags:
         - users
   /v1/users/{id}/sessions:
