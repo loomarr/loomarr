@@ -15,7 +15,17 @@ Loomarr's model is the *arr convention with one addition:
 | **Seerr** | Wizard-driven; settings persisted by the app | Onboarding *is* configuration: wizard steps are settings forms with live tests |
 | **Loomarr** | Both of the above, **plus deterministic env pinning** | GitOps users pin any key via env; it wins and locks the field with provenance |
 
-**The classification rule (so future keys self-classify):** a setting is **env-only** iff it is needed *before the database opens* or describes *process topology* — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything else is app-managed and env-pinnable. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `WEBHOOK_SECRET`) are **generated**, never demanded.
+**The classification rule (so future keys self-classify):** a setting is **bootstrap** iff it is needed *before the database opens* or describes *process topology* — `DATABASE_URL`, `AUTO_MIGRATE`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`. Everything else is app-managed and env-pinnable.
+
+**The bootstrap FILE tier (revised — V5).** Bootstrap keys were env-**only**, because the registry lives in the database they are needed to open. That reasoning is unchanged; what it did not anticipate is the wizard needing to **write** one. The Database step (§13) asks "SQLite or PostgreSQL?" and must persist the answer — it cannot write into the database it is choosing, and it cannot set an env var that survives a restart. A file beside the database is the only writable store that exists before the database does. So:
+
+`env > file > default` — **bootstrap keys only**
+`env > database > default` — every app-managed setting, unchanged
+
+- **Env still wins.** A GitOps pin is never overridden by something the wizard wrote; the wizard reports the key as pinned instead, the same contract the registry's `pinned` provenance already gives the Settings UI.
+- **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
+- **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
+- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `WEBHOOK_SECRET`) are **generated**, never demanded.
 
 **The per-channel tier (added with `programming-design.md`):** programming heuristics introduce settings that vary *per channel* — the ChannelPolicy (scope, audience ceiling, separation windows, ordering, seasonal mode). These are **not registry settings**: a policy instance is channel *data*, stored on the channel row, edited in proposal review / the channel editor, and never env-addressable. What the registry holds is their **global defaults**. Full precedence, per key:
 
@@ -69,7 +79,7 @@ type Setting struct {
 - **Connections read through per use:** the shared HTTP client factory (§6 main doc) fetches URL/token from the snapshot at call time — saving a new Emby token means the *next* lookup uses it.
 - **Intervals re-read per tick:** tickers ask the snapshot each cycle; changing `CHANNEL_RECONCILE_EVERY` takes effect next tick.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
-- `RestartRequired` exists as a flag for honesty but applies only to the bootstrap set, which the UI never edits.
+- `RestartRequired` exists as a flag for honesty and applies only to the bootstrap set. **Revised (V5): the UI now edits exactly one of them** — the wizard's Database step writes `DATABASE_URL` to the bootstrap file (above). That is precisely why the flag stops being decorative: the step that writes it is also the step that must say a restart is coming.
 
 **Audit:** the settings table carries `updated_at` + `updated_by` (nullable — env/migration writes have none). The UI shows "changed by Matt · 2d ago" per field; same spirit as `approved_by`.
 
