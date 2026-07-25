@@ -10,7 +10,12 @@ interface ProposalReviewProps {
   status?: ProposalStatus;
   busy?: boolean;
   onApprove?: () => void;
-  onDeny?: () => void;
+  // Deny carries the admin's optional reason. The API has persisted `denyReason` and
+  // ApprovalQueueItem has rendered it since day one — but every call site sent `{}`,
+  // so the field was always empty and a member never learned why. The reason is
+  // OPTIONAL by design: requiring one would make denying a chore and produce "no"
+  // fifty times over, but offering one costs a click.
+  onDeny?: (reason?: string) => void;
   onEditItem?: (item: ProposalItem) => void;
   className?: string;
 }

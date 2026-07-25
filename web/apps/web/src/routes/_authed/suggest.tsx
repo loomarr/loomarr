@@ -62,7 +62,7 @@ const SuggestScreen = () => {
               // Approval is admin-only (§7, §11) — a member sees the review without the
               // controls, and the queue below is where an admin acts on others' work.
               onApprove={isAdmin ? () => approve.mutate({ id: proposal.id }) : undefined}
-              onDeny={isAdmin ? () => deny.mutate({ id: proposal.id, data: {} }) : undefined}
+              onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
             />
             {(approve.error ?? deny.error) != null && <ErrorState error={approve.error ?? deny.error} />}
             <Button variant="outline" className="w-fit" onClick={run.reset}>
