@@ -118,6 +118,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | **V5** | `#6`/`D-B` — bootstrap-file config tier | V4 | Precedence tests across all three tiers; `config-design.md:72` amended |
 | **V6a** | **T2 — the guide-path trap.** `StaleLoomarrListings` identified Loomarr's listings provider by its **Tunarr-shaped path**, so retargeting to internal playout would silently stop recognising it and orphan the provider a migration needs to remove — symptom: a deleted channel that keeps streaming. Now matches EITHER backend's shape | — | A Tunarr-shaped provider is stale once we retarget to internal playout, and vice versa; a token in the URL does not confuse the match; a provider Loomarr never wrote is never touched. Verified failing when the suffix is swapped rather than added |
 | **V6** | Track T: Internal playout to first frame. **Verifiable HERE — the dev env has a live Emby (`100.75.125.45:8096`) and Tunarr (`:8000`), plus `make smoke-livetv`. Do not defer the gate as "needs the homelab".** Only the maintainer's own GPU encoders and TV-as-a-client are genuinely out of reach. **Read [`playout-prior-art.md`](playout-prior-art.md) first** — Tunarr (the system we're replacing, so its wire contract is the one Emby already accepts), ErsatzTV (an independent solution to the same problem), and viewra. **Tunarr and ErsatzTV disagree on the central mechanism**; the doc states the trade-off and recommends Tunarr's HTTP ffconcat loop for the first frame | V3, V4, V5 | A native channel in the media-server guide **playing a test card**; both transports; `StaleLoomarrListings` still cleans up after retargeting (**T2**); segment requests reject a wrong/absent `playout_token`. **Plus, from the prior art:** viewers are **reference-counted** (a second viewer must not evict the first); **client disconnect** is detected via `Request.Context().Done()`, not an idle sweep (a live encoder never exits — a leak burns a core forever); the **tuner endpoint is continuous MPEG-TS** with no `Content-Length`, no ranges, periodic `Flush()`; ffmpeg is killed by **process group**; hardware failures classify on **exit code, not substrings**; segment URIs **carry the token** (relative URIs in an ffmpeg playlist do not inherit it) |
+| **V6b** | **XMLTV listings** — `GET /playout/guide.xml`, the second half of §9.1's "what internal playout serves". V6 shipped the M3U tuner and the streams; the guide was promised by the design doc and never scheduled, so a channel appears in the media server and plays with an **empty EPG**. Same wall-clock source as playout itself (`AiringAt` over `CyclePreview`), so what the guide advertises is what actually plays | V6 | A channel added to Emby's Live TV shows **real programme titles and times** in the guide, not "no information"; `channel@id` matches the M3U's `tvg-id` exactly (a mismatch is silent — the channel plays with no listings); `programme` entries span a configurable window and are XMLTV-DTD-valid; **breaks are NOT advertised** (§10: a break rendering as its own EPG entry is confusing, and empty breaks already caused exactly that); requests without a valid `playout_token` 404 like every other playout route |
 
 ### Settings & system
 
@@ -183,7 +184,7 @@ API-only*. Decide, don't defer indefinitely.
 
 ---
 
-## 4a. ⚠ `design.md` currently LEADS the code (opened by V2b, closed by V6)
+## 4a. ⚠ `design.md` LEADS the code (opened by V2b, mostly closed by V6, fully by V6b)
 
 **V2b merged design amendments describing a system that does not exist yet.** §9.1 says
 Loomarr serves HLS + MPEG-TS segments, publishes `/playout/tuner.m3u` and
@@ -196,16 +197,25 @@ opens a window where the doc is **intent, not description**. Recorded because th
 exactly how `design.md`'s §20 accumulated dead bullets: a claim nobody tracked until it read
 as history.
 
-**Closing it is V6's job**, and the gate already covers it (a channel playing a test card
-means the routes, the token and the encoder all exist). Until V6 lands:
+**✅ MOSTLY CLOSED by V6 (merged 2026-07-25).** Loomarr serves its own channels: a real Emby
+tuner pulls `/playout/tuner.m3u`, real library films play, breaks cut to real commercials, and
+the whole transcode runs on the GPU. The routes, the token, the encoder and the registry keys
+all have live consumers now.
 
-- Read §9.1 and §1's playout goal as **planned**, not shipped.
-- A reader checking whether Loomarr streams should check for `/playout/` routes in
-  `internal/api`, not the doc.
-- `internal/playout` exists as a **library with no call sites** on its own branch
-  (`feat/v6-playout-library`): encoder detection across nine families, quality ladders, and
-  process supervision, all live-verified against real ffmpeg. It is deliberately NOT merged,
-  because unwired code on main is the defect class V1/V17a/V23/V24 each closed.
+**⚠ ONE CLAIM STILL LEADS THE CODE: `/playout/guide.xml`.** §9.1 lists an XMLTV guide among
+what internal playout serves, and it does not exist — a channel appears in the media server and
+plays with an **empty EPG**. This is precisely the failure mode this section warned about: a
+doc claim nobody tracked. It went unnoticed through V6 because the phase gate said "playing a
+test card", which the M3U tuner alone satisfies.
+
+**Closing it is V6b**, added to the phase table for that reason rather than left as a §20-style
+dead bullet. Until V6b lands, read §9.1's XMLTV bullet as **planned, not shipped**.
+
+*Also worth separating, because the word "guide" means two different things here:* V13b's
+`GET /v1/guide` is JSON for **Loomarr's own** time-grid UI (V14). It does **not** put listings
+in a media server's EPG — that is V6b's XMLTV file, a different format for a different
+consumer. They will likely share a data source (both need "what airs when, per channel, over a
+window"), so V6b before V13b is the cheaper order, but neither substitutes for the other.
 
 ## 5. V2b in detail — the highest-leverage phase
 
