@@ -54,25 +54,21 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 // PodMax clips and the flex gap. Deterministic under rng. Returns the MatchLevel
 // reached and the ordered clips.
 //
-// TODO(learning): implement the fill loop. You have `pools` (tightest first),
-// the window `w` (GapMs, PodMax), `policy`, `used` (no-repeat-in-window set), and
-// `rng` (seeded — use rng.Shuffle / rng.Intn, never Math.random-style, so pods
-// are reproducible §19). Requirements:
-//   - Pick the tightest pool with any un-used clips; that pool's level is the
-//     MatchLevel to return.
-//   - Fill up to w.PodMax clips whose total duration fits w.GapMs (leave a little
-//     headroom for the bumpers the caller adds — subtract a bumper budget or just
-//     stop when adding the next clip would exceed GapMs).
-//   - CATEGORY VARIETY: never place two clips of the same Category consecutively
-//     (§10 — "so it doesn't play three car ads back to back"). If the only
-//     remaining candidate repeats the last category, prefer a different one; only
-//     repeat if there's no alternative.
-//   - NO-REPEAT: skip any clip already in `used` (the caller threads `used` across
-//     a window). Don't add to `used` here — Assemble does that as it appends.
-//   - Deterministic: seed all randomness from rng. Sort candidates by
-//     TunarrProgramID before any random pick so the input order can't leak in.
-//   - Return ("", nil) if no pool has eligible clips (Assemble then uses the
-//     bumper card).
+// The invariants it holds, each with a test — change one and the pod stops being
+// reproducible or starts playing three car ads in a row:
+//   - Takes the TIGHTEST pool with any un-used clips; that pool's level is the
+//     MatchLevel returned (the ladder's whole point — never widen further than needed).
+//   - Fills up to w.PodMax clips within w.GapMs, reserving `bumperBudgetMs` for the
+//     intro/return bumpers the caller appends.
+//   - CATEGORY VARIETY: never two clips of the same Category consecutively (§10 —
+//     "so it doesn't play three car ads back to back"). Implemented as the two-pass
+//     place(false)/place(true): the second pass tops the pod up and accepts a repeat
+//     rather than returning a short pod.
+//   - NO-REPEAT: skips anything already in `used`, which the caller threads across the
+//     whole window. Nothing is added to `used` here — Assemble does that as it appends.
+//   - Deterministic: all randomness comes from the seeded rng, and candidates are sorted
+//     by TunarrProgramID before any pick so catalog input order can't leak into output.
+//   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
 func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
 	// Reserve a little of the gap for the intro+return bumpers the caller adds.
 	const bumperBudgetMs = 12000 // ~two 6s bumpers
