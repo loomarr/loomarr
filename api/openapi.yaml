@@ -1321,6 +1321,8 @@ components:
           type: boolean
         id:
           type: string
+        local:
+          type: boolean
         name:
           type: string
         quota:
@@ -1338,6 +1340,7 @@ components:
         - disabled
         - quota
         - autoApprove
+        - local
       type: object
     NowNextEntry:
       additionalProperties: false

@@ -49,6 +49,13 @@ type meBody struct {
 	Disabled    bool   `json:"disabled"`
 	Quota       int    `json:"quota"`
 	AutoApprove bool   `json:"autoApprove"`
+	// Local reports the caller's OWN credential path (§11), the same field `userBody`
+	// exposes for other people. Without it the app could label everyone else's
+	// account as local-or-media-server but not yours — exactly backwards for the
+	// Account screen, where the only account that matters is your own. It decides
+	// whether to offer a change-password form or explain that the media server owns
+	// that credential. The hash itself is never exposed, only whether one exists.
+	Local bool `json:"local"`
 }
 type meOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
@@ -75,7 +82,7 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 	metrics.LoginResult(true)
 	out := &meOutput{
 		SetCookie: s.sessionCookie(r, token, expires),
-		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove},
+		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != ""},
 	}
 	return out, nil
 }
@@ -104,6 +111,7 @@ func (s *Server) handleMe(ctx context.Context, _ *struct{}) (*meOnlyOutput, erro
 	}
 	return &meOnlyOutput{Body: meBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove,
+		Local: u.PasswordHash != "",
 	}}, nil
 }
 
