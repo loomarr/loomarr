@@ -141,3 +141,149 @@ func TestAiring_PlayableRejectsUnstreamableSlots(t *testing.T) {
 		t.Error("a program with an item id must be playable")
 	}
 }
+
+// --- BroadcastsBetween: the guide's view of the same timeline ---
+
+// THE PROPERTY THE WHOLE DESIGN RESTS ON: the guide and the encoder must agree. If they used
+// separate arithmetic they would eventually diverge, and the symptom — "the guide says Heat but
+// Predator is playing" — is the kind of bug nobody can reproduce on demand.
+func TestBroadcastsBetween_AgreesWithAiringAt(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+
+	// Sample the window at many instants; whatever AiringAt says is on must be the programme
+	// the guide shows covering that moment.
+	for m := 0; m < 200; m++ {
+		at := epoch.Add(time.Duration(m) * time.Minute)
+		want := AiringAt(slots, epoch, at)
+
+		got := BroadcastsBetween(slots, epoch, at, at.Add(time.Minute))
+		if len(got) == 0 {
+			t.Fatalf("+%dm: guide is empty while AiringAt says %q", m, want.Title)
+		}
+		// The first entry is the one covering `at`.
+		if got[0].Title != want.Title || got[0].Kind != want.Kind {
+			t.Errorf("+%dm: guide says %q (%s), encoder plays %q (%s)",
+				m, got[0].Title, got[0].Kind, want.Title, want.Kind)
+		}
+	}
+}
+
+// A programme already in progress must report its REAL start, not the window's start. A media
+// server draws the current programme from its actual beginning; a clipped start renders as a
+// show that appears to begin the moment you opened the guide.
+func TestBroadcastsBetween_InProgressProgrammeKeepsItsRealStart(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+
+	// Ask from 40 minutes in — Heat started at the epoch and runs to +60m.
+	got := BroadcastsBetween(slots, epoch, epoch.Add(40*time.Minute), epoch.Add(90*time.Minute))
+	if len(got) == 0 {
+		t.Fatal("no programmes")
+	}
+	if got[0].Title != "Heat" {
+		t.Fatalf("first programme = %q, want the one in progress", got[0].Title)
+	}
+	if !got[0].Start.Equal(epoch) {
+		t.Errorf("start = %v, want the real start (%v) — a clipped start makes the show look "+
+			"like it began when the guide was opened", got[0].Start, epoch)
+	}
+	if got[0].Duration() != 60*time.Minute {
+		t.Errorf("duration = %v, want the programme's real 60m", got[0].Duration())
+	}
+}
+
+// The window is covered CONTIGUOUSLY — no gaps between programmes, or the guide shows holes the
+// channel does not actually have.
+func TestBroadcastsBetween_CoversTheWindowWithoutGaps(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(6*time.Hour))
+
+	if len(got) < 2 {
+		t.Fatalf("only %d programmes over 6 hours", len(got))
+	}
+	for i := 1; i < len(got); i++ {
+		if !got[i].Start.Equal(got[i-1].Stop) {
+			t.Errorf("gap between %q (ends %v) and %q (starts %v)",
+				got[i-1].Title, got[i-1].Stop, got[i].Title, got[i].Start)
+		}
+	}
+	// And it must reach the end of the window.
+	if last := got[len(got)-1]; last.Stop.Before(epoch.Add(6 * time.Hour)) {
+		t.Errorf("coverage stops at %v, short of the 6h window", last.Stop)
+	}
+}
+
+// The cycle repeats, so a long window replays the lineup rather than running out.
+func TestBroadcastsBetween_RepeatsTheCycle(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(5*time.Hour))
+
+	// 90m cycle over 5h ⇒ at least 6 programmes.
+	if len(got) < 6 {
+		t.Errorf("%d programmes over 5h of a 90m cycle — the cycle is not repeating", len(got))
+	}
+	titles := map[string]int{}
+	for _, b := range got {
+		titles[b.Title]++
+	}
+	if titles["Heat"] < 3 || titles["Predator"] < 3 {
+		t.Errorf("cycle did not repeat evenly: %v", titles)
+	}
+}
+
+// Filler is RETURNED, not filtered. The XMLTV guide must not advertise breaks (#12), but
+// Loomarr's own time-grid shows them — filtering here would make this useless to one caller.
+// The decision belongs to the renderer.
+func TestBroadcastsBetween_IncludesFillerForTheCallerToDecide(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(2*time.Hour))
+
+	var sawFiller bool
+	for _, b := range got {
+		if b.Kind == schedule.SlotFiller {
+			sawFiller = true
+		}
+	}
+	if !sawFiller {
+		t.Error("filler was filtered out here; that choice belongs to the renderer (#12)")
+	}
+}
+
+// An empty or unairable lineup yields no guide, rather than a panic or a fabricated programme.
+func TestBroadcastsBetween_NothingAirableIsEmpty(t *testing.T) {
+	for name, slots := range map[string][]schedule.Slot{
+		"empty":       {},
+		"all pending": {{Kind: schedule.SlotPending}, {Kind: schedule.SlotPending}},
+	} {
+		if got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(4*time.Hour)); len(got) != 0 {
+			t.Errorf("%s: got %d programmes, want none", name, len(got))
+		}
+	}
+}
+
+// A backwards or zero window is not an error, just empty — a media server may ask for anything.
+func TestBroadcastsBetween_InvalidWindowIsEmpty(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60)}
+	if got := BroadcastsBetween(slots, epoch, epoch.Add(time.Hour), epoch); len(got) != 0 {
+		t.Errorf("backwards window returned %d programmes", len(got))
+	}
+	if got := BroadcastsBetween(slots, epoch, epoch, epoch); len(got) != 0 {
+		t.Errorf("zero window returned %d programmes", len(got))
+	}
+}
+
+// A lineup of very short items over a long window must terminate rather than hang the request.
+func TestBroadcastsBetween_IsBounded(t *testing.T) {
+	slots := []schedule.Slot{{Kind: schedule.SlotFiller}} // 30s fallback each
+	done := make(chan int, 1)
+	go func() {
+		done <- len(BroadcastsBetween(slots, epoch, epoch, epoch.Add(365*24*time.Hour)))
+	}()
+	select {
+	case n := <-done:
+		if n == 0 {
+			t.Error("no programmes at all")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("BroadcastsBetween did not terminate on a year-long window of 30s items")
+	}
+}

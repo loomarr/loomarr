@@ -91,6 +91,9 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
+	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
+	// nil ⇒ the route 501s.
+	playoutGuide PlayoutGuide
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -453,6 +456,8 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
+	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
+	PlayoutGuide PlayoutGuide
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
