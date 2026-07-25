@@ -26,6 +26,16 @@ const eraLabel = (era?: { from?: number; to?: number }): string =>
 const seasonalLabel = (m?: string): string =>
   ({ "": "Auto", auto: "Auto", off: "Off", exclusive: "Exclusive" })[m ?? ""] ?? m ?? "Auto";
 
+// A no-repeat window is a Go-duration STRING on the wire, and the backend's Duration.String()
+// pads zero units ("168h" vs "30h0m0s"). Trim them before comparing, or an unchanged window
+// reads as a diff. Absent/"0s" means no restriction — say so rather than showing an empty cell.
+const noRepeatLabel = (v?: string): string => {
+  if (!v || v === "0s") return "No restriction";
+  const m = v.match(/^(\d+h)?(\d+m)?(\d+s)?$/);
+  if (!m || (!m[1] && !m[2] && !m[3])) return v; // not a duration — show it as-is, don't hide it
+  return [m[1], m[2], m[3]].filter((p) => p && !/^0[hms]$/.test(p)).join("") || "No restriction";
+};
+
 const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): PolicyDelta[] => {
   if (!current || !proposed) return [];
   const pinned = new Set(current.operatorSet ?? []);
@@ -42,6 +52,22 @@ const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): Policy
   );
   add("Ordering", "ordering", orderingLabel(current.ordering), orderingLabel(proposed.ordering));
   add("Seasonal", "seasonal", seasonalLabel(current.seasonal?.mode), seasonalLabel(proposed.seasonal?.mode));
+  // Separation is refreshed by MergeFromProposal exactly like the four above, so leaving it
+  // out meant a refine could silently widen or drop a no-repeat window with nothing shown
+  // before Approve. Two rows, not one: the pinned check is per-path, and "which window
+  // changed" is the useful part.
+  add(
+    "No-repeat · movies",
+    "separation",
+    noRepeatLabel(current.separation?.movieNoRepeat),
+    noRepeatLabel(proposed.separation?.movieNoRepeat),
+  );
+  add(
+    "No-repeat · episodes",
+    "separation",
+    noRepeatLabel(current.separation?.episodeNoRepeat),
+    noRepeatLabel(proposed.separation?.episodeNoRepeat),
+  );
   return out;
 };
 
