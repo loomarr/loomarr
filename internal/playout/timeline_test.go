@@ -287,3 +287,135 @@ func TestBroadcastsBetween_IsBounded(t *testing.T) {
 		t.Fatal("BroadcastsBetween did not terminate on a year-long window of 30s items")
 	}
 }
+
+// --- BroadcastsWithPending: the time-grid's view, which shows what the encoder skips ---
+
+func pendingSlot(title string) schedule.Slot {
+	return schedule.Slot{Kind: schedule.SlotPending, Title: title}
+}
+
+// THE INVARIANT THE WHOLE PROJECTION RESTS ON: showing pending slots must not move anything that
+// actually airs. If a nominal width ever reached the cycle arithmetic, every programme after it
+// would shift and the ENCODER would be the one that is wrong — the guide would look right while
+// playout aired silence for a made-up length.
+func TestBroadcastsWithPending_DoesNotMoveAirableProgrammes(t *testing.T) {
+	without := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	with := []schedule.Slot{prog("Heat", "a", 60), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+
+	base := BroadcastsBetween(without, epoch, epoch, epoch.Add(6*time.Hour))
+	got := BroadcastsWithPending(with, epoch, epoch, epoch.Add(6*time.Hour))
+
+	var airable []Broadcast
+	for _, b := range got {
+		if !b.Nominal {
+			airable = append(airable, b)
+		}
+	}
+	if len(airable) != len(base) {
+		t.Fatalf("%d airable programmes with a pending slot, %d without", len(airable), len(base))
+	}
+	for i := range base {
+		if !airable[i].Start.Equal(base[i].Start) || airable[i].Title != base[i].Title {
+			t.Errorf("programme %d moved: %q@%v, want %q@%v — a pending slot changed real airtime",
+				i, airable[i].Title, airable[i].Start, base[i].Title, base[i].Start)
+		}
+	}
+}
+
+// THE GATE'S REQUIREMENT: a pending slot and a filler pod must be DISTINGUISHABLE. The old
+// `gap bool` collapsed both to one value, so a UI could not draw them differently.
+func TestBroadcastsWithPending_PendingAndFillerAreDistinguishable(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(2*time.Hour))
+
+	var sawFiller, sawPending bool
+	for _, b := range got {
+		switch b.Kind {
+		case schedule.SlotFiller:
+			sawFiller = true
+		case schedule.SlotPending:
+			sawPending = true
+			if !b.Nominal {
+				t.Error("a pending block must be marked Nominal — its times are invented")
+			}
+			if b.Title != "Dune 2" {
+				t.Errorf("pending title = %q, want the awaited title", b.Title)
+			}
+		}
+	}
+	if !sawFiller || !sawPending {
+		t.Errorf("filler=%v pending=%v — the grid cannot draw what it cannot tell apart",
+			sawFiller, sawPending)
+	}
+}
+
+// The pending marker sits where the content WILL land (§9 backfills in place), so it must be
+// anchored to the programme it precedes rather than floating anywhere in the window.
+func TestBroadcastsWithPending_AnchoredToTheFollowingProgramme(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(90*time.Minute))
+
+	var pend, next Broadcast
+	for i, b := range got {
+		if b.Kind == schedule.SlotPending {
+			pend = b
+			if i+1 < len(got) {
+				next = got[i+1]
+			}
+			break
+		}
+	}
+	if pend.Title == "" {
+		t.Fatal("no pending block emitted")
+	}
+	if next.Title != "Predator" {
+		t.Fatalf("pending precedes %q, want the programme it backfills before", next.Title)
+	}
+	if !pend.Stop.Equal(next.Start) {
+		t.Errorf("pending stops at %v but the next programme starts at %v — the marker must "+
+			"abut what follows it", pend.Stop, next.Start)
+	}
+	if pend.Duration() != NominalPendingDuration {
+		t.Errorf("pending width = %v, want the nominal %v", pend.Duration(), NominalPendingDuration)
+	}
+}
+
+// A lineup with NOTHING airable has no timeline to anchor to, so there is nowhere to place a
+// pending marker. Empty is the honest answer, not a floating block at an invented time.
+func TestBroadcastsWithPending_NothingAirableIsEmpty(t *testing.T) {
+	slots := []schedule.Slot{pendingSlot("Dune 2"), pendingSlot("Tron 3")}
+	if got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(6*time.Hour)); len(got) != 0 {
+		t.Errorf("got %d blocks from a lineup where nothing airs", len(got))
+	}
+}
+
+// A pending slot at the END of the lineup precedes the FIRST programme of the next cycle pass —
+// the cycle repeats, so "the slot after the last one" is slot zero, not nothing.
+func TestBroadcastsWithPending_TrailingPendingWrapsToTheNextPass(t *testing.T) {
+	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30), pendingSlot("Dune 2")}
+	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(4*time.Hour))
+
+	for i, b := range got {
+		if b.Kind != schedule.SlotPending {
+			continue
+		}
+		if i+1 >= len(got) {
+			t.Fatal("pending block emitted with nothing following it")
+		}
+		if got[i+1].Title != "Heat" {
+			t.Errorf("trailing pending precedes %q, want Heat (the next pass's first programme)",
+				got[i+1].Title)
+		}
+		return
+	}
+	t.Error("no pending block emitted for a lineup ending in a pending slot")
+}
+
+// Nominal blocks must never reach a media server's EPG: their times are invented, so a listing
+// would promise a programme at a moment it will never air.
+func TestAdvertisable_RejectsNominalBlocks(t *testing.T) {
+	b := Broadcast{Kind: schedule.SlotProgram, Title: "Dune 2", Nominal: true}
+	if advertisable(b) {
+		t.Error("a nominal block was advertisable — XMLTV would promise an airing that never happens")
+	}
+}

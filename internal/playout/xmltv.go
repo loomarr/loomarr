@@ -132,7 +132,13 @@ type xmlTVRating struct {
 //   - An untitled programme renders as a blank row, which is worse than the gap a media server
 //     fills with "no information".
 func advertisable(b Broadcast) bool {
-	return b.Kind == schedule.SlotProgram && b.Title != ""
+	// !Nominal is redundant with the Kind check today (only pending slots are nominal, and
+	// pending is not SlotProgram) and is stated anyway: it is the ACTUAL reason such a block
+	// must not be advertised. A nominal block's times are an invented display width, so
+	// publishing one tells a media server a programme starts at a time it never will. Anyone
+	// later widening the Kind test — to advertise breaks, say — would otherwise silently
+	// re-open that hole.
+	return b.Kind == schedule.SlotProgram && b.Title != "" && !b.Nominal
 }
 
 // RenderXMLTV produces the guide document.

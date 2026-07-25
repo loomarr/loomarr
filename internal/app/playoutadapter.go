@@ -144,6 +144,21 @@ func (r *playoutResolver) BroadcastsBetween(
 	return bs, nil
 }
 
+// BroadcastsWithPending is BroadcastsBetween plus pending acquisitions, for the time grid
+// (V13b). Same CyclePreview, same epoch, same arithmetic — only the projection differs, so the
+// grid cannot disagree with the encoder about what airs when.
+func (r *playoutResolver) BroadcastsWithPending(
+	ctx context.Context, channelID string, from, to time.Time,
+) ([]playout.Broadcast, error) {
+	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, from)
+	if err != nil {
+		return nil, err
+	}
+	bs := playout.BroadcastsWithPending(slots, playoutEpoch(channelID), from, to)
+	r.attachMetadata(ctx, bs)
+	return bs, nil
+}
+
 // attachMetadata fills in descriptions, genres, years and ratings from the media server.
 //
 // ONE BULK CALL for the whole channel, which is the only reason this is affordable on a request
