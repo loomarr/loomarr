@@ -1,0 +1,157 @@
+package app
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/schedule"
+)
+
+// stubCycle returns a fixed lineup: one program then a break gap.
+type stubCycle struct{ slots []schedule.Slot }
+
+func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
+	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
+) {
+	return time.Time{}, s.slots, schedule.ActiveRuleAttribution{}, 0, nil
+}
+
+type stubPods struct {
+	pod filler.Pod
+	err error
+}
+
+func (s stubPods) Preview(context.Context, string) (filler.Pod, error) { return s.pod, s.err }
+func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (filler.Pod, error) {
+	return s.pod, s.err
+}
+
+func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
+	t.Helper()
+	return &playoutResolver{
+		// A break gap FIRST, so a clock at the epoch lands inside it.
+		engine: stubCycle{slots: []schedule.Slot{
+			{Kind: schedule.SlotFiller},
+			{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+		}},
+		now:            func() time.Time { return playoutEpoch("ch1") },
+		tier:           func() string { return "balanced" },
+		encoder:        func() string { return "" },
+		capacity:       func() int { return 4 },
+		activeChannels: func() int { return 0 },
+		pods:           stubPods{pod: pod},
+		fillerDir:      func() string { return dir },
+	}
+}
+
+// THE GAP THIS CLOSES: a break must resolve to a real commercial FILE. Tunarr used to do this
+// via filler-lists; internal playout has no such negotiator, so without this every break was
+// dead air (the offline card).
+func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "bumper.mp4", Name: "bumper", DurationMs: 4000},
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+
+	airing, src, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !airing.Playable() {
+		t.Fatalf("a break with a full pod was not playable: %+v", airing)
+	}
+	if src == "" {
+		t.Fatal("no ffmpeg input for the commercial")
+	}
+	// The FIRST pod entry, since the clock is at the start of the break.
+	if airing.Title != "bumper" {
+		t.Errorf("title = %q, want the first pod entry", airing.Title)
+	}
+	if airing.Remaining != 4000*time.Millisecond {
+		t.Errorf("remaining = %v, want the clip's own duration", airing.Remaining)
+	}
+	// Source is what makes it playable — a clip has no LibraryItemID.
+	if airing.Source == "" {
+		t.Error("Source is empty, so Playable() would be false for every commercial")
+	}
+	if airing.LibraryItemID != "" {
+		t.Errorf("a local clip must not carry a library id: %q", airing.LibraryItemID)
+	}
+}
+
+// The pod is a SEQUENCE, so the resolver must pick whichever clip covers this instant —
+// otherwise every viewer sees the bumper on loop and the ads never play.
+func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "bumper.mp4", Name: "bumper", DurationMs: 4000},
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: "1994/cereal.mp4", Name: "cereal", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+
+	// 6s into the break: past the 4s bumper, 2s into the first ad.
+	base := playoutEpoch("ch1")
+	r.now = func() time.Time { return base.Add(6 * time.Second) }
+
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Title != "toys" {
+		t.Errorf("title = %q, want the ad the clock is inside of", airing.Title)
+	}
+	if airing.Offset != 2*time.Second {
+		t.Errorf("offset = %v, want 2s INTO the ad — a mid-break joiner must not restart it",
+			airing.Offset)
+	}
+}
+
+// No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
+func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	airing, src, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("an empty pod was an error: %v", err)
+	}
+	if airing.Playable() || src != "" {
+		t.Errorf("want the offline card, got %+v / %q", airing, src)
+	}
+}
+
+// ⚠ A crafted clip id must NOT stream a file from outside FILLER_DIR. The id reaches here from
+// the database, so containment is enforced at resolution, not assumed at write time.
+func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "../../../../etc/passwd", Name: "evil", DurationMs: 4000},
+	}}
+	r := fillerResolver(t, t.TempDir(), pod)
+
+	airing, src, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if airing.Playable() || src != "" {
+		t.Errorf("a traversal id resolved to %q — playout would stream it", src)
+	}
+}
+
+// The embedded fallback bumper card is generated, not a file: it has no path to play.
+func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "", Name: "fallback card", DurationMs: 5000, IsFallbackCard: true},
+	}}
+	r := fillerResolver(t, t.TempDir(), pod)
+
+	_, src, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src != "" {
+		t.Errorf("the fallback card resolved to a file: %q", src)
+	}
+}

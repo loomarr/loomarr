@@ -42,6 +42,10 @@ func TestPreviewMatchesWhatReconcileAttaches(t *testing.T) {
 
 	// The preview carries the embedded fallback card (which has no Tunarr id and is
 	// therefore never attached), so compare on the real program ids only.
+	// TunarrProgramID on BOTH sides, deliberately: this test is about the TUNARR filler-list,
+	// so the comparison must be in Tunarr's namespace. Since §9.1 a clip has two ids — Path
+	// (identity, what internal playout hands ffmpeg) and TunarrProgramID (what a filler-list
+	// references) — and comparing one against the other would fail on correct code.
 	var previewed []string
 	for _, e := range pod.Entries {
 		if e.TunarrProgramID != "" {
@@ -78,6 +82,7 @@ func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 		t.Fatal("no filler list built from a catalog full of era-matching commercials")
 	}
 
+	// Keyed by TUNARR id: `ids` comes from BuildFillerList, which speaks Tunarr's namespace.
 	byID := map[string]filler.Clip{}
 	for _, c := range sampleCatalog() {
 		byID[c.TunarrProgramID] = c
@@ -112,9 +117,9 @@ func TestPreviewIsSeedDeterministic(t *testing.T) {
 		t.Fatalf("same seed produced %d then %d entries", len(first.Entries), len(second.Entries))
 	}
 	for i := range first.Entries {
-		if first.Entries[i].TunarrProgramID != second.Entries[i].TunarrProgramID {
+		if first.Entries[i].Path != second.Entries[i].Path {
 			t.Errorf("entry %d differs across identical previews: %q vs %q",
-				i, first.Entries[i].TunarrProgramID, second.Entries[i].TunarrProgramID)
+				i, first.Entries[i].Path, second.Entries[i].Path)
 		}
 	}
 }

@@ -33,6 +33,13 @@ type fakePods struct {
 	ids   []string           // the pool to return; nil → ok=false (no filler)
 }
 
+// HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
+// keys on the same `ids` so a test that seeds clips gets breaks, and one that seeds none does
+// not — the behaviour the gate actually depends on.
+func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ filler.Selection) bool {
+	return len(f.ids) > 0
+}
+
 func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int64, sel filler.Selection) ([]string, bool) {
 	f.calls++
 	f.seeds = append(f.seeds, seed)

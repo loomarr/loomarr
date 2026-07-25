@@ -201,6 +201,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutSessions api.PlayoutSessions
 	var playoutResolverSvc api.PlayoutResolver
+	// Declared out here so the pod assembler can be attached further down: the resolver is
+	// built alongside the channel engine, while the pod adapter needs the filler catalog that
+	// is wired later. Both halves are required before a break can play a real commercial.
+	var playoutRes *playoutResolver
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
@@ -268,11 +272,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// ask the resolver for a profile, and the profile depends on how many channels the
 		// manager is running (the load-aware ladder). The cycle is broken with a func — the
 		// resolver holds `activeChannels`, assigned after the manager exists.
-		playoutRes := &playoutResolver{
+		playoutRes = &playoutResolver{
 			engine: engine, lib: lib, now: time.Now,
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
 			capacity: func() int { return set.intv("playout.max_channels") },
+			// fillerDir is read live like every other setting; `pods` is assigned after the
+			// pod adapter is built further down (it needs the filler catalog, which is wired
+			// later) — see "playoutRes.pods" below.
+			fillerDir: func() string { return set.str("filler.dir") },
 		}
 		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
 		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
@@ -450,7 +458,21 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var podPreview api.PodPreviewer
 	if st != nil {
 		fillerProg := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
-		syncer := filler.NewSyncer(fillerSourceAdapter{fillerProg}, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log)
+		// The catalog comes from OUR OWN scan of FILLER_DIR (§9.1), with Tunarr consulted only
+		// to annotate each clip with its program uuid for Tunarr-backed filler-lists. That
+		// ordering is the fix: previously Tunarr's scan DEFINED the catalog, so an install
+		// running internal playout with no Tunarr had no commercials at all.
+		//
+		// Tunarr is attached only when configured — with no tunarr.url there is nothing to
+		// annotate with, and the scan alone is a complete catalog.
+		fillerSource := filler.DirSource{
+			Dir:   func() string { return set.str("filler.dir") },
+			Probe: filler.FFprobeDurationNextTo(set.str("playout.ffmpeg_path")),
+		}
+		if set.str("tunarr.url") != "" {
+			fillerSource.Tunarr = fillerSourceAdapter{fillerProg}
+		}
+		syncer := filler.NewSyncer(fillerSource, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log)
 
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
@@ -487,6 +509,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// reconcile share one assembler and one policy — they cannot drift.
 		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{PodMax: set.intv("filler.pod_max")}, log)
 		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
+		// Commercial breaks for internal playout (§10): the SAME pod assembler the API preview
+		// and the reconciler use, so the ad that plays is the one the channel page promised.
+		// Assigned here rather than at construction because the resolver is built with the
+		// channel engine (above) while the pod adapter needs the filler catalog (here).
+		if playoutRes != nil {
+			playoutRes.pods = podPreview
+		}
 		if engine, ok := channelSvc.(*channels.Engine); ok {
 			engine.WithPods(podAdapter)
 			log.Info("filler pod assembler wired into the scheduler")

@@ -40,21 +40,46 @@ const (
 	LateNight Audience = "late_night"
 )
 
-// Clip is one filler item synced from Tunarr's `local` filler source (§10).
-// Identity is TunarrProgramID (the Tunarr program uuid Tunarr assigns when it
-// scans the clip). Duration comes from Tunarr's scan; the core never probes it.
+// Clip is one filler item in the catalog (§10), scanned from FILLER_DIR.
+//
+// IDENTITY IS `Path` — the clip's location relative to FILLER_DIR. It was previously the
+// Tunarr program uuid, and §9.1 forced the change for two reasons:
+//
+//  1. Internal playout needs a playable INPUT, and a Tunarr uuid is not one. Loomarr's own
+//     encoder takes a path; under the old identity a channel could assemble a pod and then
+//     have nothing to hand ffmpeg.
+//  2. The dependency ran the wrong way. Clips were DISCOVERED by asking Tunarr to scan
+//     FILLER_DIR, so an install running internal playout with no Tunarr had an empty catalog
+//     and no commercials — a hard requirement on a service §9.1 makes optional. The files
+//     were on Loomarr's own disk the whole time.
 type Clip struct {
-	TunarrProgramID string   // Tunarr `local`-source program uuid — the identity
-	Name            string   // display name (from Tunarr's scan / filename)
+	// Path is the clip's location RELATIVE to FILLER_DIR ("1994/toys-transformers.mp4") and
+	// is the identity.
+	//
+	// Relative, not absolute, deliberately: FILLER_DIR differs between a host and a container
+	// (~/clips vs /data/filler), and absolute paths would invalidate every row the first time
+	// someone moves the mount. Relative also keeps pod assembly deterministic across
+	// environments, since the pod seed hashes clip ids.
+	Path string
+	// TunarrProgramID is the Tunarr program uuid, when Tunarr knows this clip. NO LONGER the
+	// identity and legitimately empty: Tunarr-backed channels need it to build filler-lists,
+	// while an install with no Tunarr simply has none. One catalog serves both backends —
+	// internal playout reads Path, Tunarr reads this.
+	TunarrProgramID string
+	Name            string   // display name (from the filename)
 	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
 	Era             int      // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience // kids | family | general | late_night; "" = untagged
 	Category        string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
-	DurationMs      int64    // from Tunarr's scan (Tunarr probes media, not the core)
+	DurationMs      int64    // from ffprobe (the core probes now — §14 bundles it for playout)
 	Rating          string   // optional content rating
-	Source          string   // provenance: tunarr-local | manual | …
+	Source          string   // provenance: filler-dir | tunarr-local | manual | …
 	AITagged        bool     // whether the era/audience/category came from AI classification
 }
+
+// ID returns the clip's identity. A method rather than direct field access at call sites so
+// the identity change above stayed a one-line edit in the places that only need "the id".
+func (c Clip) ID() string { return c.Path }
 
 // Tagged reports whether a clip has the metadata pod matching needs (§10). An
 // untagged clip can't be era/audience-matched, so it's only usable as a generic

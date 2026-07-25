@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -53,6 +55,14 @@ type playoutResolver struct {
 	// spawns encodes that ask the resolver for a profile, and the profile depends on how many
 	// the manager is running. A func breaks the cycle that a struct field could not.
 	activeChannels func() int
+
+	// pods assembles the channel's commercial break (§10). The SAME PodPreviewer the API and
+	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
+	// one-assembler rule. Nil ⇒ breaks fall back to the offline card.
+	pods api.PodPreviewer
+	// fillerDir resolves a clip's relative id to a file on disk. A func so a settings change
+	// applies without a restart, like the other live reads above.
+	fillerDir func() string
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -73,6 +83,14 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 	}
 
 	airing := playout.AiringAt(slots, playoutEpoch(channelID), now)
+
+	// A BREAK GAP resolves to a real commercial (§10). Tunarr used to do this: the scheduler
+	// leaves flex, and Tunarr played clips from a filler-list into it. Internal playout has no
+	// such negotiator, so it must pick the clip itself — otherwise every break is dead air.
+	if airing.Kind == schedule.SlotFiller {
+		return r.airingFiller(ctx, channelID, airing, now)
+	}
+
 	if !airing.Playable() {
 		// Not an error: an empty lineup, or one where nothing has landed yet, is a real state.
 		// The handler renders it as the offline card.
@@ -88,6 +106,71 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, url, nil
+}
+
+// airingFiller resolves a break gap to ONE specific commercial file.
+//
+// The gap is a single slot on the timeline, but a pod is a SEQUENCE (bumper → ads → bumper),
+// so this walks the pod by the offset already computed into the break and returns whichever
+// clip covers that instant. Same shape as AiringAt one level down — and it must be, for the
+// same reason: two viewers asking mid-break have to get the same clip at the same position.
+//
+// The pod comes from PodPreviewer, which is the SAME assembler and the SAME seed the reconciler
+// and the UI preview use (§10's one-assembler rule). So the commercial that plays is the one the
+// channel page promised, not a second opinion.
+func (r *playoutResolver) airingFiller(
+	ctx context.Context, channelID string, gap playout.Airing, _ time.Time,
+) (playout.Airing, string, error) {
+	if r.pods == nil || r.fillerDir == nil {
+		// Filler unconfigured: the break becomes the offline card rather than an error. A
+		// channel with no commercials should still play.
+		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+	}
+
+	pod, err := r.pods.Preview(ctx, channelID)
+	if err != nil || len(pod.Entries) == 0 {
+		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
+		// bottoms out at "nothing matched", and a channel must not fail to tune because it has
+		// no ads.
+		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+	}
+
+	// Walk the pod to the instant we are at INSIDE the break. gap.Offset is how far into the
+	// break the wall clock has reached, which AiringAt already computed.
+	into := gap.Offset
+	for _, e := range pod.Entries {
+		d := time.Duration(e.DurationMs) * time.Millisecond
+		if d <= 0 {
+			continue // a clip with no duration cannot occupy time; skip rather than divide by it
+		}
+		if into < d {
+			// The embedded fallback bumper card has no file — it is generated, not played.
+			if e.Path == "" {
+				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+			}
+			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
+			// and a crafted `../` would otherwise stream an arbitrary file off the host.
+			full, perr := filler.ClipPath(r.fillerDir(), e.Path)
+			if perr != nil {
+				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+			}
+			return playout.Airing{
+				Kind: schedule.SlotProgram, // playable: the handler encodes it like any program
+				// Source, not LibraryItemID: this is a local file, not a media-server item.
+				// Playable() checks Source for exactly this case.
+				Source:    full,
+				Title:     e.Name,
+				Offset:    into,
+				Remaining: d - into,
+			}, full, nil
+		}
+		into -= d
+	}
+
+	// The pod is shorter than the break gap. Real: a 30s break with 20s of clips. The remainder
+	// is the offline card rather than a repeat, because repeating would mean the same ad twice
+	// in one break — worse than a moment of card.
+	return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 }
 
 // Profile is the encode profile for the next program, resolved against live load.

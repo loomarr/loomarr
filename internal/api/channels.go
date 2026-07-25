@@ -833,7 +833,8 @@ func (s *Server) deleteChannel(ctx context.Context, in *deleteChannelInput) (*de
 
 // PodEntryDTO is one clip placed in the previewed pool, in play order.
 type PodEntryDTO struct {
-	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Empty for the embedded fallback bumper card, which is not a Tunarr program"`
+	Path            string `json:"path,omitempty" doc:"The clip's identity, relative to FILLER_DIR. Empty for the embedded fallback bumper card, which is not a file."`
+	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this."`
 	Name            string `json:"name"`
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	DurationMs      int64  `json:"durationMs"`
@@ -1004,6 +1005,7 @@ func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 	entries := make([]PodEntryDTO, 0, len(pod.Entries))
 	for _, e := range pod.Entries {
 		entries = append(entries, PodEntryDTO{
+			Path:            e.Path,
 			TunarrProgramID: e.TunarrProgramID,
 			Name:            e.Name,
 			Kind:            string(e.Kind),

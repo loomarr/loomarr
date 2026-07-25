@@ -11,16 +11,16 @@ import (
 // era/audience/category cycle, plus two bumpers.
 func sampleCatalog() []filler.Clip {
 	c := []filler.Clip{
-		{TunarrProgramID: "b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
-		{TunarrProgramID: "b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Path: "b1.mp4", TunarrProgramID: "tun-b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Path: "b2.mp4", TunarrProgramID: "tun-b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
 		// 1992 kids commercials across categories.
-		{TunarrProgramID: "c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
-		{TunarrProgramID: "c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{TunarrProgramID: "c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
-		{TunarrProgramID: "c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
+		{Path: "c1.mp4", TunarrProgramID: "tun-c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
+		{Path: "c2.mp4", TunarrProgramID: "tun-c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Path: "c3.mp4", TunarrProgramID: "tun-c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
+		{Path: "c4.mp4", TunarrProgramID: "tun-c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
 		// A 1985 (different decade) kids ad + a late-night ad (wrong audience).
-		{TunarrProgramID: "c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{TunarrProgramID: "c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{Path: "c5.mp4", TunarrProgramID: "tun-c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Path: "c6.mp4", TunarrProgramID: "tun-c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 	return c
 }
@@ -38,8 +38,8 @@ func TestAssemble_Deterministic(t *testing.T) {
 		t.Fatalf("non-deterministic length: %d vs %d", len(p1.Entries), len(p2.Entries))
 	}
 	for i := range p1.Entries {
-		if p1.Entries[i].TunarrProgramID != p2.Entries[i].TunarrProgramID {
-			t.Fatalf("non-deterministic at %d: %q vs %q", i, p1.Entries[i].TunarrProgramID, p2.Entries[i].TunarrProgramID)
+		if p1.Entries[i].Path != p2.Entries[i].Path {
+			t.Fatalf("non-deterministic at %d: %q vs %q", i, p1.Entries[i].Path, p2.Entries[i].Path)
 		}
 	}
 	// A different seed should (very likely) reorder.
@@ -47,7 +47,7 @@ func TestAssemble_Deterministic(t *testing.T) {
 	same := len(p3.Entries) == len(p1.Entries)
 	if same {
 		for i := range p1.Entries {
-			if p1.Entries[i].TunarrProgramID != p3.Entries[i].TunarrProgramID {
+			if p1.Entries[i].Path != p3.Entries[i].Path {
 				same = false
 				break
 			}
@@ -66,10 +66,10 @@ func TestAssemble_EraAudienceMatch(t *testing.T) {
 		t.Fatalf("expected exact match, got %s", p.MatchLevel)
 	}
 	for _, e := range p.Entries {
-		if e.TunarrProgramID == "c5" {
+		if e.Path == "c5.mp4" {
 			t.Error("1985 clip placed in a strict 1992 pod (wrong era)")
 		}
-		if e.TunarrProgramID == "c6" {
+		if e.Path == "c6.mp4" {
 			t.Error("late-night clip placed in a kids pod (wrong audience)")
 		}
 	}
@@ -83,14 +83,14 @@ func TestAssemble_CategoryVariety(t *testing.T) {
 	p := filler.Assemble(cat, kidsWindow(7), filler.Policy{}, nil)
 	catByID := map[string]string{}
 	for _, c := range cat {
-		catByID[c.TunarrProgramID] = c.Category
+		catByID[c.Path] = c.Category
 	}
 	lastCat := ""
 	for _, e := range p.Entries {
 		if e.Kind != filler.Commercial {
 			continue
 		}
-		c := catByID[e.TunarrProgramID]
+		c := catByID[e.Path]
 		if c != "" && c == lastCat {
 			t.Errorf("category %q played back-to-back (variety violated): pod %+v", c, ids(p))
 		}
@@ -108,8 +108,8 @@ func TestAssemble_NoRepeatInWindow(t *testing.T) {
 		w := kidsWindow(int64(100 + i))
 		p := filler.Assemble(cat, w, filler.Policy{}, used)
 		for _, e := range p.Entries {
-			if e.TunarrProgramID != "" {
-				seen[e.TunarrProgramID]++
+			if e.Path != "" {
+				seen[e.Path]++
 			}
 		}
 	}
@@ -154,10 +154,10 @@ func TestAssemble_FallbackLadder(t *testing.T) {
 func TestAssemble_RespectsPodMax(t *testing.T) {
 	// Many eligible clips, PodMax=2 → at most 2 commercials.
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{TunarrProgramID: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 10; i++ {
 		cat = append(cat, filler.Clip{
-			TunarrProgramID: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
+			Path: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
@@ -179,7 +179,7 @@ func TestAssemble_RespectsPodMax(t *testing.T) {
 // containsID reports whether the pod includes a clip id (any kind).
 func containsID(p filler.Pod, id string) bool {
 	for _, e := range p.Entries {
-		if e.TunarrProgramID == id {
+		if e.Path == id {
 			return true
 		}
 	}
@@ -197,12 +197,12 @@ func TestAssemble_CategorySelectionNarrowsPool(t *testing.T) {
 		if e.Kind != filler.Commercial {
 			continue
 		}
-		if e.TunarrProgramID != "c1" && e.TunarrProgramID != "c2" { // cereal, toys
-			t.Errorf("category selection admitted %q (not toys/cereal)", e.TunarrProgramID)
+		if e.Path != "c1.mp4" && e.Path != "c2.mp4" { // cereal, toys
+			t.Errorf("category selection admitted %q (not toys/cereal)", e.Path)
 		}
 	}
 	// The narrowing is real: the tech ad (c3) is excluded.
-	if containsID(p, "c3") {
+	if containsID(p, "c3.mp4") {
 		t.Error("tech ad c3 played despite a toys+cereal category selection")
 	}
 }
@@ -215,7 +215,7 @@ func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
 	for _, e := range p.Entries {
 		if e.Kind == filler.Commercial {
-			t.Errorf("a bumpers-only selection still placed a commercial: %q", e.TunarrProgramID)
+			t.Errorf("a bumpers-only selection still placed a commercial: %q", e.Path)
 		}
 	}
 }
@@ -225,13 +225,13 @@ func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 func TestAssemble_ExcludeRemovesClip(t *testing.T) {
 	w := kidsWindow(7)
 	w.PodMax = 8
-	w.Excluded = []string{"c2"} // exclude the TMNT toys ad
+	w.Excluded = []string{"c2.mp4"} // exclude the TMNT toys ad
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
-	if containsID(p, "c2") {
+	if containsID(p, "c2.mp4") {
 		t.Error("an excluded clip (c2) still played")
 	}
 	// Other kids ads still play — exclude is surgical, not a blanket empty.
-	if !containsID(p, "c1") && !containsID(p, "c3") {
+	if !containsID(p, "c1.mp4") && !containsID(p, "c3.mp4") {
 		t.Error("exclude removed more than the one excluded clip")
 	}
 }
@@ -240,9 +240,9 @@ func TestAssemble_ExcludeRemovesClip(t *testing.T) {
 // (1985) clip that the exact-1992 ladder would never pick.
 func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
 	w := kidsWindow(7)
-	w.Pinned = []string{"c5"} // the 1985 toy ad — wrong decade for a 1992 exact match
+	w.Pinned = []string{"c5.mp4"} // the 1985 toy ad — wrong decade for a 1992 exact match
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{EraStrict: true}, nil)
-	if !containsID(p, "c5") {
+	if !containsID(p, "c5.mp4") {
 		t.Error("a pinned off-ladder clip (c5, 1985) was not forced into the 1992 pod")
 	}
 }
@@ -251,10 +251,10 @@ func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
 // default — exclude is the stronger, "never play this" intent).
 func TestAssemble_ExcludeBeatsPin(t *testing.T) {
 	w := kidsWindow(7)
-	w.Pinned = []string{"c1"}
-	w.Excluded = []string{"c1"}
+	w.Pinned = []string{"c1.mp4"}
+	w.Excluded = []string{"c1.mp4"}
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
-	if containsID(p, "c1") {
+	if containsID(p, "c1.mp4") {
 		t.Error("a clip both pinned and excluded played — exclude must win")
 	}
 }
@@ -305,7 +305,7 @@ func TestAssemble_EmptySelectionUnchanged(t *testing.T) {
 func ids(p filler.Pod) []string {
 	out := make([]string, len(p.Entries))
 	for i, e := range p.Entries {
-		out[i] = e.TunarrProgramID
+		out[i] = e.Path
 	}
 	return out
 }
@@ -314,7 +314,7 @@ func ids(p filler.Pod) []string {
 // late_night), so a Family window finds nothing and hits the bumper card.
 func catNoFamily() []filler.Clip {
 	return []filler.Clip{
-		{TunarrProgramID: "k1", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{TunarrProgramID: "l1", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{Path: "k1", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Path: "l1", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 }

@@ -16,8 +16,16 @@ type Pod struct {
 }
 
 // PodEntry is one clip placed in a pod, in play order.
+//
+// Carries BOTH identifiers because the two playout backends need different ones (§9.1):
+// internal playout hands `Path` to ffmpeg, Tunarr references `TunarrProgramID` in a
+// filler-list. One assembler, one seed, one pod — two ways to name the same clip.
 type PodEntry struct {
-	TunarrProgramID string // "" for the embedded bumper-card fallback
+	// Path is the clip's identity, relative to FILLER_DIR. "" for the embedded bumper card.
+	Path string
+	// TunarrProgramID is set only when Tunarr knows the clip; "" for the bumper card and on
+	// any install without Tunarr.
+	TunarrProgramID string
 	Name            string
 	Kind            Kind
 	DurationMs      int64
@@ -94,7 +102,7 @@ var FallbackCard = PodEntry{
 // out it descends the fallback ladder, ending at the embedded bumper card so a
 // pod is never empty ("never dead air", §10).
 //
-// `used` is the set of TunarrProgramIDs already played in the current window — the
+// `used` is the set of clip Paths (identity) already played in the current window — the
 // caller threads it across pods in a window for no-repeat-in-window (§10). Assemble
 // adds the clips it uses to `used`.
 func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod {
@@ -185,7 +193,7 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 	}
 	byID := make(map[string]Clip, len(catalog))
 	for _, c := range catalog {
-		byID[c.TunarrProgramID] = c
+		byID[c.Path] = c
 	}
 	budget := w.GapMs - 12000 // same bumper headroom as fillCommercials
 	if budget < 0 {
@@ -214,13 +222,16 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 func (p *Pod) append(e PodEntry, used map[string]bool) {
 	p.Entries = append(p.Entries, e)
 	p.TotalMs += e.DurationMs
-	if e.TunarrProgramID != "" {
-		used[e.TunarrProgramID] = true
+	if e.Path != "" {
+		used[e.Path] = true
 	}
 }
 
 func clipToEntry(c Clip) PodEntry {
-	return PodEntry{TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs}
+	return PodEntry{
+		Path: c.Path, TunarrProgramID: c.TunarrProgramID,
+		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
+	}
 }
 
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
@@ -228,7 +239,7 @@ func clipToEntry(c Clip) PodEntry {
 func pickBumper(catalog []Clip, w Window, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.TunarrProgramID] {
+		if c.IsBumper() && !used[c.Path] {
 			bumpers = append(bumpers, c)
 		}
 	}
@@ -240,6 +251,6 @@ func pickBumper(catalog []Clip, w Window, used map[string]bool, rng *rand.Rand) 
 	if len(era) > 0 {
 		bumpers = era
 	}
-	sort.Slice(bumpers, func(i, j int) bool { return bumpers[i].TunarrProgramID < bumpers[j].TunarrProgramID })
+	sort.Slice(bumpers, func(i, j int) bool { return bumpers[i].Path < bumpers[j].Path })
 	return clipToEntry(bumpers[rng.Intn(len(bumpers))]), true
 }

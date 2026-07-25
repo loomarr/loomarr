@@ -31,7 +31,7 @@ type memStore struct{ clips map[string]filler.StoreClip }
 func newMemStore() *memStore { return &memStore{clips: map[string]filler.StoreClip{}} }
 
 func (m *memStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
-	m.clips[c.TunarrProgramID] = c
+	m.clips[c.Path] = c
 	return nil
 }
 func (m *memStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
@@ -56,7 +56,7 @@ func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, erro
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func raw(id, name string, kind filler.Kind, dur int64, era int) filler.RawClip {
-	return filler.RawClip{TunarrProgramID: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
+	return filler.RawClip{Path: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
 }
 
 func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {

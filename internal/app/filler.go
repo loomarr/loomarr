@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -42,6 +44,28 @@ func (a fillerSourceAdapter) ListLocalClips(ctx context.Context) ([]filler.RawCl
 			TunarrProgramID: c.ProgramID, Name: c.Name, DurationMs: c.DurationMs,
 			Kind: filler.KindFromName(c.Name), Era: filler.EraFromName(c.Name),
 		}
+	}
+	return out, nil
+}
+
+// LocalClipIDsByName maps a clip's file name to the Tunarr program uuid Tunarr assigned it.
+//
+// Name is the only join key Tunarr's scan reports back, so it is what we have. Imperfect: two
+// clips sharing a basename in different subfolders collide and one may take the other's uuid.
+// That is tolerable ONLY because the uuid stopped being identity (§9.1) — a wrong uuid degrades
+// a Tunarr filler-list, it cannot corrupt the catalog or misdirect internal playout, both of
+// which key on the path.
+func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string]string, error) {
+	clips, err := a.prog.ListLocalFillerClipsAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(clips))
+	for _, c := range clips {
+		// Tunarr reports the display name; the scanner derives its Name the same way (base
+		// filename without extension), so strip an extension here if Tunarr kept one.
+		name := strings.TrimSuffix(c.Name, filepath.Ext(c.Name))
+		out[name] = c.ProgramID
 	}
 	return out, nil
 }
