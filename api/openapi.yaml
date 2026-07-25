@@ -327,6 +327,8 @@ components:
           type: string
         name:
           type: string
+        path:
+          type: string
         source:
           type: string
         tagged:
@@ -335,7 +337,7 @@ components:
         tunarrProgramId:
           type: string
       required:
-        - tunarrProgramId
+        - path
         - name
         - kind
         - durationMs
@@ -1470,8 +1472,11 @@ components:
           type: string
         name:
           type: string
+        path:
+          description: The clip's identity, relative to FILLER_DIR. Empty for the embedded fallback bumper card, which is not a file.
+          type: string
         tunarrProgramId:
-          description: Empty for the embedded fallback bumper card, which is not a Tunarr program
+          description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this.
           type: string
       required:
         - name
