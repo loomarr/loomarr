@@ -77,6 +77,14 @@ type Server struct {
 	liveConfigInt func(key string) int
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
+	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
+	// "not running" rather than 404, so a half-configured install gets an explanation.
+	playoutSessions PlayoutSessions
+	// playoutSecret reads the generated `playout_token` (§11 device auth). A func rather
+	// than the value so a REGENERATED token takes effect without a restart — rotation is
+	// an operator action the UI offers, and a cached value would keep authorizing the old
+	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
+	playoutSecret func() string
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -429,6 +437,12 @@ type Options struct {
 	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
 	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
 	Binder        ChannelBinder    // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
+	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
+	// playout.Manager. Nil ⇒ the routes mount but report "not running".
+	PlayoutSessions PlayoutSessions
+	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
+	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
+	PlayoutSecret func() string
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

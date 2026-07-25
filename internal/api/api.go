@@ -61,7 +61,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
-		binder: opts.Binder,
+		binder:          opts.Binder,
+		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
@@ -94,6 +95,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
 	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
 
+	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
+	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
+	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a
+	// cookie (§11).
+	srv.registerPlayout(mux)
+
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)
 
@@ -102,7 +109,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// silently serving index.html. Exact ops routes (/healthz, /docs, …) already
 	// win by ServeMux specificity and never reach here.
 	spa := web.Handler()
-	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics"}
+	// /playout/ is in this list for a real reason, not tidiness: without it an unmatched
+	// playout path (a typo'd channel id, a route we have not built yet) falls through to the
+	// SPA and returns index.html with a 200. ffmpeg would then read HTML as a transport
+	// stream, and the failure surfaces as a corrupt-stream error naming neither the URL nor
+	// the typo.
+	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/playout/"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {
