@@ -264,6 +264,59 @@ Applied conditionally on `protocol === 'http'` and continuity `infinite` vs `dis
 two tiers must not get each other's flags. Giving the parent `reconnect_streamed` or the
 child `reconnect_at_eof` would both be wrong in ways that look like intermittent stalls.
 
+## 5b. T1 RESOLVED — how playout gets a playable input (verified against live Emby)
+
+Fact **T1** in the original program plan: *"Loomarr does not know where media lives —
+`LibraryItem` is `{ID, OfficialRating, Genres}`."* For Tunarr that never mattered, because
+Tunarr resolved paths itself. Internal playout needs an actual ffmpeg input, so T1 stops
+being trivia and becomes the blocker.
+
+**Two candidate answers, tested against the dev Emby (`100.75.125.45:8096`) 2026-07-25:**
+
+**(a) The filesystem path.** Emby returns it with `Fields=Path`:
+
+```
+/data/movies/Falling Down (1993)/… [Remux-2160p][DV HDR10][DTS-HD MA 4.0][HEVC]….mkv
+```
+
+⚠ **Rejected.** That is *Emby's* filesystem view. Loomarr in Docker has no such path, and on
+this dev setup Emby is on a different host entirely. Using it would require the operator to
+mount media identically in both containers — the fragile coupling Tunarr deliberately avoids.
+
+**(b) Emby's own HTTP stream endpoint.** ✅ **This is the answer.**
+
+```
+GET {LIBRARY_URL}/Videos/{itemId}/stream?static=true&api_key={token}
+```
+
+ffmpeg reads it directly. No shared mounts, works across hosts, and it reuses the
+`library.token` playout already has. Verified end to end:
+
+```
+source:  hevc video + THREE audio tracks (dts, flac, ac3) + subrip subs, 4K DV/HDR10 remux
+output:  mpegts, h264 1280x720, aac stereo 48k, 4.03s, 819KB
+```
+
+**What the real-content test taught that the synthetic card could not:**
+
+- ⚠ **A real filter-graph failure, exactly the class ErsatzTV warns about.** `-vf scale=1280:720`
+  straight into `h264_vulkan` fails with *"Impossible to convert between the formats supported
+  by the filter 'Parsed_scale_0' and the filter 'auto_scale_0'"* plus a 40-line pixel-format
+  dump. Cause: `scale` emits CPU frames, the hardware encoder needs GPU frames, and nothing
+  uploads between them. Fix: `scale=W:H,format=nv12,hwupload` — scale on the CPU, convert,
+  THEN upload. The synthetic card never hit this because it had no scale step.
+- **`-map 0:v:0 -map 0:a:0` is mandatory.** Real library items carry multiple audio tracks
+  (three here) and subtitles. Without explicit maps ffmpeg's default selection is not what a
+  normalized profile wants, and a varying track count across programs breaks `-c copy` on the
+  concat parent exactly like a varying resolution does.
+- Everything a real remux throws at the encoder — HEVC, 10-bit, DV/HDR10, DTS — is handled by
+  normalizing to 720p H.264 + AAC stereo. ErsatzTV forces *software* for HDR on most accels
+  (prior-art §5); Vulkan handled it here, but that is one sample, not a guarantee.
+
+**Consequence:** playout needs a `StreamURL(itemID)` on the library client — one line of URL
+construction, no new API surface — and the `Slot.LibraryItemID` the scheduler already carries
+is enough to resolve it. No schema change, no path configuration, no shared mounts.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
