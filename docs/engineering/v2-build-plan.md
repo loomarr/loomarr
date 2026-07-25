@@ -105,7 +105,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | **V7b** | **Account screen** — change password, session list, revoke, sign out everywhere. **Closes S2 for real.** | A user changes their password by clicking; a reachability assertion proves the screen mounts; the copy says **all** sessions end, not "this one kept" (the code revokes every session — see `password.go`) |
 | **V7c** | **People: create local account + reset password** — the admin half of V7's surface | An admin mints a local account and resets a forgotten password from the UI; a member sees neither affordance |
 | **V17a** | `F1` — read the sidecars; stop passing the provenance enum as the LLM's source description | A tagging test asserts the prompt carries real metadata, **not** the literal `"tunarr-local"` |
-| **V19** | Per-title refine rationale (`why`) | The suggester emits per-title rationale; the diff renders it |
+| **V19** | Per-title refine rationale (`why`) | **No backend work needed** — `ProposalItem.Rationale` already exists and the LLM already populates it; `diffLineup` dropped it building `DiffRow`. The diff renders it on ADDED rows only |
 | **V23** | `A1` — deny-reason UI (API field exists, unused) | Denying offers a reason; it reaches `Proposal.DenyReason`; no call site sends `data: {}` |
 | **V24** | `A3` — surface existing-but-hidden proposal data | `channelName`, `eraBalance`, `overall` render; `mustInclude`/`mustExclude` get inputs |
 

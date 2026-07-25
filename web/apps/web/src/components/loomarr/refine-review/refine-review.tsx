@@ -124,6 +124,12 @@ interface DiffRow {
   key: string;
   name: string;
   year?: number;
+  // The LLM's why-it-fits for this title. Carried through the diff because it was
+  // already in the payload and thrown away one function before render — the refine
+  // was asking an operator to accept picks it had explanations for but didn't show.
+  // Only meaningful on ADDED rows: a removal needs no justification from the model,
+  // and a kept title was already the operator's choice.
+  rationale?: string;
 }
 
 interface Diff {
@@ -139,7 +145,7 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
   const kept: DiffRow[] = [];
   const added: DiffRow[] = [];
   for (const [key, item] of proposedByKey) {
-    const row = { key, name: item.name, year: item.year };
+    const row = { key, name: item.name, year: item.year, rationale: item.rationale };
     if (currentByKey.has(key)) kept.push(row);
     else added.push(row);
   }
@@ -153,23 +159,31 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 };
 
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
-  <li className="flex items-baseline gap-2 text-sm">
-    <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-      {tone === "kept" && <Check className="size-3.5 text-static-400" />}
-      {tone === "added" && <Check className="size-3.5 text-lock" />}
-      {tone === "removed" && <Minus className="size-3.5 text-onair-300" />}
-    </span>
-    <span
-      className={cn(
-        tone === "kept" && "text-static-400",
-        tone === "added" && "text-foreground",
-        tone === "removed" && "text-onair-300 line-through",
-      )}
-    >
-      {row.name}
-    </span>
-    {row.year ? <span className="font-mono text-static-400 text-xs">{row.year}</span> : null}
-    {note && <span className="text-static-400 text-xs">{note}</span>}
+  <li className="flex flex-col gap-0.5 text-sm">
+    <div className="flex items-baseline gap-2">
+      <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+        {tone === "kept" && <Check className="size-3.5 text-static-400" />}
+        {tone === "added" && <Check className="size-3.5 text-lock" />}
+        {tone === "removed" && <Minus className="size-3.5 text-onair-300" />}
+      </span>
+      <span
+        className={cn(
+          tone === "kept" && "text-static-400",
+          tone === "added" && "text-foreground",
+          tone === "removed" && "text-onair-300 line-through",
+        )}
+      >
+        {row.name}
+      </span>
+      {row.year ? <span className="font-mono text-static-400 text-xs">{row.year}</span> : null}
+      {note && <span className="text-static-400 text-xs">{note}</span>}
+    </div>
+    {/* Only on additions. A removal doesn't need the model's justification, and a kept
+        title was the operator's pick in the first place — but "Adding: Predator" with no
+        reason is the refine asking for trust it hasn't earned. */}
+    {tone === "added" && row.rationale && (
+      <p className="pl-6 text-muted-foreground text-xs">{row.rationale}</p>
+    )}
   </li>
 );
 
@@ -220,6 +234,7 @@ const RefineReview = ({
     key: keyOf(item),
     name: item.name,
     year: item.year,
+    rationale: item.rationale,
   }));
 
   const noChanges =
