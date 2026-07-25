@@ -840,7 +840,13 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 
 **Full subsystem design — registry schema, resolution semantics, secrets lifecycle, Settings IA, wizard integration — lives in `config-design.md`.** Every setting resolves **`env > database > default`**, per key, through one **typed settings registry** (backed by the §5 settings store; all subsystems read via the settings service, never `os.Getenv` directly). An env var that is set wins and **locks its UI field** ("set via environment"); unset, the setting is managed in the app (§13). Connection settings **hot-apply** on save (adapters read through the service; intervals re-read per tick; the LLM provider hot-swaps per §8.1) — the rare restart-required keys are exactly the bootstrap set below.
 
-### Bootstrap (env-only — needed before/independent of the DB)
+### Bootstrap (needed before/independent of the DB) — `env > file > default`
+
+*Revised by V5: these were env-**only**. The wizard's Database step must persist which
+database to use and cannot write into the database it is choosing, so a narrow file tier
+sits beneath env — `bootstrap.json` in the data directory, bootstrap keys only, env still
+wins. See `config-design.md` §1. Every app-managed setting is unchanged at
+`env > database > default`.*
 
 | Env var | Required | Example / default |
 | --- | --- | --- |
