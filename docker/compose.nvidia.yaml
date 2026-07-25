@@ -1,0 +1,33 @@
+# NVIDIA hardware encoding for internal playout (§9.1) — Linux + nvidia-container-toolkit ONLY.
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.nvidia.yaml --profile sqlite up -d
+#
+# WHY THIS IS A SEPARATE OVERLAY rather than part of compose.yaml: requesting an `nvidia`
+# device driver on a host without the toolkit makes `docker compose up` fail outright
+# ("could not select device driver"). The base compose must start everywhere — on a Mac, on
+# a NAS, on a box with an AMD card — so anything NVIDIA-specific lives here.
+#
+# Non-NVIDIA GPUs need NOTHING from this file. VAAPI (Intel + AMD), QSV and Vulkan all reach
+# the GPU through /dev/dri, which the base compose exposes via PLAYOUT_RENDER_DEVICE:
+#
+#   PLAYOUT_RENDER_DEVICE=/dev/dri docker compose -f docker/compose.yaml --profile sqlite up -d
+#
+# ⚠ DISTINCT FROM compose.gpu.yaml, which gives OLLAMA a GPU for LLM inference. That one asks
+# for `compute,utility` because inference is CUDA. Encoding needs `video` — the NVENC engine
+# is a separate capability, and omitting it is why a GPU can be visible to the container and
+# still fail every h264_nvenc probe.
+services:
+  loomarr:
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      # compute → CUDA (ffmpeg's nvenc still initialises a CUDA context)
+      # video   → the NVENC/NVDEC engines themselves
+      # utility → nvidia-smi, for diagnosing "is the GPU even visible"
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]

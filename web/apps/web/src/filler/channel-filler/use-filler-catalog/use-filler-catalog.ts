@@ -17,7 +17,7 @@ const useFillerCatalog = (): { resolve: (id: string) => ClipDTO | undefined; isL
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the fetched data
   const byId = useMemo(() => {
     const m = new Map<string, ClipDTO>();
-    for (const c of clips) m.set(c.tunarrProgramId, c);
+    for (const c of clips) m.set(c.path, c);
     return m;
   }, [list.data]);
 

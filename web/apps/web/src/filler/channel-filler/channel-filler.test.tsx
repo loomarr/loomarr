@@ -33,8 +33,22 @@ const jsonResponse = (status: number, body: unknown) =>
 
 const previewBody = {
   entries: [
-    { tunarrProgramId: "b1", name: "Bumper", kind: "bumper", durationMs: 5000, isFallbackCard: false },
-    { tunarrProgramId: "a1", name: "Toy Ad", kind: "commercial", durationMs: 30000, isFallbackCard: false },
+    {
+      path: "b1.mp4",
+      tunarrProgramId: "b1",
+      name: "Bumper",
+      kind: "bumper",
+      durationMs: 5000,
+      isFallbackCard: false,
+    },
+    {
+      path: "a1.mp4",
+      tunarrProgramId: "a1",
+      name: "Toy Ad",
+      kind: "commercial",
+      durationMs: 30000,
+      isFallbackCard: false,
+    },
   ],
   totalMs: 35000,
   matchLevel: "exact",
@@ -134,6 +148,7 @@ describe("ChannelFiller", () => {
     stubFetch({
       clips: [
         {
+          path: "p9.mp4",
           tunarrProgramId: "p9",
           name: "Frosted Flakes",
           kind: "commercial",
@@ -143,7 +158,7 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9.mp4"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
   });

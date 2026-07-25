@@ -81,7 +81,7 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
             // segment. The list is replaced whole on every preview rather than mutated,
             // which is the reordering case the rule guards against.
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
-            key={`${entry.tunarrProgramId ?? "card"}-${i}`}
+            key={`${entry.path ?? "card"}-${i}`}
             title={`${entry.name} · ${formatClipDuration(entry.durationMs)}`}
             style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
             className={cn(

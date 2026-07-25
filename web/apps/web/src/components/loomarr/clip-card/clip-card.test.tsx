@@ -12,6 +12,7 @@ const base: ClipDTO = {
   category: "food",
   tagged: true,
   aiTagged: false,
+  path: "clip-test.mp4",
   tunarrProgramId: "clip-test",
 };
 

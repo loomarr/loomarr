@@ -113,9 +113,9 @@ const FillerClipList = ({
             // Only clips not already in THIS list and not in the counterpart list are
             // offered — the same filter-don't-disable choice the lineup editor makes.
             results={clips
-              .filter((c) => !chosen.has(c.tunarrProgramId) && !blocked.has(c.tunarrProgramId))
+              .filter((c) => !chosen.has(c.path) && !blocked.has(c.path))
               .map((c) => ({
-                id: c.tunarrProgramId,
+                id: c.path,
                 scope: "clips" as const,
                 name: c.name,
                 meta: formatClipDuration(c.durationMs),

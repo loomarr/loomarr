@@ -35,7 +35,7 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
 
   const save = () => {
     patch.mutate({
-      id: clip.tunarrProgramId,
+      id: clip.path,
       data: {
         kind: kind as ClipDTO["kind"],
         // An empty era means "unset", which the API takes as 0 — not "leave alone".

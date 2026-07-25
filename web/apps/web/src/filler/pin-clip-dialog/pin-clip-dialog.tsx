@@ -54,7 +54,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
     }
     const policy = res.data.policy ?? {};
     const pinned = policy.filler?.pinned ?? [];
-    if (pinned.includes(clip.tunarrProgramId)) {
+    if (pinned.includes(clip.path)) {
       toast.info(`Already pinned to ${res.data.name}`);
       setPinning(undefined);
       onClose();
@@ -63,7 +63,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
     update.mutate({
       id: channelId,
       data: {
-        policy: { ...policy, filler: { ...policy.filler, pinned: [...pinned, clip.tunarrProgramId] } },
+        policy: { ...policy, filler: { ...policy.filler, pinned: [...pinned, clip.path] } },
       },
     });
   };
@@ -91,7 +91,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
         ) : (
           <ul className="flex flex-col gap-2">
             {rows.map((ch) => {
-              const already = (ch.policy?.filler?.pinned ?? []).includes(clip.tunarrProgramId);
+              const already = (ch.policy?.filler?.pinned ?? []).includes(clip.path);
               return (
                 <li
                   key={ch.id}

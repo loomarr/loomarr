@@ -115,6 +115,32 @@ RUN set -eux; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_TAG}-${FFMPEG_ARCH}-gpl-7.1"; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
+    # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
+    # without them EVERY hardware family fails the capability probe on EVERY host —
+    # measured, not assumed: the probe reported "Unable to open the libvulkan library",
+    # "libva-drm.so.2 ... No such file", "libX11.so.6 ... No such file", "DLL
+    # libamfrt64.so.1 failed to open". The ffmpeg build supported all of them; the image
+    # simply could not load any.
+    #
+    # Deliberately VENDOR-NEUTRAL — one package set, every GPU:
+    #   libva2 / libva-drm2   VAAPI  → Intel AND AMD on Linux
+    #   mesa-va-drivers       the open VAAPI drivers (AMD radeonsi, Intel i965/iHD era)
+    #   intel-media-va-driver Intel iHD — QSV and modern Intel VAAPI
+    #   libvulkan1 + mesa-vulkan-drivers  Vulkan → cross-vendor
+    #   libx11-6 / libxext6   VAAPI's X11 display backend (h264_vaapi dlopens it even
+    #                         headless; its absence is what broke vaapi above)
+    #   libdrm2               the common KMS/DRM layer under all of them
+    #
+    # ⚠ NVENC needs NOTHING here: libcuda.so.1 is INJECTED by the nvidia-container-toolkit
+    # at run time (`--gpus all` / the `nvidia` runtime), never installed into the image.
+    # Baking a CUDA runtime in would bloat the image by ~1GB and still be wrong, because
+    # the injected driver must match the host kernel module.
+    #
+    # Cost is ~120MB. Accepted: §9.1 makes playout a core capability, and an image that
+    # can only ever encode in software is not a smaller Loomarr but a slower one.
+    apt-get install -y --no-install-recommends \
+      libva2 libva-drm2 libvulkan1 libdrm2 libx11-6 libxext6 \
+      mesa-va-drivers mesa-vulkan-drivers intel-media-va-driver; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
     curl -fsSL -o /usr/local/bin/yt-dlp \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
