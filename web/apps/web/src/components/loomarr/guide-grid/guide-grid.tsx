@@ -2,33 +2,45 @@ import type { GuideAiring, GuideAiringKind } from "@loomarr/api";
 import { cn } from "@/lib";
 import type { GuideGridProps } from "./guide-grid.type";
 
-// GuideGrid — the cross-channel schedule (§12): one row per channel, time as the shared
-// horizontal axis, every block's width IS its duration.
+// GuideGrid — the cross-channel schedule (§12, built to the v2 mock): a fixed channel rail,
+// then one flexed time area per row where every block's width IS its duration.
 //
-// The layout rule that makes it a grid rather than N independent strips: each block is
-// positioned ABSOLUTELY against one origin (`fromMs`) at one scale (`pxPerMinute`). Sizing
-// blocks as a percentage of their own row — the way PodTimeline does, correctly, for a
-// self-contained pod — would let two rows disagree about where 9pm is, and a guide whose
-// columns do not line up is not a guide.
+// THE LAYOUT RULE. The rail is a real flex column and the programme area is its sibling, so
+// ticks and blocks are percentages of the SAME flexed container. That makes ruler/block
+// misalignment structurally impossible — an earlier version positioned both in absolute pixels
+// with the rail width added at one call site and not the other, and the "9:00" label ended up
+// pointing at whatever was on at 8:12.
 //
-// KIND IS NOT DECORATION. A programme, a commercial break and a still-acquiring slot are
-// three different facts, and the API distinguishes them precisely so this surface can. The
-// styling below is the visual half of that: a break is quieter than a programme (it is not
-// what anyone tuned in for) but never invisible, because an unexplained gap in a schedule
-// reads as a bug rather than as advertising.
-const KIND_STYLE: Record<GuideAiringKind, string> = {
-  program: "bg-tune-tint-30 border-tune-tint-30 text-static-100",
-  filler: "bg-suggest-tint-30 border-suggest-tint-30 text-static-200",
-  // Hatched + dashed, never solid: a pending block's times are an ESTIMATE (the API marks
-  // it `nominal`), so it must not read as a scheduled programme. The stripes are the cue
-  // that this slot is held, not promised.
-  pending:
-    "border-dashed border-signal-tint-30 text-static-300 bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgb(255_255_255/0.06)_4px,rgb(255_255_255/0.06)_8px)]",
-  flex: "bg-static-700 border-static-700 text-static-400",
-};
+// KIND IS NOT DECORATION. A programme, a commercial break, a still-acquiring slot and dead-time
+// padding are four different facts, and the API distinguishes them precisely so this surface
+// can. A break is quieter than a programme but never invisible: an unexplained gap in a
+// schedule reads as a bug rather than as advertising.
 
-// What each kind is called when it has no title of its own. A block still needs a label:
-// an unlabelled rectangle is the "unexplained gap" problem in a different costume.
+const MS_PER_MINUTE = 60_000;
+// Tick spacing follows the window: half-hours read well across an evening, hourly across a day.
+const TICK_MINUTES_SHORT = 30;
+const TICK_MINUTES_LONG = 60;
+const LONG_WINDOW_MINUTES = 180;
+
+// Below this share of the row a block cannot show even a truncated word, so it renders as a
+// bare colour band. A FLOOR rather than a filter: dropping short blocks would leave holes that
+// every later block slides into, and the schedule would stop matching the clock.
+const MIN_BLOCK_PCT = 0.25;
+// Under these widths a label is unreadable noise rather than information.
+//
+// Both are shares OF THE WINDOW, so they scale with how much time is on screen: a 4-minute
+// break is legible across a 2-hour window and a smear across a day, and its label should
+// vanish in the second case rather than truncate.
+//
+// 6% was MEASURED, not guessed. At 2.2% a 4-minute break rendered "Commercials" clipped to the
+// single letter "C", which reads as a rendering glitch rather than as a name — worse than
+// showing nothing, because it invites the viewer to wonder what it means. A screenshot caught
+// it; no DOM assertion would have, since the text was genuinely present.
+const LABEL_MIN_PCT = 6;
+const CLIP_NAME_MIN_PCT = 6;
+// A block needs roughly this much width before its time range fits alongside the title.
+const META_MIN_MINUTES = 25;
+
 const KIND_FALLBACK_LABEL: Record<GuideAiringKind, string> = {
   program: "Programme",
   filler: "Commercials",
@@ -36,148 +48,212 @@ const KIND_FALLBACK_LABEL: Record<GuideAiringKind, string> = {
   flex: "Filler",
 };
 
-const MS_PER_MINUTE = 60_000;
-// The sticky channel-label gutter's width. Blocks are offset by it, so it must be ONE
-// number rather than a class and a matching magic constant — the two would drift and every
-// block would sit a few pixels off its true time, which is invisible until it is wrong.
-const LABEL_GUTTER_PX = 144;
-// Below this width a block cannot show even a truncated word, so it renders as a bare
-// colour band. Kept as a floor rather than hiding short blocks: dropping them would leave
-// holes and shift nothing else, but the schedule would stop matching the clock.
-const MIN_BLOCK_PX = 3;
-// The time ruler's tick spacing. 30 minutes is what a TV guide has always used, and it
-// divides the common programme lengths (22/30/45/60) legibly.
-const TICK_MINUTES = 30;
+// Per-clip colours inside a pod, so a break reads as a SEQUENCE rather than one flat block —
+// bumper, ad, ad, bumper is legible at a glance.
+const CLIP_FILL: Record<string, string> = {
+  commercial: "bg-signal-tint-40",
+  bumper: "bg-tune-tint-40",
+  station_id: "bg-suggest-tint-40",
+  psa: "bg-signal-tint-40",
+  trailer: "bg-signal-tint-30",
+  interstitial: "bg-static-700",
+};
 
-// The label a block shows. An episode carries BOTH its series and its own name — "The
-// Simpsons · Bart the Mother" — because either alone is a worse answer: the series name
-// repeated down a row says nothing about what is on, and the episode name alone hides which
-// show it belongs to.
 const blockLabel = (a: GuideAiring): string => {
   const title = a.title?.trim();
   if (!title) return KIND_FALLBACK_LABEL[a.kind];
   return a.series ? `${a.series} · ${title}` : title;
 };
 
-// The tooltip/aria text: the label plus its real clock times, and — for a nominal block —
-// the fact that those times are an estimate. That caveat belongs in the accessible text and
-// not only in the styling, or a screen-reader user is told a placeholder is a schedule.
-const blockDescription = (a: GuideAiring, fmt: Intl.DateTimeFormat): string => {
-  const when = `${fmt.format(new Date(a.startMs))}–${fmt.format(new Date(a.stopMs))}`;
-  const estimate = a.nominal ? " (estimated — still acquiring)" : "";
-  return `${blockLabel(a)} · ${when}${estimate}`;
-};
-
 const GuideGrid = ({
   channels,
   fromMs,
   toMs,
-  pxPerMinute = 4,
+  zoom = 1,
   nowMs,
-  onSelectAiring,
+  onInspect,
+  onSelectChannel,
   className,
 }: GuideGridProps) => {
-  const spanMinutes = Math.max(0, (toMs - fromMs) / MS_PER_MINUTE);
-  // The scrollable width is the gutter PLUS the time axis: the labels are a column of the
-  // grid, not an overlay, so omitting them here would cut the last minutes off the scroll.
-  const axisWidth = spanMinutes * pxPerMinute;
-  const axisEnd = LABEL_GUTTER_PX + axisWidth;
-  const totalWidth = axisEnd;
+  const spanMs = Math.max(1, toMs - fromMs);
+  const spanMinutes = spanMs / MS_PER_MINUTE;
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
-  // Ticks are aligned to real clock half-hours, not to `fromMs` — a ruler that starts at
-  // "13:07, 13:37, …" because that is when the request happened is unreadable. Round the
-  // window start UP to the next boundary and step from there.
-  const firstTick = Math.ceil(fromMs / (TICK_MINUTES * MS_PER_MINUTE)) * (TICK_MINUTES * MS_PER_MINUTE);
-  const ticks: number[] = [];
-  for (let t = firstTick; t < toMs; t += TICK_MINUTES * MS_PER_MINUTE) ticks.push(t);
+  const railW = Math.round(220 * zoom);
+  const rowH = Math.round(56 * zoom);
 
-  // ONE coordinate function for everything on the axis — ruler ticks, blocks, the now-line.
-  // The gutter offset lives HERE rather than at each call site: when it did not, the ticks
-  // (which omitted it) sat exactly one gutter-width left of the blocks (which added it), so
-  // the "9:00" label pointed at whatever was on at 8:12. Every consumer of the axis must
-  // share one origin or the grid quietly lies about time.
-  const xOf = (ms: number) => LABEL_GUTTER_PX + ((ms - fromMs) / MS_PER_MINUTE) * pxPerMinute;
-  const nowVisible = nowMs !== undefined && nowMs >= fromMs && nowMs <= toMs;
+  // Ticks land on real clock boundaries, not on `fromMs` — a ruler reading "13:07, 13:37, …"
+  // because that is when the request happened is unusable.
+  const tickMinutes = spanMinutes > LONG_WINDOW_MINUTES ? TICK_MINUTES_LONG : TICK_MINUTES_SHORT;
+  const tickMs = tickMinutes * MS_PER_MINUTE;
+  const ticks: number[] = [];
+  for (let t = Math.ceil(fromMs / tickMs) * tickMs; t < toMs; t += tickMs) ticks.push(t);
+
+  const pctOf = (ms: number) => ((ms - fromMs) / spanMs) * 100;
+  const nowPct = nowMs === undefined ? -1 : pctOf(nowMs);
+  const nowVisible = nowPct >= 0 && nowPct <= 100;
 
   return (
-    <div className={cn("flex flex-col overflow-x-auto", className)} data-testid="guide-grid">
-      <div style={{ width: totalWidth ? `${totalWidth}px` : undefined }} className="relative min-w-full">
-        {/* Time ruler */}
-        <div className="sticky top-0 z-20 h-6 border-border border-b bg-background">
-          {ticks.map((t) => (
-            <span
-              key={t}
-              className="absolute top-0 border-border/60 border-l pl-1 font-mono text-[10px] text-static-400"
-              style={{ left: `${xOf(t)}px` }}
-            >
-              {timeFmt.format(new Date(t))}
-            </span>
-          ))}
+    <div className={cn("relative flex-1 overflow-auto", className)} data-testid="guide-grid">
+      <div className="relative min-w-[880px]">
+        {/* Time ruler. Sticky so the axis stays readable while scrolling channels. */}
+        <div className="sticky top-0 z-30 flex border-border border-b bg-background">
+          <div style={{ width: railW }} className="shrink-0 border-border border-r" />
+          <div className="relative h-[30px] flex-1">
+            {ticks.map((t) => (
+              <div
+                key={t}
+                data-testid="guide-tick"
+                data-tick-pct={pctOf(t).toFixed(3)}
+                style={{ left: `${pctOf(t)}%` }}
+                className={cn(
+                  "absolute top-0 bottom-0 flex items-center border-l pl-[7px]",
+                  // Hour lines brighter than half-hours: the eye needs a coarse rhythm to
+                  // navigate by, and uniform lines give it none.
+                  new Date(t).getMinutes() === 0 ? "border-border" : "border-border/40",
+                )}
+              >
+                <span className="whitespace-nowrap font-mono text-[10.5px] text-static-400">
+                  {timeFmt.format(new Date(t))}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* The now-line spans every row, so it reads as one instant across all channels
-            rather than as a per-row marker. Drawn above the blocks but non-interactive, or
-            it would swallow clicks on whatever is airing right now. */}
+        {/* The now-line spans every row, so it reads as ONE instant across all channels.
+            Non-interactive, or it would swallow clicks on whatever is airing right now. */}
         {nowVisible && (
           <div
             aria-hidden="true"
             data-testid="guide-now-line"
-            className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-signal-500"
-            style={{ left: `${xOf(nowMs)}px` }}
+            className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-signal"
+            style={{ left: `calc(${railW}px + (100% - ${railW}px) * ${nowPct / 100})` }}
           />
         )}
 
-        <ul className="flex flex-col">
+        <ul>
           {channels.map((ch) => (
-            <li key={ch.channelId} className="relative h-14 border-border border-b last:border-b-0">
-              {/* The channel label rides along on horizontal scroll (sticky-left) so a row
-                  never becomes anonymous when scrolled into the future. */}
-              <div
-                style={{ width: `${LABEL_GUTTER_PX}px` }}
-                className="sticky left-0 z-10 flex h-full shrink-0 flex-col justify-center border-border border-r bg-background px-2"
+            <li key={ch.channelId} className="flex border-border/60 border-b last:border-b-0">
+              <button
+                type="button"
+                onClick={() => onSelectChannel?.(ch.channelId)}
+                style={{ width: railW, height: rowH }}
+                className="flex shrink-0 items-center gap-[9px] border-border border-r px-3 text-left hover:bg-static-800"
               >
-                <span className="truncate font-medium text-sm">{ch.name}</span>
-                <span className="font-mono text-static-400 text-xs">{ch.number}</span>
-              </div>
+                <span
+                  style={{ fontSize: 19 * zoom }}
+                  className="shrink-0 font-mono font-semibold text-signal tabular-nums leading-none"
+                >
+                  {ch.number}
+                </span>
+                <span style={{ fontSize: 13 * zoom }} className="min-w-0 flex-1 truncate font-medium">
+                  {ch.name}
+                </span>
+              </button>
 
-              {ch.airings?.map((a) => {
-                // Clip to the window: a programme already in progress reports its REAL
-                // start (which may precede `fromMs`), and drawing from that start would
-                // push the block off the left edge and misalign its right end.
-                // Clamp to the axis, which now BEGINS at the gutter — so a programme that
-                // started before the window sits flush against the labels rather than
-                // underneath them.
-                const left = Math.max(LABEL_GUTTER_PX, xOf(a.startMs));
-                const right = Math.min(axisEnd, xOf(a.stopMs));
-                const width = Math.max(MIN_BLOCK_PX, right - left);
-                if (right <= LABEL_GUTTER_PX || left >= axisEnd) return null;
-                const label = blockLabel(a);
-                return (
-                  <button
-                    type="button"
-                    // startMs is the identity: a channel airs at most one thing at an
-                    // instant, and the same title can legitimately repeat in a cycle, so
-                    // the title alone would not be unique.
-                    key={`${ch.channelId}-${a.startMs}`}
-                    onClick={() => onSelectAiring?.(ch.channelId, a.startMs)}
-                    title={blockDescription(a, timeFmt)}
-                    aria-label={blockDescription(a, timeFmt)}
-                    style={{ left: `${left}px`, width: `${width}px` }}
-                    className={cn(
-                      "absolute top-1 bottom-1 overflow-hidden rounded-sm border px-1.5 text-left",
-                      KIND_STYLE[a.kind],
-                    )}
-                  >
-                    <span className="block truncate text-xs leading-tight">{label}</span>
-                    {a.season && a.episode ? (
-                      <span className="block truncate font-mono text-[10px] opacity-70">
-                        {`S${String(a.season).padStart(2, "0")}E${String(a.episode).padStart(2, "0")}`}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+              <div style={{ height: rowH }} className="relative flex-1 overflow-hidden">
+                {ch.airings?.map((a) => {
+                  // Clip to the window: a programme already in progress reports its REAL
+                  // start, which may precede `fromMs`.
+                  const left = Math.max(0, pctOf(a.startMs));
+                  const right = Math.min(100, pctOf(a.stopMs));
+                  if (right <= 0 || left >= 100) return null;
+                  const width = Math.max(MIN_BLOCK_PCT, right - left);
+
+                  const airing = nowMs !== undefined && nowMs >= a.startMs && nowMs < a.stopMs;
+                  const minutes = (a.stopMs - a.startMs) / MS_PER_MINUTE;
+                  const clips = a.pod?.entries ?? [];
+                  const podTotal = clips.reduce((n, c) => n + (c.durationMs || 0), 0) || 1;
+                  const label = blockLabel(a);
+                  const when = `${timeFmt.format(new Date(a.startMs))}–${timeFmt.format(new Date(a.stopMs))}`;
+                  // The caveat rides in the accessible name, not only in the styling — a
+                  // screen-reader user must not be told a placeholder is a schedule.
+                  const described = `${label} · ${when}${a.nominal ? " (estimated — still acquiring)" : ""}`;
+
+                  return (
+                    <button
+                      type="button"
+                      // startMs is the identity: a channel airs one thing at an instant, and
+                      // the same title can legitimately repeat within a cycle.
+                      key={`${ch.channelId}-${a.startMs}`}
+                      data-kind={a.kind}
+                      data-airing={airing || undefined}
+                      onMouseEnter={() => onInspect?.(a, ch.channelId)}
+                      onMouseLeave={() => onInspect?.(null)}
+                      onFocus={() => onInspect?.(a, ch.channelId)}
+                      onBlur={() => onInspect?.(null)}
+                      title={described}
+                      aria-label={described}
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                      className={cn(
+                        "absolute top-1.5 bottom-1.5 flex flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
+                        clips.length > 0 ? "p-0.5" : "px-2",
+                        a.kind === "filler" && "border-signal-tint-40 border-l-transparent bg-signal-tint-15",
+                        // Dashed + hatched, never solid: a pending block's times are an
+                        // ESTIMATE, so it must not read as a scheduled programme.
+                        a.kind === "pending" &&
+                          "border-tune-tint-40 border-l-tune-tint-40 border-dashed bg-tune-tint-8 text-static-400",
+                        a.kind === "flex" &&
+                          "border-static-700 border-l-static-700 bg-static-800 text-static-400",
+                        a.kind === "program" &&
+                          (airing
+                            ? "border-signal-tint-40 border-l-signal bg-signal-tint-12"
+                            : "border-border border-l-border bg-static-800"),
+                      )}
+                    >
+                      {clips.length > 0 ? (
+                        // A pod renders its CLIPS, proportionally — a break is a sequence
+                        // (bumper → ads → bumper), and one flat rectangle hides that.
+                        <div className="flex h-full items-stretch gap-px">
+                          {clips.map((c, i) => {
+                            const share = ((c.durationMs || 0) / podTotal) * width;
+                            return (
+                              <div
+                                // Position is identity inside a pod: one clip may legitimately
+                                // appear twice, and the fallback card has no path at all.
+                                // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
+                                key={`${c.path ?? "card"}-${i}`}
+                                title={[c.name, c.era || null, c.quality || null].filter(Boolean).join(" · ")}
+                                style={{ flex: `${((c.durationMs || 0) / podTotal) * 100}` }}
+                                className={cn(
+                                  "flex min-w-0 flex-col justify-center overflow-hidden rounded-[2px] px-[3px]",
+                                  CLIP_FILL[c.kind] ?? "bg-static-700",
+                                )}
+                              >
+                                {share > CLIP_NAME_MIN_PCT && (
+                                  <span
+                                    style={{ fontSize: 10 * zoom }}
+                                    className="truncate text-static-0 leading-tight"
+                                  >
+                                    {c.name}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        width > LABEL_MIN_PCT && (
+                          <>
+                            <span style={{ fontSize: 12 * zoom }} className="truncate leading-snug">
+                              {label}
+                            </span>
+                            {minutes >= META_MIN_MINUTES && (
+                              <span
+                                style={{ fontSize: 10 * zoom }}
+                                className="truncate font-mono text-static-400"
+                              >
+                                {when}
+                              </span>
+                            )}
+                          </>
+                        )
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </li>
           ))}
         </ul>

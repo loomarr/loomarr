@@ -20,6 +20,7 @@ export * from "./empty-state";
 export * from "./error-state";
 export * from "./field-help";
 export * from "./generation-progress";
+export * from "./guide-detail-card";
 export * from "./guide-grid";
 export * from "./hosted-model-picker";
 export * from "./intent-input";
