@@ -37,7 +37,7 @@ test: ## unit tests only (never touch the network — §19)
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
-	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ -v
+	$(GO) test -tags ffmpeg -run 'TestLive' ./internal/playout/ ./internal/api/ -v
 
 .PHONY: eval
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)

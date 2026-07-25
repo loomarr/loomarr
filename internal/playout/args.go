@@ -3,6 +3,7 @@ package playout
 import (
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -184,6 +185,27 @@ func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
 	return append(args,
 		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
 	)
+}
+
+// OfflineCardArgs is TestCardArgs bounded to a fixed duration — the card a channel plays when
+// nothing is airing (§9.1).
+//
+// The bound is the whole difference, and it is required rather than cosmetic. TestCardArgs loops
+// FOREVER by design (`-stream_loop -1`, so a generated source never EOFs mid-channel), which is
+// right for a standing test pattern and wrong for a program slot: the concat parent advances on
+// its child's EOF, so a card that never ends means the channel can never pick up content that
+// later lands. Bounding it makes the demuxer come back and ask again.
+//
+// `-t` goes before the output target, where it applies to the OUTPUT. As an input option it
+// would instead limit how much of the looping source is READ, which for an infinite generated
+// source means something subtly different.
+func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration) []string {
+	args := TestCardArgs(p, fontFile, title, subtitle)
+	// Insert before the trailing output target rather than appending: ffmpeg applies an option
+	// to whatever comes after it, so `pipe:1 -t 30` would be a parse error.
+	out := args[len(args)-1]
+	args = append(args[:len(args)-1], "-t", seconds(d))
+	return append(args, out)
 }
 
 // drawTextFilter centres a title, with an optional subtitle beneath it. Returns "" when

@@ -337,4 +337,7 @@ func (s *Server) registerPlayout(mux *http.ServeMux) {
 	mux.HandleFunc("GET /playout/tuner.m3u", s.tunerHandler)
 	mux.HandleFunc("GET /playout/stream/{id}", s.streamHandler)
 	mux.HandleFunc("GET /playout/playlist/{id}", s.playlistHandler)
+	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per
+	// program, forever, and each response is one program's finite MPEG-TS.
+	mux.HandleFunc("GET /playout/program/{id}", s.programHandler)
 }

@@ -85,6 +85,12 @@ type Server struct {
 	// an operator action the UI offers, and a cached value would keep authorizing the old
 	// one. Nil ⇒ every playout route 404s (fail closed, never serve unauthenticated).
 	playoutSecret func() string
+	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
+	// sequencing layer the concat demuxer re-opens per program. nil ⇒ the route 501s.
+	playoutResolver PlayoutResolver
+	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
+	// testable without executing a binary; the composition root passes playout.Start.
+	playoutEncoder PlayoutEncoder
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -443,6 +449,10 @@ type Options struct {
 	// PlayoutSecret reads the generated `playout_token` (§11 device auth). A func so a
 	// REGENERATED token takes effect without a restart. Nil ⇒ playout routes fail closed.
 	PlayoutSecret func() string
+	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
+	PlayoutResolver PlayoutResolver
+	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
+	PlayoutEncoder PlayoutEncoder
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
