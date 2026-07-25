@@ -21,6 +21,24 @@ are Claude Design mockups in the `.dc.html` format — a self-contained prototyp
 | `loomarr-prototype-desktop.dc.html` | 1280×800 | Login · First-run wizard (checklist / webhooks / Live TV / first channel) · Channels · Channel detail · Board · Suggestion workspace (centered + split hero) · Approval queue · Filler library · Users · Settings · Help · Member intro · User drawer · ⌘K command palette |
 | `loomarr-prototype-mobile.dc.html` | 390×844 | Channels · Board · Approvals (the read-and-approve mobile-web surface) |
 | `support.js` | — | The Claude Design runtime both prototypes load (generated; do not edit) |
+| `image-slot.js` | — | Claude Design starter scaffold the **v2** desktop prototype loads (generated; do not edit) |
+
+## v2 prototypes (imported 2026-07-24 — research inputs, not yet ratified)
+
+| File | Viewport | Screens |
+| --- | --- | --- |
+| `loomarr-prototype-desktop-v2.dc.html` | 1280×800 | Login · Wizard (6 steps, **Database first**) · **Dashboard** · **Guide** (time-grid) · Channel detail · My requests · Suggest · Approvals · Filler (+ Coverage / Catalog / Discover / Sources) · **People** · Settings (Connections · AI · Defaults · **System** · **Security** · **All settings**) · **Account** · Help · Member intro · User drawer · Toast |
+| `loomarr-prototype-mobile-v2.dc.html` | 375×812 | Dashboard · Guide · Queue · People · Settings · Help · Account |
+
+Both v2 files are **complete** — the desktop is 502,509 bytes, obtained by maintainer export after
+the `DesignSync.get_file` 256 KiB cap silently truncated 48% of it. `Loomarr Prototype v2.dc.html`
+and `… v2 copy.dc.html` are byte-identical; the "copy" is a duplicate.
+
+> The structure-vs-look precedence note above applies to the v2 prototypes **with more force, not
+> less**: they propose a top-level IA change (Dashboard landing, Channels→Guide, Users→People) and
+> pre-answer several maintainer decisions. See `docs/engineering/v2-mock-delta-2026-07-24.md` for the
+> verified delta and the ratified decisions — and `SYNC-LOG-2026-07-24.md`, which shows the mocks
+> were built *from* this repo, so much of the apparent delta is the mock reflecting shipped code.
 
 ## How Phase 13 uses these
 
