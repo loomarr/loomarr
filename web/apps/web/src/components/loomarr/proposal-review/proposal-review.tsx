@@ -118,16 +118,33 @@ const ProposalReview = ({
     <Card className={cn("flex flex-col gap-5 p-5", className)}>
       <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-lg">Proposed lineup</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The LLM proposes a channel NAME (§8) and it becomes the channel's name
+                on approve — but the heading said "Proposed lineup" regardless, so the
+                one thing the reviewer is about to commit to was invisible until after
+                they'd committed to it. */}
+            <h2 className="font-semibold text-lg">{proposal.channelName || "Proposed lineup"}</h2>
             <Badge variant={s.variant}>{s.label}</Badge>
           </div>
+          {proposal.channelName && (
+            <p className="mt-0.5 text-static-400 text-xs">Proposed channel name — editable after approval.</p>
+          )}
           {proposal.rationale && (
             <p className="mt-1 max-w-prose text-muted-foreground text-sm">{proposal.rationale}</p>
           )}
         </div>
+        {/* All four scores, not two. `overall` is the weighted composite that RANKS
+            proposals (0.5 theme + 0.35 ready-now + 0.15 era spread) — showing its
+            inputs while hiding the result left a reviewer able to see the parts but
+            not the conclusion. It leads, with the three components under it. */}
         {proposal.scores && (
           <dl className="shrink-0 text-right">
+            <div className="flex items-baseline justify-end gap-1.5">
+              <dt className="text-static-400 text-xs">Overall</dt>
+              <dd className="font-mono font-semibold text-base text-foreground">
+                {formatPercent(proposal.scores.overall)}
+              </dd>
+            </div>
             <div className="flex items-baseline justify-end gap-1.5">
               <dt className="text-static-400 text-xs">Theme fit</dt>
               <dd className="font-mono text-sm text-suggest-300">
@@ -139,6 +156,10 @@ const ProposalReview = ({
               <dd className="font-mono text-lock text-sm">
                 {formatPercent(proposal.scores.availabilityRatio)}
               </dd>
+            </div>
+            <div className="flex items-baseline justify-end gap-1.5">
+              <dt className="text-static-400 text-xs">Era spread</dt>
+              <dd className="font-mono text-sm text-tune">{formatPercent(proposal.scores.eraBalance)}</dd>
             </div>
           </dl>
         )}
