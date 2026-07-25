@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -48,6 +49,22 @@ type GuideAiring struct {
 	Year        int      `json:"year,omitempty"`
 	Rating      string   `json:"rating,omitempty"`
 	ItemID      string   `json:"itemId,omitempty" doc:"Media-server item id, when the content is available"`
+	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
+	// occupies the schedule). They normally agree; where they differ — a 22m episode in a 30m
+	// slot — the difference is what makes padding visible.
+	RuntimeMs int64 `json:"runtimeMs,omitempty"`
+	// Provenance is the one-line "why is this here, and is it real yet?" — "in library",
+	// "acquiring · 62% · 8m left", "requested · 41h left". Assembled server-side because it
+	// draws on provisioning state, download progress and a deadline measured against now;
+	// a client reassembling that sentence would duplicate a decision and drift from it.
+	Provenance string `json:"provenance,omitempty"`
+	// Pod is the break's ACTUAL composition, for a filler block (§12 hover card): which clips
+	// play, in order, and how far down the §10 fallback ladder assembly had to go.
+	//
+	// Per-airing, not per-channel: it comes from the same seeded assembler internal playout
+	// uses for THIS break, so the hover card lists the clips that will really air here rather
+	// than a representative sample. Absent for non-filler blocks.
+	Pod *PodPoolDTO `json:"pod,omitempty"`
 }
 
 // GuideChannelTimeline is one channel's row in the grid.
@@ -66,8 +83,13 @@ type guideInput struct {
 
 type guideOutput struct {
 	Body struct {
-		FromMs   int64                  `json:"fromMs" doc:"The window actually served, after clamping"`
-		ToMs     int64                  `json:"toMs"`
+		FromMs int64 `json:"fromMs" doc:"The window actually served, after clamping"`
+		ToMs   int64 `json:"toMs"`
+		// Timezone is the IANA name the guide's times should be RENDERED in, or empty for
+		// the viewer's own device timezone. The times themselves stay absolute epoch ms —
+		// a timezone is a formatting choice, and putting instants on the wire in local time
+		// would invite a client to reinterpret rather than merely format them.
+		Timezone string                 `json:"timezone,omitempty"`
 		Channels []GuideChannelTimeline `json:"channels"`
 	}
 }
@@ -84,8 +106,25 @@ const (
 	// miss", but a channel's cycle is computed from its CURRENT lineup — walk back far enough
 	// and the answer is fiction, because the lineup has been reconciled since. A day is honest;
 	// a month would be invention.
+	//
+	// The DEFAULT only; `guide.retention_hours` (§15) is the live value.
 	guideMaxLookback = 24 * time.Hour
 )
+
+// guideLookback is how far back the window may reach, from `guide.retention_hours` (§15).
+//
+// Falls back to the compiled default when settings are unwired (unit tests) or the value is
+// nonsensical: a zero or negative retention would pin the guide to "now" and leave the grid
+// unable to show the programme currently airing, which needs its real start.
+func (s *Server) guideLookback() time.Duration {
+	if s.liveConfigInt == nil {
+		return guideMaxLookback
+	}
+	if h := s.liveConfigInt("guide.retention_hours"); h > 0 {
+		return time.Duration(h) * time.Hour
+	}
+	return guideMaxLookback
+}
 
 // channelGuide serves every channel's timeline over a window.
 //
@@ -108,7 +147,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 	// Clamp rather than reject. A grid that scrolls fast can outrun the bounds, and answering
 	// "here is the window I could serve" (echoed in the response) keeps it rendering; a 400
 	// would blank the page for what is really just an over-eager scroll.
-	if earliest := now.Add(-guideMaxLookback); from.Before(earliest) {
+	if earliest := now.Add(-s.guideLookback()); from.Before(earliest) {
 		from = earliest
 	}
 	if !to.After(from) {
@@ -119,6 +158,9 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 	}
 	out.Body.FromMs = from.UnixMilli()
 	out.Body.ToMs = to.UnixMilli()
+	if s.liveConfig != nil {
+		out.Body.Timezone = strings.TrimSpace(s.liveConfig("guide.timezone"))
+	}
 
 	if s.playoutGuide == nil {
 		// No timeline resolver wired (unit tests, or an install with playout off). An empty
@@ -151,7 +193,17 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			continue
 		}
 		for _, b := range bs {
-			row.Airings = append(row.Airings, guideAiringOf(b))
+			a := guideAiringOf(b)
+			// A break's composition, resolved per-airing. Only for filler, and only when the
+			// assembler is wired: an install without filler configured shows breaks with no
+			// hover detail rather than failing the request.
+			if b.Kind == schedule.SlotFiller && s.pods != nil {
+				if pod, perr := s.pods.PreviewAt(ctx, ch.ID, b.Start.UnixMilli()); perr == nil && len(pod.Entries) > 0 {
+					dto := podToPoolDTO(pod)
+					a.Pod = &dto
+				}
+			}
+			row.Airings = append(row.Airings, a)
 		}
 		out.Body.Channels = append(out.Body.Channels, row)
 	}
@@ -183,6 +235,8 @@ func guideAiringOf(b playout.Broadcast) GuideAiring {
 		Year:        b.Year,
 		Rating:      b.Rating,
 		ItemID:      b.LibraryItemID,
+		RuntimeMs:   b.RuntimeMs,
+		Provenance:  b.Provenance,
 	}
 }
 

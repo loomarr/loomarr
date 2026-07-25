@@ -30,6 +30,12 @@ type ItemMetadata struct {
 	// OfficialRating is the content rating ("TV-PG", "R"). Already carried on a LineupEntry for
 	// the SERIES, but an episode-level fetch gets it per episode where the server has it.
 	OfficialRating string
+	// RuntimeMs is the item's own runtime, from Emby's RunTimeTicks (100ns units).
+	//
+	// Distinct from a slot's DurationMs, which is how long the slot OCCUPIES the timeline.
+	// They normally agree, and where they do not the difference is the interesting part — a
+	// guide entry claiming 22m in a 30m slot is how you see padding.
+	RuntimeMs int64
 }
 
 // maxIDsPerRequest bounds one bulk lookup.
@@ -75,7 +81,7 @@ func (c *Client) ItemMetadataByID(ctx context.Context, itemIDs []string) (map[st
 
 		q := url.Values{}
 		q.Set("Ids", strings.Join(uniq[start:end], ","))
-		q.Set("Fields", "Overview,Genres,ProductionYear,OfficialRating")
+		q.Set("Fields", "Overview,Genres,ProductionYear,OfficialRating,RunTimeTicks")
 		req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 		if err != nil {
 			return out, err
@@ -93,6 +99,9 @@ func (c *Client) ItemMetadataByID(ctx context.Context, itemIDs []string) (map[st
 				Genres:         it.Genres,
 				Year:           it.ProductionYear,
 				OfficialRating: it.OfficialRating,
+				// Ticks are 100ns; ms is what every consumer wants and what the wire
+				// carries. Converted here so no caller has to remember the unit.
+				RuntimeMs: it.RunTimeTicks / 10_000,
 			}
 		}
 	}
@@ -106,5 +115,7 @@ type metadataItemsResponse struct {
 		Genres         []string `json:"Genres"`
 		ProductionYear int      `json:"ProductionYear"`
 		OfficialRating string   `json:"OfficialRating"`
+		// 100-nanosecond units, Emby's native duration unit. Converted to ms above.
+		RunTimeTicks int64 `json:"RunTimeTicks"`
 	} `json:"Items"`
 }

@@ -48,6 +48,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `playout.quality_tier` (`PLAYOUT_QUALITY_TIER`) | enum | `balanced` | The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise. _(one of: efficient \| balanced \| quality)_ |
 | `playout.ffmpeg_path` (`PLAYOUT_FFMPEG_PATH`) | string | `ffmpeg` | Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual. _(advanced)_ |
 | `playout.max_channels` (`PLAYOUT_MAX_CHANNELS`) | int | `4` | How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate. |
+| `guide.timezone` (`GUIDE_TIMEZONE`) | string | — | Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone. _(advanced)_ |
+| `guide.retention_hours` (`GUIDE_RETENTION_HOURS`) | int | `24` | How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired. _(advanced)_ |
 
 ## Backup
 

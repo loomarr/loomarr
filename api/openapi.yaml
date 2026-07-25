@@ -733,8 +733,15 @@ components:
         nominal:
           description: Times are a display estimate, not scheduled airtime
           type: boolean
+        pod:
+          $ref: "#/components/schemas/PodPoolDTO"
+        provenance:
+          type: string
         rating:
           type: string
+        runtimeMs:
+          format: int64
+          type: integer
         season:
           format: int64
           type: integer
@@ -806,6 +813,8 @@ components:
           description: The window actually served, after clamping
           format: int64
           type: integer
+        timezone:
+          type: string
         toMs:
           format: int64
           type: integer
@@ -1567,6 +1576,10 @@ components:
         durationMs:
           format: int64
           type: integer
+        era:
+          description: The clip's tagged era (1994); 0 when untagged
+          format: int64
+          type: integer
         isFallbackCard:
           description: The embedded default bumper card — the bottom of the fallback ladder
           type: boolean
@@ -1583,6 +1596,9 @@ components:
           type: string
         path:
           description: The clip's identity, relative to FILLER_DIR. Empty for the embedded fallback bumper card, which is not a file.
+          type: string
+        quality:
+          description: Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only
           type: string
         tunarrProgramId:
           description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this.

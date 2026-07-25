@@ -278,6 +278,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// resolver holds `activeChannels`, assigned after the manager exists.
 		playoutRes = &playoutResolver{
 			engine: engine, lib: lib, now: time.Now,
+			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
+			// state and must not be able to change it.
+			titles:   st,
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
 			capacity: func() int { return set.intv("playout.max_channels") },
@@ -477,7 +480,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// annotate with, and the scan alone is a complete catalog.
 		fillerSource := filler.DirSource{
 			Dir:   func() string { return set.str("filler.dir") },
-			Probe: filler.FFprobeDurationNextTo(set.str("playout.ffmpeg_path")),
+			Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
 		}
 		if set.str("tunarr.url") != "" {
 			fillerSource.Tunarr = fillerSourceAdapter{fillerProg}

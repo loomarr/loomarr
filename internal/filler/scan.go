@@ -33,9 +33,48 @@ var clipExtensions = map[string]bool{
 	".m4v": true, ".webm": true, ".ts": true, ".mpg": true, ".mpeg": true,
 }
 
-// Prober reads a media file's duration. Satisfied by FFprobeDuration; injected so the scanner
-// is testable without executing a binary.
-type Prober func(ctx context.Context, path string) (int64, error)
+// Probed is what one ffprobe pass learns about a clip.
+//
+// A STRUCT rather than a second probe call: ffprobe returns duration and stream height in one
+// invocation, so splitting them would double the exec cost per file for no benefit — and would
+// create a state where a clip has a duration but silently lost its quality, which is exactly
+// the kind of half-populated row that is painful to notice later.
+type Probed struct {
+	DurationMs int64
+	// Height is the VIDEO stream's height in pixels; 0 when the file has no video stream or
+	// the probe could not tell. Quality is derived from it (see QualityFromHeight) rather
+	// than stored raw, because "1080p" is what a person reads and 1088 is what some encoders
+	// actually write.
+	Height int
+}
+
+// Prober reads a media file's duration and dimensions. Satisfied by FFprobe; injected so the
+// scanner is testable without executing a binary.
+type Prober func(ctx context.Context, path string) (Probed, error)
+
+// QualityFromHeight buckets a pixel height into the label the guide shows.
+//
+// Bucketed by NEAREST standard rather than by exact match: real files are 1088, 1082, 718 —
+// encoder padding and anamorphic sources both produce off-by-a-few heights, and an exact-match
+// table would leave those blank while a person looking at the file would call it 1080p.
+func QualityFromHeight(h int) string {
+	switch {
+	case h <= 0:
+		return ""
+	case h >= 2000:
+		return "4K"
+	case h >= 1000:
+		return "1080p"
+	case h >= 700:
+		return "720p"
+	case h >= 460:
+		return "480p"
+	case h >= 340:
+		return "360p"
+	default:
+		return "240p"
+	}
+}
 
 // ScanDir walks dir and returns one RawClip per playable file found.
 //
@@ -48,7 +87,7 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 		return nil, 0, nil // filler not configured — an empty catalog, not an error
 	}
 	if probe == nil {
-		probe = FFprobeDuration
+		probe = FFprobe
 	}
 
 	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -84,8 +123,8 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 		}
 		rel = filepath.ToSlash(rel)
 
-		durMs, probeErr := probe(ctx, path)
-		if probeErr != nil || durMs <= 0 {
+		pr, probeErr := probe(ctx, path)
+		if probeErr != nil || pr.DurationMs <= 0 {
 			// No usable duration means the pod assembler cannot place it: it fills a break to
 			// a target length, so a zero-duration clip would either be skipped downstream or
 			// break the arithmetic. Rejecting here keeps that invariant at the boundary.
@@ -102,7 +141,11 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 			// filler would silently never build unless AI tagging is on.
 			Kind:       KindFromName(name),
 			Era:        EraFromName(name),
-			DurationMs: durMs,
+			DurationMs: pr.DurationMs,
+			// Quality is DERIVED, not probed: a clip with no video stream (or an
+			// unreadable one) simply has none, and the guide omits the badge rather
+			// than claiming a resolution nothing measured.
+			Quality: QualityFromHeight(pr.Height),
 		})
 		return nil
 	})
@@ -115,16 +158,16 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 	return clips, skipped, nil
 }
 
-// FFprobeDuration returns a media file's duration in milliseconds.
+// FFprobe returns a media file's duration and video height.
 //
 // JSON output rather than the `-show_entries … -of csv` form: csv silently yields "N/A" for a
 // file with no duration metadata, which parses to 0 and is indistinguishable from a real
 // zero-length result. JSON gives an absent field we can tell apart.
-func FFprobeDuration(ctx context.Context, path string) (int64, error) {
-	return ffprobeDurationWith(ctx, "ffprobe", path)
+func FFprobe(ctx context.Context, path string) (Probed, error) {
+	return ffprobeWith(ctx, "ffprobe", path)
 }
 
-// FFprobeDurationNextTo returns a Prober using the ffprobe that sits ALONGSIDE the given ffmpeg
+// FFprobeNextTo returns a Prober using the ffprobe that sits ALONGSIDE the given ffmpeg
 // binary.
 //
 // It takes the ffmpeg path deliberately, because that is the setting operators actually have
@@ -138,7 +181,7 @@ func FFprobeDuration(ctx context.Context, path string) (int64, error) {
 // ffmpeg invocation, so EVERY probe failed — and because ScanDir skips unprobeable files by
 // design, the catalog came back silently empty with no error anywhere. The name now says which
 // binary it wants.
-func FFprobeDurationNextTo(ffmpegPath string) Prober {
+func FFprobeNextTo(ffmpegPath string) Prober {
 	bin := "ffprobe"
 	if ffmpegPath != "" && ffmpegPath != "ffmpeg" {
 		// Same directory, ffmpeg → ffprobe. Handles /opt/ffmpeg/bin/ffmpeg and a
@@ -146,44 +189,62 @@ func FFprobeDurationNextTo(ffmpegPath string) Prober {
 		dir, base := filepath.Split(ffmpegPath)
 		bin = filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
 	}
-	return func(ctx context.Context, path string) (int64, error) {
-		return ffprobeDurationWith(ctx, bin, path)
+	return func(ctx context.Context, path string) (Probed, error) {
+		return ffprobeWith(ctx, bin, path)
 	}
 }
 
-func ffprobeDurationWith(ctx context.Context, bin, path string) (int64, error) {
-	// -show_format, not -show_streams: container duration is what a pod needs (how long the
-	// clip occupies a break), and a stream's duration can differ from it — an audio stream
-	// running a few frames past the video is normal and would give a subtly wrong answer.
+func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
+	// Duration comes from -show_format, not from a stream: container duration is what a pod
+	// needs (how long the clip occupies a break), and a stream's duration can differ from it —
+	// an audio stream running a few frames past the video is normal and would give a subtly
+	// wrong answer. Height necessarily comes from the streams, hence both sections.
 	out, err := exec.CommandContext(ctx, bin,
 		"-v", "error",
-		"-show_entries", "format=duration",
+		"-show_entries", "format=duration:stream=height,codec_type",
 		"-of", "json",
 		path,
 	).Output()
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe %s: %w", filepath.Base(path), err)
+		return Probed{}, fmt.Errorf("ffprobe %s: %w", filepath.Base(path), err)
 	}
 
 	var probed struct {
 		Format struct {
 			Duration string `json:"duration"`
 		} `json:"format"`
+		Streams []struct {
+			Height    int    `json:"height"`
+			CodecType string `json:"codec_type"`
+		} `json:"streams"`
 	}
 	if err := json.Unmarshal(out, &probed); err != nil {
-		return 0, fmt.Errorf("ffprobe %s: parse output: %w", filepath.Base(path), err)
+		return Probed{}, fmt.Errorf("ffprobe %s: parse output: %w", filepath.Base(path), err)
 	}
 	if probed.Format.Duration == "" {
-		return 0, fmt.Errorf("ffprobe %s: no duration in the container", filepath.Base(path))
+		return Probed{}, fmt.Errorf("ffprobe %s: no duration in the container", filepath.Base(path))
 	}
 	secs, err := strconv.ParseFloat(probed.Format.Duration, 64)
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe %s: duration %q: %w", filepath.Base(path), probed.Format.Duration, err)
+		return Probed{}, fmt.Errorf("ffprobe %s: duration %q: %w", filepath.Base(path), probed.Format.Duration, err)
 	}
 	if secs <= 0 {
-		return 0, fmt.Errorf("ffprobe %s: duration %v is not positive", filepath.Base(path), secs)
+		return Probed{}, fmt.Errorf("ffprobe %s: duration %v is not positive", filepath.Base(path), secs)
 	}
-	return int64(secs * 1000), nil
+
+	// The VIDEO stream's height specifically. Taking streams[0] would read the audio track on
+	// any file that lists audio first — which reports height 0 and silently downgrades a 1080p
+	// clip to "no quality". An audio-only clip legitimately has none.
+	height := 0
+	for _, s := range probed.Streams {
+		if s.CodecType == "video" && s.Height > 0 {
+			height = s.Height
+			break
+		}
+	}
+	// A missing height is NOT an error: quality is display-only, and refusing the clip would
+	// mean one odd file costs a channel its commercials.
+	return Probed{DurationMs: int64(secs * 1000), Height: height}, nil
 }
 
 // ClipPath resolves a clip's identity back to an absolute path ffmpeg can read.

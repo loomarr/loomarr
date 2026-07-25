@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
+  CalendarClock,
   Clapperboard,
   LayoutGrid,
   ListChecks,
@@ -20,6 +21,10 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // the product soul; nostalgia stays in the margins (§1).
 const NAV: NavItem[] = [
   { to: "/channels", label: "Channels", icon: Tv },
+  // The cross-channel schedule (§12). Sits next to Channels because they answer adjacent
+  // questions — "what do I have" and "what is on" — and the v2 IA rename will eventually
+  // merge the two entries; until then both doors are real and neither is a redirect.
+  { to: "/guide", label: "Guide", icon: CalendarClock },
   { to: "/board", label: "Board", icon: LayoutGrid },
   { to: "/suggest", label: "Suggest", icon: Sparkles },
   { to: "/filler", label: "Filler", icon: Clapperboard },

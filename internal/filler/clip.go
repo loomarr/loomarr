@@ -1,14 +1,17 @@
 // Package filler is the commercials & filler domain (design §10): the clip
 // catalog model and pod assembly. Filler is a PARALLEL universe to provisioning
-// (§3–§7) — clips are not titles (not in TMDB, no acquisition loop); their
-// identity is the Tunarr `local`-source program uuid and their duration comes
-// from Tunarr's scan, so the core never downloads or probes media. Filler is a
-// pure Loomarr↔Tunarr concern — the media server is not in the filler path.
+// (§3–§7) — clips are not titles (not in TMDB, no acquisition loop). Their
+// identity is the clip's PATH under FILLER_DIR and their duration comes from
+// Loomarr's own ffprobe scan (§9.1 moved both; see Clip for why). The media
+// server is not in the filler path, and neither is Tunarr any more — an install
+// running internal playout with no Tunarr still has a full catalog.
 // Pod assembly is pure and
-// SEEDED-DETERMINISTIC (seed = channel + window) so tests reproduce exactly and
-// the same break rebuilds identically across reconciles (§10/§19). The scheduler
-// (§9) inserts the assembled pods via Tunarr flex + filler lists; this package
-// only decides *what plays in the breaks*.
+// SEEDED-DETERMINISTIC (seed = channel + window start) so tests reproduce
+// exactly and the same break rebuilds identically across reconciles (§10/§19) —
+// which is also what lets the guide promise the clips that will really air.
+// Tunarr-backed channels still get pods via flex + filler lists; internal
+// playout resolves each break itself. This package only decides *what plays in
+// the breaks*.
 package filler
 
 import (
@@ -73,8 +76,15 @@ type Clip struct {
 	Category        string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
 	DurationMs      int64    // from ffprobe (the core probes now — §14 bundles it for playout)
 	Rating          string   // optional content rating
-	Source          string   // provenance: filler-dir | tunarr-local | manual | …
-	AITagged        bool     // whether the era/audience/category came from AI classification
+	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
+	// at scan time; "" for an audio-only clip or one scanned before quality existed.
+	//
+	// DISPLAY ONLY — it must never influence selection. A "prefer HD" rule would quietly
+	// starve the era-accurate 4:3 commercials this whole subsystem exists to play, since the
+	// authentic 1990s captures are exactly the low-resolution ones.
+	Quality  string
+	Source   string // provenance: filler-dir | tunarr-local | manual | …
+	AITagged bool   // whether the era/audience/category came from AI classification
 }
 
 // ID returns the clip's identity. A method rather than direct field access at call sites so

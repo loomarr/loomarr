@@ -222,6 +222,20 @@ func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (fille
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), channels.SelectionForChannel(ch))
 }
 
+// PreviewAt assembles the pod for the break starting at a specific instant — what internal
+// playout airs there, and what the guide's hover card promises.
+//
+// The SAME call both consumers make, for the §10 one-assembler reason: if the guide computed
+// a break independently, the hover card would eventually list clips that are not the ones
+// playing, and nobody would be able to reproduce the discrepancy on demand.
+func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.Pod{}, err
+	}
+	return a.pods.Preview(ctx, ch.ID, channels.PodSeedAt(ch.ID, breakStartMs), channels.SelectionForChannel(ch))
+}
+
 // PreviewDraft assembles the pool for a DRAFT selection (the POST …/pods/preview
 // sandbox) — the same seed as the saved preview (so only the selection differs), but the
 // caller's unsaved selection in place of the persisted one. The era still defaults from
