@@ -116,6 +116,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | **V3** | `D-E2′` — single 549 MB image, doc-first | V2b | §16 amended in-PR; image builds; `USER nonroot:nonroot` asserted; `ffmpeg -version` **and `ffprobe -version`** succeed; `THIRD_PARTY_NOTICES.md` re-read |
 | **V4** | `D-G` — §15 amendment: `playout.*` + `backup.*` + `playout_token` | V2b, V3 | §15 before `declared.go`; `make config-docs` diff empty; `server.public_url` re-scope-or-add decided here; log-grep redaction for `playout_token`; **`playout.backend` supports a per-channel override** |
 | **V5** | `#6`/`D-B` — bootstrap-file config tier | V4 | Precedence tests across all three tiers; `config-design.md:72` amended |
+| **V6a** | **T2 — the guide-path trap.** `StaleLoomarrListings` identified Loomarr's listings provider by its **Tunarr-shaped path**, so retargeting to internal playout would silently stop recognising it and orphan the provider a migration needs to remove — symptom: a deleted channel that keeps streaming. Now matches EITHER backend's shape | — | A Tunarr-shaped provider is stale once we retarget to internal playout, and vice versa; a token in the URL does not confuse the match; a provider Loomarr never wrote is never touched. Verified failing when the suffix is swapped rather than added |
 | **V6** | Track T: Internal playout to first frame. **Verifiable HERE — the dev env has a live Emby (`100.75.125.45:8096`) and Tunarr (`:8000`), plus `make smoke-livetv`. Do not defer the gate as "needs the homelab".** Only the maintainer's own GPU encoders and TV-as-a-client are genuinely out of reach. **Read [`playout-prior-art.md`](playout-prior-art.md) first** — Tunarr (the system we're replacing, so its wire contract is the one Emby already accepts), ErsatzTV (an independent solution to the same problem), and viewra. **Tunarr and ErsatzTV disagree on the central mechanism**; the doc states the trade-off and recommends Tunarr's HTTP ffconcat loop for the first frame | V3, V4, V5 | A native channel in the media-server guide **playing a test card**; both transports; `StaleLoomarrListings` still cleans up after retargeting (**T2**); segment requests reject a wrong/absent `playout_token`. **Plus, from the prior art:** viewers are **reference-counted** (a second viewer must not evict the first); **client disconnect** is detected via `Request.Context().Done()`, not an idle sweep (a live encoder never exits — a leak burns a core forever); the **tuner endpoint is continuous MPEG-TS** with no `Content-Length`, no ranges, periodic `Flush()`; ffmpeg is killed by **process group**; hardware failures classify on **exit code, not substrings**; segment URIs **carry the token** (relative URIs in an ffmpeg playlist do not inherit it) |
 
 ### Settings & system
@@ -181,6 +182,30 @@ surface-map rule; the honest options are *add the UI*, *remove the capability*, 
 API-only*. Decide, don't defer indefinitely.
 
 ---
+
+## 4a. ⚠ `design.md` currently LEADS the code (opened by V2b, closed by V6)
+
+**V2b merged design amendments describing a system that does not exist yet.** §9.1 says
+Loomarr serves HLS + MPEG-TS segments, publishes `/playout/tuner.m3u` and
+`/playout/guide.xml`, and authenticates devices by `playout_token`. §1 lists playout as a
+goal. None of it is implemented, and V4's registry keys (`playout.*`, the `playout_token`
+secret) currently have **zero consumers**.
+
+That was the right sequencing — V2b unblocked 28 phases and doc-first is the rule — but it
+opens a window where the doc is **intent, not description**. Recorded because that window is
+exactly how `design.md`'s §20 accumulated dead bullets: a claim nobody tracked until it read
+as history.
+
+**Closing it is V6's job**, and the gate already covers it (a channel playing a test card
+means the routes, the token and the encoder all exist). Until V6 lands:
+
+- Read §9.1 and §1's playout goal as **planned**, not shipped.
+- A reader checking whether Loomarr streams should check for `/playout/` routes in
+  `internal/api`, not the doc.
+- `internal/playout` exists as a **library with no call sites** on its own branch
+  (`feat/v6-playout-library`): encoder detection across nine families, quality ladders, and
+  process supervision, all live-verified against real ffmpeg. It is deliberately NOT merged,
+  because unwired code on main is the defect class V1/V17a/V23/V24 each closed.
 
 ## 5. V2b in detail — the highest-leverage phase
 
