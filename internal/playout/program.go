@@ -166,10 +166,26 @@ func (p Profile) scaleFilterArgs() []string {
 	// must get NO upload at all. A hand-rolled version here got QSV wrong and drifted from
 	// the prober within one commit of being written.
 	if up := hardwareUploadFilter(p.Encoder); up != "" {
+		// These families upload to GPU memory, and their upload filter already pins the
+		// pixel format (nv12) on the way.
 		parts = append(parts, up)
-	} else if p.Encoder == EncoderSoftware {
-		// yuv420p explicitly: a 10-bit HDR source would otherwise carry its pixel format
-		// through and produce a stream many players cannot decode.
+	} else {
+		// EVERY OTHER FAMILY gets an explicit 8-bit pixel format — software AND the hardware
+		// encoders that take CPU frames directly (nvenc, amf, videotoolbox, rkmpp, v4l2m2m).
+		//
+		// This `else` used to be `else if p.Encoder == EncoderSoftware`, which left exactly
+		// those hardware families with NO pixel-format normalization. A 10-bit source then
+		// reached the encoder as yuv420p10le, and h264_nvenc — which encodes 8-bit H.264 only
+		// — rejected it:
+		//
+		//	[h264_nvenc] No capable devices found
+		//	[out#0/mpegts] Nothing was written into output file
+		//
+		// That message names the DEVICE, not the pixel format, so it reads as "your GPU is
+		// missing" while the GPU is fine. Found on a live channel: a 4K 10-bit HEVC film
+		// played on libx264 (which had this filter) and died the moment nvenc was selected.
+		//
+		// Every prior live test used software, so every prior live test had the fix.
 		parts = append(parts, "format=yuv420p")
 	}
 	return []string{"-vf", strings.Join(parts, ",")}
