@@ -173,3 +173,29 @@ func TestMergeFromOperator_RecordsDirtyAndPreservesApplied(t *testing.T) {
 		t.Errorf("Applied is reconcile-owned and must be force-preserved, got %+v", got.Applied)
 	}
 }
+
+// A refine must never move a channel between playout backends (§9.1). Backend choice is
+// an operator decision about infrastructure; the LLM is proposing CONTENT. This is the
+// same class as the era/audience data loss that MergeFromProposal was rewritten to fix —
+// asserted when the field is added rather than after someone loses a setting to it.
+//
+// It lives on OperatorPolicy — the embedded, operator-edited half that
+// MergeFromProposal preserves wholesale via `out := current` — so this is enforced by
+// structure rather than by a guard someone could forget to write.
+func TestMergeFromProposal_NeverTouchesPlayoutBackend(t *testing.T) {
+	current := ChannelPolicy{
+		OperatorPolicy: OperatorPolicy{Playout: &PlayoutPolicy{Backend: "tunarr"}},
+	}
+	// An incoming proposal that says nothing about playout (the normal case) …
+	got := current.MergeFromProposal(ChannelPolicy{})
+	if got.Playout == nil || got.Playout.Backend != "tunarr" {
+		t.Fatalf("refine dropped the channel's playout backend: %+v", got.Playout)
+	}
+	// … and one that tries to set it anyway must still not win.
+	got = current.MergeFromProposal(ChannelPolicy{
+		OperatorPolicy: OperatorPolicy{Playout: &PlayoutPolicy{Backend: "internal"}},
+	})
+	if got.Playout == nil || got.Playout.Backend != "tunarr" {
+		t.Fatalf("a proposal overwrote the operator's playout backend: %+v", got.Playout)
+	}
+}
