@@ -451,3 +451,66 @@ func TestScaleFilter_CPUFrameEncodersGetYuv420p(t *testing.T) {
 		}
 	}
 }
+
+// --- Hardware decode ---
+
+// DECODING is where the CPU actually goes on high-resolution sources. Measured on a 4K 10-bit
+// HEVC film: moving only the ENCODE to the GPU took CPU from 260% to 341% (it ROSE — the decode
+// was always the cost, and it stopped being throttled by a slow software encoder); adding GPU
+// decode took it to ~0%.
+func TestProgramArgs_HardwareEncodersAlsoDecodeOnTheGPU(t *testing.T) {
+	want := map[Encoder]string{
+		EncoderNVENC:        "cuda",
+		EncoderVAAPI:        "vaapi",
+		EncoderQSV:          "vaapi", // both decode through VAAPI on Linux
+		EncoderVideoToolbox: "videotoolbox",
+		EncoderVulkan:       "vulkan",
+	}
+	for enc, accel := range want {
+		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
+		args := ProgramArgs(p, testStreamURL, 0, time.Minute)
+		got := joined(args)
+		if !strings.Contains(got, "-hwaccel "+accel) {
+			t.Errorf("%s: no -hwaccel %s — the decode stays on the CPU and dominates on 4K: %q",
+				enc, accel, got)
+		}
+		// -hwaccel is an INPUT option: after -i it applies to the next input, i.e. nothing.
+		if hw := argIndex(args, "-hwaccel"); hw > argIndex(args, "-i") {
+			t.Errorf("%s: -hwaccel is after -i, so it applies to no input", enc)
+		}
+	}
+}
+
+// Software must NOT hardware-decode: it would decode on the GPU only to download every frame
+// back for a CPU encode, which is strictly slower than decoding on the CPU.
+func TestProgramArgs_SoftwareDoesNotHardwareDecode(t *testing.T) {
+	p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: EncoderSoftware}
+	if got := joined(ProgramArgs(p, testStreamURL, 0, time.Minute)); strings.Contains(got, "-hwaccel") {
+		t.Errorf("libx264 asked for hardware decode; the download would cost more than it saves: %q", got)
+	}
+}
+
+// ⚠ NEVER `-hwaccel_output_format`. It keeps frames in GPU memory (faster) but turns any
+// unsupported input into a HARD FAILURE instead of a silent fallback to software decode.
+// ffmpeg cannot hardware-decode every codec, and a channel must not die because one film in its
+// lineup is VC-1.
+//
+// It is ALSO what keeps the CPU scale/pad chain working: `scale_cuda` has no pad option, so 4:3
+// content through a GPU-only chain emits 1440x1080 instead of a letterboxed 1920x1080 — which
+// breaks the concat parent's `-c copy` on any channel mixing aspect ratios (verified against
+// real ffmpeg).
+func TestProgramArgs_NoHwaccelOutputFormat(t *testing.T) {
+	for _, enc := range encoderPreference {
+		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
+		got := joined(ProgramArgs(p, testStreamURL, 0, time.Minute))
+		if strings.Contains(got, "-hwaccel_output_format") {
+			t.Errorf("%s: -hwaccel_output_format makes an unsupported codec fatal instead of "+
+				"falling back to software decode, AND strands the CPU pad filter: %q", enc, got)
+		}
+		// The CPU scale+pad must survive, since that is what pins the output dimensions.
+		if !strings.Contains(got, "pad=1920:1080") {
+			t.Errorf("%s: lost the CPU pad — 4:3 content would emit 1440x1080 and break "+
+				"-c copy on the parent: %q", enc, got)
+		}
+	}
+}

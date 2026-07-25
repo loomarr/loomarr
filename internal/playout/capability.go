@@ -258,6 +258,57 @@ func hardwareUploadFilter(enc Encoder) string {
 	}
 }
 
+// hardwareDecodeArgs returns the `-hwaccel` args that move DECODING onto the GPU.
+//
+// Decoding, not encoding, is where the CPU actually goes on high-resolution sources. Measured
+// on a 4K 10-bit HEVC film with an RTX 3080 Ti:
+//
+//	CPU decode + CPU scale + CPU encode (libx264)   260% CPU
+//	CPU decode + CPU scale + GPU encode (nvenc)     341% CPU   ← encode moved, cost went UP
+//	GPU decode + CPU scale + GPU encode (nvenc)     ~0% CPU    ← this
+//
+// The middle row is the instructive one: moving only the encode made CPU *rise*, because the
+// decode was always the real cost and it had simply been throttled by waiting on a slow
+// software encoder. "GPU encoding" without GPU decoding buys very little on 4K.
+//
+// ⚠ NO `-hwaccel_output_format`, deliberately. Setting it keeps decoded frames in GPU memory,
+// which is faster still — and turns any unsupported input into a HARD FAILURE instead of a
+// silent, correct fallback to software decode. ffmpeg cannot hardware-decode every codec
+// (VC-1, some VP9 profiles, anything the GPU generation predates), and a channel must not die
+// because one film in its lineup is an odd codec. Without the flag ffmpeg downloads frames to
+// CPU memory after decoding, which costs a copy and keeps the CPU filters below working.
+//
+// That copy is also what makes the SCALE stay on the CPU, and that is a correctness
+// requirement rather than an oversight: `scale_cuda` has NO pad option (verified —
+// `ffmpeg -h filter=scale_cuda` lists w/h/format/interp_algo/force_original_aspect_ratio and
+// nothing else), so 4:3 content through it emits 1440x1080 rather than a letterboxed
+// 1920x1080. Measured, not assumed. A channel mixing 4:3 and 16:9 would then break the concat
+// parent's `-c copy` mid-stream — the exact failure §5d predicted for a bare
+// aspect-preserving scale.
+func hardwareDecodeArgs(enc Encoder) []string {
+	switch enc {
+	case EncoderNVENC:
+		return []string{"-hwaccel", "cuda"}
+	case EncoderVAAPI, EncoderQSV:
+		// Both decode through VAAPI on Linux. The device comes from deviceInitArgs, which
+		// already ran — `-hwaccel vaapi` reuses it rather than opening a second one.
+		return []string{"-hwaccel", "vaapi"}
+	case EncoderVideoToolbox:
+		return []string{"-hwaccel", "videotoolbox"}
+	case EncoderVulkan:
+		return []string{"-hwaccel", "vulkan"}
+	default:
+		// Software, AMF, RKMPP and V4L2M2M: no hardware decode offered here.
+		//
+		// AMF is an ENCODE-only interface — its decode path is a separate AMD stack that this
+		// ffmpeg build does not wire up. RKMPP and V4L2M2M are SBC encoders whose decoders are
+		// unreliable enough across kernels that asking for them costs more failures than it
+		// saves cycles. And for libx264 a GPU decode would mean decoding on the GPU only to
+		// download every frame for a CPU encode — strictly slower than decoding on the CPU.
+		return nil
+	}
+}
+
 // Env overrides for machine-specific paths. Deliberately NOT registry settings (§15): they
 // describe this machine's filesystem, like the ffmpeg path, not app configuration that
 // should round-trip through a database.

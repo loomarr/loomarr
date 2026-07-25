@@ -59,6 +59,14 @@ func ProgramArgs(p Profile, streamURL string, offset, limit time.Duration) []str
 	// render node; Vulkan names its device differently).
 	args = append(args, deviceInitArgs(p.Encoder)...)
 
+	// HARDWARE DECODE. Measured on a 4K 10-bit HEVC film with an RTX 3080 Ti: the child went
+	// from 341% CPU to ~0%, with the GPU decoder taking it instead.
+	//
+	// That number is the whole justification. Moving only the ENCODE to the GPU barely helped —
+	// CPU actually ROSE from 260% to 341%, because the decode was the real cost and it stopped
+	// being throttled by a slow software encoder. For 4K sources the decode dominates.
+	args = append(args, hardwareDecodeArgs(p.Encoder)...)
+
 	// --- Input options (before -i, so they apply to THIS input) ---
 
 	// Reconnect flags, CHILD tier — and ONLY for an http input. See isHTTP.
