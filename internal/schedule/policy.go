@@ -76,6 +76,28 @@ type OperatorPolicy struct {
 	// bounded by the quality bar + title cap (global defaults, optionally overridden here).
 	// Rides policy_json (no schema change), so it round-trips like every other policy field.
 	AutoCurate *AutoCurate `json:"autoCurate,omitempty"`
+	// Playout overrides which backend streams THIS channel (§9.1). Nil (the default) =
+	// inherit the `playout.backend` registry setting. Rides policy_json like everything
+	// above it, so there is no schema change and no migration.
+	//
+	// The nil-means-inherit shape is what makes the promise true rather than aspirational:
+	// "changing the default affects new channels only — the ones already on the other
+	// backend keep playing exactly as they are". A channel that never opted in has no
+	// stored value to change, and one that DID has a value the global cannot overwrite.
+	// A fleet-wide flip is therefore not expressible by accident.
+	Playout *PlayoutPolicy `json:"playout,omitempty"`
+}
+
+// PlayoutPolicy is a channel's own answer to "who streams this" (§9.1). Deliberately a
+// struct rather than a bare string: the encoder/transport knobs are global today, but a
+// per-channel override for them is a plausible next step, and widening a struct is a
+// smaller change than replacing a string field that has already round-tripped through
+// operators' policy_json.
+type PlayoutPolicy struct {
+	// Backend is "internal" | "tunarr". Empty = inherit the global (same meaning as a
+	// nil *PlayoutPolicy; both are tolerated so a hand-edited policy cannot mean
+	// something surprising).
+	Backend string `json:"backend,omitempty"`
 }
 
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the

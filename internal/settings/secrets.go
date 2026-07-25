@@ -18,6 +18,15 @@ type GeneratedSecret string
 const (
 	SecretSession GeneratedSecret = "session_secret" // signs session cookies (§11); never displayed
 	SecretAPI     GeneratedSecret = "api_token"      // machine + break-glass admin; viewable
+	// SecretPlayout signs every internal-playout segment request (§9.1), so only the
+	// operator's media server can pull a stream. Viewable BECAUSE it must be pasted
+	// into a tuner/listings URL by hand when auto-wiring isn't used.
+	//
+	// It authenticates a DEVICE, not a person (§11) — a television cannot hold a
+	// session cookie. Deliberately NOT the same secret as api_token: that one is
+	// break-glass ADMIN with full authority; this one grants nothing beyond reading
+	// streams. Conflating them would hand an appliance the keys to the instance.
+	SecretPlayout GeneratedSecret = "playout_token"
 )
 
 // dbKey is the settings-table key a generated secret persists under.
@@ -30,6 +39,8 @@ func (g GeneratedSecret) envVar() string {
 		return "SESSION_SECRET"
 	case SecretAPI:
 		return "API_TOKEN"
+	case SecretPlayout:
+		return "PLAYOUT_TOKEN"
 	default:
 		return ""
 	}
@@ -61,7 +72,7 @@ type Secrets struct {
 
 // allGenerated is the fixed set, in display order.
 func allGenerated() []GeneratedSecret {
-	return []GeneratedSecret{SecretSession, SecretAPI}
+	return []GeneratedSecret{SecretSession, SecretAPI, SecretPlayout}
 }
 
 // NewSecrets resolves (env) or generates+persists (idempotent) each secret, then

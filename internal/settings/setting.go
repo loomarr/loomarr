@@ -39,7 +39,9 @@ const (
 	GroupTMDB          Group = "connections.tmdb"
 	GroupAI            Group = "ai"
 	GroupChannels      Group = "channels"
+	GroupPlayout       Group = "playout"
 	GroupFiller        Group = "filler"
+	GroupBackup        Group = "backup"
 	GroupUsersSecurity Group = "users_security"
 	GroupAdvanced      Group = "advanced"
 )
@@ -56,7 +58,7 @@ const (
 	FeatureSuggestions Feature = "suggestions" // needs an LLM + TMDB grounding
 	FeatureFiller      Feature = "filler"      // needs a filler drop-folder
 	FeatureUserSync    Feature = "user_sync"   // needs a media server to sync users FROM
-	FeatureIngest      Feature = "ingest"      // needs the loomarr:filler image (yt-dlp + ffmpeg)
+	FeatureIngest      Feature = "ingest"      // needs runnable yt-dlp + ffmpeg (now always in the image, §16 V3 — so this gate reports a BROKEN vendored binary, not an opt-out)
 )
 
 // ValidateFunc checks a parsed value's shape (config-design §2, §9). URL

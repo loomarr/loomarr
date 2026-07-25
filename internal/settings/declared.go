@@ -114,9 +114,73 @@ func declared() []Setting {
 			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
 		},
 		{
-			Key: "server.public_url", EnvVar: "SERVER_PUBLIC_URL", Group: GroupTunarr,
-			Kind: KindURL, Default: "", Advanced: true,
-			Doc: "Loomarr's own address as Tunarr can reach it, e.g. http://loomarr:8080. Only needed for uploaded channel icons — Tunarr fetches them from this base. Leave empty if you set icons from TMDB or a full URL.",
+			// RE-SCOPED by V4 (§9.1), not duplicated. This was a Tunarr-group, Advanced
+			// knob documented as "only needed for uploaded channel icons". Internal
+			// playout makes it the base every SEGMENT request resolves against, so it
+			// moves to Playout and stops being Advanced — "get it wrong and channels
+			// appear in the guide but never play" is not an advanced failure mode.
+			//
+			// Deliberately ONE key, not a second `playout.public_url`: it is genuinely
+			// the server's own public address, and both callers (icon fetch, segment
+			// fetch) need the same value. Two keys could drift, and an operator would
+			// have to know which one Live TV reads.
+			Key: "server.public_url", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
+			Kind: KindURL, Default: "",
+			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons.",
+		},
+
+		// --- Playout (§9.1, §15 — added by V4) ---
+		// Loomarr serves its own channels. `playout.backend` is the ONLY key here with a
+		// per-channel override: it rides `policy_json` as `policy.playout` (nil = inherit
+		// this global), the same shape `rules`/`filler`/`window`/`autoCurate` already use,
+		// so there is no migration. That is what makes "changing this affects new channels
+		// only — the ones already on the other backend keep playing" true rather than
+		// aspirational: switching the default never touches an existing channel's policy.
+		{
+			Key: "playout.backend", EnvVar: "PLAYOUT_BACKEND", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("internal", "Loomarr (internal)"),
+				opt("tunarr", "Tunarr"),
+			},
+			Default: "internal",
+			Doc:     "Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel.",
+		},
+		{
+			Key: "playout.transport", EnvVar: "PLAYOUT_TRANSPORT", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("both", "HLS and MPEG-TS"),
+				opt("hls", "HLS only"),
+				opt("mpegts", "MPEG-TS only"),
+			},
+			Default: "both",
+			Doc:     "Which stream formats internal playout offers. Media servers differ in what they accept, so both is the default: MPEG-TS matches Tunarr's existing shape and keeps latency low, HLS survives proxies.",
+		},
+		{
+			Key: "playout.encoder", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
+			Kind: KindString, Default: "",
+			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
+		},
+		{
+			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
+			Kind: KindInt, Default: "4",
+			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
+		},
+
+		// --- Backup (§16, §15 — added by V4) ---
+		{
+			Key: "backup.schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
+			Kind: KindCron, Default: "0 30 3 * * *",
+			Doc: "When to write the nightly instance backup. A backup is the whole instance — settings, channels, people, and the generated secrets — so treat the file as a credential.",
+		},
+		{
+			Key: "backup.retain", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
+			Kind: KindInt, Default: "7",
+			Doc: "How many backups to keep before pruning the oldest.",
+		},
+		{
+			Key: "backup.dir", EnvVar: "BACKUP_DIR", Group: GroupBackup,
+			Kind: KindString, Default: "/data/backups",
+			Doc: "Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
 		// --- Connections: TMDB (§15, Phase 11) ---
