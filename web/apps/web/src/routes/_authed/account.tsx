@@ -201,6 +201,8 @@ const AccountScreen = () => {
   );
 };
 
-export const Route = createFileRoute("/_authed/account")({
+const Route = createFileRoute("/_authed/account")({
   component: AccountScreen,
 });
+
+export { Route };
