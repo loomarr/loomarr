@@ -1,7 +1,7 @@
 import type { ProposalItem } from "@loomarr/api";
 import { Check, ChevronDown, Loader2, X } from "lucide-react";
-import { useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { useId, useState } from "react";
+import { Badge, Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
 
@@ -52,6 +52,9 @@ const ApprovalQueueItem = ({
   const busy = status === "approving";
   const denied = status === "denied";
   const [open, setOpen] = useState(false);
+  const [denying, setDenying] = useState(false);
+  const [reason, setReason] = useState("");
+  const reasonId = useId();
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
 
   return (
@@ -72,9 +75,9 @@ const ApprovalQueueItem = ({
           {denied && denyReason && <p className="mt-1 text-onair-300 text-sm">{denyReason}</p>}
         </div>
 
-        {!denied && (
+        {!denied && !denying && (
           <div className="flex shrink-0 gap-2">
-            <Button variant="outline" size="sm" onClick={onDeny} disabled={busy}>
+            <Button variant="outline" size="sm" onClick={() => setDenying(true)} disabled={busy}>
               <X aria-hidden />
               Deny
             </Button>
@@ -85,6 +88,47 @@ const ApprovalQueueItem = ({
           </div>
         )}
       </div>
+
+      {/* Deny arms this row rather than firing straight away. The reason is optional —
+          requiring one would turn every decline into a chore — but offering it is what
+          stops a member from re-submitting the same intent, having learned nothing. */}
+      {denying && (
+        <div className="flex flex-col gap-2 border-border border-t pt-2">
+          <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
+            Why not? Optional — the requester sees this.
+          </label>
+          <Input
+            id={reasonId}
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. over the acquisition cap this week — ask again Monday"
+            disabled={busy}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDenying(false);
+                setReason("");
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onDeny?.(reason.trim() || undefined)}
+              disabled={busy}
+            >
+              <X aria-hidden />
+              Deny
+            </Button>
+          </div>
+        </div>
+      )}
 
       {hasPicks && (
         <div className="border-border border-t pt-2">

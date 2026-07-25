@@ -1,8 +1,8 @@
 import type { ProposalItem } from "@loomarr/api";
 import { formatPercent } from "@loomarr/core";
 import { Check, Pencil, X } from "lucide-react";
-import type { ReactNode } from "react";
-import { Badge, Button, Card, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { type ReactNode, useId, useState } from "react";
+import { Badge, Button, Card, Input, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
@@ -100,6 +100,16 @@ const ProposalReview = ({
 }: ProposalReviewProps) => {
   const s = STATUS[status];
   const actionable = status === "draft" || status === "submitted" || status === "partially-edited";
+  // Deny is a two-step: click arms a reason field, a second click sends it. Approve stays
+  // one click — the asymmetry is deliberate, since approving needs no explanation and
+  // denying is the case where a member is left guessing.
+  const [denying, setDenying] = useState(false);
+  const [reason, setReason] = useState("");
+  const reasonId = useId();
+  const cancelDeny = () => {
+    setDenying(false);
+    setReason("");
+  };
   // The generated arrays are `ProposalItem[] | null` (a nil Go slice marshals as null).
   const lineup = proposal.lineup ?? [];
   const acquisitions = proposal.acquisitions ?? [];
@@ -156,15 +166,49 @@ const ProposalReview = ({
       )}
 
       {actionable && (
-        <footer className="flex justify-end gap-2 border-border border-t pt-4">
-          <Button variant="outline" onClick={onDeny} disabled={busy}>
-            <X aria-hidden />
-            Deny
-          </Button>
-          <Button onClick={onApprove} disabled={busy}>
-            <Check aria-hidden />
-            Approve & acquire
-          </Button>
+        <footer className="flex flex-col gap-2 border-border border-t pt-4">
+          {denying ? (
+            /* Deny arms this instead of firing immediately: the requester sees whatever is
+               typed here (ApprovalQueueItem already renders it), and a bare "denied" with no
+               explanation is the thing that makes a member re-submit the same intent. */
+            <div className="flex flex-col gap-2">
+              <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
+                Why not? Optional — the requester sees this.
+              </label>
+              <Input
+                id={reasonId}
+                autoFocus
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. we're over the acquisition cap this week — ask again Monday"
+                disabled={busy}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={cancelDeny} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => onDeny?.(reason.trim() || undefined)}
+                  disabled={busy}
+                >
+                  <X aria-hidden />
+                  Deny
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDenying(true)} disabled={busy}>
+                <X aria-hidden />
+                Deny
+              </Button>
+              <Button onClick={onApprove} disabled={busy}>
+                <Check aria-hidden />
+                Approve & acquire
+              </Button>
+            </div>
+          )}
         </footer>
       )}
     </Card>

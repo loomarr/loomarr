@@ -16,7 +16,11 @@ interface ApprovalQueueItemProps {
   lineup?: ProposalItem[];
   acquisitionItems?: ProposalItem[];
   onApprove?: () => void;
-  onDeny?: () => void;
+  // Deny carries the admin's optional reason — the same string this component already
+  // renders back via `denyReason` once the proposal is denied. The two halves were
+  // never connected: the display shipped, the capture didn't, so the field was always
+  // empty in practice.
+  onDeny?: (reason?: string) => void;
   className?: string;
 }
 

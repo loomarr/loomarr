@@ -75,7 +75,7 @@ const ChannelSuggestPanel = ({ onCreated, className }: ChannelSuggestPanelProps)
             status={proposal.status}
             busy={approve.isPending || deny.isPending}
             onApprove={isAdmin ? () => approve.mutate({ id: proposal.id }) : undefined}
-            onDeny={isAdmin ? () => deny.mutate({ id: proposal.id, data: {} }) : undefined}
+            onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (
             <p className="text-onair-300 text-sm">
