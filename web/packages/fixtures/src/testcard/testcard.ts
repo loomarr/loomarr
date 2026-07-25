@@ -1,4 +1,4 @@
-import type { ClipDTO, GuideChannelTimeline, PodEntryDTO, Proposal } from "@loomarr/api";
+import type { ClipDTO, GuideChannelTimeline, PodEntryDTO, PodPoolDTO, Proposal } from "@loomarr/api";
 import type { SearchResult } from "@loomarr/core";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
@@ -200,6 +200,48 @@ const guideNow = Date.UTC(2026, 6, 25, 21, 0, 0);
 
 const guideAt = (minutes: number) => guideFrom + minutes * 60_000;
 
+// One assembled break, for the grid's inline clip rendering and the detail card. Era and
+// quality are present because they are exactly what the card exists to show — a 1994 480p
+// capture is authentic, not a playback fault.
+const guidePod: PodPoolDTO = {
+  matchLevel: "exact",
+  totalMs: 70_000,
+  entries: [
+    {
+      name: "Channel bumper",
+      kind: "bumper",
+      durationMs: 5_000,
+      era: 1994,
+      quality: "480p",
+      isFallbackCard: false,
+    },
+    {
+      name: "Sunny D — Dude!",
+      kind: "commercial",
+      durationMs: 30_000,
+      era: 1994,
+      quality: "480p",
+      isFallbackCard: false,
+    },
+    {
+      name: "Gushers",
+      kind: "commercial",
+      durationMs: 30_000,
+      era: 1993,
+      quality: "360p",
+      isFallbackCard: false,
+    },
+    {
+      name: "Back after these",
+      kind: "bumper",
+      durationMs: 5_000,
+      era: 1994,
+      quality: "480p",
+      isFallbackCard: false,
+    },
+  ],
+};
+
 // Three channels covering the four kinds a grid must distinguish (§12): a movie channel, an
 // episodic channel whose blocks carry series + SxxExx, and one still acquiring. Deliberately
 // includes a programme that STARTED BEFORE the window (Heat, at -25m) — the in-progress case
@@ -211,7 +253,13 @@ const guideChannels: GuideChannelTimeline[] = [
     number: 3,
     airings: [
       { kind: "program", title: "Heat", startMs: guideAt(-25), stopMs: guideAt(35), year: 1995 },
-      { kind: "filler", title: "Commercials", startMs: guideAt(35), stopMs: guideAt(39) },
+      {
+        kind: "filler",
+        title: "Commercials",
+        startMs: guideAt(35),
+        stopMs: guideAt(39),
+        pod: guidePod,
+      },
       { kind: "program", title: "Point Break", startMs: guideAt(39), stopMs: guideAt(111), year: 1991 },
     ],
   },
@@ -273,6 +321,8 @@ const guideChannels: GuideChannelTimeline[] = [
         nominal: true,
         startMs: guideAt(45),
         stopMs: guideAt(75),
+        // The line that turns a pending slot from a mystery into a status.
+        provenance: "acquiring · 62% · 8m left",
       },
       {
         kind: "program",
@@ -294,6 +344,7 @@ export {
   guideChannels,
   guideFrom,
   guideNow,
+  guidePod,
   guideTo,
   intentTemplates,
   podClips,

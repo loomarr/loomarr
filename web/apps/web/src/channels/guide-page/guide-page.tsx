@@ -1,7 +1,8 @@
-import { channelsApi } from "@loomarr/api";
+import { channelsApi, type GuideAiring } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { EmptyState, ErrorState, GuideGrid } from "@/components/loomarr";
+import { EmptyState, ErrorState, GuideDetailCard, GuideGrid } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 
@@ -14,8 +15,10 @@ import { useLoomarrEventListener } from "@/events";
 
 // The zoom ladder, in pixels per minute. Zoom is ONE number — the grid scales everything
 // against it — so these are just stops on that scale rather than distinct layouts.
-const ZOOM_STOPS = [1.5, 3, 6] as const;
-const DEFAULT_ZOOM_INDEX = 1;
+// The zoom ladder, matching the mock's stops. Zoom scales the CHROME (rail, row height, type),
+// never the time scale — the window always fits, and you change how much detail each row shows.
+const ZOOM_STOPS = [0.75, 0.875, 1, 1.15, 1.35, 1.6] as const;
+const DEFAULT_ZOOM_INDEX = 2;
 
 // How much of the window sits behind "now". A guide opens on the present, but a programme
 // already in progress needs its real start on screen or it appears to begin the moment you
@@ -31,8 +34,10 @@ const NOW_TICK_MS = 30_000;
 
 const GuidePage = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [zoomIndex, setZoomIndex] = useState<number>(DEFAULT_ZOOM_INDEX);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [inspected, setInspected] = useState<GuideAiring | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -107,13 +112,24 @@ const GuidePage = () => {
           description="Once you create a channel, its schedule shows up here."
         />
       ) : (
-        <GuideGrid
-          channels={channels}
-          fromMs={body?.fromMs ?? from}
-          toMs={body?.toMs ?? to}
-          pxPerMinute={ZOOM_STOPS[zoomIndex]}
-          nowMs={nowMs}
-        />
+        // The detail card floats over the grid rather than displacing it: inspecting a block
+        // must not reflow the schedule under the pointer.
+        <div className="relative flex min-h-0 flex-1">
+          <GuideGrid
+            channels={channels}
+            fromMs={body?.fromMs ?? from}
+            toMs={body?.toMs ?? to}
+            zoom={ZOOM_STOPS[zoomIndex]}
+            nowMs={nowMs}
+            onInspect={setInspected}
+            onSelectChannel={(id) => navigate({ to: "/channels/$id", params: { id } })}
+          />
+          {inspected && (
+            <div className="pointer-events-none absolute right-4 bottom-4 z-40">
+              <GuideDetailCard airing={inspected} />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
