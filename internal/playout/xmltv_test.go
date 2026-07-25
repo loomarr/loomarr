@@ -228,11 +228,16 @@ func TestRenderXMLTV_EpisodeNumbersAreZeroBasedXmltvNs(t *testing.T) {
 	}
 }
 
-// THE SERIES/EPISODE SPLIT. XMLTV puts the SHOW in `<title>` and the EPISODE in `<sub-title>`.
-// A media server groups and searches by `<title>`, so emitting the episode name there makes
-// every episode look like an unrelated programme — which is exactly what the first version of
-// this guide did: "Life on the Fast Lane" appeared with no indication it was The Simpsons.
-func TestRenderXMLTV_SeriesGoesInTitleAndEpisodeInSubTitle(t *testing.T) {
+// AN EPISODE'S TITLE CARRIES BOTH NAMES. Verified against Emby twice, because each of the two
+// "clean" answers loses half the information in the guide GRID — the surface a viewer actually
+// reads:
+//
+//	episode in <title>   grid: "Bart the Mother"  — no idea which show
+//	series  in <title>   grid: "The Simpsons"     — no idea which episode
+//
+// Emby parses both correctly (Name / EpisodeTitle in its API), but the grid renders `Name`
+// alone, and with no `<desc>` there is no second surface. So one field carries both.
+func TestRenderXMLTV_EpisodeTitleCarriesSeriesAndEpisode(t *testing.T) {
 	b := programme("Life on the Fast Lane", guideNow, 22)
 	b.SeriesTitle = "The Simpsons"
 	b.Season, b.Episode = 1, 9
@@ -242,15 +247,14 @@ func TestRenderXMLTV_SeriesGoesInTitleAndEpisodeInSubTitle(t *testing.T) {
 		Programmes: map[string][]Broadcast{"ch1": {b}},
 	})
 
-	if !strings.Contains(got, "<title>The Simpsons</title>") {
-		t.Errorf("the SERIES is not the title — the guide will not group episodes:\n%s", got)
+	if !strings.Contains(got, "<title>The Simpsons: Life on the Fast Lane</title>") {
+		t.Errorf("the title does not carry BOTH names — a single-field grid shows half the "+
+			"information:\n%s", got)
 	}
+	// sub-title still carries the episode alone, so a client that reads it, or that groups a
+	// series, keeps working.
 	if !strings.Contains(got, "<sub-title>Life on the Fast Lane</sub-title>") {
-		t.Errorf("the EPISODE name is missing from sub-title:\n%s", got)
-	}
-	// The episode name must NOT also be the title, or grouping breaks again.
-	if strings.Contains(got, "<title>Life on the Fast Lane</title>") {
-		t.Errorf("the episode name is still in <title>:\n%s", got)
+		t.Errorf("sub-title lost the episode name:\n%s", got)
 	}
 }
 

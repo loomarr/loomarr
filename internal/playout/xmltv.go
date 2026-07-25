@@ -157,12 +157,24 @@ func RenderXMLTV(g Guide, now time.Time) ([]byte, error) {
 				Channel: ch.ID,
 				Title:   b.Title,
 			}
-			// SERIES/EPISODE SPLIT. `<title>` is what a media server groups and searches by,
-			// so an episode puts the SHOW there and its own name in `<sub-title>`. Emitting
-			// the episode name as the title is what made every Simpsons episode appear in the
-			// guide as an unrelated programme.
+			// An episode's title carries BOTH names: "The Simpsons: Bart the Mother".
+			//
+			// This is a deliberate departure from the strict XMLTV reading, and it took two
+			// wrong answers to arrive at. The spec says `<title>` is the series and
+			// `<sub-title>` the episode, and both were tried live against Emby:
+			//
+			//	episode in <title>   grid showed "Bart the Mother" — no idea which show
+			//	series in <title>    grid showed "The Simpsons" — no idea which episode
+			//
+			// Emby parses BOTH correctly (its API reports Name="The Simpsons",
+			// EpisodeTitle="Bart the Mother"), but its guide GRID renders `Name` alone, and
+			// the grid is where a viewer actually reads the schedule. With no `<desc>` to
+			// fill the detail pane there is no second surface, so one field has to carry it.
+			//
+			// `<sub-title>` is still emitted, so a client that shows it — or that groups a
+			// series — keeps working; this only changes what the single-field grid displays.
 			if b.SeriesTitle != "" {
-				p.Title = b.SeriesTitle
+				p.Title = b.SeriesTitle + ": " + b.Title
 				p.SubTitle = b.Title
 			}
 			if b.Season > 0 && b.Episode > 0 {
