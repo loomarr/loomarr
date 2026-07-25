@@ -38,7 +38,17 @@ import (
 //
 // Coverage mirrors ErsatzTV's eight pipeline families, because that is the breadth real
 // deployments need: NVIDIA, Intel, AMD (both OSes), Apple Silicon, and ARM SBCs.
+// Vulkan leads on MEASURED throughput. On this box it sustains 23.7x against nvenc's
+// 13.7x at 720p25 — nearly double the channel capacity — and it is cross-vendor, so the
+// same path serves NVIDIA, AMD and Intel. It was originally ordered last as "newer, least
+// proven", which is a reasonable prior and the wrong call once there is a number: the
+// trial encode already refuses anything that does not work, so the cost of trying Vulkan
+// first is one failed probe, and the benefit is roughly twice the channels.
+//
+// Anything ahead of software here must EARN its place by working; ordering only decides
+// who gets asked first.
 var encoderPreference = []Encoder{
+	EncoderVulkan,       // cross-vendor, and fastest measured here (23.7x vs nvenc 13.7x)
 	EncoderNVENC,        // NVIDIA — mature, good quality per bit
 	EncoderQSV,          // Intel Quick Sync — mature
 	EncoderVAAPI,        // Intel AND AMD on Linux; the broadest Linux path
@@ -46,7 +56,6 @@ var encoderPreference = []Encoder{
 	EncoderVideoToolbox, // Apple Silicon / Intel Macs
 	EncoderRKMPP,        // Rockchip SBCs
 	EncoderV4L2M2M,      // Raspberry Pi and other V4L2 stateful encoders
-	EncoderVulkan,       // cross-vendor, newer; last because it is least proven
 	EncoderSoftware,     // always viable — the floor, not a candidate
 }
 
