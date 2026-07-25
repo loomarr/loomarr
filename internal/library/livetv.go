@@ -45,10 +45,11 @@ type LiveTV interface {
 	// the tuner at the same URL, which is what makes the media server re-read the M3U
 	// and drop a stale channel→stream binding (a deleted-channel id it still streams).
 	LoomarrTuners(ctx context.Context) ([]string, error)
-	// StaleLoomarrListings returns the ids of xmltv listing providers whose Path
-	// is a Tunarr guide URL other than the desired one. Listing providers carry no
-	// FriendlyName, so the Loomarr-shaped one is identified by its Tunarr-guide
-	// Path shape (…/api/xmltv.xml).
+	// StaleLoomarrListings returns the ids of xmltv listing providers whose Path is a
+	// Loomarr-managed guide URL other than the desired one. Listing providers carry no
+	// FriendlyName, so ours are identified by path shape — Tunarr's (…/api/xmltv.xml)
+	// OR internal playout's (…/playout/guide.xml), §9.1. Matching both is what makes a
+	// migration between backends clean up the provider it replaces.
 	StaleLoomarrListings(ctx context.Context, desiredXMLTV string) ([]string, error)
 	// RemoveTuner deletes a tuner host by id (idempotent — a gone id is not an error).
 	RemoveTuner(ctx context.Context, id string) error
@@ -241,9 +242,9 @@ func (c *Client) LoomarrTuners(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
-// StaleLoomarrListings lists ids of xmltv listing providers whose Path is a Tunarr
-// guide URL other than the desired one. Listing providers have no FriendlyName, so
-// the Loomarr-shaped provider is identified by the Tunarr guide path suffix.
+// StaleLoomarrListings lists ids of xmltv listing providers whose Path is a
+// Loomarr-managed guide URL other than the desired one — EITHER backend's shape (§9.1),
+// so retargeting between Tunarr and internal playout cleans up the one it replaces.
 func (c *Client) StaleLoomarrListings(ctx context.Context, desiredXMLTV string) ([]string, error) {
 	var cfg liveTVConfig
 	if err := c.liveTVConfig(ctx, &cfg); err != nil {
@@ -251,19 +252,39 @@ func (c *Client) StaleLoomarrListings(ctx context.Context, desiredXMLTV string) 
 	}
 	var ids []string
 	for _, p := range cfg.ListingProviders {
-		if p.Type == "xmltv" && isTunarrGuidePath(p.Path) && p.Path != desiredXMLTV && p.ID != "" {
+		if p.Type == "xmltv" && isLoomarrManagedGuidePath(p.Path) && p.Path != desiredXMLTV && p.ID != "" {
 			ids = append(ids, p.ID)
 		}
 	}
 	return ids, nil
 }
 
-// tunarrGuideSuffix is the path Tunarr serves its XMLTV guide at; a listing
-// provider whose Path ends with it is a Tunarr guide (see TunarrURLsFrom).
-const tunarrGuideSuffix = "/api/xmltv.xml"
+// Listing providers carry no FriendlyName, so a Loomarr-managed one is identified by
+// the SHAPE of its guide path. There are two shapes now (§9.1): Tunarr's, and internal
+// playout's own.
+//
+// Both must match, and that is the whole point — an install MIGRATING from Tunarr to
+// internal playout has a Tunarr-shaped provider that still needs removing. Replacing
+// the Tunarr suffix instead of adding to it would orphan exactly the provider the
+// migration needs to clean up, and the symptom would be a deleted channel that keeps
+// streaming (fact T2 in the v2 plan — nothing is broken until we retarget, which is
+// what makes it easy to miss).
+const (
+	tunarrGuideSuffix  = "/api/xmltv.xml"     // Tunarr's XMLTV (see TunarrURLsFrom)
+	loomarrGuideSuffix = "/playout/guide.xml" // internal playout's own (§9.1)
+)
 
-func isTunarrGuidePath(path string) bool {
-	return strings.HasSuffix(strings.TrimRight(path, "/"), tunarrGuideSuffix)
+// isLoomarrManagedGuidePath reports whether a listing provider's Path is one Loomarr
+// wrote — either backend's shape.
+func isLoomarrManagedGuidePath(path string) bool {
+	trimmed := strings.TrimRight(path, "/")
+	// The token may carry a query string (?token=…), which is part of the URL we wrote
+	// but not part of the shape — compare on the path only.
+	if i := strings.IndexByte(trimmed, '?'); i >= 0 {
+		trimmed = trimmed[:i]
+	}
+	return strings.HasSuffix(trimmed, tunarrGuideSuffix) ||
+		strings.HasSuffix(trimmed, loomarrGuideSuffix)
 }
 
 // RemoveTuner deletes a tuner host by id (§6 URL-change reconcile). The delete

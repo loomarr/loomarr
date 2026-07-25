@@ -320,3 +320,75 @@ func TestRefreshGuide_ErrorsWhenTaskAbsent(t *testing.T) {
 		t.Fatal("expected an error when the RefreshGuide task is absent")
 	}
 }
+
+// serveSyntheticLiveTV serves a hand-built config so a test can express provider shapes
+// the Phase-0 capture doesn't contain. The capture stays the source of truth for the
+// Emby/Jellyfin WIRE shape; this only varies which providers are present.
+func serveSyntheticLiveTV(t *testing.T, providersJSON string) *library.Client {
+	t.Helper()
+	body := `{"TunerHosts":[],"ListingProviders":[` + providersJSON + `]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return library.New(library.Emby, srv.URL, "test-token", "dev-1")
+}
+
+// T2, the migration that used to break silently: an install moving from Tunarr to
+// internal playout has a TUNARR-shaped provider that must still be cleaned up. Matching
+// only the new shape would orphan exactly the provider the migration needs to remove,
+// and the symptom is a deleted channel that keeps streaming.
+func TestStaleLoomarrListings_TunarrProviderStaleWhenRetargetingToInternal(t *testing.T) {
+	c := serveSyntheticLiveTV(t, `{"Id":"tunarr-one","Type":"xmltv","Path":"http://tunarr:8000/api/xmltv.xml"}`)
+
+	stale, err := c.StaleLoomarrListings(context.Background(), "http://loomarr:8080/playout/guide.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 || stale[0] != "tunarr-one" {
+		t.Fatalf("a Tunarr provider must be stale once we retarget to internal playout, got %v", stale)
+	}
+}
+
+// …and the reverse: moving back to Tunarr must clean up the internal-playout provider.
+func TestStaleLoomarrListings_InternalProviderStaleWhenRetargetingToTunarr(t *testing.T) {
+	c := serveSyntheticLiveTV(t, `{"Id":"internal-one","Type":"xmltv","Path":"http://loomarr:8080/playout/guide.xml"}`)
+
+	stale, err := c.StaleLoomarrListings(context.Background(), "http://tunarr:8000/api/xmltv.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 || stale[0] != "internal-one" {
+		t.Fatalf("an internal-playout provider must be stale once we retarget to Tunarr, got %v", stale)
+	}
+}
+
+// The desired provider is never stale, even though its URL carries a token: the token is
+// part of the URL we wrote, not part of the SHAPE, and comparing with it attached would
+// make every provider look stale after a token regeneration.
+func TestStaleLoomarrListings_TokenInPathDoesNotConfuseTheMatch(t *testing.T) {
+	desired := "http://loomarr:8080/playout/guide.xml?token=plo_abc123"
+	c := serveSyntheticLiveTV(t, `{"Id":"internal-one","Type":"xmltv","Path":"`+desired+`"}`)
+
+	stale, err := c.StaleLoomarrListings(context.Background(), desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("the desired provider must not be stale, got %v", stale)
+	}
+}
+
+// A provider Loomarr did NOT write is never touched. Someone's hand-added guide is not
+// ours to delete — the same rule §9 states for channels Loomarr didn't create.
+func TestStaleLoomarrListings_LeavesForeignProvidersAlone(t *testing.T) {
+	c := serveSyntheticLiveTV(t, `{"Id":"someone-elses","Type":"xmltv","Path":"http://xmltv.example.com/guide.xml"}`)
+
+	stale, err := c.StaleLoomarrListings(context.Background(), "http://loomarr:8080/playout/guide.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("a provider Loomarr didn't write must never be reported stale, got %v", stale)
+	}
+}
