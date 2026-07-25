@@ -211,6 +211,59 @@ probing the actual ffmpeg binary rather than trusting device files alone.
   progress.** Budget for getting this wrong once, and keep the backend swappable
   (which `playout.backend` already does).
 
+## 5a. The exact flag sets (verified in source — do not guess these)
+
+Three recipes I would otherwise have gotten wrong, each with a failure mode that only shows
+up against a real player.
+
+### The test card / offline card — `ffmpeg/ffmpegText.ts:18-45`
+
+V6's gate is "a channel playing a test card", so this is literally the first thing to build,
+and it needs **no library content at all**:
+
+```
+-f lavfi -re -stream_loop -1 -i color=c=black:s=<W>x<H>
+-f lavfi -i anullsrc
+-vf drawtext=fontfile=<font>:fontsize=30:...:text='<title>',drawtext=...text='<subtitle>'
+-c:v <videoFormat> -c:a <audioFormat> -f mpegts pipe:1
+```
+
+Three details that matter:
+
+- ⚠ **`anullsrc` as a SECOND input** — a silent audio track. A video-only MPEG-TS stream is
+  a classic cause of a player refusing to play or showing no timeline. Ship video-only and
+  you debug it against Emby.
+- ⚠ **`-re`** reads the synthetic source at *realtime*. Without it a `lavfi` source
+  generates flat out and floods the pipe, racing ahead of wall-clock — meaningless for live.
+- **`-stream_loop -1`** on the card itself so a one-frame source never EOFs.
+- A **bundled font** is required for `drawtext`. Tunarr ships `font.ttf` in its data dir.
+  (Their own comment on the `color=` size param: *"this is wrong, figure out the param"* —
+  so verify it rather than copying blindly.)
+
+### Realtime pacing for real programs — `ReadrateInputOption.ts`
+
+Better than plain `-re`:
+
+```
+-readrate 1.0 -readrate_initial_burst <seconds>
+```
+
+⚠ **The initial burst is the tune-in latency fix.** Realtime pacing alone means a joining
+player waits seconds to buffer enough to start; the burst fills its buffer immediately and
+then settles to 1.0x. Deliberately **not** applied to still images or the null audio source
+— pacing those stalls the pipeline.
+
+### Reconnect flags — two tiers, and they differ
+
+| Where | Flags | Why |
+| --- | --- | --- |
+| **Parent** (the infinite concat), `ConcatHttpReconnectOptions.ts` | `-reconnect 1 -reconnect_at_eof 1` | `reconnect_at_eof` is what makes a child program's EOF **non-fatal** — it is the mechanism that advances to the next program rather than ending the channel. |
+| **Child** (one discrete program), `HttpReconnectOptions.ts` | `-reconnect 1 -reconnect_on_network_error 1 -reconnect_streamed 1 -multiple_requests 1` | A child fetching from an HTTP media source should survive a blip mid-program. |
+
+Applied conditionally on `protocol === 'http'` and continuity `infinite` vs `discrete` — the
+two tiers must not get each other's flags. Giving the parent `reconnect_streamed` or the
+child `reconnect_at_eof` would both be wrong in ways that look like intermittent stalls.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
