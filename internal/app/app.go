@@ -201,6 +201,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutSessions api.PlayoutSessions
 	var playoutResolverSvc api.PlayoutResolver
+	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
+	// source for "what airs when", so the guide cannot advertise something the encoder does
+	// not play.
+	var playoutGuideSvc api.PlayoutGuide
 	// Declared out here so the pod assembler can be attached further down: the resolver is
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
@@ -307,6 +311,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		playoutRes.activeChannels = playoutMgr.ActiveCount
 		playoutSessions = playoutMgr
 		playoutResolverSvc = playoutRes
+		playoutGuideSvc = playoutRes
 		// A live encoder never exits on its own (playout/process.go), so shutdown MUST tear
 		// them down explicitly or they outlive the process that started them.
 		go func() {
@@ -679,7 +684,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// effect without a restart (§11 rotation).
 		PlayoutSessions: playoutSessions,
 		PlayoutResolver: playoutResolverSvc,
-		PlayoutSecret:   playoutSecret,
+		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
+		PlayoutGuide:  playoutGuideSvc,
+		PlayoutSecret: playoutSecret,
 		PlayoutEncoder: func(ctx context.Context, args []string) (*playout.Process, error) {
 			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, nil)
 		},

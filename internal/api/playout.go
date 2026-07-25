@@ -335,6 +335,9 @@ const playoutBackendInternal = "internal"
 // would imply a freedom to change it that we do not have.
 func (s *Server) registerPlayout(mux *http.ServeMux) {
 	mux.HandleFunc("GET /playout/tuner.m3u", s.tunerHandler)
+	// The XMLTV listings (playoutguide.go). Without it a channel tunes and plays with an
+	// empty EPG — §9.1 promised this alongside the tuner.
+	mux.HandleFunc("GET /playout/guide.xml", s.guideHandler)
 	mux.HandleFunc("GET /playout/stream/{id}", s.streamHandler)
 	mux.HandleFunc("GET /playout/playlist/{id}", s.playlistHandler)
 	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per

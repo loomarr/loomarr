@@ -152,3 +152,97 @@ func slotDuration(s schedule.Slot) time.Duration {
 	}
 	return 0
 }
+
+// Broadcast is one programme on the timeline, with the wall-clock times it occupies.
+//
+// Distinct from Airing, which answers "what is on RIGHT NOW" for the encoder. A guide needs the
+// opposite shape: a sequence with absolute start/stop times, spanning hours. Same arithmetic
+// underneath, so the guide cannot advertise something different from what plays.
+type Broadcast struct {
+	Kind          schedule.SlotKind
+	Title         string
+	LibraryItemID string
+	Season        int
+	Episode       int
+	// Start and Stop are absolute wall-clock. Stop is exclusive.
+	Start, Stop time.Time
+}
+
+// Duration is how long this programme occupies the schedule.
+func (b Broadcast) Duration() time.Duration { return b.Stop.Sub(b.Start) }
+
+// BroadcastsBetween walks the cycle and returns every programme overlapping [from, to).
+//
+// The guide's counterpart to AiringAt, and deliberately built on the SAME cycle arithmetic: a
+// guide that computed its own timeline would eventually disagree with the encoder, and the
+// symptom — "it says Heat but Predator is playing" — is the kind of bug nobody can reproduce on
+// demand.
+//
+// Programmes are CLIPPED to the window, so a film already in progress at `from` reports its real
+// start time rather than being truncated or dropped. That matters for an EPG: a media server
+// draws the currently-airing programme from its actual start, and a clipped start renders as a
+// programme that appears to begin the moment you opened the guide.
+//
+// Filler and flex are INCLUDED here — the caller decides whether to advertise them. §10 and
+// decision #12 say the XMLTV guide must not, but the same walk serves Loomarr's own time-grid
+// (V13b), which shows breaks explicitly. Filtering here would make this function useless to one
+// of its two callers.
+func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
+	total := cycleDuration(slots)
+	if total <= 0 || !to.After(from) {
+		return nil
+	}
+
+	// Rewind to the start of the programme covering `from`, so a film already in progress
+	// reports its true start. Without this the first entry would begin at `from`.
+	elapsed := from.Sub(epoch)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	into := elapsed % total
+	cursor := from.Add(-into) // wall-clock time at which the current cycle pass began
+
+	// Advance to the slot containing `from`, keeping cursor aligned to slot boundaries.
+	idx := 0
+	for _, s := range slots {
+		d := slotDuration(s)
+		if d <= 0 {
+			idx++
+			continue
+		}
+		if into < d {
+			break
+		}
+		into -= d
+		cursor = cursor.Add(d)
+		idx++
+	}
+
+	var out []Broadcast
+	// A hard cap on iterations, not on output: a lineup of very short items over a long window
+	// is legitimate, but an unbounded loop over a corrupt cycle would hang the request. 10k
+	// programmes is far past any real guide (Tunarr's own 14-hour output is 98).
+	const maxIterations = 10000
+	for i := 0; i < maxIterations && cursor.Before(to); i++ {
+		if idx >= len(slots) {
+			idx = 0 // the cycle repeats — that is what makes a channel continuous
+		}
+		s := slots[idx]
+		d := slotDuration(s)
+		if d <= 0 {
+			idx++
+			continue // unairable (a pending acquisition has no known duration)
+		}
+		stop := cursor.Add(d)
+		if stop.After(from) {
+			out = append(out, Broadcast{
+				Kind: s.Kind, Title: s.Title, LibraryItemID: s.LibraryItemID,
+				Season: s.Season, Episode: s.Episode,
+				Start: cursor, Stop: stop,
+			})
+		}
+		cursor = stop
+		idx++
+	}
+	return out
+}

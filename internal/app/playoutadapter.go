@@ -120,6 +120,28 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 	return airing, url, nil
 }
 
+// BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
+//
+// Deliberately on the SAME type as AiringNow, reading the SAME CyclePreview: the guide and the
+// encoder must agree, and the cheapest way to guarantee that is to give them one source rather
+// than two that happen to match today.
+//
+// `at` is the window's START, not `now`. CyclePreview evaluates curation rules at an instant —
+// a rule that switches the channel to horror at 21:00 changes the lineup — and a guide built at
+// `now` would advertise the current rule's lineup for the whole window. Using `from` means the
+// listings reflect what the rules said when the window opened; a window spanning a rule
+// boundary is a known limitation rather than a silent wrong answer (the mid-window portion
+// shows the earlier rule's programmes).
+func (r *playoutResolver) BroadcastsBetween(
+	ctx context.Context, channelID string, from, to time.Time,
+) ([]playout.Broadcast, error) {
+	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, from)
+	if err != nil {
+		return nil, err
+	}
+	return playout.BroadcastsBetween(slots, playoutEpoch(channelID), from, to), nil
+}
+
 // airingFiller resolves a break gap to ONE specific commercial file.
 //
 // The gap is a single slot on the timeline, but a pod is a SEQUENCE (bumper → ads → bumper),
