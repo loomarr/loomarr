@@ -294,6 +294,66 @@ func TestRenderXMLTV_EmitsBothEpisodeNumberSystems(t *testing.T) {
 	}
 }
 
+// The metadata that turns a bare title into a listing worth reading. `<desc>` is the one that
+// matters most — its absence is why the series/episode split had to collapse into the title.
+func TestRenderXMLTV_EmitsDescriptionGenresYearAndRating(t *testing.T) {
+	b := programme("Last Action Hero", guideNow, 130)
+	b.Description = "After his father's death, a young boy finds solace in action movies."
+	b.Genres = []string{"Fantasy", "Action", "Comedy"}
+	b.Year = 1993
+	b.Rating = "PG-13"
+
+	got := renderOne(t, Guide{
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Classic Sci-Fi", Number: 50}},
+		Programmes: map[string][]Broadcast{"ch1": {b}},
+	})
+
+	if !strings.Contains(got, "<desc>After his father") {
+		t.Errorf("no description — the detail pane has nothing to show:\n%s", got)
+	}
+	for _, g := range []string{"Fantasy", "Action", "Comedy"} {
+		if !strings.Contains(got, "<category>"+g+"</category>") {
+			t.Errorf("genre %q missing:\n%s", g, got)
+		}
+	}
+	if !strings.Contains(got, "<date>1993</date>") {
+		t.Errorf("no release year:\n%s", got)
+	}
+	// ⚠ The nested <value> is XMLTV's shape. A bare <rating>PG-13</rating> is invalid and
+	// parsers skip it, so the rating would silently vanish.
+	if !strings.Contains(got, `<rating system="MPAA"><value>PG-13</value></rating>`) {
+		t.Errorf("rating is not in XMLTV's nested-value shape:\n%s", got)
+	}
+}
+
+// Metadata is best-effort: the media server may not have it, or may be briefly unreachable. A
+// programme with none must still render its title and times rather than emitting empty elements
+// a parser could trip on.
+func TestRenderXMLTV_OmitsAbsentMetadataCleanly(t *testing.T) {
+	got := renderOne(t, Guide{
+		Channels:   []GuideChannel{{ID: "ch1", Name: "Ch", Number: 1}},
+		Programmes: map[string][]Broadcast{"ch1": {programme("Untitled Film", guideNow, 90)}},
+	})
+
+	if !strings.Contains(got, "<title>Untitled Film</title>") {
+		t.Fatalf("lost the programme entirely:\n%s", got)
+	}
+	for _, absent := range []string{"<desc>", "<category>", "<date>", "<rating"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("emitted an empty %s for a programme with no metadata:\n%s", absent, got)
+		}
+	}
+	// And the document must still parse.
+	var doc struct {
+		Programmes []struct {
+			Title string `xml:"title"`
+		} `xml:"programme"`
+	}
+	if err := xml.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("metadata-free document does not parse: %v", err)
+	}
+}
+
 // A movie carries no season/episode, and must not get a bogus "-1.-1." entry.
 func TestRenderXMLTV_MoviesGetNoEpisodeNumber(t *testing.T) {
 	got := renderOne(t, Guide{

@@ -139,7 +139,53 @@ func (r *playoutResolver) BroadcastsBetween(
 	if err != nil {
 		return nil, err
 	}
-	return playout.BroadcastsBetween(slots, playoutEpoch(channelID), from, to), nil
+	bs := playout.BroadcastsBetween(slots, playoutEpoch(channelID), from, to)
+	r.attachMetadata(ctx, bs)
+	return bs, nil
+}
+
+// attachMetadata fills in descriptions, genres, years and ratings from the media server.
+//
+// ONE BULK CALL for the whole channel, which is the only reason this is affordable on a request
+// a media server polls: Emby's `/Items?Ids=` takes a comma-separated list, and 120 episodes came
+// back in 24ms on the dev stack. Per-item lookups would have been a round trip per programme and
+// would have forced a cache.
+//
+// BEST-EFFORT BY DESIGN. A failure leaves the broadcasts exactly as they were — titles and times
+// intact — because a guide with thin entries is far better than no guide. The media server is an
+// external dependency on a path that must keep working when it is slow or briefly down.
+func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broadcast) {
+	if r.lib == nil || len(bs) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(bs))
+	for _, b := range bs {
+		if b.LibraryItemID != "" {
+			ids = append(ids, b.LibraryItemID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	meta, err := r.lib.ItemMetadataByID(ctx, ids)
+	if err != nil && r.log != nil {
+		// Logged, not returned: the partial map is still applied below. ItemMetadataByID
+		// returns what it gathered alongside the error precisely so a slow page of a large
+		// guide does not cost the whole document its descriptions.
+		r.log.Debug("playout: guide metadata partially unavailable",
+			"err", err, "resolved", len(meta), "wanted", len(ids))
+	}
+	for i := range bs {
+		m, ok := meta[bs[i].LibraryItemID]
+		if !ok {
+			continue // removed from the library since the lineup was built; keep the title
+		}
+		bs[i].Description = m.Overview
+		bs[i].Genres = m.Genres
+		bs[i].Year = m.Year
+		bs[i].Rating = m.OfficialRating
+	}
 }
 
 // airingFiller resolves a break gap to ONE specific commercial file.

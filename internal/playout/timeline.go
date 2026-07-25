@@ -169,6 +169,14 @@ type Broadcast struct {
 	LibraryItemID string
 	Season        int
 	Episode       int
+	// Display metadata for the guide, filled in by the caller from the media server (§9.1).
+	// Deliberately NOT carried on a schedule.Slot: the schedule is about what plays when, and
+	// per-item display data would bloat every lineup row and every policy_json blob for
+	// something the media server already holds. The guide fetches it in one bulk call instead.
+	Description string
+	Genres      []string
+	Year        int
+	Rating      string
 	// Start and Stop are absolute wall-clock. Stop is exclusive.
 	Start, Stop time.Time
 }

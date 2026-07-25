@@ -84,6 +84,18 @@ type xmlTVProgramme struct {
 	Title string `xml:"title"`
 	// SubTitle is the EPISODE name, omitted for a movie.
 	SubTitle string `xml:"sub-title,omitempty"`
+	// Desc is the plot description — what makes a guide entry worth selecting. Its absence is
+	// why the series/episode split had to be collapsed into the title: with no detail pane
+	// content, the grid was the only surface carrying information.
+	Desc string `xml:"desc,omitempty"`
+	// Categories are genres. XMLTV allows several, and media servers use them for filtering
+	// and for the coloured category chips some guides draw.
+	Categories []string `xml:"category,omitempty"`
+	// Date is the original release/air date. Year-only is valid XMLTV and is all we have;
+	// a media server renders it as "(1993)" next to the title.
+	Date string `xml:"date,omitempty"`
+	// Rating is the content rating, in the system a media server expects to see named.
+	Rating *xmlTVRating `xml:"rating,omitempty"`
 	// EpisodeNums — TWO of them when season/episode are known, because clients disagree about
 	// which they read:
 	//
@@ -98,6 +110,13 @@ type xmlTVProgramme struct {
 type xmlTVEpisodeNum struct {
 	System string `xml:"system,attr"`
 	Value  string `xml:",chardata"`
+}
+
+// xmlTVRating is a content rating. The nested `<value>` is XMLTV's shape, not a nicety —
+// a bare `<rating>TV-PG</rating>` is not valid and parsers skip it.
+type xmlTVRating struct {
+	System string `xml:"system,attr"`
+	Value  string `xml:"value"`
 }
 
 // advertisable reports whether a broadcast belongs in a media server's EPG.
@@ -176,6 +195,20 @@ func RenderXMLTV(g Guide, now time.Time) ([]byte, error) {
 			if b.SeriesTitle != "" {
 				p.Title = b.SeriesTitle + ": " + b.Title
 				p.SubTitle = b.Title
+			}
+			p.Desc = b.Description
+			p.Categories = b.Genres
+			if b.Year > 0 {
+				// Year-only is valid XMLTV; a media server renders it as "(1993)". Padding it
+				// to a fake January 1st would assert a precision we do not have.
+				p.Date = strconv.Itoa(b.Year)
+			}
+			if b.Rating != "" {
+				// The system name matters: a media server maps ratings per system, and an
+				// unnamed one is ignored. Emby reports US-style ratings ("TV-PG", "PG-13"),
+				// which is what both MPAA and TV Parental Guidelines values look like here —
+				// Tunarr labels the same values "MPAA", so that is the compatible choice.
+				p.Rating = &xmlTVRating{System: "MPAA", Value: b.Rating}
 			}
 			if b.Season > 0 && b.Episode > 0 {
 				p.EpisodeNums = []xmlTVEpisodeNum{
