@@ -2,6 +2,7 @@ package playout
 
 import (
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -57,8 +58,13 @@ func TestTestCardArgs_ProgressIsStructured(t *testing.T) {
 // Every segment boundary must land on a keyframe, and segment durations must not vary —
 // a TARGETDURATION that lies is a player error, not a warning.
 func TestGopArgs_PinKeyframesAndDisableSceneDetection(t *testing.T) {
-	got := joined(DefaultProfile().videoEncodeArgs())
-	for _, want := range []string{"-g 25", "-keyint_min 25", "-sc_threshold 0"} {
+	// 2-second GOP: keyframes are the most expensive frames, so a 1-second interval spends a
+	// large share of the bitrate re-sending full pictures instead of detail. Asserted from the
+	// constant rather than a literal, so the intent survives a retune of the interval.
+	p := DefaultProfile()
+	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
+	got := joined(p.videoEncodeArgs())
+	for _, want := range []string{"-g " + gop, "-keyint_min " + gop, "-sc_threshold 0"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -100,9 +106,11 @@ func TestVideoEncodeArgs_NoTuneOnEncodersThatLackIt(t *testing.T) {
 	if !strings.Contains(sw, "-preset veryfast") || !strings.Contains(sw, "-tune zerolatency") {
 		t.Errorf("libx264 should be veryfast+zerolatency for live, got %q", sw)
 	}
+	// nvenc speaks pN presets, not libx264's words. p7 (slowest/best) because the GPU has the
+	// headroom — measured at 5.4x realtime for 1080p — and it compounds with CQ rate control.
 	nv := joined(Profile{Encoder: EncoderNVENC, Framerate: 25}.videoEncodeArgs())
-	if !strings.Contains(nv, "-preset p4") || !strings.Contains(nv, "-tune hq") {
-		t.Errorf("nvenc should use its own p4/hq vocabulary, got %q", nv)
+	if !strings.Contains(nv, "-preset p7") || !strings.Contains(nv, "-tune hq") {
+		t.Errorf("nvenc should use its own pN/hq vocabulary, got %q", nv)
 	}
 	// AMF speaks -quality, not -preset.
 	amf := joined(Profile{Encoder: EncoderAMF, Framerate: 25}.videoEncodeArgs())
@@ -119,10 +127,17 @@ func TestVideoEncodeArgs_EveryFamilyGetsRateControl(t *testing.T) {
 		if !strings.Contains(got, "-c:v "+string(enc)) {
 			t.Errorf("%s: codec not set: %q", enc, got)
 		}
-		if !strings.Contains(got, "-b:v 4000k") || !strings.Contains(got, "-maxrate") {
-			t.Errorf("%s: no bitrate cap — a live encoder can spike and blow a client buffer: %q", enc, got)
+		// EVERY family must have a CEILING, whichever rate-control mode it uses. Quality-
+		// targeted encoders (nvenc: -rc vbr -cq N -b:v 0) legitimately have no -b:v target,
+		// but an uncapped live encoder blows a client's buffer — so maxrate is the invariant,
+		// not -b:v.
+		if !strings.Contains(got, "-maxrate") {
+			t.Errorf("%s: no bitrate ceiling — a live encoder can spike and blow a client buffer: %q", enc, got)
 		}
-		if !strings.Contains(got, "-g 25") {
+		if !strings.Contains(got, "-b:v 4000k") && !strings.Contains(got, "-cq ") {
+			t.Errorf("%s: neither a bitrate target nor a quality target: %q", enc, got)
+		}
+		if !strings.Contains(got, "-g 50") {
 			t.Errorf("%s: no pinned GOP — segment boundaries need keyframes: %q", enc, got)
 		}
 	}
@@ -169,6 +184,66 @@ func TestFindFont_ReturnsOnlyAnExistingFile(t *testing.T) {
 	if _, err := exec.LookPath("test"); err == nil { // trivially available
 		if !fileExists(got) {
 			t.Errorf("FindFont returned %q which does not exist", got)
+		}
+	}
+}
+
+// THE ARTIFACT FIX. Capped CBR (`-b:v N -maxrate N`) leaves the encoder no headroom, so every
+// hard scene — grain, motion, shadow detail in a dark HDR film — is crushed to fit the same
+// budget as an easy one. Measured with SSIM against a near-lossless reference:
+//
+//	CBR 5000k            SSIM 0.98262
+//	VBR cq 21, cap 10M   SSIM 0.98581
+//
+// An earlier comment in this file claimed hardware could not use a quality target. That was
+// wrong about NVENC, and this test exists so the claim cannot quietly return.
+func TestRateControl_NvencUsesAQualityTargetWithHeadroom(t *testing.T) {
+	got := joined(Profile{Encoder: EncoderNVENC, Framerate: 25, VideoBitrate: 5000}.videoEncodeArgs())
+
+	if !strings.Contains(got, "-rc vbr") || !strings.Contains(got, "-cq ") {
+		t.Errorf("nvenc is not quality-targeted; capped CBR crushes hard scenes: %q", got)
+	}
+	// `-b:v 0` is load-bearing: with a non-zero bitrate, nvenc treats cq as an upper bound on
+	// a bitrate-targeted encode and the result is nearly indistinguishable from plain CBR.
+	if !strings.Contains(got, "-b:v 0") {
+		t.Errorf("cq without -b:v 0 degenerates to CBR: %q", got)
+	}
+	// Headroom, but not unbounded — a live stream that spikes arbitrarily blows a client's
+	// buffer. 2x the ladder target.
+	if !strings.Contains(got, "-maxrate 10000k") {
+		t.Errorf("want a 2x ceiling above the 5000k ladder target: %q", got)
+	}
+}
+
+// The quality target tracks the ladder rung, so an operator's tier choice and the load-aware
+// step-down still govern picture quality rather than being overridden by a fixed CQ.
+func TestRateControl_QualityTargetFollowsTheLadder(t *testing.T) {
+	var last int
+	for _, bitrate := range []int{8000, 5000, 3000, 1500} {
+		cq := Profile{Encoder: EncoderNVENC, VideoBitrate: bitrate}.constantQuality()
+		if cq == 0 {
+			t.Fatalf("no quality target at %dk", bitrate)
+		}
+		// Lower rungs mean a busier box, so the target loosens (a HIGHER cq is looser).
+		if last != 0 && cq <= last {
+			t.Errorf("cq did not loosen going from a higher rung to %dk: %d then %d",
+				bitrate, last, cq)
+		}
+		last = cq
+	}
+}
+
+// Only NVENC is measured, so only NVENC gets a quality target. VAAPI/QSV have plausible
+// equivalents (-rc_mode CQP, -global_quality) but an unmeasured quality value is a channel that
+// either looks bad or saturates the uplink — neither of which fails loudly.
+func TestRateControl_UnmeasuredFamiliesStayBitrateTargeted(t *testing.T) {
+	for _, enc := range []Encoder{EncoderVAAPI, EncoderQSV, EncoderVulkan, EncoderAMF, EncoderV4L2M2M} {
+		got := joined(Profile{Encoder: enc, Framerate: 25, VideoBitrate: 5000}.videoEncodeArgs())
+		if strings.Contains(got, "-cq ") {
+			t.Errorf("%s got an unmeasured quality target: %q", enc, got)
+		}
+		if !strings.Contains(got, "-b:v 5000k") {
+			t.Errorf("%s lost its bitrate target: %q", enc, got)
 		}
 	}
 }
