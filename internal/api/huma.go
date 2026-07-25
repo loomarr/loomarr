@@ -28,6 +28,7 @@ type Server struct {
 	// login/sessions wire /v1/auth/* (§11); nil until Phase 9 is configured.
 	login        LoginService
 	sessions     SessionManager
+	passwords    PasswordService
 	userSync     UserSyncer
 	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
 	// channels/livetv wire /v1/channels* and /v1/setup/* (§7/§9); nil until
@@ -347,8 +348,10 @@ type UserSyncer interface {
 	Sync(ctx context.Context) (int, error)
 }
 
-// Provisioner owns first-run bootstrap + explicit import (§11) — the only paths
-// that create users. Implemented by auth.Provisioner.
+// Provisioner owns first-run bootstrap + explicit import (§11). Together with
+// PasswordService.CreateLocal these are the ONLY paths that create users — every
+// one of them an explicit admin action, never a side effect of someone signing in.
+// Implemented by auth.Provisioner.
 type Provisioner interface {
 	// Bootstrap creates the first local admin, once (ErrBootstrapClosed after).
 	Bootstrap(ctx context.Context, username, password string) (store.User, error)
@@ -366,6 +369,24 @@ type Provisioner interface {
 type LoginService interface {
 	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error)
 	Disable(ctx context.Context, userID string) error
+}
+
+// PasswordService owns LOCAL credential mutations (§11). Kept separate from
+// LoginService because verifying a credential and changing one are different
+// authority: the first is what any signed-in user does constantly, the second is
+// what an account owner (or an admin) does deliberately.
+// Implemented by auth.PasswordService.
+type PasswordService interface {
+	// ChangePassword is the SELF path: proves the current password, then replaces it
+	// and revokes every session for that user.
+	ChangePassword(ctx context.Context, userID, current, next string) error
+	// CreateLocal mints a local account — an allowlist row carrying a bcrypt hash.
+	// Admin-only at the route layer; the same kind of explicit write as Import.
+	CreateLocal(ctx context.Context, username, password string, role store.Role, quota int) (store.User, error)
+	// ResetPassword is the ADMIN path: no current password (that's the point), so it
+	// relies entirely on the caller's role. Deliberately not the same call as
+	// ChangePassword — sharing one would make the "prove you know it" check optional.
+	ResetPassword(ctx context.Context, targetUserID, next string) error
 }
 
 // SessionManager revokes sessions (logout) and exposes them for admin review (§11).
@@ -389,6 +410,7 @@ type Options struct {
 	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready         ReadyFunc
 	Login         LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords     PasswordService  // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
 	Sessions      SessionManager   // /v1/auth/logout (Phase 9)
 	UserSync      UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	CookieSecure  string           // COOKIE_SECURE: auto|true|false (§11)

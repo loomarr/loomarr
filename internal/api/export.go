@@ -23,6 +23,7 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	srv.registerTitles(humaAPI)
 	srv.registerAuth(humaAPI)
 	srv.registerUsers(humaAPI)
+	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
