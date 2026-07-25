@@ -40,13 +40,13 @@ func randomCatalog(rng *rand.Rand, maxN int) []filler.Clip {
 	cat := make([]filler.Clip, 0, n)
 	for i := 0; i < n; i++ {
 		cat = append(cat, filler.Clip{
-			TunarrProgramID: "p" + strconv.Itoa(i),
-			Name:            "clip-" + strconv.Itoa(i),
-			Kind:            propKinds[rng.Intn(len(propKinds))],
-			Era:             propEras[rng.Intn(len(propEras))],
-			Audience:        propAudiences[rng.Intn(len(propAudiences))],
-			Category:        propCategs[rng.Intn(len(propCategs))],
-			DurationMs:      propDurations[rng.Intn(len(propDurations))],
+			Path:       "p" + strconv.Itoa(i),
+			Name:       "clip-" + strconv.Itoa(i),
+			Kind:       propKinds[rng.Intn(len(propKinds))],
+			Era:        propEras[rng.Intn(len(propEras))],
+			Audience:   propAudiences[rng.Intn(len(propAudiences))],
+			Category:   propCategs[rng.Intn(len(propCategs))],
+			DurationMs: propDurations[rng.Intn(len(propDurations))],
 		})
 	}
 	return cat
@@ -183,14 +183,14 @@ func TestProp_NoRepeatWithinPod(t *testing.T) {
 		p := filler.Assemble(cat, w, pol, map[string]bool{})
 		seen := map[string]bool{}
 		for _, e := range p.Entries {
-			if e.TunarrProgramID == "" {
+			if e.Path == "" {
 				continue
 			}
-			if seen[e.TunarrProgramID] {
+			if seen[e.Path] {
 				t.Fatalf("iter %d: program %q appears twice in one pod (no-repeat violated)\n pod=%+v",
-					i, e.TunarrProgramID, p)
+					i, e.Path, p)
 			}
-			seen[e.TunarrProgramID] = true
+			seen[e.Path] = true
 		}
 	}
 }
@@ -220,10 +220,10 @@ func TestProp_Density(t *testing.T) {
 // exact-match catalog so the cap, not scarcity, is what bounds the count.
 func TestProp_DensityDefaultPodMax(t *testing.T) {
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{TunarrProgramID: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 12; i++ {
 		cat = append(cat, filler.Clip{
-			TunarrProgramID: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
+			Path: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "c" + strconv.Itoa(i), DurationMs: 20000,
 		})
 	}
@@ -252,8 +252,8 @@ func TestProp_NoRepeatAcrossWindow(t *testing.T) {
 			w := randomWindow(rng, rng.Int63())
 			p := filler.Assemble(cat, w, pol, used)
 			for _, e := range p.Entries {
-				if e.TunarrProgramID != "" {
-					seen[e.TunarrProgramID]++
+				if e.Path != "" {
+					seen[e.Path]++
 				}
 			}
 		}

@@ -57,6 +57,33 @@ const poolGapMs = 600_000 // 10 min of clips
 // the channel's flex falls back to the bumper card — never dead air (§10, §9). The
 // pool is seed-deterministic (same catalog + seed → same uuids), so a re-reconcile
 // produces the same list (idempotency at the EnsureFillerList layer, §9).
+// HasPool reports whether the channel has any playable commercials at all.
+//
+// Backend-INDEPENDENT, and that is the point (§9.1): it asks "are there clips to fill a break
+// with", which decides whether the scheduler interleaves breaks. BuildFillerList answers the
+// narrower Tunarr question — "which program uuids go in a filler-list" — and using it as this
+// gate meant an install with no Tunarr assembled a perfect pod and then got no breaks, because
+// none of its clips carried a uuid.
+//
+// A pod of ONLY the embedded fallback card is not a pool: there is nothing to play, and
+// promising breaks would render as empty channel-named blocks in the guide (§10).
+func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, sel Selection) bool {
+	pod, err := a.Preview(ctx, channelID, seed, sel)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("filler pool check failed (channel stays break-free)", "channel", channelID, "err", err)
+		}
+		return false
+	}
+	for _, e := range pod.Entries {
+		// A real file, whichever backend plays it. The fallback card has no Path.
+		if e.Path != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *PodAdapter) BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool) {
 	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {

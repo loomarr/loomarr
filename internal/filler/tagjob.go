@@ -140,7 +140,7 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		sug, err := Classify(ctx, t.provider, clip.Name, t.sidecarText(clip))
 		if err != nil {
 			if t.log != nil {
-				t.log.Warn("clip classify failed", "clip", clip.TunarrProgramID, "err", err)
+				t.log.Warn("clip classify failed", "clip", clip.Path, "err", err)
 			}
 			res.Skipped++
 			continue
@@ -163,7 +163,7 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 			res.Skipped++
 			continue // nothing usable
 		}
-		if err := t.store.UpdateClipTags(ctx, clip.TunarrProgramID, era, audience, category, true, t.now()); err != nil {
+		if err := t.store.UpdateClipTags(ctx, clip.Path, era, audience, category, true, t.now()); err != nil {
 			return res, err
 		}
 		if era > 0 && audience != "" && category != "" {

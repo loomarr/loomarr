@@ -61,7 +61,9 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := store.Clip{}
-	c.TunarrProgramID = id
+	// Path is identity since §9.1; the Tunarr uuid rides alongside for filler-lists.
+	c.Path = id
+	c.TunarrProgramID = "tun-" + id
 	c.Name = "clip " + id
 	c.Kind = kind
 	c.Era = era
@@ -85,8 +87,8 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	}
 	var body struct {
 		Clips []struct {
-			TunarrProgramID, Kind string
-			Tagged                bool
+			Path, Kind string
+			Tagged     bool
 		}
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
@@ -95,7 +97,7 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	}
 	for _, c := range body.Clips {
 		if !c.Tagged {
-			t.Errorf("fully-tagged clip %s reported untagged", c.TunarrProgramID)
+			t.Errorf("fully-tagged clip %s reported untagged", c.Path)
 		}
 	}
 }
@@ -185,7 +187,7 @@ func TestFiller_NameSearch(t *testing.T) {
 	}
 	var body struct {
 		Clips []struct {
-			TunarrProgramID string `json:"tunarrProgramId"`
+			Path string `json:"path"`
 		} `json:"clips"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -193,7 +195,7 @@ func TestFiller_NameSearch(t *testing.T) {
 	}
 	// Case-insensitive, and the result carries the Tunarr program id — the identity that
 	// makes a search hit deep-linkable, which a title-shaped Candidate could not carry.
-	if len(body.Clips) != 1 || body.Clips[0].TunarrProgramID != "c1" {
+	if len(body.Clips) != 1 || body.Clips[0].Path != "c1" {
 		t.Errorf("q=C1 → %+v, want exactly clip c1", body.Clips)
 	}
 }

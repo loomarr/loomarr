@@ -67,7 +67,7 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //   - NO-REPEAT: skips anything already in `used`, which the caller threads across the
 //     whole window. Nothing is added to `used` here — Assemble does that as it appends.
 //   - Deterministic: all randomness comes from the seeded rng, and candidates are sorted
-//     by TunarrProgramID before any pick so catalog input order can't leak into output.
+//     by Path (the identity) before any pick so catalog input order can't leak into output.
 //   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
 func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
 	// Reserve a little of the gap for the intro+return bumpers the caller adds.
@@ -110,7 +110,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if len(out) >= podMax {
 				return
 			}
-			if used[c.TunarrProgramID] || contains(out, c.TunarrProgramID) {
+			if used[c.Path] || contains(out, c.Path) {
 				continue
 			}
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
@@ -137,7 +137,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 // hasUnused reports whether any clip in the pool isn't already used this window.
 func hasUnused(clips []Clip, used map[string]bool) bool {
 	for _, c := range clips {
-		if !used[c.TunarrProgramID] {
+		if !used[c.Path] {
 			return true
 		}
 	}
@@ -147,7 +147,7 @@ func hasUnused(clips []Clip, used map[string]bool) bool {
 // contains reports whether a clip id is already in the pod-in-progress.
 func contains(out []Clip, id string) bool {
 	for _, c := range out {
-		if c.TunarrProgramID == id {
+		if c.Path == id {
 			return true
 		}
 	}
@@ -258,6 +258,6 @@ func durationEligible(c Clip, policy Policy) bool {
 func sortByID(clips []Clip) []Clip {
 	out := make([]Clip, len(clips))
 	copy(out, clips)
-	sort.Slice(out, func(i, j int) bool { return out[i].TunarrProgramID < out[j].TunarrProgramID })
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }

@@ -57,6 +57,16 @@ type PodFiller interface {
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
 	BuildFillerList(ctx context.Context, channelID string, seed int64, sel filler.Selection) (programIDs []string, ok bool)
+	// HasPool reports whether the channel has ANY playable commercials — the question
+	// "should breaks be interleaved at all?".
+	//
+	// Separate from BuildFillerList since §9.1, because the two ask different questions and
+	// sharing one method conflated them. BuildFillerList is Tunarr-specific: it returns only
+	// clips carrying a Tunarr program uuid, since that is what a filler-list references. On an
+	// internal-playout install with no Tunarr, no clip has one — so a channel with a perfectly
+	// good pod would report "no pool" and get NO BREAKS AT ALL, which is exactly the inverted
+	// dependency §9.1 set out to remove, one level up.
+	HasPool(ctx context.Context, channelID string, seed int64, sel filler.Selection) bool
 }
 
 // Engine reconciles channels against Tunarr. One per process; the per-channel

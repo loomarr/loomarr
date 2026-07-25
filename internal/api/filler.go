@@ -49,7 +49,12 @@ func (s *Server) registerFiller(api huma.API) {
 // ClipDTO is the API view of a filler clip (§10). Identity is the Tunarr `local`-
 // source program uuid (the redesign moved filler off the media server).
 type ClipDTO struct {
-	TunarrProgramID string `json:"tunarrProgramId"`
+	// Path is the clip's IDENTITY (relative to FILLER_DIR) — what /v1/filler/{id} takes and
+	// what a channel's pinned/excluded lists reference (§9.1).
+	Path string `json:"path"`
+	// TunarrProgramID is informational since §9.1: it exists for Tunarr filler-lists and is
+	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
+	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	Era             int    `json:"era,omitempty"`
@@ -63,7 +68,7 @@ type ClipDTO struct {
 
 func clipToDTO(c store.Clip) ClipDTO {
 	return ClipDTO{
-		TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
+		Path: c.Path, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
 		DurationMs: c.DurationMs, Source: c.Source, AITagged: c.AITagged, Tagged: c.Tagged(),
 	}

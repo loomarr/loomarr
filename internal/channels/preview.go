@@ -68,9 +68,10 @@ func (e *Engine) CyclePreviewDraft(
 	// filler pool exists (drafted selection), and the settings-driven rolling-window horizon.
 	hasFillerPool := false
 	if e.pods != nil {
-		if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch)); ok && len(ids) > 0 {
-			hasFillerPool = true
-		}
+		// HasPool, not BuildFillerList: the question is "are there commercials to play",
+		// which is backend-independent. BuildFillerList answers the narrower Tunarr question
+		// and would report no pool on an install with no Tunarr (§9.1).
+		hasFillerPool = e.pods.HasPool(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch))
 	}
 	chDomain := ch.Channel
 	chDomain.BreaksPerHour = 0

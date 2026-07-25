@@ -32,6 +32,14 @@ type Airing struct {
 	// LibraryItemID is the media-server item to stream, for a program slot. Empty for
 	// filler (which resolves to a clip) and for the nothing-to-play case.
 	LibraryItemID string
+	// Source is a direct ffmpeg input for an item that is NOT a library title — currently a
+	// commercial clip resolved to a local file under FILLER_DIR (§10).
+	//
+	// Separate from LibraryItemID rather than overloading it: the two are resolved by different
+	// code (one via the media server's stream endpoint, one via a path join with a containment
+	// check) and conflating them would let a filler path reach the library resolver, or a
+	// library id reach the filesystem.
+	Source string
 	// Title is for logs and the guide, never for identity.
 	Title string
 	// Offset is how far INTO the item playout should start.
@@ -47,8 +55,23 @@ type Airing struct {
 }
 
 // Playable reports whether there is something to encode.
+//
+// Two ways to be playable, because playout has two kinds of input (§9.1, §10):
+//
+//   - A library PROGRAM, identified by LibraryItemID, which the resolver turns into a media
+//     server stream URL.
+//   - A commercial CLIP, a local file under FILLER_DIR, which has no library id at all — the
+//     resolver returns its path directly.
+//
+// Source is what distinguishes them: it is set for a resolved filler clip and empty for a
+// library program (whose input is derived from LibraryItemID instead). An earlier version
+// required LibraryItemID unconditionally, which made every resolved commercial fall through to
+// the offline card — the ad was picked correctly and then silently never played.
 func (a Airing) Playable() bool {
-	return a.Kind == schedule.SlotProgram && a.LibraryItemID != ""
+	if a.Kind != schedule.SlotProgram {
+		return false
+	}
+	return a.LibraryItemID != "" || a.Source != ""
 }
 
 // AiringAt walks a computed lineup against the wall clock and returns what is on.
