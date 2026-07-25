@@ -1,0 +1,191 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// GET /playout/program/{id} — "what is airing right now?" (§9.1, prior-art §1).
+//
+// THIS IS THE SEQUENCING LAYER, and it is worth being precise about why it looks so
+// unremarkable. The parent ffmpeg reads a two-line ffconcat playlist whose entries both point
+// here. Each time the concat demuxer opens this URL it gets a FINITE MPEG-TS stream of the one
+// program currently on; when that program ends the child exits, the demuxer sees EOF, advances
+// to the next (identical) entry, re-requests, and gets the NEXT program.
+//
+// So there is no splicing code, no scheduler loop, no "advance to the next item" state machine.
+// The demuxer's EOF-and-advance IS the program boundary, and this handler is the whole of it.
+//
+// It also means this handler is called REPEATEDLY for one channel — once per program, forever.
+// It must therefore be cheap, idempotent, and above all CONSISTENT: two calls at the same
+// instant must resolve to the same program at the same offset, or a channel replaying a program
+// it already showed would be indistinguishable from a scheduling bug.
+
+// PlayoutResolver answers "what should this channel play right now" and turns it into an ffmpeg
+// input. Implemented by an adapter over channels.Engine + library.Client; abstracted so the api
+// package need not import either.
+type PlayoutResolver interface {
+	// AiringNow resolves the channel's current program and the URL ffmpeg should read.
+	//
+	// The returned Airing carries the seek offset and the remaining duration, which together
+	// make a mid-program tune-in land in the right place. An Airing that is not Playable means
+	// "nothing is airing" — an empty lineup, or one where nothing has landed yet — which the
+	// caller renders as the offline card rather than as an error.
+	AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error)
+	// Profile is the encode profile to normalize this program to, resolved against measured
+	// capacity and current load (§9.1 quality ladder).
+	Profile(ctx context.Context) playout.Profile
+}
+
+// PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
+// tested without executing a binary; the composition root supplies playout.Start.
+type PlayoutEncoder func(ctx context.Context, args []string) (*playout.Process, error)
+
+// programHandler streams ONE program as finite MPEG-TS, then exits.
+//
+// "Then exits" is the contract, not an implementation detail: the child's EOF is what advances
+// the channel. A handler that looped, or that held the connection open after the program ended,
+// would pin the channel to one program forever.
+func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizePlayout(w, r) {
+		return
+	}
+	if s.playoutResolver == nil || s.playoutEncoder == nil {
+		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
+			"Internal playout isn't running on this instance.")
+		return
+	}
+	channelID := r.PathValue("id")
+	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		s.log.Warn("playout: could not resolve what is airing", "channel", channelID, "err", err)
+		// 502, not 500: the usual cause is the media server being unreachable, which is
+		// upstream of us. It also matters that this is RETRYABLE — the demuxer will
+		// re-request, so a transient library outage heals itself.
+		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't work out what's on",
+			"Loomarr couldn't resolve this channel's current program.")
+		return
+	}
+
+	profile := s.playoutResolver.Profile(r.Context())
+
+	// Nothing airing ⇒ the offline card, NOT an error and NOT an empty body.
+	//
+	// An empty 200 would make the demuxer EOF instantly and re-request in a tight loop,
+	// spinning a core on a channel with no content. The card is a real encode occupying real
+	// time, so the loop paces itself — and the viewer sees "nothing scheduled" rather than a
+	// channel that fails to tune.
+	if !airing.Playable() || streamURL == "" {
+		args := playout.OfflineCardArgs(profile, playout.FindFont(),
+			"Nothing scheduled", channelID, offlineCardDuration)
+		s.streamChild(w, r, channelID, "offline card", args)
+		return
+	}
+
+	args := playout.ProgramArgs(profile, streamURL, airing.Offset, airing.Remaining)
+	s.streamChild(w, r, channelID, airing.Title, args)
+}
+
+// offlineCardDuration is how long one offline-card request lasts before the demuxer re-asks.
+//
+// Short enough that a channel starts playing promptly once content lands (the operator approves
+// a title, an acquisition completes, the next re-request finds it), long enough that an empty
+// channel is not re-encoding every second.
+const offlineCardDuration = 30 * time.Second
+
+// streamChild spawns one encoder and pipes it to the response until it ends.
+//
+// Deliberately NOT going through the session Manager. A session is a SHARED encoder fanned out to
+// N viewers; this is the opposite — one private child per demuxer request, whose whole job is to
+// END so the parent advances. Routing it through the session map would collide on the channel key
+// and, worse, the grace-period teardown would keep a finished program's encoder alive.
+func (s *Server) streamChild(w http.ResponseWriter, r *http.Request, channelID, what string, args []string) {
+	// The child dies with the request. If the parent ffmpeg goes away — the channel was stopped,
+	// the last viewer left, the process was killed — this context cancels and takes the encoder
+	// with it. Without that binding a child outlives its parent and becomes an orphan nobody
+	// will ever reap.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	proc, err := s.playoutEncoder(ctx, args)
+	if err != nil {
+		s.log.Warn("playout: could not start the program encoder",
+			"channel", channelID, "program", what, "err", err)
+		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the program",
+			"Loomarr couldn't start encoding this program.")
+		return
+	}
+
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	// No Content-Length: this IS finite, unlike the tuner stream, but finite at a length not
+	// known until the encode is done.
+	w.Header().Set("Accept-Ranges", "none")
+	w.WriteHeader(http.StatusOK)
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	n, copyErr := copyAndFlush(w, proc.Stdout, flusher)
+
+	// Reap it. The deferred cancel would also kill it, but waiting HERE means the process is
+	// gone before the response ends, so the encoder count is accurate the moment the demuxer
+	// re-requests.
+	cancel()
+	_ = proc.Wait()
+
+	if copyErr != nil && n == 0 {
+		// Zero bytes AND an error is the diagnosable case: the encoder failed at startup (a bad
+		// input URL, a missing hardware device) rather than mid-program. ffmpeg's own last line
+		// is far more useful than our wrapper's error.
+		s.log.Warn("playout: program produced no output",
+			"channel", channelID, "program", what, "ffmpeg", proc.LastError())
+	}
+}
+
+// copyAndFlush streams src to dst, flushing so the demuxer sees bytes promptly.
+//
+// Not plain io.Copy: Go buffers the response, and the concat demuxer does not treat the stream as
+// started until data arrives. Flushing per chunk keeps the handoff between programs from stalling
+// at the boundary — the point where a stall is most visible to a viewer.
+//
+// io.EOF is the SUCCESS case here: the encoder finishing is exactly what advances the channel.
+func copyAndFlush(dst io.Writer, src io.Reader, flusher http.Flusher) (int64, error) {
+	buf := make([]byte, 64*1024)
+	var total int64
+	for {
+		n, readErr := src.Read(buf)
+		if n > 0 {
+			written, writeErr := dst.Write(buf[:n])
+			total += int64(written)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			if writeErr != nil {
+				// The demuxer went away. Normal (a channel being stopped), not a problem.
+				return total, writeErr
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return total, nil
+			}
+			return total, readErr
+		}
+	}
+}
