@@ -603,7 +603,8 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   | Capability | API field / route | Home (surface) | Audience |
   | --- | --- | --- | --- |
-  | name / number / group / logo | `PATCH` `name`/`number`/`group`/`logo` | Settings → Identity | admin |
+  | name / number / group | `PATCH` `name`/`number`/`group` | Overview → header (inline rename/renumber); `group` API-only v1 | admin |
+  | channel icon (`logo`) | `PATCH` `logo`; `GET …/{id}/icon-suggestions`, `POST …/{id}/icon` | Overview → Channel icon | viewer sees it; admin edits |
   | on-air status, now/next, upcoming guide | `GET …/now-next` (card), `GET …/{id}/upcoming` (Overview strip) | Overview | viewer |
   | relaxation ladder, drift, Tunarr link | `policy.applied`, status | Overview → diagnostics | admin |
   | lineup (add/remove/reorder, season windows) | `PATCH` `lineup` | Programming → What plays | admin |

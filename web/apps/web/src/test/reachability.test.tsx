@@ -295,4 +295,15 @@ describe("feature-gated panels mount when their flag is on", () => {
     const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
   });
+
+  // The eighth instance of this file's founding bug: ChannelIconField shipped complete —
+  // stories, five visual baselines, an admin gate — and was imported by nothing, so the
+  // channel icon was unreachable in the app. Its component tests all passed, which is
+  // exactly the blind spot this suite exists for.
+  it("/channels/ch-1 reaches the channel icon field on the info panel", async () => {
+    stubFetch();
+    renderAt("/channels/ch-1");
+    // Info is the default panel (and the viewer's only one), so no tab click is needed.
+    expect(await screen.findByText("Channel icon")).toBeInTheDocument();
+  });
 });
