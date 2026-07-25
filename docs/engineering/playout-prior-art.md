@@ -339,6 +339,78 @@ Verified against the live Emby:
   "Invalid Block Addition" for the same reason). Logging it as an error trains an operator to
   ignore the log; `Process.readStderr` therefore logs at DEBUG.
 
+## 5d. Executing the args — three failures the arg-shape tests could not see
+
+`ProgramArgs` / `ConcatArgs` were written from §5a–§5c, and all their arg-shape tests passed
+while **ffmpeg rejected the output outright**. Each failure below was found by executing the
+real args (`make test-ffmpeg`, plus `PLAYOUT_TEST_STREAM_URL` against the live dev Emby), and
+each is now pinned by a test.
+
+### ⚠ `-reconnect*` are HTTP-protocol options, not global ones
+
+```
+ffmpeg -reconnect 1 -reconnect_at_eof 1 -f concat -i list.ffconcat …
+→ Option reconnect not found.
+→ Error opening input files: Option not found          (exit 8)
+```
+
+They are private options of ffmpeg's HTTP protocol, so against a **local file** input they are
+a hard failure before ffmpeg opens anything. §5a already recorded that Tunarr applies them
+*"conditionally on `protocol === 'http'`"* — the note was right and the first implementation
+ignored it.
+
+**Not a test artifact.** Filler clips are local files (§10 `FILLER_DIR`), so an unconditional
+flag list means every commercial break fails to start — presenting as a channel that dies at
+the first break, with an error that names an *option* rather than a file. Both tiers are now
+gated on `isHTTP(url)`.
+
+The `-protocol_whitelist` is different and stays **unconditional**: it governs what the
+playlist's *entries* may use, not the playlist itself.
+
+### ⚠ `hwupload` needs `-init_hw_device`, and the error names the wrong thing
+
+```
+[hwupload] A hardware device reference is required to upload frames to.
+[AVFilterGraph] Error initializing filters
+Error opening output files: Invalid argument           (exit 234)
+```
+
+The capability prober had **already found and fixed this** (`deviceInitArgs`, with a comment
+warning that the message "reads like a filter bug and sends you looking in the wrong place").
+`ProgramArgs` reproduced it by hand-rolling its own filter chain instead of reusing the
+prober's helpers.
+
+The lesson is about duplication, not the flag: two places deciding how frames reach the
+encoder drifted within one commit. The hand-rolled version was also *wrong for QSV*, which
+needs `hwupload=extra_hw_frames=64` or its lookahead intermittently fails to allocate frames.
+`ProgramArgs` now composes `deviceInitArgs` + `hardwareUploadFilter`.
+
+⚠ **"Every hardware encoder needs hwupload" is FALSE**, and a test asserting it failed against
+correct code. Only the families with a separate hardware frame pool (vaapi, qsv, vulkan) need
+it; nvenc, amf, videotoolbox, rkmpp and v4l2m2m accept CPU frames directly, and forcing an
+upload on them *causes* the very init failure it was meant to prevent.
+
+### ✅ The concat precondition, verified against real content
+
+The invariant `-c copy` rests on — *independently encoded programs must be byte-compatible* —
+is not checkable in Go. It needs two encodes and a remux:
+
+```
+two children, offsets 30s and 300s into a 4K DV/HDR10 HEVC remux (3 audio tracks),
+each encoded separately via ProgramArgs → h264_vulkan
+then: -f concat -safe 0 -i list -c copy
+→ joined 4.005s, both parts present, no rejection
+```
+
+Normalization output, from the same source: `1280x720, 25/1, h264 + aac stereo 48k,
+nb_streams=2`. HEVC, 10-bit, Dolby Vision, HDR10 and DTS-HD all survive being flattened to the
+profile.
+
+One test-writing note worth keeping: **count streams with `format=nb_streams`, not by counting
+`stream=` lines.** An MPEG-TS repeats its program map, so ffprobe legitimately reports the same
+streams several times; a line-counting version of this test saw 5 streams and failed against
+completely correct output.
+
 ## 6. Consequences for V6
 
 1. **Mechanism: Tunarr's HTTP ffconcat loop.** One long-lived `-c copy` ffmpeg per channel
