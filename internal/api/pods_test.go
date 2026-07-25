@@ -19,6 +19,7 @@ import (
 type fakePods struct {
 	asked      []string
 	draftAsked []filler.Selection // the draft selections PreviewDraft received
+	atAsked    []int64            // the break starts PreviewAt received
 	pod        filler.Pod
 	err        error
 }
@@ -31,6 +32,14 @@ func (f *fakePods) Preview(_ context.Context, channelID string) (filler.Pod, err
 func (f *fakePods) PreviewDraft(_ context.Context, channelID string, sel filler.Selection) (filler.Pod, error) {
 	f.asked = append(f.asked, channelID)
 	f.draftAsked = append(f.draftAsked, sel)
+	return f.pod, f.err
+}
+
+// PreviewAt records the BREAK START it was asked for, so a test can prove the guide resolves
+// each break individually rather than reusing one channel-wide pod.
+func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs int64) (filler.Pod, error) {
+	f.asked = append(f.asked, channelID)
+	f.atAsked = append(f.atAsked, breakStartMs)
 	return f.pod, f.err
 }
 

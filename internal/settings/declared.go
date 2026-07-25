@@ -185,6 +185,30 @@ func declared() []Setting {
 			Doc: "How many channels internal playout will encode at once. Defaults conservatively; the wizard's transcode check measures a realistic number for your hardware. A test pattern is cheaper to encode than film grain, so treat any measured value as a starting estimate.",
 		},
 
+		{
+			// The guide's display timezone (§12, V13b gap 7). The API always speaks absolute
+			// epoch ms — a timezone is a RENDERING choice, and putting it on the wire would
+			// invite a client to reinterpret instants it should merely format.
+			//
+			// Empty = the viewer's own browser timezone, which is right for the household
+			// case. An operator sets it when the server and its viewers are elsewhere, or
+			// when they want the guide to read in the channels' "broadcast" timezone.
+			Key: "guide.timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone.",
+		},
+		{
+			// How far back the guide will look (§12, V13b gap 8).
+			//
+			// A real bound, not a cosmetic one: the past is recomputed from the channel's
+			// CURRENT lineup, so a distant "as aired" view would be fiction — the lineup has
+			// been reconciled since. A day is honest; a month would be invention presented as
+			// history.
+			Key: "guide.retention_hours", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
+			Kind: KindInt, Default: "24", Advanced: true,
+			Doc: "How far back the TV guide lets you scroll, in hours. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
+		},
+
 		// --- Backup (§16, §15 — added by V4) ---
 		{
 			Key: "backup.schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,

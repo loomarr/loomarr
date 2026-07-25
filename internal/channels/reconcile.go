@@ -325,6 +325,31 @@ func PodSeed(channelID string) int64 {
 	return h
 }
 
+// PodSeedAt derives the seed for the break STARTING AT a specific instant — what
+// filler.Window has always documented ("channel + window start") and what real television
+// does: consecutive breaks do not replay the same three adverts.
+//
+// PodSeed (channel-only) remains for the two callers that legitimately want ONE pool per
+// channel rather than one pod per break:
+//
+//   - BuildFillerList attaches a Tunarr filler-list to the channel, and Tunarr picks from
+//     that pool itself. There is no break to seed from at attach time.
+//   - HasPool only asks "is there anything to play at all".
+//
+// Internal playout and the guide, which both resolve A SPECIFIC BREAK, use this instead. The
+// two must agree — the hover card promises the clips that will actually air — and they do,
+// because both derive the seed from the same (channel, break start).
+func PodSeedAt(channelID string, breakStartMs int64) int64 {
+	h := PodSeed(channelID)
+	// Mix the start in with the same FNV-1a step, byte by byte, so nearby breaks land far
+	// apart in the sequence rather than producing near-identical pods.
+	for i := 0; i < 8; i++ {
+		h ^= (breakStartMs >> (8 * i)) & 0xff
+		h *= 1099511628211
+	}
+	return h
+}
+
 // ensureChannel creates or updates the Tunarr channel. On create, Tunarr assigns
 // the id (Phase-0 finding 1) — EnsureChannel returns it; we must persist it.
 // Handles out-of-band deletion: if we hold a TunarrID but the channel is gone,

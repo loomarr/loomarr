@@ -13,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -38,11 +39,24 @@ type cyclePreviewer interface {
 		window time.Duration, err error)
 }
 
+// titleReader is the one store method provenance needs.
+//
+// Narrowed to a single method deliberately, the same way cyclePreviewer is: the guide READS
+// acquisition state and must not be able to mutate it. A structural guarantee beats a rule
+// someone has to remember.
+type titleReader interface {
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
 // playoutResolver answers "what is airing now, and where does ffmpeg read it from".
 type playoutResolver struct {
 	engine cyclePreviewer
 	lib    *library.Client
 	now    func() time.Time
+	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
+	// line is simply absent, which is the right degradation: a guide without provenance is
+	// still a guide.
+	titles titleReader
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
 	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
@@ -156,7 +170,45 @@ func (r *playoutResolver) BroadcastsWithPending(
 	}
 	bs := playout.BroadcastsWithPending(slots, playoutEpoch(channelID), from, to)
 	r.attachMetadata(ctx, bs)
+	r.attachProvenance(ctx, bs)
 	return bs, nil
+}
+
+// attachProvenance fills in each block's one-line "why is this here" (§12 hover card).
+//
+// Only for the GRID, never the XMLTV guide: an EPG lists what is on, and "acquiring · 62%" is
+// an operator's answer, not a viewer's listing. That split is why this is a separate pass
+// rather than part of attachMetadata.
+//
+// BEST-EFFORT, like the metadata pass: a store hiccup leaves the blocks exactly as they were.
+// A hover card missing one line is far better than a guide that fails to load.
+func (r *playoutResolver) attachProvenance(ctx context.Context, bs []playout.Broadcast) {
+	if r.titles == nil || len(bs) == 0 {
+		return
+	}
+	now := r.now()
+	// One lookup per DISTINCT key: a channel airing six episodes of one series shares a
+	// single acquisition record, so keying the cache on the provisioning key collapses those
+	// to one read.
+	cache := map[provision.Key]string{}
+	for i := range bs {
+		k := bs[i].Key
+		if k == "" {
+			continue // filler/flex have no acquisition to describe
+		}
+		if p, ok := cache[k]; ok {
+			bs[i].Provenance = p
+			continue
+		}
+		rec, err := r.titles.GetTitle(ctx, k)
+		if err != nil {
+			cache[k] = "" // remember the miss too, so one bad key is not re-read per block
+			continue
+		}
+		p := provenanceOf(rec, now)
+		cache[k] = p
+		bs[i].Provenance = p
+	}
 }
 
 // attachMetadata fills in descriptions, genres, years and ratings from the media server.
@@ -200,6 +252,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 		bs[i].Genres = m.Genres
 		bs[i].Year = m.Year
 		bs[i].Rating = m.OfficialRating
+		bs[i].RuntimeMs = m.RuntimeMs
 	}
 }
 
@@ -214,7 +267,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 // and the UI preview use (§10's one-assembler rule). So the commercial that plays is the one the
 // channel page promised, not a second opinion.
 func (r *playoutResolver) airingFiller(
-	ctx context.Context, channelID string, gap playout.Airing, _ time.Time,
+	ctx context.Context, channelID string, gap playout.Airing, now time.Time,
 ) (playout.Airing, string, error) {
 	if r.pods == nil || r.fillerDir == nil {
 		// Filler unconfigured: the break becomes the offline card rather than an error. A
@@ -222,7 +275,13 @@ func (r *playoutResolver) airingFiller(
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 
-	pod, err := r.pods.Preview(ctx, channelID)
+	// PreviewAt, not Preview: the pod is seeded from THIS break's start, so consecutive
+	// breaks play different adverts — and the guide's hover card, which calls the same
+	// method with the same start, lists exactly what will air here.
+	//
+	// gap.Offset is how far into the break we are, so the break began that long ago.
+	breakStart := now.Add(-gap.Offset).UnixMilli()
+	pod, err := r.pods.PreviewAt(ctx, channelID, breakStart)
 	if err != nil || len(pod.Entries) == 0 {
 		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
 		// bottoms out at "nothing matched", and a channel must not fail to tune because it has

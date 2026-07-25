@@ -29,6 +29,10 @@ func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (fille
 	return s.pod, s.err
 }
 
+func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) {
+	return s.pod, s.err
+}
+
 func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	t.Helper()
 	return &playoutResolver{

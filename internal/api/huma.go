@@ -224,6 +224,13 @@ type PodPreviewer interface {
 	// the sandbox), through the same assembler + seed — only the selection differs. It's
 	// what lets the channel page show exactly what a filler change would air before Apply.
 	PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error)
+	// PreviewAt assembles the pod for the break STARTING AT a specific instant — the guide's
+	// per-airing composition (§12 hover card), and what internal playout actually airs.
+	//
+	// Separate from Preview because the seed differs: Preview answers "what pool does this
+	// channel draw from", while this answers "what plays in THIS break". Consecutive breaks
+	// must not replay the same adverts, which is only expressible with the start time.
+	PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error)
 }
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr

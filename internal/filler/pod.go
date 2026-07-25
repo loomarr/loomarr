@@ -30,6 +30,11 @@ type PodEntry struct {
 	Kind            Kind
 	DurationMs      int64
 	IsFallbackCard  bool // the embedded default bumper card (bottom of the ladder)
+	// Era and Quality are carried purely so the guide's hover card can EXPLAIN a break
+	// (§12) — "1994 · 480p" tells a viewer the grain is authentic rather than broken.
+	// Assembly never reads them; they ride along from the catalog row.
+	Era     int
+	Quality string
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -231,6 +236,9 @@ func clipToEntry(c Clip) PodEntry {
 	return PodEntry{
 		Path: c.Path, TunarrProgramID: c.TunarrProgramID,
 		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
+		// Display-only passengers (see PodEntry) — every entry gets them from one place, so
+		// a clip cannot reach the hover card with its era and quality mysteriously absent.
+		Era: c.Era, Quality: c.Quality,
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -22,19 +23,32 @@ import (
 // different auth model.
 
 type guideBody struct {
-	FromMs   int64 `json:"fromMs"`
-	ToMs     int64 `json:"toMs"`
+	FromMs   int64  `json:"fromMs"`
+	ToMs     int64  `json:"toMs"`
+	Timezone string `json:"timezone"`
 	Channels []struct {
 		ChannelID string `json:"channelId"`
 		Name      string `json:"name"`
 		Number    int    `json:"number"`
 		Airings   []struct {
-			Kind    string `json:"kind"`
-			Title   string `json:"title"`
-			Series  string `json:"series"`
-			StartMs int64  `json:"startMs"`
-			StopMs  int64  `json:"stopMs"`
-			Nominal bool   `json:"nominal"`
+			Kind       string `json:"kind"`
+			Title      string `json:"title"`
+			Series     string `json:"series"`
+			StartMs    int64  `json:"startMs"`
+			StopMs     int64  `json:"stopMs"`
+			Nominal    bool   `json:"nominal"`
+			RuntimeMs  int64  `json:"runtimeMs"`
+			Provenance string `json:"provenance"`
+			Pod        *struct {
+				MatchLevel string `json:"matchLevel"`
+				TotalMs    int64  `json:"totalMs"`
+				Entries    []struct {
+					Name    string `json:"name"`
+					Kind    string `json:"kind"`
+					Era     int    `json:"era"`
+					Quality string `json:"quality"`
+				} `json:"entries"`
+			} `json:"pod"`
 		} `json:"airings"`
 	} `json:"channels"`
 }
@@ -54,6 +68,43 @@ func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.St
 		Log:          log,
 		PlayoutGuide: g,
 	}))
+	t.Cleanup(srv.Close)
+	return srv, st
+}
+
+// newGridServerWithPods wires the pod assembler so filler blocks carry their composition.
+func newGridServerWithPods(t *testing.T, g api.PlayoutGuide, p api.PodPreviewer) (*httptest.Server, store.Store) {
+	t.Helper()
+	return newGridServerWithConfig(t, g, p, nil, nil)
+}
+
+// newGridServerWithConfig is the full knob set: pods plus live string/int settings, so the
+// timezone and retention tests can drive `guide.*` without a settings subsystem.
+func newGridServerWithConfig(
+	t *testing.T, g api.PlayoutGuide, p api.PodPreviewer, cfg map[string]string, cfgInt map[string]int,
+) (*httptest.Server, store.Store) {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/grid.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	log := slog.New(slog.DiscardHandler)
+	opts := api.Options{
+		Store:        st,
+		Auth:         api.NewTokenAuthorizer(adminToken),
+		Log:          log,
+		PlayoutGuide: g,
+		Pods:         p,
+	}
+	if cfg != nil {
+		opts.LiveConfig = func(k string) string { return cfg[k] }
+	}
+	if cfgInt != nil {
+		opts.LiveConfigInt = func(k string) int { return cfgInt[k] }
+	}
+	srv := httptest.NewServer(api.Router(log, opts))
 	t.Cleanup(srv.Close)
 	return srv, st
 }
@@ -312,5 +363,136 @@ func TestGuide_IsNotAdminGated(t *testing.T) {
 	if resp.StatusCode == http.StatusForbidden {
 		t.Error("GET /v1/guide → 403 for a non-admin; the guide is viewer-facing (§8.1), so " +
 			"members must be able to see what is on")
+	}
+}
+
+// --- V13b gaps 5–8: pod composition, metadata, timezone, retention ---
+
+// GAP 5: a filler block carries the ACTUAL clips that will air in THAT break — the hover
+// card's whole purpose. Without it, "why are my commercials wrong" has no answer on the
+// surface where the question occurs.
+func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		MatchLevel: filler.MatchExact,
+		TotalMs:    65000,
+		Entries: []filler.PodEntry{
+			{Name: "Channel bumper", Kind: filler.Bumper, DurationMs: 5000, Era: 1994, Quality: "480p"},
+			{Name: "Sunny D", Kind: filler.Commercial, DurationMs: 30000, Era: 1994, Quality: "480p"},
+		},
+	}}
+	srv, st := newGridServerWithPods(t, g, fp)
+	seedGridChannel(t, st, "ch1", 1)
+
+	airings := getGuide(t, srv, "").Channels[0].Airings
+	if len(airings) != 1 || airings[0].Pod == nil {
+		t.Fatalf("filler block has no pod composition: %+v", airings)
+	}
+	pod := airings[0].Pod
+	if len(pod.Entries) != 2 {
+		t.Fatalf("pod has %d entries, want the clips that actually play", len(pod.Entries))
+	}
+	if pod.MatchLevel == "" {
+		t.Error("no match level — the answer to 'why are my commercials wrong' is missing")
+	}
+	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
+		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	}
+}
+
+// GAP 5, the part that makes it per-AIRING: each break is resolved at its OWN start, so
+// consecutive breaks can differ. Asking once per channel would show one representative pod
+// and quietly misdescribe every other break.
+func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			gridBlock(schedule.SlotFiller, "Break", 0, 4),
+			gridBlock(schedule.SlotFiller, "Break", 30*time.Minute, 4),
+		},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		Entries: []filler.PodEntry{{Name: "Ad", Kind: filler.Commercial, DurationMs: 30000}},
+	}}
+	srv, st := newGridServerWithPods(t, g, fp)
+	seedGridChannel(t, st, "ch1", 1)
+	_ = getGuide(t, srv, "")
+
+	if len(fp.atAsked) != 2 {
+		t.Fatalf("asked for %d pods, want one per break", len(fp.atAsked))
+	}
+	if fp.atAsked[0] == fp.atAsked[1] {
+		t.Error("both breaks were resolved at the same instant — every break would show the " +
+			"same clips regardless of when it airs")
+	}
+}
+
+// A non-filler block has no pod: a programme is not a break, and an empty pod object would
+// make the client guard a case that cannot happen.
+func TestGuide_ProgrammesCarryNoPod(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
+	}}
+	fp := &fakePods{pod: filler.Pod{Entries: []filler.PodEntry{{Name: "Ad", DurationMs: 30000}}}}
+	srv, st := newGridServerWithPods(t, g, fp)
+	seedGridChannel(t, st, "ch1", 1)
+
+	if pod := getGuide(t, srv, "").Channels[0].Airings[0].Pod; pod != nil {
+		t.Errorf("a programme carried a pod: %+v", pod)
+	}
+}
+
+// GAP 6: runtime and provenance ride on the block. Provenance is what turns a pending slot
+// from a mystery into "requested · 41h left".
+func TestGuide_CarriesRuntimeAndProvenance(t *testing.T) {
+	b := gridBlock(schedule.SlotProgram, "Heat", 0, 60)
+	b.RuntimeMs = 170 * 60 * 1000
+	b.Provenance = "in library"
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{"ch1": {b}}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	a := getGuide(t, srv, "").Channels[0].Airings[0]
+	if a.RuntimeMs == 0 {
+		t.Error("no runtime — a 22m episode in a 30m slot would be indistinguishable from a full one")
+	}
+	if a.Provenance == "" {
+		t.Error("no provenance — a pending slot stays a mystery without it")
+	}
+}
+
+// GAP 7: the guide states which timezone its times should be RENDERED in. The times stay
+// absolute epoch ms — a timezone is a formatting choice, not a reinterpretation.
+func TestGuide_ReportsTheConfiguredTimezone(t *testing.T) {
+	g := &fakeXMLTVGuide{}
+	srv, st := newGridServerWithConfig(t, g, nil, map[string]string{
+		"guide.timezone": "America/New_York",
+	}, nil)
+	seedGridChannel(t, st, "ch1", 1)
+
+	if tz := getGuide(t, srv, "").Timezone; tz != "America/New_York" {
+		t.Errorf("timezone = %q, want the configured value", tz)
+	}
+}
+
+// GAP 8: retention bounds how far back the grid may scroll. The past is recomputed from the
+// CURRENT lineup, so an unbounded lookback would render fiction as history.
+func TestGuide_ClampsToTheConfiguredRetention(t *testing.T) {
+	g := &fakeXMLTVGuide{}
+	srv, st := newGridServerWithConfig(t, g, nil, nil, map[string]int{
+		"guide.retention_hours": 2,
+	})
+	seedGridChannel(t, st, "ch1", 1)
+
+	now := time.Now()
+	// Ask for a week back; retention says two hours.
+	body := getGuide(t, srv, "?from="+ms(now.Add(-7*24*time.Hour).UnixMilli())+
+		"&to="+ms(now.UnixMilli()))
+
+	back := now.Sub(time.UnixMilli(body.FromMs))
+	if back > 3*time.Hour {
+		t.Errorf("served %v of history against a 2h retention — the grid would show a "+
+			"schedule that never aired", back)
 	}
 }

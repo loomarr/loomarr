@@ -181,6 +181,10 @@ type ItemMetadata struct {
 	Genres         []string
 	Year           int
 	OfficialRating string
+	// RunTimeMs is the item's own runtime. Declared in MILLISECONDS here and rendered as
+	// Emby ticks on the wire, so a test states a duration in the unit it thinks in while
+	// the adapter still exercises the real tick conversion.
+	RunTimeMs int64
 }
 
 // NewMediaServer starts a mock media server serving the pinned fixtures.
@@ -224,8 +228,8 @@ func NewMediaServer(t testing.TB) *MediaServer {
 				ov, _ := json.Marshal(m.Overview)
 				rating, _ := json.Marshal(m.OfficialRating)
 				out = append(out, fmt.Sprintf(
-					`{"Id":%q,"Overview":%s,"Genres":%s,"ProductionYear":%d,"OfficialRating":%s}`,
-					id, ov, genres, m.Year, rating))
+					`{"Id":%q,"Overview":%s,"Genres":%s,"ProductionYear":%d,"OfficialRating":%s,"RunTimeTicks":%d}`,
+					id, ov, genres, m.Year, rating, m.RunTimeMs*10_000))
 			}
 			_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":%d}`,
 				strings.Join(out, ","), len(out))

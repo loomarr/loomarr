@@ -31,6 +31,11 @@ type RawClip struct {
 	DurationMs      int64
 	Kind            Kind
 	Era             int // initial era from filename; 0 if none
+	// Quality is the resolution label ("1080p", "480p") derived from the probed video
+	// height; "" when the file has no video stream or was never re-probed. Display-only —
+	// the guide's pod hover card shows it so a grainy 240p advert is explicable rather
+	// than surprising. It never affects selection.
+	Quality string
 }
 
 // FillerSource discovers the clips in FILLER_DIR.
@@ -133,6 +138,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.Name = rc.Name
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
+		// Quality is scan-owned like duration: it is a property of the FILE, so a re-encode
+		// that changes the resolution should be reflected, and there is no hand-edited value
+		// to protect. (Contrast the match tags below, which a human or the AI may have set.)
+		merged.Quality = rc.Quality
 		// Carry the Tunarr uuid when the scan found one. Taken fresh rather than preserved:
 		// a re-registered Tunarr local source mints new program ids, and a stale uuid would
 		// build a filler-list referencing programs Tunarr no longer has.

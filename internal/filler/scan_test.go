@@ -12,7 +12,16 @@ import (
 
 // fakeProbe reports a fixed duration, so the scanner is testable without ffmpeg.
 func fakeProbe(ms int64) filler.Prober {
-	return func(context.Context, string) (int64, error) { return ms, nil }
+	return func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: ms}, nil
+	}
+}
+
+// fakeProbeHD reports a duration AND a 1080p-shaped height, for the quality assertions.
+func fakeProbeHD(ms int64, height int) filler.Prober {
+	return func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: ms, Height: height}, nil
+	}
 }
 
 func writeFile(t *testing.T, dir, rel string) {
@@ -82,11 +91,11 @@ func TestScanDir_SkipsUnprobeableFilesRatherThanFailing(t *testing.T) {
 	writeFile(t, dir, "good.mp4")
 	writeFile(t, dir, "broken.mp4")
 
-	probe := func(_ context.Context, path string) (int64, error) {
+	probe := func(_ context.Context, path string) (filler.Probed, error) {
 		if strings.Contains(path, "broken") {
-			return 0, os.ErrInvalid
+			return filler.Probed{}, os.ErrInvalid
 		}
-		return 30000, nil
+		return filler.Probed{DurationMs: 30000}, nil
 	}
 	clips, skipped, err := filler.ScanDir(context.Background(), dir, probe)
 	if err != nil {
@@ -307,12 +316,71 @@ func TestDirSource_TunarrFailureDoesNotFailTheScan(t *testing.T) {
 // empty with no error anywhere. Only running it end to end surfaced that.
 func TestFFprobeDurationNextTo_DerivesFfprobeFromTheFfmpegPath(t *testing.T) {
 	// A path that does not exist, so the error text tells us which binary it TRIED.
-	probe := filler.FFprobeDurationNextTo("/opt/custom/bin/ffmpeg")
+	probe := filler.FFprobeNextTo("/opt/custom/bin/ffmpeg")
 	_, err := probe(context.Background(), "whatever.mp4")
 	if err == nil {
 		t.Fatal("expected a failure for a nonexistent binary")
 	}
 	if strings.Contains(err.Error(), "ffmpeg") && !strings.Contains(err.Error(), "ffprobe") {
 		t.Errorf("the prober invoked ffmpeg rather than ffprobe: %v", err)
+	}
+}
+
+// Quality is bucketed by NEAREST standard, not exact match: real files are 1088 (encoder
+// padding), 718, 1082. An exact-match table would leave those blank while anyone looking at
+// the file would call it 1080p.
+func TestQualityFromHeight_BucketsRealWorldHeights(t *testing.T) {
+	for _, tc := range []struct {
+		height int
+		want   string
+	}{
+		{2160, "4K"},
+		{1080, "1080p"},
+		{1088, "1080p"}, // encoder padding — the case exact matching gets wrong
+		{720, "720p"},
+		{718, "720p"},
+		{480, "480p"},
+		{360, "360p"},
+		{240, "240p"},
+		{0, ""}, // no video stream: no badge, rather than a claimed resolution
+	} {
+		if got := filler.QualityFromHeight(tc.height); got != tc.want {
+			t.Errorf("QualityFromHeight(%d) = %q, want %q", tc.height, got, tc.want)
+		}
+	}
+}
+
+// The scan carries quality onto the clip, so the guide's hover card can explain a grainy ad.
+func TestScanDir_RecordsClipQuality(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "sunnyd.mp4")
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbeHD(30000, 480))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		t.Fatalf("got %d clips", len(clips))
+	}
+	if clips[0].Quality != "480p" {
+		t.Errorf("quality = %q, want 480p from the probed height", clips[0].Quality)
+	}
+}
+
+// A clip with no video stream is still USABLE — an audio-only bumper plays fine. It simply
+// has no quality badge; rejecting it would cost a channel a clip over a display detail.
+func TestScanDir_NoVideoStreamStillYieldsAClip(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "jingle.mp4")
+
+	clips, skipped, err := filler.ScanDir(context.Background(), dir, fakeProbeHD(5000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || skipped != 0 {
+		t.Fatalf("got %d clips, %d skipped — a video-less clip must still be usable", len(clips), skipped)
+	}
+	if clips[0].Quality != "" {
+		t.Errorf("quality = %q, want empty rather than an invented resolution", clips[0].Quality)
 	}
 }

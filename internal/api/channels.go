@@ -839,6 +839,11 @@ type PodEntryDTO struct {
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
+	// Era and Quality are DISPLAY context for the guide's pod hover card (§12): they explain
+	// why a break looks the way it does ("1994 · 480p" reads as an authentic capture rather
+	// than a playback fault). Neither affects selection — see filler.Clip.Quality.
+	Era     int    `json:"era,omitempty" doc:"The clip's tagged era (1994); 0 when untagged"`
+	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only"`
 }
 
 type previewPodsInput struct {
@@ -1011,6 +1016,8 @@ func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 			Kind:            string(e.Kind),
 			DurationMs:      e.DurationMs,
 			IsFallbackCard:  e.IsFallbackCard,
+			Era:             e.Era,
+			Quality:         e.Quality,
 		})
 	}
 	return PodPoolDTO{Entries: entries, TotalMs: pod.TotalMs, MatchLevel: string(pod.MatchLevel)}

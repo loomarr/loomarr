@@ -3,6 +3,7 @@ package playout
 import (
 	"time"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -167,8 +168,12 @@ type Broadcast struct {
 	// lists every episode as an unrelated programme.
 	SeriesTitle   string
 	LibraryItemID string
-	Season        int
-	Episode       int
+	// Key is the provisioning key ("movie:tmdb:603", "series:tvdb:71663"), "" for
+	// filler/flex. It is how a block joins back to its acquisition record — the only way a
+	// PENDING block can say anything about itself, since it has no library item yet.
+	Key     provision.Key
+	Season  int
+	Episode int
 	// Display metadata for the guide, filled in by the caller from the media server (§9.1).
 	// Deliberately NOT carried on a schedule.Slot: the schedule is about what plays when, and
 	// per-item display data would bloat every lineup row and every policy_json blob for
@@ -177,6 +182,18 @@ type Broadcast struct {
 	Genres      []string
 	Year        int
 	Rating      string
+	// RuntimeMs is the item's OWN runtime, distinct from Stop-Start (how long the slot
+	// occupies the timeline). They normally agree; where they differ the difference is the
+	// point — a 22m episode in a 30m slot is how padding becomes visible.
+	RuntimeMs int64
+	// Provenance is the one-line answer to "why is this here, and is it real yet?" —
+	// "in library · 1080p", "acquiring · 62%", "requested · 41h left". Rendered by the grid's
+	// hover card (v2 mock), which is the surface where a pending slot stops being a mystery.
+	//
+	// A STRING rather than structured fields because it is display text assembled from
+	// several sources (provisioning state, deadline, download progress); a client that had
+	// to reassemble that sentence would be duplicating a decision the server already made.
+	Provenance string
 	// Nominal marks a block whose times are a DISPLAY ESTIMATE, not real airtime — today only
 	// pending acquisitions, which have no known duration (see NominalPendingDuration). A
 	// consumer that treats times as authoritative must skip these: the XMLTV guide does, since
@@ -255,8 +272,8 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 		if stop.After(from) {
 			out = append(out, Broadcast{
 				Kind: s.Kind, Title: s.Title, SeriesTitle: s.SeriesTitle,
-				LibraryItemID: s.LibraryItemID,
-				Season:        s.Season, Episode: s.Episode,
+				LibraryItemID: s.LibraryItemID, Key: s.Key,
+				Season: s.Season, Episode: s.Episode,
 				Start: cursor, Stop: stop,
 			})
 		}
@@ -332,6 +349,7 @@ func BroadcastsWithPending(slots []schedule.Slot, epoch, from, to time.Time) []B
 		for _, p := range pendingBefore[idx] {
 			out = append(out, Broadcast{
 				Kind: schedule.SlotPending, Title: p.Title, SeriesTitle: p.SeriesTitle,
+				Key:    p.Key,
 				Season: p.Season, Episode: p.Episode,
 				Nominal: true,
 				// Anchored to where the content will land, extending backwards so the marker

@@ -39,15 +39,16 @@ type ClipFilter struct {
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind, era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
-		   source=excluded.source, ai_tagged=excluded.ai_tagged, updated_at=excluded.updated_at`),
+		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
+		   updated_at=excluded.updated_at`),
 		c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
-		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), epoch(c.UpdatedAt))
+		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), c.Quality, epoch(c.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Path, err)
 	}
@@ -55,7 +56,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, updated_at FROM clips`
+	rating, source, ai_tagged, quality, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), id))
@@ -188,7 +189,7 @@ func scanClip(sc scannable) (Clip, error) {
 		updatedAt int64
 	)
 	err := sc.Scan(&c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &updatedAt)
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}
