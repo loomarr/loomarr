@@ -66,10 +66,19 @@ const AppShell = ({
       ))}
 
       <div className="mt-auto flex items-center gap-2 border-border border-t px-2 pt-3 text-sm">
-        <div className="flex size-7 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
-          {userName.slice(0, 2).toUpperCase()}
-        </div>
-        <span className="truncate text-muted-foreground">{userName}</span>
+        {/* The footer identity is the way into Your account (§11) — where the mock puts
+            it, and where someone looks for "my settings" rather than the app's. Not a
+            NAV item: it isn't a section of the app, it's you. */}
+        <Link
+          to="/account"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent"
+          aria-label="Your account"
+        >
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
+            {userName.slice(0, 2).toUpperCase()}
+          </div>
+          <span className="truncate text-muted-foreground">{userName}</span>
+        </Link>
         {onLogout && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -77,7 +86,7 @@ const AppShell = ({
                 type="button"
                 onClick={onLogout}
                 aria-label="Sign out"
-                className="ml-auto cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+                className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
               >
                 <LogOut className="size-4" aria-hidden />
               </button>

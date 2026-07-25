@@ -19,7 +19,18 @@ import { routeTree } from "@/routeTree.gen";
 // route list is derived from the router itself — a hand-maintained list is the same
 // mistake one level up (see structure.test.ts, which learned this the hard way).
 
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
+// `local: true` mirrors the meBody field (§11 credential path) — the Account screen
+// offers a password form only for a Loomarr-stored credential, so a fixture without it
+// would silently exercise the media-server branch instead.
+const ADMIN = {
+  id: "u1",
+  name: "Ada",
+  role: "admin",
+  autoApprove: true,
+  disabled: false,
+  quota: 0,
+  local: true,
+};
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -305,5 +316,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     renderAt("/channels/ch-1");
     // Info is the default panel (and the viewer's only one), so no tab click is needed.
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
+  });
+
+  // The ninth instance, and the one this suite failed to prevent: V7 shipped
+  // POST /v1/auth/password with 19 tests and no screen, so a user still could not
+  // change their password by clicking anything. A route test is the gate — the
+  // endpoint being correct was never the question.
+  it("/account reaches the change-password form for a local user", async () => {
+    stubFetch();
+    renderAt("/account");
+    expect(await screen.findByText("Your account")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Current password")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /change password/i })).toBeInTheDocument();
   });
 });
