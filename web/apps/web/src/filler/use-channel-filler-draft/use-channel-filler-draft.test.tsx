@@ -17,7 +17,14 @@ const jsonResponse = (status: number, body: unknown) =>
 
 const previewBody = {
   entries: [
-    { tunarrProgramId: "p1", name: "Ad", kind: "commercial", durationMs: 30000, isFallbackCard: false },
+    {
+      path: "p1.mp4",
+      tunarrProgramId: "p1",
+      name: "Ad",
+      kind: "commercial",
+      durationMs: 30000,
+      isFallbackCard: false,
+    },
   ],
   totalMs: 30000,
   matchLevel: "exact",

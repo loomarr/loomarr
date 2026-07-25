@@ -220,13 +220,11 @@ const FillerPage = () => {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((clip) => (
               <ClipCard
-                key={clip.tunarrProgramId}
+                key={clip.path}
                 clip={clip}
-                {...(isAdmin ? { onTag: () => setTagging(clip.tunarrProgramId) } : {})}
-                {...(isAdmin && clip.aiTagged
-                  ? { onConfirmTags: () => setTagging(clip.tunarrProgramId) }
-                  : {})}
-                {...(isAdmin ? { onPin: () => setPinning(clip.tunarrProgramId) } : {})}
+                {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
+                {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
+                {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
               />
             ))}
           </div>
@@ -235,7 +233,7 @@ const FillerPage = () => {
 
       {tagging && rows && (
         <ClipTagDialog
-          clip={rows.find((c) => c.tunarrProgramId === tagging)}
+          clip={rows.find((c) => c.path === tagging)}
           onClose={() => setTagging(undefined)}
           onSaved={() => {
             setTagging(undefined);
@@ -245,10 +243,7 @@ const FillerPage = () => {
       )}
 
       {pinning && rows && (
-        <PinClipDialog
-          clip={rows.find((c) => c.tunarrProgramId === pinning)}
-          onClose={() => setPinning(undefined)}
-        />
+        <PinClipDialog clip={rows.find((c) => c.path === pinning)} onClose={() => setPinning(undefined)} />
       )}
 
       {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}

@@ -8,6 +8,7 @@ import { routeTree } from "@/routeTree.gen";
 const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
 
 const clip = (over: Record<string, unknown> = {}) => ({
+  path: "c1.mp4",
   tunarrProgramId: "c1",
   name: "Frosted Flakes",
   kind: "commercial",
@@ -92,7 +93,10 @@ describe("Filler page", () => {
   // the store already indexes these columns and the catalog can run to thousands.
   it("sends the search term to the server", async () => {
     const fetchMock = stubFetch({
-      clips: [clip(), clip({ tunarrProgramId: "c2", name: "TMNT figures", category: "toys" })],
+      clips: [
+        clip(),
+        clip({ path: "c2.mp4", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
+      ],
     });
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");

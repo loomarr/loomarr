@@ -22,6 +22,7 @@ const bumperClip: ClipDTO = {
   audience: "kids",
   tagged: true,
   aiTagged: false,
+  path: "clip-bumper-open.mp4",
   tunarrProgramId: "clip-bumper-open",
 };
 
@@ -35,6 +36,7 @@ const podEntries: PodEntryDTO[] = [
     kind: "bumper",
     durationMs: 5000,
     isFallbackCard: false,
+    path: "clip-bumper-open.mp4",
     tunarrProgramId: "clip-bumper-open",
   },
   {
@@ -42,6 +44,7 @@ const podEntries: PodEntryDTO[] = [
     kind: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
+    path: "clip-sunnyd.mp4",
     tunarrProgramId: "clip-sunnyd",
   },
   {
@@ -49,6 +52,7 @@ const podEntries: PodEntryDTO[] = [
     kind: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
+    path: "clip-gushers.mp4",
     tunarrProgramId: "clip-gushers",
   },
   {
@@ -56,6 +60,7 @@ const podEntries: PodEntryDTO[] = [
     kind: "bumper",
     durationMs: 5000,
     isFallbackCard: false,
+    path: "clip-bumper-close.mp4",
     tunarrProgramId: "clip-bumper-close",
   },
 ];
@@ -79,6 +84,7 @@ const podClips: ClipDTO[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    path: "clip-sunnyd.mp4",
     tunarrProgramId: "clip-sunnyd",
   },
   {
@@ -89,6 +95,7 @@ const podClips: ClipDTO[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    path: "clip-gushers.mp4",
     tunarrProgramId: "clip-gushers",
   },
   {
@@ -99,6 +106,7 @@ const podClips: ClipDTO[] = [
     audience: "kids",
     tagged: true,
     aiTagged: false,
+    path: "clip-bumper-close.mp4",
     tunarrProgramId: "clip-bumper-close",
   },
 ];
@@ -112,6 +120,7 @@ const taggedClip: ClipDTO = {
   category: "food & drink",
   tagged: true,
   aiTagged: false,
+  path: "clip-sunnyd-tagged.mp4",
   tunarrProgramId: "clip-sunnyd-tagged",
 };
 
@@ -121,10 +130,17 @@ const untaggedClip: ClipDTO = {
   durationMs: 30000,
   tagged: false,
   aiTagged: false,
+  path: "clip-unlabeled.mp4",
   tunarrProgramId: "clip-unlabeled",
 };
 
-const aiTaggedClip: ClipDTO = { ...taggedClip, tagged: false, aiTagged: true, tunarrProgramId: "clip-ai" };
+const aiTaggedClip: ClipDTO = {
+  ...taggedClip,
+  tagged: false,
+  aiTagged: true,
+  path: "clip-ai.mp4",
+  tunarrProgramId: "clip-ai",
+};
 
 const proposal: Proposal = {
   intent: { description: sampleIntent },

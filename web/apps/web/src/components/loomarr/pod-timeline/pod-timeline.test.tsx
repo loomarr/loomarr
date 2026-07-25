@@ -8,6 +8,7 @@ const entry = (name: string, kind: PodEntryDTO["kind"], durationMs: number): Pod
   kind,
   durationMs,
   isFallbackCard: false,
+  path: name,
   tunarrProgramId: name,
 });
 

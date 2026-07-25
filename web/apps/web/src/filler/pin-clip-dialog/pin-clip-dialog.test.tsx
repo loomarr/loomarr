@@ -19,6 +19,7 @@ const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const clip: ClipDTO = {
+  path: "clip-9.mp4",
   tunarrProgramId: "clip-9",
   name: "Frosted Flakes",
   kind: "commercial",
@@ -83,7 +84,7 @@ describe("PinClipDialog", () => {
     await waitFor(() => expect(patches).toHaveLength(1));
     // The new pin is appended to the existing one (not replacing it)…
     expect(patches[0]).toMatchObject({
-      policy: { filler: { pinned: ["already-here", "clip-9"], audience: "general" } },
+      policy: { filler: { pinned: ["already-here", "clip-9.mp4"], audience: "general" } },
     });
     // …and the rest of the policy survives — PATCH replaces policy whole, so a bare
     // {filler} would have wiped scope/ordering.
@@ -107,7 +108,7 @@ describe("PinClipDialog", () => {
                 name: "90s Action Hour",
                 number: 42,
                 status: "live",
-                policy: { filler: { pinned: ["clip-9"] } },
+                policy: { filler: { pinned: ["clip-9.mp4"] } },
               },
             ],
           }),

@@ -93,6 +93,20 @@ services:
     # Tunarr as a `local` source. Empty/unused when FILLER_DIR isn't set.
     volumes:
       - ${FILLER_DROP_DIR:-filler-drop}:/filler
+    # GPU render nodes for hardware encoding (§9.1). /dev/dri is the KMS/DRM interface
+    # every Linux hardware encoder reaches through — VAAPI (Intel + AMD), QSV, and Vulkan
+    # all need it. VENDOR-NEUTRAL: one device, every GPU.
+    #
+    # Optional by construction. `device_cgroup_rules` + a bind of /dev/dri would FAIL the
+    # whole stack on a host with no GPU, so this uses the `devices:` long syntax guarded by
+    # an env default — set PLAYOUT_RENDER_DEVICE=/dev/dri to enable, leave it unset and the
+    # container starts fine and encodes in software. The capability probe then reports
+    # exactly which families work, so "did my GPU get picked up?" is answerable from the log.
+    #
+    # ⚠ NVIDIA does NOT use this path: NVENC comes from the nvidia-container-toolkit, which
+    # injects the driver and devices itself. Use compose.nvidia.yaml for that.
+    devices:
+      - ${PLAYOUT_RENDER_DEVICE:-/dev/null}:${PLAYOUT_RENDER_DEVICE:-/dev/null}
     restart: unless-stopped
     # HTTP liveness against /healthz (image is distroless — no in-container curl).
     healthcheck:
