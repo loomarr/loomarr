@@ -27,6 +27,10 @@ type MediaServer struct {
 	LastAuthHeader string
 	LastEmbyToken  string
 	LastEmbyAuthz  string
+	// metadataRequests counts BULK metadata lookups (§9.1). Read via MetadataRequests();
+	// it exists so a test can assert that N programmes cost ONE request rather than N — the
+	// property that makes the XMLTV guide affordable on a route a media server polls.
+	metadataRequests int
 	// AdminToken is the token the mock accepts for /Users and /Items.
 	AdminToken string
 	// GoodUser/GoodPass authenticate successfully via /Users/AuthenticateByName.
@@ -38,6 +42,11 @@ type MediaServer struct {
 	// ItemRunTimeTicks, if set, is the RunTimeTicks a GET /Items?Ids=<id> lookup
 	// returns (§9 ItemDurationMs). 0 ⇒ an empty item list (no runtime).
 	ItemRunTimeTicks int64
+	// ItemMetadata maps a library item id → its display metadata, for the BULK
+	// `GET /Items?Ids=a,b,c&Fields=Overview,...` the XMLTV guide uses (§9.1). An id
+	// absent from this map is absent from the response, which is how a test models a
+	// title removed from the library since the lineup was built.
+	ItemMetadata map[string]ItemMetadata
 	// Accounts maps username→(password, isAdmin, disabled) for AuthenticateByName.
 	// If nil, GoodUser/GoodPass authenticate as an admin. Lets auth tests model
 	// admin vs member vs disabled logins.
@@ -154,6 +163,26 @@ type Account struct {
 	Disabled bool
 }
 
+// MetadataRequests reports how many BULK metadata lookups the server has served.
+//
+// The assertion it enables is the point of the bulk API: N programmes must cost ONE request,
+// not N. A media server polls the guide, so a per-item lookup would multiply that load by the
+// size of the listings.
+func (ms *MediaServer) MetadataRequests() int {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return ms.metadataRequests
+}
+
+// ItemMetadata is a library item's display metadata, as the bulk `/Items?Ids=…&Fields=Overview,…`
+// lookup returns it (§9.1 — the XMLTV guide's descriptions, genres, year and rating).
+type ItemMetadata struct {
+	Overview       string
+	Genres         []string
+	Year           int
+	OfficialRating string
+}
+
 // NewMediaServer starts a mock media server serving the pinned fixtures.
 func NewMediaServer(t testing.TB) *MediaServer {
 	t.Helper()
@@ -174,6 +203,34 @@ func NewMediaServer(t testing.TB) *MediaServer {
 		// scoped, so the adapter uses this Ids-filtered list. A configured
 		// ItemRunTimeTicks answers with that runtime; else an empty list (0 → the
 		// scheduler falls back, never dead air).
+		// BULK METADATA (§9.1 XMLTV guide): `Ids=a,b,c` with Overview/Genres/etc. requested.
+		// Distinct from the single-id duration lookup below because it answers a LIST — the
+		// whole point of the bulk call is that one request covers a guide's worth of items.
+		if ids := r.URL.Query().Get("Ids"); ids != "" &&
+			strings.Contains(r.URL.Query().Get("Fields"), "Overview") {
+			ms.mu.Lock()
+			ms.metadataRequests++
+			ms.mu.Unlock()
+			out := make([]string, 0)
+			for _, id := range strings.Split(ids, ",") {
+				m, ok := ms.ItemMetadata[id]
+				if !ok {
+					continue // absent = removed from the library; the caller keeps its title
+				}
+				genres, _ := json.Marshal(m.Genres)
+				if m.Genres == nil {
+					genres = []byte("[]")
+				}
+				ov, _ := json.Marshal(m.Overview)
+				rating, _ := json.Marshal(m.OfficialRating)
+				out = append(out, fmt.Sprintf(
+					`{"Id":%q,"Overview":%s,"Genres":%s,"ProductionYear":%d,"OfficialRating":%s}`,
+					id, ov, genres, m.Year, rating))
+			}
+			_, _ = fmt.Fprintf(w, `{"Items":[%s],"TotalRecordCount":%d}`,
+				strings.Join(out, ","), len(out))
+			return
+		}
 		if ids := r.URL.Query().Get("Ids"); ids != "" {
 			// A scripted stub's runtime (per library item id) takes precedence, so a
 			// test can give each title a distinct real runtime; else the global
