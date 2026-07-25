@@ -517,6 +517,11 @@ func resolveEntry(e LineupEntry, avail Availability, policy PendingPolicy, franc
 					PartIndex:     ep.PartIndex,
 					Season:        ep.Season,
 					Episode:       ep.Episode,
+					// The ENTRY's title is the series name; the episode's is its own. Both are
+					// needed downstream: XMLTV puts the series in `<title>` and the episode in
+					// `<sub-title>`, and dropping the series here is what made every episode
+					// appear in the guide as an unrelated programme.
+					SeriesTitle: e.Title,
 				})
 			}
 			if len(out) > 0 {

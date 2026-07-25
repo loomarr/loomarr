@@ -159,8 +159,13 @@ func slotDuration(s schedule.Slot) time.Duration {
 // opposite shape: a sequence with absolute start/stop times, spanning hours. Same arithmetic
 // underneath, so the guide cannot advertise something different from what plays.
 type Broadcast struct {
-	Kind          schedule.SlotKind
-	Title         string
+	Kind schedule.SlotKind
+	// Title is the EPISODE's name for a series, or the film's name for a movie.
+	Title string
+	// SeriesTitle is the show's name ("The Simpsons"); "" for a movie. XMLTV splits the two —
+	// `<title>` is the series, `<sub-title>` the episode — and a guide that omits the series
+	// lists every episode as an unrelated programme.
+	SeriesTitle   string
 	LibraryItemID string
 	Season        int
 	Episode       int
@@ -236,8 +241,9 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 		stop := cursor.Add(d)
 		if stop.After(from) {
 			out = append(out, Broadcast{
-				Kind: s.Kind, Title: s.Title, LibraryItemID: s.LibraryItemID,
-				Season: s.Season, Episode: s.Episode,
+				Kind: s.Kind, Title: s.Title, SeriesTitle: s.SeriesTitle,
+				LibraryItemID: s.LibraryItemID,
+				Season:        s.Season, Episode: s.Episode,
 				Start: cursor, Stop: stop,
 			})
 		}

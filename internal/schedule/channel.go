@@ -162,6 +162,14 @@ type Slot struct {
 	// a marathon simply repeats its S/E.
 	Season  int
 	Episode int
+	// SeriesTitle is the SHOW's name for an episode slot ("The Simpsons"), while Title holds
+	// the EPISODE's name ("Life on the Fast Lane"). "" for a movie.
+	//
+	// Carried for display only, like Season/Episode. It exists because XMLTV splits the two —
+	// `<title>` is the series and `<sub-title>` is the episode — and without it a guide lists
+	// every episode as an unrelated programme: a media server groups and searches by `<title>`,
+	// so "Life on the Fast Lane" appears with no indication it is The Simpsons.
+	SeriesTitle string
 }
 
 // IsProgram reports whether this slot is a real, playable program (not pending,
