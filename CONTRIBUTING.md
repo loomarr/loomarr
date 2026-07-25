@@ -19,8 +19,8 @@ green.
   the orval FE client, goose-applied migrations. Migrations are **forward-only** —
   add a new one, never edit an applied one.
 - **All application code is Go.** The only non-Go pieces are the embedded
-  frontend (compiles to static assets) and the vendored `yt-dlp`/`ffmpeg`/`deno`
-  binaries the `loomarr:filler` image invokes via `exec`.
+  frontend (compiles to static assets) and the vendored
+  `yt-dlp`/`ffmpeg`/`ffprobe`/`deno` binaries the image invokes via `exec`.
 
 ## Prerequisites
 
