@@ -72,6 +72,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerUsers(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
+	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
 	srv.registerSuggestions(humaAPI)

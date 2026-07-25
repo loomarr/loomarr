@@ -1,0 +1,316 @@
+package api_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// GET /v1/guide — the time-grid endpoint (V13b). Distinct from /playout/guide.xml, which the
+// tests in playoutguide_test.go cover: same arithmetic underneath, different projection and a
+// different auth model.
+
+type guideBody struct {
+	FromMs   int64 `json:"fromMs"`
+	ToMs     int64 `json:"toMs"`
+	Channels []struct {
+		ChannelID string `json:"channelId"`
+		Name      string `json:"name"`
+		Number    int    `json:"number"`
+		Airings   []struct {
+			Kind    string `json:"kind"`
+			Title   string `json:"title"`
+			Series  string `json:"series"`
+			StartMs int64  `json:"startMs"`
+			StopMs  int64  `json:"stopMs"`
+			Nominal bool   `json:"nominal"`
+		} `json:"airings"`
+	} `json:"channels"`
+}
+
+func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
+	t.Helper()
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/grid.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	log := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(api.Router(log, api.Options{
+		Store:        st,
+		Auth:         api.NewTokenAuthorizer(adminToken),
+		Log:          log,
+		PlayoutGuide: g,
+	}))
+	t.Cleanup(srv.Close)
+	return srv, st
+}
+
+func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
+	t.Helper()
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func getGuide(t *testing.T, srv *httptest.Server, query string) guideBody {
+	t.Helper()
+	resp := do(t, srv, http.MethodGet, "/v1/guide"+query, adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/guide%s → %d, want 200", query, resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body guideBody
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// ms renders an epoch-millisecond value for a query string.
+func ms(v int64) string { return strconv.FormatInt(v, 10) }
+
+// errGridBoom stands in for any per-channel failure (a store hiccup, a scheduler error).
+var errGridBoom = errors.New("timeline unavailable")
+
+func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins int) playout.Broadcast {
+	start := time.Now().Add(offset)
+	return playout.Broadcast{
+		Kind: kind, Title: title,
+		Start: start, Stop: start.Add(time.Duration(mins) * time.Minute),
+	}
+}
+
+// THE GATE'S CENTRAL CLAUSE: a pending slot and a filler pod must be DISTINGUISHABLE. The
+// endpoint this replaces collapsed both to `gap: true`, so the grid had no way to draw
+// "commercials are playing" differently from "we are still acquiring this" — two completely
+// different situations with one rendering.
+func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			gridBlock(schedule.SlotProgram, "Heat", 0, 60),
+			gridBlock(schedule.SlotFiller, "Break", time.Hour, 2),
+			{
+				Kind: schedule.SlotPending, Title: "Dune 2", Nominal: true,
+				Start: time.Now().Add(62 * time.Minute), Stop: time.Now().Add(92 * time.Minute),
+			},
+		},
+	}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	body := getGuide(t, srv, "")
+	if len(body.Channels) != 1 {
+		t.Fatalf("got %d channels, want 1", len(body.Channels))
+	}
+	kinds := map[string]bool{}
+	for _, a := range body.Channels[0].Airings {
+		kinds[a.Kind] = true
+	}
+	for _, want := range []string{"program", "filler", "pending"} {
+		if !kinds[want] {
+			t.Errorf("no %q block in the timeline; got kinds %v — the grid cannot draw what "+
+				"the API will not distinguish", want, kinds)
+		}
+	}
+}
+
+// A pending block's times are INVENTED (a nominal display width), and the wire format must say
+// so. A client that treated them as scheduled airtime would promise the user a programme at a
+// moment nothing will actually air.
+func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			gridBlock(schedule.SlotProgram, "Heat", 0, 60),
+			{
+				Kind: schedule.SlotPending, Title: "Dune 2", Nominal: true,
+				Start: time.Now().Add(30 * time.Minute), Stop: time.Now().Add(60 * time.Minute),
+			},
+		},
+	}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	for _, a := range getGuide(t, srv, "").Channels[0].Airings {
+		if a.Kind == "pending" && !a.Nominal {
+			t.Error("a pending block was not marked nominal — a client would render invented " +
+				"times as a real listing")
+		}
+		if a.Kind == "program" && a.Nominal {
+			t.Error("a real programme was marked nominal")
+		}
+	}
+}
+
+// THE GATE'S THIRD CLAUSE: Upcoming()'s gap-filtering must not come back. Dropping a break is
+// right for a "what's on next" strip and fatal for a grid — every later block silently slides
+// into the hole, so the timeline stops matching the clock.
+func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			gridBlock(schedule.SlotProgram, "Heat", 0, 60),
+			gridBlock(schedule.SlotFiller, "Break", time.Hour, 2),
+			gridBlock(schedule.SlotProgram, "Predator", 62*time.Minute, 30),
+		},
+	}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	airings := getGuide(t, srv, "").Channels[0].Airings
+	if len(airings) != 3 {
+		t.Fatalf("got %d blocks, want 3 — a filtered gap leaves a hole later blocks slide into",
+			len(airings))
+	}
+	// Contiguous: each block starts exactly where the previous one stopped.
+	for i := 1; i < len(airings); i++ {
+		if airings[i].StartMs != airings[i-1].StopMs {
+			t.Errorf("block %d starts at %d but %d stopped at %d — the timeline has a hole",
+				i, airings[i].StartMs, i-1, airings[i-1].StopMs)
+		}
+	}
+}
+
+// THE GATE'S FIRST CLAUSE: a window spanning past AND future returns per-channel timelines. The
+// grid scrolls backwards to "what did I miss", so a window that begins before now is normal.
+func TestGuide_WindowSpanningPastAndFutureReturnsTimelines(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotProgram, "Heat", -30*time.Minute, 60)},
+		"ch2": {gridBlock(schedule.SlotProgram, "Alien", -10*time.Minute, 90)},
+	}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+	seedGridChannel(t, st, "ch2", 2)
+
+	now := time.Now()
+	body := getGuide(t, srv, "?from="+ms(now.Add(-time.Hour).UnixMilli())+
+		"&to="+ms(now.Add(time.Hour).UnixMilli()))
+
+	if len(body.Channels) != 2 {
+		t.Fatalf("got %d channels, want both", len(body.Channels))
+	}
+	for _, ch := range body.Channels {
+		if len(ch.Airings) == 0 {
+			t.Errorf("channel %s has no timeline over a past+future window", ch.ChannelID)
+		}
+	}
+	if body.FromMs >= body.ToMs {
+		t.Errorf("echoed window is empty: %d..%d", body.FromMs, body.ToMs)
+	}
+}
+
+// A window far larger than the cap is CLAMPED, not rejected: a fast scroll must not blank the
+// grid with a 400. The response echoes what was actually served so the client can tell.
+func TestGuide_OversizedWindowIsClampedNotRejected(t *testing.T) {
+	g := &fakeXMLTVGuide{}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	now := time.Now()
+	body := getGuide(t, srv, "?from="+ms(now.UnixMilli())+
+		"&to="+ms(now.Add(365*24*time.Hour).UnixMilli()))
+
+	if span := time.Duration(body.ToMs-body.FromMs) * time.Millisecond; span > 8*24*time.Hour {
+		t.Errorf("served a %v window; an unbounded walk would produce a multi-megabyte document",
+			span)
+	}
+}
+
+// ONE channel failing must not empty the grid — the row survives with no blocks, which reads as
+// "nothing scheduled here" rather than as a deleted channel.
+func TestGuide_OneChannelFailingKeepsTheRest(t *testing.T) {
+	g := &fakeXMLTVGuide{
+		withPending: map[string][]playout.Broadcast{
+			"ok": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
+		},
+		errFor: map[string]error{"broken": errGridBoom},
+	}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ok", 1)
+	seedGridChannel(t, st, "broken", 2)
+
+	body := getGuide(t, srv, "")
+	if len(body.Channels) != 2 {
+		t.Fatalf("got %d channels, want both (a failing channel still has a row)", len(body.Channels))
+	}
+	for _, ch := range body.Channels {
+		if ch.ChannelID == "ok" && len(ch.Airings) == 0 {
+			t.Error("the healthy channel lost its timeline because another channel failed")
+		}
+		if ch.ChannelID == "broken" && ch.Airings == nil {
+			t.Error("airings must be an empty array, not null — clients iterate it")
+		}
+	}
+}
+
+// With no timeline resolver wired the grid is EMPTY, not a 501: the page renders its "nothing
+// scheduled" state rather than an error.
+func TestGuide_NoResolverIsEmptyNotAnError(t *testing.T) {
+	srv, st := newGridServer(t, nil)
+	seedGridChannel(t, st, "ch1", 1)
+
+	body := getGuide(t, srv, "")
+	if len(body.Channels) != 0 {
+		t.Errorf("got %d channels with no resolver wired", len(body.Channels))
+	}
+}
+
+// The grid shows EVERY channel, including Tunarr-backed ones. The tuner M3U filters to the
+// internal backend so a media server does not see two tuners offering one channel — but this is
+// Loomarr's own UI, where hiding a channel would look like it had been deleted.
+func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"tunarr-ch": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
+	}}
+	srv, st := newGridServer(t, g)
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential"},
+		Policy: schedule.ChannelPolicy{
+			OperatorPolicy: schedule.OperatorPolicy{
+				Playout: &schedule.PlayoutPolicy{Backend: "tunarr"},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if body := getGuide(t, srv, ""); len(body.Channels) != 1 {
+		t.Errorf("got %d channels; a Tunarr-backed channel is still one of the user's channels",
+			len(body.Channels))
+	}
+}
+
+// The guide is VIEWER-FACING (§8.1): a member browsing what's on must not be met with an admin
+// wall. This mirrors GET /v1/channels, which is likewise not admin-gated.
+//
+// Deliberately asserts "not 403" rather than "401 when anonymous": authorization here is
+// two-state (a route either calls requireAdmin or it does not), so there is no authenticated-
+// but-not-admin gate to assert against. The regression worth catching is someone later adding
+// requireAdmin to this route and silently removing the grid from every non-admin account.
+func TestGuide_IsNotAdminGated(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotProgram, "Heat", 0, 60)},
+	}}
+	srv, st := newGridServer(t, g)
+	seedGridChannel(t, st, "ch1", 1)
+
+	resp := do(t, srv, http.MethodGet, "/v1/guide", "", "") // no admin token
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusForbidden {
+		t.Error("GET /v1/guide → 403 for a non-admin; the guide is viewer-facing (§8.1), so " +
+			"members must be able to see what is on")
+	}
+}

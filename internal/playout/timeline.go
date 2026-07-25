@@ -177,6 +177,11 @@ type Broadcast struct {
 	Genres      []string
 	Year        int
 	Rating      string
+	// Nominal marks a block whose times are a DISPLAY ESTIMATE, not real airtime — today only
+	// pending acquisitions, which have no known duration (see NominalPendingDuration). A
+	// consumer that treats times as authoritative must skip these: the XMLTV guide does, since
+	// advertising an invented start to a media server would be a listing that never happens.
+	Nominal bool
 	// Start and Stop are absolute wall-clock. Stop is exclusive.
 	Start, Stop time.Time
 }
@@ -259,4 +264,119 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 		idx++
 	}
 	return out
+}
+
+// NominalPendingDuration is the width a pending acquisition is DRAWN at in Loomarr's own
+// time-grid (V13b). It is a display figure and nothing else.
+//
+// ⚠ It must never reach slotDuration. A pending slot has genuinely unknown length, and giving
+// it one inside the shared walk would grow cycleDuration — so every programme after it would
+// shift, the encoder would air silence for a made-up length, and the guide would be "right"
+// while playout was wrong. That is the shared-source invariant failing in its worst direction.
+// The grid needs a width because a zero-width block is invisible; the encoder needs the slot
+// skipped. Both are satisfied by keeping this in the projection, never in the timeline.
+const NominalPendingDuration = 30 * time.Minute
+
+// BroadcastsWithPending is BroadcastsBetween plus the pending acquisitions, positioned.
+//
+// The two differ ONLY in what they include, never in where anything sits: airable programmes
+// come from the same walk at the same wall-clock times, so the grid and the encoder cannot
+// disagree about what is on at 21:00.
+//
+// A pending slot is drawn immediately BEFORE the airable programme that follows it in the
+// lineup, at NominalPendingDuration wide, and is marked Nominal so the UI can render it as a
+// placeholder ("coming soon") rather than as a scheduled programme. It overlaps its neighbour
+// deliberately: it occupies no real airtime, so there is no gap to place it in, and the honest
+// rendering is a marker anchored to where the content WILL land once it arrives (§9 stable
+// placement backfills in place — that is the position it will actually take).
+func BroadcastsWithPending(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
+	airable := BroadcastsBetween(slots, epoch, from, to)
+	if len(airable) == 0 {
+		return airable
+	}
+
+	// Which lineup index does each pending slot precede? Walk the lineup once and remember, for
+	// every pending slot, the airable slot that follows it (wrapping, since the cycle repeats).
+	pendingBefore := map[int][]schedule.Slot{}
+	var run []schedule.Slot
+	for i := 0; i < len(slots)*2; i++ { // twice around: a pending tail precedes the NEXT pass
+		s := slots[i%len(slots)]
+		if s.Kind == schedule.SlotPending {
+			if i < len(slots) { // only collect on the first pass; the second only resolves the tail
+				run = append(run, s)
+			}
+			continue
+		}
+		if slotDuration(s) <= 0 {
+			continue
+		}
+		if len(run) > 0 {
+			pendingBefore[i%len(slots)] = append(pendingBefore[i%len(slots)], run...)
+			run = nil
+		}
+		if i >= len(slots) {
+			break // the tail has been attached to the first airable slot of the next pass
+		}
+	}
+	if len(pendingBefore) == 0 {
+		return airable
+	}
+
+	// Re-walk the lineup in step with the airable broadcasts so each one knows its lineup index,
+	// then emit any pending slots that precede it. BroadcastsBetween emits airable slots in
+	// lineup order starting from the slot covering `from`, so tracking the index means finding
+	// where that walk began and advancing in lockstep.
+	idx := startIndex(slots, epoch, from)
+	out := make([]Broadcast, 0, len(airable)+len(pendingBefore))
+	for _, b := range airable {
+		for _, p := range pendingBefore[idx] {
+			out = append(out, Broadcast{
+				Kind: schedule.SlotPending, Title: p.Title, SeriesTitle: p.SeriesTitle,
+				Season: p.Season, Episode: p.Episode,
+				Nominal: true,
+				// Anchored to where the content will land, extending backwards so the marker
+				// sits alongside the programme it precedes rather than displacing it.
+				Start: b.Start.Add(-NominalPendingDuration), Stop: b.Start,
+			})
+		}
+		out = append(out, b)
+		idx = nextAirable(slots, idx)
+	}
+	return out
+}
+
+// startIndex is the lineup index of the slot airing at `from` — the slot BroadcastsBetween
+// begins its walk on. Shared with that walk's own advance loop so the two cannot drift.
+func startIndex(slots []schedule.Slot, epoch, from time.Time) int {
+	total := cycleDuration(slots)
+	if total <= 0 {
+		return 0
+	}
+	elapsed := from.Sub(epoch)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	into := elapsed % total
+	for i, s := range slots {
+		d := slotDuration(s)
+		if d <= 0 {
+			continue
+		}
+		if into < d {
+			return i
+		}
+		into -= d
+	}
+	return 0
+}
+
+// nextAirable is the index of the next slot that occupies real time, wrapping at the end.
+func nextAirable(slots []schedule.Slot, idx int) int {
+	for i := 1; i <= len(slots); i++ {
+		n := (idx + i) % len(slots)
+		if slotDuration(slots[n]) > 0 {
+			return n
+		}
+	}
+	return idx
 }

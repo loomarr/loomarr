@@ -21,8 +21,12 @@ import (
 // fakeXMLTVGuide answers programme timelines without a store or a scheduler.
 type fakeXMLTVGuide struct {
 	byChannel map[string][]playout.Broadcast
-	errFor    map[string]error
-	windows   []time.Duration // the (to-from) span of each call, for the window assertions
+	// withPending is what BroadcastsWithPending returns; nil ⇒ it echoes byChannel. Kept
+	// separate so a test can prove WHICH projection a route asked for — the XMLTV document and
+	// the time grid must not be able to swap them silently.
+	withPending map[string][]playout.Broadcast
+	errFor      map[string]error
+	windows     []time.Duration // the (to-from) span of each call, for the window assertions
 }
 
 func (f *fakeXMLTVGuide) BroadcastsBetween(
@@ -31,6 +35,19 @@ func (f *fakeXMLTVGuide) BroadcastsBetween(
 	f.windows = append(f.windows, to.Sub(from))
 	if err := f.errFor[channelID]; err != nil {
 		return nil, err
+	}
+	return f.byChannel[channelID], nil
+}
+
+func (f *fakeXMLTVGuide) BroadcastsWithPending(
+	_ context.Context, channelID string, from, to time.Time,
+) ([]playout.Broadcast, error) {
+	f.windows = append(f.windows, to.Sub(from))
+	if err := f.errFor[channelID]; err != nil {
+		return nil, err
+	}
+	if f.withPending != nil {
+		return f.withPending[channelID], nil
 	}
 	return f.byChannel[channelID], nil
 }

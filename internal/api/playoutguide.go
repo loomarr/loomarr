@@ -27,6 +27,12 @@ type PlayoutGuide interface {
 	// absolute wall-clock times. Programmes already in progress at `from` report their REAL
 	// start, so a media server draws the current show from its actual beginning.
 	BroadcastsBetween(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
+
+	// BroadcastsWithPending is the same walk plus pending acquisitions as nominal-width
+	// placeholders, for Loomarr's own time grid (V13b). Separate from BroadcastsBetween
+	// because those blocks must never reach a media server's EPG: their times are invented, so
+	// advertising one promises an airing that will not happen.
+	BroadcastsWithPending(ctx context.Context, channelID string, from, to time.Time) ([]playout.Broadcast, error)
 }
 
 // guideWindowHours is how far ahead the guide is published.
