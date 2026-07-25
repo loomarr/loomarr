@@ -23,6 +23,7 @@ import (
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/metrics"
+	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
@@ -196,6 +197,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var channelSvc api.ChannelService
 	var liveTVSvc api.LiveTVService
 	var tunarrConnectSvc api.TunarrConnector
+	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
+	// running" rather than half-serving when there is no store or no media server.
+	var playoutSessions api.PlayoutSessions
+	var playoutResolverSvc api.PlayoutResolver
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
@@ -254,6 +259,49 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// channels referencing it immediately — instead of waiting up to a full
 		// sweep interval. (#10: the emitter was nil before this wire.)
 		emitter.setEngine(engine)
+
+		// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
+		// where BOTH halves already exist — the engine that answers "what airs when" and the
+		// library client that resolves an item to a streamable URL.
+		//
+		// The resolver and the session manager need each other: the manager spawns encodes that
+		// ask the resolver for a profile, and the profile depends on how many channels the
+		// manager is running (the load-aware ladder). The cycle is broken with a func — the
+		// resolver holds `activeChannels`, assigned after the manager exists.
+		playoutRes := &playoutResolver{
+			engine: engine, lib: lib, now: time.Now,
+			tier:     func() string { return set.str("playout.quality_tier") },
+			encoder:  func() string { return set.str("playout.encoder") },
+			capacity: func() int { return set.intv("playout.max_channels") },
+		}
+		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
+		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
+		// rather than at boot — the worst place to find out.
+		playoutTokenFn := func() string {
+			if secrets == nil {
+				return ""
+			}
+			return secrets.Value(settings.SecretPlayout)
+		}
+		playoutMgr := playout.NewManager(
+			playoutSpawner(set.str("playout.ffmpeg_path"),
+				func() string { return set.str("server.public_url") },
+				playoutTokenFn, log),
+			set.intv("playout.max_channels"),
+			playout.DefaultGrace,
+			log,
+		)
+		playoutRes.activeChannels = playoutMgr.ActiveCount
+		playoutSessions = playoutMgr
+		playoutResolverSvc = playoutRes
+		// A live encoder never exits on its own (playout/process.go), so shutdown MUST tear
+		// them down explicitly or they outlive the process that started them.
+		go func() {
+			<-rootCtx.Done()
+			playoutMgr.Stop()
+		}()
+		log.Info("internal playout registered",
+			"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels", set.intv("playout.max_channels"))
 
 		chEvery := set.dur("channel.reconcile_every")
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
@@ -504,6 +552,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		authorizer = api.NewSessionAuthorizer(mgr, apiToken)
 	}
 
+	// The playout device token (§11). A FUNC, not a captured value, so a REGENERATED token
+	// takes effect immediately — rotation is an operator action the UI offers, and a value read
+	// once at boot would keep authorizing the old token until restart.
+	//
+	// Nil when secrets are unavailable (no store), which makes the playout routes fail CLOSED:
+	// serving streams unauthenticated because a secret could not be minted would silently
+	// remove the only auth those routes have.
+	var playoutSecret func() string
+	if secrets != nil {
+		playoutSecret = func() string { return secrets.Value(settings.SecretPlayout) }
+	}
+
 	// The settings API surface (config-design §8): wired when the store (hence the
 	// settings service) is up. Connection Test probes reuse the live adapters.
 	// The guide reader powers /v1/channels/now-next. It reads the LIVE Tunarr connection
@@ -581,5 +641,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Binder:        chBinder,
 		LiveConfig:    liveConfig,
 		LiveConfigInt: set.intv,
+		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
+		// effect without a restart (§11 rotation).
+		PlayoutSessions: playoutSessions,
+		PlayoutResolver: playoutResolverSvc,
+		PlayoutSecret:   playoutSecret,
+		PlayoutEncoder: func(ctx context.Context, args []string) (*playout.Process, error) {
+			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, nil)
+		},
 	}), nil
 }
