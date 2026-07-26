@@ -20,9 +20,20 @@ var ErrBootstrapClosed = errors.New("bootstrap already completed")
 // ErrInvalidBootstrap is returned for an empty username/password.
 var ErrInvalidBootstrap = errors.New("username and password are required")
 
-// bootstrapCost is the bcrypt cost for stored passwords. DefaultCost (10) is the
-// right balance for a homelab; a constant so tests and prod agree.
-const bootstrapCost = bcrypt.DefaultCost
+// bootstrapCost is the bcrypt cost for stored passwords. DefaultCost (10) is the right
+// balance for a homelab.
+//
+// ⚠ A var, not a const, ONLY so the test suite can lower it — see TestMain in this package.
+// Production never changes it, and nothing reads it from config: a cost knob an operator
+// could turn down is a way to weaken stored credentials by accident, which is exactly the
+// kind of "safety for convenience" trade §3 of CLAUDE.md forbids.
+//
+// Why it is worth the seam: bcrypt is deliberately CPU-bound, and under `-race` on a CI
+// runner that cost dominates the entire Go job. Measured on this repo — `internal/api` +
+// `internal/auth` take 79s with `-race` and 3s without, and CI's `internal/api` alone was
+// 102s. The hashing being slow is the POINT in production and pure waste in a test that
+// only needs "the hash verifies".
+var bootstrapCost = bcrypt.DefaultCost
 
 // IDGen mints a unique id for a local user (a Loomarr-owned id space, distinct
 // from media-server ids). Injected for determinism in tests.

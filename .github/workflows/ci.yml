@@ -31,6 +31,24 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # `make lint` runs golangci-lint via `go run …@v2.12.2`. Its dependencies are NOT in
+      # go.sum, so setup-go's cache — keyed on go.sum — never covers them, and every run
+      # re-downloaded and recompiled the whole linter from source (visible in the logs as
+      # `go: downloading lipgloss / fatih-color / gofrs-flock`).
+      #
+      # Cached here as a SEPARATE entry keyed on the pinned version: the module source, the
+      # compiled objects, and golangci's own analysis cache. Keyed on the version alone, so
+      # it survives every go.sum change and only re-warms on a linter bump.
+      - name: Cache golangci-lint (module + build + analysis)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod/github.com/golangci
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            golangci-${{ runner.os }}-v2.12.2-
       - run: make check
       - name: OpenAPI spec is committed and current
         run: make openapi-verify
