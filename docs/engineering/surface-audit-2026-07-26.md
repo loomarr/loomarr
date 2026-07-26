@@ -56,7 +56,8 @@ Ordered by how much each costs. All are PATCHable today and unreachable from any
 
 ## Still open — §12 doc drift
 
-11 drifted claims, 6 unbuilt, 5 undocumented surfaces. The ones that mislead a reader most:
+11 drifted claims (1 resolved, 10 open), 6 unbuilt, 5 undocumented surfaces. The ones that
+mislead a reader most:
 
 - **`:714`** describes a **Settings** tab on the channel detail. The fourth tab is *Danger zone*;
   `SECTION_IDS = info/programming/filler/danger`. Identity lives in the page header.
@@ -68,9 +69,18 @@ Ordered by how much each costs. All are PATCHable today and unreachable from any
   worktree needs `codegen` or every `@loomarr/api` import fails.
 - **`:757`** — the ⌘K palette is described as cmdk/shadcn `Command` over `/v1/search` scopes.
   It is hand-rolled (no listbox roles, no arrow-key nav) and passes **no** scopes.
-- **`:752`** — "retry/cancel; members see their **own** submissions". Cancel does not exist in
-  the route, and there is no per-member scoping at all: `TitleDTO` carries no requester field,
-  so every user sees every tracked title. ⚠ Worth triaging as a privacy question, not just drift.
+- ~~**`:752`** — "retry/cancel; members see their **own** submissions"…~~ **Resolved 2026-07-26
+  (doc-only fix). Not a privacy bug — the audit misread it.** The facts held: cancel is absent
+  from the route, and `TitleDTO` carries no requester so every authenticated user sees every
+  tracked title. The *conclusion* did not. **§342 makes global read visibility deliberate** —
+  "read visibility is global for all authenticated users… members see all channels and titles"
+  — so the code was right and the prose contradicted its own §342 one document over.
+  ⚠ **Do not "fix" this by adding `requireAdmin` to `GET /v1/titles`.** Authorization here is
+  two-state (see the comment at `guide_test.go:351`), so an admin gate would not scope the list
+  to the member — it would delete the queue from every non-admin account. Real scoping is a
+  schema change (requester column + filtered route), not an auth tweak. `:764` now says so, and
+  separates the *backend* cancel at `:253` (a real withdrawal under the direct requester,
+  admin-only via `DELETE /v1/titles/{key}`) from the member-facing control that was never built.
 - **`:750`** — "Zoom controls the window span". After V14a, zoom scales chrome only; span is a
   separate control.
 - **`:753`** — edit-via-search pre-approval. `ProposalReview` accepts `onEditItem` and **no
