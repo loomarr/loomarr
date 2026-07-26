@@ -1,7 +1,9 @@
 package internal_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,6 +45,31 @@ func TestProductionBinaryDoesNotLinkTestkit(t *testing.T) {
 	}
 	if strings.Contains(string(out), "loomarr/internal/testkit") {
 		t.Error("cmd/loomarr links internal/testkit — test doubles must not ship (§14.1)")
+	}
+}
+
+// The §14.2 package map lists every package. A map that silently goes stale is worse than no
+// map: it reads as authoritative while quietly omitting whatever was added last.
+//
+// This checks PRESENCE, not prose — the one-line description is a human's job, and asserting on
+// its wording would make the gate fire on every honest edit.
+func TestPackageMapListsEveryPackage(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "docs", "design.md"))
+	if err != nil {
+		t.Fatalf("read design.md: %v", err)
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read internal/: %v", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if !strings.Contains(string(doc), "| `"+e.Name()+"` |") {
+			t.Errorf("internal/%s is missing from the §14.2 package map — add a row saying what it does",
+				e.Name())
+		}
 	}
 }
 
