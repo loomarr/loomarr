@@ -21,7 +21,7 @@ const bumperClip: ClipDTO = {
   era: 1990,
   audience: "kids",
   tagged: true,
-  aiTagged: false,
+  aiTagged: false, playCount: 0, playsCounted: true,
   path: "clip-bumper-open.mp4",
   tunarrProgramId: "clip-bumper-open",
 };
@@ -83,7 +83,7 @@ const podClips: ClipDTO[] = [
     era: 1990,
     audience: "kids",
     tagged: true,
-    aiTagged: false,
+    aiTagged: false, playCount: 0, playsCounted: true,
     path: "clip-sunnyd.mp4",
     tunarrProgramId: "clip-sunnyd",
   },
@@ -94,7 +94,7 @@ const podClips: ClipDTO[] = [
     era: 1990,
     audience: "kids",
     tagged: true,
-    aiTagged: false,
+    aiTagged: false, playCount: 0, playsCounted: true,
     path: "clip-gushers.mp4",
     tunarrProgramId: "clip-gushers",
   },
@@ -105,7 +105,7 @@ const podClips: ClipDTO[] = [
     era: 1990,
     audience: "kids",
     tagged: true,
-    aiTagged: false,
+    aiTagged: false, playCount: 0, playsCounted: true,
     path: "clip-bumper-close.mp4",
     tunarrProgramId: "clip-bumper-close",
   },
@@ -119,7 +119,7 @@ const taggedClip: ClipDTO = {
   audience: "kids",
   category: "food & drink",
   tagged: true,
-  aiTagged: false,
+  aiTagged: false, playCount: 0, playsCounted: true,
   path: "clip-sunnyd-tagged.mp4",
   tunarrProgramId: "clip-sunnyd-tagged",
 };
@@ -129,7 +129,7 @@ const untaggedClip: ClipDTO = {
   kind: "commercial",
   durationMs: 30000,
   tagged: false,
-  aiTagged: false,
+  aiTagged: false, playCount: 0, playsCounted: true,
   path: "clip-unlabeled.mp4",
   tunarrProgramId: "clip-unlabeled",
 };
@@ -137,7 +137,7 @@ const untaggedClip: ClipDTO = {
 const aiTaggedClip: ClipDTO = {
   ...taggedClip,
   tagged: false,
-  aiTagged: true,
+  aiTagged: true, playCount: 0, playsCounted: true,
   path: "clip-ai.mp4",
   tunarrProgramId: "clip-ai",
 };

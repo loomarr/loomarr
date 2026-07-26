@@ -6,6 +6,9 @@ import { FillerPage } from "@/filler";
 // Each field is narrowed to a known value / dropped, so a hand-typed or stale link can't
 // push garbage into the filler list query.
 type FillerSearch = {
+  // Which section is showing. Absent = Catalog, so the default view has a clean URL and an
+  // old bookmark still lands somewhere sensible.
+  tab?: string;
   q?: string;
   kind?: string;
   audience?: string;
@@ -26,7 +29,11 @@ const Route = createFileRoute("/_authed/filler")({
     const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;
     const audience = AUDIENCES.includes(search.audience as string) ? (search.audience as string) : undefined;
     const untagged = search.untagged === true || search.untagged === "true" ? true : undefined;
+    // Only "sources" is a real alternative today; Discover is V33 and an unknown value falls
+    // back to the catalog rather than rendering an empty page.
+    const tab = search.tab === "sources" ? "sources" : undefined;
     return {
+      ...(tab ? { tab } : {}),
       ...(q ? { q } : {}),
       ...(kind ? { kind } : {}),
       ...(audience ? { audience } : {}),

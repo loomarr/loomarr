@@ -12,6 +12,8 @@ const base: ClipDTO = {
   category: "food",
   tagged: true,
   aiTagged: false,
+  playCount: 0,
+  playsCounted: true,
   path: "clip-test.mp4",
   tunarrProgramId: "clip-test",
 };
