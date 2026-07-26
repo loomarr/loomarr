@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 )
@@ -58,14 +59,59 @@ type Session struct {
 	// so onIdle does not need to reach back through a parent pointer (which would also
 	// mean taking two locks in an order that has to stay consistent).
 	grace time.Duration
+	// onClosed tells the manager this session ended, so the dashboard learns a channel
+	// stopped. Copied down for the same reason as `grace`: a parent pointer would mean
+	// reaching back through the manager's lock from inside the session's.
+	onClosed func()
+
+	// startedAt is when the channel came on air — the dashboard's uptime, and the denominator
+	// for judging whether a low speed is a cold start or a sustained problem.
+	startedAt time.Time
+	// encoder is the hardware/software choice the CURRENT program resolved (§9.1). The single
+	// most actionable telemetry an operator has: it is the difference between four concurrent
+	// streams and one.
+	//
+	// ⚠ Reported from OUTSIDE, by the per-program child, not captured at session start. The
+	// session's own ffmpeg is the `-c copy` PARENT — it reads the ffconcat playlist and
+	// remuxes, and never encodes anything. Its speed would measure remuxing throughput and its
+	// "encoder" would be copy, so sourcing telemetry from it would put a confident,
+	// meaningless number on the dashboard. Encoding happens in the per-program children the
+	// concat demuxer requests, and Resolve is load-aware, so the answer can legitimately
+	// change from one program to the next on the same channel.
+	encoder Encoder
 
 	mu      sync.Mutex
 	viewers map[int]chan []byte
 	nextID  int
+	// last is the most recent progress sample from the CURRENT program's encoder (see
+	// `encoder` above for why it is not the session's own process). The parser has always run
+	// and every caller passed `nil` for its callback, so each sample was parsed and discarded —
+	// the telemetry the dashboard needs was already being produced and had nowhere to go.
+	//
+	// Guarded by the same mutex as `viewers`: both are read together to build a snapshot,
+	// and a second lock would be one more ordering to keep consistent for no gain.
+	last Progress
 	// closed guards against a viewer attaching to a session that is already tearing
 	// down. Without it, a viewer could join between "the grace timer fired" and "the map
 	// entry was deleted" and then wait forever on a stream nobody is writing to.
 	closed bool
+}
+
+// SessionStat is a snapshot of one live encoder, for the dashboard (§12, V16).
+//
+// A VALUE, not a pointer into the live session: the caller reads it without holding a lock
+// and cannot accidentally mutate an encoder's state while it runs.
+type SessionStat struct {
+	ChannelID string  `json:"channelId"`
+	Viewers   int     `json:"viewers"`
+	Encoder   string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`
+	Hardware  bool    `json:"hardware" doc:"Whether the resolved encoder is hardware-accelerated"`
+	Speed     float64 `json:"speed" doc:"Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter"`
+	// BufferedMS is how far ahead of realtime the encoder has produced output — out_time
+	// minus wall-clock elapsed. Negative means it is BEHIND, which is the same condition a
+	// sub-1.0 speed reports, seen as accumulated deficit rather than an instantaneous rate.
+	BufferedMS int64 `json:"bufferedMs"`
+	UptimeMS   int64 `json:"uptimeMs"`
 }
 
 // Manager owns the live sessions. One per process.
@@ -82,8 +128,29 @@ type Manager struct {
 	// maxChannels is the admission bound (`playout.max_channels`).
 	maxChannels int
 
+	// onChange fires after the live-session set changes — a channel starting or stopping.
+	// The composition root uses it to publish an SSE `playout` frame so the dashboard learns
+	// about a stream within a frame rather than at the next poll (§8: SSE is the latency
+	// path, the GET endpoint is truth).
+	//
+	// Fired WITHOUT the manager lock held. Publishing takes the bus's lock, and calling out
+	// to arbitrary code while holding m.mu is how a deadlock gets built between two packages
+	// that never mention each other.
+	onChange func()
+
 	mu       sync.Mutex
 	sessions map[string]*Session
+}
+
+// OnChange registers the session-set change hook. Called once during composition, before any
+// viewer can attach.
+func (m *Manager) OnChange(fn func()) { m.onChange = fn }
+
+// notifyChange fires the hook if one is registered. Never called with m.mu held.
+func (m *Manager) notifyChange() {
+	if m.onChange != nil {
+		m.onChange()
+	}
 }
 
 // Spawner starts an encoder for a channel and returns the supervised process. The
@@ -131,8 +198,17 @@ func (m *Manager) Attach(ctx context.Context, channelID string) (<-chan []byte, 
 	// Cost of being wrong the other way (a brief serialization of channel starts) is a
 	// few hundred ms of added latency on simultaneous first-tunes. Cost of the race is a
 	// permanently leaked ffmpeg. Not a close call.
+	// `started` is set inside the critical section and read by the deferred notify, so the
+	// hook fires AFTER m.mu is released — calling out to the bus while holding this lock
+	// would couple two packages' locks for no reason.
+	started := false
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer func() {
+		m.mu.Unlock()
+		if started {
+			m.notifyChange()
+		}
+	}()
 
 	if s := m.sessions[channelID]; s != nil {
 		ch, detach, ok := s.addViewer()
@@ -154,6 +230,7 @@ func (m *Manager) Attach(ctx context.Context, channelID string) (<-chan []byte, 
 		return nil, nil, err
 	}
 	m.sessions[channelID] = s
+	started = true
 
 	ch, detach, _ := s.addViewer() // fresh session: cannot be closed
 	return ch, detach, nil
@@ -175,8 +252,10 @@ func (m *Manager) start(channelID string) (*Session, error) {
 	s := &Session{
 		ChannelID: channelID,
 		cancel:    cancel, proc: proc, log: m.log,
-		grace:   m.grace,
-		viewers: map[int]chan []byte{},
+		grace:     m.grace,
+		onClosed:  m.notifyChange,
+		startedAt: time.Now(),
+		viewers:   map[int]chan []byte{},
 	}
 	go s.pump()
 	return s, nil
@@ -349,6 +428,12 @@ func (s *Session) close() {
 	s.mu.Unlock()
 
 	s.cancel() // kills the process group (process.go)
+
+	// Outside the lock, and after the cancel, so a subscriber that immediately re-reads the
+	// telemetry sees the session already gone rather than mid-teardown.
+	if s.onClosed != nil {
+		s.onClosed()
+	}
 }
 
 // Stop tears down the session immediately, regardless of viewers. For shutdown and for an
@@ -384,4 +469,94 @@ func (m *Manager) ActiveCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.sessions)
+}
+
+// Capacity reports the admission bound (`playout.max_channels`) — the denominator in the
+// dashboard's "2 / 4" load line.
+func (m *Manager) Capacity() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.maxChannels
+}
+
+// Stats snapshots every live encoder for the dashboard (§12, V16).
+//
+// Sorted by channel id so a polling or re-rendering caller sees a stable order — an
+// unsorted map walk would reshuffle the rows on every read, which reads as flicker rather
+// than as data changing.
+//
+// Takes the manager lock, then each session's, in that order — the same order Attach uses,
+// so the two cannot deadlock against each other.
+func (m *Manager) Stats(now time.Time) []SessionStat {
+	m.mu.Lock()
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	m.mu.Unlock()
+
+	out := make([]SessionStat, 0, len(sessions))
+	for _, s := range sessions {
+		// ⚠ Skip CLOSED sessions. Teardown is lazy: close() marks the session and disconnects
+		// its viewers, but the map entry survives until the next Attach on that channel
+		// deletes it. An unfiltered snapshot would keep reporting a dead encoder as live —
+		// indefinitely, on a channel nobody tunes again.
+		if st, ok := s.statIfLive(now); ok {
+			out = append(out, st)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ChannelID < out[j].ChannelID })
+	return out
+}
+
+// statIfLive snapshots one session, reporting false if it has already been torn down.
+//
+// Liveness is read under the SAME lock as the rest of the snapshot: checking `closed`
+// separately would leave a window where a session closes between the check and the read, and
+// the row would describe an encoder that no longer exists.
+func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return SessionStat{}, false
+	}
+
+	uptime := now.Sub(s.startedAt)
+	// How far ahead of realtime the encoder has produced output. `out_time` is how much
+	// media exists; uptime is how much wall-clock has passed. The difference is the cushion
+	// absorbing a slow moment before a viewer sees a stall — and it goes NEGATIVE when the
+	// encoder is losing, which is the same condition a sub-1.0 speed reports, expressed as
+	// accumulated deficit rather than an instantaneous rate.
+	buffered := s.last.OutTimeMS - uptime.Milliseconds()
+
+	return SessionStat{
+		ChannelID:  s.ChannelID,
+		Viewers:    len(s.viewers),
+		Encoder:    string(s.encoder),
+		Hardware:   s.encoder != "" && s.encoder != EncoderSoftware,
+		Speed:      s.last.Speed,
+		BufferedMS: buffered,
+		UptimeMS:   uptime.Milliseconds(),
+	}, true
+}
+
+// ReportProgram records telemetry for the program currently encoding on a channel (V16).
+//
+// Called by the per-program encode path, which is where the real encoder runs — see the
+// `encoder` field for why the session's own process is the wrong source. A report for a channel
+// with no live session is dropped: the child is bound to its request, so it can briefly outlive
+// a session that was just torn down, and resurrecting a dead session to hold its telemetry
+// would be worse than losing a sample.
+//
+// Progress samples are a LATENCY signal, never load-bearing (§8) — the same discipline the SSE
+// bus documents. Dropping one costs a stale number for a second, nothing more.
+func (m *Manager) ReportProgram(channelID string, enc Encoder, p Progress) {
+	s := m.session(channelID)
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.encoder = enc
+	s.last = p
+	s.mu.Unlock()
 }

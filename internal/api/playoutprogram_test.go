@@ -58,9 +58,14 @@ type fakeEncoder struct {
 	gotArgs []string
 	output  string
 	failErr error
+	// progressScript emits ffmpeg-shaped progress on fd 3 (`>&3`) so the parser + the V16
+	// reporting path can be tested end to end with `sh` standing in for ffmpeg.
+	progressScript string
 }
 
-func (f *fakeEncoder) start(ctx context.Context, args []string) (*playout.Process, error) {
+func (f *fakeEncoder) start(
+	ctx context.Context, args []string, onProgress func(playout.Progress),
+) (*playout.Process, error) {
 	f.mu.Lock()
 	f.gotArgs = args
 	f.mu.Unlock()
@@ -73,7 +78,13 @@ func (f *fakeEncoder) start(ctx context.Context, args []string) (*playout.Proces
 	//
 	// printf then EXIT: a child's exit is the behaviour under test, since that EOF is what
 	// advances the channel.
-	return playout.Start(ctx, "sh", []string{"-c", "printf %s " + shellQuote(f.output)}, nil, nil)
+	// `progressScript` (when set) writes ffmpeg-shaped key=value lines to fd 3 before the
+	// output, so the REAL parser and the reporting path are exercised without ffmpeg.
+	script := "printf %s " + shellQuote(f.output)
+	if f.progressScript != "" {
+		script = f.progressScript + "; " + script
+	}
+	return playout.Start(ctx, "sh", []string{"-c", script}, nil, onProgress)
 }
 
 // shellQuote wraps a string in single quotes for `sh -c`.
@@ -91,6 +102,7 @@ type programOpts struct {
 	resolver api.PlayoutResolver
 	encoder  api.PlayoutEncoder
 	noToken  bool
+	sessions api.PlayoutSessions
 }
 
 func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
@@ -111,6 +123,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutResolver: o.resolver,
 		PlayoutEncoder:  o.encoder,
+		PlayoutSessions: o.sessions,
 		LiveConfig:      func(k string) string { return cfg[k] },
 	}
 	if !o.noToken {
@@ -311,7 +324,9 @@ func TestPlayoutProgram_DisconnectStopsTheEncoder(t *testing.T) {
 	}
 	// An encoder that would run for a long time, so the disconnect is what ends it.
 	marker := t.TempDir() + "/alive"
-	enc := api.PlayoutEncoder(func(ctx context.Context, _ []string) (*playout.Process, error) {
+	enc := api.PlayoutEncoder(func(
+		ctx context.Context, _ []string, _ func(playout.Progress),
+	) (*playout.Process, error) {
 		// Removes the marker on SIGTERM, so the assertion below observes the real teardown
 		// path (Stop signals the process GROUP) rather than just the process disappearing.
 		script := "trap 'rm -f " + marker + "; exit 0' TERM; touch " + marker +
@@ -374,7 +389,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 		PlayoutResolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
 		// An "encoder" that exits immediately without writing anything — exactly what a
 		// hardware encoder does when its device is missing.
-		PlayoutEncoder: func(ctx context.Context, _ []string) (*playout.Process, error) {
+		PlayoutEncoder: func(ctx context.Context, _ []string, _ func(playout.Progress)) (*playout.Process, error) {
 			return playout.Start(ctx, "sh", []string{"-c", "exit 0"}, nil, nil)
 		},
 		LiveConfig: func(k string) string { return cfg[k] },
@@ -389,5 +404,88 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	if !strings.Contains(got, "NO OUTPUT") {
 		t.Errorf("a channel that produced zero bytes logged nothing at INFO — the operator "+
 			"sees a buffering player and an empty log. Got:\n%s", got)
+	}
+}
+
+// --- V16: the per-program encoder's progress reaches the session ---------------
+
+// END TO END through the REAL parser: `sh` writes ffmpeg-shaped `key=value` lines to fd 3,
+// exactly as ffmpeg's `-progress pipe:3` does, and the assertion is what arrived at the session.
+//
+// This is the wiring V16 exists to fix. `playout.Start` has accepted an `onProgress` callback
+// since the supervisor was written, and every caller passed nil — so each sample was parsed and
+// discarded. Nothing downstream could tell the difference between "the encoder is at 12× and
+// healthy" and "no telemetry exists", which is why the dashboard had no real numbers to show.
+func TestProgramEncoder_ReportsProgressToTheSession(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	sessions := &fakePlayoutSessions{}
+	enc := &fakeEncoder{
+		output: "ts-bytes",
+		// A whole ffmpeg progress block. `progress=continue` is the terminator the parser
+		// emits on, so anything before it must arrive as ONE sample, never half-updated.
+		progressScript: `{ printf 'frame=120\nspeed=12.4x\nout_time_ms=4000000\nprogress=continue\n' >&3; }`,
+	}
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		encoder:  enc.start,
+		sessions: sessions,
+	})
+
+	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("program → %d, want 200", resp.StatusCode)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	got := sessions.reports()
+	if len(got) == 0 {
+		t.Fatal("no progress reached the session — the callback is nil somewhere in the chain")
+	}
+	last := got[len(got)-1]
+	if last.channelID != "ch1" {
+		t.Errorf("reported channel %q, want ch1 — telemetry keyed to the wrong channel is worse than none", last.channelID)
+	}
+	if last.progress.Speed != 12.4 {
+		t.Errorf("speed = %v, want 12.4 parsed from the progress stream", last.progress.Speed)
+	}
+	// ffmpeg reports out_time_ms in MICROseconds despite the name; the parser divides.
+	if last.progress.OutTimeMS != 4000 {
+		t.Errorf("outTimeMs = %d, want 4000 (4s) — ffmpeg's out_time_ms is microseconds", last.progress.OutTimeMS)
+	}
+	if last.progress.Frame != 120 {
+		t.Errorf("frame = %d, want 120", last.progress.Frame)
+	}
+}
+
+// The encoder the program RESOLVED is what gets reported — not the session's own `-c copy`
+// parent, which never encodes anything and whose "encoder" would be copy.
+func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	sessions := &fakePlayoutSessions{}
+	enc := &fakeEncoder{
+		output:         "ts",
+		progressScript: `{ printf 'speed=1.0x\nprogress=continue\n' >&3; }`,
+	}
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		encoder:  enc.start,
+		sessions: sessions,
+	})
+
+	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	got := sessions.reports()
+	if len(got) == 0 {
+		t.Fatal("no report reached the session")
+	}
+	// fakeResolver's Profile resolves software; the point is that SOME resolved encoder is
+	// carried, not the copy-parent's absence of one.
+	if got[len(got)-1].encoder == "" {
+		t.Error("reported an empty encoder — the dashboard's hardware/software badge would be blank")
 	}
 }

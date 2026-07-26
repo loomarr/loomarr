@@ -14,6 +14,7 @@ import type {
   FillerIngestEvent,
   JobEvent,
   LlmPullEvent,
+  PlayoutEvent,
   SuggestionEvent,
   TitleEvent,
 } from "./events.type";
@@ -41,6 +42,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<LlmPullEvent>("llm_pull", handlers.onLlmPull);
   on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
   on<JobEvent>("job", handlers.onJob);
+  on<PlayoutEvent>("playout", handlers.onPlayout);
   return () => es.close();
 };
 
@@ -79,6 +81,14 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
       onLlmPull: (e) => {
         invalidateByPrefix(qc, "/v1/system/llm");
         extraRef.current?.onLlmPull?.(e);
+      },
+      onPlayout: (e) => {
+        // A channel started or stopped encoding, so the telemetry endpoint's answer changed.
+        // Invalidating is the whole job: the frame carries only a count, and
+        // GET /v1/playout/sessions owns the shape the dashboard renders (§8 — SSE is the
+        // latency path, the GET is truth).
+        invalidateByPrefix(qc, "/v1/playout/sessions");
+        extraRef.current?.onPlayout?.(e);
       },
       onFillerIngest: (e) => {
         // Downloaded files are not clips until Tunarr scans the folder, so a finished

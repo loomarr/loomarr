@@ -1676,6 +1676,36 @@ components:
         backend:
           type: string
       type: object
+    PlayoutTelemetry:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PlayoutTelemetry.json
+          format: uri
+          readOnly: true
+          type: string
+        active:
+          format: int64
+          type: integer
+        capacity:
+          format: int64
+          type: integer
+        running:
+          type: boolean
+        sessions:
+          items:
+            $ref: "#/components/schemas/SessionStat"
+          type:
+            - array
+            - "null"
+      required:
+        - sessions
+        - active
+        - capacity
+        - running
+      type: object
     PodEntryDTO:
       additionalProperties: false
       properties:
@@ -2299,6 +2329,39 @@ components:
         - createdAt
         - expiresAt
         - current
+      type: object
+    SessionStat:
+      additionalProperties: false
+      properties:
+        bufferedMs:
+          format: int64
+          type: integer
+        channelId:
+          type: string
+        encoder:
+          description: "Resolved encoder: hardware vendor, or 'software'"
+          type: string
+        hardware:
+          description: Whether the resolved encoder is hardware-accelerated
+          type: boolean
+        speed:
+          description: Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter
+          format: double
+          type: number
+        uptimeMs:
+          format: int64
+          type: integer
+        viewers:
+          format: int64
+          type: integer
+      required:
+        - channelId
+        - viewers
+        - encoder
+        - hardware
+        - speed
+        - bufferedMs
+        - uptimeMs
       type: object
     SettingEntry:
       additionalProperties: false
@@ -3950,6 +4013,26 @@ paths:
       summary: Run a job now
       tags:
         - jobs
+  /v1/playout/sessions:
+    get:
+      description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."
+      operationId: get-playout-telemetry
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayoutTelemetry"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Live internal-playout encoder telemetry (admin)
+      tags:
+        - dashboard
   /v1/programming/vocabulary:
     get:
       description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user."

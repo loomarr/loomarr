@@ -7,6 +7,7 @@
 // filesystem's job.
 export * from "./ai";
 export * from "./channels";
+export * from "./dashboard";
 export * from "./feedback";
 export * from "./filler";
 export * from "./guide";
