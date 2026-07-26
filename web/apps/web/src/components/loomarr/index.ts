@@ -1,48 +1,16 @@
-// Barrel for the Layer-2 Loomarr component library (frontend-design §3). Pages
-// compose from here — `import { ChannelCard, StateBadge } from "@/components/loomarr"`.
-export * from "./app-shell";
-export * from "./approval-queue-item";
-export * from "./brand-lockup";
-export * from "./channel-card";
-export * from "./channel-cycle-preview";
-export * from "./channel-danger-zone";
-export * from "./channel-icon-field";
-export * from "./channel-ident";
-export * from "./channel-lineup-editor";
-export * from "./channel-policy-fields";
-export * from "./channel-rules-editor";
-export * from "./channel-upcoming";
-export * from "./checklist-item";
-export * from "./clip-card";
-export * from "./collapsible-section";
-export * from "./color-bars";
-export * from "./connection-block";
-export * from "./empty-state";
-export * from "./error-state";
-export * from "./field-help";
-export * from "./generation-progress";
-export * from "./guide-detail-card";
-export * from "./guide-grid";
-export * from "./hosted-model-picker";
-export * from "./intent-input";
-export * from "./login-form";
-export * from "./login-shell";
-export * from "./model-discover";
-export * from "./model-picker";
-export * from "./now-next-strip";
-export * from "./on-air-indicator";
-export * from "./placeholder";
-export * from "./pod-timeline";
-export * from "./proposal-review";
-export * from "./refine-panel";
-export * from "./refine-review";
-export * from "./search-command";
-export * from "./secrets-panel";
-export * from "./session-list";
-export * from "./setting-field";
-export * from "./settings-fields";
-export * from "./settings-save-bar";
-export * from "./state-badge";
-export * from "./tv-static";
-export * from "./user-row";
-export * from "./wizard-shell";
+// The Loomarr component library (frontend-design §4.1 Layer 2), grouped by DOMAIN.
+//
+// Pages import from here — `import { ChannelCard, GuideGrid } from "@/components/loomarr"` —
+// so the folder layout can change without touching a single page. The domains exist because a
+// flat directory of 46 components stopped being navigable: the old names compensated with
+// prefixes (`channel-*`, `guide-*`, `settings-*`), which is a naming convention doing a
+// filesystem's job.
+export * from "./ai";
+export * from "./channels";
+export * from "./feedback";
+export * from "./filler";
+export * from "./guide";
+export * from "./people";
+export * from "./settings";
+export * from "./setup";
+export * from "./shell";

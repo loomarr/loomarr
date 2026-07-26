@@ -54,6 +54,8 @@ Dark-first; **v1 ships dark-only**, but every color is a semantic token so a lig
 
 **Tints are alpha washes, not fixed hexes** (adopted from the Claude Design prototype): a tint is `color-mix(in srgb, <accent> N%, transparent)` layered over the surface, with standard steps N ∈ {8, 12, 15, 30, 40}. One formula replaces six tint tokens and yields a consistent ramp per accent.
 
+⚠ **The steps split into two jobs, and only one is contrast-gated.** Steps 8/12/15 are TEXT BACKGROUNDS — a badge or pill with accent copy on it — and the badge rule below governs them; the CI check validates each accent's `on` stop against the **15%** composite. Steps 30/40 are **fills only**: a pod segment, a progress bar, a block in the guide grid. Accent text does not clear AA on them (the `Design/Palette` page renders every step and shows exactly where the ramps fail), so putting a label on a `-30`/`-40` fill is out of contract. This was an unstated assumption until the palette page made the whole ramp visible — the rule had always been written as though 15% were the only step that existed.
+
 **The badge/tint rule (learned the hard way, twice):** 11px badge text *is small text under WCAG* — the 4.5:1 bar applies regardless of how label-like it feels. On the composited 15% tints the base stops fail (onair 4.02:1, suggest 3.86:1); the `-300` stops pass with margin (`#E85A5F` → 4.54, `#DC5BAC` → 4.65). Every `accent-on-tint` pairing is machine-verified against the *composited* tint color; the token generator (§2.5) recomputes these ratios in CI, so a palette or alpha edit that breaks a pairing fails the build.
 
 Additional statics from the prototype: **`signal-400` `#FFC14D`** (hover/active amber, 11.3:1 on card) and **`static-500` `#5A6170`** — 2.94:1 on cards, therefore restricted to **disabled states and decorative glyphs only**; any text carrying information uses `static-400` muted or better.
@@ -163,7 +165,40 @@ The component library lives in **Storybook** — the workshop for building and r
 **Why Storybook over a hand-rolled `/__gallery`:** stories are the industry-standard component contract (CSF), they double as the dev workshop (controls, autodocs, the a11y panel), and they carry to the future mobile app (§4.2) via `@storybook/react-native`. The mechanics below preserve **every guarantee** of the earlier registry plan — offline, deterministic, committed baselines, 100%-coverage-enforced. **Chromatic is rejected on the record:** it is a hosted SaaS visual-diff service that would send our UI off-box and break the offline/self-hosted rule (§2.2, main doc §16); visual regression stays self-hosted Playwright against the offline `storybook-static` build.
 
 ### 5.1 Stories are the contract
-- **Co-located CSF stories** — every Layer-2 component has a `*.stories.tsx` beside it (folder-per-component), enumerating **every registered state**. Storybook 10 (`@storybook/react-vite`) indexes them; the built `storybook-static/` is the offline gallery. **A component without a story fails the build** — a coverage test enumerates the component barrel against the story index (the successor to "unregistered components are a lint error").
+- **Co-located CSF stories** — every Layer-1 primitive and every Layer-2 component has a `*.stories.tsx` beside it (folder-per-component), enumerating **every registered state**. Storybook 10 (`@storybook/react-vite`) indexes them; the built `storybook-static/` is the offline gallery. **A component without a story fails the build** — a coverage test enumerates the component barrels against the story index (the successor to "unregistered components are a lint error").
+
+  ⚠ **Layer 1 is in scope, and was not always.** The original rule said "100% of Layer-2", on the premise that primitives are vendored shadcn nobody touches. That premise does not survive §2.5: primitives are restyled **through the token layer**, so a palette or alpha edit changes all nine of them — and with no primitive stories, neither the gallery nor the visual suite would show it. The tokens are precisely the thing most likely to change and least likely to be noticed, which makes the primitives the *last* place to skip coverage. A primitive's story enumerates its variants (every `Button` intent × size, every `Badge` tone), because those variants are what the token edit moves.
+
+### 5.1a The library is browsable, not just complete
+
+Coverage says every component *has* a story. It says nothing about whether a person can **find** one — and past ~30 components a flat alphabetical list stops being a gallery and becomes a lookup table you have to already know the answer to.
+
+- **Stories are grouped by what a component is for**, not by where its file sits: `Design/*` (the system itself — palette, tokens, type, spacing), `Primitives/*` (Layer 1), then Layer 2 split by domain (`Channels/*`, `Guide/*`, `Filler/*`, `Setup/*`, `Shell/*`, `Feedback/*`). The folder layout stays flat and co-located; only the story `title` carries the grouping, so nothing moves on disk.
+- **The design system documents itself in the workshop.** `Design/Palette` renders every accent with its hex, its tint ramp, and its **measured** contrast ratios — read from the generated token artifacts, never retyped, so the page cannot drift from what the build enforces (§2.5). `Design/Tokens` lists the full set; `Design/Typography` and `Design/Spacing` show the scales. The rules in §2 stop being prose only a maintainer has read and become the first thing anyone opening Storybook sees.
+- **The `Design/*` pages are ordinary CSF stories, not MDX.** MDX would need `@storybook/addon-docs` (a new dependency, §14) to render prose that sits *beside* the values; a story renders the values themselves — it type-checks against `tokens.json`, gets a visual baseline like every other story, and cannot drift from the generated artifacts. Explanation rides along as rendered copy in the page. Executable documentation over described documentation, and no new dependency to justify.
+
+### 5.1c Layer 2 must not re-implement Layer 1
+
+§4.1 says primitives are restyled only through tokens and Layer 2 composes them. Nothing enforced the second half, and an audit found Layer 2 quietly growing its own primitives:
+
+| Duplicated pattern | Where | Should be |
+| --- | --- | --- |
+| Small tinted chip, mono/uppercase | `Badge` (L1) **and** `StateBadge` (L2), each with its own `cva` and its own tint classes | `StateBadge` composes `Badge` |
+| `font-mono text-[10px] uppercase tracking-…` caption | **21 occurrences across 11 components** | a `Caption` primitive |
+| Status dot (`size-2 rounded-full`, pulse when live) | `GenerationProgress`, `GuideGrid`, `OnAirIndicator` | a `StatusDot` primitive |
+| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `TvStatic` legitimately owns its markup, a card-shaped one does not |
+
+**Why this matters more than tidiness.** The badge/tint contrast rule (§2.1) — the one learned the hard way, twice — is now encoded in `Badge` *and* `StateBadge` independently. Fix a stop in one and the other stays wrong, and **the contrast gate cannot tell**: it verifies token *pairings*, not which components consume them. Every duplicated pattern is a second place a design rule has to be remembered rather than inherited.
+
+**The rule:** a visual pattern appearing in three or more Layer-2 components is a Layer-1 primitive, and Layer 2 composes it. Extraction is not a refactor to schedule later — the duplicate is the bug, because it is where the next contrast regression will land.
+
+### 5.1b Story args come from `packages/fixtures`
+
+§4.2 lists **"Storybook story *contracts* (CSF states) + `packages/fixtures` args"** as SHARED across web and the future mobile app: a component's states are defined once and each platform renders them. A story that hand-rolls its args is not portable — it is a web-only literal that the native Storybook cannot reuse — so every hand-rolled arg is a quiet withdrawal from that bridge.
+
+**The rule:** any arg that represents DOMAIN data (a channel, a clip, a proposal, a guide row, a title) comes from `@loomarr/fixtures`. Presentational-only args stay inline — a `size="lg"` or an `open` boolean is not domain data and belongs in the story that varies it.
+
+This is also what keeps the visual suite honest: fixtures are deterministic by construction (§4.2 — no `Date.now`, no randomness), while an inline literal invites a live clock straight into a snapshot.
 - **`make fe-visual`** builds `storybook-static` on the host, then runs Playwright **inside the pinned official Playwright Docker image** (the reference rasterizer, §5.2) over every story at **two viewports** (1280×800 desktop, 390×844 mobile-web) with `maxDiffPixelRatio: 0.001`. The committed baselines are the `*-linux.png` that image produces; **the only sanctioned update path is `make fe-visual-update`** (same image), and baseline diffs are reviewed as images in the PR. The container reuses the host's JS-only `node_modules` and the browsers baked into the image — no in-container install, so a dev's native binaries are untouched.
 - **`make storybook`** runs the dev workshop; **`make storybook-build`** produces the static gallery.
 - Page-level snapshots cover key screens (each wizard step, Channels, Suggest workspace, Settings) with a shared `mask()` helper for dynamic regions.
@@ -213,7 +248,14 @@ These suites join **phase 13's gate** in the main doc's build plan.
 ## 7. Deliverables & integration with the build plan
 
 - **Phase 1** (main doc; also add the `web/packages` layout to its repo-layout block): `web/` workspace skeleton + `packages/tokens` with generators + self-hosted fonts + the `fe-tokens` make target.
-- **Phase 13**: everything else here. **Gate additions:** story coverage = 100% of Layer-2 components (each has a co-located `*.stories.tsx`); visual baselines committed for all stories at both viewports; axe clean (`addon-a11y` `test: 'error'`); `fe-visual` green in the Playwright Docker image.
+- **Phase 13**: everything else here. **Gate additions:** story coverage = 100% of **Layer-1 primitives AND Layer-2 components** (each has a co-located `*.stories.tsx`); visual baselines committed for all stories at both viewports; axe clean (`addon-a11y` `test: 'error'`); `fe-visual` green in the Playwright Docker image.
+- **Library-health gate** (§5.1a, §5.1b), enforced by the same coverage test rather than by review habit:
+  - every Layer-1 primitive has a story enumerating its variants;
+  - every story `title` carries a group prefix — a bare `Loomarr/<Name>` fails, so the sidebar cannot silently flatten again as the library grows;
+  - the `Design/*` pages exist and read their values from the **generated** token artifacts (a hand-typed hex in a swatch is the drift §2.5 exists to prevent);
+  - a story whose args contain domain data imports them from `@loomarr/fixtures`.
+
+  **Written as a gate on purpose.** Every finding in §5.1a/§5.1b was a rule the library outgrew, not a rule anyone broke: 46 components under one flat namespace, 38 of 46 stories hand-rolling args, nine primitives with no coverage at all. None of that was visible to a gate, so none of it surfaced until someone went looking. A convention that only lives in prose decays at exactly the rate the library grows.
 - **Makefile additions:** `fe-tokens`, `storybook`, `storybook-build`, `fe-visual`, `fe-visual-update` (join the CLAUDE.md command contract).
 - This doc is a **seed doc**: incorporate as `docs/frontend-design.md` during phase 14; the palette table also feeds the docs site's own styling.
 - **Visual reference (authoritative for look):** the Claude Design prototypes ship in-repo at `design/loomarr-prototype-desktop.dc.html` and `design/loomarr-prototype-mobile.dc.html` — recreate them pixel-perfectly per the handoff README (match visual output, not internal structure). Two reconciliation deltas apply on top of the prototypes: badge text on tints uses the `-300` stops (the prototypes predate the contrast calibration), and `static-500` text is demoted to disabled/decorative. Gallery baselines (§5) are judged against the prototypes-plus-deltas.
