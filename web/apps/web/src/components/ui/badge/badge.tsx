@@ -7,7 +7,7 @@ import type { BadgeProps } from "./badge.type";
 // 15% composited tint with the AA-safe text stop — onair/suggest use their -300
 // stops (§2.1 badge rule), which the token generator's contrast gate verifies in CI.
 const badgeVariants = cva(
-  "inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-[11px] uppercase tracking-wide",
+  "inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide",
   {
     variants: {
       variant: {

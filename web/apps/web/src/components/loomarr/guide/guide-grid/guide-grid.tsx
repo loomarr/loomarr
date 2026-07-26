@@ -1,4 +1,5 @@
 import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
+import { StatusDot } from "@/components/ui";
 import { cn } from "@/lib";
 import { ChannelIdent } from "../../channels";
 import type { GuideGridProps } from "./guide-grid.type";
@@ -165,7 +166,7 @@ const GuideGrid = ({
                   new Date(t).getMinutes() === 0 ? "border-border" : "border-border/40",
                 )}
               >
-                <span className="whitespace-nowrap font-mono text-[10.5px] text-static-400">
+                <span className="whitespace-nowrap font-mono text-2xs text-static-400">
                   {timeFmt.format(new Date(t))}
                 </span>
               </div>
@@ -228,7 +229,7 @@ const GuideGrid = ({
                       {chip && (
                         <span
                           className={cn(
-                            "mt-0.5 block font-mono text-[10px] uppercase tracking-[0.04em]",
+                            "mt-0.5 block font-mono text-2xs uppercase tracking-[0.04em]",
                             chip.className,
                           )}
                         >
@@ -237,23 +238,13 @@ const GuideGrid = ({
                       )}
                     </span>
                   </button>
-                  {/* On-air dot: live pulses, reconciling is amber, off is inert. */}
-                  <span
-                    // role="img" so the label is actually announced. aria-label is not
-                    // supported on a bare <span> (implicit role: generic), and the dot
-                    // carries real status — live / reconciling / off — so dropping the
-                    // label rather than giving it a role would hide that from assistive
-                    // tech entirely.
-                    role="img"
-                    aria-label={`${ch.name} is ${onAir}`}
+                  {/* On-air dot — the StatusDot primitive, which owns the tone→colour map,
+                      the reserved-for-live pulse, and the role="img" labelling. */}
+                  <StatusDot
+                    tone={onAir === "live" ? "live" : onAir === "reconciling" ? "pending" : "off"}
+                    label={`${ch.name} is ${onAir}`}
                     data-testid="guide-onair-dot"
                     data-onair={onAir}
-                    className={cn(
-                      "size-2 shrink-0 rounded-full",
-                      onAir === "live" && "animate-pulse bg-onair",
-                      onAir === "reconciling" && "bg-signal-400",
-                      onAir === "off" && "bg-static-500",
-                    )}
                   />
                   {renderRowMenu?.(ch)}
                 </div>

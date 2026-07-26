@@ -21,9 +21,7 @@ const ratio = (fg: string, bg: string) => contrast(fg, bg).toFixed(2);
 // A pairing's verdict against WCAG AA for SMALL text. 11px badge copy is small text no matter
 // how label-like it feels — the rule §2.1 calls "learned the hard way, twice".
 const Verdict = ({ value }: { value: number }) => (
-  <span
-    className={cn("font-mono text-[10px] tabular-nums", value >= AA_SMALL ? "text-lock" : "text-onair-300")}
-  >
+  <span className={cn("font-mono text-2xs tabular-nums", value >= AA_SMALL ? "text-lock" : "text-onair-300")}>
     {value >= AA_SMALL ? `${value.toFixed(2)} AA` : `${value.toFixed(2)} FAIL`}
   </span>
 );
@@ -36,11 +34,11 @@ const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; meas
     <div className="size-10 shrink-0 rounded-md border border-border" style={{ backgroundColor: hex }} />
     <div className="min-w-0">
       <div className="truncate font-medium text-sm">{name}</div>
-      <div className="font-mono text-[11px] text-static-400 uppercase">{hex}</div>
+      <div className="font-mono text-2xs text-static-400 uppercase">{hex}</div>
     </div>
     {measure && (
       <div className="ml-auto text-right">
-        <div className="font-mono text-[10px] text-static-400">on bg</div>
+        <div className="font-mono text-2xs text-static-400">on bg</div>
         <Verdict value={contrast(hex, staticScale["static-950"])} />
       </div>
     )}
@@ -51,6 +49,10 @@ const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; meas
 // scale runs dark→light, and the dark end is what things sit ON.
 const SURFACE_STATICS = new Set(["static-950", "static-900", "static-800", "static-700"]);
 
+// The tint steps that carry TEXT. 8/12/15 are badge backgrounds and the badge rule governs
+// them; 30/40 are fills only (§2.1) and nothing in the codebase puts accent text on them.
+const isTextStep = (step: number) => step <= 15;
+
 // The tint ramp for one accent, with the badge-text pairing measured on each step.
 //
 // This is the page's real payload: it renders the exact composite the contrast gate checks, so
@@ -58,21 +60,35 @@ const SURFACE_STATICS = new Set(["static-950", "static-900", "static-800", "stat
 // see failing.
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
   <div className="flex flex-col gap-1">
-    <div className="font-mono text-[10px] text-static-400 uppercase tracking-wide">{`${accent} tints`}</div>
+    <div className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`${accent} tints`}</div>
     <div className="flex flex-wrap gap-2">
       {tintSteps.map((step) => {
         const composited = compositeTint(hex, step, tintSurface);
         const r = contrast(textHex, composited);
         return (
-          <div
-            key={step}
-            className="flex min-w-24 flex-col gap-1 rounded-md border border-border px-2 py-1.5"
-            style={{ backgroundColor: composited }}
-          >
-            <span className="font-mono text-[10px] text-static-400">{`${step}%`}</span>
-            <span className="font-mono text-[11px] uppercase" style={{ color: textHex }}>
-              Badge
-            </span>
+          // Labels and verdicts sit OUTSIDE the tint, on the page surface — muted grey on the
+          // darker composites measures 2.98:1, i.e. this page breaking the rule it documents.
+          //
+          // TEXT SAMPLES ONLY ON THE TEXT STEPS. 8/12/15 are what badges use, so they show the
+          // real pairing. 30/40 are FILL-ONLY in the codebase (a pod segment, a progress bar),
+          // and rendering sample text on them would both misrepresent how they are used and
+          // make this page fail the a11y gate for a violation it was only demonstrating. The
+          // measured ratio is still printed for every step, so the scope of the rule stays
+          // visible without being enacted.
+          <div key={step} className="flex min-w-24 flex-col gap-1">
+            <span className="font-mono text-2xs text-static-400">{`${step}%`}</span>
+            <div
+              className="flex h-8 items-center rounded-md border border-border px-2"
+              style={{ backgroundColor: composited }}
+            >
+              {isTextStep(step) ? (
+                <span className="font-mono text-2xs uppercase" style={{ color: textHex }}>
+                  Badge
+                </span>
+              ) : (
+                <span className="font-mono text-2xs text-static-400/0">fill</span>
+              )}
+            </div>
             <Verdict value={r} />
           </div>
         );

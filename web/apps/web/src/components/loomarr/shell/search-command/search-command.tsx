@@ -47,7 +47,7 @@ const SearchCommand = ({
           aria-label="Search"
           className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
-        <kbd className="shrink-0 rounded border border-border bg-static-800 px-1.5 py-0.5 font-mono text-[10px] text-static-400">
+        <kbd className="shrink-0 rounded border border-border bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-static-400">
           ESC
         </kbd>
       </div>
@@ -60,7 +60,7 @@ const SearchCommand = ({
         )}
         {groups.map((group) => (
           <Fragment key={group.scope}>
-            <p className="px-2 pt-2 pb-1 font-mono text-[11px] text-static-400 uppercase tracking-wide">
+            <p className="px-2 pt-2 pb-1 font-mono text-2xs text-static-400 uppercase tracking-wide">
               {SCOPE_LABEL[group.scope]}
             </p>
             {group.items.map((item) => (

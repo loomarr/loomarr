@@ -31,7 +31,7 @@ const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorP
     {showLabel && (
       <span
         className={cn(
-          "font-mono text-[11px] uppercase tracking-wide",
+          "font-mono text-2xs uppercase tracking-wide",
           state === "live" ? "text-onair-300" : "text-static-400",
         )}
       >

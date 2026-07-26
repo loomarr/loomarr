@@ -37,9 +37,7 @@ const ChannelCard = ({
           <div>
             <p className="font-medium leading-tight">{name}</p>
             {managed && (
-              <p className="font-mono text-[11px] text-static-400 uppercase tracking-wide">
-                Managed by Loomarr
-              </p>
+              <p className="font-mono text-2xs text-static-400 uppercase tracking-wide">Managed by Loomarr</p>
             )}
           </div>
         </div>
@@ -56,7 +54,7 @@ const ChannelCard = ({
       {chip && (
         <span
           className={cn(
-            "inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-[11px] uppercase tracking-wide",
+            "inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide",
             chip.chip,
           )}
         >
