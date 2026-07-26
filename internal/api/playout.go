@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/store"
@@ -53,6 +54,18 @@ type PlayoutSessions interface {
 	// Attach connects a viewer and returns its chunk channel plus a detach func. The caller
 	// MUST call detach — it decrements the refcount that keeps the encoder alive.
 	Attach(ctx context.Context, channelID string) (<-chan []byte, func(), error)
+
+	// Stats snapshots every live encoder for the dashboard (§12, V16).
+	Stats(now time.Time) []playout.SessionStat
+	// Capacity is the admission bound — the denominator in "2 / 4".
+	Capacity() int
+	// ReportProgram records the CURRENT program's encoder + progress for a channel.
+	//
+	// Reported from the per-program path rather than captured at session start, because the
+	// session's own ffmpeg is the `-c copy` parent and never encodes: its speed would measure
+	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
+	// and the load-aware Resolve can legitimately pick differently between programs.
+	ReportProgram(channelID string, enc playout.Encoder, p playout.Progress)
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.

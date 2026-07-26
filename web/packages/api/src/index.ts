@@ -6,6 +6,7 @@
 //   const { data } = setupApi.useSetupStatus();
 export * as authApi from "../generated/endpoints/auth/auth";
 export * as channelsApi from "../generated/endpoints/channels/channels";
+export * as dashboardApi from "../generated/endpoints/dashboard/dashboard";
 export * as fillerApi from "../generated/endpoints/filler/filler";
 export * as helpApi from "../generated/endpoints/help/help";
 export * as jobsApi from "../generated/endpoints/jobs/jobs";

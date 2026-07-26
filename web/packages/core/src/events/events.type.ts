@@ -61,6 +61,19 @@ interface JobEvent {
   [k: string]: unknown;
 }
 
+// Mirrors the BE's `playout` frame (internal/app/app.go, Manager.OnChange): a channel started
+// or stopped encoding. Carries only the active count — deliberately a "something changed"
+// signal rather than the full telemetry, because the dashboard re-reads
+// GET /v1/playout/sessions, which owns the shape.
+//
+// Fired on session lifecycle only, NOT per ffmpeg progress sample: those arrive about once a
+// second per stream, and republishing each would push several frames a second at every open
+// browser for numbers that move by fractions.
+interface PlayoutEvent {
+  active?: number;
+  [k: string]: unknown;
+}
+
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
   onChannel?: (e: ChannelEvent) => void;
@@ -68,6 +81,7 @@ interface EventHandlers {
   onLlmPull?: (e: LlmPullEvent) => void;
   onFillerIngest?: (e: FillerIngestEvent) => void;
   onJob?: (e: JobEvent) => void;
+  onPlayout?: (e: PlayoutEvent) => void;
 }
 
 export type {
@@ -76,6 +90,7 @@ export type {
   FillerIngestEvent,
   JobEvent,
   LlmPullEvent,
+  PlayoutEvent,
   SuggestionEvent,
   SuggestionPhase,
   TitleEvent,

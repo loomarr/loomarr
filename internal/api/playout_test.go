@@ -27,6 +27,36 @@ type fakePlayoutSessions struct {
 	err      error
 	chunks   chan []byte
 	detached int
+	// V16 telemetry: what the handlers reported, and what Stats hands back.
+	stats    []playout.SessionStat
+	capacity int
+	reported []reportedProgram
+}
+
+// reportedProgram is one ReportProgram call, so a test can assert the per-program encode path
+// actually reports its telemetry rather than silently dropping it.
+type reportedProgram struct {
+	channelID string
+	encoder   playout.Encoder
+	progress  playout.Progress
+}
+
+func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stats
+}
+
+func (f *fakePlayoutSessions) Capacity() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.capacity
+}
+
+func (f *fakePlayoutSessions) ReportProgram(channelID string, enc playout.Encoder, p playout.Progress) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reported = append(f.reported, reportedProgram{channelID: channelID, encoder: enc, progress: p})
 }
 
 func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-chan []byte, func(), error) {
@@ -44,6 +74,13 @@ func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-cha
 		defer f.mu.Unlock()
 		f.detached++
 	}, nil
+}
+
+// reports returns the ReportProgram calls seen so far.
+func (f *fakePlayoutSessions) reports() []reportedProgram {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]reportedProgram(nil), f.reported...)
 }
 
 func (f *fakePlayoutSessions) detachCount() int {

@@ -49,6 +49,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onFillerIngest: (e) => {
         for (const l of listeners.current) l.onFillerIngest?.(e);
       },
+      onPlayout: (e) => {
+        for (const l of listeners.current) l.onPlayout?.(e);
+      },
     }),
     [],
   );
