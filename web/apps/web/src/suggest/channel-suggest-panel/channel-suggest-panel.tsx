@@ -74,7 +74,7 @@ const ChannelSuggestPanel = ({ onCreated, className }: ChannelSuggestPanelProps)
             proposal={proposal.proposal}
             status={proposal.status}
             busy={approve.isPending || deny.isPending}
-            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id }) : undefined}
+            onApprove={isAdmin ? () => approve.mutate({ id: proposal.id, data: {} }) : undefined}
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (

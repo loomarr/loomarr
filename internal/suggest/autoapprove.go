@@ -104,7 +104,10 @@ func (a *AutoApprover) Consider(ctx context.Context, p store.Proposal) (Decision
 		return Decision{Reason: "over the pending-acquisition cap"}, nil
 	}
 
-	enqueued, err := Approve(ctx, a.store, p, AutoApprovedBy, a.now)
+	// nil edit: an auto-approval takes the proposal exactly as the model produced it. There is
+	// no approver to make a judgement, which is the point of the grant — and it runs the SAME
+	// Approve as the manual path, so the two cannot drift on what approving means (§8).
+	enqueued, err := Approve(ctx, a.store, p, nil, AutoApprovedBy, a.now)
 	if err != nil {
 		return Decision{Reason: "approval failed"}, err
 	}

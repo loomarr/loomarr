@@ -29,12 +29,20 @@ type Job struct {
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
 // records the admin (§8 audit). ProposalJSON carries the suggest.Proposal.
 type Proposal struct {
-	ID           string
-	JobID        string
-	Status       string // submitted | approved | denied
-	CreatedBy    string
-	ApprovedBy   string
-	DenyReason   string
+	ID         string
+	JobID      string
+	Status     string // submitted | approved | denied
+	CreatedBy  string
+	ApprovedBy string
+	DenyReason string
+	// ModSummary is what the approver CHANGED before approving ("dropped 2, added 1"),
+	// generated server-side rather than typed. A summary the approver writes is a claim;
+	// one the code writes is a record (§7, D-K edit-before-approve).
+	ModSummary string
+	// Note is the approver's message to whoever requested it ("swapped Con Air for
+	// Face/Off — we already have that one"). It is why a request coming back altered is
+	// explicable rather than mysterious.
+	Note         string
 	ProposalJSON string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -128,10 +136,10 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 
 func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, proposal_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ProposalJSON,
-		epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
+		p.ProposalJSON, epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}
@@ -139,7 +147,7 @@ func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
 }
 
 const proposalSelect = `SELECT id, job_id, status, created_by, approved_by, deny_reason,
-	proposal_json, created_at, updated_at FROM proposals`
+	mod_summary, note, proposal_json, created_at, updated_at FROM proposals`
 
 func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error) {
 	return scanProposal(s.db.QueryRowContext(ctx, s.ph(proposalSelect+` WHERE id = ?`), id))
@@ -148,9 +156,9 @@ func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error)
 func (s *sqlStore) UpdateProposal(ctx context.Context, p Proposal) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
-		   proposal_json=?, updated_at=? WHERE id=?`),
-		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ProposalJSON,
-		epoch(p.UpdatedAt), p.ID)
+		   mod_summary=?, note=?, proposal_json=?, updated_at=? WHERE id=?`),
+		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
+		p.ProposalJSON, epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return fmt.Errorf("update proposal %s: %w", p.ID, err)
 	}
@@ -181,7 +189,7 @@ func scanProposal(sc scannable) (Proposal, error) {
 		createdAt, updatedAt int64
 	)
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
-		&p.ProposalJSON, &createdAt, &updatedAt)
+		&p.ModSummary, &p.Note, &p.ProposalJSON, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Proposal{}, ErrNotFound
 	}

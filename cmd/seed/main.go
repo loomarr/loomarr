@@ -233,7 +233,9 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	if err != nil {
 		return fmt.Errorf("get proposal: %w", err)
 	}
-	enq, err := suggest.Approve(ctx, st, stored, adminID, time.Now)
+	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
+	// than writing `available` rows directly — CLAUDE.md's do-not list names that explicitly.
+	enq, err := suggest.Approve(ctx, st, stored, nil, adminID, time.Now)
 	if err != nil {
 		return fmt.Errorf("approve (the gate): %w", err)
 	}

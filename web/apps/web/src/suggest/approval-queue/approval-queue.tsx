@@ -63,7 +63,7 @@ const ApprovalQueue = () => {
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
               status={busy ? "approving" : "pending"}
-              onApprove={() => approve.mutate({ id: p.id })}
+              onApprove={() => approve.mutate({ id: p.id, data: {} })}
               onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
             />
           </li>
