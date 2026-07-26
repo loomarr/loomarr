@@ -1842,6 +1842,12 @@ components:
           type: string
         jobId:
           type: string
+        modSummary:
+          description: What the approver changed before approving, generated server-side
+          type: string
+        note:
+          description: The approver's message to whoever requested this
+          type: string
         proposal:
           $ref: "#/components/schemas/Proposal"
         status:
@@ -4242,6 +4248,13 @@ paths:
               - approved
               - denied
             type: string
+        - description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
+          explode: false
+          in: query
+          name: mine
+          schema:
+            description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
+            type: boolean
       responses:
         "200":
           content:
