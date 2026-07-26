@@ -1,3 +1,4 @@
+export * from "./channel-auto-curate";
 export * from "./channel-card";
 export * from "./channel-cycle-preview";
 export * from "./channel-danger-zone";

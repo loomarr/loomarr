@@ -56,6 +56,40 @@ const STRATEGY_OPTIONS: { value: string; label: string }[] = [
   { value: "time_slot", label: "Time slots" },
 ];
 
+// The rating ladder, mirroring schedule/policy.go's `ladderRank`. Mirrored ONLY so the
+// "Automatic" unrated option can say which way it currently resolves; the gate itself is
+// enforced in Go and never relaxed by the relaxation ladder (§8). Kept as ranks rather than a
+// hand-copied set of "kids ratings" so the boundary stays one number to compare against —
+// KIDS_CEILING_RANK is `kidsCeilingRank` (TV-PG = 3), and "kids" means rank <= that.
+const LADDER_RANK: Record<string, number> = {
+  "TV-Y": 0,
+  "TV-Y7": 1,
+  "TV-G": 2,
+  G: 2,
+  "TV-PG": 3,
+  PG: 3,
+  "TV-14": 4,
+  "PG-13": 4,
+  "TV-MA": 5,
+  R: 5,
+  "NC-17": 5,
+};
+const KIDS_CEILING_RANK = 3;
+
+// How a `default` unrated policy resolves right now, given the ceiling above it (Go's
+// resolveUnrated): a kids ceiling fails closed and skips unrated titles; anything else —
+// including no ceiling at all — allows them.
+const unratedResolvesToExclude = (ceiling: string | undefined): boolean =>
+  ceiling !== undefined &&
+  ceiling !== "" &&
+  (LADDER_RANK[ceiling] ?? Number.POSITIVE_INFINITY) <= KIDS_CEILING_RANK;
+
+const UNRATED_OPTIONS: { value: string; label: string }[] = [
+  { value: "default", label: "Automatic" },
+  { value: "exclude", label: "Skip unrated" },
+  { value: "allow", label: "Allow unrated" },
+];
+
 const CEILING_OPTIONS: { value: string; label: string }[] = [
   { value: "none", label: "No limit" },
   { value: "TV-Y", label: "TV-Y" },
@@ -168,6 +202,46 @@ const ChannelPolicyFields = ({
               {CEILING_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
+          always been enforced (and reported in the exclusion report) while nothing could choose
+          it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
+          Sits beside the ceiling because its default is DERIVED from it. */}
+      {showScope && (
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel
+            htmlFor="policy-unrated"
+            help="Titles with no content rating. Automatic follows the ceiling — strict for a kids ceiling, permissive otherwise."
+          >
+            Unrated titles
+          </FieldLabel>
+          <Select
+            value={policy.audience?.unrated || "default"}
+            onValueChange={(v) =>
+              onChange({
+                ...policy,
+                audience: { ...policy.audience, unrated: v === "default" ? "" : v },
+              })
+            }
+          >
+            <SelectTrigger id="policy-unrated">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {UNRATED_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {/* "Automatic" alone is not actionable — the operator cannot tell which way it
+                      falls without knowing the kids-ceiling rule. Naming the current resolution
+                      turns it into a real choice. */}
+                  {o.value === "default"
+                    ? `${o.label} — ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
+                    : o.label}
                 </SelectItem>
               ))}
             </SelectContent>

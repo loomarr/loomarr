@@ -1,5 +1,6 @@
 import { type ChannelPolicy, channelsApi, type LineupEntryDTO } from "@loomarr/api";
 import {
+  ChannelAutoCurate,
   ChannelCyclePreview,
   ChannelLineupEditor,
   ChannelPolicyFields,
@@ -32,6 +33,10 @@ interface ChannelProgrammingProps {
   // but edited here because Ordering's "inherit channel default" refers to it.
   strategy?: string;
   onStrategyChange?: (next: string) => void;
+  // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
+  // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
+  // control says so instead of offering a setting the job would skip.
+  intentRef?: string;
   onRefined: () => void;
 }
 
@@ -55,6 +60,7 @@ const ChannelProgramming = ({
   onPolicyChange,
   strategy,
   onStrategyChange,
+  intentRef,
   onRefined,
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
@@ -113,6 +119,15 @@ const ChannelProgramming = ({
         ) : (
           <p className="text-muted-foreground text-sm">Loading rule options…</p>
         )}
+
+        {/* Auto-curate (§8.2) — the same "when does this change" question on a much slower
+            clock. The rules above move titles around WITHIN the lineup by wall-clock time;
+            this decides whether the lineup itself grows as the library does. Sharing the block
+            keeps both answers in one place instead of on a settings tab that never existed
+            (§12). */}
+        <div className="border-border/60 border-t pt-4">
+          <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(intentRef)} />
+        </div>
       </Block>
 
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
