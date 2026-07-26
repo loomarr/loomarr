@@ -99,12 +99,22 @@ func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submit
 // straight from the domain struct so orval generates the FE's proposal types 1:1 (§12),
 // with zero hand-written mirror on either side and no fidelity lost through the wire.
 type ProposalDTO struct {
-	ID         string           `json:"id"`
-	JobID      string           `json:"jobId"`
-	Status     string           `json:"status" enum:"submitted,approved,denied"`
-	CreatedBy  string           `json:"createdBy,omitempty"`
-	ApprovedBy string           `json:"approvedBy,omitempty"`
-	DenyReason string           `json:"denyReason,omitempty"`
+	ID         string `json:"id"`
+	JobID      string `json:"jobId"`
+	Status     string `json:"status" enum:"submitted,approved,denied"`
+	CreatedBy  string `json:"createdBy,omitempty"`
+	ApprovedBy string `json:"approvedBy,omitempty"`
+	DenyReason string `json:"denyReason,omitempty"`
+	// ModSummary and Note are the approval provenance (§7, D-K). Both have been PERSISTED
+	// since V25 and neither left the server: the note an approver wrote to explain an edited
+	// request reached the database and nothing could display it — the same "stored but never
+	// rendered" shape the audit found `denyReason` in before V23 wired it up.
+	//
+	// ModSummary is generated server-side ("dropped 2, added 1"); Note is the approver's own
+	// words. The distinction is deliberate and worth preserving in any UI: a summary the
+	// approver types is a claim, one the code writes is a record.
+	ModSummary string           `json:"modSummary,omitempty" doc:"What the approver changed before approving, generated server-side"`
+	Note       string           `json:"note,omitempty" doc:"The approver's message to whoever requested this"`
 	Proposal   suggest.Proposal `json:"proposal"`
 }
 
@@ -116,12 +126,20 @@ func proposalToDTO(p store.Proposal) ProposalDTO {
 	}
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
-		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason, Proposal: payload,
+		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
+		ModSummary: p.ModSummary, Note: p.Note, Proposal: payload,
 	}
 }
 
 type listProposalsInput struct {
 	Status string `query:"status" enum:"submitted,approved,denied" doc:"Filter by status; submitted = the approval queue"`
+	// Mine scopes the list to the CALLER's own proposals — the "My requests" surface (§12).
+	//
+	// A bool resolved from the session, deliberately NOT a `user=<id>` parameter. The design
+	// sketch read `ListProposals(status[, user])`, but a client-supplied id is a client-supplied
+	// identity: any member could read another's requests by editing a URL. The only trustworthy
+	// answer to "whose?" is the session's.
+	Mine bool `query:"mine" doc:"Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id."`
 }
 type listProposalsOutput struct {
 	Body struct {
@@ -134,10 +152,41 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 	if status == "" {
 		status = "submitted"
 	}
-	props, err := s.store.ListProposalsByStatus(ctx, status)
-	if err != nil {
-		return nil, err
+
+	var props []store.Proposal
+	var err error
+	if in.Mine {
+		// Scope from the SESSION, never from a parameter. The important property is that this
+		// cannot widen: `ListProposalsByCreator` is `WHERE created_by = ?`, so the worst case is
+		// too FEW rows, never another member's.
+		//
+		// A break-glass API_TOKEN caller has no user record, so its id is "" — and submit
+		// stamps `created_by` with the same "" for a token-submitted proposal. So `mine=true`
+		// on a token returns exactly the proposals that token submitted (usually none), which
+		// is the honest reading of "mine" for a caller that is not a person. What it can never
+		// do is fall through to everyone's, which is the failure mode worth designing against.
+		props, err = s.store.ListProposalsByCreator(ctx, userIDFromHuma(ctx))
+		if err != nil {
+			return nil, err
+		}
+		// ListProposalsByCreator spans every status (it answers "what have I asked for?"), so
+		// the status filter is applied here rather than pushed into a second store method.
+		// `status=""` already defaulted to "submitted" above, so an unfiltered "all of mine"
+		// is deliberately NOT expressible — the surface asks for one tab at a time.
+		filtered := props[:0]
+		for _, p := range props {
+			if p.Status == status {
+				filtered = append(filtered, p)
+			}
+		}
+		props = filtered
+	} else {
+		props, err = s.store.ListProposalsByStatus(ctx, status)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	out := &listProposalsOutput{}
 	out.Body.Proposals = make([]ProposalDTO, 0, len(props))
 	for _, p := range props {
