@@ -1239,13 +1239,27 @@ and plays out its own channels. That reframes Track T from a parallel track into
 | V6 · Internal playout to first frame | **done** | `2b0b9a4` … `c6aa0e7` — `make check` + `make test-ffmpeg` green; **verified on the maintainer's own Emby** | Loomarr serves its own channels. Emby pulls `/playout/tuner.m3u`, real library films play at 1080p, breaks cut to real commercials, and the full transcode runs on the GPU. Mechanism is Tunarr's HTTP ffconcat loop (prior-art §1): a `-c copy` parent over a 2-line playlist whose entries both resolve to "what's on now" — the demuxer's EOF-and-advance IS the program boundary, so there is no splicing code. Mid-program tune-in verified live (joined 39 min into a film). |
 | V6b · XMLTV listings | **done** | `ac17450`, `c8ed906`, `5382fda`, `7fccc63` — `make check` green; live guide 253 programmes / 541ms | `/playout/guide.xml`. Same `CyclePreview` the encoder reads, so listings cannot drift from playout (a test samples 200 instants and asserts they agree). Breaks are **not** advertised (#12). Full metadata: `<desc>` 253/253, `<date>` 253/253, `<category>` 249/253, `<rating>` 247/253 — one bulk `/Items?Ids=` call, 120 items in 24ms, so no cache was needed. |
 
+| V13b · `GET /v1/guide` | **done** | `eeb6338`, `ec8436c` — `make check` + `openapi-verify` green; live 38 blocks with provenance + runtime on all | The JSON time-grid backend. `kind` replaces `gap bool` (a boolean could not tell a commercial pod from a pending acquisition); gaps preserved, unlike `Upcoming`. All 8 gaps in the mock-delta §2f closed — incl. per-airing pod composition, episode runtime, server-assembled provenance, `guide.timezone` + `guide.retention_hours` (§15). |
+| V14a · Guide time-grid UI | **done** | `431fd32`, `038b17f` — `make fe` green (460 tests); rail/chips verified by screenshot | The grid itself, built to `-v2.dc.html`. Flex rail + percentage blocks, so ruler/block misalignment is structurally impossible. GuideDetailCard, per-clip pod rendering, airing highlight, channel marks, health chips, row menu, day/window controls. **The IA rename (`/channels`→`/guide`, `/users`→`/people`, two navs) is deliberately NOT here** — see below. |
+
 **Next up (free — no deps, no pending decisions):** V7 (local accounts — closes S2/S3, the largest
 remaining free phase), V19 (per-title refine rationale), V24 (`A3` — surface proposal data the DTO
 already carries but nothing renders: `channelName`, `eraBalance`, `overall`, and the
 `mustInclude`/`mustExclude` intent inputs).
-**The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b. Next in the plan is **V13b**
-(`GET /v1/guide`, the JSON backend for Loomarr's own time-grid) → **V14** (IA rename + grid).
-V6b shipped `playout.BroadcastsBetween`, so V13b is mostly a JSON projection of an existing walk.
+**The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a.
+
+**V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own
+sequencing note names splitting as the escape hatch. Bundling would have put the rename's mechanical
+churn and the grid's new pixels in ONE visual-baseline diff, where neither can be reviewed
+independently. The grid shipped first at a new `/guide` route (both doors are real; neither is a
+redirect). **V14b — the rename + two role-specific navs — remains open.**
+
+⚠ **Two mock-reading lessons, recorded because both cost real work.** The v2 prototypes are
+`design/loomarr-prototype-desktop-v2.dc.html` (502KB, 2026-07-24) — NOT the 146KB July-13 file. I
+read the old one, concluded no grid design existed, and built one from scratch; the v2 mock had a
+complete TV Guide, and `design/SYNC-LOG-2026-07-24.md` says so outright. And the mock's amber is the
+`signal` token (`#FFB020`); `onair` is the RED live-dot (`#E5484D`). Mapping them backwards made the
+now-line and every channel number the wrong colour, which no assertion catches — only a screenshot.
 
 ### Playout: five traps that each cost a live channel
 
