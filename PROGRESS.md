@@ -1256,8 +1256,12 @@ next person — including to a future me reading "next up" as authoritative.
 
 | V25 · edit-before-approve (backend) | **done** | `44f02c7` — CI green; 13 approve tests (6 new) + `TestOnlyApproveCreatesWantedTitles` | The edit is a PARAMETER to `suggest.Approve`, not applied by the handler first — otherwise "what gets acquired" is decided outside the gate and auto-approve runs different logic. `mod_summary`/`note` are real columns (migration 00015); the summary is generated server-side, because one the approver types is a claim and one the code writes is a record. **Two backward-compat breaks caught by gates:** a value Body made huma require one (400s on empty), and the pointer fix did not cover orval, which still emits `data` as required (4 FE call sites). Runtime and client compatibility are different things. |
 
+| Surface + drift audit | **findings recorded** | `docs/engineering/surface-audit-2026-07-26.md` | Two audits run as parallel subagents. Fixed in-session: a **live defect** (the `fillerIngest` SSE frame was never fanned out, so "Download clips" hung forever) plus 4 orphaned channel controls and 12 surface-map rows. **Still open:** 5 orphaned capabilities (tier 2/3, `autoCurate` the sharpest) and 11 §12 drifted claims — all itemised in that file. |
+
 **Next up:** **V25b** (the edit-before-approve UI the backend now supports — drop with `✕`, add via
-search, note to the requester), then **V16** (Dashboard, incl. transcode telemetry).
+search, note to the requester; note the audit found `ProposalReview.onEditItem` already exists with
+no production caller, which is most of the surface), then **V16** (Dashboard), or the audit's
+**tier-2 doors** (`autoCurate`, `playout.backend`, `audience.unrated`).
 **The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a → V14b.
 
 **V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own

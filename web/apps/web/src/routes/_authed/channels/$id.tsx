@@ -1,4 +1,10 @@
-import { type ChannelDTO, type ChannelPolicy, channelsApi, toProblem } from "@loomarr/api";
+import {
+  type ChannelDTO,
+  type ChannelPolicy,
+  channelsApi,
+  toProblem,
+  type UpdateChannelInputBodyStrategy,
+} from "@loomarr/api";
 import { channelNumber, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -154,6 +160,15 @@ const ChannelDetailScreen = () => {
   const total = ch.programCount + ch.pendingCount;
 
   const savePolicy = (policy: ChannelPolicy) => update.mutate({ id, data: { policy } });
+  // `strategy` is a CHANNEL field, not a policy one, so it takes its own PATCH — but it is
+  // edited on the Programming surface beside Ordering, because that is where its effect is
+  // visible: Ordering's "inherit channel default" has always referred to this value.
+  // Cast because the control hands back a plain string while the generated body types
+  // `strategy` as its enum union. The options the Select offers ARE that union
+  // (STRATEGY_OPTIONS mirrors ChannelDTO.strategy's enum), so the value is always valid —
+  // and the server validates it regardless, which is the check that matters.
+  const saveStrategy = (strategy: string) =>
+    update.mutate({ id, data: { strategy: strategy as UpdateChannelInputBodyStrategy } });
 
   // The identity fields commit through mutateAsync so they can distinguish success (adopt +
   // close) from failure (a 409 renumber surfaces inline on the field, editor stays open). The
@@ -291,6 +306,8 @@ const ChannelDetailScreen = () => {
               lineup={ch.lineup ?? []}
               policy={ch.policy}
               onPolicyChange={savePolicy}
+              strategy={ch.strategy}
+              onStrategyChange={saveStrategy}
               onRefined={invalidate}
             />
           )}
