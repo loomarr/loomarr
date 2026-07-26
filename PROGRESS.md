@@ -1244,10 +1244,19 @@ and plays out its own channels. That reframes Track T from a parallel track into
 
 | V14b · IA rename + two navs | **done** | `a6ac496` — CI green; 461 unit + 342 visual + 7 e2e | `/board`→`/queue`, `/users`→`/people` (git mv). **Two AUTHORED navs** replace `NAV.filter(i => !i.admin \|\| isAdmin)`: a member gets `Guide · Request a channel · My requests · Help` — the same `/suggest` and `/queue` routes under member-facing names, which a filter structurally cannot do (it hides, never renames). `NavItem.admin` deleted. `/v1/users/*` unchanged — this is a frontend rename, not an API one. |
 
-**Next up (free — no deps, no pending decisions):** V7 (local accounts — closes S2/S3, the largest
-remaining free phase), V19 (per-title refine rationale), V24 (`A3` — surface proposal data the DTO
-already carries but nothing renders: `channelName`, `eraBalance`, `overall`, and the
-`mustInclude`/`mustExclude` intent inputs).
+| V7 · local accounts (backend) | **done** | `POST /v1/auth/password`; 6 password tests in `auth_flow_test.go` | Closes **S3**. Changing a password revokes **every** session including the caller's — keeping one means trusting a credential that may be the compromised one. |
+| V7b · Account screen | **done** | `routes/_authed/account.tsx`; 3 reachability assertions | Closes **S2 for real**. The screen V7 shipped without: change password, session list, revoke. The copy says all sessions end, matching what the code does. |
+| V7c · People: create local + reset | **done** | `people/create-local-panel/` | The admin half of V7's surface. |
+| V19 · per-title refine rationale | **done** | `refine-review.tsx` — `rationale` on `DiffRow` | No backend work needed, as the plan predicted: the LLM already populated `ProposalItem.Rationale` and `diffLineup` was dropping it one function before render. Shown on ADDED rows only. |
+| V24 · `A3` surface hidden proposal data | **done** | `proposal-review.tsx`, `intent-form.tsx` | `eraBalance`/`overall` render; `mustInclude`/`mustExclude` are wired into the intent form. |
+
+⚠ **Those five were finished but never recorded here**, which sent a later session hunting through
+four completed phases before noticing. A phase that ships without a PROGRESS row is invisible to the
+next person — including to a future me reading "next up" as authoritative.
+
+**Next up (free — no deps, no pending decisions):** **V25 → V25b** (edit-before-approve: backend
+then UI — the pair carries the program's sharpest constraint, that `suggest.Approve` stays the SOLE
+acquisition path), and **V16** (Dashboard, incl. transcode telemetry).
 **The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a → V14b.
 
 **V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own
