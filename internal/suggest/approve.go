@@ -154,6 +154,11 @@ func Approve(
 
 	p.Status = "approved"
 	p.ApprovedBy = approvedBy
+	// Stamped HERE, at the one chokepoint, for the same reason `approvedBy` is: every path that
+	// approves — a human admin, the per-user auto-approve grant, auto-curate, and V27's bulk
+	// approve — goes through this function, so none of them can record a decision without a
+	// time. `now` is injected, so the stamp is deterministic under test rather than wall-clock.
+	p.ApprovedAt = now()
 	if err := st.UpdateProposal(ctx, p); err != nil {
 		return 0, err
 	}

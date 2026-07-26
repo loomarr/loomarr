@@ -1,3 +1,4 @@
+export * from "./approval-history-row";
 export * from "./approval-queue-item";
 export * from "./hosted-model-picker";
 export * from "./intent-input";

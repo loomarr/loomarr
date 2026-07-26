@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -706,5 +707,222 @@ func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
 	}
 	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
 		t.Error("a member's rejected approval still enqueued a title")
+	}
+}
+
+// --- V27: approvedAt + bulk approve ------------------------------------------
+
+// The audit rows' ordering key. Nothing recorded WHEN a proposal was approved, so a history
+// could list decisions in no verifiable order. Stamped at the ONE chokepoint, so every path
+// that approves — human, auto-approve grant, auto-curate, bulk — records a time.
+func TestApprove_StampsApprovedAt(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+
+	before := time.Now().Add(-time.Second)
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+
+	p, err := st.GetProposal(context.Background(), "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ApprovedAt.IsZero() {
+		t.Fatal("approvedAt is zero after approving — an audit row with no time cannot be ordered")
+	}
+	if p.ApprovedAt.Before(before) {
+		t.Errorf("approvedAt = %v, want >= %v", p.ApprovedAt, before)
+	}
+}
+
+// A proposal that was never approved must carry NO approval time. Emitting the zero time as
+// "0001-01-01T00:00:00Z" would put a date on a decision that never happened.
+func TestProposalDTO_OmitsApprovedAtWhileUnapproved(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+
+	resp := do(t, srv, http.MethodGet, "/v1/suggestions?status=submitted", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), "approvedAt") {
+		t.Errorf("unapproved proposal carries approvedAt: %s", body)
+	}
+}
+
+func TestProposalDTO_CarriesApprovedAtOnceApproved(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	_ = do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "").Body.Close()
+
+	resp := do(t, srv, http.MethodGet, "/v1/suggestions?status=approved", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		Proposals []struct {
+			ApprovedAt string `json:"approvedAt"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Proposals) != 1 {
+		t.Fatalf("got %d approved proposals, want 1", len(out.Proposals))
+	}
+	if _, err := time.Parse(time.RFC3339, out.Proposals[0].ApprovedAt); err != nil {
+		t.Errorf("approvedAt %q is not RFC3339: %v", out.Proposals[0].ApprovedAt, err)
+	}
+}
+
+// ⚠ The route-shape check. `POST /v1/suggestions/approve` (bulk) and
+// `POST /v1/suggestions/{id}/approve` (single) are different paths, but a literal segment that
+// could be mistaken for an id is worth pinning: if the router ever resolved "approve" as an
+// {id}, bulk would 404 as a missing proposal instead of approving anything.
+func TestBulkApprove_DoesNotCollideWithSingleApprove(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	seedProposal(t, st, "p2")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken, `{"ids":["p1","p2"]}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("bulk approve → %d (%s), want 200 — the literal /approve path must not resolve as {id}", resp.StatusCode, body)
+	}
+}
+
+// THE phase gate: "bulk approve goes through the same chokepoint". Bulk delegates to the single
+// approve handler per id, so everything that makes one approval correct applies unchanged —
+// asserted through its OBSERVABLE effects: status flipped, acquisitions enqueued as `wanted`
+// titles, and the audit stamps written.
+func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	// DISTINCT titles per proposal. `seedProposal` gives every proposal the same acquisition
+	// (tmdbId 100), and enqueue is idempotent by provisioning key — so two seeded proposals
+	// would produce ONE wanted title and the count below could not distinguish "both went
+	// through the gate" from "one did".
+	seedProposalWithTMDB(t, st, "p1", 100, "Speed")
+	seedProposalWithTMDB(t, st, "p2", 101, "Heat")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken, `{"ids":["p1","p2"]}`)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		Approved int `json:"approved"`
+		Results  []struct {
+			ID       string `json:"id"`
+			OK       bool   `json:"ok"`
+			Enqueued int    `json:"enqueued"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Approved != 2 {
+		t.Fatalf("approved = %d, want 2 (results: %+v)", out.Approved, out.Results)
+	}
+
+	for _, id := range []string{"p1", "p2"} {
+		p, err := st.GetProposal(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Status != "approved" {
+			t.Errorf("%s status = %q, want approved", id, p.Status)
+		}
+		if p.ApprovedAt.IsZero() {
+			t.Errorf("%s has no approvedAt — bulk must stamp the same audit fields as a single approve", id)
+		}
+	}
+	// The gate's real output: acquisitions became `wanted` titles. Seeded proposals carry one
+	// acquisition each, so a bulk of two must enqueue two.
+	wanted, err := st.ListTitlesByState(context.Background(), provision.Wanted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wanted) != 2 {
+		t.Errorf("got %d wanted titles after bulk approving 2 proposals, want 2 — bulk must enqueue through the gate, not bypass it", len(wanted))
+	}
+}
+
+// One already-handled id must not abort the rest: the approvals that worked are durable, so
+// failing the whole call would hide them. But the caller has to learn which failed, or
+// "approve 3" silently becoming "approved 2" is invisible.
+func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+	seedProposal(t, st, "p2")
+	// p1 is already approved before the bulk call.
+	_ = do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "").Body.Close()
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken,
+		`{"ids":["p1","missing","p2"]}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bulk with partial failures → %d, want 200 (failures are data, not a request error)", resp.StatusCode)
+	}
+	var out struct {
+		Approved int `json:"approved"`
+		Results  []struct {
+			ID    string `json:"id"`
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Approved != 1 {
+		t.Errorf("approved = %d, want 1 (only p2 was still submitted)", out.Approved)
+	}
+	if len(out.Results) != 3 {
+		t.Fatalf("got %d results, want one per requested id", len(out.Results))
+	}
+	byID := map[string]bool{}
+	for _, r := range out.Results {
+		byID[r.ID] = r.OK
+		if !r.OK && r.Error == "" {
+			t.Errorf("%s failed with no reason — the caller cannot tell what went wrong", r.ID)
+		}
+	}
+	if byID["p1"] || byID["missing"] || !byID["p2"] {
+		t.Errorf("results = %+v; want p1 and missing failed, p2 approved", out.Results)
+	}
+}
+
+// §19: the gate is admin-only, and bulk is still the gate. A member must approve NOTHING.
+func TestBulkApprove_MemberIsRejected(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p1")
+
+	for _, tok := range []string{"", "not-the-admin-token"} {
+		resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", tok, `{"ids":["p1"]}`)
+		if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("bulk approve with token %q → %d, want 401/403", tok, resp.StatusCode)
+		}
+		_ = resp.Body.Close()
+	}
+	// And nothing was enqueued — the §19 assertion that matters is the ABSENCE of acquisitions.
+	wanted, err := st.ListTitlesByState(context.Background(), provision.Wanted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wanted) != 0 {
+		t.Errorf("got %d wanted titles after a rejected bulk approve, want 0", len(wanted))
+	}
+}
+
+// seedProposalWithTMDB is seedProposal with a caller-chosen title, for tests that count the
+// titles an approval enqueues. Enqueue is idempotent by provisioning key, so two proposals
+// sharing one acquisition enqueue ONE title — which would silently weaken any such count.
+func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, name string) {
+	t.Helper()
+	body := fmt.Sprintf(
+		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
+	err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
