@@ -7,11 +7,14 @@ import { cn } from "@/lib";
 // are all things an operator touches once at setup or when something is wrong, and putting them
 // alongside Connections and AI buried the four pages that get configured under five that don't.
 //
-// Playout, Database, Backup and About land in later phases (V11 the migration stepper, V12
-// Backup + About). Their tabs are NOT stubbed here: a tab leading to an empty page is worse
-// than an absent one — it advertises a surface that does not exist, which is the same reasoning
-// §12 used to defer the Dashboard nav entry until V16 built it.
-const SUB_PAGES = [{ to: "/settings/system/tasks", label: "Tasks" }] as const;
+// Playout, Backup and About land in later phases (V12 Backup + About). Their tabs are NOT
+// stubbed here: a tab leading to an empty page is worse than an absent one — it advertises a
+// surface that does not exist, which is the same reasoning §12 used to defer the Dashboard nav
+// entry until V16 built it. Database arrives with V11, so it appears now.
+const SUB_PAGES = [
+  { to: "/settings/system/tasks", label: "Tasks" },
+  { to: "/settings/system/database", label: "Database" },
+] as const;
 
 const SystemLayout = () => (
   <div className="flex h-full flex-col">

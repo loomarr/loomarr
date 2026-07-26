@@ -10,6 +10,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type {
   ChannelEvent,
+  DatabaseEvent,
   EventHandlers,
   FillerIngestEvent,
   JobEvent,
@@ -43,6 +44,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
   on<JobEvent>("job", handlers.onJob);
   on<PlayoutEvent>("playout", handlers.onPlayout);
+  on<DatabaseEvent>("database", handlers.onDatabase);
   return () => es.close();
 };
 
