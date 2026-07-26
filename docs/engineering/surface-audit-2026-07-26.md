@@ -1,8 +1,8 @@
 # Surface + drift audit — 2026-07-26
 
-Two audits run as parallel subagents (`/surface-audit channels`, `/doc-drift "design.md §12"`),
-verified against the code, with the outcome recorded here so the remaining work survives the
-session that found it.
+Merged in **#86** (squashed as `d38d0dc`). Two audits run as parallel subagents
+(`/surface-audit channels`, `/doc-drift "design.md §12"`), verified against the code, with the
+outcome recorded here so the remaining work survives the session that found it.
 
 **Why this file exists at all:** the findings are larger than one session, and the repo's own
 history says an unrecorded finding is a lost one — five phases shipped without a `PROGRESS.md`
@@ -12,7 +12,7 @@ row and a later session spent four investigations rediscovering them.
 
 | | |
 | --- | --- |
-| `fillerIngest` SSE frame never fanned out | `fd31649` — a **live defect**: "Download clips" pinned at "starting" forever. Gated by `events-provider.test.tsx`. |
+| `fillerIngest` SSE frame never fanned out | A **live defect**: "Download clips" pinned at "starting" forever. Gated by `events-provider.test.tsx`. |
 | `scope.runtimeMax` unreachable | Control in `ChannelPolicyFields` → Programming → What plays |
 | `separation.seriesMinGap` unreachable | Control in Programming → How it's ordered |
 | `separation.blockMax` unreachable | Control in Programming → How it's ordered |
