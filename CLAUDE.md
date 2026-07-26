@@ -67,6 +67,24 @@ make seed           # populate a dev store (fake users/titles/channels/clips via
 
 CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a command doesn't exist yet for the active phase, creating it is part of the phase.
 
+**CI runs jobs only when their inputs changed.** A `changes` job diffs against the merge base
+and each job gates on it: Go/Postgres on `**/*.go`, `go.mod|sum`, `internal/store/migrations/`,
+**`docs/help/`** (embedded in the binary — `retired-verify` reads it), `Makefile`, and the
+workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow. `Makefile` and the
+workflow deliberately gate BOTH — they define how every job runs.
+
+Two rules if you touch this:
+
+- **`ci-ok` is the single required check**, always runs, and inspects `needs.*.result`
+  explicitly. A skipped job does not fail an aggregate by default — and neither does a FAILED
+  one under `if: always()` — so a naive shim reports green over a red job.
+- **Never use a workflow-level `paths:`.** A run that does not trigger reports no checks at
+  all, so a required check sits "expected" forever and the PR cannot merge. Filter per job.
+
+The filter fails SAFE: no usable merge base (first push, force-push, new branch) runs
+everything. Adding a new build input means adding it to the filter in the same PR — the same
+class of hand-maintained list as `scripts/check-retired.sh`.
+
 ## Environment prerequisites
 
 Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) — verify with `docker info` during phase 1 and record in PROGRESS.md. Playwright browsers install in phase 13. If Docker is unavailable in the current environment, stop and tell the maintainer; do not fake the Postgres conformance suite.
