@@ -107,7 +107,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// Approve through the ONE gate (audit "auto-curate"). In-library adds land as `available`
 	// records; the surviving acquisitions land as `wanted` — the same code the admin's manual
 	// approve runs, so re-curation can never enqueue by a path the gate doesn't see.
-	enqueued, err := suggest.Approve(ctx, c.store, filtered, suggest.AutoCuratedBy, c.now)
+	// nil edit: re-curation's narrowing is a POLICY filter (quality bar, title cap) applied by
+	// this subsystem, not an approver's judgement — so it is `filtered` above rather than an
+	// ApprovalEdit, which models a human's choices at the gate. Different things, deliberately
+	// not conflated.
+	enqueued, err := suggest.Approve(ctx, c.store, filtered, nil, suggest.AutoCuratedBy, c.now)
 	if err != nil {
 		return suggest.Decision{Reason: "approval failed"}, err
 	}

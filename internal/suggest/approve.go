@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -13,6 +14,31 @@ import (
 
 // ErrNotSubmitted reports an approval attempt on a proposal that is not awaiting one.
 var ErrNotSubmitted = errors.New("proposal is not in the submitted state")
+
+// ApprovalEdit is an approver's modification, applied AT the gate (§7, decision D-K).
+//
+// ⚠ THE EDIT IS A PARAMETER TO Approve, not something a caller applies first, and that is the
+// whole design. Approving decides what gets acquired; if a handler pre-modified the proposal
+// and passed the result, the decision would live outside the gate and the auto-approve path
+// would not share it — the two would drift on what approving means, which is exactly what §8's
+// one-implementation rule exists to prevent. Auto-approve passes nil and runs identical code.
+type ApprovalEdit struct {
+	// DropKeys are provisioning keys the approver removed. Applied to BOTH lineup and
+	// acquisitions: a dropped title should not be acquired and should not be scheduled.
+	DropKeys []provision.Key
+	// Add are titles the approver added via search. They join the acquisitions list and go
+	// through the same idempotent enqueue as anything the model proposed — an
+	// admin-added title is not privileged, it is just another acquisition.
+	Add []ProposalItem
+	// Note is the approver's message to the requester, persisted for the audit trail.
+	Note string
+}
+
+// isEmpty reports whether this edit changes nothing, so an unmodified approval records an
+// empty ModSummary rather than a misleading "dropped 0, added 0".
+func (e *ApprovalEdit) isEmpty() bool {
+	return e == nil || (len(e.DropKeys) == 0 && len(e.Add) == 0)
+}
 
 // ApproveStore is the slice of the store approval needs.
 type ApproveStore interface {
@@ -35,6 +61,7 @@ func Approve(
 	ctx context.Context,
 	st ApproveStore,
 	p store.Proposal,
+	edit *ApprovalEdit,
 	approvedBy string,
 	now func() time.Time,
 ) (enqueued int, err error) {
@@ -48,6 +75,24 @@ func Approve(
 	var body Proposal
 	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
 		return 0, fmt.Errorf("approve: stored proposal is malformed: %w", err)
+	}
+
+	// The edit is applied HERE, before anything is enqueued, so what gets acquired is decided
+	// in one place for both callers. `applyEdit` also re-serialises the body back onto the
+	// proposal: the stored record must show what was actually approved, not what the model
+	// originally proposed — otherwise the audit trail describes a lineup that never existed.
+	summary, editedJSON, aerr := applyEdit(&body, edit)
+	if aerr != nil {
+		return 0, aerr
+	}
+	if summary != "" {
+		p.ModSummary = summary
+	}
+	if editedJSON != "" {
+		p.ProposalJSON = editedJSON
+	}
+	if edit != nil && edit.Note != "" {
+		p.Note = edit.Note
 	}
 
 	// In-library picks become `available` records so the scheduler can place them (§8:
@@ -113,6 +158,71 @@ func Approve(
 		return 0, err
 	}
 	return enqueued, nil
+}
+
+// applyEdit removes dropped titles, appends added ones, and re-serialises the result onto the
+// proposal. Returns a server-generated summary of what changed.
+//
+// The summary is GENERATED, never taken from the caller: "dropped 2, added 1" written by the
+// code is a record of what happened, while the same string typed by an approver is a claim
+// about it. The audit trail is only worth keeping if it cannot be authored.
+//
+// Dropping applies to lineup AND acquisitions. A dropped title must not be acquired and must
+// not be scheduled, and a proposal can carry the same title in either list depending on whether
+// it was already in the library — so filtering one and not the other would drop it from the
+// acquisition queue while leaving it in the channel, or the reverse.
+// Returns the summary and the re-serialised proposal JSON; an empty JSON string means the
+// stored bytes should be left exactly as they were.
+func applyEdit(body *Proposal, edit *ApprovalEdit) (summary string, editedJSON string, err error) {
+	if edit.isEmpty() {
+		// An unmodified approval leaves ProposalJSON untouched, so its bytes stay
+		// byte-identical to what the approver actually reviewed.
+		return "", "", nil
+	}
+
+	drop := make(map[provision.Key]bool, len(edit.DropKeys))
+	for _, k := range edit.DropKeys {
+		drop[k] = true
+	}
+
+	keep := func(items []ProposalItem) ([]ProposalItem, int) {
+		out := make([]ProposalItem, 0, len(items))
+		dropped := 0
+		for _, it := range items {
+			k, err := acquisitionKey(it)
+			// An unkeyable item cannot have been named in DropKeys, so it survives. Dropping
+			// it "just in case" would silently remove something the approver never chose to.
+			if err == nil && drop[k] {
+				dropped++
+				continue
+			}
+			out = append(out, it)
+		}
+		return out, dropped
+	}
+
+	var droppedTotal int
+	var n int
+	body.Lineup, n = keep(body.Lineup)
+	droppedTotal += n
+	body.Acquisitions, n = keep(body.Acquisitions)
+	droppedTotal += n
+
+	body.Acquisitions = append(body.Acquisitions, edit.Add...)
+
+	raw, merr := json.Marshal(body)
+	if merr != nil {
+		return "", "", fmt.Errorf("approve: re-serialising the edited proposal: %w", merr)
+	}
+
+	parts := make([]string, 0, 2)
+	if droppedTotal > 0 {
+		parts = append(parts, fmt.Sprintf("dropped %d", droppedTotal))
+	}
+	if len(edit.Add) > 0 {
+		parts = append(parts, fmt.Sprintf("added %d", len(edit.Add)))
+	}
+	return strings.Join(parts, ", "), string(raw), nil
 }
 
 // NewAcquisitions counts the acquisitions in a proposal that do NOT already exist as

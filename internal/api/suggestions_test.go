@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -564,5 +565,146 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	}
 	if ch.Number != 2 {
 		t.Errorf("allocated number %d, want 2 (1 is taken by the hand-made channel)", ch.Number)
+	}
+}
+
+// --- V25: edit-before-approve (§7, decision D-K) ---
+
+// A dropped title is NOT acquired. This is the whole feature: an approver who removes a pick
+// before approving must not have it enqueued behind their back.
+func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	body := `{"acquisitions":[
+		{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994},
+		{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-drop", JobID: "j", Status: "submitted", ProposalJSON: body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-drop/approve", adminToken,
+		`{"drop":["movie:tmdb:100"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve with edit → %d, want 200", resp.StatusCode)
+	}
+
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
+		t.Error("the dropped title was enqueued anyway — the edit did not reach the gate")
+	}
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:603"); err != nil {
+		t.Errorf("the kept title was not enqueued: %v", err)
+	}
+}
+
+// An added title goes through the SAME idempotent enqueue as anything the model proposed. An
+// admin-added pick is not privileged; it is just another acquisition.
+func TestApprove_AddedTitleIsEnqueued(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-add")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-add/approve", adminToken,
+		`{"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("approve with add → %d, want 200: %s", resp.StatusCode, b)
+	}
+	rec, err := st.GetTitle(context.Background(), "movie:tmdb:603")
+	if err != nil {
+		t.Fatalf("added title not enqueued: %v", err)
+	}
+	if rec.State != "wanted" {
+		t.Errorf("added title state = %s, want wanted (the same state a model pick gets)", rec.State)
+	}
+}
+
+// The audit trail persists. `modSummary` is GENERATED server-side — a summary the approver
+// types is a claim, one the code writes is a record — and `note` is their message to whoever
+// requested it, which is why a request coming back altered is explicable.
+func TestApprove_PersistsTheAuditTrail(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-audit")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-audit/approve", adminToken,
+		`{"drop":["movie:tmdb:100"],"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}],"note":"swapped it, we already have Speed"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+
+	p, err := st.GetProposal(context.Background(), "p-audit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ModSummary != "dropped 1, added 1" {
+		t.Errorf("modSummary = %q, want the generated summary of what changed", p.ModSummary)
+	}
+	if p.Note != "swapped it, we already have Speed" {
+		t.Errorf("note = %q, want the approver's message to the requester", p.Note)
+	}
+	// Not asserting approvedBy here: these tests authenticate with the break-glass TOKEN,
+	// which deliberately has no user record (userIDFromHuma returns "" for it). Who approved
+	// is covered where a real session exists; what this test is for is that the EDIT survives.
+	if p.Status != "approved" {
+		t.Errorf("status = %q, want approved", p.Status)
+	}
+}
+
+// The STORED proposal reflects what was actually approved, not what the model first proposed.
+// Otherwise the audit trail describes a lineup that never existed.
+func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-stored")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-stored/approve", adminToken,
+		`{"drop":["movie:tmdb:100"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve → %d, want 200", resp.StatusCode)
+	}
+	p, err := st.GetProposal(context.Background(), "p-stored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(p.ProposalJSON, "Speed") {
+		t.Errorf("the stored proposal still contains the dropped title: %s", p.ProposalJSON)
+	}
+}
+
+// An UNMODIFIED approval must be indistinguishable from the pre-edit behaviour: same bytes,
+// empty summary. "Approved with modifications: none" is a different and false claim.
+func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-plain")
+	before, err := st.GetProposal(context.Background(), "p-plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-plain/approve", adminToken, ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve with no body → %d, want 200 — an empty body must still approve", resp.StatusCode)
+	}
+	after, err := st.GetProposal(context.Background(), "p-plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.ProposalJSON != before.ProposalJSON {
+		t.Error("an unmodified approval rewrote the proposal JSON")
+	}
+	if after.ModSummary != "" {
+		t.Errorf("modSummary = %q, want empty for an unmodified approval", after.ModSummary)
+	}
+}
+
+// The gate is still admin-only WITH a body. An edit is not a way in.
+func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
+	srv, st, _ := newSuggestServer(t)
+	seedProposal(t, st, "p-member")
+
+	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-member/approve", "",
+		`{"drop":["movie:tmdb:100"],"note":"let me in"}`)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member approve with an edit → %d, want 403", resp.StatusCode)
+	}
+	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
+		t.Error("a member's rejected approval still enqueued a title")
 	}
 }

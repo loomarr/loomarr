@@ -149,7 +149,7 @@ const RefinePanel = ({
           currentPolicy={currentPolicy}
           proposedPolicy={landed.proposal.policy}
           busy={approve.isPending}
-          onApply={() => approve.mutate({ id: landed.id })}
+          onApply={() => approve.mutate({ id: landed.id, data: {} })}
           onDiscard={close}
         />
       )}

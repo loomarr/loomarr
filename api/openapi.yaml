@@ -36,6 +36,34 @@ components:
         - from
         - to
       type: object
+    ApprovalEditDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ApprovalEditDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        add:
+          description: Titles to add as acquisitions
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type:
+            - array
+            - "null"
+        drop:
+          description: Provisioning keys to remove from the proposal before approving
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        note:
+          description: A message to the requester, stored with the approval
+          type: string
+      type: object
     ApproveOutputBody:
       additionalProperties: false
       properties:
@@ -4290,6 +4318,11 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalEditDTO"
       responses:
         "200":
           content:
