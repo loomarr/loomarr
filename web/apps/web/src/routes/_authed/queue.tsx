@@ -6,7 +6,7 @@ import { RotateCw } from "lucide-react";
 import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { useDocumentTitle } from "@/lib";
-import { journeyProgress, stageOf } from "@/queue";
+import { journeyProgress, MyRequests, stageOf } from "@/queue";
 
 // Queue / My requests (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of
@@ -83,7 +83,14 @@ const QueueScreen = () => {
         )}
       </header>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
+        {/* Tier one: the REQUESTS I submitted (V26). Rendered above the tracked titles and
+            OUTSIDE the empty-titles branch on purpose — a request still waiting for approval has
+            no titles yet, so folding it into that branch would show "Nothing in flight" to
+            exactly the member who most needs to see their request exists. Renders nothing when
+            there are no requests, so the common path is unchanged. */}
+        <MyRequests />
+
         {rows.length === 0 && !isLoading ? (
           <EmptyState
             title="Nothing in flight"

@@ -1268,10 +1268,30 @@ next person — including to a future me reading "next up" as authoritative.
 
 | V25b · Edit-before-approve **UI** | **done** | `make check` green (37 pkgs) + biome/codegen/typecheck + **621 app tests** (15 new) + **39 core** + **440 visual specs**, 4 new baselines | The queue's "Show picks" disclosure becomes **"Review & edit picks"** when an edit handler is supplied — drop per title, add via search, note to the requester — and the delta rides the **same approve call**, never a separate save (the edit is a *parameter* to `suggest.Approve`, so "what gets acquired" stays inside the one gate). ⚠ **`undefined` vs `{}` is load-bearing:** the handler maps a body with no drops/adds/note to a **nil** edit so an untouched approval stays byte-identical to pre-V25 behaviour; emitting an empty object would record *"approved with modifications: none"* — a different and false claim. Pinned by a queue test asserting the unmodified body is `{}`. Drops carry the **provisioning key**, never an index or name — a key that disagrees with Go's by one character does not error, it matches nothing and the title the admin removed is acquired anyway — so `provisionKey` was extracted into `@loomarr/core` with a Go-parity test rather than written a **fifth** time. ⚠ **The plan's premise did not hold:** it said `ProposalReview.onEditItem` "already exists with no production caller, which is most of the surface". That is a per-row *pencil/swap* affordance, not V25b's drop/add/note delta — near-zero reuse. Three near-copies of the key derivation remain, each differing deliberately; documented in `provision.ts`. |
 
+| V26 · "My requests" (`A2`) | **done** | `make check` (37 pkgs) + `make test-pg` + `openapi-verify` + biome/codegen/typecheck + **635 app / 39 core** tests (17 new) + **448 visual specs**, 8 new baselines, 0 modified | Closes the defect where **a member could submit a request and then see nothing**: `queue.tsx` fanned `GET /v1/titles` across states and never queried `/v1/suggestions` at all. Adds the missing first tier above the existing title table. **Backend was half-built:** `store.ListProposalsByCreator` already existed *and was covered by the conformance suite* with no API caller — the "built, tested, wired to nothing" pattern one layer below the UI. Two API changes: `?mine=true` and the approval provenance. ⚠ **`mine` is a session-resolved BOOL, not the `ListProposals(status[, user])` the §7 sketch implied** — a client-supplied id is a client-supplied identity, so any member could read another's requests by editing a URL. Doc-first amended; the property tested is that scoping can only ever *narrow*. A break-glass token (no user record, id `""`) gets its own submissions, never everyone's — pinned by a test that fails with `[p-kid p-boss]` when the scoping is removed. ⚠ **`modSummary`/`note` were persisted by V25 and never left the server** — the note V25b captured yesterday reached the database with nothing able to display it, the same shape `denyReason` was in before V23. Now on `ProposalDTO`. The card distinguishes **approved-with-changes** from plain approved (otherwise a lineup silently differs from what was asked for), renders *"CHANGED BY …"* + the server-generated summary, and shows the denial line — or says "No reason was given." rather than an empty line that reads like a bug. **Scoping asymmetry preserved (§12):** proposals carry `created_by` so this tier is genuinely per-member; titles do not, so the table below stays global exactly as #87 documented. |
+
 **Next up:** **V16** (Dashboard — the largest visible gap; there is no `/dashboard` route at all),
-**V26** ("My requests", which V25b's note finally gives something to show), or the Settings track
-(**V9** IA → **V12** Backup/About). Audit leftovers: `scope.collections` is blocked on a **missing
-endpoint** (nothing lists media-server collections), plus `policy.window` and the draft preview.
+**V27** (approvals queue as its own surface: tabs, bulk approve, audit rows — now unblocked, its
+dep was V26), or the Settings track (**V9** IA → **V12** Backup/About). Audit leftovers:
+`scope.collections` is blocked on a **missing endpoint** (nothing lists media-server collections),
+plus `policy.window` and the draft preview.
+
+**A `fe-visual` "flaky" line is the harness working, not a defect — don't chase it.** One run
+reported **3 flaky** on `People/UserRow` (Imported/Local/Self, mobile); it passed on retry, passed
+on a clean re-run, and rewrote no baseline. Investigated rather than left as a breadcrumb:
+
+- It does **not** reproduce in isolation — 36/36 across three `--grep UserRow` runs. The component
+  has no images, no fetches, and no time-dependent rendering, so its inputs are not the cause.
+- `playwright.shared.ts:14-17` already documents exactly this: *"Residual sub-pixel text-AA jitter
+  can nudge a rare shot past the strict ratio. Retries de-flake that WITHOUT masking real
+  regressions — a genuine diff reproduces and still fails every attempt."* With
+  `maxDiffPixelRatio: 0.001` and `fullyParallel: true`, a rare shot under parallel load losing that
+  bet is expected.
+
+So **`flaky` (passed on retry) is green**; a real regression fails all three attempts. What still
+warrants attention is a spec that flakes *repeatedly across runs*, or any baseline that changes
+without an intended visual edit. Distinct from the `help.test.tsx` **unit** flake, which is a real
+open issue (~1 in 4, documented above the test, filed for V15).
 **The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a → V14b.
 
 **V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own

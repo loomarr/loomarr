@@ -439,3 +439,151 @@ func TestResetUserPassword_ImportedUserConflicts(t *testing.T) {
 		t.Fatalf("reset imported → %d, want 409", resp.StatusCode)
 	}
 }
+
+// --- V26 "My requests": per-user proposal scoping -------------------------------
+
+// seedProposalFor writes a proposal owned by a specific user, with the approval
+// provenance V25/V25b persist so the read path can be asserted end to end.
+func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string, p store.Proposal) {
+	t.Helper()
+	p.ID, p.CreatedBy, p.Status = id, createdBy, status
+	p.JobID = "job-" + id
+	if p.ProposalJSON == "" {
+		p.ProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":100,"name":"Speed","year":1994}]}`
+	}
+	if err := st.CreateProposal(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func proposalIDs(t *testing.T, resp *http.Response) []string {
+	t.Helper()
+	var body struct {
+		Proposals []struct {
+			ID         string `json:"id"`
+			ModSummary string `json:"modSummary"`
+			Note       string `json:"note"`
+			DenyReason string `json:"denyReason"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, len(body.Proposals))
+	for _, p := range body.Proposals {
+		ids = append(ids, p.ID)
+	}
+	return ids
+}
+
+// THE scoping test. `mine=true` resolves the owner from the SESSION, never from a
+// parameter — the design sketch read `ListProposals(status[, user])`, and a
+// client-supplied id would let any member read another's requests by editing a URL.
+func TestListProposals_MineScopesToTheCaller(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+
+	kid := login(t, srv, "kid", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=submitted&mine=true", kid, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("mine=true → %d, want 200", resp.StatusCode)
+	}
+	got := proposalIDs(t, resp)
+	if len(got) != 1 || got[0] != "p-kid" {
+		t.Errorf("mine=true returned %v, want only [p-kid] — a member must not see another's requests", got)
+	}
+}
+
+// Without `mine`, the list is the unscoped queue it has always been. Read visibility
+// is global for authenticated users (§342), so this is not a leak — but it must stay
+// a DELIBERATE choice rather than something `mine` accidentally changed.
+func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+
+	kid := login(t, srv, "kid", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=submitted", kid, "")
+	defer func() { _ = resp.Body.Close() }()
+	if got := proposalIDs(t, resp); len(got) != 2 {
+		t.Errorf("unscoped list returned %v, want both proposals", got)
+	}
+}
+
+// `mine` spans statuses: "what have I asked for?" includes the denied ones. The status
+// filter still applies, so each tab asks for one status at a time.
+func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedProposalFor(t, st, "p-open", "u-kid", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-denied", "u-kid", "denied", store.Proposal{DenyReason: "over the cap"})
+
+	kid := login(t, srv, "kid", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=denied&mine=true", kid, "")
+	defer func() { _ = resp.Body.Close() }()
+	if got := proposalIDs(t, resp); len(got) != 1 || got[0] != "p-denied" {
+		t.Errorf("status=denied&mine=true returned %v, want only [p-denied]", got)
+	}
+}
+
+// A break-glass API_TOKEN caller has no user record, so its id is "". The property that
+// matters is that this cannot WIDEN: it must never fall through to every member's
+// requests. (Submit stamps the same "" for a token-submitted proposal, so "mine" for a
+// token means "what this token submitted" — usually nothing.)
+func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
+	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/suggestions?status=submitted&mine=true", nil)
+	req.Header.Set("Authorization", "Bearer break-glass-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if got := proposalIDs(t, resp); len(got) != 0 {
+		t.Errorf("mine=true on a token returned %v, want none — a token must not read members' requests", got)
+	}
+}
+
+// The approval provenance (§7, D-K) has been PERSISTED since V25 and left the server
+// nowhere: the note an approver wrote to explain an edited request reached the database
+// and nothing could display it. This asserts the read path carries all three.
+func TestListProposals_CarriesApprovalProvenance(t *testing.T) {
+	srv, st, _ := authServer(t)
+	seedProposalFor(t, st, "p-edited", "u-kid", "approved", store.Proposal{
+		ApprovedBy: "u-boss",
+		ModSummary: "dropped 2, added 1",
+		Note:       "swapped Con Air for Face/Off — we already have that one",
+	})
+
+	kid := login(t, srv, "kid", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=approved&mine=true", kid, "")
+	defer func() { _ = resp.Body.Close() }()
+
+	var body struct {
+		Proposals []struct {
+			ApprovedBy string `json:"approvedBy"`
+			ModSummary string `json:"modSummary"`
+			Note       string `json:"note"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Proposals) != 1 {
+		t.Fatalf("got %d proposals, want 1", len(body.Proposals))
+	}
+	p := body.Proposals[0]
+	if p.ApprovedBy != "u-boss" {
+		t.Errorf("approvedBy = %q, want u-boss", p.ApprovedBy)
+	}
+	if p.ModSummary != "dropped 2, added 1" {
+		t.Errorf("modSummary = %q — the server-generated record of what changed must reach the requester", p.ModSummary)
+	}
+	if p.Note == "" {
+		t.Error("note is empty — V25b captured it and V26 must surface it, or an altered request stays unexplained")
+	}
+}
