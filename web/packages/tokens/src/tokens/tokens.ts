@@ -64,7 +64,13 @@ const typography = {
     mono: "'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', monospace",
   },
   // If it came from a machine it's mono: channel numbers, EPG times, badges, ids.
-  size: { xs: 12, sm: 13, base: 14, md: 16, lg: 20, xl: 24, "2xl": 32 },
+  //
+  // `2xs` is the CAPTION step — mono metadata that rides alongside content: a clip duration, a
+  // tick label, a pod's era/quality. It was added after an audit found 17 uses of `text-[10px]`
+  // and `text-[11px]` plus a stray `text-[10.5px]`, all off-scale, because the scale bottomed
+  // out at 12px and components invented their own smaller value. One sanctioned step ends that;
+  // the `Caption` primitive is the only thing that should use it.
+  size: { "2xs": 11, xs: 12, sm: 13, base: 14, md: 16, lg: 20, xl: 24, "2xl": 32 },
   leading: { body: 1.5, heading: 1.2 },
 } as const;
 

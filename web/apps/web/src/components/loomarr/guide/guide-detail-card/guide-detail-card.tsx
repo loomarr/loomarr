@@ -1,5 +1,5 @@
 import type { PodPoolDTOMatchLevel } from "@loomarr/api";
-import { Badge } from "@/components/ui";
+import { Badge, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { GuideDetailCardProps } from "./guide-detail-card.type";
 
@@ -105,9 +105,7 @@ const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
       {isBreak ? (
         <div className="mt-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[10px] text-static-400 uppercase tracking-wide">
-              {`Pod · ${fmtClip(pod.totalMs)}`}
-            </span>
+            <Caption shout>{`Pod · ${fmtClip(pod.totalMs)}`}</Caption>
             {chip && <Badge variant={chip.variant}>{chip.label}</Badge>}
           </div>
           <ul className="mt-2 flex flex-col gap-1">
@@ -119,25 +117,19 @@ const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
                 <span className={cn("size-1.5 shrink-0 rounded-full", CLIP_DOT[c.kind] ?? "bg-static-500")} />
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
                 {/* Era and quality explain a grainy advert as authentic rather than broken. */}
-                {c.era ? (
-                  <span className="shrink-0 font-mono text-[10px] text-static-400">{c.era}</span>
-                ) : null}
-                {c.quality ? (
-                  <span className="shrink-0 font-mono text-[10px] text-static-400">{c.quality}</span>
-                ) : null}
-                <span className="shrink-0 font-mono text-[10px] text-static-400">
-                  {fmtClip(c.durationMs)}
-                </span>
+                {c.era ? <Caption className="shrink-0">{c.era}</Caption> : null}
+                {c.quality ? <Caption className="shrink-0">{c.quality}</Caption> : null}
+                <Caption className="shrink-0">{fmtClip(c.durationMs)}</Caption>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-muted-foreground leading-snug">{MATCH_WHY[pod.matchLevel]}</p>
+          <p className="mt-2 text-2xs text-muted-foreground leading-snug">{MATCH_WHY[pod.matchLevel]}</p>
         </div>
       ) : (
         <>
           {meta && <div className="mt-2 text-static-400 text-xs">{meta}</div>}
           {airing.description && (
-            <p className="mt-2 line-clamp-4 text-[11px] text-muted-foreground leading-snug">
+            <p className="mt-2 line-clamp-4 text-2xs text-muted-foreground leading-snug">
               {airing.description}
             </p>
           )}
@@ -147,9 +139,9 @@ const GuideDetailCard = ({ airing, className }: GuideDetailCardProps) => {
       {/* Provenance last: it is the "is this real yet?" line, and it applies to both shapes —
           a break has none, a pending slot leans on it entirely. */}
       {airing.provenance && (
-        <div className="mt-3 border-border/60 border-t pt-2 font-mono text-[10px] text-static-400">
+        <Caption as="div" className="mt-3 border-border/60 border-t pt-2">
           {airing.provenance}
-        </div>
+        </Caption>
       )}
     </aside>
   );

@@ -1,28 +1,30 @@
-import { cva } from "class-variance-authority";
+import { Badge } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ProvisioningState, StateBadgeProps } from "./state-badge.type";
 
-// StateBadge — the provisioning-lifecycle chip (§3). Mono, uppercase, tinted per
-// the §2.1 lifecycle mapping. The visible text is letter-spaced shout; the
-// sentence-case aria-label is what a screen reader speaks (§5.3). None of these
-// states use onair/suggest, so no -300 stop is needed — tune/lock/caution clear
-// AA on their 15% tints.
-const badge = cva(
-  "inline-flex items-center rounded-sm px-1.5 py-0.5 font-medium font-mono text-[11px] uppercase tracking-wide",
-  {
-    variants: {
-      state: {
-        wanted: "bg-static-800 text-static-400",
-        requested: "bg-static-800 text-static-400",
-        downloading: "bg-tune-tint-15 text-tune",
-        available: "bg-lock-tint-15 text-lock",
-        unavailable: "bg-static-800 text-static-400 line-through",
-        drift: "bg-caution-tint-15 text-caution",
-      },
-    },
-    defaultVariants: { state: "wanted" },
-  },
-);
+// StateBadge — the provisioning-lifecycle chip (§3), composed from the Badge primitive.
+//
+// ⚠ THIS USED TO FORK `Badge`: its own `cva`, its own base classes, its own tint mapping. Two
+// components implementing "small tinted chip with mono uppercase text" meant the §2.1 badge
+// rule — the contrast calibration the doc calls "learned the hard way, twice" — was encoded in
+// two places that did not know about each other. Fix a stop in one and the other stays wrong,
+// and the contrast gate cannot tell: it validates token PAIRINGS, not which components consume
+// them.
+//
+// The fork happened to be safe, because none of these states mapped to onair or suggest (the
+// two accents that need a -300 stop). Accidentally safe is not safe — a future state mapping to
+// onair would have got it wrong, with nothing to catch it.
+//
+// What stays here is the part that IS domain knowledge: which lifecycle state reads as which
+// tone, and the struck-through treatment for a title Loomarr gave up on.
+const TONE: Record<ProvisioningState, "neutral" | "tune" | "lock" | "caution"> = {
+  wanted: "neutral",
+  requested: "neutral",
+  downloading: "tune",
+  available: "lock",
+  unavailable: "neutral",
+  drift: "caution",
+};
 
 const LABEL: Record<ProvisioningState, string> = {
   wanted: "Wanted",
@@ -34,10 +36,21 @@ const LABEL: Record<ProvisioningState, string> = {
 };
 
 // The uppercase + letter-spacing is CSS-only, so the DOM text stays sentence-case
-// ("Downloading") — that IS the accessible name a screen reader speaks (§5.3), so
-// no aria-label is needed (and aria-label on a generic <span> isn't ARIA-valid).
+// ("Downloading") — that IS the accessible name a screen reader speaks (§5.3), so no aria-label
+// is needed (and aria-label on a generic <span> isn't ARIA-valid).
 const StateBadge = ({ state, className }: StateBadgeProps) => (
-  <span className={cn(badge({ state }), className)}>{LABEL[state]}</span>
+  <Badge
+    variant={TONE[state]}
+    className={cn(
+      "font-mono uppercase tracking-wide",
+      // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
+      // has no notion of, and it is genuinely domain-specific.
+      state === "unavailable" && "line-through",
+      className,
+    )}
+  >
+    {LABEL[state]}
+  </Badge>
 );
 
 export { StateBadge };

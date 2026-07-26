@@ -21,10 +21,8 @@ const Spacing = () => (
       <div className="flex flex-col gap-2">
         {Object.entries(space).map(([step, px]) => (
           <div key={step} className="flex items-center gap-4">
-            <span className="w-8 shrink-0 font-mono text-[11px] text-static-400">{step}</span>
-            <span className="w-12 shrink-0 font-mono text-[11px] text-static-400 tabular-nums">
-              {`${px}px`}
-            </span>
+            <span className="w-8 shrink-0 font-mono text-2xs text-static-400">{step}</span>
+            <span className="w-12 shrink-0 font-mono text-2xs text-static-400 tabular-nums">{`${px}px`}</span>
             <div className="h-4 rounded-sm bg-signal-tint-30" style={{ width: px }} />
           </div>
         ))}
@@ -37,7 +35,7 @@ const Spacing = () => (
         {Object.entries(radius).map(([name, px]) => (
           <div key={name} className="flex flex-col items-center gap-2">
             <div className="size-16 border border-border bg-static-800" style={{ borderRadius: px }} />
-            <span className="font-mono text-[11px] text-static-400">{`${name} · ${px}px`}</span>
+            <span className="font-mono text-2xs text-static-400">{`${name} · ${px}px`}</span>
           </div>
         ))}
       </div>
@@ -51,7 +49,7 @@ const Spacing = () => (
           style={{ height: rowHeight.compact }}
         >
           <span className="text-sm">A table row at compact density</span>
-          <span className="ml-auto font-mono text-[11px] text-static-400">{`${rowHeight.compact}px`}</span>
+          <span className="ml-auto font-mono text-2xs text-static-400">{`${rowHeight.compact}px`}</span>
         </div>
         <p className="max-w-2xl text-muted-foreground text-sm">
           Tables use the compact row height. A household's library runs to thousands of titles, so rows are
@@ -65,16 +63,16 @@ const Spacing = () => (
       <div className="flex flex-col gap-2">
         {Object.entries(motion.duration).map(([name, value]) => (
           <div key={name} className="flex items-center gap-4">
-            <span className="w-14 shrink-0 font-mono text-[11px] text-static-400">{name}</span>
-            <span className="w-16 shrink-0 font-mono text-[11px] text-static-400">{value}</span>
+            <span className="w-14 shrink-0 font-mono text-2xs text-static-400">{name}</span>
+            <span className="w-16 shrink-0 font-mono text-2xs text-static-400">{value}</span>
             <span className="text-muted-foreground text-sm">
               {name === "fast" ? "Hover, focus, small state flips" : "Panels, disclosure, page transitions"}
             </span>
           </div>
         ))}
         <div className="flex items-center gap-4">
-          <span className="w-14 shrink-0 font-mono text-[11px] text-static-400">ease</span>
-          <span className="shrink-0 font-mono text-[11px] text-static-400">{motion.ease}</span>
+          <span className="w-14 shrink-0 font-mono text-2xs text-static-400">ease</span>
+          <span className="shrink-0 font-mono text-2xs text-static-400">{motion.ease}</span>
         </div>
         <p className="max-w-2xl text-muted-foreground text-sm">
           One ease-out curve everywhere. Motion is short and decelerating — it should confirm that something

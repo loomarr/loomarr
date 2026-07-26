@@ -81,6 +81,7 @@ module.exports = {
         ]
       },
       "fontSize": {
+        "2xs": "11px",
         "xs": "12px",
         "sm": "13px",
         "base": "14px",

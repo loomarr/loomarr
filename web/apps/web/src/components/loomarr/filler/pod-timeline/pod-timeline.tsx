@@ -89,7 +89,7 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
               SEGMENT_FILL[entry.kind],
             )}
           >
-            <span className="truncate font-mono text-[10px] text-static-100 uppercase tracking-wide">
+            <span className="truncate font-mono text-2xs text-static-100 uppercase tracking-wide">
               {SEGMENT_ABBR[entry.kind]}
             </span>
           </li>
