@@ -62,7 +62,7 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
@@ -147,10 +147,14 @@ describe("Settings", () => {
     expect(patchIdx).toBeLessThan(testIdx);
   });
 
-  it("locks an env-pinned key on its page", async () => {
+  // All settings is a TABLE (V10), so its controls carry the raw key rather than a humanized
+  // label. The env lock still applies — and this is the surface where someone would most likely
+  // try to work around it, since it is the editor of last resort.
+  it("locks an env-pinned key on the all-settings table", async () => {
     stubFetch();
-    renderAt("/settings/all");
-    expect(await screen.findByLabelText("Job workers")).toBeDisabled();
+    const { container } = renderAt("/settings/all");
+    await screen.findByText("job.workers");
+    expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
   });
 });
 
@@ -173,7 +177,7 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 
     // Leave for another tab and come back — the tab bar is navigation, not a commit boundary.
     await userEvent.click(screen.getByRole("link", { name: "All settings" }));
-    await screen.findByLabelText("Job workers");
+    await screen.findByText("job.workers");
     await userEvent.click(screen.getByRole("link", { name: "Connections" }));
 
     expect(await screen.findByLabelText("Library URL")).toHaveValue("http://emby:9999");
@@ -191,10 +195,9 @@ describe("Settings — the save bar spans tabs (V9)", () => {
     await userEvent.type(url, "http://emby:9999");
 
     await userEvent.click(screen.getByRole("link", { name: "All settings" }));
-    const workers = await screen.findByLabelText("Job workers");
+    await screen.findByText("job.workers");
     // `job.workers` is env-pinned in the fixture, so edit the OTHER connection key instead —
     // asserting against a disabled field would prove nothing about the buffer.
-    expect(workers).toBeDisabled();
 
     await userEvent.click(screen.getByRole("link", { name: "Connections" }));
     const tunarr = await screen.findByLabelText("Tunarr URL");
