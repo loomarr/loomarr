@@ -73,7 +73,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("Users page", () => {
   it("lists the allowlist with each row's credential path", async () => {
     stubFetch();
-    renderAt("/users");
+    renderAt("/people");
     // Await Grace, not Ada: the signed-in admin's name also renders in the app shell's
     // user menu, so awaiting "Ada" resolves before the table has loaded at all.
     expect(await screen.findByText("Grace")).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("Users page", () => {
 
   it("patches a single field without a save step", async () => {
     const fetchMock = stubFetch();
-    renderAt("/users");
+    renderAt("/people");
     await screen.findByText("Grace");
 
     // Grace's row — the second Role select. Open it, then pick admin from its listbox
@@ -112,7 +112,7 @@ describe("Users page", () => {
         },
       ],
     });
-    renderAt("/users");
+    renderAt("/people");
     await screen.findByText("Grace");
 
     const buttons = await screen.findAllByRole("button", { name: /sessions/i });
@@ -129,7 +129,7 @@ describe("Users page", () => {
         { id: "e2", name: "Lovelace", imported: true, disabled: false, isAdmin: false },
       ],
     });
-    renderAt("/users");
+    renderAt("/people");
     expect(await screen.findByText("Hopper")).toBeInTheDocument();
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
@@ -141,7 +141,7 @@ describe("Users page", () => {
   // must read the computed feature set first — otherwise it offers a call that 404s.
   it("explains rather than offering import when no media server is connected", async () => {
     stubFetch({ userSync: false });
-    renderAt("/users");
+    renderAt("/people");
     await screen.findByText("Ada");
     expect(await screen.findByText(/connect emby or jellyfin/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("Users page", () => {
   // Account screen (V7b) closed on the self-service side.
   it("mounts the create-local-account panel and sends the typed role", async () => {
     const mock = stubFetch();
-    renderAt("/users");
+    renderAt("/people");
     await userEvent.click(await screen.findByRole("button", { name: /create local account/i }));
     await userEvent.type(screen.getByLabelText(/username/i), "newcomer");
     await userEvent.type(screen.getByLabelText(/^password$/i), "a-good-password");
@@ -173,7 +173,7 @@ describe("Users page", () => {
     // point: Loomarr never held an imported user's credential, so offering to reset it
     // would imply it could change their media-server password.
     stubFetch();
-    renderAt("/users");
+    renderAt("/people");
     // Wait on a ROW affordance, not on "Ada" — that name also renders in the nav footer
     // as the signed-in user, so it resolves before the users query settles.
     await screen.findAllByRole("button", { name: /sessions/i });
@@ -183,7 +183,7 @@ describe("Users page", () => {
 
   it("sends the new password to the admin reset route", async () => {
     const mock = stubFetch();
-    renderAt("/users");
+    renderAt("/people");
     await screen.findAllByRole("button", { name: /sessions/i });
     await userEvent.click(screen.getByRole("button", { name: /reset password/i }));
     await userEvent.type(await screen.findByLabelText(/new password/i), "an-admin-set-pw");
@@ -196,7 +196,7 @@ describe("Users page", () => {
 
   it("refuses the page to a member with an explanation, not failed requests", async () => {
     stubFetch({ me: { ...MEMBER } as typeof ADMIN });
-    renderAt("/users");
+    renderAt("/people");
     expect(await screen.findByText(/admins only/i)).toBeInTheDocument();
   });
 });

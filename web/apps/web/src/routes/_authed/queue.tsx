@@ -3,12 +3,12 @@ import { pluralize } from "@loomarr/core";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
-import { journeyProgress, stageOf } from "@/board";
 import { EmptyState, ErrorState, StateBadge } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { useDocumentTitle } from "@/lib";
+import { journeyProgress, stageOf } from "@/queue";
 
-// Board / My proposals (§12, §13) — where a member watches their submission land.
+// Queue / My requests (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of
 // provisioning states, because the member framing §13 asks for is "where is my stuff",
 // not "what does `requested` mean". The per-title state badge is still there for the
@@ -21,15 +21,15 @@ const STAGE_COPY = {
 
 const ORDER = ["acquiring", "waiting", "ready"] as const;
 
-// The Board needs every provisioning state at once (§4) to collapse them into the three
+// The Queue needs every provisioning state at once (§4) to collapse them into the three
 // journey stages. GET /v1/titles is a single-state FILTER, though — it 400s without a
 // `state` (a deliberate, §7-pinned contract: `TestListRequiresState`, so an unbounded
 // "list all titles" can't be issued by accident) — so we fan out one query per state and
 // merge. This is the aggregation the endpoint intentionally leaves to the client.
 const STATES = Object.values(TitleDTOState);
 
-const BoardScreen = () => {
-  useDocumentTitle("Board");
+const QueueScreen = () => {
+  useDocumentTitle("Queue");
   const queryClient = useQueryClient();
   const stateQueries = useQueries({
     queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),
@@ -74,7 +74,7 @@ const BoardScreen = () => {
   return (
     <div className="flex h-full flex-col">
       <header className="border-border border-b px-6 py-4">
-        <h1 className="font-semibold text-xl">Board</h1>
+        <h1 className="font-semibold text-xl">Queue</h1>
         {rows.length > 0 && (
           <p className="mt-1 text-muted-foreground text-sm">
             {`${progress.ready} of ${pluralize(progress.total, "title")} ${progress.total === 1 ? "has" : "have"} landed.`}{" "}
@@ -152,8 +152,8 @@ const BoardScreen = () => {
   );
 };
 
-const Route = createFileRoute("/_authed/board")({
-  component: BoardScreen,
+const Route = createFileRoute("/_authed/queue")({
+  component: QueueScreen,
 });
 
 export { Route };

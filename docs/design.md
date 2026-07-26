@@ -703,7 +703,9 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
 ### Views
 - **Login** — local or imported-media-server credentials (§11); first-run flows into the **setup wizard** (§13): create the owning admin (bootstrap) → connection checklist → **connect Tunarr to your library** (`tunarr-connect`: wire + scan Tunarr's media source, so channels get real programs not dead-air — §6) → import media-server users → guided first channel.
-- **Channels** — the list shows each channel's health, now/next, "Managed by Loomarr" badge (§9 ownership), and drift flags from slot revalidation. **Origination** (how a channel is born) is a list-level action: the everyday door is **"Add a channel" → describe it** (the §13 describe→review→approve flow, inlined), with a quiet **hand-made "New channel"** door for the single-series / empty seeds (`POST /v1/channels`). **Evolution** (shaping a live channel) happens on the detail page and never re-originates it.
+- **Channels** (route `/channels`) — the list shows each channel's health, now/next, "Managed by Loomarr" badge (§9 ownership), and drift flags from slot revalidation. **Origination** (how a channel is born) is a list-level action: the everyday door is **"Add a channel" → describe it** (the §13 describe→review→approve flow, inlined), with a quiet **hand-made "New channel"** door for the single-series / empty seeds (`POST /v1/channels`). **Evolution** (shaping a live channel) happens on the detail page and never re-originates it.
+
+  ⚠ **Channels and Guide are two views of one set of objects, and both are real doors.** The v2 IA folds the card list into the Guide, on the reasoning that a time grid answers "what do I have" as well as "what is on". That fold is NOT done: the list still owns **origination** (there is no "Add a channel" affordance on the grid yet), so removing it would strand the everyday way a channel gets made. Neither route is a redirect; the merge happens when the grid grows that affordance, and this line comes out with it.
 
   The **channel detail page is four surfaces, organized by intent, with two audiences** — the everyday **Overview is the viewer surface (read-only); the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
   - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — *status, not settings*. (The channel-icon editor lives in **Settings → Identity**, not here — it is a setting, not read-only status.)
@@ -747,12 +749,25 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   A **now-line** marks the current instant and advances client-side from the block timestamps rather than by polling — the browser already knows the wall clock, so pushing "time passed" over the wire would be pure waste. **Lineup changes** are the genuine invalidation, and those arrive on the existing `channel` SSE frame (§7 live updates): the grid refetches its window when a channel reconciles. Zoom controls the window span; scrolling backwards is bounded (the past is recomputed from the *current* lineup, so a distant past would be fiction rather than history).
 
-- **Board / My proposals** — tracked titles by provisioning state with retry/cancel; members see their submissions' journey (*pending approval → acquiring (3/7) → live on channel N*).
+- **Queue / My requests** (route `/queue`) — tracked titles by provisioning state with retry/cancel; members see their submissions' journey (*pending approval → acquiring (3/7) → live on channel N*). Named for what it holds — work waiting on someone — rather than "Board", which named a layout.
 - **Suggestion workspace** — enter intent (or start from a **template**, §13) → watch generation → review lineup + acquisitions w/ rationale + scores → **edit via search** (§7.2: add/replace titles; missing ones become acquisitions) → **submit**; admins get an **approval queue** and approve/deny with `approved_by` recorded. Inline intent-writing hints. The same describe→review→approve machinery is reused **in a refine mode on an existing channel** (§7 `refine`): the intent is seeded from the channel's current lineup + a free-text change, and review shows a diff instead of a fresh lineup.
 - **Filler library** — browse/tag commercial clips (era/audience/category), trigger sync, review AI tags, preview a channel's pods (§10). This is the **catalog**; each channel *chooses* from it on its own Filler section (§10 per-channel selection). The two surfaces cross-link both ways — the catalog heading points to per-channel selection, a channel's Filler section links back to the catalog, and a clip offers a **"Use in a channel"** action that pins it into a channel's filler directly (a normal `PATCH …/{id}` of `policy.filler.pinned`, merged onto the channel's live policy).
-- **Users** (admin) — imported users, roles, quotas, disable, sync-now (§11).
+- **People** (admin, route `/people`) — imported users, roles, quotas, disable, sync-now (§11). "People" rather than "Users" because the list is households and family members, not system accounts.
 - **Settings/health** — provider config visibility, `/readyz`, and the re-runnable **connection checklist** (§13) as the troubleshooting console.
 - **Global search (⌘K)** — command palette (shadcn `Command`/cmdk) over `/v1/search` scopes + channels + help; the single fast entry point.
+
+### Navigation
+
+**Two distinct navs, not one list filtered by role.** A member is not an admin with items missing — they arrive to watch and to ask for things, and a rail of greyed-out entries advertises a product they cannot use. So the two lists are authored separately:
+
+| | Items |
+| --- | --- |
+| **admin** | Channels · Guide · Queue · Suggest · Filler · People · Settings · Help |
+| **member** | Guide · Request a channel · My requests · Help |
+
+The member's `Request a channel` and `My requests` are the same suggestion and queue surfaces the admin sees, named for what a member is actually doing with them.
+
+**Deferred from the v2 IA, deliberately:** `Dashboard` (it belongs to the dashboard phase and does not exist yet — a nav entry to a placeholder is worse than no entry), and folding `Channels` into `Guide` (see the ⚠ above: the grid has no origination affordance yet). Both are additive later; neither blocks the rename.
 - **Help** — embedded docs (§13), rendered offline; searched client-side.
 
 ### Auth

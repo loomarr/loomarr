@@ -152,7 +152,7 @@ describe("Channels", () => {
 describe("Board", () => {
   it("leads with the journey, not a table of states", async () => {
     stubFetch();
-    renderAt("/board");
+    renderAt("/queue");
     // "1 of 3 have landed" — the member framing (§13).
     expect(await screen.findByText(/1 of 3 titles have landed/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /on the way/i })).toBeInTheDocument();
@@ -160,7 +160,7 @@ describe("Board", () => {
 
   it("offers a retry only for a title that gave up", async () => {
     const fetchMock = stubFetch();
-    renderAt("/board");
+    renderAt("/queue");
 
     const retries = await screen.findAllByRole("button", { name: /try again/i });
     expect(retries).toHaveLength(1); // only the unavailable one
