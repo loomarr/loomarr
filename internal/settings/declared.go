@@ -7,7 +7,7 @@ package settings
 //
 // Env-only bootstrap keys (DATABASE_URL, AUTO_MIGRATE, LISTEN_ADDR, LOG_LEVEL, TZ)
 // are NOT here — they stay in config.Config (config-design §1 classification).
-// Generated secrets (SESSION_SECRET, API_TOKEN, WEBHOOK_SECRET) live in secrets.go
+// Generated secrets (SESSION_SECRET, API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
 // (minted, not demanded — §4), not the app-managed registry.
 func declared() []Setting {
 	return []Setting{

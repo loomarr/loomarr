@@ -36,6 +36,8 @@ jobs:
         run: make openapi-verify
       - name: Config docs are committed and current
         run: make config-docs-verify
+      - name: Retired identifiers are gone from prose
+        run: make retired-verify
 
   store-postgres:
     name: Store conformance (Postgres)
