@@ -173,3 +173,57 @@ func TestDataDirFor(t *testing.T) {
 		t.Errorf("postgres dir = %q, want the conventional /data", got)
 	}
 }
+
+// The migration trap: DataDirFor is scheme-dependent, so migrating SQLite→Postgres moves
+// where the next boot LOOKS for the bootstrap file. With the database somewhere other
+// than /data, the file recording the switch would be written beside the SQLite database
+// and never read again — the app boots back onto SQLite, having apparently migrated.
+// The search path is what stops that, so it is asserted directly.
+func TestBootstrapDirsForSpansTheSchemeChange(t *testing.T) {
+	// A non-default SQLite path: its own directory first (an operator who pinned that
+	// path meant it), then the conventional one the Postgres boot will read.
+	got := BootstrapDirsFor("sqlite:///srv/loomarr/loomarr.db")
+	want := []string{"/srv/loomarr", "/data"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("dirs = %v, want %v", got, want)
+	}
+
+	// Already conventional, or Postgres: one directory, no pointless duplicate.
+	for _, url := range []string{"sqlite:///data/loomarr.db", "postgres://u:p@db:5432/loomarr"} {
+		if got := BootstrapDirsFor(url); len(got) != 1 || got[0] != "/data" {
+			t.Errorf("dirs for %q = %v, want [/data]", url, got)
+		}
+	}
+}
+
+// The search must not turn a malformed file into a silent fallthrough: a file that
+// exists and is wrong is an operator error to surface, not a reason to quietly use a
+// different one from another directory.
+func TestBootstrapSearchStopsOnAMalformedFile(t *testing.T) {
+	bad, good := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(bad, BootstrapFileName), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteBootstrapFile(good, map[string]string{"LOG_LEVEL": "debug"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadBootstrapSearch([]string{bad, good}); err == nil {
+		t.Fatal("a malformed first file must fail the boot, not fall through to the second")
+	}
+}
+
+// The normal case the search adds: nothing in the first directory, a real file in the
+// second. This is exactly the post-migration boot.
+func TestBootstrapSearchFallsThroughAMissingFile(t *testing.T) {
+	missing, good := t.TempDir(), t.TempDir()
+	if err := WriteBootstrapFile(good, map[string]string{"DATABASE_URL": "postgres://u:p@db:5432/loomarr"}); err != nil {
+		t.Fatal(err)
+	}
+	values, err := loadBootstrapSearch([]string{missing, good})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["DATABASE_URL"] != "postgres://u:p@db:5432/loomarr" {
+		t.Errorf("DATABASE_URL = %q, want the value from the second directory", values["DATABASE_URL"])
+	}
+}

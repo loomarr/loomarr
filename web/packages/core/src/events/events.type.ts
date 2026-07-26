@@ -74,6 +74,21 @@ interface PlayoutEvent {
   [k: string]: unknown;
 }
 
+// Mirrors the BE's `database` frame (internal/app/database.go emit): the SQLite→PostgreSQL
+// migration moved (§18, V11). Carries the phase, the parity verdict and per-table counts so
+// the stepper's bars can advance without polling.
+//
+// Like every frame this is a latency optimization — GET /v1/system/database is the truth on
+// reconnect — so a dropped frame costs a stale progress bar, never a wrong outcome. That
+// matters more here than elsewhere: the operator is watching a data migration, and a UI that
+// invented progress it had not been told about would be actively misleading.
+interface DatabaseEvent {
+  phase?: string;
+  parity?: string;
+  error?: string;
+  [k: string]: unknown;
+}
+
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
   onChannel?: (e: ChannelEvent) => void;
@@ -82,10 +97,12 @@ interface EventHandlers {
   onFillerIngest?: (e: FillerIngestEvent) => void;
   onJob?: (e: JobEvent) => void;
   onPlayout?: (e: PlayoutEvent) => void;
+  onDatabase?: (e: DatabaseEvent) => void;
 }
 
 export type {
   ChannelEvent,
+  DatabaseEvent,
   EventHandlers,
   FillerIngestEvent,
   JobEvent,

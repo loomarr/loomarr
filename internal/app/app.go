@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
@@ -703,6 +704,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobsSvc = jobsAdapter{s: sched}
 	}
 
+	// Database migration stepper (§18, V11). Wired only for a SQLite install: the
+	// service reports CanMigrate=false on Postgres, but there is no reason to hold the
+	// state machine at all there. backup.dir is read at call time so a hot-applied
+	// change takes effect without a restart.
+	var databaseSvc api.DatabaseService
+	if st != nil && store.DialectOf(st) == store.DialectSQLite {
+		databaseSvc = newDatabaseService(st, filepath.Dir(store.SQLitePath(st)),
+			func() string { return set.str("backup.dir") }, eventBus)
+	}
+
 	return api.Router(log, api.Options{
 		Store:         st,
 		Auth:          authorizer,
@@ -724,6 +735,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Filler:        fillerSvc,
 		Pods:          podPreview,
 		SystemLLM:     systemLLM,
+		Database:      databaseSvc,
 		Jobs:          jobsSvc,
 		Settings:      settingsSvc,
 		Guide:         guideSvc,

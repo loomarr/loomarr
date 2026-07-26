@@ -85,7 +85,7 @@ func openPostgres(ctx context.Context, dsn string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &sqlStore{db: db, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}, nil
+	return &sqlStore{db: db, dialect: DialectPostgres, ph: pgPlaceholders, claimSQL: postgresClaimSQL, channelClaimSQL: postgresChannelClaimSQL, jobClaimSQL: postgresJobClaimSQL, scheduledJobClaimSQL: postgresScheduledJobClaimSQL}, nil
 }
 
 // pgPlaceholders rewrites `?` markers into Postgres `$1, $2, …` in order.
