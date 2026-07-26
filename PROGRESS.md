@@ -1242,17 +1242,26 @@ and plays out its own channels. That reframes Track T from a parallel track into
 | V13b · `GET /v1/guide` | **done** | `eeb6338`, `ec8436c` — `make check` + `openapi-verify` green; live 38 blocks with provenance + runtime on all | The JSON time-grid backend. `kind` replaces `gap bool` (a boolean could not tell a commercial pod from a pending acquisition); gaps preserved, unlike `Upcoming`. All 8 gaps in the mock-delta §2f closed — incl. per-airing pod composition, episode runtime, server-assembled provenance, `guide.timezone` + `guide.retention_hours` (§15). |
 | V14a · Guide time-grid UI | **done** | `431fd32`, `038b17f` — `make fe` green (460 tests); rail/chips verified by screenshot | The grid itself, built to `-v2.dc.html`. Flex rail + percentage blocks, so ruler/block misalignment is structurally impossible. GuideDetailCard, per-clip pod rendering, airing highlight, channel marks, health chips, row menu, day/window controls. **The IA rename (`/channels`→`/guide`, `/users`→`/people`, two navs) is deliberately NOT here** — see below. |
 
+| V14b · IA rename + two navs | **done** | `a6ac496` — CI green; 461 unit + 342 visual + 7 e2e | `/board`→`/queue`, `/users`→`/people` (git mv). **Two AUTHORED navs** replace `NAV.filter(i => !i.admin \|\| isAdmin)`: a member gets `Guide · Request a channel · My requests · Help` — the same `/suggest` and `/queue` routes under member-facing names, which a filter structurally cannot do (it hides, never renames). `NavItem.admin` deleted. `/v1/users/*` unchanged — this is a frontend rename, not an API one. |
+
 **Next up (free — no deps, no pending decisions):** V7 (local accounts — closes S2/S3, the largest
 remaining free phase), V19 (per-title refine rationale), V24 (`A3` — surface proposal data the DTO
 already carries but nothing renders: `channelName`, `eraBalance`, `overall`, and the
 `mustInclude`/`mustExclude` intent inputs).
-**The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a.
+**The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a → V14b.
 
 **V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own
 sequencing note names splitting as the escape hatch. Bundling would have put the rename's mechanical
 churn and the grid's new pixels in ONE visual-baseline diff, where neither can be reviewed
-independently. The grid shipped first at a new `/guide` route (both doors are real; neither is a
-redirect). **V14b — the rename + two role-specific navs — remains open.**
+independently. Both halves have now landed (V14a, V14b).
+
+**Two pieces of the v2 nav are deliberately NOT done**, and are additive whenever they are wanted:
+
+1. **`Dashboard`** — belongs to V16. A nav entry pointing at a placeholder is worse than no entry.
+2. **Folding `Channels` into `Guide`** — the mock's intent and the right end state, but origination
+   ("Add a channel") still lives on the list and the grid has no affordance for it. Removing the list
+   today would strand the everyday way a channel is made. Both doors are real; neither is a redirect.
+   `Suggest` stays in the admin nav for the same reason. Recorded in §12 so the remainder is visible.
 
 ⚠ **Two mock-reading lessons, recorded because both cost real work.** The v2 prototypes are
 `design/loomarr-prototype-desktop-v2.dc.html` (502KB, 2026-07-24) — NOT the 146KB July-13 file. I
