@@ -892,6 +892,66 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 **The general rule the two exceptions illustrate:** a line count or a field count is a prompt to go and read something, never a finding on its own. Both of the above were "obvious" refactors until the code was read, and both would have made the system worse.
 
+### 14.2 The package map
+
+`internal/` is **32 flat packages, deliberately** — the grouping below is prose, not directories.
+
+Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
+
+Go packages already carry a name, a compiler-enforced import list, and a doc. A directory above them would lengthen every import path and enforce nothing. (Contrast the frontend, where folders *were* worth adding: 46 React components in one directory have no enforced boundary at all, which is why they had grown `channel-*`/`guide-*` filename prefixes — a naming convention doing a filesystem's job. There, folders replaced a convention with structure. Here the structure is already there.)
+
+**The loop** — what turns an intent into a channel that plays:
+
+| Package | Job |
+| --- | --- |
+| `suggest` | Turns an intent into a grounded proposal (§8) |
+| `catalog` | The federated search boundary the suggester is grounded against (§7.2, §8) |
+| `binder` | Materialises an APPROVED proposal onto a channel — the one path (§7) |
+| `schedule` | The scheduler domain: Channel identity, DesiredLineup, policy (§9) |
+| `channels` | The reconcile engine — the conductor that drives a channel to its desired state (§9, §18) |
+| `recurate` | Scheduled re-curation: a channel that keeps itself current (§8.2) |
+| `provision` | The Title/Key identity model and the acquisition state machine (§3–§4) |
+| `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
+| `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
+
+**The ports** — everything that talks to something outside the process. Each is a boundary with one implementation today and a second one plausible tomorrow:
+
+| Package | Speaks to |
+| --- | --- |
+| `library` | Emby/Jellyfin, one adapter for both flavours (§6) |
+| `requester` | Seerr, or Sonarr/Radarr directly (§2, §6) |
+| `programmer` | Tunarr — the port the scheduler pushes channels through (§6, §9) |
+| `llm` | Any provider, behind one Chat primitive (§8) |
+| `tmdb` | TMDB, the grounding corpus (§8) |
+| `clipfetch` | yt-dlp / Archive.org, into the filler drop-folder (§10, §16) |
+
+**The platform** — the machinery every feature sits on:
+
+| Package | Job |
+| --- | --- |
+| `store` | One Store interface, two backends, one conformance suite (§5) |
+| `settings` | The typed registry; `env > database > default` (config-design) |
+| `config` | ENV-ONLY bootstrap — the handful of values needed before the store opens |
+| `scheduler` | Recurring work as named, tunable, on-demand jobs (§18.1) |
+| `auth` | Sessions and their validation (§11) |
+| `events` | The in-memory bus behind SSE (§7) |
+| `httpx` | The shared outbound HTTP client factory (§6) |
+| `metrics` | The Prometheus surface (§7, §18) |
+| `buildinfo` | The version stamped in at build time |
+
+**The edges** — inbound HTTP, wiring, and the things that only exist for tests:
+
+| Package | Job |
+| --- | --- |
+| `api` | The inbound HTTP surface: handlers, DTOs, the OpenAPI definitions (§7) |
+| `app` | The composition root — the only place subsystems are wired together |
+| `web` | Embeds the built SPA, served same-origin (§12) |
+| `setup` | The operator connection flows: Live TV wiring, connection tests (§7, §13) |
+| `testkit` | Shared test doubles and pinned fixtures — never linked into the binary |
+| `integration` | Journey tests that drive the REAL composition root |
+| `eval` | Semantic evaluation of suggester output, run by hand not by CI |
+
 ---
 
 ## 15. Configuration — layered settings
