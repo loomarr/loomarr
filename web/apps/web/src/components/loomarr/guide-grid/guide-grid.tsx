@@ -239,6 +239,12 @@ const GuideGrid = ({
                   </button>
                   {/* On-air dot: live pulses, reconciling is amber, off is inert. */}
                   <span
+                    // role="img" so the label is actually announced. aria-label is not
+                    // supported on a bare <span> (implicit role: generic), and the dot
+                    // carries real status — live / reconciling / off — so dropping the
+                    // label rather than giving it a role would hide that from assistive
+                    // tech entirely.
+                    role="img"
                     aria-label={`${ch.name} is ${onAir}`}
                     data-testid="guide-onair-dot"
                     data-onair={onAir}

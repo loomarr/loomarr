@@ -79,6 +79,14 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("Help page", () => {
   // Opening Help with nothing selected reads as broken, so it defaults to the first page.
+  //
+  // ⚠ KNOWN FLAKE, ~1 run in 4, and NOT a timeout — it fails at ~1.2s against a 5s limit, so
+  // raising the limit does nothing (measured). It reproduces at 69d0fb6, before the /guide
+  // route existed, so it is not caused by route-tree growth either. The failing render shows
+  // no Quickstart content at all, which points at the two chained fetches (page list, then
+  // that page's markdown) resolving in an order this component does not re-query from.
+  // Diagnosing it properly means reading the Help page's loading logic, which is V15's
+  // rebuild — filed rather than papered over with a longer timeout.
   it("renders the first page as markdown, not raw source", async () => {
     stubFetch();
     renderAt("/help");
