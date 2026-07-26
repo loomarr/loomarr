@@ -1254,9 +1254,10 @@ and plays out its own channels. That reframes Track T from a parallel track into
 four completed phases before noticing. A phase that ships without a PROGRESS row is invisible to the
 next person — including to a future me reading "next up" as authoritative.
 
-**Next up (free — no deps, no pending decisions):** **V25 → V25b** (edit-before-approve: backend
-then UI — the pair carries the program's sharpest constraint, that `suggest.Approve` stays the SOLE
-acquisition path), and **V16** (Dashboard, incl. transcode telemetry).
+| V25 · edit-before-approve (backend) | **done** | `44f02c7` — CI green; 13 approve tests (6 new) + `TestOnlyApproveCreatesWantedTitles` | The edit is a PARAMETER to `suggest.Approve`, not applied by the handler first — otherwise "what gets acquired" is decided outside the gate and auto-approve runs different logic. `mod_summary`/`note` are real columns (migration 00015); the summary is generated server-side, because one the approver types is a claim and one the code writes is a record. **Two backward-compat breaks caught by gates:** a value Body made huma require one (400s on empty), and the pointer fix did not cover orval, which still emits `data` as required (4 FE call sites). Runtime and client compatibility are different things. |
+
+**Next up:** **V25b** (the edit-before-approve UI the backend now supports — drop with `✕`, add via
+search, note to the requester), then **V16** (Dashboard, incl. transcode telemetry).
 **The spine is COMPLETE:** V3 → V4 → V5 → V6 → V6b → V13b → V14a → V14b.
 
 **V14 was split, revisiting D-D.** The plan bundled the IA rename with the grid; the plan's own
