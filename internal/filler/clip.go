@@ -17,6 +17,7 @@ package filler
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Kind is what a clip is (§10). A clip is NEVER a program — the scheduler places
@@ -79,12 +80,26 @@ type Clip struct {
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//
-	// DISPLAY ONLY — it must never influence selection. A "prefer HD" rule would quietly
-	// starve the era-accurate 4:3 commercials this whole subsystem exists to play, since the
-	// authentic 1990s captures are exactly the low-resolution ones.
-	Quality  string
-	Source   string // provenance: filler-dir | tunarr-local | manual | …
-	AITagged bool   // whether the era/audience/category came from AI classification
+	// DISPLAY ONLY by default — an unconditional "prefer HD" rule would quietly starve the
+	// era-accurate 4:3 commercials this whole subsystem exists to play, since the authentic
+	// 1990s captures are exactly the low-resolution ones. V17c adds an OPT-IN minimum-quality
+	// floor (default off) so an operator can exclude 240p rips without changing that default;
+	// until then nothing reads this during selection.
+	Quality string
+	Source  string // provenance: filler-dir | tunarr-local | manual | …
+	// Thumbnail is a path RELATIVE to the thumbnail cache dir; "" = not generated yet, which
+	// renders as no image rather than a broken one. The bytes live on disk, not in the row —
+	// they are regenerable from the source file, and thousands of them in a table that rides
+	// the §16 backup would bloat every backup and every V11 migration (see 00017).
+	Thumbnail string
+	// PlayCount / LastPlayedAt are written from PLAYOUT, never from pod assembly (see 00017).
+	//
+	// ⚠ Only INTERNAL playout can report these. A Tunarr-backed channel airs its filler
+	// through Tunarr, which never tells us, so its clips stay at zero forever — "0 plays" and
+	// "not counted here" are different facts and a UI must not conflate them.
+	PlayCount    int64
+	LastPlayedAt time.Time
+	AITagged     bool // whether the era/audience/category came from AI classification
 }
 
 // ID returns the clip's identity. A method rather than direct field access at call sites so

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -211,5 +212,91 @@ func TestProfile_ProbesOnlyOnce(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("probed %d times across 5 programs, want 1 — each probe is ~20s", calls)
+	}
+}
+
+// recordingPlays captures RecordClipPlay calls (V28).
+type recordingPlays struct {
+	calls []string
+	err   error
+}
+
+func (r *recordingPlays) RecordClipPlay(_ context.Context, clipPath string, _ time.Time) error {
+	r.calls = append(r.calls, clipPath)
+	return r.err
+}
+
+// V28: a clip that AIRS is counted, and the count identifies the clip by its catalog path
+// (not the absolute file, which is a deployment detail).
+func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+	plays := &recordingPlays{}
+	r.clipPlays = plays
+
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plays.calls) != 1 || plays.calls[0] != "1994/toys.mp4" {
+		t.Fatalf("recorded %v, want one play of the CATALOG path", plays.calls)
+	}
+}
+
+// ⚠ The overcounting guard. A mid-clip re-resolve — which happens whenever anything asks what
+// is on while a clip is already rolling — must NOT count again. Only the item's start does.
+//
+// Without the `into == 0` check this counts on every resolve, and a 30s advert re-resolved by
+// a reconnecting viewer would report several plays for one airing.
+func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+	plays := &recordingPlays{}
+	r.clipPlays = plays
+
+	// Three seconds into the break: the clip is already rolling.
+	base := playoutEpoch("ch1")
+	r.now = func() time.Time { return base.Add(3 * time.Second) }
+
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plays.calls) != 0 {
+		t.Errorf("a mid-clip resolve counted %v — only the clip's START is an airing", plays.calls)
+	}
+}
+
+// Counting is telemetry: a store failure must never stop a break from airing.
+func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+	r.clipPlays = &recordingPlays{err: errors.New("database is gone")}
+
+	airing, src, err := r.AiringNow(context.Background(), "ch1")
+	if err != nil {
+		t.Fatalf("a counting failure became a playout error: %v", err)
+	}
+	if !airing.Playable() || src == "" {
+		t.Errorf("the break must still air: %+v src=%q", airing, src)
+	}
+}
+
+// No recorder wired (Tunarr-backed, or telemetry off) is a supported configuration.
+func TestAiringNow_NoRecorderIsFine(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod) // clipPlays left nil
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatalf("a nil recorder must not break playout: %v", err)
 	}
 }
