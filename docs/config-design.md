@@ -117,7 +117,7 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | **Defaults** | What a NEW channel inherits, and how filler behaves: default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) · filler drop-folder path (a Tunarr `local` source, *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths | drop-folder readable + Tunarr local-source check |
 | **System** | The machine, not the product. Sub-tabs: **Tasks** (the §18.1 job console — schedule, last/next run, Run now) · **Playout** (encoder, tier, `max_channels`, ffmpeg paths) · **Database** (backend + the migration stepper, V11) · **Backup** (download + retention, V12) · **About** (version, schema, `GET /v1/system/version`, V12) | per sub-tab where testable |
 | **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
-| **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. | — |
+| **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. Rows are **editable in place** — see below. | — |
 
 ⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
 rather than a rename — worth recording because the previous six pages shipped and are what an
@@ -137,13 +137,40 @@ literally "System → Backup UI"; V13's probes are System-shaped), so following 
 would leave four phases describing pages that do not exist. **`design.md` §12 still wins on
 behaviour**; this table owns the config surface's shape.
 
+⚠ **All settings is EDITABLE, and this is the one place the v2 mock is not followed.** The mock
+draws it as a read-only lookup. That works only if every key also has a home page — and the
+restructure above broke exactly that: `GroupAdvanced` holds 19 keys (job schedules, TTLs, the
+reconcile interval) whose only editor was the *Advanced* page that folded into this one. A
+read-only table would leave all 19 uneditable with nothing on screen saying so, and the loss
+falls in the seam between two phases that each look complete alone. So rows edit in place,
+through the same `SettingField` every other page uses (a `compact` mode) and staging into the
+same cross-tab buffer — env-pinned locking and the secret replace-flow (§4) behave identically
+here. **The lookup half still governs presentation:** keys are monospace and verbatim, never
+humanized, because someone arrives holding a literal `job.workers` from a compose file and a row
+reading "Job workers" does not match the string they are carrying.
+
+Two consequences worth stating, because both are easy to "fix" wrongly later:
+
+- **Three provenance chips, not the mock's four.** The mock adds `generated`, but generated
+  secrets (`playout_token`, the API token) are a separate registry (`internal/settings/secrets.go`)
+  and are not settings entries at all — the API's provenance enum is exactly env/db/default.
+  A fourth chip would render a state the backend never sends. Those secrets have their own panel
+  on **Security**, where view/copy/regenerate belong.
+- **The compact control has no `<label>`, so it must carry `aria-labelledby`** pointing at the
+  row's visible **Key** cell. Naming it by `title` alone is an axe `label-title-only` violation
+  rated *serious*: a sighted mouse user gets a tooltip, a screen-reader user gets an unnamed text
+  box. The visible label already exists on the row — it just has to be associated, not duplicated.
+
 **Enum labels are registry-owned.** An enum setting's options are `[]EnumOption{Value, Label}` in the registry — the stored/validated `Value` (`"openai"`, `"emby"`) *plus* its display `Label` (`"OpenAI"`, `"Emby"`). The label is a fact the registry owns and ships to the UI (`enumOptions` on the API entry), so a dropdown never re-derives (and drifts from) proper-noun casing on the client. Adding an option means adding its label in the one place that owns the value.
 
 **Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). This is the contract-level way to make a field context-aware: e.g. `llm.url` and `llm.api_key` carry `{"llm.provider": {"openai"}}`, so picking **Ollama** (local, no key, model chosen in the picker) hides both, and **OpenAI-compatible** reveals them. The UI evaluates it against the live edits (an unsaved provider switch re-reveals dependents immediately); a hidden field's value is untouched (secrets stay replace-only).
 
 **Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
-**Save model — explicit, per page (Sonarr's sticky save bar):** edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → hot-apply → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation).
+**Save model — explicit, spanning the whole Settings surface (Sonarr's sticky save bar):** the
+buffer and the bar both live in the Settings *layout*, not on a page (V9/V10) — the tab bar is
+navigation, not a commit boundary, and a per-page buffer silently discarded edits on tab switch.
+Edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → hot-apply → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation).
 
 **The save bar spans TABS, not just a page (V9).** Dirty state survives switching between
 Connections, AI, Defaults and so on: an operator who edits a connection, checks a default, and

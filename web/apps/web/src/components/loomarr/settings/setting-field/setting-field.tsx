@@ -29,12 +29,21 @@ const inputTypeFor = (kind: string): string => {
   return "text";
 };
 
-const SettingField = ({ entry, value, onChange, result, className }: SettingFieldProps) => {
+const SettingField = ({
+  entry,
+  value,
+  onChange,
+  result,
+  compact,
+  labelledBy,
+  className,
+}: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
   const id = `setting-${entry.key}`;
   const pinned = entry.provenance === SettingEntryProvenance.env;
   const invalid = result?.status === SettingResultStatus.invalid;
-  const describedBy = `${id}-doc`;
+  // Compact mode renders no doc element, so pointing at one would be a dangling reference.
+  const describedBy = compact ? undefined : `${id}-doc`;
 
   // A stored secret renders as its masked tail until the operator opts into replacing it.
   const secretLocked = entry.secret && entry.set && !replacing;
@@ -47,6 +56,7 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
           checked={value === "true"}
           disabled={pinned}
           aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
           onChange={(e) => onChange(String(e.target.checked))}
         />
       );
@@ -54,7 +64,12 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
     if (entry.kind === "enum") {
       return (
         <Select value={value} disabled={pinned} onValueChange={onChange}>
-          <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={invalid ? "true" : undefined}>
+          <SelectTrigger
+            id={id}
+            aria-describedby={describedBy}
+            aria-labelledby={labelledBy}
+            aria-invalid={invalid ? "true" : undefined}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -79,11 +94,26 @@ const SettingField = ({ entry, value, onChange, result, className }: SettingFiel
         autoComplete={entry.secret ? "new-password" : "off"}
         placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
         aria-describedby={describedBy}
+        aria-labelledby={labelledBy}
         aria-invalid={invalid ? "true" : undefined}
         onChange={(e) => onChange(e.target.value)}
       />
     );
   };
+
+  // Compact: the control alone. The secret replace-flow is kept — a stored secret must never
+  // render its value, in a table cell least of all.
+  if (compact) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        {secretLocked ? (
+          <span className="font-mono text-muted-foreground text-xs">{entry.preview ?? "stored"}</span>
+        ) : (
+          control()
+        )}
+      </div>
+    );
+  }
 
   return (
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
