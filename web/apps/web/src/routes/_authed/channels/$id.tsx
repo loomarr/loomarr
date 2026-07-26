@@ -292,7 +292,7 @@ const ChannelDetailScreen = () => {
               title="Diagnostics"
               description="How this channel is being built right now — relaxations applied and its Tunarr link."
             >
-              <ChannelAdvanced channel={ch} />
+              <ChannelAdvanced channel={ch} onPolicyChange={savePolicy} />
             </CollapsibleSection>
           )}
 
@@ -308,6 +308,7 @@ const ChannelDetailScreen = () => {
               onPolicyChange={savePolicy}
               strategy={ch.strategy}
               onStrategyChange={saveStrategy}
+              intentRef={ch.intentRef}
               onRefined={invalidate}
             />
           )}

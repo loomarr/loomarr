@@ -23,16 +23,32 @@ row and a later session spent four investigations rediscovering them.
 
 Ordered by how much each costs. All are PATCHable today and unreachable from any route.
 
-### Tier 2 — needs a real control, not a text box
+### ~~Tier 2~~ — CLOSED 2026-07-26
 
-- **`policy.autoCurate`** (+ `.maxTitles`, `.minScorePct`) — *the sharpest one.* Backend
-  complete, validated, live-verified (`internal/schedule/policy.go:71-107`,
-  `internal/suggest/autoapprove.go`). **The opt-in IS the object's presence**, so there is no
-  toggle to hide — nothing can construct it. Needs a lifecycle block on the channel detail;
-  note §12 previously claimed a "Settings → lifecycle" surface that has never existed.
-- **`policy.playout.backend`** — per-channel internal/Tunarr switch. §9.1's own copy says
-  *"Switch one from its own page"*, so the intended home is documented and unbuilt.
-- **`policy.audience.unrated`** — the safety pair to `ceiling`, which is editable.
+All three built, with tests and gallery stories. §12's surface-map rows now name their doors.
+
+- **`policy.autoCurate`** (+ `.maxTitles`, `.minScorePct`) → **Programming → When it changes**,
+  below the curation rules: the same "when does this change" question on a slower clock. The
+  §12 "Settings → lifecycle" home it used to claim never existed, so the *doc* was corrected
+  rather than a fifth tab invented — identity lives in the page header by an explicit earlier
+  decision. Two structural notes worth keeping: the checkbox **constructs/deletes the object**
+  (the opt-in IS its presence, which is why no generic field editor could reach it), and the
+  opt-out is only safe because `MergeFromOperator` is a wholesale replace (`out := incoming`),
+  so an absent key genuinely clears rather than reading as "unchanged". Disabled with a stated
+  reason on a hand-made channel — §8.2 skips a channel with no `IntentRef`.
+- **`policy.playout.backend`** → **Overview → Advanced → Broadcast**, beside the Tunarr link
+  (same subject: who streams this channel). "Follow the default" lowers to `""` so §9.1's
+  inherit shape — and its "changing the default affects new channels only" promise — survives.
+- **`policy.audience.unrated`** → **Programming → What plays**, beside the ceiling its default
+  is derived from. "Automatic" names which way it *currently* resolves ("— skipped" under a
+  kids ceiling, "— allowed" otherwise), because the bare word is not actionable without
+  knowing Go's `resolveUnrated` rule.
+
+⚠ **One defect the unit tests could not see.** The opt-in's hint always read *"Off, new titles
+wait for your approval"* — including when the box was ticked. Every assertion passed (checkbox
+state and committed payload were both correct); the **story screenshot** is what showed a
+control contradicting its own description. Now pinned in both directions. Worth remembering
+when adding the Tier-3 doors: a payload test proves a control *saves*, not that it *reads* true.
 
 ### Tier 3 — needs design work first
 
@@ -56,13 +72,16 @@ Ordered by how much each costs. All are PATCHable today and unreachable from any
 
 ## Still open — §12 doc drift
 
-11 drifted claims (**2 resolved, 9 open**), 6 unbuilt, **0 undocumented surfaces** (all 5
+11 drifted claims (**4 resolved, 7 open**), 6 unbuilt, **0 undocumented surfaces** (all 5
 closed — see the end of this section). The ones that mislead a reader most:
 
-- **`:714`** describes a **Settings** tab on the channel detail. The fourth tab is *Danger zone*;
-  `SECTION_IDS = info/programming/filler/danger`. Identity lives in the page header.
-- **`:711` contradicts `:723`** — the prose says the icon editor is in "Settings → Identity",
-  the surface-map row says "Overview → Channel icon". The code matches the row.
+- ~~**`:714`** describes a **Settings** tab on the channel detail…~~ **Resolved 2026-07-26.**
+  The bullet now describes the *Danger zone* tab that exists, and carries an explicit ⚠ saying
+  there is no Settings tab and where identity and auto-curate actually live. Worth noting the
+  cost this one line imposed: it is what let `autoCurate`'s map row claim a home ("Settings →
+  lifecycle") for a surface nobody had built, so the reachability question answered *yes*.
+- ~~**`:711` contradicts `:723`**…~~ **Resolved 2026-07-26** — `:711` now points at the page
+  header, matching both the row and the code.
 - **`:700`** — "orval from **committed** `api/openapi.yaml`". The spec is committed; the orval
   *output* is gitignored (`git ls-files web/packages/api/generated` → 0). The generator's own
   header repeats the claim (`orval.config.ts:5-6`). This is also the worktree gotcha: a fresh
@@ -114,10 +133,11 @@ The audits are re-runnable: `/surface-audit channels`, `/doc-drift "design.md §
 re-running to trusting this file — it was accurate when written and is a hypothesis now, which
 is the same rule `/register-check` applies to the build plan.
 
-Tier 2 is the natural next slice: three controls, one new lifecycle block, and it closes the
-finding that most reproduces the pattern the audit exists to catch. (It is built — see the
-tier-2 PR — but that is a separate change; this file records only what has landed here.)
+~~Tier 2 is the natural next slice~~ — **done 2026-07-26** (see above). **Tier 3 is what
+remains** — but re-read that section before costing it: two of its four items turned out to be
+reuse rather than design work, which is the file's own "accurate when written, a hypothesis
+now" rule applying to itself.
 
-Also still open: the **§12 doc drift** above — **9 claims**, after `:752` and `:750` were
-resolved. The five **undocumented surfaces** (the reverse defect — code with no §12 coverage)
-are **all closed**.
+Also still open: the **§12 doc drift** above — **7 claims**, after `:752`, `:750`, `:714`, and
+`:711` were resolved. The five **undocumented surfaces** (the reverse defect — code with no §12
+coverage) are **all closed**.

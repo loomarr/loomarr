@@ -189,6 +189,65 @@ describe("ChannelPolicyFields", () => {
     );
   });
 
+  // --- unrated allowance: the safety PAIR to the ceiling (§4) ---
+  //
+  // Orphaned the same way the four above were: the gate has always been enforced and counted in
+  // the exclusion report, while nothing could choose it — an operator could read "3 skipped:
+  // unrated" with no way to say "allow them".
+
+  it("commits an explicit unrated choice", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Unrated titles" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Allow unrated" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      ...POPULATED,
+      audience: { ceiling: "TV-14", unrated: "allow" },
+    });
+  });
+
+  it("clears unrated back to the automatic sentinel (empty string)", async () => {
+    const onChange = vi.fn();
+    render(
+      <ChannelPolicyFields
+        policy={{ audience: { ceiling: "TV-14", unrated: "exclude" } }}
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Unrated titles" }));
+    await userEvent.click(await screen.findByRole("option", { name: /^Automatic/ }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: { ceiling: "TV-14", unrated: "" } }),
+    );
+  });
+
+  // "Automatic" is not actionable on its own — Go resolves it BY THE CEILING (kids ⇒ exclude,
+  // else allow), so the operator cannot tell which way it falls without knowing that rule. The
+  // option names its current resolution, and these two pin that it tracks the ceiling above it.
+  it("says Automatic currently SKIPS unrated under a kids ceiling", () => {
+    render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-Y7" } }} onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — skipped");
+  });
+
+  it("says Automatic currently ALLOWS unrated with no ceiling, and above the kids boundary", () => {
+    const { unmount } = render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — allowed");
+    unmount();
+
+    // TV-PG (rank 3) is the LAST kids ceiling; TV-14 (rank 4) is the first that is not.
+    render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-14" } }} onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — allowed");
+  });
+
+  it("treats TV-PG as the last kids ceiling (the rank-3 boundary)", () => {
+    render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-PG" } }} onChange={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — skipped");
+  });
+
   // The channel's strategy is what Ordering's "Inherit channel default" refers to. Rendered
   // only when the caller supplies it, so the standalone policy form (no channel in scope) is
   // unchanged rather than showing a control it cannot save.
