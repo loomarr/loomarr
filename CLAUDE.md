@@ -89,6 +89,32 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 - Don't hand-write FE request types; regenerate via orval.
 - Don't add config that isn't in §15; if a knob is needed, add it to §15 first.
 
+## Parallel sessions (git worktrees)
+
+Git worktrees, one session each — **for genuinely disjoint work**. One worktree per phase,
+never per branch-you-might-need.
+
+**The dependency analysis is what makes this safe, not the worktree.** Two sessions editing
+the same domain produce a conflict in *generated* output — `api/openapi.yaml`, orval's
+client, the token artifacts — and a conflict in generated files is miserable to resolve
+because the merge tool is reconciling output nobody wrote. Without the analysis you are
+only creating conflicts faster.
+
+Before splitting, check the candidates against each other:
+
+| Safe together | Not safe together |
+| --- | --- |
+| Disjoint domains with no shared DTO (Help + Filler) | Anything where both phases add an endpoint — both edit `api/openapi.yaml` |
+| One backend phase + one pure-frontend phase on a different surface | Two phases touching one DTO (`ChannelDTO`, `ProposalDTO`) |
+| A docs-only pass + a code phase | Two phases that both regenerate baselines |
+
+⚠ **The current remaining phases are NOT disjoint.** V25b (edit-before-approve UI) and V16
+(Dashboard, "live per-stream telemetry") both add API surface, so both edit
+`api/openapi.yaml` and both regenerate the orval client. Run them sequentially.
+
+A single session working through phases in order needs no worktree at all — there is no
+concurrency to isolate, and the branch is doing the same job.
+
 ## Ask the maintainer (stop points)
 
 - Any Phase-0 contract deviation from §6/§9 (Tunarr shape, webhook payloads, auth quirks).
