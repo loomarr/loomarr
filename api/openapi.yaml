@@ -787,10 +787,23 @@ components:
         number:
           format: int64
           type: integer
+        pendingCount:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - building
+            - live
+            - drifted
+            - detached
+            - paused
+          type: string
       required:
         - channelId
         - name
         - number
+        - status
+        - pendingCount
         - airings
       type: object
     GuideOutputBody:

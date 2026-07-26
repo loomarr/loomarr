@@ -41,7 +41,10 @@ const FullDay: Story = {
 // having been deleted rather than as an empty evening.
 const EmptyChannel: Story = {
   args: {
-    channels: [...guideChannels, { channelId: "ch-quiet", name: "Late Night", number: 9, airings: [] }],
+    channels: [
+      ...guideChannels,
+      { channelId: "ch-quiet", name: "Late Night", number: 9, status: "live", pendingCount: 0, airings: [] },
+    ],
   },
 };
 

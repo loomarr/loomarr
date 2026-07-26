@@ -251,6 +251,8 @@ const guideChannels: GuideChannelTimeline[] = [
     channelId: "ch-action",
     name: "1980s Action Heroes",
     number: 3,
+    status: "live",
+    pendingCount: 0,
     airings: [
       { kind: "program", title: "Heat", startMs: guideAt(-25), stopMs: guideAt(35), year: 1995 },
       {
@@ -267,6 +269,8 @@ const guideChannels: GuideChannelTimeline[] = [
     channelId: "ch-springfield",
     name: "Springfield Classics",
     number: 1,
+    status: "live",
+    pendingCount: 0,
     airings: [
       {
         kind: "program",
@@ -303,6 +307,11 @@ const guideChannels: GuideChannelTimeline[] = [
     channelId: "ch-scifi",
     name: "Star Trek Classics",
     number: 2,
+    status: "live",
+    // This channel has a pending acquisition on its timeline, so it reads "Filling in" — on
+    // air, but not yet what was asked for. Keeps the chip visible in the default story rather
+    // than only in a contrived one.
+    pendingCount: 1,
     airings: [
       {
         kind: "program",

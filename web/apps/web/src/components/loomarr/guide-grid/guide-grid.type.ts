@@ -1,4 +1,5 @@
 import type { GuideAiring, GuideChannelTimeline } from "@loomarr/api";
+import type { ReactNode } from "react";
 
 interface GuideGridProps {
   // The generated wire shape, not a hand-written mirror: GET /v1/guide returns
@@ -20,6 +21,11 @@ interface GuideGridProps {
   // Called when a block is hovered/focused — the caller renders the detail card. Null clears.
   onInspect?: (airing: GuideAiring | null, channelId?: string) => void;
   onSelectChannel?: (channelId: string) => void;
+  // Renders the per-row actions menu (edit / pause / delete). A RENDER PROP rather than a
+  // built-in menu: those actions are admin-only mutations that need the store, mutations and
+  // confirm dialogs, and pulling them in here would make a presentational grid depend on all
+  // of it. The page passes the real menu; stories and tests pass nothing.
+  renderRowMenu?: (channel: GuideChannelTimeline) => ReactNode;
   className?: string;
 }
 

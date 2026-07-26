@@ -13,11 +13,18 @@ const airing = (
   over: Partial<GuideAiring> & Pick<GuideAiring, "kind" | "startMs" | "stopMs">,
 ): GuideAiring => ({ title: "Untitled", ...over });
 
-const row = (channelId: string, airings: GuideAiring[]): GuideChannelTimeline => ({
+const row = (
+  channelId: string,
+  airings: GuideAiring[],
+  over: Partial<GuideChannelTimeline> = {},
+): GuideChannelTimeline => ({
   channelId,
   name: channelId,
   number: 1,
+  status: "live",
+  pendingCount: 0,
   airings,
+  ...over,
 });
 
 const leftPct = (el: HTMLElement) => Number.parseFloat(el.style.left);
@@ -259,6 +266,73 @@ describe("GuideGrid", () => {
     expect(narrow).toBeInTheDocument();
     // …but showing no visible text, rather than a one-letter fragment of it.
     expect(narrow.textContent).toBe("");
+  });
+
+  // The chip names what is WRONG or in progress. A healthy channel shows nothing, because a
+  // chip reading "fine" on every healthy row is noise on the majority of rows — it is the
+  // exceptions an operator scans for.
+  it("chips only the channels that need attention", () => {
+    render(
+      <GuideGrid
+        fromMs={FROM}
+        toMs={TO}
+        // Channel names deliberately unlike the chip labels, so a match proves the CHIP
+        // rendered rather than the channel's own name.
+        channels={[
+          row("a", [], { name: "Alpha", status: "live", pendingCount: 0 }),
+          row("b", [], { name: "Bravo", status: "live", pendingCount: 3 }),
+          row("c", [], { name: "Charlie", status: "drifted" }),
+          row("d", [], { name: "Delta", status: "detached" }),
+          row("e", [], { name: "Echo", status: "paused" }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Filling in")).toBeInTheDocument();
+    expect(screen.getByText("Drift")).toBeInTheDocument();
+    expect(screen.getByText("Error")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    // The healthy row carries no chip: exactly four chips for five channels.
+    expect(screen.getAllByText(/^(Filling in|Drift|Error|Paused|Creating)$/)).toHaveLength(4);
+  });
+
+  // On-air is a DIFFERENT question from health: a drifted channel is still broadcasting what
+  // it has, so it reads live on the dot and "Drift" on the chip.
+  it("reports on-air state separately from health", () => {
+    render(
+      <GuideGrid
+        fromMs={FROM}
+        toMs={TO}
+        channels={[
+          row("drifted", [], { name: "Drifted", status: "drifted" }),
+          row("building", [], { name: "Building", status: "building" }),
+          row("paused", [], { name: "Paused", status: "paused" }),
+        ]}
+      />,
+    );
+    const dots = screen.getAllByTestId("guide-onair-dot").map((d) => d.dataset.onair);
+    expect(dots).toEqual(["live", "reconciling", "off"]);
+  });
+
+  // The row actions are admin-only mutations needing the store and confirm dialogs, so the
+  // grid takes them as a render prop rather than depending on all of it.
+  it("renders the caller's row menu", () => {
+    render(
+      <GuideGrid
+        fromMs={FROM}
+        toMs={TO}
+        channels={[row("ch1", [])]}
+        renderRowMenu={(ch) => <button type="button">{`menu:${ch.channelId}`}</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "menu:ch1" })).toBeInTheDocument();
+  });
+
+  // Every channel gets a mark, logo or not — a rail of unlabelled rows is hard to scan.
+  it("gives every row a channel mark", () => {
+    render(
+      <GuideGrid fromMs={FROM} toMs={TO} channels={[row("ch1", [], { name: "Springfield Classics" })]} />,
+    );
+    expect(screen.getByText("SC")).toBeInTheDocument();
   });
 
   // A channel with nothing scheduled still gets a row: dropping it would read as the channel
