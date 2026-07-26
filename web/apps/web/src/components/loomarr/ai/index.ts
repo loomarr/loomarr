@@ -3,6 +3,7 @@ export * from "./hosted-model-picker";
 export * from "./intent-input";
 export * from "./model-discover";
 export * from "./model-picker";
+export * from "./proposal-edit";
 export * from "./proposal-review";
 export * from "./refine-panel";
 export * from "./refine-review";
