@@ -80,11 +80,11 @@ before believing anything below.
   Programming tab's preview to run against unsaved edits, the way the Filler sandbox already
   does.
 
-**Reusable finding for the next slice:** `SearchCommand` renders a plain `<input aria-label="Search">`
-— no `combobox`/listbox roles, no arrow-key nav. That is drift claim `:757` above, and it bit
-while writing these tests (a `getByRole("combobox")` query failed against the real markup).
-Query it by label until `:757` is fixed; fixing it is a shared-component change that also
-touches the ⌘K palette, so it wants its own PR.
+~~**Reusable finding for the next slice:** `SearchCommand` renders a plain `<input aria-label="Search">`
+— no `combobox`/listbox roles, no arrow-key nav… query it by label until `:757` is fixed.~~
+**Fixed 2026-07-26** (see `:757` below). `getByRole("combobox")` now works, and the existing
+`getByLabelText("Search")` queries still do — `aria-label` was left in place, so this was a
+purely additive change and all four consumers kept passing untouched.
 
 ### Deliberate, needs no door
 
@@ -95,7 +95,7 @@ touches the ⌘K palette, so it wants its own PR.
 
 ## Still open — §12 doc drift
 
-11 drifted claims (**4 resolved, 7 open**), 6 unbuilt, **0 undocumented surfaces** (all 5
+11 drifted claims (**5 resolved, 6 open**), 6 unbuilt, **0 undocumented surfaces** (all 5
 closed — see the end of this section). The ones that mislead a reader most:
 
 - ~~**`:714`** describes a **Settings** tab on the channel detail…~~ **Resolved 2026-07-26.**
@@ -109,8 +109,22 @@ closed — see the end of this section). The ones that mislead a reader most:
   *output* is gitignored (`git ls-files web/packages/api/generated` → 0). The generator's own
   header repeats the claim (`orval.config.ts:5-6`). This is also the worktree gotcha: a fresh
   worktree needs `codegen` or every `@loomarr/api` import fails.
-- **`:757`** — the ⌘K palette is described as cmdk/shadcn `Command` over `/v1/search` scopes.
-  It is hand-rolled (no listbox roles, no arrow-key nav) and passes **no** scopes.
+- ~~**`:757`** — the ⌘K palette is described as cmdk/shadcn `Command`…~~ **Resolved 2026-07-26,
+  and the claim was half wrong.**
+  - **The a11y half was real, and worse than "drift":** no listbox roles and no arrow-key nav
+    meant a mouse could pick a result and *a keyboard could not*. Now implemented hand-rolled —
+    `combobox` / `listbox` / one `group` per scope / `aria-activedescendant`, with ↑/↓/Home/End
+    and Enter. Not cmdk: it is not a dependency, and adding one is a §14 conversation for a
+    pattern this size. Four consumers gain it at once (⌘K palette, lineup editor, series scope,
+    filler clips).
+  - **The "passes no scopes" half was a non-issue.** Omitting `scope` makes the API default to
+    `all` (`internal/api/search.go:25`), which is the correct corpus for a palette; channels,
+    clips, and help are merged from their own sources, and clips are deliberately not a
+    `/v1/search` scope (§7.2). §12 now says so instead of implying a bug.
+
+  ⚠ **The lesson worth keeping: CI's axe sweep passed this the entire time.** Missing
+  arrow-key navigation is a keyboard-*interaction* defect, invisible to a static-markup scan.
+  A green a11y job is not evidence that a widget is operable — only pressing the keys is.
 - ~~**`:752`** — "retry/cancel; members see their **own** submissions"…~~ **Resolved 2026-07-26
   (doc-only fix). Not a privacy bug — the audit misread it.** The facts held: cancel is absent
   from the route, and `TitleDTO` carries no requester so every authenticated user sees every
@@ -161,6 +175,6 @@ remains** — but re-read that section before costing it: two of its four items 
 reuse rather than design work, which is the file's own "accurate when written, a hypothesis
 now" rule applying to itself.
 
-Also still open: the **§12 doc drift** above — **7 claims**, after `:752`, `:750`, `:714`, and
-`:711` were resolved. The five **undocumented surfaces** (the reverse defect — code with no §12
-coverage) are **all closed**.
+Also still open: the **§12 doc drift** above — **6 claims**, after `:752`, `:750`, `:714`,
+`:711`, and `:757` were resolved. The five **undocumented surfaces** (the reverse defect — code
+with no §12 coverage) are **all closed**.
