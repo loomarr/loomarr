@@ -56,8 +56,8 @@ Ordered by how much each costs. All are PATCHable today and unreachable from any
 
 ## Still open — §12 doc drift
 
-11 drifted claims (1 resolved, 10 open), 6 unbuilt, 5 undocumented surfaces. The ones that
-mislead a reader most:
+11 drifted claims (**2 resolved, 9 open**), 6 unbuilt, **0 undocumented surfaces** (all 5
+closed — see the end of this section). The ones that mislead a reader most:
 
 - **`:714`** describes a **Settings** tab on the channel detail. The fourth tab is *Danger zone*;
   `SECTION_IDS = info/programming/filler/danger`. Identity lives in the page header.
@@ -81,14 +81,32 @@ mislead a reader most:
   schema change (requester column + filtered route), not an auth tweak. `:764` now says so, and
   separates the *backend* cancel at `:253` (a real withdrawal under the direct requester,
   admin-only via `DELETE /v1/titles/{key}`) from the member-facing control that was never built.
-- **`:750`** — "Zoom controls the window span". After V14a, zoom scales chrome only; span is a
-  separate control.
+- ~~**`:750`** — "Zoom controls the window span"…~~ **Resolved 2026-07-26.** Verified against
+  `guide-grid.type.ts:12-16` (zoom scales rail width / row height / type, and "the window always
+  fits the viewport") and `guide-page.tsx:157` (a separate `Window span` select — 2H/4H/6H/day —
+  which asks the API for a different window). The doc now states both controls and why they are
+  separate: the TV-guide convention is that you change how much *detail* a row shows, not how
+  much *time* is on screen.
 - **`:753`** — edit-via-search pre-approval. `ProposalReview` accepts `onEditItem` and **no
   production caller passes it**, so the button never renders. This is what V25b builds.
 
-**Undocumented surfaces** (code with no §12 coverage): `/account` (password change + session
-revoke), secret regeneration, the Tasks job console, the AI model manager, and the entire
-seven-tab Settings IA.
+~~**Undocumented surfaces** (code with no §12 coverage)…~~ **Resolved 2026-07-26.** All five
+now carry §12 rows, each verified against code rather than inferred:
+
+- The **seven-tab Settings IA** — `Connections · AI · Channels & playback · Filler · Tasks ·
+  Users & security · Advanced` (`routes/_authed/settings/route.tsx:13-19`). §12 had a one-line
+  "Settings/health" bullet naming only provider visibility, `/readyz`, and the checklist; the
+  tabs, and everything below, were absent. The row records *where the surfaces are* and defers
+  the mechanics (typed registry, `env > db > default`, hot-apply, save bar, secrets lifecycle)
+  to `config-design.md`, which wins on its own domain per CLAUDE.md's precedence rule.
+- The **Tasks job console** → Settings → Tasks (cron, last/next run, Run-now, cron editor).
+- The **AI model manager** (§8.1) → Settings → AI.
+- **Secret regeneration** → Settings → **Users & security** (`settings/users.tsx:10` renders
+  `SecretsSettings` as the tab footer) — not its own tab, which is why it read as missing.
+- **`/account`** — its own top-level row, not a Settings tab. It is the one settings-shaped
+  surface a **member** can reach (`account.tsx:17`: "A viewer sees exactly what an admin sees
+  here. Nothing on this page is privileged"), so filing it under the admin-only `/settings` IA
+  would have misdescribed who can use it.
 
 ## How to pick this up
 
@@ -97,4 +115,9 @@ re-running to trusting this file — it was accurate when written and is a hypot
 is the same rule `/register-check` applies to the build plan.
 
 Tier 2 is the natural next slice: three controls, one new lifecycle block, and it closes the
-finding that most reproduces the pattern the audit exists to catch.
+finding that most reproduces the pattern the audit exists to catch. (It is built — see the
+tier-2 PR — but that is a separate change; this file records only what has landed here.)
+
+Also still open: the **§12 doc drift** above — **9 claims**, after `:752` and `:750` were
+resolved. The five **undocumented surfaces** (the reverse defect — code with no §12 coverage)
+are **all closed**.
