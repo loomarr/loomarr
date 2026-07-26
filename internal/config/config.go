@@ -52,7 +52,7 @@ func Load() (*Config, error) {
 	if err := env.Parse(&envOnly); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	fileValues, err := LoadBootstrapFile(DataDirFor(envOnly.DatabaseURL))
+	fileValues, err := loadBootstrapSearch(BootstrapDirsFor(envOnly.DatabaseURL))
 	if err != nil {
 		// Loud, not silent: this runs before the store opens, so a bad file must stop
 		// the boot rather than let the process start with configuration the operator

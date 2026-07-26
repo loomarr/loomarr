@@ -59,7 +59,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
-		systemLLM: opts.SystemLLM, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
+		systemLLM: opts.SystemLLM, database: opts.Database, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
@@ -81,6 +81,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerSystemLLM(humaAPI)
+	srv.registerSystemDatabase(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerProvisioning(humaAPI)

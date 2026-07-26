@@ -219,6 +219,50 @@ SQLite ⇒ **single instance**. Postgres enables **replicas**, which changes rec
 - On SQLite it's a straight query.
 - **Run exactly one replica with SQLite.** Scale horizontally only with Postgres + row claiming.
 
+### Migrating SQLite → PostgreSQL (V11)
+
+An install that outgrows SQLite can move without an export/import dance: **Settings → System →
+Database** runs a six-stage stepper — connect → preflight → backup → migrate → verify → restart.
+Only this direction is supported; the reverse is served by the backup file plus reverting one
+config line.
+
+**The invariant: the source is only ever READ.** Every failure mode ends with the operator still
+running on the database they started on, which is what makes "roll back by reverting one config
+line" true rather than aspirational. Nothing in the copy writes to, vacuums, or locks the source
+beyond its read transaction, and the destination is never switched to until parity passes.
+
+| Stage | What it does | Why it is its own stage |
+| --- | --- | --- |
+| Connect | Takes the target DSN | — |
+| Preflight | Reachable · version ≥ 13 · **target is empty** · privileges · UTF8 encoding | Fails while failing is free; can send you back to fix the target |
+| Backup | Writes a server-side snapshot into `backup.dir` | **A gate, not a step** — see below |
+| Migrate | Copies every table, streaming progress as `database` SSE frames | — |
+| Verify | Re-counts BOTH sides independently; a mismatch aborts | A copy that reports success is a claim; parity is the evidence |
+| Restart | Persists the new `DATABASE_URL` to the bootstrap file | Copying data and changing which database the app answers from are different commitments |
+
+Four rules that are not negotiable, each because the obvious alternative is subtly wrong:
+
+1. **The backup gate is enforced server-side.** The UI disables Migrate until a backup exists, but
+   that is a hint: anything a client can satisfy, a client can skip. The server refuses a migrate
+   call unless *it* wrote a backup for this migration. This is why `WriteBackup` writes a real file
+   rather than streaming one to the browser — a download leaves no evidence.
+2. **The table list AND the copy order come from the destination catalog.** goose builds the
+   destination from the same embedded migrations, so its live catalog *is* the schema by
+   construction. A hardcoded list drifts (this repo's own `TRUNCATE` list had already drifted to 8
+   of 10 tables), and the order is load-bearing: `sessions.user_id REFERENCES users(id)` is NOT
+   DEFERRABLE, so a topological sort over the catalog's FK graph is what keeps inserts legal.
+   `goose_db_version` is never copied — the destination earns its own.
+3. **Values are coerced by the DESTINATION's column type.** Everything is scanned as a string,
+   which makes the SQLite-INTEGER/Postgres-BOOLEAN divergence a non-event (both drivers parse
+   `"0"`/`"1"` correctly). Binary is the real exception: `channel_icons.bytes` is BLOB/BYTEA, and
+   routing it through a Go string corrupts every byte that is not valid UTF-8.
+4. **Preflight refuses a populated target.** "Wipe it and retry" is safe advice only because this
+   check guarantees there was nothing there to lose.
+
+**An env-pinned `DATABASE_URL` makes this copy-only.** Env always wins at boot (§15), so writing
+the bootstrap file would produce a switch that silently does not happen. The server refuses the
+switchover and the UI says so up front, rather than after a backup and a full copy.
+
 ---
 
 ## 6. External contracts
@@ -1175,7 +1219,14 @@ volumes:
 The database **is** the product — channels, tags, proposals, audit trail — so data safety is not optional (every mature *arr app ships backups):
 - **SQLite:** `GET /v1/backup` (admin) streams a **consistent snapshot** produced via `VACUUM INTO` a temp file — pure SQL, so it works with the cgo-free driver and is safe while WAL is active (never `cp` a live SQLite file). Restore = stop container, replace `/data/loomarr.db`, start.
 - **Postgres:** `/v1/backup` returns **501 + a docs pointer** — the container has no `pg_dump` (scratch image, by design); back up with `pg_dump` against the DB directly, restore with `pg_restore`. The docs Quickstart shows a one-line cron example for each backend.
+- **Server-written backups** (`backup.dir`, default `/data/backups`) exist as of V11, because the
+  migration's backup gate has to be enforceable by the server: a streamed download leaves no
+  evidence, so "a backup is required, not suggested" would be unenforceable. Same `VACUUM INTO`
+  snapshot; the difference is that the file is kept, at `0600` (a backup carries every secret the
+  instance holds). Today the only writer is the migration stepper.
 - Scheduled in-app backups with rotation are future work (§20); v1 is on-demand + documented cron.
+  `backup.schedule`/`backup.retain` remain declared-but-unconsumed until then — V12 owns the
+  listing/retention UI.
 
 ### Upgrades & downgrades
 - **Images are semver-tagged**; docs steer production installs to pinned tags, not `:latest`.
