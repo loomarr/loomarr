@@ -113,6 +113,9 @@ type Store interface {
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. Returns ErrNotFound if absent.
 	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
+	// RecordClipPlay counts a filler clip having AIRED (V28). Written from playout only;
+	// a missing clip is not an error (the catalog may have pruned it mid-schedule).
+	RecordClipPlay(ctx context.Context, libraryItemID string, at time.Time) error
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer

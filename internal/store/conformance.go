@@ -45,6 +45,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
 	t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
+	t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 }
 
@@ -1047,5 +1048,69 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	}
 	if active != 2 {
 		t.Errorf("CountActiveSessions = %d, want 2 (expired excluded)", active)
+	}
+}
+
+// V28: play counters are written ONLY by RecordClipPlay, and a re-sync must not reset them.
+//
+// The reset is the bug worth pinning: UpsertClip lists most columns in its ON CONFLICT DO
+// UPDATE, so adding play_count there would zero every counter on each sync pass — silently,
+// and visible only as "usage never goes up".
+func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	c := sampleClip("1994/toys.mp4", "TMNT toys", filler.Commercial, 1994, filler.Kids, "toys")
+	c.Thumbnail = "1994/toys.jpg"
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatalf("seed clip: %v", err)
+	}
+
+	got, err := s.GetClip(ctx, c.Path)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Thumbnail != "1994/toys.jpg" {
+		t.Errorf("thumbnail = %q, want it round-tripped", got.Thumbnail)
+	}
+	if got.PlayCount != 0 || !got.LastPlayedAt.IsZero() {
+		t.Errorf("a fresh clip must start unplayed, got count=%d at=%v", got.PlayCount, got.LastPlayedAt)
+	}
+
+	aired := time.Unix(1_800_000_000, 0).UTC()
+	for i := 0; i < 3; i++ {
+		if err := s.RecordClipPlay(ctx, c.Path, aired); err != nil {
+			t.Fatalf("record play %d: %v", i, err)
+		}
+	}
+	got, _ = s.GetClip(ctx, c.Path)
+	if got.PlayCount != 3 {
+		t.Errorf("play count = %d, want 3", got.PlayCount)
+	}
+	if !got.LastPlayedAt.Equal(aired) {
+		t.Errorf("last played = %v, want %v", got.LastPlayedAt, aired)
+	}
+
+	// A re-sync (what the periodic scan does) must leave the counters alone. Everything else
+	// about the row is legitimately refreshed.
+	c.Name = "TMNT toys (renamed)"
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+	got, _ = s.GetClip(ctx, c.Path)
+	if got.Name != "TMNT toys (renamed)" {
+		t.Errorf("a re-sync must refresh the name, got %q", got.Name)
+	}
+	if got.PlayCount != 3 {
+		t.Errorf("a re-sync RESET the play count to %d — play_count must not be in the DO UPDATE list", got.PlayCount)
+	}
+	if !got.LastPlayedAt.Equal(aired) {
+		t.Errorf("a re-sync reset last_played_at to %v", got.LastPlayedAt)
+	}
+
+	// Playout may resolve a clip the catalog has since pruned; that is telemetry missing a
+	// row, not a playback error.
+	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
+		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
 	}
 }
