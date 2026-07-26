@@ -115,6 +115,23 @@ Before splitting, check the candidates against each other:
 A single session working through phases in order needs no worktree at all — there is no
 concurrency to isolate, and the branch is doing the same job.
 
+**Setting one up.** A worktree carries tracked files only, so everything gitignored is
+missing — and the non-obvious one is the generated API client, not `node_modules`:
+
+```
+git worktree add ../loomarr-<phase> -b <phase>
+cd ../loomarr-<phase>/web
+npx pnpm@11.13.1 install --frozen-lockfile   # ~2s; the pnpm store is shared, so it hard-links
+npx pnpm@11.13.1 codegen                     # REQUIRED — packages/api/generated/ is gitignored
+```
+
+Skip `codegen` and every `@loomarr/api` import fails to resolve, *after* a successful
+install — so the setup looks complete and the typecheck says otherwise. Go needs nothing:
+the module cache is shared and `go build ./...` works immediately.
+
+`git worktree remove ../loomarr-<phase>` when the phase merges. `node_modules` is ~470MB
+per worktree, which is disk rather than download.
+
 ## Ask the maintainer (stop points)
 
 - Any Phase-0 contract deviation from §6/§9 (Tunarr shape, webhook payloads, auth quirks).
