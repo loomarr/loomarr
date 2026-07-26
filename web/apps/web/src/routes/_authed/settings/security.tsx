@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SecretsSettings, SettingsPage, useSettingsEntries } from "@/settings";
 
-const UsersSettings = () => (
+const SecuritySettings = () => (
   <SettingsPage
-    title="Users & security"
+    title="Security"
     description="Sessions, cookies, and how often Loomarr re-syncs media-server accounts."
     entries={useSettingsEntries()}
     blocks={[{ group: "users_security", title: "Sessions and sync" }]}
@@ -11,8 +11,8 @@ const UsersSettings = () => (
   />
 );
 
-const Route = createFileRoute("/_authed/settings/users")({
-  component: UsersSettings,
+const Route = createFileRoute("/_authed/settings/security")({
+  component: SecuritySettings,
 });
 
 export { Route };
