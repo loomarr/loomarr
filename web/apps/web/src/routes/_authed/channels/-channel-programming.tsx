@@ -5,6 +5,8 @@ import {
   ChannelLineupEditor,
   ChannelPolicyFields,
   ChannelRulesEditor,
+  ChannelSeasonal,
+  ChannelSeriesScope,
   RefinePanel,
 } from "@/components/loomarr";
 
@@ -93,6 +95,10 @@ const ChannelProgramming = ({
       <Block title="What plays" hint="The titles this channel draws from, and the content it stays within.">
         <ChannelLineupEditor channelId={channelId} lineup={lineup} />
         <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="scope" />
+        {/* `scope.series` narrows the channel to specific shows. It sits under the scope
+            fields because it is the same question ("what may play?") at a coarser grain than
+            era/ceiling — and beside the lineup editor whose search picker it reuses. */}
+        <ChannelSeriesScope policy={policy} onChange={onPolicyChange} />
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
@@ -110,12 +116,23 @@ const ChannelProgramming = ({
         hint="Play different things at different times — weekend marathons, holiday blocks, day-parts."
       >
         {vocabulary ? (
-          <ChannelRulesEditor
-            policy={policy}
-            onChange={onPolicyChange}
-            lineupKeys={lineupKeys}
-            vocabulary={vocabulary}
-          />
+          <>
+            <ChannelRulesEditor
+              policy={policy}
+              onChange={onPolicyChange}
+              lineupKeys={lineupKeys}
+              vocabulary={vocabulary}
+            />
+            {/* Seasonal (§6) belongs to "when it changes" on the longest clock of the three:
+                the rules above switch by wall-clock time of day/week, auto-curate below grows
+                the lineup over weeks, and this one follows the calendar year. It shares the
+                vocabulary the rules editor already fetched — the holiday ids come from the
+                same BE-authored list, so the picker cannot offer a holiday the engine does
+                not know. */}
+            <div className="border-border/60 border-t pt-4">
+              <ChannelSeasonal policy={policy} onChange={onPolicyChange} vocabulary={vocabulary} />
+            </div>
+          </>
         ) : (
           <p className="text-muted-foreground text-sm">Loading rule options…</p>
         )}

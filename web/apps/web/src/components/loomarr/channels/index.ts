@@ -7,6 +7,8 @@ export * from "./channel-ident";
 export * from "./channel-lineup-editor";
 export * from "./channel-policy-fields";
 export * from "./channel-rules-editor";
+export * from "./channel-seasonal";
+export * from "./channel-series-scope";
 export * from "./channel-upcoming";
 export * from "./now-next-strip";
 export * from "./on-air-indicator";
