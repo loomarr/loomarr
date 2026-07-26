@@ -49,6 +49,12 @@ type titleReader interface {
 }
 
 // playoutResolver answers "what is airing now, and where does ffmpeg read it from".
+// clipPlayRecorder is the one-method slice of the store the resolver needs to count an
+// airing. Narrow deliberately — the resolver has no other business writing.
+type clipPlayRecorder interface {
+	RecordClipPlay(ctx context.Context, clipPath string, at time.Time) error
+}
+
 type playoutResolver struct {
 	engine cyclePreviewer
 	lib    *library.Client
@@ -57,6 +63,9 @@ type playoutResolver struct {
 	// line is simply absent, which is the right degradation: a guide without provenance is
 	// still a guide.
 	titles titleReader
+	// clipPlays counts a filler clip having aired (V28). Nil ⇒ no counting, which is the
+	// correct degradation: usage is telemetry and a channel must still play without it.
+	clipPlays clipPlayRecorder
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
 	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
@@ -307,6 +316,27 @@ func (r *playoutResolver) airingFiller(
 			full, perr := filler.ClipPath(r.fillerDir(), e.Path)
 			if perr != nil {
 				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
+			}
+			// Count the airing (V28). THIS is the honest write point, and the two
+			// tempting alternatives are both wrong:
+			//   - pod ASSEMBLY re-runs on every 10m reconcile sweep, so it counts what was
+			//     scheduled, over and over, not what aired;
+			//   - the /playout/program HANDLER would count per tune-in, so three viewers on
+			//     one break would be three plays.
+			// Here the resolver is answering one demuxer request for one item, and Attach
+			// starts at most one parent encoder per channel — so this fires once per clip
+			// actually encoded. `into == 0` restricts it to the item's START rather than every
+			// mid-clip re-resolve.
+			//
+			// ⚠ Internal playout only. A Tunarr-backed channel airs its filler through Tunarr,
+			// which never reports back, so those clips stay at zero — "not counted here", not
+			// "never played". The DTO says which.
+			if into == 0 && r.clipPlays != nil {
+				if err := r.clipPlays.RecordClipPlay(ctx, e.Path, now); err != nil {
+					// Telemetry, never correctness: a failed count must not stop a break from
+					// airing. Logged at debug because a pruned clip is an ordinary race.
+					_ = err
+				}
 			}
 			return playout.Airing{
 				Kind: schedule.SlotProgram, // playable: the handler encodes it like any program

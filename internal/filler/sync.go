@@ -34,8 +34,12 @@ type RawClip struct {
 	// Quality is the resolution label ("1080p", "480p") derived from the probed video
 	// height; "" when the file has no video stream or was never re-probed. Display-only —
 	// the guide's pod hover card shows it so a grainy 240p advert is explicable rather
-	// than surprising. It never affects selection.
+	// than surprising. It never affects selection (V17c adds an opt-in floor).
 	Quality string
+	// Thumbnail is the extracted frame's path relative to the thumbnail cache dir; "" when
+	// extraction failed or has not run. Filled by a SEPARATE pass (GenerateThumbnails), not
+	// by the probe — see thumbnail.go for why it cannot ride along with ffprobe.
+	Thumbnail string
 }
 
 // FillerSource discovers the clips in FILLER_DIR.
@@ -142,6 +146,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// that changes the resolution should be reflected, and there is no hand-edited value
 		// to protect. (Contrast the match tags below, which a human or the AI may have set.)
 		merged.Quality = rc.Quality
+		// Thumbnail is scan-owned for the same reason: it is derived from the FILE, and the
+		// generator adopts an existing image rather than re-extracting, so this is already
+		// the previous value whenever one exists.
+		merged.Thumbnail = rc.Thumbnail
 		// Carry the Tunarr uuid when the scan found one. Taken fresh rather than preserved:
 		// a re-registered Tunarr local source mints new program ids, and a stale uuid would
 		// build a filler-list referencing programs Tunarr no longer has.
@@ -155,6 +163,13 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
 			merged.Source = existing.Source
+			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
+			// aired. Belt and braces with UpsertClip's ON CONFLICT list, which also omits them
+			// — either one alone would be enough, but a future edit to either that forgot the
+			// other would silently reset every counter, and "usage never goes up" is a bug
+			// nobody reports.
+			merged.PlayCount = existing.PlayCount
+			merged.LastPlayedAt = existing.LastPlayedAt
 			if existing.TunarrProgramID != "" && rc.TunarrProgramID == "" {
 				// Keep a known uuid when THIS scan could not see Tunarr (it is offline, or
 				// this install has none). Losing it would silently strip filler from a
