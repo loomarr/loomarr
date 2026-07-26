@@ -39,16 +39,24 @@ type ClipFilter struct {
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		// ⚠ play_count / last_played_at are INSERTed (so a new row starts at 0) but deliberately
+		// NOT in the DO UPDATE list. A re-sync knows nothing about plays, so writing
+		// excluded.play_count would reset every counter to the scan's zero on each pass —
+		// silently, and only noticeable as "usage never goes up". Tags survive re-sync because
+		// sync.go merges them before calling this; the counters survive because the SQL simply
+		// never touches them after insert. RecordClipPlay is their only writer.
+		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, thumbnail, play_count, last_played_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind, era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
+		   thumbnail=excluded.thumbnail,
 		   updated_at=excluded.updated_at`),
 		c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
-		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), c.Quality, epoch(c.UpdatedAt))
+		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), c.Quality, c.Thumbnail,
+		c.PlayCount, epoch(c.LastPlayedAt), epoch(c.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Path, err)
 	}
@@ -56,7 +64,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, updated_at FROM clips`
+	rating, source, ai_tagged, quality, thumbnail, play_count, last_played_at, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), id))
@@ -133,6 +141,29 @@ func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audie
 	return nil
 }
 
+// RecordClipPlay increments a clip's play counter and stamps when it last aired (V28).
+//
+// ⚠ Called from PLAYOUT — when a filler item actually starts encoding — never from pod
+// assembly. Assembly re-runs on every reconcile sweep and would count SCHEDULED rather than
+// AIRED, inflating without bound (see migration 00017).
+//
+// A missing clip is NOT an error. Playout resolves a path that the catalog may have pruned
+// between the schedule being built and the break airing; failing here would turn a stale
+// catalog row into a playback error, and the counter is telemetry, not correctness. The row
+// count is deliberately ignored for the same reason.
+//
+// updated_at is left alone: this is not a catalog edit, and touching it would make every clip
+// look freshly re-synced in the UI's "last updated" column.
+func (s *sqlStore) RecordClipPlay(ctx context.Context, id string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET play_count = play_count + 1, last_played_at = ? WHERE path = ?`),
+		epoch(at), id)
+	if err != nil {
+		return fmt.Errorf("record clip play %s: %w", id, err)
+	}
+	return nil
+}
+
 // UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends
 // a pod while a commercial fills it — so a mis-detected kind produces structurally wrong
 // pods, not merely a mis-tagged clip.
@@ -184,12 +215,14 @@ func scanClip(sc scannable) (Clip, error) {
 		// tunarr_program_id is NULLABLE since §9.1 — an install with no Tunarr has none,
 		// which is a supported configuration. sql.NullString rather than string so a NULL
 		// scans cleanly instead of erroring on a nil-to-string conversion.
-		tunarrID  sql.NullString
-		aiTagged  int
-		updatedAt int64
+		tunarrID     sql.NullString
+		aiTagged     int
+		lastPlayedAt int64
+		updatedAt    int64
 	)
 	err := sc.Scan(&c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &updatedAt)
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.Thumbnail,
+		&c.PlayCount, &lastPlayedAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}
@@ -200,6 +233,7 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Audience = filler.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged != 0
+	c.LastPlayedAt = fromEpoch(lastPlayedAt)
 	c.UpdatedAt = fromEpoch(updatedAt)
 	return c, nil
 }

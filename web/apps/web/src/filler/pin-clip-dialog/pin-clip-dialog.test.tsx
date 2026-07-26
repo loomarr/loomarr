@@ -26,6 +26,8 @@ const clip: ClipDTO = {
   durationMs: 30000,
   tagged: true,
   aiTagged: false,
+  playCount: 0,
+  playsCounted: true,
 };
 
 // A channel with a full policy AND an existing pin, so the test can prove the merge keeps

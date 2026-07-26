@@ -46,8 +46,8 @@ func (s *Server) registerFiller(api huma.API) {
 	}, s.ingestFiller)
 }
 
-// ClipDTO is the API view of a filler clip (§10). Identity is the Tunarr `local`-
-// source program uuid (the redesign moved filler off the media server).
+// ClipDTO is the API view of a filler clip (§10). Identity is the clip's PATH relative to
+// FILLER_DIR (§9.1 moved it off the Tunarr program uuid — see Path below).
 type ClipDTO struct {
 	// Path is the clip's IDENTITY (relative to FILLER_DIR) — what /v1/filler/{id} takes and
 	// what a channel's pinned/excluded lists reference (§9.1).
@@ -62,16 +62,48 @@ type ClipDTO struct {
 	Category        string `json:"category,omitempty"`
 	DurationMs      int64  `json:"durationMs"`
 	Source          string `json:"source,omitempty"`
-	AITagged        bool   `json:"aiTagged"`
-	Tagged          bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
+	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
+	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
+	// it existed in the store for two phases with no way to see it.
+	Quality string `json:"quality,omitempty" doc:"Resolution label; display-only, never affects pod selection"`
+	// Thumbnail is the extracted frame's path relative to the thumbnail cache; "" when
+	// extraction failed or has not run, which renders as no image rather than a broken one.
+	Thumbnail string `json:"thumbnail,omitempty"`
+	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
+	//
+	// ⚠ PlaysCounted is what stops this being a lie. A Tunarr-backed channel airs its filler
+	// through Tunarr, which never reports back, so those clips sit at 0 forever — and "0
+	// plays" and "we cannot see plays here" are different facts. The UI must render the
+	// second as "not counted", never as a zero.
+	PlayCount    int64  `json:"playCount"`
+	LastPlayedAt string `json:"lastPlayedAt,omitempty" doc:"RFC3339; absent if never played (or not counted)"`
+	PlaysCounted bool   `json:"playsCounted" doc:"False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0"`
+	AITagged     bool   `json:"aiTagged"`
+	Tagged       bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
 }
 
-func clipToDTO(c store.Clip) ClipDTO {
-	return ClipDTO{
+// playsCounted reports whether THIS install can observe a filler clip airing.
+//
+// It is exactly "does internal playout run here": the resolver is what records a play (see
+// playoutadapter.airingFiller), and a Tunarr-backed install has none — its filler is aired by
+// Tunarr, which never reports back. Deriving it from the same field the program route checks
+// means the flag cannot drift from the behaviour it describes.
+func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
+
+// clipToDTO maps a stored clip. playsCounted comes from the caller because it is a property
+// of the INSTALL (does internal playout run here?), not of the clip.
+func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
+	d := ClipDTO{
 		Path: c.Path, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
-		DurationMs: c.DurationMs, Source: c.Source, AITagged: c.AITagged, Tagged: c.Tagged(),
+		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality, Thumbnail: c.Thumbnail,
+		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
+		AITagged: c.AITagged, Tagged: c.Tagged(),
 	}
+	if !c.LastPlayedAt.IsZero() {
+		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)
+	}
+	return d
 }
 
 type listFillerInput struct {
@@ -106,7 +138,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	out := &listFillerOutput{}
 	out.Body.Clips = make([]ClipDTO, 0, len(clips))
 	for _, c := range clips {
-		out.Body.Clips = append(out.Body.Clips, clipToDTO(c))
+		out.Body.Clips = append(out.Body.Clips, clipToDTO(c, s.playsCounted()))
 	}
 	return out, nil
 }
@@ -154,7 +186,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err != nil {
 		return nil, err
 	}
-	return &clipOutput{Body: clipToDTO(c)}, nil
+	return &clipOutput{Body: clipToDTO(c, s.playsCounted())}, nil
 }
 
 type syncFillerOutput struct {

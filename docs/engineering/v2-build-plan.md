@@ -154,12 +154,12 @@ Wizard → V20/V21/V22; Mobile → V18.
 | # | Phase | Deps | Gate |
 | --- | --- | --- | --- |
 | **V17b** | `F2` — clip previews on `ClipCard` | V17a | Preview renders; visual baseline; **inline `data:` URIs only, never remote URLs** |
-| **V17c** | `F3` — a quality dimension beyond `INGEST_PREFER_ORIGINAL` | V4, V17a | Quality is first-class on a clip, surfaced and usable in selection |
+| **V17c** | `F3` — a quality dimension beyond `INGEST_PREFER_ORIGINAL` | V4, V17a | Quality is first-class on a clip, surfaced, and usable in selection **via an opt-in minimum-quality floor (default off)** — see §6.1: `00014` requires the era-accuracy default be preserved |
 | **V17d** | Starter pack + coverage/"Find clips" (**F4**) | V17b | Seeded clips reviewable with keep/exclude; a thin channel surfaces the gap |
-| **V28** | `sources` entity + clip metadata columns | V4, V17a | Migration `00013`; sources CRUD + per-source `Fetch now`; thumbnail/quality/usage populated |
+| **V28** | Sources **read-model** + clip metadata columns | V4, V17a | Migration `00017`; `GET /v1/filler/sources` derives the rows and `Fetch now` triggers the existing sync; `thumbnail` populated at scan; a play is recorded **from playout**, not from assembly |
 | **V29** | Coverage meter (F2 banner) | V28 | **Consumes `internal/filler/ladder.go`** — a test asserts the meter and pod assembly agree. See §6. |
 | **V30** | Filler preview serving | V6, V28 | Previews stream; inline `data:` URIs in stories only |
-| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + Sources registry | V17c, V28, V30 | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
+| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V17c, V28, V30 | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
 
 ### Dashboard & wizard
 
@@ -260,6 +260,43 @@ meter that disagrees with reality — the exact bug §10's shared assembler exis
 **V25 — one approval chokepoint.** `suggest.Approve` is the single shared implementation *"so the two
 can never disagree about what approving means"*. Edit-before-approve passes it an edited proposal; it
 does **not** get a second path. The edit is a provenance change, not an authorization change.
+
+---
+
+## 6.1 Filler: what V28 corrected, and the two overlaps still open
+
+V28's row was written before `00013`–`00016` landed and had gone stale in three ways. Recorded
+here rather than silently edited, because each correction is a claim about what is true:
+
+- **Migration number.** The row said `00013`; that number was taken by `clips_path_identity`.
+  V28 is `00017`.
+- **`quality` was already shipped** by `00014_clips_quality`, whose comment is explicit that
+  quality is **display-only** and must never affect pod selection — *"a well-meaning 'prefer HD'
+  would quietly starve the era-accurate 4:3 commercials the whole feature exists to play."*
+- **`sources` is a READ-MODEL, not a table** (maintainer decision). Filler discovery is driven by
+  `filler.dir` plus the media-server library scan; a `sources` table would be a second source of
+  truth needing a precedence rule against the setting. `GET /v1/filler/sources` derives the mock's
+  three rows from the config that already exists plus live per-source clip counts. **V33 owns the
+  persisted registry**, when remote sources genuinely need rows.
+- **`usage` had no honest write point.** Pod assembly takes a `used` map but `adapter.go` passes a
+  fresh empty one per call — it is per-pod de-duplication with no memory — and pods re-assemble on
+  every 10m reconcile sweep, so counting at assembly would inflate without bound and count
+  *scheduled*, not *aired*. A play is therefore recorded from **playout**, where a filler `Airing`
+  actually starts. ⚠ Consequence to state plainly: only internal playout can report this, so
+  **Tunarr-backed channels read zero** — the UI must say "not counted" there rather than "0 plays",
+  or it reports a wrong number on half of installs.
+
+**Two overlaps are still unresolved** (flagged, deliberately not decided here):
+
+| Overlap | The problem |
+| --- | --- |
+| **V17b vs V30** | V17b is "clip previews on `ClipCard`" (frontend); V30 is "filler preview serving" (backend). You cannot render a preview without something serving it, so either V17b is blocked on V30 and the deps are wrong, or V17b is thumbnails-only. V28's `thumbnail` column is the thing that makes the thumbnails-only reading buildable. |
+| **V17d vs V29** | V17d is "coverage / Find clips"; V29 is "the coverage meter". §6 makes V29 non-negotiable — the meter MUST consume `internal/filler/ladder.go`. If V17d ships a coverage UI first it either duplicates that or ships the mock's lying version. |
+
+**V17c's gate is amended** (maintainer decision): quality becomes selectable via an **opt-in
+minimum-quality floor**, default off. That preserves `00014`'s era-accuracy default — an install
+that sets nothing behaves exactly as today — while letting an operator exclude 240p rips. The knob
+is a §15 conversation when V17c is built, not a V28 deliverable.
 
 ---
 

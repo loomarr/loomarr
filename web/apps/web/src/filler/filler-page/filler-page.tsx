@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
-import { ClipCard, EmptyState, ErrorState } from "@/components/loomarr";
+import { ClipCard, CountTabs, EmptyState, ErrorState, FillerSources } from "@/components/loomarr";
 import {
   Button,
   Card,
@@ -35,7 +35,13 @@ const FillerPage = () => {
   // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
   // validateSearch narrows them. setFilters merges a partial change and writes with
   // `replace: true` so typing in the search box doesn't stack a history entry per keystroke.
-  const { q = "", kind = "", audience = "", untagged = false } = useSearch({ from: "/_authed/filler" });
+  const {
+    tab = "catalog",
+    q = "",
+    kind = "",
+    audience = "",
+    untagged = false,
+  } = useSearch({ from: "/_authed/filler" });
   const setFilters = (next: Partial<FillerSearch>) =>
     navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
   const [tagging, setTagging] = useState<string>();
@@ -53,6 +59,23 @@ const FillerPage = () => {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
+
+  // ⚠ Every hook stays ABOVE the `fillerConfigured` early return below. Placing these two
+  // after it skipped them on the unconfigured path and crashed the page with "rendered more
+  // hooks than during the previous render" — the whole catalog replaced by an error boundary.
+  //
+  // Sources are admin-only on the server, so a member's request would 403. Gating the QUERY
+  // (not just the tab) keeps a member's console clean.
+  const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: isAdmin } });
+  const fetchSource = fillerApi.useFetchFillerSource({
+    mutation: {
+      onSuccess: () => {
+        // Both: the catalog changed AND the per-source counts derive from it.
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
+      },
+    },
+  });
 
   const sync = fillerApi.useSyncFiller({ mutation: { onSuccess: invalidate } });
   const aiTag = fillerApi.useTagFiller({ mutation: { onSuccess: invalidate } });
@@ -78,6 +101,9 @@ const FillerPage = () => {
   }
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
+  const clipList = rows ?? [];
+  const sourceRows = sourcesQuery.data?.status === 200 ? (sourcesQuery.data.data.sources ?? []) : [];
+
   const filtered = Boolean(q || kind || audience || untagged);
 
   return (
@@ -91,7 +117,7 @@ const FillerPage = () => {
               size="sm"
               disabled={sync.isPending}
               onClick={() => sync.mutate()}
-              title="Re-read the drop-folder through Tunarr's scan"
+              title="Re-scan the drop-folder (Loomarr probes it directly since §9.1 — no Tunarr needed)"
             >
               <RefreshCw aria-hidden />
               {sync.isPending ? "Syncing…" : "Sync"}
@@ -116,137 +142,169 @@ const FillerPage = () => {
         )}
       </div>
 
-      {sync.error != null && <ErrorState error={sync.error} />}
-      {aiTag.error != null && <ErrorState error={aiTag.error} />}
-      {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
+      <CountTabs
+        label="Filler sections"
+        tabs={[
+          { id: "catalog", label: "Catalog", count: clipList.length },
+          { id: "sources", label: "Sources", count: sourceRows.length },
+        ]}
+        activeId={tab}
+        onSelect={(id) => setFilters({ tab: id === "catalog" ? undefined : id })}
+      />
 
-      {sync.data?.status === 200 && (
-        <p className="text-muted-foreground text-sm">
-          {`Synced: ${sync.data.data.added} added, ${sync.data.data.updated} updated, ${sync.data.data.pruned} pruned.`}
-        </p>
-      )}
-      {aiTag.data?.status === 200 && (
-        <p className="text-muted-foreground text-sm">
-          {`Tagged ${aiTag.data.data.tagged} of ${aiTag.data.data.considered} considered${
-            aiTag.data.data.partial ? `, ${aiTag.data.data.partial} partially` : ""
-          }.`}
-        </p>
-      )}
-
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-48 flex-1">
-          <Label htmlFor="clip-search">Search</Label>
-          <Input
-            id="clip-search"
-            value={q}
-            placeholder="Clip name"
-            onChange={(e) => setFilters({ q: e.target.value || undefined })}
+      {tab === "sources" ? (
+        <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources">
+          <FillerSources
+            sources={sourceRows}
+            total={sourcesQuery.data?.status === 200 ? (sourcesQuery.data.data.total ?? 0) : 0}
+            onFetch={() => fetchSource.mutate()}
+            fetching={fetchSource.isPending ? "folder" : null}
+            error={fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null}
           />
         </div>
-        <div>
-          <Label htmlFor="clip-kind">Kind</Label>
-          {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-          <Select
-            value={kind || "any"}
-            onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
-          >
-            <SelectTrigger id="clip-kind">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="commercial">Commercial</SelectItem>
-              <SelectItem value="bumper">Bumper</SelectItem>
-              <SelectItem value="station_id">Station ID</SelectItem>
-              <SelectItem value="psa">PSA</SelectItem>
-              <SelectItem value="trailer">Trailer</SelectItem>
-              <SelectItem value="interstitial">Interstitial</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="clip-audience">Audience</Label>
-          <Select
-            value={audience || "any"}
-            onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
-          >
-            <SelectTrigger id="clip-audience">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="kids">Kids</SelectItem>
-              <SelectItem value="family">Family</SelectItem>
-              <SelectItem value="general">General</SelectItem>
-              <SelectItem value="late_night">Late night</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          variant={untagged ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilters({ untagged: untagged ? undefined : true })}
-          // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
-          // without era/audience, so they are never counted as needing work (§10).
-          title="Commercials missing era, audience, or category"
-        >
-          Untagged only
-        </Button>
-      </Card>
-
-      {rows === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading clips…</p>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title={filtered ? "No clips match" : "No clips yet"}
-          description={
-            filtered
-              ? "Try a wider filter, or clear the search."
-              : "Drop files into the filler folder, then Sync — Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
-          }
-          {...(filtered
-            ? {
-                action: {
-                  label: "Clear filters",
-                  onClick: () =>
-                    setFilters({ q: undefined, kind: undefined, audience: undefined, untagged: undefined }),
-                },
-              }
-            : {})}
-        />
       ) : (
-        <>
-          <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rows.map((clip) => (
-              <ClipCard
-                key={clip.path}
-                clip={clip}
-                {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
-                {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
-                {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+        <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
+          {sync.error != null && <ErrorState error={sync.error} />}
+          {aiTag.error != null && <ErrorState error={aiTag.error} />}
+          {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
+
+          {sync.data?.status === 200 && (
+            <p className="text-muted-foreground text-sm">
+              {`Synced: ${sync.data.data.added} added, ${sync.data.data.updated} updated, ${sync.data.data.pruned} pruned.`}
+            </p>
+          )}
+          {aiTag.data?.status === 200 && (
+            <p className="text-muted-foreground text-sm">
+              {`Tagged ${aiTag.data.data.tagged} of ${aiTag.data.data.considered} considered${
+                aiTag.data.data.partial ? `, ${aiTag.data.data.partial} partially` : ""
+              }.`}
+            </p>
+          )}
+
+          <Card className="flex flex-wrap items-end gap-3 p-4">
+            <div className="min-w-48 flex-1">
+              <Label htmlFor="clip-search">Search</Label>
+              <Input
+                id="clip-search"
+                value={q}
+                placeholder="Clip name"
+                onChange={(e) => setFilters({ q: e.target.value || undefined })}
               />
-            ))}
-          </div>
-        </>
-      )}
+            </div>
+            <div>
+              <Label htmlFor="clip-kind">Kind</Label>
+              {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
+              <Select
+                value={kind || "any"}
+                onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+              >
+                <SelectTrigger id="clip-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="commercial">Commercial</SelectItem>
+                  <SelectItem value="bumper">Bumper</SelectItem>
+                  <SelectItem value="station_id">Station ID</SelectItem>
+                  <SelectItem value="psa">PSA</SelectItem>
+                  <SelectItem value="trailer">Trailer</SelectItem>
+                  <SelectItem value="interstitial">Interstitial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="clip-audience">Audience</Label>
+              <Select
+                value={audience || "any"}
+                onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
+              >
+                <SelectTrigger id="clip-audience">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="kids">Kids</SelectItem>
+                  <SelectItem value="family">Family</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="late_night">Late night</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant={untagged ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilters({ untagged: untagged ? undefined : true })}
+              // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
+              // without era/audience, so they are never counted as needing work (§10).
+              title="Commercials missing era, audience, or category"
+            >
+              Untagged only
+            </Button>
+          </Card>
 
-      {tagging && rows && (
-        <ClipTagDialog
-          clip={rows.find((c) => c.path === tagging)}
-          onClose={() => setTagging(undefined)}
-          onSaved={() => {
-            setTagging(undefined);
-            void invalidate();
-          }}
-        />
-      )}
+          {rows === undefined ? (
+            <p className="text-muted-foreground text-sm">Loading clips…</p>
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title={filtered ? "No clips match" : "No clips yet"}
+              description={
+                filtered
+                  ? "Try a wider filter, or clear the search."
+                  : "Drop files into the filler folder, then Sync — Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
+              }
+              {...(filtered
+                ? {
+                    action: {
+                      label: "Clear filters",
+                      onClick: () =>
+                        setFilters({
+                          q: undefined,
+                          kind: undefined,
+                          audience: undefined,
+                          untagged: undefined,
+                        }),
+                    },
+                  }
+                : {})}
+            />
+          ) : (
+            <>
+              <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {rows.map((clip) => (
+                  <ClipCard
+                    key={clip.path}
+                    clip={clip}
+                    {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
+                    {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
+                    {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
-      {pinning && rows && (
-        <PinClipDialog clip={rows.find((c) => c.path === pinning)} onClose={() => setPinning(undefined)} />
-      )}
+          {tagging && rows && (
+            <ClipTagDialog
+              clip={rows.find((c) => c.path === tagging)}
+              onClose={() => setTagging(undefined)}
+              onSaved={() => {
+                setTagging(undefined);
+                void invalidate();
+              }}
+            />
+          )}
 
-      {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}
+          {pinning && rows && (
+            <PinClipDialog
+              clip={rows.find((c) => c.path === pinning)}
+              onClose={() => setPinning(undefined)}
+            />
+          )}
+
+          {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}
+        </div>
+      )}
     </div>
   );
 };

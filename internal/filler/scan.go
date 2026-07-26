@@ -298,6 +298,14 @@ type DirSource struct {
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
 	// supported configuration — an install with no Tunarr — not a degraded one.
 	Tunarr TunarrClipSource
+	// Thumbs extracts one frame per clip (V28); nil ⇒ FFmpegThumbnail("ffmpeg"). A separate
+	// seam from Probe because it is a separate binary and a separate exec — see thumbnail.go.
+	Thumbs Thumbnailer
+	// Log records how many thumbnails could not be generated. Optional, but the reason it
+	// exists is not cosmetic: extraction is best-effort and failures are skipped, which is
+	// exactly the shape that once let a misconfigured binary produce a silently empty catalog
+	// (see FFprobeNextTo). A count in the log makes "ffmpeg is wrong" legible.
+	Log func(msg string, args ...any)
 }
 
 // TunarrClipSource is the narrow slice of Tunarr the scan uses: register the drop-folder as a
@@ -335,6 +343,14 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
+	// catalog UI and have nothing to do with whether Tunarr is reachable.
+	if failed := GenerateThumbnails(ctx, dir, clips, d.Thumbs); failed > 0 && d.Log != nil {
+		d.Log("filler: some clip thumbnails could not be generated",
+			"failed", failed, "of", len(clips),
+			"hint", "check playout.ffmpeg_path — a wrong binary fails every extraction")
+	}
+
 	if d.Tunarr == nil || len(clips) == 0 {
 		return clips, nil
 	}

@@ -418,15 +418,29 @@ components:
             - trailer
             - interstitial
           type: string
+        lastPlayedAt:
+          description: RFC3339; absent if never played (or not counted)
+          type: string
         name:
           type: string
         path:
+          type: string
+        playCount:
+          format: int64
+          type: integer
+        playsCounted:
+          description: False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0
+          type: boolean
+        quality:
+          description: Resolution label; display-only, never affects pod selection
           type: string
         source:
           type: string
         tagged:
           description: Whether the clip has all match tags (era+audience+category)
           type: boolean
+        thumbnail:
+          type: string
         tunarrProgramId:
           type: string
       required:
@@ -434,6 +448,8 @@ components:
         - name
         - kind
         - durationMs
+        - playCount
+        - playsCounted
         - aiTagged
         - tagged
       type: object
@@ -892,6 +908,34 @@ components:
           format: uri
           type: string
       type: object
+    FetchFillerSourceOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FetchFillerSourceOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        added:
+          format: int64
+          type: integer
+        pruned:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+        updated:
+          format: int64
+          type: integer
+      required:
+        - total
+        - added
+        - updated
+        - pruned
+      type: object
     FillerSelection:
       additionalProperties: false
       properties:
@@ -923,6 +967,57 @@ components:
           type:
             - array
             - "null"
+      type: object
+    FillerSourceDTO:
+      additionalProperties: false
+      properties:
+        configured:
+          type: boolean
+        count:
+          format: int64
+          type: integer
+        detail:
+          type: string
+        fetchable:
+          type: boolean
+        kind:
+          enum:
+            - folder
+            - library
+            - remote
+          type: string
+        target:
+          type: string
+      required:
+        - kind
+        - target
+        - detail
+        - count
+        - configured
+        - fetchable
+      type: object
+    FillerSourcesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FillerSourcesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        sources:
+          items:
+            $ref: "#/components/schemas/FillerSourceDTO"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - sources
+        - total
       type: object
     GenreFilter:
       additionalProperties: false
@@ -4021,6 +4116,46 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Download clips into the drop-folder (admin; loomarr:filler image only)
+      tags:
+        - filler
+  /v1/filler/sources:
+    get:
+      description: Admin only. Derived from the configured drop-folder and library scan plus live per-source clip counts — there is no sources table (§10). A source the install could use but has not configured is returned with configured:false rather than omitted.
+      operationId: list-filler-sources
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerSourcesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Where the clip catalog comes from
+      tags:
+        - filler
+  /v1/filler/sources/fetch:
+    post:
+      description: Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.
+      operationId: fetch-filler-source
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchFillerSourceOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-scan the catalog now
       tags:
         - filler
   /v1/filler/sync:

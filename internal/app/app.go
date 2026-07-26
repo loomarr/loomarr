@@ -314,10 +314,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			engine: engine, lib: lib, now: time.Now,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 			// state and must not be able to change it.
-			titles:   st,
-			tier:     func() string { return set.str("playout.quality_tier") },
-			encoder:  func() string { return set.str("playout.encoder") },
-			capacity: func() int { return set.intv("playout.max_channels") },
+			titles: st,
+			// Same store, narrowed to the one write the resolver legitimately makes: counting
+			// a filler clip as having aired (V28).
+			clipPlays: st,
+			tier:      func() string { return set.str("playout.quality_tier") },
+			encoder:   func() string { return set.str("playout.encoder") },
+			capacity:  func() int { return set.intv("playout.max_channels") },
 			// fillerDir is read live like every other setting; `pods` is assigned after the
 			// pod adapter is built further down (it needs the filler catalog, which is wired
 			// later) — see "playoutRes.pods" below.
