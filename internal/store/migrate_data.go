@@ -46,9 +46,9 @@ import (
 // Not in scope: Postgres→SQLite. The direction people migrate is toward the bigger
 // database, and the reverse is served by the backup file plus reverting the config line.
 
-// tableStat is one table's progress — the unit the UI's per-table bars render, and the
+// TableStat is one table's progress — the unit the UI's per-table bars render, and the
 // unit parity is asserted in.
-type tableStat struct {
+type TableStat struct {
 	Table  string `json:"table"`
 	Source int64  `json:"source"`
 	Copied int64  `json:"copied"`
@@ -56,7 +56,7 @@ type tableStat struct {
 
 // MigrationProgress is a snapshot of a running (or finished) copy.
 type MigrationProgress struct {
-	Tables []tableStat `json:"tables"`
+	Tables []TableStat `json:"tables"`
 	// Table currently being copied; empty once finished.
 	Current string `json:"current,omitempty"`
 	Done    bool   `json:"done"`
@@ -97,7 +97,7 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		return MigrationProgress{}, err
 	}
 
-	prog := MigrationProgress{Tables: make([]tableStat, 0, len(tables))}
+	prog := MigrationProgress{Tables: make([]TableStat, 0, len(tables))}
 	report := func() {
 		if onProgress != nil {
 			onProgress(prog)
@@ -109,7 +109,7 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		if err != nil {
 			return prog, fmt.Errorf("count %s: %w", table, err)
 		}
-		prog.Tables = append(prog.Tables, tableStat{Table: table, Source: n})
+		prog.Tables = append(prog.Tables, TableStat{Table: table, Source: n})
 		prog.Current = table
 		report()
 
@@ -137,7 +137,7 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 // come from the same code path that did the copying, so reusing them would make the check
 // self-confirming. Counting the destination independently is the only version of this
 // that can actually catch a bad copy.
-func VerifyParity(ctx context.Context, src, dst Store) ([]tableStat, error) {
+func VerifyParity(ctx context.Context, src, dst Store) ([]TableStat, error) {
 	s, ok1 := src.(*sqlStore)
 	d, ok2 := dst.(*sqlStore)
 	if !ok1 || !ok2 {
@@ -147,7 +147,7 @@ func VerifyParity(ctx context.Context, src, dst Store) ([]tableStat, error) {
 	if err != nil {
 		return nil, err
 	}
-	stats := make([]tableStat, 0, len(tables))
+	stats := make([]TableStat, 0, len(tables))
 	for _, table := range tables {
 		sn, err := countRows(ctx, s.db, table)
 		if err != nil {
@@ -157,14 +157,14 @@ func VerifyParity(ctx context.Context, src, dst Store) ([]tableStat, error) {
 		if err != nil {
 			return nil, fmt.Errorf("count destination %s: %w", table, err)
 		}
-		stats = append(stats, tableStat{Table: table, Source: sn, Copied: dn})
+		stats = append(stats, TableStat{Table: table, Source: sn, Copied: dn})
 	}
 	return stats, nil
 }
 
 // ParityMismatches returns the subset of stats whose counts disagree. Empty means MATCH.
-func ParityMismatches(stats []tableStat) []tableStat {
-	var bad []tableStat
+func ParityMismatches(stats []TableStat) []TableStat {
+	var bad []TableStat
 	for _, st := range stats {
 		if st.Source != st.Copied {
 			bad = append(bad, st)

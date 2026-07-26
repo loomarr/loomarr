@@ -10,10 +10,6 @@ import (
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
-// sqlStore is the shared implementation over database/sql (§5, §14). Both the
-// SQLite and Postgres backends use it; the only dialect-specific piece is the
-// ClaimDueTitles SQL, injected as claimSQL. Placeholders differ too (? vs $1),
-// so each query is rebound via the backend's placeholder style.
 // Dialect names a backend. It exists so capability checks read as what they mean:
 // backend identity used to be inferred by comparing `claimSQL` against the SQLite
 // constant, which works but states "this store's claim statement is the SQLite one"
@@ -26,9 +22,16 @@ const (
 	DialectPostgres Dialect = "postgres"
 )
 
+// sqlStore is the shared implementation over database/sql (§5, §14). Both the
+// SQLite and Postgres backends use it; the only dialect-specific piece is the
+// ClaimDueTitles SQL, injected as claimSQL. Placeholders differ too (? vs $1),
+// so each query is rebound via the backend's placeholder style.
 type sqlStore struct {
-	db                   *sql.DB
-	dialect              Dialect
+	db      *sql.DB
+	dialect Dialect
+	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
+	// caller can find the data directory without also holding the DSN.
+	path                 string
 	ph                   placeholder // rebinds ? -> the dialect's placeholder
 	claimSQL             string      // dialect-specific ClaimDueTitles statement (already rebound)
 	channelClaimSQL      string      // dialect-specific ClaimDueChannels statement (already rebound)

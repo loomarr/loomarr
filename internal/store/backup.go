@@ -120,6 +120,20 @@ func BackupWriter(st Store) interface {
 	return s
 }
 
+// SQLitePath returns the file a SQLite store is backed by, or "" for any other backend.
+//
+// Exists so a caller can locate the data directory (where bootstrap.json lives) without
+// being handed the DSN — BuildHandler deliberately takes a Store rather than the config,
+// and threading DATABASE_URL through it just to re-derive a path the store already knows
+// would widen that signature for no gain.
+func SQLitePath(st Store) string {
+	s, ok := st.(*sqlStore)
+	if !ok || s.dialect != DialectSQLite {
+		return ""
+	}
+	return s.path
+}
+
 // DialectOf reports a store's backend, or "" if it is not a SQL store. The Database
 // settings page needs it to know whether to offer a migration at all.
 func DialectOf(st Store) Dialect {

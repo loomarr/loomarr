@@ -545,6 +545,169 @@ components:
       required:
         - kind
       type: object
+    DatabaseBackup:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DatabaseBackup.json
+          format: uri
+          readOnly: true
+          type: string
+        bytes:
+          description: Size on disk
+          format: int64
+          type: integer
+        path:
+          description: Where the backup was written
+          type: string
+        writtenAt:
+          description: Unix seconds
+          format: int64
+          type: integer
+      required:
+        - path
+        - bytes
+        - writtenAt
+      type: object
+    DatabaseCheck:
+      additionalProperties: false
+      properties:
+        detail:
+          description: Operator-facing detail — shown under the name
+          type: string
+        name:
+          description: Check name, e.g. Target is empty
+          type: string
+        ok:
+          description: Whether this check passed
+          type: boolean
+      required:
+        - name
+        - detail
+        - ok
+      type: object
+    DatabasePreflightOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DatabasePreflightOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        checks:
+          items:
+            $ref: "#/components/schemas/DatabaseCheck"
+          type:
+            - array
+            - "null"
+        passed:
+          description: True only if every check passed
+          type: boolean
+      required:
+        - checks
+        - passed
+      type: object
+    DatabaseStatus:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DatabaseStatus.json
+          format: uri
+          readOnly: true
+          type: string
+        backend:
+          description: "Active backend: sqlite or postgres"
+          type: string
+        backup:
+          $ref: "#/components/schemas/DatabaseBackup"
+          description: The backup taken for this migration, if any
+        canMigrate:
+          description: Whether a migration is offered at all
+          type: boolean
+        error:
+          description: Why the last migration failed, if it did
+          type: string
+        parity:
+          description: unknown|match|mismatch
+          type: string
+        phase:
+          description: idle|migrating|verified|failed
+          type: string
+        tables:
+          description: Per-table progress; empty when idle
+          items:
+            $ref: "#/components/schemas/DatabaseTable"
+          type:
+            - array
+            - "null"
+      required:
+        - backend
+        - canMigrate
+        - phase
+        - tables
+        - parity
+      type: object
+    DatabaseSwitchoverOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DatabaseSwitchoverOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        note:
+          description: What happens next, in operator-facing prose
+          type: string
+        restartRequired:
+          description: Always true — DATABASE_URL is a boot-time setting
+          type: boolean
+      required:
+        - restartRequired
+        - note
+      type: object
+    DatabaseTable:
+      additionalProperties: false
+      properties:
+        copied:
+          description: Rows copied into the target so far
+          format: int64
+          type: integer
+        source:
+          description: Rows in the source database
+          format: int64
+          type: integer
+        table:
+          description: Table name
+          type: string
+      required:
+        - table
+        - source
+        - copied
+      type: object
+    DatabaseTargetInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DatabaseTargetInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        dsn:
+          description: postgres:// connection string for the target
+          type: string
+      required:
+        - dsn
+      type: object
     DenyInputBody:
       additionalProperties: false
       properties:
@@ -4561,6 +4724,124 @@ paths:
       summary: Deny a proposal (admin)
       tags:
         - suggestions
+  /v1/system/database:
+    get:
+      description: Admin only. Which backend is live, whether a migration is offered, and how far one has got — including per-table row counts and the parity verdict.
+      operationId: system-database-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Active backend + migration progress
+      tags:
+        - system
+  /v1/system/database/backup:
+    post:
+      description: Admin only. Writes a server-side snapshot into the configured backup directory. This is the gate the migrate call enforces — a backup is required, not suggested, because it is the only thing that makes the move reversible.
+      operationId: system-database-backup
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseBackup"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Write the pre-migration backup
+      tags:
+        - system
+  /v1/system/database/migrate:
+    post:
+      description: "Admin only. Refuses without a passing preflight and a backup. The source is only ever read: on any failure the install is still running on SQLite and nothing was lost. Progress streams over /v1/events as `database` frames."
+      operationId: system-database-migrate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatabaseTargetInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Copy every table into the target and verify parity
+      tags:
+        - system
+  /v1/system/database/preflight:
+    post:
+      description: Admin only. Runs every check against the target and returns them all — a check that ran and failed comes back with ok:false rather than as an error, so the operator sees which one. Nothing is written to either database.
+      operationId: system-database-preflight
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatabaseTargetInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabasePreflightOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Probe a candidate PostgreSQL target
+      tags:
+        - system
+  /v1/system/database/switchover:
+    post:
+      description: Admin only. Persists the new DATABASE_URL to the bootstrap file. Takes effect on restart; the SQLite file is left in place untouched, so reverting is a one-line change.
+      operationId: system-database-switchover
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatabaseTargetInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseSwitchoverOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Point the next boot at the migrated database
+      tags:
+        - system
   /v1/system/llm:
     get:
       description: "Admin only. Active provider + model; the local-model catalog (for Ollama: detected VRAM/version, fit verdicts, recommended default, pulled flags); and the hosted-provider catalog (base URLs, live model lists, keyConfigured). API keys are never returned (§8.1)."

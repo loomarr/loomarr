@@ -52,6 +52,9 @@ type Server struct {
 	jobs JobService
 	// systemLLM wires /v1/system/llm* (§8.1 model selection); nil ⇒ routes 501.
 	systemLLM SystemLLMService
+	// database wires /v1/system/database* — the SQLite→PostgreSQL migration stepper
+	// (§18, V11); nil ⇒ routes 501.
+	database DatabaseService
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
@@ -448,11 +451,14 @@ type Options struct {
 	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	Pods          PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
-	Jobs          JobService       // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings      SettingsService  // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide         GuideReader      // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision     Provisioner      // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Binder        ChannelBinder    // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
+	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
+	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
+	Database  DatabaseService
+	Jobs      JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings  SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Guide     GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Binder    ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
 	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
 	// playout.Manager. Nil ⇒ the routes mount but report "not running".
 	PlayoutSessions PlayoutSessions
