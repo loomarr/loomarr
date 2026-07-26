@@ -146,6 +146,71 @@ components:
         - name
         - role
       type: object
+    BulkApproveInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BulkApproveInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: Proposal ids to approve, each through the single approval gate
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - ids
+      type: object
+    BulkApproveOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BulkApproveOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        approved:
+          description: How many were approved
+          format: int64
+          type: integer
+        results:
+          items:
+            $ref: "#/components/schemas/BulkApproveResult"
+          type:
+            - array
+            - "null"
+      required:
+        - results
+        - approved
+      type: object
+    BulkApproveResult:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        enqueued:
+          description: Acquisitions enqueued as wanted titles
+          format: int64
+          type: integer
+        error:
+          description: Why this one did not approve (already handled, not found, …)
+          type: string
+        id:
+          type: string
+        ok:
+          type: boolean
+      required:
+        - id
+        - ok
+      type: object
     ChangePasswordInputBody:
       additionalProperties: false
       properties:
@@ -1831,6 +1896,9 @@ components:
             - https://example.com/schemas/ProposalDTO.json
           format: uri
           readOnly: true
+          type: string
+        approvedAt:
+          description: When this was approved (RFC3339)
           type: string
         approvedBy:
           type: string
@@ -4294,6 +4362,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Start a suggestion job from an intent
+      tags:
+        - suggestions
+  /v1/suggestions/approve:
+    post:
+      description: Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.
+      operationId: bulk-approve-proposals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkApproveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkApproveOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve several proposals (admin)
       tags:
         - suggestions
   /v1/suggestions/{id}:
