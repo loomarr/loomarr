@@ -44,8 +44,12 @@ type Proposal struct {
 	// explicable rather than mysterious.
 	Note         string
 	ProposalJSON string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// ApprovedAt is WHEN the gate let this through — the audit rows' ordering key (§7, V27).
+	// Zero = never approved. Deliberately not `UpdatedAt`: three callers write that (approve,
+	// deny, recurate), so a re-curation would silently move an approval's timestamp.
+	ApprovedAt time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // --- jobs ---
@@ -136,10 +140,10 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 
 func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}
@@ -147,7 +151,7 @@ func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
 }
 
 const proposalSelect = `SELECT id, job_id, status, created_by, approved_by, deny_reason,
-	mod_summary, note, proposal_json, created_at, updated_at FROM proposals`
+	mod_summary, note, proposal_json, approved_at, created_at, updated_at FROM proposals`
 
 func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error) {
 	return scanProposal(s.db.QueryRowContext(ctx, s.ph(proposalSelect+` WHERE id = ?`), id))
@@ -156,9 +160,9 @@ func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error)
 func (s *sqlStore) UpdateProposal(ctx context.Context, p Proposal) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
-		   mod_summary=?, note=?, proposal_json=?, updated_at=? WHERE id=?`),
+		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=? WHERE id=?`),
 		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.UpdatedAt), p.ID)
+		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return fmt.Errorf("update proposal %s: %w", p.ID, err)
 	}
@@ -185,17 +189,18 @@ func (s *sqlStore) ListProposalsByCreator(ctx context.Context, userID string) ([
 
 func scanProposal(sc scannable) (Proposal, error) {
 	var (
-		p                    Proposal
-		createdAt, updatedAt int64
+		p                                Proposal
+		approvedAt, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
-		&p.ModSummary, &p.Note, &p.ProposalJSON, &createdAt, &updatedAt)
+		&p.ModSummary, &p.Note, &p.ProposalJSON, &approvedAt, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Proposal{}, ErrNotFound
 	}
 	if err != nil {
 		return Proposal{}, err
 	}
+	p.ApprovedAt = fromEpoch(approvedAt)
 	p.CreatedAt = fromEpoch(createdAt)
 	p.UpdatedAt = fromEpoch(updatedAt)
 	return p, nil

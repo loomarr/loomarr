@@ -53,6 +53,13 @@ func (s *Server) registerSuggestions(api huma.API) {
 	}, s.approveProposal)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "bulk-approve-proposals", Method: http.MethodPost, Path: "/v1/suggestions/approve",
+		Summary:     "Approve several proposals (admin)",
+		Description: "Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.",
+		Tags:        []string{"suggestions"},
+	}, s.bulkApproveProposals)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "deny-proposal", Method: http.MethodPost, Path: "/v1/suggestions/{id}/deny",
 		Summary: "Deny a proposal (admin)", Description: "Admin only.", Tags: []string{"suggestions"},
 	}, s.denyProposal)
@@ -113,9 +120,24 @@ type ProposalDTO struct {
 	// ModSummary is generated server-side ("dropped 2, added 1"); Note is the approver's own
 	// words. The distinction is deliberate and worth preserving in any UI: a summary the
 	// approver types is a claim, one the code writes is a record.
-	ModSummary string           `json:"modSummary,omitempty" doc:"What the approver changed before approving, generated server-side"`
-	Note       string           `json:"note,omitempty" doc:"The approver's message to whoever requested this"`
+	ModSummary string `json:"modSummary,omitempty" doc:"What the approver changed before approving, generated server-side"`
+	Note       string `json:"note,omitempty" doc:"The approver's message to whoever requested this"`
+	// ApprovedAt is when the gate let this through — the audit rows' ordering key (§7, V27).
+	// Omitted while unapproved. RFC3339 so a client can render it in the viewer's timezone;
+	// the store keeps epoch seconds.
+	ApprovedAt string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
 	Proposal   suggest.Proposal `json:"proposal"`
+}
+
+// rfc3339OrEmpty renders a timestamp for the wire, mapping the ZERO time to "" so `omitempty`
+// drops the field entirely. A proposal that was never approved must carry no approval time —
+// emitting "0001-01-01T00:00:00Z" would put a date on a decision that never happened, and every
+// client would then need to know which sentinel means "never".
+func rfc3339OrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 func proposalToDTO(p store.Proposal) ProposalDTO {
@@ -127,7 +149,8 @@ func proposalToDTO(p store.Proposal) ProposalDTO {
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
-		ModSummary: p.ModSummary, Note: p.Note, Proposal: payload,
+		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
+		Proposal: payload,
 	}
 }
 
@@ -328,6 +351,84 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	}
 	out.Body.ChannelID = chID
 	return out, nil
+}
+
+// --- bulk approve (V27) ---
+
+type bulkApproveInput struct {
+	Body struct {
+		// IDs are approved one at a time, each through the SAME `approveProposal` handler. No
+		// batch store write and no second gate: the phase gate for this is literally "bulk
+		// approve goes through the same chokepoint", and a batch path would be the second
+		// acquisition path §7 forbids.
+		//
+		// No edit field, deliberately. Edit-before-approve (V25b) is a per-proposal judgement —
+		// "drop these two titles" means nothing applied across a batch — so bulk is the
+		// unmodified path only. An admin who wants to change a proposal opens it.
+		IDs []string `json:"ids" minItems:"1" doc:"Proposal ids to approve, each through the single approval gate"`
+	}
+}
+
+type bulkApproveResult struct {
+	ID        string `json:"id"`
+	OK        bool   `json:"ok"`
+	Enqueued  int    `json:"enqueued,omitempty" doc:"Acquisitions enqueued as wanted titles"`
+	ChannelID string `json:"channelId,omitempty"`
+	Error     string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
+}
+
+type bulkApproveOutput struct {
+	Body struct {
+		// PER-ID results rather than a single status. One id that was already approved must not
+		// abort the rest — but the caller still has to learn which ones did not go through, or
+		// "approve 5" silently becoming "approved 4" is invisible.
+		Results  []bulkApproveResult `json:"results"`
+		Approved int                 `json:"approved" doc:"How many were approved"`
+	}
+}
+
+// bulkApproveProposals approves several proposals in one request (V27). ADMIN ONLY, like the
+// single approve it delegates to.
+//
+// ⚠ It calls `s.approveProposal` per id — the same handler, not a copy of its body. Everything
+// that makes a single approval correct (the submitted-status check, the one `suggest.Approve`
+// call, the channel bind, the audit stamps) therefore applies unchanged, and a future change to
+// approval semantics cannot land in one path and miss the other.
+//
+// Sequential, not concurrent: approvals write titles and channels, and household-scale batches
+// are small. Concurrency here would buy milliseconds and risk interleaving writes.
+func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput) (*bulkApproveOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out := &bulkApproveOutput{}
+	out.Body.Results = make([]bulkApproveResult, 0, len(in.Body.IDs))
+	for _, id := range in.Body.IDs {
+		res, err := s.approveProposal(ctx, &approveInput{ID: id})
+		if err != nil {
+			// A per-id failure is DATA, not a request failure: the ones that worked are already
+			// durable, so 500ing the whole call would hide successful approvals behind an error.
+			out.Body.Results = append(out.Body.Results, bulkApproveResult{
+				ID: id, OK: false, Error: humaErrMessage(err),
+			})
+			continue
+		}
+		out.Body.Results = append(out.Body.Results, bulkApproveResult{
+			ID: id, OK: true, Enqueued: res.Body.Enqueued, ChannelID: res.Body.ChannelID,
+		})
+		out.Body.Approved++
+	}
+	return out, nil
+}
+
+// humaErrMessage renders a handler error for a per-id result line, preferring the human-facing
+// title a huma StatusError carries ("Already handled") over the raw error string.
+func humaErrMessage(err error) string {
+	var se huma.StatusError
+	if errors.As(err, &se) {
+		return se.Error()
+	}
+	return err.Error()
 }
 
 type denyInput struct {
