@@ -21,7 +21,7 @@ const widthFrame =
 
 // AppShell links to these routes; any router harness must register them so TanStack
 // `Link` can resolve each href when the component renders in isolation (stories + units).
-const NAV_PATHS = ["/channels", "/board", "/suggest", "/filler", "/users", "/settings", "/help"] as const;
+const NAV_PATHS = ["/channels", "/queue", "/suggest", "/filler", "/people", "/settings", "/help"] as const;
 
 // Mounts `content` inside a minimal in-memory TanStack Router covering the AppShell nav,
 // starting at `initialPath`. Anything using Link/route hooks then renders the same

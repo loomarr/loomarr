@@ -19,17 +19,35 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // + user menu; content renders in `children`. Admin-only sections are gated by
 // `isAdmin` (wired to /v1/auth/me in phase 13.3). The `onair` brand dot nods to
 // the product soul; nostalgia stays in the margins (§1).
-const NAV: NavItem[] = [
+// TWO AUTHORED NAVS, not one list filtered by role (§12).
+//
+// This used to be `NAV.filter(i => !i.admin || isAdmin)`, which can only ever present a
+// member with the admin's product minus some entries. A member is not a diminished admin —
+// they arrive to watch and to ask for things — and the same two routes need DIFFERENT NAMES
+// for them: `/suggest` is "Request a channel", `/queue` is "My requests". A filter cannot
+// rename, so the shape of the old code made the right IA inexpressible.
+const ADMIN_NAV: NavItem[] = [
   { to: "/channels", label: "Channels", icon: Tv },
-  // The cross-channel schedule (§12). Sits next to Channels because they answer adjacent
-  // questions — "what do I have" and "what is on" — and the v2 IA rename will eventually
-  // merge the two entries; until then both doors are real and neither is a redirect.
+  // Channels and Guide answer adjacent questions — "what do I have" and "what is on". The
+  // v2 IA folds the first into the second; that is NOT done, because origination ("Add a
+  // channel") still lives on the list and the grid has no affordance for it yet. Both doors
+  // are real; neither is a redirect.
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/board", label: "Board", icon: LayoutGrid },
+  { to: "/queue", label: "Queue", icon: LayoutGrid },
   { to: "/suggest", label: "Suggest", icon: Sparkles },
   { to: "/filler", label: "Filler", icon: Clapperboard },
-  { to: "/users", label: "Users", icon: Users, admin: true },
-  { to: "/settings", label: "Settings", icon: Settings, admin: true },
+  { to: "/people", label: "People", icon: Users },
+  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/help", label: "Help", icon: ListChecks },
+];
+
+// The member's four. Same routes, named for what a member is doing with them — and the
+// admin-only surfaces are absent entirely rather than present-and-greyed, because a rail of
+// dead entries advertises a product they cannot use.
+const MEMBER_NAV: NavItem[] = [
+  { to: "/guide", label: "Guide", icon: CalendarClock },
+  { to: "/suggest", label: "Request a channel", icon: Sparkles },
+  { to: "/queue", label: "My requests", icon: LayoutGrid },
   { to: "/help", label: "Help", icon: ListChecks },
 ];
 
@@ -56,7 +74,7 @@ const AppShell = ({
         <kbd className="ml-auto font-mono text-static-400 text-xs">⌘K</kbd>
       </button>
 
-      {NAV.filter((i) => !i.admin || isAdmin).map(({ to, label, icon: Icon }) => (
+      {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
         // TanStack Link marks the matched route with data-status="active" — style the
         // active state off that attribute (higher specificity wins over the base), so
         // AppShell stays a pure-className component (no isActive render-prop).

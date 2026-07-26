@@ -420,7 +420,7 @@ test("10 · the command palette opens, searches, and navigates to a help page", 
 // and this asserts only what holds regardless of its state.
 test("11 · the Users page lists the owning admin, and offers explicit import", async ({ page }) => {
   await signIn(page);
-  await page.goto("/users");
+  await page.goto("/people");
 
   await expect(page.getByRole("heading", { name: /^users$/i })).toBeVisible();
   // The admin created in step 2 is present and marked admin — the allowlist's root (§11).

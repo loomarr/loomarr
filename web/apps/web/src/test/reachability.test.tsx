@@ -281,7 +281,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   it.each([
     ["/settings/ai", /probing your llm host|model|provider/i, "the §8.1 model picker"],
     ["/settings/users", /api token|session secret/i, "the generated-secrets panel"],
-    ["/users", /import from your media server/i, "the §11 import panel"],
+    ["/people", /import from your media server/i, "the §11 import panel"],
     ["/filler", /download clips/i, "the ingest panel"],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
