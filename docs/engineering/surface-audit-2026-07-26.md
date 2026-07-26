@@ -50,18 +50,41 @@ state and committed payload were both correct); the **story screenshot** is what
 control contradicting its own description. Now pinned in both directions. Worth remembering
 when adding the Tier-3 doors: a payload test proves a control *saves*, not that it *reads* true.
 
-### Tier 3 — needs design work first
+### Tier 3 — ~~needs design work first~~ (two of four done; **re-verify before trusting this tier**)
 
-- **`scope.collections`, `scope.series`** — lists of external identifiers. A comma-separated
-  text box is a door in name only; these want a search-backed picker, i.e. roughly the lineup
-  editor again.
-- **`policy.seasonal.*`** (`mode`, `holidays[]`, `offSeason`) — the holiday picker is its own
-  problem. `loomarr-curation-research` records TMDB holiday keyword IDs as the intended
-  mechanism.
-- **`policy.window`** at channel level — only per-rule windows are settable, and only
-  implicitly via the marathon preset.
-- **`POST …/{id}/programming/preview`** — not a control: rewiring the Programming tab's preview
-  to run against unsaved edits, the way the Filler sandbox already does.
+⚠ **This tier's cost estimate was wrong, in the direction the file's own rule predicts.** Two of
+the four turned out to be *reuse*, not new design — the estimates were written from the audit's
+memory of the domain rather than from the code. Re-read `seasonal.go` / `presets_vocab.go`
+before believing anything below.
+
+- ~~**`scope.series`**~~ → **done.** Programming → What plays. The premise held (the field is
+  `[]provision.Key` — resolved ids, never names — so a text box really would be a door in name
+  only), but "roughly the lineup editor again" understated the reuse: the lineup editor's
+  `keyOf` derivation and the shared `SearchCommand` *are* the picker. Narrowed to the series
+  branch; movies and id-less series are filtered out of results rather than offered and 422'd.
+- ~~**`policy.seasonal.*`**~~ → **done.** Programming → When it changes. **The stated blocker
+  did not exist.** `builtinCalendar` (`schedule/seasonal.go:31`) is a FIXED list of five
+  holidays with their keywords already baked in, and its ids already reach the frontend through
+  the rule vocabulary (`presets_vocab.go:59`, lowered via `LowerWhen` → `knownHoliday`). TMDB
+  keyword IDs were the research path for *matching titles to a holiday*, not for *choosing
+  which holidays a channel observes* — the audit conflated the two. So this was a checkbox list
+  over a closed set, with no backend work. Off-season fallback renders only in `exclusive` mode,
+  the only mode that reads it (`seasonal.go:154`).
+- **`scope.collections`** — still open, and the blocker is **not** the control. `[]string` of
+  media-server collection ids; the frontend has no endpoint that lists them, so a picker has
+  nothing to pick from. **The endpoint is the prerequisite** — build that first, then this is
+  the same shape as the series picker.
+- **`policy.window`** at channel level — still open. Only per-rule windows are settable, and
+  only implicitly via the marathon preset.
+- **`POST …/{id}/programming/preview`** — still open, and not a control: rewiring the
+  Programming tab's preview to run against unsaved edits, the way the Filler sandbox already
+  does.
+
+**Reusable finding for the next slice:** `SearchCommand` renders a plain `<input aria-label="Search">`
+— no `combobox`/listbox roles, no arrow-key nav. That is drift claim `:757` above, and it bit
+while writing these tests (a `getByRole("combobox")` query failed against the real markup).
+Query it by label until `:757` is fixed; fixing it is a shared-component change that also
+touches the ⌘K palette, so it wants its own PR.
 
 ### Deliberate, needs no door
 
