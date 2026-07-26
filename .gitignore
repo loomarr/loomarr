@@ -40,6 +40,7 @@ web/apps/web/dist/
 *.swp
 .playwright-mcp/
 .claude/settings.json
+.claude/scheduled_tasks.lock
 .filler-drop/
 .cmp-review/
 scratch-*.png

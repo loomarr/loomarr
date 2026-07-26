@@ -25,7 +25,7 @@ Loomarr's model is the *arr convention with one addition:
 - **Env still wins.** A GitOps pin is never overridden by something the wizard wrote; the wizard reports the key as pinned instead, the same contract the registry's `pinned` provenance already gives the Settings UI.
 - **The file holds bootstrap keys ONLY.** It is not a second settings store. An app-managed key there is a *category* error, not a typo — it would create two places to look for one answer — so it is rejected by name at both read and write, and the error points at Settings.
 - **Absent file = today's behaviour exactly.** This tier adds a lookup, never a requirement.
-- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `WEBHOOK_SECRET`) are **generated**, never demanded.
+- `bootstrap.json` lives in the data directory (beside the SQLite file), written atomically at `0600`: it decides where the database *is*, so a half-written one would leave the next boot unable to find its own data, and `DATABASE_URL` routinely carries a password. Secrets the app can mint itself (`SESSION_SECRET`, `API_TOKEN`, `PLAYOUT_TOKEN`) are **generated**, never demanded.
 
 **The per-channel tier (added with `programming-design.md`):** programming heuristics introduce settings that vary *per channel* — the ChannelPolicy (scope, audience ceiling, separation windows, ordering, seasonal mode). These are **not registry settings**: a policy instance is channel *data*, stored on the channel row, edited in proposal review / the channel editor, and never env-addressable. What the registry holds is their **global defaults**. Full precedence, per key:
 
@@ -90,7 +90,7 @@ type Setting struct {
 **Generation:** 256-bit random, base64url, created idempotently inside the first-migration transaction (alongside the instance id).
 
 **Display policy (Sonarr-model, differentiated by purpose):**
-- `API_TOKEN` and `WEBHOOK_SECRET` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
+- `API_TOKEN` and `PLAYOUT_TOKEN` are *operational values you must paste elsewhere* — viewable on demand by admins (eye toggle + copy button), exactly like Sonarr's API key.
 - `SESSION_SECRET` has nothing to paste anywhere — **never displayed**; the only affordance is Regenerate.
 - Integration secrets you *entered* (Emby token, Seerr key, TMDB, LLM key) — masked after save (`set · …a1b2` preview), replace-only. The API returns `{set: true, preview, provenance}` — never the value. (The §8.1 hosted `llm.api_key.<provider>` keys follow this exact rule: stored, previewed, never echoed by any GET.)
 
@@ -100,7 +100,7 @@ type Setting struct {
 | --- | --- | --- |
 | `SESSION_SECRET` | **All sessions revoked — including yours** | Confirm → regen → redirect to login. `API_TOKEN` remains as break-glass, so you cannot lock yourself out. |
 | `API_TOKEN` | Old token dead instantly | Show the new token once prominently; remind that machine clients/scripts must update. |
-| `WEBHOOK_SECRET` | Sonarr/Radarr webhooks start failing | Show the new `/hooks/arr?token=…` URL + "re-run the handshake"; the §13 handshake check goes red until a fresh `Test` is received. |
+| `PLAYOUT_TOKEN` | Every media-server tuner stops — the M3U and XMLTV URLs carry the old token | Show the new `/playout/tuner.m3u?token=…` URL; the media server's tuner entry has to be updated to match, or Live TV goes empty. |
 
 **Redaction is systemic, not per-callsite:** the settings service exposes a `Redactor` (the current set of secret values) wired into the `slog` handler — a secret value appearing in any log line is replaced before write. Secrets are excluded from `/v1/setup/status`, from validation error strings (validators must never echo the value), and from RFC 7807 bodies. There is a test that greps captured logs for a known secret and demands zero hits.
 
@@ -166,7 +166,7 @@ The rule that survives: **one function computes the set, and every consumer read
 - `PATCH /v1/settings` → per-key results `{saved | invalid(problem) | pinned}`; hot-applies on success. An empty value clears an optional key, **except on a secret, where it is `invalid`** (§9).
 - `DELETE /v1/settings/{key}` → the **explicit clear**: drops the stored override so the key reverts to env/default. This is the only way to unset a secret. `204` on success; `404` for an unknown key; `409` when the key is env-pinned (the environment wins — unset the variable to manage it in the app). Hot-applies like any write.
 - `POST /v1/setup/test` body `{check}` → run **one** named check (powers per-block Test buttons); `GET /v1/setup/status` runs all.
-- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `WEBHOOK_SECRET` would be to *rotate* it, which breaks every webhook already configured; the §13 handshake step needs to show the URL, not change it.
+- `GET /v1/settings/secrets/{name}` → reveal a **displayable** generated secret's value (`{value, displayable}`), the read half of §4's "viewable on demand by admins (eye toggle + copy button)". `SESSION_SECRET` is never displayable — it returns `displayable:false` with no value. Without this, the only way to see `PLAYOUT_TOKEN` would be to *rotate* it, which stops every media-server tuner already configured; the Live TV setup step needs to show the URL, not change it.
 - `POST /v1/settings/secrets/{name}/regenerate` → per §4 side-effects.
 - The §8.1 model-selection routes (`GET /v1/system/llm`, `POST /v1/system/llm/{select,test,pull}`) are the AI group's live-configuration surface — the same admin-gated, secret-masking discipline applies (keys never returned).
 - All admin; secrets masked everywhere per §4.

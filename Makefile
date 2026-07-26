@@ -73,6 +73,9 @@ openapi: ## export api/openapi.yaml from the running definitions
 openapi-verify: openapi ## regenerated spec must match committed (CI red on drift)
 	@git diff --exit-code api/openapi.yaml
 
+retired-verify: ## retired identifiers must not appear as live instructions (CI red on drift)
+	@./scripts/check-retired.sh
+
 ## ---- config docs (settings registry) ------------------------------------
 
 .PHONY: config-docs

@@ -55,14 +55,18 @@ already have.
 
 Nothing downloads without an admin approving a proposal.
 
-## Sonarr / Radarr webhooks
+## How Loomarr knows a download finished
 
-So Loomarr knows the moment a download lands.
+Nothing to configure. Loomarr **polls** — a scheduled library scan, plus a download-queue
+poll when you use the direct Sonarr/Radarr requester. A title moves *downloading* →
+*available* once it appears in your media-server library.
 
-1. Set `WEBHOOK_SECRET`.
-2. In each *arr app, add a webhook to
-   `http://<loomarr>:8080/hooks/arr?token=<WEBHOOK_SECRET>`.
-3. Click **Test** in the app — the wizard's Webhooks step turns green.
+Settings → Tasks shows each poll's last run and lets you **Run now** if you would rather
+not wait.
+
+> Earlier versions asked you to configure an inbound webhook in each *arr app. That was
+> retired in favour of polling — there is no endpoint to point Sonarr at, and no secret to
+> set. If you added one previously, you can delete it.
 
 ## Filler
 

@@ -52,6 +52,7 @@ make test-pg        # store conformance vs Postgres (testcontainers; requires Do
 make openapi        # export api/openapi.yaml from the running definitions
 make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
 make openapi-verify # regenerated spec must match committed (CI red on drift)
+make retired-verify # retired identifiers must not appear as live instructions (CI red on drift)
 make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
 make storybook      # Storybook dev workshop (the component gallery/contract)
@@ -84,6 +85,7 @@ Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) 
 - Don't invent API fields, endpoints, or enum values not present in the design doc / committed `api/openapi.yaml`.
 - Don't bypass the approval gate anywhere — including `make seed`, which must create acquisitions via an admin path, not by writing `available` rows for unapproved titles.
 - Don't edit applied migrations; add new ones (forward-only, §16).
+- **When a PR retires a capability, add its identifier to `scripts/check-retired.sh` in the same PR.** `docs/help/` ships inside the binary and is read as instructions: the deleted `/hooks/arr` webhook kept being documented as a setup step, telling operators to set a secret that was never minted, while `docs/help/troubleshooting.md` described the correct polling behaviour one file over. A prose rule would not have caught that; a grep catches it forever.
 - Don't hand-write FE request types; regenerate via orval.
 - Don't add config that isn't in §15; if a knob is needed, add it to §15 first.
 
