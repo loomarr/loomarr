@@ -73,6 +73,9 @@ openapi: ## export api/openapi.yaml from the running definitions
 openapi-verify: openapi ## regenerated spec must match committed (CI red on drift)
 	@git diff --exit-code api/openapi.yaml
 
+ci-lint: ## actionlint over .github/workflows — catches what YAML parsing cannot
+	@$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+
 retired-verify: ## retired identifiers must not appear as live instructions (CI red on drift)
 	@./scripts/check-retired.sh
 

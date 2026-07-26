@@ -109,6 +109,11 @@ jobs:
         run: make config-docs-verify
       - name: Retired identifiers are gone from prose
         run: make retired-verify
+      # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
+      # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
+      # cannot see. Verified this target catches exactly that.
+      - name: Workflows are valid
+        run: make ci-lint
 
   store-postgres:
     name: Store conformance (Postgres)
@@ -192,7 +197,7 @@ jobs:
     steps:
       - name: Every job that ran must have passed
         run: |
-          results='${{ join(needs.*.result, " ") }}'
+          results='${{ join(needs.*.result, ' ') }}'
           echo "job results: $results"
           for r in $results; do
             case "$r" in
