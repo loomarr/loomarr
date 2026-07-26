@@ -27,7 +27,12 @@ const CountTabs = ({ tabs, activeId, onSelect, label, className }: CountTabsProp
           role="tab"
           id={`tab-${t.id}`}
           aria-selected={active}
-          aria-controls={`panel-${t.id}`}
+          // ONLY on the active tab. Just one panel is mounted at a time, so pointing an
+          // inactive tab at `panel-<its-id>` references an element that does not exist —
+          // axe's `aria-valid-attr-value`, at serious impact. (Caught by CI's a11y sweep after
+          // a local `--update-snapshots` run reported green: updating snapshots is not
+          // verification.)
+          {...(active ? { "aria-controls": `panel-${t.id}` } : {})}
           // Only the active tab is in the tab sequence; ←/→ move between them, which is the
           // standard tablist pattern (and the same aria-driven model the ⌘K palette uses).
           tabIndex={active ? 0 : -1}

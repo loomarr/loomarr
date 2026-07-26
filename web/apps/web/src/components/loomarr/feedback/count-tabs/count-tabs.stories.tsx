@@ -18,7 +18,29 @@ const meta = {
       { id: "history", label: "History", count: 14 },
     ],
   },
-  decorators: [widthFrame(560)],
+  // The active tab sets `aria-controls="panel-<id>"`, so the story has to MOUNT that panel —
+  // otherwise the reference dangles and axe fails `aria-valid-attr-value` at serious impact. A
+  // tablist without its panel is also just an incomplete widget: this is the shape the Queue
+  // route actually renders, not scaffolding added to satisfy the linter.
+  decorators: [
+    (Story, ctx) => {
+      const active = (ctx.args as { activeId?: string }).activeId ?? "";
+      return (
+        <div>
+          <Story />
+          <div
+            id={`panel-${active}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${active}`}
+            className="p-4 text-muted-foreground text-sm"
+          >
+            Panel content
+          </div>
+        </div>
+      );
+    },
+    widthFrame(560),
+  ],
 } satisfies Meta<typeof CountTabs>;
 
 type Story = StoryObj<typeof meta>;

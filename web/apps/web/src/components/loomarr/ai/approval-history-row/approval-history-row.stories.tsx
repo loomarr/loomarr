@@ -3,9 +3,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ApprovalHistoryRow } from "./approval-history-row";
 
-// A FIXED timestamp, not `Date.now()` — the row renders a relative time ("2h ago"), and a
-// moving clock would make the visual baseline drift every run.
-const APPROVED_AT = "2026-07-26T10:00:00Z";
+// ⚠ RELATIVE TO NOW, not a fixed date. The row renders `formatRelative(approvedAt)`, so what
+// matters for a stable baseline is the DISTANCE from the current clock, not the timestamp
+// itself: a pinned "2026-07-26T10:00:00Z" renders "9h ago" today and "3d ago" next week, and the
+// snapshot rots on a calendar rather than on a code change.
+//
+// Two hours back always renders exactly "2h ago" (formatRelative buckets at hour granularity
+// between 1h and 24h), so the pixels are identical on every run.
+const APPROVED_AT = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
 const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
   ({
@@ -24,7 +29,18 @@ const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
 const meta = {
   title: "AI/ApprovalHistoryRow",
   component: ApprovalHistoryRow,
-  decorators: [widthFrame(600)],
+  // The row IS an `<li>` — its real parent is ApprovalHistory's `<ul>`. Mounting it bare makes
+  // axe fail `listitem` (serious): a list item outside a list is invalid markup, not a styling
+  // detail. The decorator supplies the context the component actually ships in, rather than
+  // changing the component to suit the gallery.
+  decorators: [
+    (Story) => (
+      <ul className="flex flex-col gap-2">
+        <Story />
+      </ul>
+    ),
+    widthFrame(600),
+  ],
 } satisfies Meta<typeof ApprovalHistoryRow>;
 
 type Story = StoryObj<typeof meta>;
