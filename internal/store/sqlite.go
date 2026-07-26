@@ -78,5 +78,5 @@ func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	return &sqlStore{db: db, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}, nil
+	return &sqlStore{db: db, dialect: DialectSQLite, ph: passthrough, claimSQL: sqliteClaimSQL, channelClaimSQL: sqliteChannelClaimSQL, jobClaimSQL: sqliteJobClaimSQL, scheduledJobClaimSQL: sqliteScheduledJobClaimSQL}, nil
 }

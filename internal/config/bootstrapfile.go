@@ -131,6 +131,52 @@ func WriteBootstrapFile(dir string, values map[string]string) error {
 	return nil
 }
 
+// ConventionalDataDir is the well-known data directory — the documented
+// `-v loomarr-data:/data` volume, and where the bootstrap file is WRITTEN.
+const ConventionalDataDir = "/data"
+
+// BootstrapDirsFor returns the directories to search for the bootstrap file, in
+// precedence order (first hit wins).
+//
+// ⚠ This exists because the file's location was scheme-DEPENDENT, and a database
+// migration changes the scheme. `DataDirFor` returns the SQLite file's own directory
+// for `sqlite://` but the conventional /data for `postgres://` — so migrating
+// SQLite→Postgres moved where the next boot LOOKS for the file. With the database
+// anywhere other than /data, the file recording the switch was written beside the
+// SQLite database and then never read again: the app would boot back onto SQLite,
+// having apparently succeeded at migrating. The switch would silently undo itself.
+//
+// Co-location with the data volume was always the actual intent (that is what makes a
+// backup of /data carry the bootstrap answer too); the scheme-dependence was incidental
+// to expressing it. So the READ side searches both — the database's own directory first,
+// because an operator who pinned a SQLite path meant that one — and the WRITE side
+// (`DataDirFor`) is unchanged. An install whose file sits beside a non-default SQLite
+// path keeps working exactly as before; nothing has to move.
+func BootstrapDirsFor(databaseURL string) []string {
+	dir := DataDirFor(databaseURL)
+	if dir == ConventionalDataDir {
+		return []string{ConventionalDataDir}
+	}
+	return []string{dir, ConventionalDataDir}
+}
+
+// loadBootstrapSearch reads the first bootstrap file found across dirs. A malformed file
+// still fails the boot (LoadBootstrapFile's contract) rather than falling through to the
+// next directory — a file that exists and is wrong is an operator error to surface, not
+// a reason to quietly use a different one.
+func loadBootstrapSearch(dirs []string) (map[string]string, error) {
+	for _, dir := range dirs {
+		values, err := LoadBootstrapFile(dir)
+		if err != nil {
+			return nil, err
+		}
+		if values != nil {
+			return values, nil
+		}
+	}
+	return nil, nil
+}
+
 // PinnedByEnv reports whether an env var is set in the process environment. The wizard
 // asks before offering to write a key: an env pin WINS over the file, so offering an
 // editable field for a pinned key would promise something the next boot would silently
