@@ -1,7 +1,7 @@
 import { settingsApi, setupApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ConnectionBlock, ErrorState, SettingsFields, SettingsSaveBar } from "@/components/loomarr";
+import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
@@ -177,12 +177,9 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
         {patch.error != null && <ErrorState error={patch.error} />}
       </div>
 
-      <SettingsSaveBar
-        dirtyCount={Object.keys(edits).length}
-        saving={patch.isPending}
-        onDiscard={resetEdits}
-        onSave={() => patch.mutate({ data: { edits } })}
-      />
+      {/* The save bar lives in the LAYOUT now (V10), not here: All settings is a tab that is
+          not a SettingsPage, and an edit staged there had no Save button on screen. One bar
+          above the outlet also means two pages can never render two bars. */}
     </div>
   );
 };
