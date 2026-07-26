@@ -128,4 +128,93 @@ describe("ChannelPolicyFields", () => {
       }),
     );
   });
+
+  // --- the four doors a surface audit found orphaned (§12 surface map) ---
+  //
+  // Each of these fields was PATCHable and unreachable: the backend read them, the relaxation
+  // ladder narrated them, and no control could set them. A test per door, because a control
+  // that renders but does not commit is the same defect wearing a nicer coat.
+
+  it("commits runtimeMax in SECONDS while showing minutes", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
+
+    await userEvent.type(screen.getByLabelText("Longest programme"), "90");
+    await userEvent.tab();
+
+    // 90 in the box, 5400 on the wire — nobody thinks about programme length in seconds.
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ scope: { runtimeMax: 5400 } }));
+  });
+
+  // Clearing must send 0, not undefined: `runtimeMax` is omitempty, so undefined would be
+  // dropped from the JSON and the old limit would survive the merge — the field would appear
+  // to clear and silently keep filtering.
+  it("clears runtimeMax to 0 rather than dropping the field", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={{ scope: { runtimeMax: 5400 } }} onChange={onChange} />);
+
+    await userEvent.clear(screen.getByLabelText("Longest programme"));
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ scope: { runtimeMax: 0 } }));
+  });
+
+  it("commits a series gap, preserving the no-repeat windows beside it", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
+
+    await userEvent.type(screen.getByLabelText("Series gap"), "2h");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        separation: expect.objectContaining({
+          seriesMinGap: "2h",
+          movieNoRepeat: "168h",
+          episodeNoRepeat: "24h",
+        }),
+      }),
+    );
+  });
+
+  it("commits a block cap as a number", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
+
+    await userEvent.type(screen.getByLabelText("Max in a row"), "3");
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ separation: expect.objectContaining({ blockMax: 3 }) }),
+    );
+  });
+
+  // The channel's strategy is what Ordering's "Inherit channel default" refers to. Rendered
+  // only when the caller supplies it, so the standalone policy form (no channel in scope) is
+  // unchanged rather than showing a control it cannot save.
+  it("hides the playback control when no channel strategy is supplied", () => {
+    render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
+    expect(screen.queryByLabelText("Playback")).not.toBeInTheDocument();
+  });
+
+  it("reports a strategy change through its own callback, not onChange", async () => {
+    const onChange = vi.fn();
+    const onStrategyChange = vi.fn();
+    render(
+      <ChannelPolicyFields
+        policy={EMPTY}
+        onChange={onChange}
+        strategy="sequential"
+        onStrategyChange={onStrategyChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText("Playback"));
+    await userEvent.click(screen.getByRole("option", { name: "Shuffled" }));
+
+    // Separate callbacks because strategy is a CHANNEL field: it takes its own PATCH, and
+    // folding it into the policy object would send it where the server does not read it.
+    expect(onStrategyChange).toHaveBeenCalledWith("shuffle");
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

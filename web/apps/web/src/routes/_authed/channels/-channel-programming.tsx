@@ -28,6 +28,10 @@ interface ChannelProgrammingProps {
   lineup: LineupEntryDTO[];
   policy: ChannelPolicy;
   onPolicyChange: (next: ChannelPolicy) => void;
+  // The channel's playback strategy. Not part of ChannelPolicy and saved by its own PATCH,
+  // but edited here because Ordering's "inherit channel default" refers to it.
+  strategy?: string;
+  onStrategyChange?: (next: string) => void;
   onRefined: () => void;
 }
 
@@ -49,6 +53,8 @@ const ChannelProgramming = ({
   lineup,
   policy,
   onPolicyChange,
+  strategy,
+  onStrategyChange,
   onRefined,
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
@@ -84,7 +90,13 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" />
+        <ChannelPolicyFields
+          policy={policy}
+          onChange={onPolicyChange}
+          show="ordering"
+          strategy={strategy}
+          onStrategyChange={onStrategyChange}
+        />
       </Block>
 
       <Block

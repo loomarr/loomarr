@@ -715,7 +715,11 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   **Two commit models, each cued:** most edits are **seamless** — no "rebuild now" button; an edit auto-reconciles in the background and the page updates live (the `channel` SSE frame). The two **review-before-apply** surfaces (AI refine's diff, the filler sandbox) say so explicitly. A **surface map** (below) is the contract that every channel capability has exactly one home and audience.
 
-  **Channel surface map** (the guardrail against capability-without-UI — kept complete; a PR adding a channel capability updates this row):
+  **Channel surface map** (the guardrail against capability-without-UI — a PR adding a channel capability updates this table):
+
+  ⚠ **A row may say a capability has no door, and several do.** The table was previously written as though every row had a home, which made it worse than absent: `autoCurate`'s row asserted "Settings → lifecycle", a surface that was never built, so anyone checking "is auto-curate reachable?" found a row saying yes. A surface audit (2026-07-26) found **nine orphaned capabilities and three factually wrong rows**. The map is now allowed to record `none — ORPHANED`, because a guardrail that can only describe successes cannot report a failure.
+
+  `ORPHANED` means: no UI path, and no decision that there should not be one. It is a defect awaiting a phase, not a documented API-only choice — those say **API-only by design** and give the reason.
 
   | Capability | API field / route | Home (surface) | Audience |
   | --- | --- | --- | --- |
@@ -725,17 +729,25 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | cross-channel schedule (time grid) | `GET /v1/guide?from=&to=` | **Guide** (top-level, not a channel surface) | viewer |
   | relaxation ladder, drift, Tunarr link | `policy.applied`, status | Overview → diagnostics | admin |
   | lineup (add/remove/reorder, season windows) | `PATCH` `lineup` | Programming → What plays | admin |
-  | scope: era, genres, collections, runtimeMax | `policy.scope.*` | Programming → What plays | admin (some API-only v1) |
-  | audience ceiling + unrated (safety) | `policy.audience.*` | Programming → What plays | admin |
-  | ordering; separation (gap/block) | `policy.ordering`, `policy.separation.*` | Programming → How it's ordered | admin |
+  | scope: era, runtime cap | `policy.scope.era`, `.runtimeMax` | Programming → What plays | admin |
+  | scope: genres, collections, series | `policy.scope.genres`, `.collections`, `.series` | **none — ORPHANED**; `genres` is settable only inside a curation rule, the other two nowhere | admin |
+  | audience ceiling (safety) | `policy.audience.ceiling` | Programming → What plays | admin |
+  | unrated allowance | `policy.audience.unrated` | **none — ORPHANED** | admin |
+  | playback strategy | `PATCH` `strategy` | Programming → How it's ordered | admin |
+  | ordering; separation (no-repeat, series gap, block cap) | `policy.ordering`, `policy.separation.*` | Programming → How it's ordered | admin |
   | wall-clock curation rules | `policy.rules` | Programming → When it changes | admin |
-  | rolling-window horizon | `policy.window` | Programming → When it changes | admin |
+  | rolling-window horizon | `policy.window` | **none — ORPHANED** at channel level; a curation rule sets its own `window` | admin |
   | AI refine (diff → apply) | `POST …/refine` | Programming → header action | admin |
   | cycle preview (`?at=`) | `GET …/cycle` | Programming → verification pane | any authenticated |
   | per-channel filler + sandbox | `policy.filler`, `POST …/pods/preview` | Filler | admin |
-  | auto-curate opt-in (+ overrides) | `policy.autoCurate` | Settings → lifecycle | admin |
-  | pause / resume / delete | `PATCH` `status`, `DELETE` | Settings → danger zone | admin |
-  | origination (describe / hand-made) | `POST /v1/channels`, approve | Channels **list** | admin |
+  | auto-curate opt-in (+ overrides) | `policy.autoCurate` | **none — ORPHANED**. ⚠ The opt-in IS the object's presence, so there is no toggle to hide — nothing can construct it. Backend complete and live-verified. | admin |
+  | pause / resume / delete | `PATCH` `status`, `DELETE` | Danger zone | admin |
+  | seasonal mode / holidays / off-season | `policy.seasonal.*` | **none — ORPHANED**; LLM-set only, visible as a refine diff chip | admin |
+  | playout backend (per channel) | `policy.playout.backend` | **none — ORPHANED**; §9.1 says "switch one from its own page" | admin |
+  | draft programming preview | `POST …/{id}/programming/preview` | **none — ORPHANED**; the UI previews only saved state | admin |
+  | forced reconcile | `POST …/{id}/reconcile` | **API-only by design** — §9: every edit auto-reconciles, there is no manual rebuild | admin |
+  | origination (describe → approve) | approve (`POST /v1/suggestions/{id}/approve`) | Channels **list** | admin |
+  | hand-made channel | `POST /v1/channels` | **none — ORPHANED**; the list has one door and says so. `strategy` is a REQUIRED field of this body, so it is unsettable at creation too. | admin |
 
 - **Guide (time grid)** — the cross-channel schedule: every channel a row, time the shared horizontal axis, each programme a block whose width IS its duration. Answers the question the per-channel Upcoming strip cannot — *"what is on across all my channels right now?"* — and is the product's most recognisable surface, because it is what a TV guide has always looked like.
 
