@@ -873,6 +873,25 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 
+### 14.1 Backend structure — the rules, and what they are not
+
+Recorded after a full sweep of `internal/`, because two of the rules below exist to stop a *plausible-sounding* refactor rather than to prescribe one.
+
+**What holds, and is worth keeping:**
+
+- **The dependency direction is one-way.** No domain package imports `internal/api`; `internal/app` is the only composition root. Verified, not assumed — a domain package that needs an API type is a sign the type belongs in the domain.
+- **`internal/testkit` never reaches production.** `go list -deps ./cmd/loomarr` must not contain it. Test doubles compiled into the shipped binary is a seam that only ever gets wider.
+- **Every package carries a package doc.** They are the orientation for a subsystem whose invariants are not obvious from its types — `internal/playout` (added in this sweep) is the clearest case: the ffconcat mechanism, the wall-clock rule, and the drop-the-viewer-not-the-message inversion are all invisible from the function signatures.
+- **`panic` is for boot-time programmer error only** — a duplicate settings key, an undeclared job name. Never for a runtime condition an operator could cause.
+- **A file that has accreted past ~600 lines gets split along its seams, not arbitrarily.** `api/channels.go` was 1082 lines / 15 handlers / 25 DTOs and became four files: CRUD, wire shape + mapping, the now/next strip, and the preview surfaces. The tell that the split was real: `podToPoolDTO` and friends were already shared with `programming.go` and `guide.go`, so they had never been channel-lifecycle code — they were just living in the channel-lifecycle file.
+
+**Two things that look like problems and are not.** Both were flagged from metrics during the sweep and both survived contact with the code:
+
+- **`BuildHandler` is ~630 lines and stays that way.** Decomposing it into methods on a shared builder would convert ~70 locals into fields on a mutable carrier — *widening* their scope, and trading compile-time use-before-assignment errors for runtime nils. The sections are sequential and genuinely interdependent (three deliberate back-patches). A composition root may be long; it may not be unnavigable, so it carries a section map instead. Its heavy `if st != nil` nesting is likewise deliberate: a container started without `DATABASE_URL` must answer `/readyz` with the reason rather than crash-loop past the probe that would explain it.
+- **`api.Server`'s 33 fields are not a service locator.** Every field is a narrow, purpose-named interface (`LoginService`, `PodPreviewer`, `ChannelBinder`) with a doc comment stating what it wires and what `nil` means, and the nil-means-501 convention is uniform — 33 optional capabilities, 33 `errNotImplemented` guards. That is what lets an unconfigured install boot and explain itself. Grouping them into sub-structs would add indirection at every call site and bury the one thing the comments make plain.
+
+**The general rule the two exceptions illustrate:** a line count or a field count is a prompt to go and read something, never a finding on its own. Both of the above were "obvious" refactors until the code was read, and both would have made the system worse.
+
 ---
 
 ## 15. Configuration — layered settings
