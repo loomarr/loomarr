@@ -137,7 +137,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | --- | --- | --- | --- |
 | **V13b** | `D-J` — the guide endpoint: `GET /v1/guide?from=&to=`, multi-channel, **gaps preserved**, `kind` discriminator, per-airing pod composition, program metadata, timezone + retention | V6 | A window spanning past **and** future returns per-channel timelines; a pending slot and a filler pod are **distinguishable** (today `gap bool` cannot); `Upcoming`'s gap-filtering not reintroduced |
 | **V14** | IA rename + Guide time-grid (**bundled**, D-D) | V13b | §12 updated **first**; `/guide` + `/people`; **two distinct navs** (admin 7; member 4 incl. `Request a channel` + `My requests`), not one filtered list; grid renders duration-scaled programs, pods, pending slots, now-line, zoom; baselines regenerated |
-| **V15** | Help rebuild — two-rail reader, full-text search (closes **H1**, **H2**, **H3**, **H4**, **H5**, **H6**) | V14 | `grep -ri "hooks/arr\|WEBHOOK_SECRET" docs/` returns **nothing** (H1, H2); search hits body text, not just titles (H3); channel-editing docs exist (H4); measure bounded by the two-rail layout (H5); links use `tune`, not the AI `suggest` colour (H6) |
+| **V15** | Help rebuild — two-rail reader, full-text search (closes ~~**H1**, **H2**~~, **H3**, **H4**, **H5**, **H6**) | V14 | ⚠ **H1/H2 are already closed, and the gate as written can never pass** (corrected 2026-07-26): `grep -ri "hooks/arr\|WEBHOOK_SECRET" docs/` returns 3 hits — `design.md` and the two v2 plan docs — but all three describe the retirement *historically*, which is the point of writing it down. The gate must scope to the **shipped** surface: `grep -ri "hooks/arr\|WEBHOOK_SECRET" docs/help/` returns nothing (verified), and `make retired-verify` is the standing guard (CLAUDE.md's retired-identifier rule, which exists *because* this exact webhook kept being documented as a live setup step). Remaining for this phase: search hits body text, not just titles (H3); channel-editing docs exist (H4); measure bounded by the two-rail layout (H5); links use `tune`, not the AI `suggest` colour (H6) |
 | **V18** | Mobile responsive (**S11**) | V9, V14 | AppShell collapses; mobile v2 screens render at 375px; desktop-only actions render as disabled affordances, not dead ends |
 
 ### Approvals & requests
@@ -174,13 +174,28 @@ Wizard → V20/V21/V22; Mobile → V18.
 
 ### Not scheduled — need a design decision first
 
-`C5` (strategy/group have no UI, while `policy.ordering` offers "Inherit channel default" — inheriting
-from an invisible field), `C6` (`autoCurate` live with zero frontend refs), `C8` (no hand-made channel
-create surface — possibly working as designed per §12's origination-vs-evolution model).
+**Two of the three are now closed** (2026-07-26), not by this plan but by the surface audit
+(`surface-audit-2026-07-26.md`, PRs #88/#89) — which reached the same capabilities from the
+"what has no door?" direction. Re-verify before trusting any row here; that is what found these.
 
-**The v2 mock shows no UI for any of them**, so there is nothing to port. Each violates §12's
-surface-map rule; the honest options are *add the UI*, *remove the capability*, or *document it as
-API-only*. Decide, don't defer indefinitely.
+- ~~`C5` — strategy/group have no UI, while `policy.ordering` offers "Inherit channel default",
+  inheriting from an invisible field.~~ **CLOSED.** `strategy` now has a control beside Ordering
+  (`channel-policy-fields.tsx`), which is exactly the value that phrase refers to. `group` remains
+  editable via the identity fields.
+- ~~`C6` — `autoCurate` live with zero frontend refs.~~ **CLOSED.** Built in Programming → When it
+  changes. Note *why* it stayed orphaned so long: **the opt-in IS the object's presence**
+  (`*AutoCurate`, nil = off), so there is no boolean for a generic field editor to bind to —
+  nothing could construct it. §12 also claimed a home ("Settings → lifecycle") for a tab that was
+  never built, so the reachability question answered *yes*.
+- `C8` — **still open**: no hand-made channel create surface. Possibly working as designed per
+  §12's origination-vs-evolution model, which says the list has one door (describe → approve) and
+  says so. If kept, note the consequence recorded in the §12 map: `strategy` is a **required**
+  field of `POST /v1/channels`, so it is unsettable at creation even now that it is editable
+  afterwards.
+
+**The v2 mock shows no UI for C8**, so there is nothing to port. It violates §12's surface-map
+rule; the honest options are *add the UI*, *remove the capability*, or *document it as API-only*.
+Decide, don't defer indefinitely.
 
 ---
 

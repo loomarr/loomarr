@@ -1,6 +1,7 @@
-import { suggestionsApi } from "@loomarr/api";
+import { type ApprovalEditDTO, suggestionsApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { ApprovalQueueItem, EmptyState, ErrorState } from "@/components/loomarr";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
@@ -31,6 +32,12 @@ const ApprovalQueue = () => {
     },
   });
   const deny = suggestionsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
+
+  // Pending edits, keyed by proposal id — several rows can be open at once and each carries its
+  // own delta. A row with no entry (or an `undefined` entry) is unmodified.
+  const [edits, setEdits] = useState<Record<string, ApprovalEditDTO | undefined>>({});
+  const setEdit = (id: string, edit: ApprovalEditDTO | undefined) =>
+    setEdits((prev) => ({ ...prev, [id]: edit }));
 
   if (proposals.error) {
     return <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />;
@@ -63,7 +70,13 @@ const ApprovalQueue = () => {
               lineup={p.proposal.lineup ?? []}
               acquisitionItems={p.proposal.acquisitions ?? []}
               status={busy ? "approving" : "pending"}
-              onApprove={() => approve.mutate({ id: p.id, data: {} })}
+              onEdit={(edit) => setEdit(p.id, edit)}
+              // The edit rides the SAME approve call — there is no separate "save edit" step,
+              // because the edit is a parameter to the one approval gate, not a mutation of the
+              // proposal (§7 / D-K). An unmodified row sends `{}`, exactly as it always has:
+              // the handler maps a body with no drops, adds or note to a nil edit, so approving
+              // untouched stays byte-identical to the pre-V25 behaviour.
+              onApprove={() => approve.mutate({ id: p.id, data: edits[p.id] ?? {} })}
               onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
             />
           </li>

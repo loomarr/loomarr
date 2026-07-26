@@ -3,6 +3,7 @@ import { Check, ChevronDown, Loader2, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Badge, Button, Card, Input } from "@/components/ui";
 import { cn } from "@/lib";
+import { ProposalEdit } from "../proposal-edit";
 import type { ApprovalQueueItemProps } from "./approval-queue-item.type";
 
 // seasonWindowLabel renders a series' airing season window (§8) as a human chip so a
@@ -45,6 +46,7 @@ const ApprovalQueueItem = ({
   denyReason,
   lineup,
   acquisitionItems,
+  onEdit,
   onApprove,
   onDeny,
   className,
@@ -139,18 +141,30 @@ const ApprovalQueueItem = ({
             aria-expanded={open}
           >
             <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} aria-hidden />
-            {open ? "Hide picks" : "Show picks"}
+            {open ? "Hide picks" : onEdit ? "Review & edit picks" : "Show picks"}
           </button>
-          {open && (
-            <ul className="mt-2 flex flex-col gap-1.5">
-              {lineup?.map((it) => (
-                <PickRow key={`lib-${it.name}`} item={it} kind="lineup" />
-              ))}
-              {acquisitionItems?.map((it) => (
-                <PickRow key={`acq-${it.name}`} item={it} kind="acquire" />
-              ))}
-            </ul>
-          )}
+          {open &&
+            // With an edit handler the disclosure IS the edit surface (V25b) — the same list,
+            // with drop/add/note. Without one it stays read-only, so every other caller and the
+            // member-facing views are unchanged.
+            (onEdit ? (
+              <ProposalEdit
+                className="mt-2"
+                lineup={lineup ?? []}
+                acquisitions={acquisitionItems ?? []}
+                disabled={status === "approving"}
+                onChange={onEdit}
+              />
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {lineup?.map((it) => (
+                  <PickRow key={`lib-${it.name}`} item={it} kind="lineup" />
+                ))}
+                {acquisitionItems?.map((it) => (
+                  <PickRow key={`acq-${it.name}`} item={it} kind="acquire" />
+                ))}
+              </ul>
+            ))}
         </div>
       )}
     </Card>
