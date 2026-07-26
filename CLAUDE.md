@@ -53,6 +53,7 @@ make openapi        # export api/openapi.yaml from the running definitions
 make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
 make openapi-verify # regenerated spec must match committed (CI red on drift)
 make retired-verify # retired identifiers must not appear as live instructions (CI red on drift)
+make ci-lint        # actionlint over .github/workflows (a workflow can be valid YAML and still be rejected)
 make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
 make storybook      # Storybook dev workshop (the component gallery/contract)
@@ -66,6 +67,24 @@ make seed           # populate a dev store (fake users/titles/channels/clips via
 ```
 
 CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a command doesn't exist yet for the active phase, creating it is part of the phase.
+
+**CI runs jobs only when their inputs changed.** A `changes` job diffs against the merge base
+and each job gates on it: Go/Postgres on `**/*.go`, `go.mod|sum`, `internal/store/migrations/`,
+**`docs/help/`** (embedded in the binary — `retired-verify` reads it), `Makefile`, and the
+workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow. `Makefile` and the
+workflow deliberately gate BOTH — they define how every job runs.
+
+Two rules if you touch this:
+
+- **`ci-ok` is the single required check**, always runs, and inspects `needs.*.result`
+  explicitly. A skipped job does not fail an aggregate by default — and neither does a FAILED
+  one under `if: always()` — so a naive shim reports green over a red job.
+- **Never use a workflow-level `paths:`.** A run that does not trigger reports no checks at
+  all, so a required check sits "expected" forever and the PR cannot merge. Filter per job.
+
+The filter fails SAFE: no usable merge base (first push, force-push, new branch) runs
+everything. Adding a new build input means adding it to the filter in the same PR — the same
+class of hand-maintained list as `scripts/check-retired.sh`.
 
 ## Environment prerequisites
 

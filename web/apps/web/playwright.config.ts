@@ -1,3 +1,4 @@
+import { cpus } from "node:os";
 import { defineConfig } from "@playwright/test";
 import { DESKTOP, DETERMINISM, MOBILE } from "./playwright.shared";
 
@@ -15,6 +16,15 @@ export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/visual",
   fullyParallel: true,
+  // Playwright defaults to HALF the available cores, which on GitHub's 4-core runner meant 2
+  // workers for 504 tests (~5.1 min of a 6.8 min job). The suite is hermetic — a static
+  // storybook server, stubbed network, no shared state — so nothing contends and the full
+  // core count is safe.
+  //
+  // Derived from cpus() rather than hardcoded: the runner ALSO reports 4 today, and pinning a
+  // literal would silently cap a larger runner later while looking deliberate. Left undefined
+  // outside CI so an interactive run keeps half the machine for the person using it.
+  ...(process.env.CI ? { workers: cpus().length } : {}),
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
