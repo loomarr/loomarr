@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
   CalendarClock,
   Clapperboard,
+  LayoutDashboard,
   LayoutGrid,
   ListChecks,
   LogOut,
@@ -27,6 +28,11 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // for them: `/suggest` is "Request a channel", `/queue` is "My requests". A filter cannot
 // rename, so the shape of the old code made the right IA inexpressible.
 const ADMIN_NAV: NavItem[] = [
+  // Dashboard leads the admin rail, matching the v2 mock. It was deferred while it did not
+  // exist ("a nav entry to a placeholder is worse than no entry", §12) — V16 built the
+  // surface, so the entry is now a door rather than a promise. Members do not get it: its
+  // content is machine state, which §11 keeps to admins.
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/channels", label: "Channels", icon: Tv },
   // Channels and Guide answer adjacent questions — "what do I have" and "what is on". The
   // v2 IA folds the first into the second; that is NOT done, because origination ("Add a

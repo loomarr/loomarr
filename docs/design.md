@@ -562,6 +562,15 @@ playout. It is described in §11 alongside the credential paths rather than left
    not Loomarr."* For internal-playout channels a restart **does** interrupt playback, and any
    restart UI must say so rather than inherit the old reassurance.
 
+   ⚠ **The honest copy is PER-BACKEND, not a flat reversal** (recorded during V16, when the
+   telemetry made the mechanism concrete). ffmpeg is spawned as a child of Loomarr with
+   `Setpgid` and torn down by process group, so a restart kills every stream Loomarr is
+   encoding — while Tunarr-backed channels genuinely do keep playing, exactly as the old copy
+   said. Since `policy.playout.backend` is per channel, an install can have both at once. The
+   restart dialog (V13) therefore needs the live session count, which `GET /v1/playout/sessions`
+   now provides: *"3 channels Loomarr is streaming will drop for a few seconds; Tunarr-backed
+   channels keep playing."*
+
 ### What does not change
 
 The scheduler, the lineup, pod assembly, the relaxation ladder, determinism and the approval gate are
@@ -752,6 +761,12 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | origination (describe → approve) | approve (`POST /v1/suggestions/{id}/approve`) | Channels **list**; the **approval queue** for the edit-before-approve path (drop/add/note ride the same call) | admin |
   | hand-made channel | `POST /v1/channels` | **none — ORPHANED**; the list has one door and says so. `strategy` is a REQUIRED field of this body, so it is unsettable at creation too. | admin |
 
+- **Dashboard** (admin, route `/dashboard`, V16) — *"is everything alright?"* Four stat cards (on air · needs you · acquiring · filler), each a link to the surface it summarizes, over a **Transcoding** panel showing live internal-playout telemetry: one row per encoding channel with its viewer count, resolved encoder (hardware vs software — the difference between four concurrent streams and one), realtime speed and buffer-ahead, plus an `active / capacity` load line against `playout.max_channels`.
+
+  Data comes from `GET /v1/playout/sessions` (admin-only), with the **`playout` SSE frame as the latency path**: the frame fires when a channel starts or stops, and the dashboard re-reads the endpoint. Deliberately not per progress sample — those arrive about once a second per stream, and republishing each would push several frames a second at every open browser for numbers that move by fractions. This is §8's standing rule applied: SSE is a latency optimization, the GET is truth on reconnect.
+
+  **`running: false` is not the same as "nothing playing".** On a Tunarr-backed install the session list is legitimately empty, and a panel that cannot tell those apart renders a blank table that reads as every channel having just died — so the flag is explicit on the wire. A **member** who reaches the route sees a short explanation that this is machine state kept to admins, never a 403 wall.
+
 - **Guide (time grid)** — the cross-channel schedule: every channel a row, time the shared horizontal axis, each programme a block whose width IS its duration. Answers the question the per-channel Upcoming strip cannot — *"what is on across all my channels right now?"* — and is the product's most recognisable surface, because it is what a TV guide has always looked like.
 
   Reads `GET /v1/guide?from=&to=` (§7), which returns per-channel timelines over a window with an explicit `kind` per block. **The `kind` discriminator is what makes the grid honest**: a commercial pod, a programme, and a still-acquiring slot are three different things, and the earlier `gap bool` could represent only "not a programme" — so a break and a pending acquisition rendered identically. Blocks are drawn:
@@ -780,12 +795,14 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
 | | Items |
 | --- | --- |
-| **admin** | Channels · Guide · Queue · Suggest · Filler · People · Settings · Help |
+| **admin** | **Dashboard** · Channels · Guide · Queue · Suggest · Filler · People · Settings · Help |
 | **member** | Guide · Request a channel · My requests · Help |
 
 The member's `Request a channel` and `My requests` are the same suggestion and queue surfaces the admin sees, named for what a member is actually doing with them.
 
-**Deferred from the v2 IA, deliberately:** `Dashboard` (it belongs to the dashboard phase and does not exist yet — a nav entry to a placeholder is worse than no entry), and folding `Channels` into `Guide` (see the ⚠ above: the grid has no origination affordance yet). Both are additive later; neither blocks the rename.
+**`Dashboard` leads the admin nav (V16),** matching the v2 mock. It was deferred on the grounds that "a nav entry to a placeholder is worse than no entry" — V16 removes that objection by building the surface, so the entry is now appropriate rather than aspirational. **Members do not get it**: its content is machine state (encoder families, realtime speed, how close the box is to its channel ceiling), which §11 keeps to admins.
+
+**Still deferred from the v2 IA, deliberately:** folding `Channels` into `Guide` (see the ⚠ above: the grid has no origination affordance yet), and dropping `Suggest` from the admin nav — the mock omits both, but `Suggest` is §12's origination path and removing it needs a decided home for admin origination first. Additive later; neither blocks anything shipped.
 
 ⚠ **The admin row above is the SHIPPED nav, and it is not what the v2 mock shows.** Read
 `design/loomarr-prototype-desktop-v2.dc.html` (`navDefs`) before touching the nav — the mock's

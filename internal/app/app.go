@@ -345,6 +345,21 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			log,
 		)
 		playoutRes.activeChannels = playoutMgr.ActiveCount
+		// A channel starting or stopping is a STRUCTURAL change the dashboard should see
+		// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET
+		// /v1/playout/sessions is truth). Deliberately NOT fired per ffmpeg progress sample —
+		// those arrive ~1/second per stream, and republishing each would push a handful of
+		// frames per second at every open browser for numbers that move by fractions.
+		//
+		// The payload is the CHANNEL COUNT, not the full snapshot: this layer holds the bus
+		// but not the API's telemetry shape, and a frame that says "something changed" is
+		// enough to make the dashboard re-read the endpoint that owns the shape.
+		playoutMgr.OnChange(func() {
+			eventBus.Publish(events.Event{
+				Type:    "playout",
+				Payload: map[string]int{"active": playoutMgr.ActiveCount()},
+			})
+		})
 		playoutSessions = playoutMgr
 		playoutResolverSvc = playoutRes
 		playoutGuideSvc = playoutRes
@@ -723,8 +738,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
 		PlayoutGuide:  playoutGuideSvc,
 		PlayoutSecret: playoutSecret,
-		PlayoutEncoder: func(ctx context.Context, args []string) (*playout.Process, error) {
-			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, nil)
+		PlayoutEncoder: func(
+			ctx context.Context, args []string, onProgress func(playout.Progress),
+		) (*playout.Process, error) {
+			// `onProgress` was nil here since the supervisor was written, so ffmpeg's parsed
+			// progress samples were discarded every time. Passing it through is what makes the
+			// dashboard's encoder speed measured rather than invented (V16).
+			return playout.Start(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress)
 		},
 	}), nil
 }

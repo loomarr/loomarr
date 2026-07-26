@@ -45,7 +45,12 @@ type PlayoutResolver interface {
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
 // tested without executing a binary; the composition root supplies playout.Start.
-type PlayoutEncoder func(ctx context.Context, args []string) (*playout.Process, error)
+//
+// `onProgress` carries ffmpeg's structured progress back (V16 telemetry). It was always
+// available — `playout.Start` has taken this callback since the process supervisor was written
+// — and every caller passed nil, so each sample was parsed and discarded. Threading it through
+// here is what puts real encoder speed on the dashboard instead of a plausible-looking constant.
+type PlayoutEncoder func(ctx context.Context, args []string, onProgress func(playout.Progress)) (*playout.Process, error)
 
 // programHandler streams ONE program as finite MPEG-TS, then exits.
 //
@@ -92,12 +97,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	if !airing.Playable() || streamURL == "" {
 		args := playout.OfflineCardArgs(profile, playout.FindFont(),
 			"Nothing scheduled", channelID, offlineCardDuration)
-		s.streamChild(w, r, channelID, "offline card", args)
+		s.streamChild(w, r, channelID, "offline card", args, profile.Encoder)
 		return
 	}
 
 	args := playout.ProgramArgs(profile, streamURL, airing.Offset, airing.Remaining)
-	s.streamChild(w, r, channelID, airing.Title, args)
+	s.streamChild(w, r, channelID, airing.Title, args, profile.Encoder)
 }
 
 // offlineCardDuration is how long one offline-card request lasts before the demuxer re-asks.
@@ -113,7 +118,9 @@ const offlineCardDuration = 30 * time.Second
 // N viewers; this is the opposite — one private child per demuxer request, whose whole job is to
 // END so the parent advances. Routing it through the session map would collide on the channel key
 // and, worse, the grace-period teardown would keep a finished program's encoder alive.
-func (s *Server) streamChild(w http.ResponseWriter, r *http.Request, channelID, what string, args []string) {
+func (s *Server) streamChild(
+	w http.ResponseWriter, r *http.Request, channelID, what string, args []string, enc playout.Encoder,
+) {
 	// The child dies with the request. If the parent ffmpeg goes away — the channel was stopped,
 	// the last viewer left, the process was killed — this context cancels and takes the encoder
 	// with it. Without that binding a child outlives its parent and becomes an orphan nobody
@@ -121,7 +128,16 @@ func (s *Server) streamChild(w http.ResponseWriter, r *http.Request, channelID, 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	proc, err := s.playoutEncoder(ctx, args)
+	// Progress from THIS child is the channel's real encoder telemetry (V16). Reported to the
+	// session by channel id, because the child is per-program and short-lived while the
+	// dashboard asks about the channel. A report for a channel with no live session is dropped
+	// by the manager — the child is bound to its request and can briefly outlive a teardown.
+	onProgress := func(p playout.Progress) {
+		if s.playoutSessions != nil {
+			s.playoutSessions.ReportProgram(channelID, enc, p)
+		}
+	}
+	proc, err := s.playoutEncoder(ctx, args, onProgress)
 	if err != nil {
 		s.log.Warn("playout: could not start the program encoder",
 			"channel", channelID, "program", what, "err", err)
