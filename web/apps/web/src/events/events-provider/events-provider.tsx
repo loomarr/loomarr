@@ -37,6 +37,18 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onJob: (e) => {
         for (const l of listeners.current) l.onJob?.(e);
       },
+      // ⚠ THIS ONE WAS MISSING, and nothing could catch it: EventHandlers marks every
+      // handler optional, so omitting a frame type type-checks perfectly. The core hook
+      // subscribed to `fillerIngest`, this provider dropped it on the floor, and
+      // IngestPanel — the frame's only consumer — sat at "starting" forever because its
+      // callback could never fire. A whole feature silently dead, with green everything.
+      //
+      // The structural fix is the test below this file's own barrel: fanOutKeys() asserts
+      // the provider fans out EVERY key the core EventHandlers declares, so a new frame
+      // type cannot be added to core and forgotten here.
+      onFillerIngest: (e) => {
+        for (const l of listeners.current) l.onFillerIngest?.(e);
+      },
     }),
     [],
   );
