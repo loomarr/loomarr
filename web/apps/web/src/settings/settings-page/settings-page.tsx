@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields, SettingsSaveBar } from "@/components/loomarr";
 import { Button } from "@/components/ui";
+import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
 
 // One Settings page: several blocks, ONE save bar (config-design §5). The page owns the
@@ -20,7 +21,11 @@ import type { SettingsPageProps } from "./settings-page.type";
 // even more, since a page carries many keys the operator never touched.
 const SettingsPage = ({ title, description, blocks, entries, children, footer }: SettingsPageProps) => {
   const queryClient = useQueryClient();
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  // ⚠ The edit buffer lives in the LAYOUT, not here (V9). Held locally, it died on every tab
+  // switch and took the operator's unsaved edits with it — silently, which is the worst way to
+  // lose work. The save unit is still "everything staged", the bar is still one bar; what
+  // changed is that the buffer outlives this component.
+  const { edits, setEdit, resetEdits } = useSettingsEdits();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
   // Which connection blocks are expanded. Seeded once from the checklist (broken open,
@@ -35,7 +40,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
           queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
           queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
         ]);
-        setEdits({}); // saved values are the new baseline
+        resetEdits(); // saved values are the new baseline
       },
     },
   });
@@ -143,7 +148,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                     <SettingsFields
                       entries={blockEntries}
                       values={edits}
-                      onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                      onChange={setEdit}
                       results={results}
                     />
                   </ConnectionBlock>
@@ -161,7 +166,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
               <SettingsFields
                 entries={byGroup(block.group)}
                 values={edits}
-                onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                onChange={setEdit}
                 results={results}
               />
             </section>
@@ -175,7 +180,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
       <SettingsSaveBar
         dirtyCount={Object.keys(edits).length}
         saving={patch.isPending}
-        onDiscard={() => setEdits({})}
+        onDiscard={resetEdits}
         onSave={() => patch.mutate({ data: { edits } })}
       />
     </div>

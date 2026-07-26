@@ -114,10 +114,28 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 | --- | --- | --- |
 | **Connections** | Media server (flavor · URL · token) · Requester (Seerr *or* direct Sonarr+Radarr) · Tunarr · TMDB. **No manual wiring actions** — connecting Tunarr to the guide and pointing it at the library happen *automatically on save* (see below). | one **Test** button per connection block → runs the same `ConnectionTest` the wizard uses; the `livetv` / `tunarr_library` outcomes surface on the Tunarr + Media-server block verdicts, since a save auto-runs `POST /v1/setup/{livetv,tunarr}-connect` server-side |
 | **AI** | Provider (ollama/openai) · URL · model · key · auto-approve + quota · **in-app model picker** (probe + catalog + hot-swap, main doc §8.1) | the tool-call **probe** (main doc §8) + `GET /v1/system/llm` (probe/catalog), `POST /v1/system/llm/test` (key validation) |
-| **Channels & playback** | Default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) | — |
-| **Filler** | Drop-folder path (registered with Tunarr as a `local` source — *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths (`loomarr:filler` only) | drop-folder readable + Tunarr local-source check |
-| **Users & security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) | — |
-| **Advanced** | TTLs · retention · job workers · event webhook — plus every `Advanced: true` key surfaces here *and* behind its home page's toggle | — |
+| **Defaults** | What a NEW channel inherits, and how filler behaves: default strategy · backfill mode · reconcile interval · season precision · **policy defaults** (episode/movie no-repeat windows, series min-gap, block max, default ordering, seasonal mode, holiday calendar toggles — `programming-design.md` §2) · filler drop-folder path (a Tunarr `local` source, *not* a media-server library, design §10) · sync interval · AI tagging · pod density · ingest tool paths | drop-folder readable + Tunarr local-source check |
+| **System** | The machine, not the product. Sub-tabs: **Tasks** (the §18.1 job console — schedule, last/next run, Run now) · **Playout** (encoder, tier, `max_channels`, ffmpeg paths) · **Database** (backend + the migration stepper, V11) · **Backup** (download + retention, V12) · **About** (version, schema, `GET /v1/system/version`, V12) | per sub-tab where testable |
+| **Security** | Session TTL · cookie mode · user-sync interval · **Generated secrets panel** (view/copy/regenerate per §4) · SSO once V8 lands | — |
+| **All settings** | Every key, searchable by key **and** group **and** value, with an `ADV` chip reflecting `Setting.Advanced` (V10). The escape hatch: an operator who knows a key's name should never have to guess which page owns it. | — |
+
+⚠ **This table was AMENDED (V9) to the v2 mock's structure**, and the change is a restructure
+rather than a rename — worth recording because the previous six pages shipped and are what an
+existing install has bookmarked:
+
+| Was | Now |
+| --- | --- |
+| Channels & playback + Filler | **Defaults** (both answer "what does a new channel inherit?") |
+| Tasks (added after this table was written) | **System → Tasks** |
+| Users & security | **Security** |
+| Advanced | **All settings** (searchable, not a dumping ground) |
+
+The mock wins here despite `design/README.md` making the prototypes non-authoritative for IA:
+that rule exists because a prototype's *structure* can contradict a considered decision, and
+here the opposite is true — the v2 program's own phases are written against this shape (V12 is
+literally "System → Backup UI"; V13's probes are System-shaped), so following the older table
+would leave four phases describing pages that do not exist. **`design.md` §12 still wins on
+behaviour**; this table owns the config surface's shape.
 
 **Enum labels are registry-owned.** An enum setting's options are `[]EnumOption{Value, Label}` in the registry — the stored/validated `Value` (`"openai"`, `"emby"`) *plus* its display `Label` (`"OpenAI"`, `"Emby"`). The label is a fact the registry owns and ships to the UI (`enumOptions` on the API entry), so a dropdown never re-derives (and drifts from) proper-noun casing on the client. Adding an option means adding its label in the one place that owns the value.
 
@@ -126,6 +144,26 @@ Sonarr's shape, Test Card's skin (FE doc §6 provenance rules apply):
 **Field anatomy:** label · control · provenance chip (`set via environment` = locked; caution chip on self-healed values) · one-line doc · Test button where testable · "changed by … · when". Two of these are *present but not permanently visible*, so a page of fields reads as controls rather than a wall of prose: the **one-line doc** lives in an `(i)` hover tooltip (kept in the DOM via `aria-describedby` for screen readers), and the **"changed by … · when"** audit line reveals on hover/focus of the field (kept in the DOM, opacity-toggled, so it's keyboard- and reader-reachable). The provenance chip, caution chip, and validation stay always-visible — they change *what the field is or does*, not merely its history.
 
 **Save model — explicit, per page (Sonarr's sticky save bar):** edits accumulate with dirty tracking; a persistent bar offers Save/Discard; navigation away with dirty state prompts. Chosen over per-field autosave because connection settings often change *together* (URL + token) and half-saved pairs mid-test are a footgun. Save = validate → persist → hot-apply → per-key results (RFC 7807 problems map to inline field errors; `pinned` keys are rejected with the chip explanation).
+
+**The save bar spans TABS, not just a page (V9).** Dirty state survives switching between
+Connections, AI, Defaults and so on: an operator who edits a connection, checks a default, and
+comes back must not silently lose the first edit. One `edits` map keyed by setting id, one bar,
+one Save. The alternative — per-tab state — makes the bar's "3 unsaved" mean something different
+depending on where you are standing, which is worse than no count.
+
+**Four INLINE-COMMIT exceptions, and they are all verbs.** These commit immediately and are
+deliberately outside the save bar, because each is an *action* rather than a staged edit — you
+do not "stage" regenerating a secret, and a Save button next to *Run now* would be nonsense:
+
+| Action | Where | Why it cannot stage |
+| --- | --- | --- |
+| **Select a model** | AI | Hot-swaps the live suggester (§8.1); the picker's whole point is trying one |
+| **Pull a model** | AI | A long streaming download with its own progress, not a value |
+| **Regenerate a secret** | Security | Destructive and irreversible — it invalidates the old value on the spot (§4) |
+| **Run a job now** | System → Tasks | Triggers work; there is no "unsaved run" |
+
+Everything else on every page goes through the bar. A fifth exception should be argued for
+against this list, not added quietly.
 
 **Everything on Connections is self-diagnosing — and quiet once set up.** A connection block (Media server, Requester, Tunarr, TMDB) is a collapsible card carrying its own live status dot + inline Test verdict + `Fix →` link — the same shell the wizard's Connect step uses (config-design §6; the shared `ConnectionBlock` component). **Broken blocks open, healthy ones collapse**, so the page opens focused on what needs attention — and a fully set-up install shows a page of quiet collapsed blocks with nothing to worry about.
 

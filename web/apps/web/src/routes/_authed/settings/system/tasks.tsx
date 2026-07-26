@@ -6,7 +6,7 @@ import { TasksPage } from "@/settings";
 // button. All timing is server-authored; the page refetches on the `job` SSE frame.
 const Tasks = () => <TasksPage />;
 
-const Route = createFileRoute("/_authed/settings/tasks")({
+const Route = createFileRoute("/_authed/settings/system/tasks")({
   component: Tasks,
 });
 
