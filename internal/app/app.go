@@ -65,6 +65,39 @@ func flavorOrDefault(set resolved) library.Flavor {
 // start under ctx. It is the seam run() (production) and the integration harness
 // (tests) both call — so tests drive the REAL composition, not a copy. It does not
 // open/close the store, read env, listen, or handle signals; those stay in run().
+//
+// # Why this is one long function
+//
+// It is ~630 lines and stays that way deliberately. Decomposing it into methods on a shared
+// builder struct was tried on paper and rejected: the sections are sequential and genuinely
+// interdependent (three back-patches — emitter.setEngine, playoutRes.activeChannels,
+// playoutRes.pods), so splitting them would convert ~70 locals into fields on a mutable
+// carrier. That WIDENS their scope rather than narrowing it, and trades compile-time
+// use-before-assignment errors for runtime nils. A composition root is allowed to be long; it
+// is not allowed to be unnavigable, which is what the section map below is for.
+//
+// # The nil-store path is deliberate
+//
+// Most sections sit inside `if st != nil`. That guard is not defensive habit: a container
+// started without DATABASE_URL must still build a handler and answer /readyz with the reason,
+// rather than crash-looping past the probe that would explain the problem. See
+// TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking — the nesting is the price of
+// that behaviour.
+//
+// # Section map (in dependency order — later sections read earlier ones)
+//
+//	readiness + metrics      /readyz truth, store gauges
+//	event bus + emitter      §7 SSE, §4 terminal-transition fan-out
+//	job registry             §18.1 — every recurring job registers here, started at the end
+//	provisioning reconciler  §7 acquisition loop + session sweep
+//	scheduler + Tunarr       §9 channel reconcile engine
+//	internal playout         §9.1 sessions, resolver, XMLTV guide (one resolver, both uses)
+//	channel binder           §7 the ONE approved-proposal → channel path
+//	suggester + search       §8 catalog boundary, LLM, grounding
+//	filler + commercials     §10 catalog sync, pod assembly
+//	playout device token     §11 rotation-safe (a func, never a captured value)
+//	scheduler start          §18.1 — after every subsystem has registered its jobs
+//	api.Options              the single assembly point
 func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov Overrides) (http.Handler, error) {
 	// Readiness is true only once the store is connected + migrated (§17).
 	ready := func() (bool, string) {
