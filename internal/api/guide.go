@@ -68,12 +68,25 @@ type GuideAiring struct {
 }
 
 // GuideChannelTimeline is one channel's row in the grid.
+//
+// Carries the channel's STATUS and pending count alongside its timeline so a row can show its
+// health chip and on-air dot without a second request. The grid is a whole-fleet view — asking
+// for /v1/channels as well would double every load to assemble one row, and the two responses
+// could disagree mid-render.
 type GuideChannelTimeline struct {
-	ChannelID string        `json:"channelId"`
-	Name      string        `json:"name"`
-	Number    int           `json:"number"`
-	Logo      string        `json:"logo,omitempty"`
-	Airings   []GuideAiring `json:"airings" doc:"In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them"`
+	ChannelID string `json:"channelId"`
+	Name      string `json:"name"`
+	Number    int    `json:"number"`
+	Logo      string `json:"logo,omitempty"`
+	// Status is the channel's lifecycle state, the SAME vocabulary ChannelDTO uses — the grid
+	// derives its health chip and on-air dot from it through the one shared mapping
+	// (channel-health.ts), so "is this channel OK?" cannot mean one thing on the list and
+	// another here.
+	Status string `json:"status" enum:"building,live,drifted,detached,paused"`
+	// PendingCount is how many titles are still being acquired. Drives the "Filling in" chip:
+	// a live channel with acquisitions in flight is on air but not yet what was asked for.
+	PendingCount int           `json:"pendingCount"`
+	Airings      []GuideAiring `json:"airings" doc:"In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them"`
 }
 
 type guideInput struct {
@@ -180,7 +193,11 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		// the user's channels and hiding it would look like it had been deleted.
 		row := GuideChannelTimeline{
 			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Logo: ch.Logo,
-			Airings: []GuideAiring{},
+			Status: string(ch.Status),
+			// The SAME derivation the channel list uses (DesiredLineup.PendingCount), so a
+			// channel cannot read "Filling in" on one surface and healthy on the other.
+			PendingCount: schedule.DesiredLineup{Slots: ch.Desired}.PendingCount(),
+			Airings:      []GuideAiring{},
 		}
 
 		bs, err := s.playoutGuide.BroadcastsWithPending(ctx, ch.ID, from, to)

@@ -1,5 +1,6 @@
-import type { GuideAiring, GuideAiringKind } from "@loomarr/api";
+import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
 import { cn } from "@/lib";
+import { ChannelIdent } from "../channel-ident";
 import type { GuideGridProps } from "./guide-grid.type";
 
 // GuideGrid — the cross-channel schedule (§12, built to the v2 mock): a fixed channel rail,
@@ -59,6 +60,56 @@ const CLIP_FILL: Record<string, string> = {
   interstitial: "bg-static-700",
 };
 
+// The row chip says what is WRONG or in progress. A healthy channel shows nothing — a chip
+// reading "fine" on every healthy row is noise on the majority of rows, and it is the
+// exceptions an operator scans for.
+//
+// Same vocabulary as channel-health.ts (which maps ChannelDTO.status → ChannelHealth) and the
+// same colours as the card, so a channel cannot read "Drift" in one place and healthy in
+// another. Duplicated as a lookup rather than imported because that module takes a full
+// ChannelDTO, and a guide row deliberately carries only what a row needs.
+const HEALTH_CHIP: Record<string, { label: string; className: string }> = {
+  "pending-slots": { label: "Filling in", className: "text-tune" },
+  drift: { label: "Drift", className: "text-signal-400" },
+  paused: { label: "Paused", className: "text-static-400" },
+  error: { label: "Error", className: "text-onair" },
+  creating: { label: "Creating", className: "text-static-400" },
+};
+
+// healthOf mirrors channel-health.ts's channelHealth for the fields a guide row carries.
+// Returns "" for a healthy channel, which renders no chip.
+const healthOf = (ch: GuideChannelTimeline): string => {
+  switch (ch.status) {
+    case "building":
+      return "creating";
+    case "drifted":
+      return "drift";
+    case "detached":
+      // Tunarr no longer has the channel Loomarr manages — the one state that needs action.
+      return "error";
+    case "paused":
+      return "paused";
+    default:
+      // Live but still acquiring: on air, but not yet what was asked for.
+      return ch.pendingCount > 0 ? "pending-slots" : "";
+  }
+};
+
+// onAirOf mirrors channelOnAir: whether a VIEWER sees anything, which is a different question
+// from health. A drifted channel still broadcasts what it has, so it reads live here and drift
+// in the chip.
+const onAirOf = (ch: GuideChannelTimeline): "live" | "reconciling" | "off" => {
+  switch (ch.status) {
+    case "live":
+    case "drifted":
+      return "live";
+    case "building":
+      return "reconciling";
+    default:
+      return "off";
+  }
+};
+
 const blockLabel = (a: GuideAiring): string => {
   const title = a.title?.trim();
   if (!title) return KIND_FALLBACK_LABEL[a.kind];
@@ -73,6 +124,7 @@ const GuideGrid = ({
   nowMs,
   onInspect,
   onSelectChannel,
+  renderRowMenu,
   className,
 }: GuideGridProps) => {
   const spanMs = Math.max(1, toMs - fromMs);
@@ -133,129 +185,181 @@ const GuideGrid = ({
         )}
 
         <ul>
-          {channels.map((ch) => (
-            <li key={ch.channelId} className="flex border-border/60 border-b last:border-b-0">
-              <button
-                type="button"
-                onClick={() => onSelectChannel?.(ch.channelId)}
-                style={{ width: railW, height: rowH }}
-                className="flex shrink-0 items-center gap-[9px] border-border border-r px-3 text-left hover:bg-static-800"
+          {channels.map((ch) => {
+            const health = healthOf(ch);
+            const chip = health ? HEALTH_CHIP[health] : null;
+            const onAir = onAirOf(ch);
+            return (
+              <li
+                key={ch.channelId}
+                // A channel that is off air is dimmed rather than hidden: it is still one of the
+                // operator's channels, and removing the row would read as a deletion.
+                style={{ opacity: onAir === "off" ? 0.55 : 1 }}
+                className="flex border-border/60 border-b last:border-b-0"
               >
-                <span
-                  style={{ fontSize: 19 * zoom }}
-                  className="shrink-0 font-mono font-semibold text-signal tabular-nums leading-none"
+                <div
+                  style={{ width: railW, height: rowH }}
+                  className="flex shrink-0 items-center gap-[9px] border-border border-r pr-1 pl-3"
                 >
-                  {ch.number}
-                </span>
-                <span style={{ fontSize: 13 * zoom }} className="min-w-0 flex-1 truncate font-medium">
-                  {ch.name}
-                </span>
-              </button>
-
-              <div style={{ height: rowH }} className="relative flex-1 overflow-hidden">
-                {ch.airings?.map((a) => {
-                  // Clip to the window: a programme already in progress reports its REAL
-                  // start, which may precede `fromMs`.
-                  const left = Math.max(0, pctOf(a.startMs));
-                  const right = Math.min(100, pctOf(a.stopMs));
-                  if (right <= 0 || left >= 100) return null;
-                  const width = Math.max(MIN_BLOCK_PCT, right - left);
-
-                  const airing = nowMs !== undefined && nowMs >= a.startMs && nowMs < a.stopMs;
-                  const minutes = (a.stopMs - a.startMs) / MS_PER_MINUTE;
-                  const clips = a.pod?.entries ?? [];
-                  const podTotal = clips.reduce((n, c) => n + (c.durationMs || 0), 0) || 1;
-                  const label = blockLabel(a);
-                  const when = `${timeFmt.format(new Date(a.startMs))}–${timeFmt.format(new Date(a.stopMs))}`;
-                  // The caveat rides in the accessible name, not only in the styling — a
-                  // screen-reader user must not be told a placeholder is a schedule.
-                  const described = `${label} · ${when}${a.nominal ? " (estimated — still acquiring)" : ""}`;
-
-                  return (
-                    <button
-                      type="button"
-                      // startMs is the identity: a channel airs one thing at an instant, and
-                      // the same title can legitimately repeat within a cycle.
-                      key={`${ch.channelId}-${a.startMs}`}
-                      data-kind={a.kind}
-                      data-airing={airing || undefined}
-                      onMouseEnter={() => onInspect?.(a, ch.channelId)}
-                      onMouseLeave={() => onInspect?.(null)}
-                      onFocus={() => onInspect?.(a, ch.channelId)}
-                      onBlur={() => onInspect?.(null)}
-                      title={described}
-                      aria-label={described}
-                      style={{ left: `${left}%`, width: `${width}%` }}
-                      className={cn(
-                        "absolute top-1.5 bottom-1.5 flex flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
-                        clips.length > 0 ? "p-0.5" : "px-2",
-                        a.kind === "filler" && "border-signal-tint-40 border-l-transparent bg-signal-tint-15",
-                        // Dashed + hatched, never solid: a pending block's times are an
-                        // ESTIMATE, so it must not read as a scheduled programme.
-                        a.kind === "pending" &&
-                          "border-tune-tint-40 border-l-tune-tint-40 border-dashed bg-tune-tint-8 text-static-400",
-                        a.kind === "flex" &&
-                          "border-static-700 border-l-static-700 bg-static-800 text-static-400",
-                        a.kind === "program" &&
-                          (airing
-                            ? "border-signal-tint-40 border-l-signal bg-signal-tint-12"
-                            : "border-border border-l-border bg-static-800"),
-                      )}
+                  <ChannelIdent
+                    name={ch.name}
+                    number={ch.number}
+                    logo={ch.logo}
+                    size={Math.round(30 * zoom)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSelectChannel?.(ch.channelId)}
+                    className="flex min-w-0 flex-1 items-center gap-[9px] text-left"
+                  >
+                    <span
+                      style={{ fontSize: 19 * zoom }}
+                      className="shrink-0 font-mono font-semibold text-signal tabular-nums leading-none"
                     >
-                      {clips.length > 0 ? (
-                        // A pod renders its CLIPS, proportionally — a break is a sequence
-                        // (bumper → ads → bumper), and one flat rectangle hides that.
-                        <div className="flex h-full items-stretch gap-px">
-                          {clips.map((c, i) => {
-                            const share = ((c.durationMs || 0) / podTotal) * width;
-                            return (
-                              <div
-                                // Position is identity inside a pod: one clip may legitimately
-                                // appear twice, and the fallback card has no path at all.
-                                // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
-                                key={`${c.path ?? "card"}-${i}`}
-                                title={[c.name, c.era || null, c.quality || null].filter(Boolean).join(" · ")}
-                                style={{ flex: `${((c.durationMs || 0) / podTotal) * 100}` }}
-                                className={cn(
-                                  "flex min-w-0 flex-col justify-center overflow-hidden rounded-[2px] px-[3px]",
-                                  CLIP_FILL[c.kind] ?? "bg-static-700",
-                                )}
-                              >
-                                {share > CLIP_NAME_MIN_PCT && (
-                                  <span
-                                    style={{ fontSize: 10 * zoom }}
-                                    className="truncate text-static-0 leading-tight"
-                                  >
-                                    {c.name}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        width > LABEL_MIN_PCT && (
-                          <>
-                            <span style={{ fontSize: 12 * zoom }} className="truncate leading-snug">
-                              {label}
-                            </span>
-                            {minutes >= META_MIN_MINUTES && (
-                              <span
-                                style={{ fontSize: 10 * zoom }}
-                                className="truncate font-mono text-static-400"
-                              >
-                                {when}
-                              </span>
-                            )}
-                          </>
-                        )
+                      {ch.number}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span style={{ fontSize: 13 * zoom }} className="block truncate font-medium">
+                        {ch.name}
+                      </span>
+                      {/* The chip states what is WRONG (or in progress); a healthy channel
+                        shows nothing, because a row saying "fine" on every healthy channel
+                        is noise on the majority of rows. */}
+                      {chip && (
+                        <span
+                          className={cn(
+                            "mt-0.5 block font-mono text-[10px] uppercase tracking-[0.04em]",
+                            chip.className,
+                          )}
+                        >
+                          {chip.label}
+                        </span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            </li>
-          ))}
+                    </span>
+                  </button>
+                  {/* On-air dot: live pulses, reconciling is amber, off is inert. */}
+                  <span
+                    aria-label={`${ch.name} is ${onAir}`}
+                    data-testid="guide-onair-dot"
+                    data-onair={onAir}
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      onAir === "live" && "animate-pulse bg-onair",
+                      onAir === "reconciling" && "bg-signal-400",
+                      onAir === "off" && "bg-static-500",
+                    )}
+                  />
+                  {renderRowMenu?.(ch)}
+                </div>
+
+                <div style={{ height: rowH }} className="relative flex-1 overflow-hidden">
+                  {ch.airings?.map((a) => {
+                    // Clip to the window: a programme already in progress reports its REAL
+                    // start, which may precede `fromMs`.
+                    const left = Math.max(0, pctOf(a.startMs));
+                    const right = Math.min(100, pctOf(a.stopMs));
+                    if (right <= 0 || left >= 100) return null;
+                    const width = Math.max(MIN_BLOCK_PCT, right - left);
+
+                    const airing = nowMs !== undefined && nowMs >= a.startMs && nowMs < a.stopMs;
+                    const minutes = (a.stopMs - a.startMs) / MS_PER_MINUTE;
+                    const clips = a.pod?.entries ?? [];
+                    const podTotal = clips.reduce((n, c) => n + (c.durationMs || 0), 0) || 1;
+                    const label = blockLabel(a);
+                    const when = `${timeFmt.format(new Date(a.startMs))}–${timeFmt.format(new Date(a.stopMs))}`;
+                    // The caveat rides in the accessible name, not only in the styling — a
+                    // screen-reader user must not be told a placeholder is a schedule.
+                    const described = `${label} · ${when}${a.nominal ? " (estimated — still acquiring)" : ""}`;
+
+                    return (
+                      <button
+                        type="button"
+                        // startMs is the identity: a channel airs one thing at an instant, and
+                        // the same title can legitimately repeat within a cycle.
+                        key={`${ch.channelId}-${a.startMs}`}
+                        data-kind={a.kind}
+                        data-airing={airing || undefined}
+                        onMouseEnter={() => onInspect?.(a, ch.channelId)}
+                        onMouseLeave={() => onInspect?.(null)}
+                        onFocus={() => onInspect?.(a, ch.channelId)}
+                        onBlur={() => onInspect?.(null)}
+                        title={described}
+                        aria-label={described}
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                        className={cn(
+                          "absolute top-1.5 bottom-1.5 flex flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
+                          clips.length > 0 ? "p-0.5" : "px-2",
+                          a.kind === "filler" &&
+                            "border-signal-tint-40 border-l-transparent bg-signal-tint-15",
+                          // Dashed + hatched, never solid: a pending block's times are an
+                          // ESTIMATE, so it must not read as a scheduled programme.
+                          a.kind === "pending" &&
+                            "border-tune-tint-40 border-l-tune-tint-40 border-dashed bg-tune-tint-8 text-static-400",
+                          a.kind === "flex" &&
+                            "border-static-700 border-l-static-700 bg-static-800 text-static-400",
+                          a.kind === "program" &&
+                            (airing
+                              ? "border-signal-tint-40 border-l-signal bg-signal-tint-12"
+                              : "border-border border-l-border bg-static-800"),
+                        )}
+                      >
+                        {clips.length > 0 ? (
+                          // A pod renders its CLIPS, proportionally — a break is a sequence
+                          // (bumper → ads → bumper), and one flat rectangle hides that.
+                          <div className="flex h-full items-stretch gap-px">
+                            {clips.map((c, i) => {
+                              const share = ((c.durationMs || 0) / podTotal) * width;
+                              return (
+                                <div
+                                  // Position is identity inside a pod: one clip may legitimately
+                                  // appear twice, and the fallback card has no path at all.
+                                  // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
+                                  key={`${c.path ?? "card"}-${i}`}
+                                  title={[c.name, c.era || null, c.quality || null]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                  style={{ flex: `${((c.durationMs || 0) / podTotal) * 100}` }}
+                                  className={cn(
+                                    "flex min-w-0 flex-col justify-center overflow-hidden rounded-[2px] px-[3px]",
+                                    CLIP_FILL[c.kind] ?? "bg-static-700",
+                                  )}
+                                >
+                                  {share > CLIP_NAME_MIN_PCT && (
+                                    <span
+                                      style={{ fontSize: 10 * zoom }}
+                                      className="truncate text-static-0 leading-tight"
+                                    >
+                                      {c.name}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          width > LABEL_MIN_PCT && (
+                            <>
+                              <span style={{ fontSize: 12 * zoom }} className="truncate leading-snug">
+                                {label}
+                              </span>
+                              {minutes >= META_MIN_MINUTES && (
+                                <span
+                                  style={{ fontSize: 10 * zoom }}
+                                  className="truncate font-mono text-static-400"
+                                >
+                                  {when}
+                                </span>
+                              )}
+                            </>
+                          )
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>
