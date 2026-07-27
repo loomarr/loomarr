@@ -324,3 +324,84 @@ func assertPartsAdjacent(t *testing.T, slots []Slot, p1, p2 string, seed int64) 
 		t.Errorf("seed %d: parts not adjacent+ordered: %q@%d, %q@%d in %v", seed, p1, i1, p2, i2, titles(slots))
 	}
 }
+
+// THE DEFECT THIS CLOSES: collapseGroups gathered only a CONTIGUOUS run of a PartGroup, so a
+// group whose members are scattered through the deck became several super-slots sharing one
+// group id — and expandGroups replaced EVERY one of them with the group's full parts list.
+//
+// Episodes are always contiguous (assignPartGroups tags within one entry's expansion), which is
+// why every other test here builds its group adjacent and why this survived. FRANCHISES are not:
+// assignFranchiseGroups tags films by TMDB collection across separate lineup entries, ordered by
+// the operator. Raiders at 1, Temple of Doom at 6, Last Crusade at 5 is the normal case.
+//
+// Live symptom on a 25-movie channel: 88 airings a week from 11 distinct titles (three ~13x
+// each), while 14 films never aired at all — the duplicated franchise expansions consumed the
+// window and evicted the standalones.
+func TestCollapseExpand_ScatteredGroupCollapsesOnce(t *testing.T) {
+	slots := []Slot{
+		{Kind: SlotProgram, Key: "raiders", Title: "Raiders", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
+		{Kind: SlotProgram, Key: "diehard", Title: "Die Hard", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "temple", Title: "Temple of Doom", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
+		{Kind: SlotProgram, Key: "terminator", Title: "Terminator", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "crusade", Title: "Last Crusade", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
+	}
+
+	collapsed, expand := collapseGroups(slots)
+
+	// ONE super-slot for the franchise, at the position of its first member, carrying the
+	// group's whole runtime so the window treats it as one indivisible unit.
+	if len(collapsed) != 3 {
+		t.Fatalf("collapsed len = %d, want 3 (franchise, Die Hard, Terminator): %v", len(collapsed), titles(collapsed))
+	}
+	if collapsed[0].PartGroup != "c84" || collapsed[0].DurationMs != 3000 {
+		t.Errorf("super-slot = group %q dur %d, want c84/3000", collapsed[0].PartGroup, collapsed[0].DurationMs)
+	}
+
+	out := expandGroups(collapsed, expand)
+	seen := map[string]int{}
+	for _, s := range out {
+		seen[s.Title]++
+	}
+	for title, n := range seen {
+		if n != 1 {
+			t.Errorf("%q aired %dx in one cycle, want exactly 1", title, n)
+		}
+	}
+	// The standalones between the scattered members must survive — they were the ones being
+	// evicted when the franchise expanded three times.
+	for _, want := range []string{"Die Hard", "Terminator"} {
+		if seen[want] != 1 {
+			t.Errorf("%q missing from the cycle (evicted by a duplicated franchise expansion)", want)
+		}
+	}
+	if len(out) != len(slots) {
+		t.Fatalf("slot count changed: %d in, %d out — %v", len(slots), len(out), titles(out))
+	}
+}
+
+// The franchise must still air TOGETHER and in release order after the round trip — the §5
+// guarantee the collapse exists to provide. Scattering must not silently degrade to "each film
+// airs wherever it was".
+func TestCollapseExpand_ScatteredGroupStillAirsTogetherInOrder(t *testing.T) {
+	slots := []Slot{
+		{Kind: SlotProgram, Key: "crusade", Title: "Last Crusade", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
+		{Kind: SlotProgram, Key: "diehard", Title: "Die Hard", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "raiders", Title: "Raiders", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
+		{Kind: SlotProgram, Key: "temple", Title: "Temple of Doom", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
+	}
+
+	out := expandGroups(collapseGroups(slots))
+
+	got := titles(out)
+	// The group lands where its FIRST-ENCOUNTERED member was (position 0 here), in PartIndex
+	// order regardless of the order they appeared in the deck.
+	want := []string{"Raiders", "Temple of Doom", "Last Crusade", "Die Hard"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
