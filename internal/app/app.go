@@ -294,6 +294,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// a resolver so program slots carry a real runtime before the Tunarr push,
 		// and an episode resolver so a series entry expands into its episodes (§9).
 		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
+		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
+		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
+		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
+		// a 25-movie channel paid 25 sequential round trips on every cold guide request (~375ms
+		// of GET /v1/guide, measured against the dev Emby).
+		avail = channels.WithBulkDurations(avail, bulkDurations(lib))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
 		pusher := programmer.Programmer(prog)
@@ -341,9 +347,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// Same store, narrowed to the one write the resolver legitimately makes: counting
 			// a filler clip as having aired (V28).
 			clipPlays: st,
-			tier:      func() string { return set.str("playout.quality_tier") },
-			encoder:   func() string { return set.str("playout.encoder") },
-			capacity:  func() int { return set.intv("playout.max_channels") },
+			// The arranged-cycle cache and the channel read it fingerprints (cyclecache.go): the
+			// guide re-arranges every channel on every poll, which profiled as 53% of the
+			// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
+			// cache bug degrades a grid rather than a broadcast.
+			channels: st,
+			cycles:   newCycleCache(time.Now),
+			tier:     func() string { return set.str("playout.quality_tier") },
+			encoder:  func() string { return set.str("playout.encoder") },
+			capacity: func() int { return set.intv("playout.max_channels") },
 			// fillerDir is read live like every other setting; `pods` is assigned after the
 			// pod adapter is built further down (it needs the filler catalog, which is wired
 			// later) — see "playoutRes.pods" below.

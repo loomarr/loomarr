@@ -15,6 +15,7 @@ import (
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // The adapter that makes internal playout work (§9.1) — where three separately-verified pieces
@@ -55,6 +56,13 @@ type clipPlayRecorder interface {
 	RecordClipPlay(ctx context.Context, clipPath string, at time.Time) error
 }
 
+// channelReader is the one store method the arranged-cycle cache needs: the channel whose
+// lineup and policy the cache fingerprints (see cyclecache.go). Narrowed like the readers above
+// — fingerprinting is a READ, and the cache must not be able to mutate what it is keyed on.
+type channelReader interface {
+	GetChannel(ctx context.Context, id string) (store.Channel, error)
+}
+
 type playoutResolver struct {
 	engine cyclePreviewer
 	lib    *library.Client
@@ -91,6 +99,12 @@ type playoutResolver struct {
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
 	log        *slog.Logger
+	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
+	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
+	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
+	// (merely slower) listings.
+	channels channelReader
+	cycles   *cycleCache
 	// detectOnce / detected cache the measured encoder choice (detectedEncoder).
 	//
 	// Cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far too
@@ -155,10 +169,62 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 // listings reflect what the rules said when the window opened; a window spanning a rule
 // boundary is a known limitation rather than a silent wrong answer (the mid-window portion
 // shows the earlier rule's programmes).
+// cycleAt is CyclePreview with the arranged cycle memoised (cyclecache.go).
+//
+// GUIDE PATHS ONLY. AiringNow deliberately does not use this: it is what ffmpeg streams, and
+// §9.1's one-source rule is worth more on the broadcast path than the milliseconds a cache would
+// save there (one channel, once per programme, versus every channel on every grid poll).
+//
+// Degrades to the live computation whenever the cache cannot be trusted: no store, no cache, or
+// a channel that will not load or fingerprint. Every one of those returns the same answer
+// CyclePreview would — only slower — so a cache failure is a performance regression, never a
+// wrong lineup.
+func (r *playoutResolver) cycleAt(
+	ctx context.Context, channelID string, at time.Time,
+) ([]schedule.Slot, error) {
+	if r.cycles == nil || r.channels == nil {
+		_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, err
+	}
+
+	ch, err := r.channels.GetChannel(ctx, channelID)
+	if err != nil {
+		// The engine loads the channel itself and will surface the real error (or succeed, if
+		// this was a transient read) — so fall through rather than failing the row here.
+		_, slots, _, _, cerr := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, cerr
+	}
+
+	// The bucket is what lets two requests a few seconds apart share an arrangement: the guide's
+	// window start moves with every poll, so an exact-instant key would never hit. See
+	// cycleBucket on why one minute cannot straddle a rule boundary by more than itself.
+	bucket := at.Truncate(cycleBucket).Unix()
+	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, bucket)
+	if !ok {
+		_, slots, _, _, cerr := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, cerr
+	}
+
+	if slots, cachedAt, hit := r.cycles.get(key); hit {
+		// The arrangement is reused, but the CALLER's `at` still drives the window arithmetic
+		// downstream (BroadcastsBetween/WithPending take `from` separately), so a hit does not
+		// pin the timeline to the instant it was computed.
+		_ = cachedAt
+		return slots, nil
+	}
+
+	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, at)
+	if err != nil {
+		return nil, err
+	}
+	r.cycles.put(key, slots, at)
+	return slots, nil
+}
+
 func (r *playoutResolver) BroadcastsBetween(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, from)
+	slots, err := r.cycleAt(ctx, channelID, from)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +239,7 @@ func (r *playoutResolver) BroadcastsBetween(
 func (r *playoutResolver) BroadcastsWithPending(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, from)
+	slots, err := r.cycleAt(ctx, channelID, from)
 	if err != nil {
 		return nil, err
 	}

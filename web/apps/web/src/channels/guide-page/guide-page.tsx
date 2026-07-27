@@ -10,6 +10,7 @@ import { useLoomarrEventListener } from "@/events";
 import { cn } from "@/lib";
 import { ChannelSuggestPanel } from "@/suggest";
 import { ChannelRowMenu } from "../channel-row-menu";
+import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
@@ -38,12 +39,6 @@ const WINDOW_CHOICES = [
   { value: "360", label: "6 hours" },
   { value: "720", label: "12 hours" },
 ] as const;
-const DEFAULT_WINDOW_MINUTES = 240;
-
-// How much of the window sits behind "now" on TODAY. A guide opens on the present, but a
-// programme already in progress needs its real start on screen or it appears to begin the
-// moment the page was opened.
-const LOOKBACK_MINUTES = 30;
 
 // How far back the day picker offers. Matches the server's `guide.retention_hours` default —
 // past listings are RECOMPUTED from each channel's current lineup, so a distant past would be
@@ -146,23 +141,14 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
   // seconds while they are looking at it. The now-line moves; the axis stays put.
   const [mountedAt] = useState<number>(() => Date.now());
 
-  // Today opens on the present (minus a little lookback); any other day starts at midnight,
-  // because "what is on at 3pm on Thursday" is the question a future day is asked. An explicit
-  // START hour overrides both, and the ‹ › stepper shifts whatever that resolved to.
-  const { from, to } = useMemo(() => {
-    const span = windowMinutes * 60_000;
-    const shift = hourShift * 3_600_000;
-    const midnight = startOfDay(new Date(mountedAt)) + dayOffset * 86_400_000;
-    if (startHour !== null) {
-      const start = midnight + startHour * 3_600_000 + shift;
-      return { from: start, to: start + span };
-    }
-    if (dayOffset === 0) {
-      const start = mountedAt - LOOKBACK_MINUTES * 60_000 + shift;
-      return { from: start, to: start + span };
-    }
-    return { from: midnight + shift, to: midnight + shift + span };
-  }, [dayOffset, windowMinutes, mountedAt, hourShift, startHour]);
+  // The window lives in guide-window.ts, shared with the route's prefetch loader: TODAY's start
+  // is quantised to a minute so a hover-prefetch and the click that follows address the SAME
+  // react-query key. An unquantised window recomputes `from` between the two and warms an entry
+  // the page never reads — a prefetch that costs a request and saves nothing.
+  const { from, to } = useMemo(
+    () => guideWindow({ at: mountedAt, dayOffset, windowMinutes, hourShift, startHour }),
+    [dayOffset, windowMinutes, mountedAt, hourShift, startHour],
+  );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
   // re-framing controls being off-default means no.

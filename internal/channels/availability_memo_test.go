@@ -2,6 +2,8 @@ package channels
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -217,5 +219,105 @@ func TestAvailabilityMemoIsSafeUnderConcurrentResolve(t *testing.T) {
 	}
 	for g := 0; g < 8; g++ {
 		<-done
+	}
+}
+
+// THE GAP THIS CLOSES: the per-item DurationResolver is an N+1 the scheduler cannot batch on
+// its own — ComputeDesiredAt asks Resolve(key) one key at a time. A 25-movie channel therefore
+// issued 25 sequential media-server calls per layout, which measured as ~375ms of GET /v1/guide's
+// cold latency against a Cloudflare-fronted Emby (the arrangement itself is microseconds).
+func TestPrewarmDurations_CollapsesTheNPlusOneToOneCall(t *testing.T) {
+	st := availTestStore(t)
+
+	const n = 25
+	keys := make([]provision.Key, n)
+	ids := make([]string, n)
+	for i := range keys {
+		keys[i] = provision.Key(fmt.Sprintf("movie:tmdb:%d", 1000+i))
+		ids[i] = fmt.Sprintf("lib-%d", 1000+i)
+		seedAvailable(t, st, keys[i], ids[i])
+	}
+
+	perItem := 0
+	dur := func(_ context.Context, _ string) (int64, error) { perItem++; return 111, nil }
+
+	bulkCalls := 0
+	bulk := func(_ context.Context, itemIDs []string) (map[string]int64, error) {
+		bulkCalls++
+		out := make(map[string]int64, len(itemIDs))
+		for _, id := range itemIDs {
+			out[id] = 222
+		}
+		return out, nil
+	}
+
+	av := WithBulkDurations(NewStoreAvailability(context.Background(), st, dur, nil), bulk)
+	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations(ids)
+
+	for _, k := range keys {
+		if _, ms, ok := av.Resolve(k); !ok || ms != 222 {
+			t.Fatalf("resolve %s = (%d, %v), want (222, true) — the prewarmed value", k, ms, ok)
+		}
+	}
+
+	if bulkCalls != 1 {
+		t.Fatalf("bulk resolver called %d times, want exactly 1", bulkCalls)
+	}
+	if perItem != 0 {
+		t.Fatalf("per-item resolver called %d times after a prewarm, want 0 (the N+1 is back)", perItem)
+	}
+}
+
+// A bulk failure must never make a layout fail or lose a title — the per-item path still answers
+// every key. Duration is a refinement (ComputeDesired falls back to the entry's own), never a
+// precondition.
+func TestPrewarmDurations_BulkFailureFallsBackToPerItem(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("movie:tmdb:603")
+	seedAvailable(t, st, key, "lib-603")
+
+	perItem := 0
+	dur := func(_ context.Context, _ string) (int64, error) { perItem++; return 8_160_000, nil }
+	bulk := func(_ context.Context, _ []string) (map[string]int64, error) {
+		return nil, errors.New("media server unreachable")
+	}
+
+	av := WithBulkDurations(NewStoreAvailability(context.Background(), st, dur, nil), bulk)
+	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-603"})
+
+	id, ms, ok := av.Resolve(key)
+	if !ok || id != "lib-603" || ms != 8_160_000 {
+		t.Fatalf("resolve = (%q, %d, %v), want the per-item answer after a bulk failure", id, ms, ok)
+	}
+	if perItem != 1 {
+		t.Fatalf("per-item resolver called %d times, want 1 (the fallback must still run)", perItem)
+	}
+}
+
+// An id the bulk call could not answer must be memoized as a MISS, not left to fall through to a
+// per-item call on every occurrence — that would re-introduce the N+1 for exactly the items the
+// bulk answer was thinnest on.
+func TestPrewarmDurations_UnansweredIDsDoNotFallBackPerOccurrence(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("movie:tmdb:777")
+	seedAvailable(t, st, key, "lib-777")
+
+	perItem := 0
+	dur := func(_ context.Context, _ string) (int64, error) { perItem++; return 5, nil }
+	// Succeeds, but returns nothing for the requested id.
+	bulk := func(_ context.Context, _ []string) (map[string]int64, error) {
+		return map[string]int64{}, nil
+	}
+
+	av := WithBulkDurations(NewStoreAvailability(context.Background(), st, dur, nil), bulk)
+	av.(interface{ PrewarmDurations([]string) }).PrewarmDurations([]string{"lib-777"})
+
+	for i := 0; i < 10; i++ {
+		if _, _, ok := av.Resolve(key); !ok {
+			t.Fatal("an available title must still resolve when its duration is unknown")
+		}
+	}
+	if perItem != 0 {
+		t.Fatalf("per-item resolver called %d times for an unanswered id, want 0", perItem)
 	}
 }
