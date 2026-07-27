@@ -6,11 +6,32 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
 )
+
+// dropped is one rejected acquisition, kept for the audit log.
+//
+// ⚠ The NAME and CONFIDENCE are the point. A bare count ("dropped_below_bar=8") says a
+// decision happened and nothing about whether it was right — diagnosing one such run meant
+// reading the filter source and reconstructing the values by hand, because the stored
+// proposal is post-filter and the rejected titles are gone. Logging what was dropped, and
+// what score it was dropped for, makes "is the bar tuned correctly?" answerable from a log
+// line rather than from an investigation.
+type dropped struct {
+	Name       string
+	Confidence float64
+}
+
+// filterResult carries the rewritten proposal plus what it discarded and why.
+type filterResult struct {
+	Proposal store.Proposal
+	BelowBar []dropped
+	OverCap  []dropped
+}
 
 // filterAcquisitions rewrites a re-curation proposal so its acquisition list contains ONLY the
 // net-new titles that (a) clear the quality bar (per-title Confidence ≥ minScorePct/100) and
@@ -20,13 +41,12 @@ import (
 // bar and dropped for the cap — for the audit log. Deterministic: acquisitions are ranked by
 // Confidence desc (Name as a stable tiebreaker) before the cap is applied, so the BEST titles
 // fill the remaining room. A maxTitles of 0 means "no cap" (inherit-none / unbounded).
-func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitles int) (
-	out store.Proposal, droppedBelowBar, droppedOverCap int, err error,
-) {
+func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitles int) (filterResult, error) {
 	var body suggest.Proposal
 	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
-		return store.Proposal{}, 0, 0, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
+		return filterResult{}, fmt.Errorf("recurate: proposal %s malformed: %w", p.ID, uerr)
 	}
+	var res filterResult
 
 	// The bar: a per-title Confidence (0..1) at or above minScorePct/100. A title the model gave
 	// no confidence (0) never clears a positive bar — the conservative direction for spending.
@@ -59,8 +79,8 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 		if _, dup := committed[k]; dup {
 			continue // already on the channel / already an in-library add — not net-new
 		}
-		if a.Confidence < barFrac {
-			droppedBelowBar++
+		if effectiveConfidence(a) < barFrac {
+			res.BelowBar = append(res.BelowBar, dropped{Name: a.Name, Confidence: a.Confidence})
 			continue
 		}
 		survivors = append(survivors, cand{item: a, key: k})
@@ -83,7 +103,7 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 	}
 	for _, c := range survivors {
 		if room == 0 {
-			droppedOverCap++
+			res.OverCap = append(res.OverCap, dropped{Name: c.item.Name, Confidence: c.item.Confidence})
 			continue
 		}
 		kept = append(kept, c.item)
@@ -96,10 +116,11 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 	body.Acquisitions = kept
 	blob, merr := json.Marshal(body)
 	if merr != nil {
-		return store.Proposal{}, 0, 0, fmt.Errorf("recurate: re-marshal proposal %s: %w", p.ID, merr)
+		return filterResult{}, fmt.Errorf("recurate: re-marshal proposal %s: %w", p.ID, merr)
 	}
 	p.ProposalJSON = string(blob)
-	return p, droppedBelowBar, droppedOverCap, nil
+	res.Proposal = p
+	return res, nil
 }
 
 // effectiveMinScore resolves the quality bar for a channel: its per-channel override if set
@@ -124,4 +145,36 @@ func effectiveMaxTitles(ctx context.Context, ac *schedule.AutoCurate, th Thresho
 		return 0
 	}
 	return th.MaxTitles(ctx)
+}
+
+// adjacencyUnscoredFloor is the confidence an ADJACENCY pick is credited when the model
+// returned none for it (§8.3).
+//
+// The bar reads a confidence the MODEL assigns, and an omitted one unmarshals to 0 — which
+// filterAcquisitions deliberately treats as "never clears a positive bar", the right call for
+// a title the model searched for and then declined to stand behind. An adjacency pick is not
+// that: it was HANDED to the model with a consensus the model neither computed nor can see,
+// and a model that scores only what it found itself would silently zero out the entire second
+// corpus. That failure is invisible — the count looks like "the bar is working".
+//
+// So an UNSCORED adjacency pick is credited exactly at the default bar, and no higher: enough
+// to be considered on the strength of its consensus, never enough to outrank a title the model
+// actually endorsed. A SCORED adjacency pick keeps the model's number in both directions — if
+// the model looked and judged it weak, that judgement stands.
+//
+// ⚠ This is a floor on an UNSCORED pick, never a bypass. Everything downstream is unchanged:
+// the title cap still applies, the per-channel opt-in still gates the run, and the acquisition
+// still routes through the one suggest.Approve gate (§8.2). It cannot make a pick the operator
+// never authorized, and it cannot admit a title the model marked as a poor fit.
+const adjacencyUnscoredFloor = 0.60
+
+// effectiveConfidence is the score the bar judges an acquisition on.
+//
+// Identity for everything except an adjacency pick the model left unscored — see
+// adjacencyUnscoredFloor for why that one case is not the same as a zero.
+func effectiveConfidence(a suggest.ProposalItem) float64 {
+	if a.Confidence == 0 && a.Source == string(catalog.ScopeAdjacent) {
+		return adjacencyUnscoredFloor
+	}
+	return a.Confidence
 }

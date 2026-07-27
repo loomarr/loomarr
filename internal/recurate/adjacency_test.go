@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/recurate"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/suggest"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
@@ -146,5 +148,78 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 	}
 	if adj.seeds != nil {
 		t.Fatalf("the walk should be skipped with no TMDB seeds; got %v", adj.seeds)
+	}
+}
+
+// ── The unscored-adjacency floor (§8.3) ──────────────────────────────────────────────────
+
+// adjItem is an acquisition candidate that came from the adjacency corpus.
+func adjItem(tmdbID int, name string, confidence float64) suggest.ProposalItem {
+	it := acqItem(tmdbID, name, confidence)
+	it.Source = string(catalog.ScopeAdjacent)
+	return it
+}
+
+// THE GAP THIS CLOSES: the bar reads a confidence the MODEL assigns, and an omitted one
+// unmarshals to 0 — correctly fatal for a title the model searched for and then declined to
+// stand behind. An adjacency pick was HANDED to the model with a consensus it neither computed
+// nor can see, so a model that scores only what it found itself would silently zero out the
+// entire second corpus — and the drop count would read as "the bar is working".
+func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
+	st := newStore(t)
+	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		adjItem(9659, "Mad Max", 0), // model returned no score for a title it was handed
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+
+	d, err := cur.Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 1 {
+		t.Fatalf("enqueued = %d, want 1 (an unscored adjacency pick rides its consensus)", d.Enqueued)
+	}
+	if titleState(t, st, 9659) != provision.Wanted {
+		t.Errorf("state = %q, want wanted", titleState(t, st, 9659))
+	}
+}
+
+// The floor lifts an ABSENT score, never a low one. A model that looked and judged the title
+// weak keeps its judgement — otherwise this would be a bypass rather than a floor.
+func TestCurator_ScoredAdjacencyPickKeepsTheModelsJudgement(t *testing.T) {
+	st := newStore(t)
+	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		adjItem(111, "Weak Fit", 0.20), // the model DID score it, and scored it poorly
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+
+	d, err := cur.Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 0 {
+		t.Fatalf("enqueued = %d, want 0 (a model-scored 0.20 is still below a 60 bar)", d.Enqueued)
+	}
+}
+
+// An LLM pick with no confidence keeps the original conservative treatment: the model searched
+// for it and declined to stand behind it, which IS a real signal about spending. The floor is
+// narrow on purpose — it applies to the adjacency corpus alone.
+func TestCurator_UnscoredLLMPickIsStillDropped(t *testing.T) {
+	st := newStore(t)
+	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		acqItem(222, "Unscored LLM Pick", 0), // no Source ⇒ not adjacency
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 0}, time.Now, testkit.Logger())
+
+	d, err := cur.Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 0 {
+		t.Fatalf("enqueued = %d, want 0 (an unscored LLM pick stays conservative)", d.Enqueued)
 	}
 }

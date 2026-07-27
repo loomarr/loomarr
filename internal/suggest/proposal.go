@@ -91,6 +91,14 @@ type ProposalItem struct {
 	LibraryItemID string  `json:"libraryItemId,omitempty"`
 	Rationale     string  `json:"rationale,omitempty"` // why-it-fits (LLM)
 	Confidence    float64 `json:"confidence,omitempty"`
+	// Source records which corpus surfaced this pick, carried from the grounded Candidate
+	// (§8.3). It is PROVENANCE, never identity — Key() ignores it, exactly as it ignores
+	// Genres/Overview/OfficialRating.
+	//
+	// The re-curation quality bar reads it: an adjacency pick arrives with a consensus the
+	// model didn't compute and can't see, so a bare 0 confidence from a model that declined
+	// to score a title it was handed must not be read as "the model judged this poorly".
+	Source string `json:"source,omitempty"`
 	// Genres + Overview carry from the grounded Candidate so deterministic theme
 	// scoring measures real metadata, not the title string (§8). Display/scoring
 	// only — never identity (Key ignores them).
@@ -118,7 +126,7 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 	return ProposalItem{
 		MediaType: c.MediaType, TMDBID: c.TMDBID, TVDBID: c.TVDBID,
 		Name: c.Name, Year: c.Year, InLibrary: c.InLibrary, LibraryItemID: c.LibraryItemID,
-		Rationale: rationale, Confidence: confidence,
+		Rationale: rationale, Confidence: confidence, Source: string(c.Source),
 		Genres: c.Genres, Overview: c.Overview, OfficialRating: c.OfficialRating,
 	}
 }
