@@ -787,6 +787,12 @@ RULES:
     - what (optional; omit to keep the whole channel): "series:<the exact key of a pick>" | "genre:<name>" | "kids" | "family" | "holiday-matched" | "all".
     - how (optional; omit to keep the channel's ordering): "marathon" (binge one show, no breaks) | "syndication" | "shuffle".
     Examples: a weekend TNG marathon → {"when":"weekend","what":"series:...","how":"marathon"}; December holiday programming → {"when":"holiday:christmas","what":"holiday-matched"}. Omit "rules" for a plain channel; unknown tokens are dropped.
+- SET "confidence" ON EVERY PICK, and CALIBRATE it — it is not a formality. It means "how well does THIS title fit THIS intent", and a downstream quality bar spends the user's disk and bandwidth on the strength of it. Use the whole range:
+  - 0.9-1.0 — squarely what was asked for (an explicitly named title; an unambiguous match on every qualifier).
+  - 0.7-0.8 — a good fit that misses one qualifier (right genre and era, tone slightly off).
+  - 0.4-0.6 — plausible but arguable; you would not defend it if challenged.
+  - below 0.4 — a stretch. Prefer dropping the pick entirely over padding the lineup with it.
+  Do NOT give everything 0.9+. If every pick scores the same, the score carries no information and the bar cannot do its job. A pick you were HANDED (see the suggestions below, if any) still needs your own honest score — judge it against the intent exactly as you would one you found yourself, and never omit the field.
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
 When finished, reply with ONLY this JSON (no prose):
 {"channelName":"<2-4 words>","rationale":"<one sentence>","picks":[{"mediaType":"movie|series","tmdbId":<int>,"tvdbId":<int optional>,"name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"era":{"from":<int>,"to":<int>},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>"},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`

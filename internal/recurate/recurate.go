@@ -96,10 +96,11 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	// growth cap. In-library lineup picks are NOT gated by score — they're already available and
 	// cost nothing; they're added regardless (they extend the lineup, no acquisition). Rewrite
 	// the proposal's acquisition list to exactly the survivors so Approve requests ONLY those.
-	filtered, dropped, capped, err := filterAcquisitions(p, ch, minScore, maxTitles)
+	res, err := filterAcquisitions(p, ch, minScore, maxTitles)
 	if err != nil {
 		return suggest.Decision{Reason: "proposal unreadable"}, err
 	}
+	filtered := res.Proposal
 	if err := c.store.UpdateProposal(ctx, filtered); err != nil {
 		return suggest.Decision{Reason: "could not persist filtered proposal"}, err
 	}
@@ -116,8 +117,21 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 		return suggest.Decision{Reason: "approval failed"}, err
 	}
 	c.log.Info("auto-curated a channel",
-		"channel", ch.ID, "enqueued", enqueued, "dropped_below_bar", dropped, "dropped_over_cap", capped,
+		"channel", ch.ID, "enqueued", enqueued,
+		"dropped_below_bar", len(res.BelowBar), "dropped_over_cap", len(res.OverCap),
 		"min_score_pct", minScore, "max_titles", maxTitles)
+	// Name what was rejected, and the score it was rejected for. A bare count says a decision
+	// happened; it cannot say whether the bar is tuned correctly, and the stored proposal is
+	// post-filter so the evidence is otherwise gone. Info, not Debug: these are acquisitions
+	// the system declined to make on the operator's behalf, which is worth a line by default.
+	for _, d := range res.BelowBar {
+		c.log.Info("auto-curate: title below the quality bar",
+			"channel", ch.ID, "title", d.Name, "confidence", d.Confidence, "min_score_pct", minScore)
+	}
+	for _, d := range res.OverCap {
+		c.log.Info("auto-curate: title dropped for the title cap",
+			"channel", ch.ID, "title", d.Name, "confidence", d.Confidence, "max_titles", maxTitles)
+	}
 	return suggest.Decision{Approved: true, Enqueued: enqueued}, nil
 }
 
