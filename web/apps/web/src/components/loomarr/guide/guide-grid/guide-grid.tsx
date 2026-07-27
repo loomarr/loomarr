@@ -50,6 +50,19 @@ const KIND_FALLBACK_LABEL: Record<GuideAiringKind, string> = {
   flex: "Filler",
 };
 
+// The left accent — the 2px stripe that says what KIND of block this is at a glance, even when
+// the block is too narrow for a label. Applied inline (see the block's `style`) because a
+// Tailwind `border-l-*` utility loses to the all-sides `border-<color>` on the same element.
+// Values are the token hexes: signal (airing), tune (pending), static-700 (ordinary).
+const ACCENT: Record<string, string> = {
+  airing: "#FFB020",
+  program: "#3A3F49",
+  pending: "#4CC9E8",
+  // A pod is already a solid amber wash; a stripe on top of it just muddies the edge.
+  filler: "transparent",
+  flex: "#3A3F49",
+};
+
 // Per-clip colours inside a pod, so a break reads as a SEQUENCE rather than one flat block —
 // bumper, ad, ad, bumper is legible at a glance.
 const CLIP_FILL: Record<string, string> = {
@@ -148,11 +161,15 @@ const GuideGrid = ({
 
   return (
     <div className={cn("relative flex-1 overflow-auto", className)} data-testid="guide-grid">
-      <div className="relative min-w-[880px]">
+      {/* min-w scales with zoom (the mock's `gridMin: 1000 * z`) instead of being a fixed
+          880px. A constant floor meant the grid demanded 880px even when zoomed out to 75%,
+          so a viewport with room to spare still showed a horizontal scrollbar. Now zooming
+          out genuinely makes it fit — which is what the zoom control is for. */}
+      <div className="relative" style={{ minWidth: Math.round(1000 * zoom) }}>
         {/* Time ruler. Sticky so the axis stays readable while scrolling channels. */}
         <div className="sticky top-0 z-30 flex border-border border-b bg-background">
           <div style={{ width: railW }} className="shrink-0 border-border border-r" />
-          <div className="relative h-[30px] flex-1">
+          <div className="relative h-7.5 flex-1">
             {ticks.map((t) => (
               <div
                 key={t}
@@ -160,7 +177,7 @@ const GuideGrid = ({
                 data-tick-pct={pctOf(t).toFixed(3)}
                 style={{ left: `${pctOf(t)}%` }}
                 className={cn(
-                  "absolute top-0 bottom-0 flex items-center border-l pl-[7px]",
+                  "absolute top-0 bottom-0 flex items-center border-l pl-1.75",
                   // Hour lines brighter than half-hours: the eye needs a coarse rhythm to
                   // navigate by, and uniform lines give it none.
                   new Date(t).getMinutes() === 0 ? "border-border" : "border-border/40",
@@ -175,18 +192,26 @@ const GuideGrid = ({
         </div>
 
         {/* The now-line spans every row, so it reads as ONE instant across all channels.
-            Non-interactive, or it would swallow clicks on whatever is airing right now. */}
+            Non-interactive, or it would swallow clicks on whatever is airing right now.
+            `onair` (red), not `signal` (amber): amber is the brand and marks what is AIRING,
+            so an amber line through amber blocks disappears into them. Red is the only accent
+            reserved for live, and 2px because a hairline is lost against block borders. */}
         {nowVisible && (
           <div
             aria-hidden="true"
             data-testid="guide-now-line"
-            className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-signal"
+            className="pointer-events-none absolute top-0 bottom-0 z-20 w-0.5 bg-onair"
             style={{ left: `calc(${railW}px + (100% - ${railW}px) * ${nowPct / 100})` }}
-          />
+          >
+            {/* The time chip: a bare line says "here", not "here is 9:42". */}
+            <span className="absolute top-1 -left-5 whitespace-nowrap rounded-[3px] bg-onair px-1.25 py-px font-mono text-[9.5px] text-static-950 leading-none">
+              {timeFmt.format(new Date(nowMs ?? 0))}
+            </span>
+          </div>
         )}
 
         <ul>
-          {channels.map((ch) => {
+          {channels.map((ch, rowIndex) => {
             const health = healthOf(ch);
             const chip = health ? HEALTH_CHIP[health] : null;
             const onAir = onAirOf(ch);
@@ -200,7 +225,7 @@ const GuideGrid = ({
               >
                 <div
                   style={{ width: railW, height: rowH }}
-                  className="flex shrink-0 items-center gap-[9px] border-border border-r pr-1 pl-3"
+                  className="flex shrink-0 items-center gap-2.25 border-border border-r pr-1 pl-3"
                 >
                   <ChannelIdent
                     name={ch.name}
@@ -211,7 +236,7 @@ const GuideGrid = ({
                   <button
                     type="button"
                     onClick={() => onSelectChannel?.(ch.channelId)}
-                    className="flex min-w-0 flex-1 items-center gap-[9px] text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2.25 text-left"
                   >
                     <span
                       style={{ fontSize: 19 * zoom }}
@@ -276,28 +301,54 @@ const GuideGrid = ({
                         key={`${ch.channelId}-${a.startMs}`}
                         data-kind={a.kind}
                         data-airing={airing || undefined}
-                        onMouseEnter={() => onInspect?.(a, ch.channelId)}
+                        // The anchor is the block's own left edge + its row, so the caller can
+                        // open the detail card beside what is being inspected instead of in a
+                        // fixed corner — and flip it when the block is near an edge.
+                        onMouseEnter={() => onInspect?.(a, ch.channelId, { leftPct: left, rowIndex })}
                         onMouseLeave={() => onInspect?.(null)}
-                        onFocus={() => onInspect?.(a, ch.channelId)}
+                        onFocus={() => onInspect?.(a, ch.channelId, { leftPct: left, rowIndex })}
                         onBlur={() => onInspect?.(null)}
+                        // Clicking a block opens ITS CHANNEL — the same destination the rail's
+                        // channel button goes to. There is no per-programme page to open (a
+                        // block is a slot in a lineup, not an object with a route), and the
+                        // channel is where everything you would want to change about it lives.
+                        // Hovering already tells you about the programme; clicking acts on it.
+                        onClick={() => onSelectChannel?.(ch.channelId)}
                         title={described}
                         aria-label={described}
-                        style={{ left: `${left}%`, width: `${width}%` }}
+                        // ⚠ The left accent is an INLINE style, not a `border-l-*` utility.
+                        // Tailwind emits `border-<color>` (all sides) and `border-l-<color>`
+                        // in a fixed order decided at build time, so a class-based accent
+                        // loses to the all-sides colour no matter how the strings are ordered
+                        // in `cn()` — which is exactly how the airing accent silently rendered
+                        // as #2A2E37 while looking correct in the source.
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          borderLeftColor: ACCENT[a.kind === "program" && airing ? "airing" : a.kind],
+                        }}
                         className={cn(
-                          "absolute top-1.5 bottom-1.5 flex flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
+                          "absolute top-1.5 bottom-1.5 flex cursor-pointer flex-col justify-center overflow-hidden rounded border border-l-2 text-left",
+                          // Hover/focus: the border brightens and a 1px ring lifts the block off
+                          // the row. Blocks sit edge to edge, so a fill change alone is ambiguous
+                          // about WHICH block is under the pointer — the outline is what makes
+                          // the boundary unmistakable. Focus-visible carries the same treatment,
+                          // so keyboard inspection reads identically to hover.
+                          "transition-[box-shadow,border-color] duration-100 ease-out",
+                          "hover:border-static-400 focus-visible:border-static-400 focus-visible:outline-none",
                           clips.length > 0 ? "p-0.5" : "px-2",
                           a.kind === "filler" &&
-                            "border-signal-tint-40 border-l-transparent bg-signal-tint-15",
-                          // Dashed + hatched, never solid: a pending block's times are an
-                          // ESTIMATE, so it must not read as a scheduled programme.
+                            "border-signal-tint-40 bg-signal-tint-30 hover:shadow-[0_0_0_1px_#D6409F] focus-visible:shadow-[0_0_0_1px_#D6409F]",
+                          // Dashed, never solid: a pending block's times are an ESTIMATE, so it
+                          // must not read as a scheduled programme.
                           a.kind === "pending" &&
-                            "border-tune-tint-40 border-l-tune-tint-40 border-dashed bg-tune-tint-8 text-static-400",
+                            "border-tune-tint-40 border-dashed bg-tune-tint-8 text-static-400 hover:shadow-[0_0_0_1px_#4CC9E8] focus-visible:shadow-[0_0_0_1px_#4CC9E8]",
                           a.kind === "flex" &&
-                            "border-static-700 border-l-static-700 bg-static-800 text-static-400",
+                            "border-static-700 bg-static-800 text-static-400 hover:shadow-[0_0_0_1px_#8B93A3] focus-visible:shadow-[0_0_0_1px_#8B93A3]",
                           a.kind === "program" &&
                             (airing
-                              ? "border-signal-tint-40 border-l-signal bg-signal-tint-12"
-                              : "border-border border-l-border bg-static-800"),
+                              ? "border-signal-tint-40 bg-signal-tint-12 hover:shadow-[0_0_0_1px_#FFB020] focus-visible:shadow-[0_0_0_1px_#FFB020]"
+                              : "border-border bg-static-800 hover:shadow-[0_0_0_1px_#E7EAF0] focus-visible:shadow-[0_0_0_1px_#E7EAF0]"),
                         )}
                       >
                         {clips.length > 0 ? (
@@ -317,7 +368,7 @@ const GuideGrid = ({
                                     .join(" · ")}
                                   style={{ flex: `${((c.durationMs || 0) / podTotal) * 100}` }}
                                   className={cn(
-                                    "flex min-w-0 flex-col justify-center overflow-hidden rounded-[2px] px-[3px]",
+                                    "flex min-w-0 flex-col justify-center overflow-hidden rounded-xs px-0.75",
                                     CLIP_FILL[c.kind] ?? "bg-static-700",
                                   )}
                                 >

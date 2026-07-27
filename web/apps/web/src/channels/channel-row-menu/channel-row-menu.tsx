@@ -1,6 +1,7 @@
 import { channelsApi, toProblem } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { MoreVertical, Pause, Play, Trash2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { MoreVertical, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui";
@@ -26,6 +27,7 @@ const swallow = (e: React.MouseEvent) => {
 // click handling off the document and away from the row link.
 const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
 
@@ -99,8 +101,29 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           />
           <div
             role="menu"
-            className="absolute right-0 z-50 mt-1 flex w-64 flex-col gap-1 rounded-md border border-border bg-popover p-1.5 shadow-lg"
+            // `left-0` (not `right-0`): the trigger sits at the RIGHT edge of a narrow rail,
+            // so a right-anchored panel opens leftward past the rail and gets clipped by the
+            // page edge. The mock clamps it the same way — `max(8, railW - 242)` — i.e. the
+            // menu is pinned inside the viewport rather than to the trigger.
+            className="absolute left-0 z-50 mt-1 flex w-59 flex-col gap-0.5 rounded-lg border border-border bg-popover p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.6)]"
           >
+            {/* Edit channel — FIRST, and the reason the menu is worth opening: the row's own
+                click target opens the channel too, but a menu whose only options are Pause and
+                Delete reads as a destructive-actions menu. The mock leads with Edit. */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                swallow(e);
+                close();
+                void navigate({ to: "/channels/$id", params: { id: channel.id } });
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-700 hover:text-static-0"
+            >
+              <Pencil className="size-4 text-static-400" aria-hidden />
+              Edit channel
+            </button>
+
             {/* Pause / Resume — reversible, single click. */}
             <button
               type="button"
