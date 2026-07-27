@@ -159,16 +159,27 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 	// Record that this programme aired (§5, programming-design §3.1) — the memory the
 	// scheduler lacked, and the input recency-aware placement ranks on.
 	//
-	// `Offset == 0` restricts it to the programme's START, exactly as the filler counter uses
-	// `into == 0`: this resolver answers every tune-in and every mid-programme re-resolve, and
-	// counting those would stamp a title as "just aired" repeatedly while it is merely still
-	// playing.
+	// ⚠ Stamped with the programme's START (`now - Offset`), not with `now`, and written on
+	// EVERY resolve rather than only at the start.
+	//
+	// The filler counter next door guards on `into == 0` because it is a COUNTER — counting a
+	// mid-clip re-resolve would inflate it. This is not a counter: the row is an upsert holding
+	// the last airing, so re-writing it is idempotent. Guarding on `Offset == 0` here was a
+	// real bug (caught only by tuning in live): a viewer arrives mid-programme, so Offset is
+	// however far the wall clock happens to be into the film — measured at 2075s on the first
+	// real tune-in. The guard would have fired only within ~1ms of a programme boundary, so
+	// history stayed empty and the whole recency signal silently did nothing.
+	//
+	// Using the START also makes the value mean what §3.1 needs: "when did this programme
+	// begin airing", which is stable no matter when anyone tuned in or how often ffmpeg
+	// re-requested the segment.
 	//
 	// ⚠ Telemetry, never correctness. A failed write is logged and the programme still airs —
 	// the same posture as RecordClipPlay, for the same reason: a channel must never go dark
 	// because a history table was unavailable.
-	if airing.Offset == 0 && r.airings != nil && airing.Key != "" {
-		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, now); aerr != nil && r.log != nil {
+	if r.airings != nil && airing.Key != "" {
+		startedAt := now.Add(-airing.Offset)
+		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt); aerr != nil && r.log != nil {
 			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", aerr)
 		}
 	}
