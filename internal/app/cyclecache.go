@@ -70,6 +70,50 @@ const cycleCacheTTL = 60 * time.Second
 // window spanning a rule boundary — this does not introduce a new class of staleness.
 const cycleBucket = time.Minute
 
+// timeVarying reports whether this channel's arrangement can change with `at` alone — with no
+// edit, no acquisition, nothing but the clock moving.
+//
+// # Why this exists
+//
+// Bucketing `at` into the key is what makes the cache correct for a channel whose lineup really
+// does change at 21:00. It is also what makes the cache MISS every sixty seconds for a channel
+// whose lineup does not: the guide's window start advances with the wall clock, so a new bucket
+// arrives every minute and re-pays a full arrangement for a byte-identical answer. Measured on
+// the dev install, arrangements were identical across +0/+6h/+1d/+3d on every channel, while the
+// endpoint's p99 sat at 90ms against a p50 of 21ms — that spread was this cache missing on the
+// bucket, not real work.
+//
+// So the bucket is now CONDITIONAL: a channel that cannot vary with time keys on its inputs
+// alone and stays cached until something actually edits it.
+//
+// # The predicate, and why it is deliberately pessimistic
+//
+// `at` reaches the arrangement by exactly two routes:
+//
+//   - pickRule (via ComputeDesiredAt, ActiveRuleAt and ResolveWindow) — which can only select a
+//     different rule if there ARE rules. Over an empty slice it returns the same "no match" for
+//     every instant.
+//   - applySeasonal — which returns entries untouched only when the RESOLVED mode is SeasonalOff.
+//
+// ⚠ The seasonal half is the trap. The resolved default is SeasonalAuto, not Off (policy.go
+// defaultSeasonalMode), and activeHolidays walks the whole built-in calendar when no holidays are
+// explicitly selected — so a channel with an entirely EMPTY seasonal policy is still time-varying,
+// and will bench or unbench items as a holiday window opens. A predicate that read "no holidays
+// configured ⇒ invariant" would look right, pass every test written against a rule-less channel,
+// and silently serve a Christmas lineup in January.
+//
+// Hence: time-varying UNLESS seasonality is explicitly switched off AND there are no rules. False
+// negatives here cost a cache miss; false positives cost a wrong lineup. The asymmetry decides
+// the default.
+func timeVarying(policy schedule.ChannelPolicy) bool {
+	if len(policy.Rules) > 0 {
+		return true
+	}
+	// Only an EXPLICIT off is safe to treat as time-invariant — an unset mode resolves to
+	// SeasonalAuto, which is time-varying.
+	return policy.Seasonal.Mode != schedule.SeasonalOff
+}
+
 // cycleEntry is one arranged cycle, and the fingerprint it was arranged from.
 type cycleEntry struct {
 	slots  []schedule.Slot
@@ -159,6 +203,10 @@ func (c *cycleCache) put(key uint64, slots []schedule.Slot, at time.Time) {
 // changing a setting, a filler pool emptying, an acquisition completing), so bounding their
 // staleness at one minute is a deliberate trade, not an oversight. A change to any of them shows
 // up within a TTL rather than instantly.
+// The `bucket` argument is the caller's quantised `at`, and is folded in ONLY for a channel
+// whose arrangement can actually vary with time (see timeVarying). For an invariant channel it
+// is deliberately ignored, so every instant shares one entry and the cache survives until the
+// lineup or policy changes — which is the whole point of fingerprinting the inputs.
 func fingerprintChannel(
 	channelID string,
 	lineup []schedule.LineupEntry,
@@ -187,6 +235,8 @@ func fingerprintChannel(
 		binary.LittleEndian.PutUint64(num[:], uint64(v))
 		_, _ = h.Write(num[:])
 	}
-	writeNum(bucket)
+	if timeVarying(policy) {
+		writeNum(bucket)
+	}
 	return h.Sum64(), true
 }
