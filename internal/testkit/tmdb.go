@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -21,6 +22,19 @@ type TMDB struct {
 	// here, else 404 — that 404 is what the suggester's validation drops.
 	movies map[int]tmdbTitle
 	series map[int]tmdbTitle
+	// recommends is the adjacency graph /{movie,tv}/{id}/recommendations serves
+	// (programming-design §8.3): seed tmdb id → the ids it recommends. Empty for a
+	// seed the test didn't wire, which is the real API's behaviour for an obscure
+	// title — an unproductive seed, not an error.
+	recommends map[int][]int
+}
+
+// WithRecommendations wires the adjacency graph a test wants /recommendations to serve.
+// Seeds absent from the map return an empty result set, so a test can assert the
+// best-effort skip without standing up a failing server.
+func (m *TMDB) WithRecommendations(graph map[int][]int) *TMDB {
+	m.recommends = graph
+	return m
 }
 
 type tmdbTitle struct {
@@ -101,6 +115,14 @@ func NewTMDB(t testing.TB) *TMDB {
 			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+	})
+	// /{movie,tv}/{id}/recommendations: the §8.3 adjacency graph. Registered BEFORE the
+	// bare /{id} routes so the more specific pattern wins.
+	mux.HandleFunc("GET /movie/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
+		m.recommendHandler(w, r, m.movies)
+	})
+	mux.HandleFunc("GET /tv/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
+		m.recommendHandler(w, r, m.series)
 	})
 	mux.HandleFunc("GET /movie/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m.existsHandler(w, r, m.movies)
@@ -194,4 +216,22 @@ func genreMatch(have, want []int) bool {
 		}
 	}
 	return false
+}
+
+// recommendHandler serves the §8.3 adjacency graph for one seed. An unwired seed returns
+// an empty result list (200), matching TMDB's answer for a title with no neighbours —
+// the case the catalog walk must skip rather than fail on.
+func (m *TMDB) recommendHandler(w http.ResponseWriter, r *http.Request, from map[int]tmdbTitle) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	var results []map[string]any
+	for _, recID := range m.recommends[id] {
+		if t, ok := from[recID]; ok {
+			if _, isSeries := m.series[recID]; isSeries {
+				results = append(results, tvRow(t))
+			} else {
+				results = append(results, movieRow(t))
+			}
+		}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 }
