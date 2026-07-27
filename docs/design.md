@@ -645,6 +645,25 @@ to migrate.
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
 
+**Audio track selection is ours to make, because nobody else is left to make it.** With no explicit
+`-map`, ffmpeg picks one stream per type by "best" — for audio that means **the most channels**,
+ties broken by lowest index. It does not read language tags and it does not honour the `default`
+disposition. So a release whose Russian dub is 5.1 and whose English track is 2.0 plays **in
+Russian, every time, deterministically** — which is exactly what a dev-install channel did. Direct
+playback never showed it because the media server applies the viewer's language preference; internal
+playout calls `ffmpeg` itself and bypasses that entirely.
+
+`playout.audio_language` (§15, default `eng`) names the preferred track. The selection is
+**preference, not requirement**: `-map 0:a:m:language:<pref>?` with the trailing `?` making the
+match optional, plus a `-map 0:a:0` fallback so a file with no tagged track of that language still
+gets audio. A hard map without the `?` fails the whole encode on an untagged file — a channel that
+goes black rather than one that speaks the wrong language, which is strictly worse. Empty means
+"whatever ffmpeg would have picked", preserving today's behaviour for anyone who wants it.
+
+*A per-channel override is deliberately NOT offered yet.* The obvious next request is a foreign-language
+channel, but the honest scope is a per-**title** decision (a subtitled original vs a dub), which is a
+different feature than a channel-wide default and should not be pre-empted by a knob that half-solves it.
+
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's
 wiring — guide entries survive, playback stops until Live TV is re-connected — so the UI gates it
@@ -677,6 +696,22 @@ playout. It is described in §11 alongside the credential paths rather than left
    construction, so switching backends applies without a restart; and an internal backend with no
    `server.public_url` yields NO urls rather than a relative path, because the media server
    resolves the URL from its own host and would silently point at itself.)*
+
+   ⚠ **Every "what is on now" reader must select on the backend too — the M3U/XMLTV pair was
+   not the only place this was wrong.** `GET /v1/channels/now-next` and `…/{id}/upcoming` read
+   **Tunarr's** guide, keyed by `TunarrID`, and were wired on `tunarr.url != ""` alone. A channel
+   that has been reconciled to Tunarr in the past keeps its `tunarr_id` and Tunarr keeps
+   generating listings for it, so after a switch to internal playout the endpoints kept answering
+   — from a schedule with its own independent epoch. Observed on the dev install: the guide and
+   XMLTV said *The Last Jedi*, `now-next` said *The Rise of Skywalker*, ~30 minutes apart, at the
+   same instant. Neither was stale in the caching sense; they were two different schedules.
+
+   **The rule: a reader answers for the backend that is actually streaming that channel, or it
+   does not answer for that channel at all.** For internal channels now/next comes from
+   `BroadcastsBetween` — the same resolver the encoder and XMLTV already share — so §9.1's
+   one-source guarantee covers the card too. Mixed installs resolve **per channel**, via the same
+   `policy.playout.backend` precedence `playoutChannels` uses; there is no global switch here
+   either. A Tunarr-backed channel with no `tunarr_id` still yields no entry, exactly as before.
 4. **Restart is no longer free.** Prior copy promised *"Channels keep playing — Tunarr streams them,
    not Loomarr."* For internal-playout channels a restart **does** interrupt playback, and any
    restart UI must say so rather than inherit the old reassurance.
@@ -1177,6 +1212,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `PLAYOUT_BACKEND` | `internal` (default) or `tunarr` — who streams a channel. **Overridable per channel** via `policy.playout.backend`, which rides `policy_json` (no schema change, like `rules`/`filler`/`window`/`autoCurate`). Nil per-channel = inherit this global, which is what makes "changing the default affects new channels only" true rather than aspirational. |
 | `PLAYOUT_TRANSPORT` | `both` (default) / `hls` / `mpegts` — which formats internal playout offers. Both by default: MPEG-TS matches Tunarr's shape and keeps latency low, HLS survives proxies. |
 | `PLAYOUT_ENCODER` | ffmpeg encoder (e.g. `libx264`, `h264_vaapi`, `h264_nvenc`). Empty ⇒ the best one the transcode check found. |
+| `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**: the filler sidecar bundles its own ffmpeg+yt-dlp in a different image (§10), so one key would tie two independent deployments together and a sidecar-shaped path would break playout on the core image. Advanced; the default is right whenever ffmpeg is on `PATH`. |
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
 | `PLAYOUT_MAX_CHANNELS` | `4` — concurrent encodes. The wizard's transcode check measures a realistic figure; a test pattern encodes cheaper than film grain, so treat any measurement as a starting estimate. |

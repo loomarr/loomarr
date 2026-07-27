@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -323,22 +324,21 @@ func (s *Server) playoutChannels(ctx context.Context) ([]playoutChannel, error) 
 
 // playsInternally reports whether a channel is served by internal playout.
 //
-// The precedence is the nil-means-inherit shape §15 defines: a channel's own
-// `policy.playout.backend` wins when set, otherwise the global `playout.backend`. Both a nil
-// *PlayoutPolicy and an empty Backend mean "inherit", so a hand-edited policy_json cannot mean
-// something surprising.
+// The precedence rule itself lives in schedule.PlaysInternally — ONE copy, because it decides
+// which subsystem answers for a channel and is consulted from several surfaces. See the note
+// there on why a drifted second copy fails silently rather than loudly.
+//
+// No liveConfig ⇒ false: with no way to read the global, the safe answer is "not ours", so the
+// tuner advertises nothing rather than advertising channels it may not be serving.
 func (s *Server) playsInternally(ch store.Channel) bool {
-	if p := ch.Policy.Playout; p != nil && p.Backend != "" {
-		return p.Backend == playoutBackendInternal
-	}
 	if s.liveConfig == nil {
+		if p := ch.Policy.Playout; p != nil && p.Backend != "" {
+			return p.Backend == schedule.PlayoutBackendInternal
+		}
 		return false
 	}
-	return strings.TrimSpace(s.liveConfig("playout.backend")) == playoutBackendInternal
+	return schedule.PlaysInternally(ch.Policy, s.liveConfig("playout.backend"))
 }
-
-// playoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
-const playoutBackendInternal = "internal"
 
 // registerPlayout mounts the device-authenticated playout routes (§9.1).
 //

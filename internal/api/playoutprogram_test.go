@@ -23,12 +23,15 @@ import (
 
 // fakeResolver answers "what's on" without a store or a media server.
 type fakeResolver struct {
-	airing  playout.Airing
-	url     string
-	err     error
-	profile playout.Profile
-	calls   int
-	mu      sync.Mutex
+	airing playout.Airing
+	url    string
+	err    error
+	// audioTrack is the index AudioTrackFor returns — zero (the file's first track) unless a
+	// test is specifically about audio selection.
+	audioTrack int
+	profile    playout.Profile
+	calls      int
+	mu         sync.Mutex
 }
 
 func (f *fakeResolver) AiringNow(_ context.Context, _ string) (playout.Airing, string, error) {
@@ -44,6 +47,10 @@ func (f *fakeResolver) Profile(context.Context) playout.Profile {
 	}
 	return f.profile
 }
+
+// AudioTrackFor returns whatever the test set, defaulting to the file's first track — the same
+// answer the real resolver gives when no language preference is configured.
+func (f *fakeResolver) AudioTrackFor(context.Context, string) int { return f.audioTrack }
 
 func (f *fakeResolver) callCount() int {
 	f.mu.Lock()
@@ -282,6 +289,33 @@ func TestPlayoutProgram_EncoderStartFailureIsReported(t *testing.T) {
 	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status %d, want 502", resp.StatusCode)
+	}
+}
+
+// The audio-language preference must reach the ENCODER, not just the resolver (§9.1). This is
+// the seam the Russian-audio bug lived on: the selection can be perfectly correct and still not
+// be applied, because the handler builds the args.
+func TestPlayoutProgram_MapsTheResolvedAudioTrack(t *testing.T) {
+	res := &fakeResolver{
+		airing:     playableAiring(0, time.Minute),
+		url:        "http://emby/v/1",
+		audioTrack: 2,
+	}
+	enc := &fakeEncoder{output: "chunk"}
+	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
+
+	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", resp.StatusCode)
+	}
+	_, _ = io.ReadAll(resp.Body)
+
+	args := strings.Join(enc.args(), " ")
+	if !strings.Contains(args, "-map 0:a:2") {
+		t.Errorf("args did not map the resolved audio track 2:\n%s", args)
+	}
+	if strings.Contains(args, "-map 0:a:0") {
+		t.Errorf("args still map track 0 — the preference was ignored or double-mapped:\n%s", args)
 	}
 }
 

@@ -69,6 +69,9 @@ func InternalPlayoutURLs(publicURL, deviceToken string) TunarrURLs {
 // back to Tunarr, which is the pre-§9.1 behaviour and the safer default for an unrecognised
 // value: an install that has not opted into internal playout keeps working exactly as it did.
 func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) TunarrURLs {
+	// The literal rather than schedule.PlayoutBackendInternal: `setup` does not otherwise
+	// depend on `schedule`, and importing the scheduler for one enum string would be a worse
+	// trade than this comment. The value is pinned by TestLiveTVURLsFor_* below.
 	if strings.TrimSpace(backend) == "internal" {
 		return InternalPlayoutURLs(publicURL, deviceToken)
 	}
