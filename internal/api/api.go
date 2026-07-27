@@ -159,7 +159,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// mux has matched (§18 request metrics). withRequestID wraps everything so the
 	// correlation id exists for every handler — typed Huma ops AND the plain-mux ones
 	// (/v1/events, /v1/backup) — and is echoed on the response header.
-	return withRequestID(metrics.Middleware(logRequests(log, mux)))
+	// FanoutMiddleware sits INSIDE metrics.Middleware but outside every handler: it installs the
+	// per-request outbound counter that the instrumented transport increments, so
+	// `loomarr_http_outbound_fanout{route=…}` answers "how many downstream calls does this
+	// endpoint make" without serialising traffic and diffing a global counter by hand.
+	return withRequestID(metrics.Middleware(metrics.FanoutMiddleware(logRequests(log, mux))))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
