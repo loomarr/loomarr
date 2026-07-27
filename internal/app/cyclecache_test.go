@@ -84,7 +84,7 @@ func TestCycleCache_UnchangedChannelIsArrangedOnce(t *testing.T) {
 	at := time.Now()
 
 	for range 5 {
-		if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+		if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 			t.Fatalf("cycleAt: %v", err)
 		}
 	}
@@ -100,13 +100,13 @@ func TestCycleCache_ChangedLineupIsRearranged(t *testing.T) {
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 	chans.set(func(c *store.Channel) {
 		c.Lineup = append(c.Lineup, schedule.LineupEntry{Key: provision.Key("tmdb:tv:2"), Title: "B"})
 	})
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -123,13 +123,13 @@ func TestCycleCache_ChangedPolicyIsRearranged(t *testing.T) {
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 	chans.set(func(c *store.Channel) {
 		c.Policy.Rules = append(c.Policy.Rules, schedule.SchedulingRule{ID: "r1", Label: "Marathon"})
 	})
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -145,11 +145,11 @@ func TestCycleCache_ChangedEntryMetadataIsRearranged(t *testing.T) {
 	r, eng, chans := cachedResolver(t, testChannel())
 	at := time.Now()
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 	chans.set(func(c *store.Channel) { c.Lineup[0].CollectionID = 42 })
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -165,10 +165,10 @@ func TestCycleCache_CrossingABucketRearranges(t *testing.T) {
 	r, eng, _ := cachedResolver(t, testChannel())
 	at := time.Now().Truncate(cycleBucket)
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -183,10 +183,10 @@ func TestCycleCache_NearbyInstantsShareAnArrangement(t *testing.T) {
 	r, eng, _ := cachedResolver(t, testChannel())
 	at := time.Now().Truncate(cycleBucket)
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(time.Second)); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(time.Second)); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -206,7 +206,7 @@ func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 	if !ok {
 		t.Fatal("fingerprint failed on an empty channel")
 	}
-	c.put(key, []schedule.Slot{{Kind: schedule.SlotProgram}}, now)
+	c.put(key, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
 
 	if _, _, hit := c.get(key); !hit {
 		t.Fatal("fresh entry missed")
@@ -223,7 +223,7 @@ func TestCycleCache_NoStoreFallsBackToLiveComputation(t *testing.T) {
 	eng := &countingCycle{slots: []schedule.Slot{{Kind: schedule.SlotProgram}}}
 	r := &playoutResolver{engine: eng, now: time.Now} // no channels, no cycles
 
-	slots, err := r.cycleAt(context.Background(), "ch1", time.Now())
+	slots, _, err := r.cycleAt(context.Background(), "ch1", time.Now())
 	if err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
 
 	// Instants an hour and a day apart — many buckets — must all hit.
 	for _, d := range []time.Duration{0, cycleBucket, time.Hour, 24 * time.Hour} {
-		if _, err := r.cycleAt(context.Background(), "ch1", at.Add(d)); err != nil {
+		if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(d)); err != nil {
 			t.Fatalf("cycleAt(+%v): %v", d, err)
 		}
 	}
@@ -270,10 +270,10 @@ func TestCycleCache_EmptySeasonalPolicyIsStillTimeVarying(t *testing.T) {
 	r, eng, _ := cachedResolver(t, ch)
 	at := time.Now().Truncate(cycleBucket)
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 
@@ -292,10 +292,10 @@ func TestCycleCache_RuledChannelKeepsItsBucket(t *testing.T) {
 	r, eng, _ := cachedResolver(t, ch)
 	at := time.Now().Truncate(cycleBucket)
 
-	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
-	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
+	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
 		t.Fatalf("cycleAt: %v", err)
 	}
 

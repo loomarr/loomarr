@@ -114,10 +114,15 @@ func timeVarying(policy schedule.ChannelPolicy) bool {
 	return policy.Seasonal.Mode != schedule.SeasonalOff
 }
 
-// cycleEntry is one arranged cycle, and the fingerprint it was arranged from.
+// cycleEntry is one arranged cycle plus the rolling-window horizon it resolved to.
+//
+// The window rides along because it comes from the SAME CyclePreview answer and the guide's
+// segmentation needs it to know where the deck rotates (segmentedBroadcasts). Caching it avoids
+// re-deriving the rule > channel > default precedence at the call site and getting it subtly
+// different from what the arrangement actually used.
 type cycleEntry struct {
 	slots  []schedule.Slot
-	at     time.Time
+	window time.Duration
 	stored time.Time
 }
 
@@ -139,24 +144,24 @@ func newCycleCache(now func() time.Time) *cycleCache {
 }
 
 // get returns a live entry for this key, if one exists.
-func (c *cycleCache) get(key uint64) ([]schedule.Slot, time.Time, bool) {
+func (c *cycleCache) get(key uint64) ([]schedule.Slot, time.Duration, bool) {
 	if c == nil {
-		return nil, time.Time{}, false
+		return nil, 0, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.entries[key]
 	if !ok || c.now().Sub(e.stored) > cycleCacheTTL {
-		return nil, time.Time{}, false
+		return nil, 0, false
 	}
-	return e.slots, e.at, true
+	return e.slots, e.window, true
 }
 
 // put stores an arrangement, and prunes anything that has aged out.
 //
 // Pruning on WRITE rather than on a timer keeps this free of a background goroutine: the cache
 // is only touched by requests, so a cache nobody reads costs nothing rather than ticking.
-func (c *cycleCache) put(key uint64, slots []schedule.Slot, at time.Time) {
+func (c *cycleCache) put(key uint64, slots []schedule.Slot, window time.Duration) {
 	if c == nil {
 		return
 	}
@@ -168,7 +173,7 @@ func (c *cycleCache) put(key uint64, slots []schedule.Slot, at time.Time) {
 			delete(c.entries, k)
 		}
 	}
-	c.entries[key] = cycleEntry{slots: slots, at: at, stored: now}
+	c.entries[key] = cycleEntry{slots: slots, window: window, stored: now}
 }
 
 // fingerprintChannel hashes everything ComputeDesiredAt's answer depends on.

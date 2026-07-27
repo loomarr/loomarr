@@ -179,20 +179,24 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 // a channel that will not load or fingerprint. Every one of those returns the same answer
 // CyclePreview would — only slower — so a cache failure is a performance regression, never a
 // wrong lineup.
+// Returns the arranged slots AND the resolved rolling-window horizon, which segmentedBroadcasts
+// needs to know where the deck rotates. The window is part of the same CyclePreview answer, so
+// carrying it costs nothing and saves the caller re-deriving the rule > channel > default
+// precedence (and getting it subtly different).
 func (r *playoutResolver) cycleAt(
 	ctx context.Context, channelID string, at time.Time,
-) ([]schedule.Slot, error) {
+) ([]schedule.Slot, time.Duration, error) {
 	if r.cycles == nil || r.channels == nil {
-		_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, err
+		_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, window, err
 	}
 
 	ch, err := r.channels.GetChannel(ctx, channelID)
 	if err != nil {
 		// The engine loads the channel itself and will surface the real error (or succeed, if
 		// this was a transient read) — so fall through rather than failing the row here.
-		_, slots, _, _, cerr := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, cerr
+		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, window, cerr
 	}
 
 	// The bucket is what lets two requests a few seconds apart share an arrangement: the guide's
@@ -201,34 +205,114 @@ func (r *playoutResolver) cycleAt(
 	bucket := at.Truncate(cycleBucket).Unix()
 	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, bucket)
 	if !ok {
-		_, slots, _, _, cerr := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, cerr
+		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
+		return slots, window, cerr
 	}
 
-	if slots, cachedAt, hit := r.cycles.get(key); hit {
-		// The arrangement is reused, but the CALLER's `at` still drives the window arithmetic
-		// downstream (BroadcastsBetween/WithPending take `from` separately), so a hit does not
-		// pin the timeline to the instant it was computed.
-		_ = cachedAt
-		return slots, nil
+	if slots, window, hit := r.cycles.get(key); hit {
+		return slots, window, nil
 	}
 
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, at)
+	_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
+	if err != nil {
+		return nil, 0, err
+	}
+	r.cycles.put(key, slots, window)
+	return slots, window, nil
+}
+
+// maxGuideSegments bounds how many rolling windows one guide request will re-resolve.
+//
+// The FE offers a 7-day forward span (RETENTION_DAYS + FORWARD_DAYS) against a 24h default
+// window, so 8 covers the whole picker with a segment to spare. The cap is a backstop against a
+// pathological window (a channel configured to a one-minute horizon must not turn one guide
+// request into thousands of arrangements), not an expected limit: past it the tail of the span
+// keeps the last segment's cycle, which is exactly today's behaviour for the whole span.
+const maxGuideSegments = 8
+
+// segmentedBroadcasts walks [from, to) one ROLLING WINDOW at a time, re-resolving the channel's
+// cycle at each boundary, and concatenates the results.
+//
+// # Why this exists
+//
+// The scheduler ROTATES: windowSlice advances its start by the window index, so day 0 airs one
+// slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
+// airs"). The encoder sees that, because AiringNow resolves the cycle at NOW — every programme it
+// spawns asks again. The guide did not: it resolved ONE cycle at `from` and looped it across the
+// whole requested span, so everything past the first window boundary was a forecast of a
+// rotation that will never happen.
+//
+// Measured on a 27-title channel at the same instant 24h out: the guide advertised RoboCop / The
+// Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon / Lethal
+// Weapon 2 / Akira. Not merely under-reporting variety — a wrong EPG.
+//
+// (The XMLTV document escaped this: it publishes a 24h window, which is one rotation step, so it
+// was right by construction. Loomarr's own grid queries up to 7 days, which is where it showed.)
+//
+// # Why here and not inside playout.BroadcastsBetween
+//
+// That walk is SHARED with the encoder and is deliberately a pure function of one slot list — it
+// is what guarantees the grid and the encoder cannot disagree about what is on at 21:00. Teaching
+// it to re-resolve would give it a dependency on the engine and put the invariant at risk. The
+// segmentation belongs to the caller that spans multiple windows; each segment still goes through
+// the identical shared walk.
+//
+// A window of 0 (WindowFull / unbounded) means the deck never rotates, so one segment is the
+// whole answer — the pre-existing behaviour, unchanged.
+func (r *playoutResolver) segmentedBroadcasts(
+	ctx context.Context, channelID string, from, to time.Time,
+	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
+) ([]playout.Broadcast, error) {
+	epoch := playoutEpoch(channelID)
+
+	slots, window, err := r.cycleAt(ctx, channelID, from)
 	if err != nil {
 		return nil, err
 	}
-	r.cycles.put(key, slots, at)
-	return slots, nil
+	// Unbounded window ⇒ no rotation ⇒ nothing to segment.
+	if window <= 0 {
+		return project(slots, epoch, from, to), nil
+	}
+
+	out := make([]playout.Broadcast, 0, 32)
+	segFrom := from
+	for i := 0; i < maxGuideSegments && segFrom.Before(to); i++ {
+		// The end of the rolling window `segFrom` falls in — the instant the deck rotates.
+		// Truncate on the window grid so segments land on the SAME boundaries windowIndex uses,
+		// rather than on offsets from an arbitrary request time.
+		segTo := segFrom.Truncate(window).Add(window)
+		if !segTo.After(segFrom) { // Truncate is a no-op on a boundary; step a whole window
+			segTo = segFrom.Add(window)
+		}
+		if segTo.After(to) {
+			segTo = to
+		}
+
+		// The first segment's cycle is already resolved; later ones re-resolve AT THE SEGMENT,
+		// which is what makes the rotation visible.
+		segSlots := slots
+		if i > 0 {
+			segSlots, _, err = r.cycleAt(ctx, channelID, segFrom)
+			if err != nil {
+				// One segment failing must not empty the guide — keep what we have. The grid
+				// renders a shorter forecast rather than nothing, the same posture the
+				// per-channel failure takes in api.channelGuide.
+				break
+			}
+		}
+		out = append(out, project(segSlots, epoch, segFrom, segTo)...)
+		segFrom = segTo
+	}
+	return out, nil
 }
 
 func (r *playoutResolver) BroadcastsBetween(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	slots, err := r.cycleAt(ctx, channelID, from)
+	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsBetween)
 	if err != nil {
 		return nil, err
 	}
-	bs := playout.BroadcastsBetween(slots, playoutEpoch(channelID), from, to)
 	r.attachMetadata(ctx, bs)
 	return bs, nil
 }
@@ -239,11 +323,10 @@ func (r *playoutResolver) BroadcastsBetween(
 func (r *playoutResolver) BroadcastsWithPending(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	slots, err := r.cycleAt(ctx, channelID, from)
+	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsWithPending)
 	if err != nil {
 		return nil, err
 	}
-	bs := playout.BroadcastsWithPending(slots, playoutEpoch(channelID), from, to)
 	r.attachMetadata(ctx, bs)
 	r.attachProvenance(ctx, bs)
 	return bs, nil
