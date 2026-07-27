@@ -124,6 +124,24 @@ func greedyArrange(programs []Slot, rp ResolvedPolicy) []Slot {
 // pickOrder returns the indices of not-yet-used candidates in the greedy priority
 // order (the same most-constrained-first / anti-clustering ranking pickNext uses),
 // so backtracking explores the most promising placements first. Deterministic.
+//
+// ⚠ DO NOT "optimize" this by dropping the tier-2 (separation-violating) candidates,
+// however wasteful they look. The caller skips them with `continue` — but only AFTER
+// decrementing its budget, so they are what makes a hard pool exhaust `backtrackBudget`
+// and fall back to greedyArrange promptly. Filtering them here removes that accidental
+// circuit-breaker: the search then explores a vastly larger space before it succeeds.
+// Measured on the maintainer's install — the "obvious" filter took GET /v1/guide from
+// ~250ms to ~4.3s, a 17× regression, with every existing test still green.
+//
+// Likewise the caller's own `separationOK` re-check is NOT redundant with the tier
+// assignment here; removing it removes the same budget accounting.
+//
+// This function IS genuinely hot (profiled at 55% of the guide's CPU, its sort alone
+// 34%), so it is worth making faster — but the fix has to preserve the budget dynamics,
+// and it has to be verified against a running server, not a microbenchmark. The
+// benchmarks in compute_scale_bench_test.go do NOT reach this path (they use decks the
+// backtracker solves on the first descent), which is exactly how the regression above
+// looked fine right up until it was measured live.
 func pickOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) []int {
 	type cand struct {
 		idx      int
