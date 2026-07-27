@@ -480,6 +480,16 @@ func declared() []Setting {
 			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
 		},
 		{
+			Key: "job.series_episode_refresh.schedule", EnvVar: "JOB_SERIES_EPISODE_REFRESH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 * * * *",
+			Doc: "How often Loomarr re-reads the episode lists of shows used by channels, so the guide doesn't have to ask the media server on every load (cron).",
+		},
+		{
+			Key: "episodes.max_age", EnvVar: "EPISODES_MAX_AGE", Group: GroupAdvanced,
+			Kind: KindDuration, Default: "24h",
+			Doc: "How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness.",
+		},
+		{
 			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 * * * * *",
 			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",

@@ -207,6 +207,20 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			Run: func(ctx context.Context) error { _, err := libScan.Full(ctx); return err },
 		})
 
+		// Keeps the cached series episode lists current (§5, §18.1) so the guide never
+		// enumerates a show on the request path. Deliberately NOT folded into library-scan:
+		// that job only correlates in-flight acquisitions and returns early when there are
+		// none, so it would never revisit an already-available show — the exact set this
+		// refreshes. Bounded to the shows channel lineups actually reference.
+		epRefresh := reconcile.NewEpisodeRefresh(st, episodeResolver(lib), func() time.Duration {
+			return set.dur("episodes.max_age")
+		}, time.Now, log)
+		jobReg.Add(scheduler.Job{
+			Name: "series-episode-refresh", Title: "Refresh series episode lists",
+			DefaultCron: "0 0 * * * *", ScheduleKey: "job.series_episode_refresh.schedule",
+			Run: func(ctx context.Context) error { _, err := epRefresh.Run(ctx); return err },
+		})
+
 		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
 		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
 		// status (Downloading / Partly available, no percentage). Both promote grabbed titles

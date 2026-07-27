@@ -93,6 +93,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
 | `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
+| `job.series_episode_refresh.schedule` (`JOB_SERIES_EPISODE_REFRESH_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr re-reads the episode lists of shows used by channels, so the guide doesn't have to ask the media server on every load (cron). |
+| `episodes.max_age` (`EPISODES_MAX_AGE`) | duration | `24h` | How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness. |
 | `job.arr_queue_poll.schedule` (`JOB_ARR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only). |
 | `job.seerr_queue_poll.schedule` (`JOB_SEERR_QUEUE_POLL_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only). |
 | `job.workers` (`JOB_WORKERS`) | int | `2` | How many channel suggestions can be worked on at once. |

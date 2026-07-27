@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -47,6 +48,85 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 	t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
+	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
+}
+
+// testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
+// — the upsert-replaces semantics, the empty-vs-missing distinction, and the staleness query
+// the refresh job runs.
+func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	st := newStore(t)
+
+	// A show never enumerated is NOT FOUND — distinct from one cached as empty, below.
+	if _, err := st.GetSeriesEpisodes(ctx, "show-unknown"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown show = %v, want ErrNotFound", err)
+	}
+
+	fetched := time.Now().Truncate(time.Second)
+	eps := []schedule.ResolvedProgram{
+		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1},
+		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
+	}
+	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-a", Episodes: eps, FetchedAt: fetched}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.GetSeriesEpisodes(ctx, "show-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Episodes) != 2 || got.Episodes[0].LibraryItemID != "ep-1" {
+		t.Fatalf("round-trip lost episodes: %+v", got.Episodes)
+	}
+	// EpisodeEnd is the multi-part span (§5) — a field a naive round-trip silently drops.
+	if got.Episodes[1].EpisodeEnd != 3 {
+		t.Fatalf("EpisodeEnd = %d, want 3 (multi-part span must survive the blob)", got.Episodes[1].EpisodeEnd)
+	}
+	if !got.FetchedAt.Equal(fetched) {
+		t.Fatalf("FetchedAt = %v, want %v", got.FetchedAt, fetched)
+	}
+
+	// Upsert REPLACES rather than merging: the library's answer is the truth for that show, so
+	// an episode it no longer reports must disappear rather than linger in every lineup.
+	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{
+		LibraryID: "show-a",
+		Episodes:  []schedule.ResolvedProgram{{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000}},
+		FetchedAt: fetched,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = st.GetSeriesEpisodes(ctx, "show-a"); err != nil || len(got.Episodes) != 1 {
+		t.Fatalf("upsert did not replace: %d episodes, err=%v", len(got.Episodes), err)
+	}
+
+	// An EMPTY list is a legitimate cached answer ("no episodes present yet") and must read
+	// back as a hit, not as a miss — otherwise a genuinely-empty show re-enumerates on every
+	// request, which is the N+1 this cache exists to remove.
+	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-empty", FetchedAt: fetched}); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := st.GetSeriesEpisodes(ctx, "show-empty")
+	if err != nil {
+		t.Fatalf("a cached EMPTY list must be a hit, got %v", err)
+	}
+	if len(empty.Episodes) != 0 {
+		t.Fatalf("empty cache entry returned %d episodes", len(empty.Episodes))
+	}
+
+	// Staleness: the refresh job asks for rows older than a cutoff, oldest first.
+	old := fetched.Add(-48 * time.Hour)
+	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-old", FetchedAt: old}); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := st.ListStaleSeriesEpisodes(ctx, fetched.Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stale) != 1 || stale[0].LibraryID != "show-old" {
+		t.Fatalf("stale = %+v, want exactly show-old (the fresh rows must be excluded)", stale)
+	}
 }
 
 func sampleRecord(key provision.Key, state provision.State, deadline time.Time) provision.Record {
