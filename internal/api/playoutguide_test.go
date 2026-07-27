@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,13 +27,31 @@ type fakeXMLTVGuide struct {
 	// the time grid must not be able to swap them silently.
 	withPending map[string][]playout.Broadcast
 	errFor      map[string]error
-	windows     []time.Duration // the (to-from) span of each call, for the window assertions
+
+	// mu guards `windows`. GET /v1/guide resolves channels CONCURRENTLY, so this fake is
+	// called from several goroutines at once and the append below was a real data race —
+	// it surfaced as a rare failure in a full-package run (once in seven), which `-race`
+	// missed because with two channels the interleaving almost never happens.
+	//
+	// The lesson is about the PRODUCTION change, not the fake: making a previously-sequential
+	// interface concurrent puts a thread-safety obligation on every implementation of it,
+	// test doubles included.
+	mu      sync.Mutex
+	windows []time.Duration // the (to-from) span of each call, for the window assertions
+}
+
+// recordWindow notes one call's span. Separate method so both projections share the locking
+// rather than each remembering to take the mutex.
+func (f *fakeXMLTVGuide) recordWindow(d time.Duration) {
+	f.mu.Lock()
+	f.windows = append(f.windows, d)
+	f.mu.Unlock()
 }
 
 func (f *fakeXMLTVGuide) BroadcastsBetween(
 	_ context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	f.windows = append(f.windows, to.Sub(from))
+	f.recordWindow(to.Sub(from))
 	if err := f.errFor[channelID]; err != nil {
 		return nil, err
 	}
@@ -42,7 +61,7 @@ func (f *fakeXMLTVGuide) BroadcastsBetween(
 func (f *fakeXMLTVGuide) BroadcastsWithPending(
 	_ context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	f.windows = append(f.windows, to.Sub(from))
+	f.recordWindow(to.Sub(from))
 	if err := f.errFor[channelID]; err != nil {
 		return nil, err
 	}
