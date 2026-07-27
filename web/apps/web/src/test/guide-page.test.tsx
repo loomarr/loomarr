@@ -5,8 +5,16 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 
-// Channels + Board through the REAL route tree (13.4b).
+// The Guide — the channels surface — through the REAL route tree.
+//
+// Was `channels-board.test.tsx` against `/channels`. That route folded into `/guide` (§12):
+// one surface answers "what do I have" and "what is on", and it owns ORIGINATION. The
+// assertions that survived the move are the ones about behavior rather than layout — the
+// per-row actions menu, the inline "Add a channel" door, and the absence of any manual
+// rebuild control (§9 self-maintaining). The card-list-shaped ones did not survive, because
+// the cards did not.
 const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
+const MEMBER = { id: "u2", name: "Kid", role: "member", autoApprove: false, disabled: false, quota: 0 };
 
 const CHANNELS = [
   {
@@ -44,19 +52,32 @@ const TITLES = [
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const stubFetch = () => {
+// GET /v1/guide's shape, read off the generated GuideChannelTimeline/GuideAiring DTOs
+// rather than remembered — the same rule the fixtures carry, and the one that caught two
+// wrong proposal shapes in 13.4e.
+const NOW = 1_700_000_000_000;
+const GUIDE = {
+  fromMs: NOW,
+  toMs: NOW + 4 * 3_600_000,
+  channels: [
+    {
+      channelId: "ch-live",
+      name: "Saturday Cartoons",
+      number: 42,
+      status: "live",
+      pendingCount: 0,
+      airings: [
+        { kind: "program", title: "The Matrix", startMs: NOW, stopMs: NOW + 7_200_000, runtimeMs: 7_200_000 },
+      ],
+    },
+  ],
+};
+
+const stubFetch = (me: unknown = ADMIN) => {
   const mock = vi.fn((url: string, _init?: RequestInit) => {
     const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-    if (u.includes("/v1/channels/now-next")) {
-      return Promise.resolve(
-        json({
-          channels: [
-            { channelId: "ch-live", now: { title: "The Matrix", startMs: 1, stopMs: 2, gap: false } },
-          ],
-        }),
-      );
-    }
+    if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
+    if (u.includes("/v1/guide")) return Promise.resolve(json(GUIDE));
     if (u.includes("/v1/channels")) return Promise.resolve(json({ channels: CHANNELS }));
     // GET /v1/titles is a single-state FILTER, and it 400s without a `state` — mirror the
     // real handler (internal/api/titles.go) rather than answering any URL, so a caller
@@ -108,44 +129,64 @@ const renderAt = (path: string) => {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("Channels", () => {
-  it("shows what's on now, from the guide", async () => {
+describe("Guide", () => {
+  it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
     stubFetch();
-    renderAt("/channels");
+    renderAt("/guide");
+    // The heading is "Channels", not "Guide": one surface, and the mock names it for the
+    // objects it lists rather than the view it uses (§12).
+    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("Saturday Cartoons")).toBeInTheDocument();
-    // now/next comes from Tunarr's guide via the one-call endpoint.
     expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
   });
 
-  it("has no manual rebuild/refresh — edits are seamless (§9), the card links to the channel", async () => {
+  it("has no manual rebuild/refresh — edits are seamless (§9) — and each row opens its channel", async () => {
     stubFetch();
-    renderAt("/channels");
+    renderAt("/guide");
 
-    // The card is present and links to the channel's page (where editing + refine live).
-    const card = await screen.findByRole("link", { name: /Cartoons/i });
-    expect(card).toHaveAttribute("href", expect.stringContaining("/channels/ch-live"));
+    // The row is present (its ⋮ actions menu is the stable, explicitly-labelled handle on
+    // it — the channel button's accessible name is assembled from sibling spans and is a
+    // rendering detail). Awaited because rows depend on the guide query resolving.
+    expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
 
     // No manual "Rebuild"/"Refresh" buttons — a background reconcile + a `channel` SSE
-    // frame keep the list current on their own.
+    // frame keep the surface current on their own.
     expect(screen.queryByRole("button", { name: /rebuild/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeInTheDocument();
   });
 
-  it("offers the admin add/remove affordances — an inline 'Add a channel' + a per-row menu", async () => {
+  it("owns origination: 'Add a channel' opens the describe panel in place", async () => {
     const user = userEvent.setup();
     stubFetch();
-    renderAt("/channels");
+    renderAt("/guide");
 
     // Each row carries a ⋮ actions menu (pause/resume + delete) so removing a channel doesn't
-    // require opening it — awaited because the rows depend on the channels query resolving.
+    // require opening it — awaited because the rows depend on the guide query resolving.
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
-    // The single create action: 'Add a channel' — describing one, inline. It toggles the
-    // Suggest panel (the describe-a-channel input) open in place; there is no separate
-    // 'New channel' dialog anymore.
+
+    // THE origination door (§12), and the reason `/channels` could fold away: describing a
+    // channel happens here, inline, rather than on a separate page.
     const add = screen.getByRole("button", { name: /add a channel/i });
-    expect(add).toBeInTheDocument();
     await user.click(add);
     expect(await screen.findByLabelText("Channel intent")).toBeInTheDocument();
+  });
+
+  it("names the origination door for a member — they request rather than add", async () => {
+    stubFetch(MEMBER);
+    renderAt("/guide");
+    // A member has no other way to ask for a channel now that /suggest is gone, so the
+    // affordance must be present for them too — worded for what they are actually doing.
+    expect(await screen.findByRole("button", { name: /request a channel/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add a channel/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the describe panel when the wizard hands off ?intent=", async () => {
+    stubFetch();
+    renderAt("/guide?intent=saturday-morning%20cartoons");
+    // §13's blank-page killer: the handoff must land on a FILLED form, not a bare grid with
+    // the operator wondering where their template went.
+    const intent = await screen.findByLabelText("Channel intent");
+    expect(intent).toHaveValue("saturday-morning cartoons");
   });
 });
 

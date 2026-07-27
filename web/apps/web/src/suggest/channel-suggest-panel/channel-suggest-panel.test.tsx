@@ -93,6 +93,32 @@ describe("ChannelSuggestPanel", () => {
     });
   });
 
+  // Moved here when `/suggest` folded into the Guide header (§12) and its route-level suite
+  // went away. Worth keeping as its own case: `runtimeTargetMin` was in the shared schema and
+  // consumed by the scorer for a long time with NO way to set it, so this pins that the
+  // constraints disclosure actually reaches the wire — under the wire's field names.
+  it("submits the constraints behind the disclosure, under the wire's field names", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubFetch();
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "90s action movies");
+    await user.click(screen.getByRole("button", { name: /add constraints/i }));
+    await user.type(screen.getByLabelText(/target runtime/i), "180");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+
+    await waitFor(() => {
+      const posted = fetchMock.mock.calls.find(
+        ([u, init]) => String(u).includes("/v1/suggestions") && String(init?.method) === "POST",
+      );
+      expect(posted).toBeTruthy();
+      expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({
+        description: "90s action movies",
+        runtimeTargetMin: 180,
+      });
+    });
+  });
+
   it("shows the grounded proposal inline once the run produces one", async () => {
     const user = userEvent.setup();
     stubFetch({ proposals: [PROPOSAL] });

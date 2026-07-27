@@ -1,6 +1,6 @@
 import { loginSchema } from "@loomarr/core";
 import { useForm } from "@tanstack/react-form";
-import { Loader2, LogIn } from "lucide-react";
+import { FlaskConical, Loader2, LogIn } from "lucide-react";
 import { ErrorState } from "@/components/loomarr";
 import { Button, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
@@ -14,7 +14,7 @@ import type { LoginFormProps } from "./login-form.type";
 // with the future mobile app (§4.3). Validating on submit, not on change, keeps errors
 // out of the operator's way while they type. The block-level failure renders through
 // ErrorState (RFC 7807 → words, §3), field errors inline.
-const LoginForm = ({ onSubmit, isPending = false, error, className }: LoginFormProps) => {
+const LoginForm = ({ onSubmit, isPending = false, error, onDevLogin, className }: LoginFormProps) => {
   const form = useForm({
     defaultValues: { username: "", password: "" },
     validators: { onSubmit: loginSchema },
@@ -81,6 +81,23 @@ const LoginForm = ({ onSubmit, isPending = false, error, className }: LoginFormP
         {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <LogIn aria-hidden />}
         {isPending ? "Signing in…" : "Sign in"}
       </Button>
+
+      {/* Development only (§11). Rendered solely when the SERVER reports
+          LOOMARR_DEV_LOGIN=1, so it cannot appear in a shipped install. It says what it
+          does rather than something friendly like "Quick sign in" — an affordance that
+          skips authentication should read as the unusual thing it is, both for the
+          maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
+      {onDevLogin && (
+        <div className="flex flex-col items-center gap-1 border-border border-t pt-4">
+          <Button type="button" variant="outline" size="sm" onClick={onDevLogin} disabled={isPending}>
+            <FlaskConical aria-hidden />
+            Skip sign-in (dev)
+          </Button>
+          <p className="text-muted-foreground text-xs">
+            <code>LOOMARR_DEV_LOGIN</code> is on — signs you in as an admin with no password.
+          </p>
+        </div>
+      )}
     </form>
   );
 };

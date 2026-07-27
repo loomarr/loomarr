@@ -6,10 +6,10 @@ import { Button } from "@/components/ui";
 import { useCompleteSetup } from "../use-complete-setup";
 
 // Wizard step 7 — the guided first channel (§13). It hands off rather than rebuilding:
-// picking a template marks setup complete and drops the operator into the Suggest
-// workspace with the intent prefilled, where the real pipeline (generate → review →
-// approve) lives. Templates are the blank-page killer (§13) and ship in packages/core,
-// so this step and the workspace always offer the same set.
+// picking a template marks setup complete and drops the operator on the Guide — the channels
+// surface (§12) — with `?intent=` prefilled, which auto-opens its inline describe panel where
+// the real pipeline (generate → review → approve) lives. Templates are the blank-page killer
+// (§13) and ship in packages/core, so this step and the panel always offer the same set.
 const FirstChannelStep = () => {
   const [chosen, setChosen] = useState<string | undefined>();
   const complete = useCompleteSetup();
@@ -18,7 +18,7 @@ const FirstChannelStep = () => {
     const template = CHANNEL_TEMPLATES.find((t) => t.id === id);
     if (!template) return;
     setChosen(id);
-    complete.finish({ to: "/suggest", intent: template.description });
+    complete.finish({ to: "/guide", intent: template.description });
   };
 
   return (
@@ -57,7 +57,7 @@ const FirstChannelStep = () => {
         variant="ghost"
         className="w-fit"
         disabled={complete.isPending}
-        onClick={() => complete.finish({ to: "/channels" })}
+        onClick={() => complete.finish({ to: "/guide" })}
       >
         Finish setup without a channel
       </Button>

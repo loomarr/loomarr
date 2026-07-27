@@ -350,6 +350,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
 | POST | `/v1/auth/login` | Sign in with media-server credentials (§11) → session cookie. |
+| POST | `/v1/auth/dev-login` | **Development only, default OFF.** Issues an admin session with no credential (§11). Registered **only** when `LOOMARR_DEV_LOGIN=1` is set on the server; otherwise the route does not exist and any call 404s. Selects the lowest-id existing admin — never creates or promotes one, so the allowlist invariant holds. |
 | POST | `/v1/auth/logout` | End session. |
 | GET | `/v1/auth/me` | Current user + role + quotas. |
 | GET | `/v1/users` | List users (admin). |
@@ -706,6 +707,7 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 
 ### Authentication
 - **Local users:** `POST /v1/auth/login` verifies the password against the row's bcrypt `password_hash` (constant-time; a missing hash never verifies).
+- **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. This is the only sanctioned third credential path; it exists for the maintainer's dev loop and must never be reachable in a shipped install.
 - **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), and — critically — only proceeds if the user id is already an allowlisted row. Media-server passwords are never persisted or logged.
 - **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby accepts the equivalent `X-Emby-Authorization` header. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
 - Either path issues Loomarr's **own session**: HTTP-only, `SameSite=Strict` cookie signed with the generated `SESSION_SECRET` (config-design §4). Sessions are rows in the store (revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one), not stateless JWTs — disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Session tokens are random 256-bit values, **SHA-256-hashed at rest** (a DB read never yields a usable cookie). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
@@ -756,9 +758,11 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
 ### Views
 - **Login** — local or imported-media-server credentials (§11); first-run flows into the **setup wizard** (§13): create the owning admin (bootstrap) → connection checklist → **connect Tunarr to your library** (`tunarr-connect`: wire + scan Tunarr's media source, so channels get real programs not dead-air — §6) → import media-server users → guided first channel.
-- **Channels** (route `/channels`) — the list shows each channel's health, now/next, "Managed by Loomarr" badge (§9 ownership), and drift flags from slot revalidation. **Origination** (how a channel is born) is a list-level action: the everyday door is **"Add a channel" → describe it** (the §13 describe→review→approve flow, inlined), with a quiet **hand-made "New channel"** door for the single-series / empty seeds (`POST /v1/channels`). **Evolution** (shaping a live channel) happens on the detail page and never re-originates it.
+- **Guide** (route `/guide`) — headed **"Channels"**, this is the single channels surface: a cross-channel time grid answering both *"what do I have"* and *"what is on"*. **Origination** (how a channel is born) is a header action on this surface: the everyday door is **"✦ Add a channel" → describe it** (the §13 describe→review→approve flow, inlined below the header), and an empty install shows the **"Dead air"** state whose one action opens the same panel. **Evolution** (shaping a live channel) happens on the detail page (`/channels/{id}`) and never re-originates it.
 
-  ⚠ **Channels and Guide are two views of one set of objects, and both are real doors.** The v2 IA folds the card list into the Guide, on the reasoning that a time grid answers "what do I have" as well as "what is on". That fold is NOT done: the list still owns **origination** (there is no "Add a channel" affordance on the grid yet), so removing it would strand the everyday way a channel gets made. Neither route is a redirect; the merge happens when the grid grows that affordance, and this line comes out with it.
+  The **hand-made seeds** (single-series / empty via `POST /v1/channels`) have **no UI door and that is deliberate** — see the §12 surface-map row. They remain an API-only express door into the same object for scripted and restore use; the everyday way to make a channel is to describe one.
+
+  ✅ **The Channels/Guide fold is DONE** (2026-07-26). It was blocked for several phases on one thing — the grid had no origination affordance, so removing the card list would have stranded the everyday way a channel gets made. The v2 mock settles it: its **Guide screen is headed "Channels"** and carries the `✦ Add a channel` button in its header, with the inline describe panel and the "Dead air" empty state beneath. The affordance moved to the grid; `/channels` and `/suggest` are now **redirects** to `/guide`, kept so existing bookmarks and deep links do not 404. `/channels/{id}` is untouched — evolution still lives there.
 
   The **channel detail page is four surfaces, organized by intent, with two audiences** — the everyday **Overview is the viewer surface (read-only); the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
   - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
@@ -802,8 +806,8 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | playout backend (per channel) | `policy.playout.backend` | Overview → Advanced (admin) → Broadcast, beside the Tunarr link — the same subject, *who streams this channel*. §9.1's "one can be moved from its own page", now true. "Follow the default" lowers to `""` so the inherit shape survives. | admin |
   | draft programming preview | `POST …/{id}/programming/preview` | **none — ORPHANED**; the UI previews only saved state | admin |
   | forced reconcile | `POST …/{id}/reconcile` | **API-only by design** — §9: every edit auto-reconciles, there is no manual rebuild | admin |
-  | origination (describe → approve) | approve (`POST /v1/suggestions/{id}/approve`) | Channels **list**; the **approval queue** for the edit-before-approve path (drop/add/note ride the same call) | admin |
-  | hand-made channel | `POST /v1/channels` | **none — ORPHANED**; the list has one door and says so. `strategy` is a REQUIRED field of this body, so it is unsettable at creation too. | admin |
+  | origination (describe → approve) | approve (`POST /v1/suggestions/{id}/approve`) | **Guide header** → `✦ Add a channel` (inline describe panel; the "Dead air" empty state opens the same one); the **approval queue** for the edit-before-approve path (drop/add/note ride the same call) | admin |
+  | hand-made channel | `POST /v1/channels` | **none — API-ONLY BY DECISION** (C8, 2026-07-26). Not an orphan: §12 gives the UI exactly one origination door (describe → approve) and says so. The single-series/empty seeds stay for scripted and restore use, where a caller supplies every field deliberately. `strategy` is REQUIRED by this body, so it is unsettable at creation from a form — which is consistent with there being no form, and would need a §7 default before any UI could offer one. | admin |
 
 - **Dashboard** (admin, route `/dashboard`, V16) — *"is everything alright?"* Four stat cards (on air · needs you · acquiring · filler), each a link to the surface it summarizes, over a **Transcoding** panel showing live internal-playout telemetry: one row per encoding channel with its viewer count, resolved encoder (hardware vs software — the difference between four concurrent streams and one), realtime speed and buffer-ahead, plus an `active / capacity` load line against `playout.max_channels`.
 
@@ -846,23 +850,25 @@ The member's `Request a channel` and `My requests` are the same suggestion and q
 
 **`Dashboard` leads the admin nav (V16),** matching the v2 mock. It was deferred on the grounds that "a nav entry to a placeholder is worse than no entry" — V16 removes that objection by building the surface, so the entry is now appropriate rather than aspirational. **Members do not get it**: its content is machine state (encoder families, realtime speed, how close the box is to its channel ceiling), which §11 keeps to admins.
 
-**Still deferred from the v2 IA, deliberately:** folding `Channels` into `Guide` (see the ⚠ above: the grid has no origination affordance yet), and dropping `Suggest` from the admin nav — the mock omits both, but `Suggest` is §12's origination path and removing it needs a decided home for admin origination first. Additive later; neither blocks anything shipped.
+✅ **The admin nav now matches the v2 mock** (2026-07-26): **`Dashboard · Guide · Queue · Filler ·
+People · Settings · Help`** — seven entries, exactly `navDefs` in
+`design/loomarr-prototype-desktop-v2.dc.html`. Both `Channels` and `Suggest` are gone from the nav;
+their routes redirect to `/guide`. Read the mock before touching the nav — it remains the authority
+on this surface. Three consequences worth recording rather than rediscovering:
 
-⚠ **The admin row above is the SHIPPED nav, and it is not what the v2 mock shows.** Read
-`design/loomarr-prototype-desktop-v2.dc.html` (`navDefs`) before touching the nav — the mock's
-admin list is **`Dashboard · Guide · Queue · Filler · People · Settings · Help`**: `Dashboard`
-added, and **both `Suggest` and `Channels` gone**. Three consequences worth recording rather than
-rediscovering:
-
-1. The two deferrals above are exactly the gap — `Dashboard` is V16, and `Channels`→`Guide` waits
-   on the grid gaining an origination affordance.
-2. **`Suggest` disappearing is the harder one**, and is NOT merely a rename: it is §12's
-   origination path (`describe → review → approve`), and the member nav still lists it as
-   *Request a channel*. Removing the admin entry needs a decided home for admin origination
-   first — that decision has not been made, so the entry stays.
+1. **What unblocked it was reading the mock's Guide screen, not a new decision.** Both deferrals
+   cited the same blocker — "the grid has no origination affordance yet" — and the mock has always
+   carried one: its Guide screen is headed **"Channels"** with `✦ Add a channel` in the header. The
+   affordance was specified all along; nothing had ported it. `Dashboard` was the other half and
+   shipped as V16.
+2. **`Suggest` disappearing was the harder one**, and it is NOT merely a rename: it is §12's
+   origination path (`describe → review → approve`). It resolves because the Guide header now hosts
+   that exact path inline — admin origination has a decided home, so the standalone entry is
+   redundant rather than lost. **The member nav is unaffected** and still lists it as
+   *Request a channel* (members have no Guide-header affordance; four entries, unchanged).
 3. The mock hangs a **pending-proposal count badge** off `Queue`, which is why V27 built the
-   approvals surface into Queue's tabs rather than as a ninth nav entry. Whoever does the nav
-   rename inherits a Queue that is already the approvals surface.
+   approvals surface into Queue's tabs rather than as a ninth nav entry.
+
 - **Help** — embedded docs (§13), rendered offline; searched client-side.
 
 ### Auth
@@ -1114,6 +1120,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
+| `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) |
 | `EVENT_WEBHOOK_URL` | optional external event target |

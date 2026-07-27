@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -34,6 +35,22 @@ func (s *Server) registerAuth(api huma.API) {
 		OperationID: "me", Method: http.MethodGet, Path: "/v1/auth/me",
 		Summary: "Current user, role, and quotas", Tags: []string{"auth"},
 	}, s.handleMe)
+
+	// Dev login (§11) — mounted ONLY when the server was started with
+	// LOOMARR_DEV_LOGIN=1. Not registering is the gate: an install without the flag
+	// serves 404 because the route genuinely does not exist, not because a handler
+	// decided to refuse. There is nothing to misconfigure into an open state.
+	//
+	// Deliberately excluded from schemaOnly, so it never reaches api/openapi.yaml:
+	// the exported spec is the product's contract, and a development bypass is not
+	// part of it. That also keeps orval from generating a client for an endpoint
+	// that is absent in every shipped install.
+	if s.devLogin && !s.schemaOnly {
+		huma.Register(api, huma.Operation{
+			OperationID: "dev-login", Method: http.MethodPost, Path: "/v1/auth/dev-login",
+			Summary: "Sign in as an admin without a credential (development only)", Tags: []string{"auth"},
+		}, s.handleDevLogin)
+	}
 }
 
 type loginInput struct {
@@ -85,6 +102,35 @@ func (s *Server) handleLogin(ctx context.Context, in *loginInput) (*meOutput, er
 		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != ""},
 	}
 	return out, nil
+}
+
+// handleDevLogin issues an admin session with no credential (§11). Reaching this
+// handler already required LOOMARR_DEV_LOGIN=1 at boot — registerAuth does not mount
+// the route otherwise — so it performs no second gate check of its own.
+//
+// It is NOT rate-limited, on purpose: rate limiting exists to slow credential
+// guessing, and there is no credential here to guess. The protection is that the
+// route does not exist unless an operator deliberately turned it on.
+func (s *Server) handleDevLogin(ctx context.Context, _ *struct{}) (*meOutput, error) {
+	r := requestFrom(ctx)
+	token, expires, u, err := s.login.DevLogin(ctx)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			// No admin row to borrow. Dev login never CREATES one (§11) — that would
+			// turn a credential shortcut into a provisioning path.
+			return nil, errUnauthorized("No admin to sign in as",
+				"Dev login borrows an existing admin account, and this install has none. Create one through the setup wizard first.")
+		}
+		return nil, err
+	}
+	// Counted as a successful login: it really did mint a session, and a metric that
+	// quietly omits some sign-ins is worse than one that includes an unusual path.
+	metrics.LoginResult(true)
+	slog.WarnContext(ctx, "dev login used — credential check bypassed", "user", u.Name, "id", u.ID)
+	return &meOutput{
+		SetCookie: s.sessionCookie(r, token, expires),
+		Body:      meBody{ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled, Quota: u.Quota, AutoApprove: u.AutoApprove, Local: u.PasswordHash != ""},
+	}, nil
 }
 
 type logoutOutput struct {

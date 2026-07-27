@@ -8,8 +8,6 @@ import {
   LogOut,
   Search,
   Settings,
-  Sparkles,
-  Tv,
   Users,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
@@ -33,14 +31,14 @@ const ADMIN_NAV: NavItem[] = [
   // surface, so the entry is now a door rather than a promise. Members do not get it: its
   // content is machine state, which §11 keeps to admins.
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/channels", label: "Channels", icon: Tv },
-  // Channels and Guide answer adjacent questions — "what do I have" and "what is on". The
-  // v2 IA folds the first into the second; that is NOT done, because origination ("Add a
-  // channel") still lives on the list and the grid has no affordance for it yet. Both doors
-  // are real; neither is a redirect.
+  // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
+  // one grid. The fold completed when the grid grew the origination affordance the mock always
+  // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
+  // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
+  // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
+  // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
   { to: "/queue", label: "Queue", icon: LayoutGrid },
-  { to: "/suggest", label: "Suggest", icon: Sparkles },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -50,9 +48,14 @@ const ADMIN_NAV: NavItem[] = [
 // The member's four. Same routes, named for what a member is doing with them — and the
 // admin-only surfaces are absent entirely rather than present-and-greyed, because a rail of
 // dead entries advertises a product they cannot use.
+// THREE, not the four §12 recorded pre-fold. `Request a channel` was a nav entry only while
+// `/suggest` was a separate page; it folded into the Guide header, where members get the same
+// affordance (labelled "Request a channel" for them — it is the only origination door in the
+// app, so a member who cannot reach it cannot ask for anything). Listing it again here would
+// be a second link to /guide: a duplicate React key and two entries highlighting active at
+// once, not an IA choice. The verb lives on the surface it acts on.
 const MEMBER_NAV: NavItem[] = [
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/suggest", label: "Request a channel", icon: Sparkles },
   { to: "/queue", label: "My requests", icon: LayoutGrid },
   { to: "/help", label: "Help", icon: ListChecks },
 ];

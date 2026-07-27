@@ -69,7 +69,7 @@ const DashboardScreen = () => {
 
       <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Link to="/channels">
+          <Link to="/guide">
             <StatCard label="On air" value={onAir} note="channels in the guide right now" tone="onair" />
           </Link>
           {/* Needs-you is the only card that is a CALL TO ACTION rather than a status, so it

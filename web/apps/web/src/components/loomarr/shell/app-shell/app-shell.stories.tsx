@@ -17,7 +17,7 @@ const meta = {
   title: "Shell/AppShell",
   component: AppShell,
   parameters: { layout: "fullscreen" },
-  decorators: [withRouter("/channels")],
+  decorators: [withRouter("/guide")],
   args: { onOpenCommand: noop, onLogout: noop, children: body },
 } satisfies Meta<typeof AppShell>;
 

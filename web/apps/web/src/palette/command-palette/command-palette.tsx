@@ -40,9 +40,10 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
         break;
       default:
         // A title — library or TMDB — is something you'd act on by proposing a channel,
-        // which is the Suggest workspace. Acquiring still routes through the approval
-        // gate (§7); the palette never becomes a shortcut around it.
-        void navigate({ to: "/suggest" });
+        // which is the Guide's inline describe panel (§12: origination folded out of the
+        // old /suggest page and into the channels surface). Acquiring still routes through
+        // the approval gate (§7); the palette never becomes a shortcut around it.
+        void navigate({ to: "/guide" });
     }
   };
 

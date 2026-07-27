@@ -1,7 +1,9 @@
 import { channelsApi, type GuideAiring } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/auth";
 import { EmptyState, ErrorState, GuideDetailCard, GuideGrid } from "@/components/loomarr";
 import {
   Badge,
@@ -13,9 +15,18 @@ import {
   SelectValue,
 } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
+import { ChannelSuggestPanel } from "@/suggest";
 import { ChannelRowMenu } from "../channel-row-menu";
+import type { GuidePageProps } from "./guide-page.type";
 
-// The Guide — the cross-channel schedule (§12). One row per channel, time the shared axis.
+// The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
+// shared axis. It answers both halves of the question the old card list and this grid used to
+// split between them: "what do I have" and "what is on".
+//
+// It also owns **origination**: `✦ Add a channel` in the header opens the inline describe→
+// approve panel, and the "Dead air" empty state opens the same one. That affordance is why the
+// card list could fold away — removing it earlier would have stranded the everyday way a
+// channel gets made. **Evolution** still lives on /channels/{id}; this page never re-originates.
 //
 // Answers what the per-channel Upcoming strip cannot: "what is on across ALL my channels right
 // now?". Reads GET /v1/guide, which returns per-channel timelines with an explicit `kind` per
@@ -65,14 +76,42 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = () => {
+const GuidePage = ({ initialIntent }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [zoomIndex, setZoomIndex] = useState<number>(DEFAULT_ZOOM_INDEX);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [inspected, setInspected] = useState<GuideAiring | null>(null);
   const [dayOffset, setDayOffset] = useState<number>(0);
   const [windowMinutes, setWindowMinutes] = useState<number>(DEFAULT_WINDOW_MINUTES);
+  // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
+  // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
+  // dialog. `adding` toggles it open.
+  //
+  // Opens on arrival when the wizard handed off a template (§13), so the operator lands on a
+  // filled form rather than a bare grid wondering where their pick went. Lazy initializer:
+  // read once at mount, so closing it stays closed.
+  const [adding, setAdding] = useState(() => Boolean(initialIntent));
+
+  // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
+  // panel with a template the operator already dismissed — and right after the wizard, on a
+  // first-run install, a refresh is likely rather than exotic. `replace: true` keeps the
+  // dismissal out of history: closing a panel is not a place you navigate back to.
+  const closePanel = () => {
+    setAdding(false);
+    if (initialIntent) void navigate({ to: "/guide", search: {}, replace: true });
+  };
+
+  // The inline panel approved a proposal, which created the channel — drop the operator on
+  // its page, and refresh the guide behind them.
+  const onCreated = (id: string) => {
+    setAdding(false);
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
+    // Navigating away to the new channel drops `?intent=` with the rest of the URL, so this
+    // needs no explicit clear the way closePanel does.
+    void navigate({ to: "/channels/$id", params: { id } });
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -130,11 +169,31 @@ const GuidePage = () => {
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-semibold text-xl">Guide</h1>
-          <p className="text-muted-foreground text-sm">What's on across every channel.</p>
+          <h1 className="font-semibold text-xl">Channels</h1>
+          <p className="text-muted-foreground text-sm">
+            Every channel Loomarr manages, and what's on right now.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* THE origination door (§12) — for both roles, since `/suggest` folded in here and
+              this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
+              the create path IS describe→approve, inlined. It leads the control cluster
+              because originating a channel outranks re-framing the window.
+
+              The LABEL carries the role difference, not the presence: an admin adds a channel
+              (their approval is the last step), a member requests one (an admin approves it).
+              Same panel, same call — §7 enforces the gate server-side either way. */}
+          <Button
+            variant={adding ? "outline" : "suggest"}
+            size="sm"
+            onClick={() => (adding ? closePanel() : setAdding(true))}
+            aria-expanded={adding}
+          >
+            {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
+            {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+          </Button>
+
           {/* A past day is RECOMPUTED from the current lineup, so it is labelled as such —
               "as aired" would promise a recording of history this cannot give. */}
           {dayOffset < 0 && <Badge variant="neutral">Recomputed</Badge>}
@@ -196,11 +255,20 @@ const GuidePage = () => {
         </div>
       </div>
 
+      {/* The inline create surface — describe a channel, review, approve, land on it. */}
+      {adding && <ChannelSuggestPanel initialIntent={initialIntent} onCreated={onCreated} />}
+
       {channels.length === 0 && !guide.isLoading ? (
-        // No channels yet is a real, expected state on a fresh install — not an error.
+        // No channels yet is a real, expected state on a fresh install — not an error. The
+        // one next action (§6) opens the same inline panel the header toggles, worded for
+        // who is asking.
         <EmptyState
-          title="No channels yet"
-          description="Once you create a channel, its schedule shows up here."
+          title="Dead air"
+          description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
+          action={{
+            label: isAdmin ? "Describe your first channel" : "Request your first channel",
+            onClick: () => setAdding(true),
+          }}
         />
       ) : (
         // The detail card floats over the grid rather than displacing it: inspecting a block

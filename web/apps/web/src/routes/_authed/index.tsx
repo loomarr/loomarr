@@ -8,7 +8,7 @@ import { isSetupCompleted } from "@/wizard";
 const Route = createFileRoute("/_authed/")({
   beforeLoad: async ({ context }) => {
     const completed = await isSetupCompleted(context.queryClient);
-    throw redirect({ to: completed ? "/channels" : "/wizard" });
+    throw redirect({ to: completed ? "/guide" : "/wizard" });
   },
 });
 

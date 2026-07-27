@@ -55,7 +55,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
-		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure,
+		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,

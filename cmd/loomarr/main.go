@@ -57,9 +57,16 @@ func run() error {
 	rootCtx, cancelRoot := context.WithCancel(context.Background())
 	defer cancelRoot()
 
+	// A credential-free sign-in is worth shouting about on EVERY start, not once in a
+	// changelog: the failure mode is an operator who turned it on months ago for a dev
+	// session and never took it off (§11).
+	if cfg.DevLogin {
+		log.Warn("LOOMARR_DEV_LOGIN is set — POST /v1/auth/dev-login grants an admin session with NO credential. Never set this on an install you care about.")
+	}
+
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
-	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{})
+	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{DevLogin: cfg.DevLogin})
 	if err != nil {
 		return err
 	}

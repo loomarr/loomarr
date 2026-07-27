@@ -120,7 +120,7 @@ const ChannelDetailScreen = () => {
     mutation: {
       onSuccess: () => {
         toast.success("Channel deleted");
-        void navigate({ to: "/channels" });
+        void navigate({ to: "/guide" });
       },
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't delete the channel"),
     },
@@ -185,7 +185,7 @@ const ChannelDetailScreen = () => {
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-border border-b px-6 py-4">
         <Link
-          to="/channels"
+          to="/guide"
           aria-label="Back to channels"
           className="cursor-pointer text-muted-foreground hover:text-foreground"
         >
