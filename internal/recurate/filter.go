@@ -26,11 +26,23 @@ type dropped struct {
 	Confidence float64
 }
 
+// retirement is one title rotated OUT to make room for a better one (§8.2a).
+type retirement struct {
+	Out      string  // the title leaving the lineup
+	OutScore float64 // its confidence when it was last scored
+	In       string  // the title taking its place
+	InScore  float64
+}
+
 // filterResult carries the rewritten proposal plus what it discarded and why.
 type filterResult struct {
 	Proposal store.Proposal
 	BelowBar []dropped
 	OverCap  []dropped
+	// Retired are the keys the caller must remove from the channel's lineup, paired with
+	// what replaced them for the audit log.
+	Retired    []retirement
+	RetiredKey []provision.Key
 }
 
 // filterAcquisitions rewrites a re-curation proposal so its acquisition list contains ONLY the
@@ -101,9 +113,26 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 			room = 0
 		}
 	}
+	// The turnstile (§8.2a): at the cap, a better candidate retires the weakest RETIRABLE
+	// title rather than being discarded. Built once, consumed as room runs out.
+	bench := retirableByWeakest(ch)
+
 	for _, c := range survivors {
 		if room == 0 {
-			res.OverCap = append(res.OverCap, dropped{Name: c.item.Name, Confidence: c.item.Confidence})
+			// Try to rotate: find the weakest unscheduled title this candidate beats.
+			out, ok := bench.weakestBelow(c.item.Confidence)
+			if !ok {
+				// Nothing retirable is weaker (or everything left is airing) — drop the
+				// newcomer, exactly as before. The safe direction.
+				res.OverCap = append(res.OverCap, dropped{Name: c.item.Name, Confidence: c.item.Confidence})
+				continue
+			}
+			res.Retired = append(res.Retired, retirement{
+				Out: out.title, OutScore: out.confidence, In: c.item.Name, InScore: c.item.Confidence,
+			})
+			res.RetiredKey = append(res.RetiredKey, out.key)
+			kept = append(kept, c.item)
+			committed[c.key] = struct{}{}
 			continue
 		}
 		kept = append(kept, c.item)
@@ -177,4 +206,72 @@ func effectiveConfidence(a suggest.ProposalItem) float64 {
 		return adjacencyUnscoredFloor
 	}
 	return a.Confidence
+}
+
+// benchEntry is one lineup title that MAY be retired, with the score it is judged on.
+type benchEntry struct {
+	key        provision.Key
+	title      string
+	confidence float64
+}
+
+// bench is the retirable set, weakest first.
+type bench struct{ entries []benchEntry }
+
+// weakestBelow takes the weakest retirable title STRICTLY below `incoming`, removing it so a
+// single run cannot retire the same title twice.
+//
+// Strictly below, never equal: retiring a title for one of identical confidence is a coin flip
+// that churns the lineup every week — precisely the failure additive binding (§8.2) exists to
+// prevent. A tie means "no better", so nothing moves.
+func (b *bench) weakestBelow(incoming float64) (benchEntry, bool) {
+	if len(b.entries) == 0 || b.entries[0].confidence >= incoming {
+		return benchEntry{}, false
+	}
+	out := b.entries[0]
+	b.entries = b.entries[1:]
+	return out, true
+}
+
+// retirableByWeakest builds the retirable set for a channel: every lineup title that is NOT
+// currently scheduled, ordered weakest-confidence first (§8.2a).
+//
+// ⚠ THE SCHEDULED GUARD IS THE POINT. A title in ch.Desired is airing in the current window —
+// someone may be planning to watch it today, and pulling it out from under them is a worse
+// outcome than a stale channel. Desired is already persisted per channel, so this costs no new
+// dependency and no scheduler call.
+//
+// A lineup entry carries no stored confidence (the proposal that added it is long gone), so an
+// untracked title sorts as 0 — the weakest, and therefore the first to go. That is the intended
+// reading: a title nobody has scored since it was added has the least evidence for its place.
+func retirableByWeakest(ch store.Channel) *bench {
+	// ⚠ FAIL CLOSED on an unknown schedule. An empty Desired means "we do not know what is
+	// airing" — a channel that has never reconciled, or one whose desired state was cleared —
+	// NOT "nothing is airing". Treating unknown as all-retirable would let one run churn an
+	// entire lineup, which is the opposite of the guard's purpose. No schedule ⇒ nothing
+	// retires, and the channel simply behaves as it did before the turnstile existed.
+	if len(ch.Desired) == 0 {
+		return &bench{}
+	}
+	scheduled := make(map[provision.Key]struct{}, len(ch.Desired))
+	for _, s := range ch.Desired {
+		if s.Key != "" {
+			scheduled[s.Key] = struct{}{}
+		}
+	}
+	out := make([]benchEntry, 0, len(ch.Lineup))
+	for _, e := range ch.Lineup {
+		if _, airing := scheduled[e.Key]; airing {
+			continue // never retire something on the air
+		}
+		out = append(out, benchEntry{key: e.Key, title: e.Title, confidence: 0})
+	}
+	// Weakest first; Title as a stable tiebreaker so a run is reproducible (§7).
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].confidence != out[j].confidence {
+			return out[i].confidence < out[j].confidence
+		}
+		return out[i].title < out[j].title
+	})
+	return &bench{entries: out}
 }
