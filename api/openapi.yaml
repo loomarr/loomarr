@@ -2243,6 +2243,9 @@ components:
     ProposalItem:
       additionalProperties: false
       properties:
+        adjacentVotes:
+          format: int64
+          type: integer
         confidence:
           format: double
           type: number

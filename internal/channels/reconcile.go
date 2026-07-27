@@ -88,6 +88,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// we can't keep. No pool ⇒ BreaksPerHour 0 ⇒ programs play back-to-back. Self-heals:
 	// once clips land, the next reconcile sees a pool and re-inserts breaks.
 	chDomain := ch.Channel
+	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = 0
 	if hasFillerPool {
 		chDomain.BreaksPerHour = e.breaksPerHour

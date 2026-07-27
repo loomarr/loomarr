@@ -539,3 +539,24 @@ func (s *storeAvailability) memoEpisodes(libraryID string, eps []schedule.Resolv
 	s.epsMemo[libraryID] = memoEntry[[]schedule.ResolvedProgram]{val: eps, exp: now.Add(memoTTL)}
 	s.mu.Unlock()
 }
+
+// lastAiredFor loads the channel's airing history for recency-aware placement (§3.1).
+//
+// BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to the
+// positional rotation it used before the signal existed. A history read must never be able to
+// fail a reconcile — the channel still has to air something.
+//
+// Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
+// disagree with what actually ships (§8.1's one-code-path rule).
+func (e *Engine) lastAiredFor(ctx context.Context, channelID string) map[provision.Key]time.Time {
+	if e.store == nil {
+		return nil
+	}
+	hist, err := e.store.LastAiredByChannel(ctx, channelID)
+	if err != nil {
+		e.log.Debug("recency: airing history unavailable; placement falls back to positional rotation",
+			"channel", channelID, "err", err)
+		return nil
+	}
+	return hist
+}

@@ -437,6 +437,14 @@ type ResolvedPolicy struct {
 	Sep      ResolvedSeparation
 	Ordering OrderingMode // resolved to a concrete mode (never OrderInherit)
 	Seasonal ResolvedSeasonal
+	// LastAired is when each key last aired ON THIS CHANNEL (§3.1) — the recency signal
+	// placement biases on. Nil/empty ⇒ no history, and ordering is exactly what it was before
+	// the signal existed.
+	//
+	// NOT a policy field: it is observed state, not something an operator or the LLM authors,
+	// which is why it has no ChannelPolicy counterpart and no §9 extensibility entry. It rides
+	// here because it is an INPUT to placement and this is what placement receives.
+	LastAired map[provision.Key]time.Time
 }
 
 // ResolvedSeparation is the separation policy with every window/limit filled.

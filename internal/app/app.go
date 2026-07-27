@@ -347,6 +347,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// Same store, narrowed to the one write the resolver legitimately makes: counting
 			// a filler clip as having aired (V28).
 			clipPlays: st,
+			// Airing history (§5, programming-design §3.1): the same store, narrowed to the one
+			// write. Recording what actually aired is what lets placement prefer titles that
+			// have NOT been on recently — the memory the scheduler previously lacked.
+			airings: st,
 			// The arranged-cycle cache and the channel read it fingerprints (cyclecache.go): the
 			// guide re-arranges every channel on every poll, which profiled as 53% of the
 			// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a

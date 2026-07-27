@@ -130,6 +130,16 @@ type Store interface {
 	// RecordClipPlay counts a filler clip having AIRED (V28). Written from playout only;
 	// a missing clip is not an error (the catalog may have pruned it mid-schedule).
 	RecordClipPlay(ctx context.Context, libraryItemID string, at time.Time) error
+
+	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
+	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
+	// actually resolved for streaming; upserts one row per (channel, key) holding the LAST
+	// airing, because the only question asked of it is "when did this last air here?".
+	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
+	// LastAiredByChannel returns the most recent airing per key on one channel, for
+	// recency-aware placement (programming-design §3.1). A key that has never aired is simply
+	// absent — callers treat absence as "least recently aired", which sorts it first.
+	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer

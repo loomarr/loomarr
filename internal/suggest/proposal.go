@@ -99,6 +99,14 @@ type ProposalItem struct {
 	// model didn't compute and can't see, so a bare 0 confidence from a model that declined
 	// to score a title it was handed must not be read as "the model judged this poorly".
 	Source string `json:"source,omitempty"`
+	// AdjacentVotes is how many of the channel's own titles independently recommended this
+	// pick (§8.3) — 0 for anything that did not come from the adjacency corpus.
+	//
+	// It rides to the approval surface because it is the REASON: "recommended by 5 of your
+	// films" is a claim an operator can check, where an LLM rationale can only be read. The
+	// consensus is also what the unscored-pick floor trusts, so showing it makes that
+	// decision legible rather than magic.
+	AdjacentVotes int `json:"adjacentVotes,omitempty"`
 	// Genres + Overview carry from the grounded Candidate so deterministic theme
 	// scoring measures real metadata, not the title string (§8). Display/scoring
 	// only — never identity (Key ignores them).
