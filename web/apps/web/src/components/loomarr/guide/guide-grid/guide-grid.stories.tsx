@@ -22,11 +22,15 @@ type Story = StoryObj<typeof meta>;
 // at that instant is highlighted.
 const Default: Story = {};
 
-// Zoom scales the CHROME — rail width, row height, type — not the time scale. The window still
-// fits; rows just carry more detail. This is the TV-guide convention.
-const ZoomedIn: Story = { args: { zoom: 1.35 } };
+// Zoom magnifies the TIME AXIS, not the chrome. At 2× an hour occupies twice the pixels, so the
+// grid overflows its viewport and scrolls horizontally — which is what makes a short commercial
+// break resolve into a labelled block instead of an unreadable smear. The rail, row height and
+// type are deliberately unchanged at every zoom: scaling them was what made titles illegible.
+const ZoomedIn: Story = { args: { zoom: 2 } };
 
-const ZoomedOut: Story = { args: { zoom: 0.8 } };
+// Below 1 the whole window still fits; the schedule just gets denser, which is the mode for
+// scanning a long day rather than reading one.
+const ZoomedOut: Story = { args: { zoom: 0.75 } };
 
 // Before the window's start: no line is drawn, because pinning it to an edge would claim the
 // current instant is on screen when it is not.
