@@ -151,6 +151,47 @@ func TestResolveEpisodesMemoizesAnEmptyEnumeration(t *testing.T) {
 	}
 }
 
+// The memo EXPIRES. This is the correctness half, and it needs its own test because every
+// assertion above would pass with no TTL at all.
+//
+// It matters because the composition root builds ONE storeAvailability at boot with the
+// process-lifetime rootCtx (app.go) — the memo lives as long as the process. Without an expiry
+// a title that finished acquiring would read `pending` forever, and the scheduler would keep
+// laying out a pending slot for content that had already landed.
+func TestMemoExpiresSoAvailabilityCanChange(t *testing.T) {
+	st := availTestStore(t)
+	key := provision.Key("movie:tmdb:603")
+	seedAvailable(t, st, key, "lib-603")
+
+	clock := time.Now()
+	calls := 0
+	dur := func(_ context.Context, _ string) (int64, error) { calls++; return 1_000, nil }
+
+	av := NewStoreAvailability(context.Background(), st, dur, nil)
+	// Drive the clock rather than sleeping: the expiry is a property of the code, and a test
+	// that sleeps for it is slow AND flaky.
+	av.(*storeAvailability).now = func() time.Time { return clock }
+
+	av.Resolve(key)
+	av.Resolve(key)
+	if calls != 1 {
+		t.Fatalf("within the TTL: %d calls, want 1", calls)
+	}
+
+	// Past the TTL, the next resolve must go back to the source.
+	//
+	// The advance is a FIXED 30s, deliberately not `memoTTL + something`: expressing it in
+	// terms of the constant makes the test move with it, so raising memoTTL to 100h would
+	// still pass and the expiry would be unguarded. (Verified: with the relative form, that
+	// exact sabotage went green.) 30s also pins the intended ORDER OF MAGNITUDE — the memo is
+	// meant to collapse repeats within one layout, not to be a cache that outlives a reconcile.
+	clock = clock.Add(30 * time.Second)
+	av.Resolve(key)
+	if calls != 2 {
+		t.Fatalf("30s after the first resolve: %d calls, want 2 — the memo must expire, or an acquisition landing is never seen (is memoTTL too long?)", calls)
+	}
+}
+
 // The memo is shared mutable state and the guide resolves channels concurrently, so this must
 // be race-free. Run under `-race` (make check does) this fails loudly if the mutex goes away.
 func TestAvailabilityMemoIsSafeUnderConcurrentResolve(t *testing.T) {

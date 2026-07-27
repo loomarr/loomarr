@@ -3,13 +3,22 @@ package api
 import (
 	"context"
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
 )
+
+// guideConcurrency bounds how many channel timelines resolve at once. The work is CPU-bound
+// (ComputeDesiredAt), not I/O-bound, so more goroutines than cores buys nothing and an install
+// with fifty channels must not starve the rest of the process. Floored at 2 so a single-core
+// container still overlaps the little I/O there is.
+var guideConcurrency = max(2, runtime.NumCPU())
 
 // GET /v1/guide?from=&to= — the time-grid endpoint (§12, V13b).
 //
@@ -186,12 +195,30 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		return nil, err
 	}
 
-	for _, ch := range channels {
+	// Channels resolve CONCURRENTLY. Each row's timeline is an independent computation —
+	// BroadcastsWithPending re-runs the whole ComputeDesiredAt for that channel, which is
+	// hundreds of milliseconds of CPU — and resolving them one after another simply added
+	// those up. Measured on the maintainer's 4-channel install: ~490ms of the request was
+	// this loop, with only 64ms of it actual library I/O.
+	//
+	// Bounded rather than unbounded: an install with fifty channels must not open fifty
+	// concurrent lineup computations and starve the rest of the process. The cap is small
+	// because the work is CPU-bound, not I/O-bound — past the core count more goroutines only
+	// add scheduling overhead.
+	//
+	// Results are written BY INDEX into a pre-sized slice, never appended: the grid's row
+	// order is the channel order the store returned (number-sorted), and an append-as-you-
+	// finish would reorder the guide by whichever channel happened to compute fastest.
+	rows := make([]GuideChannelTimeline, len(channels))
+	sem := make(chan struct{}, guideConcurrency)
+	var wg sync.WaitGroup
+
+	for i, ch := range channels {
 		// EVERY channel, not just internally-played ones. /playout/tuner.m3u filters to the
 		// internal backend because a media server must not see two tuners offering the same
 		// channel — but this is Loomarr's own UI, where a Tunarr-backed channel is still one of
 		// the user's channels and hiding it would look like it had been deleted.
-		row := GuideChannelTimeline{
+		rows[i] = GuideChannelTimeline{
 			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Logo: ch.Logo,
 			Status: string(ch.Status),
 			// The SAME derivation the channel list uses (DesiredLineup.PendingCount), so a
@@ -200,30 +227,42 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			Airings:      []GuideAiring{},
 		}
 
-		bs, err := s.playoutGuide.BroadcastsWithPending(ctx, ch.ID, from, to)
-		if err != nil {
-			// ONE channel failing must not empty the grid — the same posture as the XMLTV
-			// document. The row still appears, with no blocks, which reads as "nothing
-			// scheduled here" rather than as a missing channel.
-			s.log.Warn("guide: timeline failed for one channel", "channel", ch.ID, "err", err)
-			out.Body.Channels = append(out.Body.Channels, row)
-			continue
-		}
-		for _, b := range bs {
-			a := guideAiringOf(b)
-			// A break's composition, resolved per-airing. Only for filler, and only when the
-			// assembler is wired: an install without filler configured shows breaks with no
-			// hover detail rather than failing the request.
-			if b.Kind == schedule.SlotFiller && s.pods != nil {
-				if pod, perr := s.pods.PreviewAt(ctx, ch.ID, b.Start.UnixMilli()); perr == nil && len(pod.Entries) > 0 {
-					dto := podToPoolDTO(pod)
-					a.Pod = &dto
-				}
+		wg.Add(1)
+		go func(i int, ch store.Channel) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			bs, err := s.playoutGuide.BroadcastsWithPending(ctx, ch.ID, from, to)
+			if err != nil {
+				// ONE channel failing must not empty the grid — the same posture as the XMLTV
+				// document. The row still appears, with no blocks, which reads as "nothing
+				// scheduled here" rather than as a missing channel.
+				s.log.Warn("guide: timeline failed for one channel", "channel", ch.ID, "err", err)
+				return
 			}
-			row.Airings = append(row.Airings, a)
-		}
-		out.Body.Channels = append(out.Body.Channels, row)
+			airings := make([]GuideAiring, 0, len(bs))
+			for _, b := range bs {
+				a := guideAiringOf(b)
+				// A break's composition, resolved per-airing. Only for filler, and only when the
+				// assembler is wired: an install without filler configured shows breaks with no
+				// hover detail rather than failing the request.
+				if b.Kind == schedule.SlotFiller && s.pods != nil {
+					if pod, perr := s.pods.PreviewAt(ctx, ch.ID, b.Start.UnixMilli()); perr == nil && len(pod.Entries) > 0 {
+						dto := podToPoolDTO(pod)
+						a.Pod = &dto
+					}
+				}
+				airings = append(airings, a)
+			}
+			// The only cross-goroutine write, and it is to this goroutine's OWN index — no two
+			// goroutines share an element, so this needs no mutex.
+			rows[i].Airings = airings
+		}(i, ch)
 	}
+	wg.Wait()
+
+	out.Body.Channels = rows
 	return out, nil
 }
 
