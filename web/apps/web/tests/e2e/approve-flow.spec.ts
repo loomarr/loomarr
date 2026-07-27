@@ -15,14 +15,16 @@ test.describe("the approval gate", () => {
   test("an admin approving enqueues the acquisition", async ({ page }) => {
     const mock = await installMockBackend(page, { authed: true, role: "admin", pendingProposal: true });
 
-    await page.goto("/suggest");
+    // The approvals surface is /queue's "Needs approval" tab (V27), not the origination
+    // panel: `/suggest` folded into the Guide header (§12), and what moved there is
+    // DESCRIBING a channel, not approving one. The tab is explicit in the URL because the
+    // queue opens on "In flight" — landing on the wrong tab would fail for the wrong reason.
+    await page.goto("/queue?tab=approval");
 
-    // The queue is where an admin acts on work submitted by others — the only path from
-    // a proposal to a real acquisition. Scoped to that section, because the IntentForm
-    // above it offers a template chip with the same words, and matching the chip would
-    // prove nothing about the queue.
-    const queue = page.locator("section").filter({ hasText: /awaiting approval/i });
-    await expect(queue.getByRole("heading", { name: /awaiting approval/i })).toBeVisible();
+    // The tabpanel is where an admin acts on work submitted by others — the only path from a
+    // proposal to a real acquisition. Scoped to the panel so a match cannot come from the
+    // tab's own label.
+    const queue = page.getByRole("tabpanel");
     await expect(queue.getByText(/90s saturday morning cartoons/i)).toBeVisible();
     await expect(queue.getByText(/1 to acquire/i)).toBeVisible();
 
@@ -42,11 +44,18 @@ test.describe("the approval gate", () => {
   test("a member is not offered approval, and nothing is enqueued", async ({ page }) => {
     const mock = await installMockBackend(page, { authed: true, role: "member", pendingProposal: true });
 
-    await page.goto("/suggest");
-    await expect(page.getByRole("heading", { name: /^suggest$/i })).toBeVisible();
+    // Even asking for the approval tab directly: a member must not get it.
+    await page.goto("/queue?tab=approval");
 
-    // The queue is admin-only, so a member never sees it at all.
-    await expect(page.getByRole("heading", { name: /awaiting approval/i })).toHaveCount(0);
+    // The approvals tab is admin-only, so a member never sees it at all (§11).
+    //
+    // Asserted on the FULL TAB LIST rather than on a name matcher. CountTabs renders the
+    // count inside the button ("Needs approval 1" once whitespace-normalized), so a
+    // name-based `toHaveCount(0)` matches nothing and passes whether or not the tab is
+    // present — it was verified to miss a deliberate sabotage that showed the tab to
+    // members. Comparing the whole list cannot be fooled that way: it fails if an extra
+    // tab appears, whatever its label happens to be.
+    await expect(page.getByRole("tab")).toHaveText([/in flight/i]);
     await expect(page.getByRole("button", { name: /^approve$/i })).toHaveCount(0);
 
     // And the outcome that actually matters: nothing was acquired.

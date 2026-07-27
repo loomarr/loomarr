@@ -66,9 +66,11 @@ test.describe("operator first-run wizard", () => {
     await shot(page, "step-5-first-channel", /your first channel/i);
     await page.getByText("90s Saturday Morning Cartoons").click();
 
-    // Finishing the wizard flips setup.completed (so `/` stops routing here) and hands
-    // off to Suggest with the template's intent prefilled.
-    await expect(page).toHaveURL(/\/suggest\?intent=/);
+    // Finishing the wizard flips setup.completed (so `/` stops routing here) and hands off to
+    // the GUIDE with the template's intent prefilled — `/suggest` folded into the channels
+    // surface (§12), and `?intent=` auto-opens its inline describe panel (§13's blank-page
+    // killer), so the operator lands on a filled form rather than an empty grid.
+    await expect(page).toHaveURL(/\/guide\?intent=/);
     expect(backend.state.edits["setup.completed"]).toBe("true");
   });
 
