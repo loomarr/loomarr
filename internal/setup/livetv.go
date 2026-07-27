@@ -8,6 +8,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/library"
@@ -30,18 +31,74 @@ func TunarrURLsFrom(tunarrBaseURL string) TunarrURLs {
 	}
 }
 
+// InternalPlayoutURLs derives the tuner + guide URLs Loomarr serves ITSELF (§9.1).
+//
+// ⚠ WHICH BACKEND STREAMS DECIDES WHICH URLs THE MEDIA SERVER GETS. `playout.backend`
+// defaults to `internal`, meaning Loomarr encodes the channels — but the Live TV wiring
+// registered Tunarr's `/api/channels.m3u` unconditionally, so the media server was pointed at
+// a backend that was not serving those channels. Reported symptom: the channels appear in
+// Emby's guide and will not play, and a `livetv-reconnect` "fixes" it by re-registering the
+// same wrong URLs. design.md §9.1 item 3 called for exactly this and the code never did it.
+//
+// Both URLs carry the device token as a query parameter, because the media server fetches them
+// unauthenticated from a background job — the same reason /playout/* takes `?token=` at all
+// (§11: this authenticates a DEVICE, not a person).
+//
+// An empty publicURL yields empty URLs, and the caller MUST treat that as "not wireable" rather
+// than registering a relative path: the media server resolves the URL from its own host, so a
+// blank or relative base silently points it at itself. That is the `server.public_url` failure
+// mode the playout handlers already guard.
+func InternalPlayoutURLs(publicURL, deviceToken string) TunarrURLs {
+	base := strings.TrimRight(strings.TrimSpace(publicURL), "/")
+	if base == "" {
+		return TunarrURLs{}
+	}
+	q := ""
+	if deviceToken != "" {
+		q = "?token=" + url.QueryEscape(deviceToken)
+	}
+	return TunarrURLs{
+		M3U:   base + "/playout/tuner.m3u" + q,
+		XMLTV: base + "/playout/guide.xml" + q,
+	}
+}
+
+// LiveTVURLsFor picks the URLs for the backend that will actually stream (§9.1).
+//
+// `internal` (the default) ⇒ Loomarr's own endpoints; `tunarr` ⇒ Tunarr's. Anything else falls
+// back to Tunarr, which is the pre-§9.1 behaviour and the safer default for an unrecognised
+// value: an install that has not opted into internal playout keeps working exactly as it did.
+func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) TunarrURLs {
+	if strings.TrimSpace(backend) == "internal" {
+		return InternalPlayoutURLs(publicURL, deviceToken)
+	}
+	return TunarrURLsFrom(tunarrBaseURL)
+}
+
 // LiveTVConnector performs the one-time, idempotent Live TV wiring (§6). It is
 // the POST /v1/setup/livetv-connect body and also backs the wizard's one-click
 // connect (§13).
 type LiveTVConnector struct {
-	lib  library.LiveTV
-	urls TunarrURLs
+	lib library.LiveTV
+	// urls is resolved PER CALL, not captured at construction: `playout.backend`,
+	// `tunarr.url` and `server.public_url` all hot-apply (config-design §3), and a connector
+	// holding a snapshot would keep wiring the media server to the backend that was configured
+	// at boot. A closure is what makes "switch to internal playout, save, re-connect" work
+	// without a restart.
+	urls func() TunarrURLs
 }
 
 // NewLiveTVConnector wires the connector to the media-server LiveTV capability
 // and the Tunarr URLs.
-func NewLiveTVConnector(lib library.LiveTV, urls TunarrURLs) *LiveTVConnector {
+func NewLiveTVConnector(lib library.LiveTV, urls func() TunarrURLs) *LiveTVConnector {
 	return &LiveTVConnector{lib: lib, urls: urls}
+}
+
+// NewLiveTVConnectorFixed wires a connector to a fixed URL pair — for tests and any caller with
+// no live settings to read. Production uses NewLiveTVConnector so a settings change applies
+// without a restart.
+func NewLiveTVConnectorFixed(lib library.LiveTV, urls TunarrURLs) *LiveTVConnector {
+	return NewLiveTVConnector(lib, func() TunarrURLs { return urls })
 }
 
 // ConnectResult reports what the connect did — so the API/UI can distinguish
@@ -75,7 +132,17 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	// Retire Loomarr-owned tuners pointing at a stale URL first, so we never leave a
 	// dead tuner beside the live one (the "classic Emby mess"). Done before the add
 	// so the desired tuner is the only Loomarr one when we finish.
-	staleTuners, err := c.lib.StaleLoomarrTuners(ctx, c.urls.M3U)
+	// Resolve ONCE per call, so every check below reasons about the same target even if a
+	// setting changes mid-flight.
+	urls := c.urls()
+	if urls.M3U == "" || urls.XMLTV == "" {
+		// Nothing wireable — internal playout with no server.public_url set. Registering a
+		// relative path here would point the media server at ITSELF (it resolves the URL from
+		// its own host), which looks wired and never plays.
+		return ConnectResult{}, fmt.Errorf("live tv: no reachable playout URLs — set Loomarr's public address in Settings")
+	}
+
+	staleTuners, err := c.lib.StaleLoomarrTuners(ctx, urls.M3U)
 	if err != nil {
 		return res, fmt.Errorf("enumerate stale tuner hosts: %w", err)
 	}
@@ -86,18 +153,18 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 		res.TunerRemoved++
 	}
 
-	tunerThere, err := c.lib.TunerRegistered(ctx, c.urls.M3U)
+	tunerThere, err := c.lib.TunerRegistered(ctx, urls.M3U)
 	if err != nil {
 		return res, fmt.Errorf("enumerate tuner hosts: %w", err)
 	}
 	if !tunerThere {
-		if err := c.lib.AddTuner(ctx, c.urls.M3U); err != nil {
+		if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
 			return res, fmt.Errorf("register tuner: %w", err)
 		}
 		res.TunerAdded = true
 	}
 
-	staleListings, err := c.lib.StaleLoomarrListings(ctx, c.urls.XMLTV)
+	staleListings, err := c.lib.StaleLoomarrListings(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate stale listing providers: %w", err)
 	}
@@ -108,12 +175,12 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 		res.ListingRemoved++
 	}
 
-	listingThere, err := c.lib.ListingRegistered(ctx, c.urls.XMLTV)
+	listingThere, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
 	if err != nil {
 		return res, fmt.Errorf("enumerate listing providers: %w", err)
 	}
 	if !listingThere {
-		if err := c.lib.AddListingProvider(ctx, c.urls.XMLTV); err != nil {
+		if err := c.lib.AddListingProvider(ctx, urls.XMLTV); err != nil {
 			return res, fmt.Errorf("register listing provider: %w", err)
 		}
 		res.ListingAdded = true
@@ -129,7 +196,7 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	// them — nothing new to discover.
 	if !res.AlreadyWired() {
 		res.Poked = true
-		if err := c.lib.RescanTuner(ctx, c.urls.M3U); err != nil {
+		if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
 			res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
 		}
 		if err := c.lib.RefreshGuide(ctx); err != nil {
@@ -155,6 +222,13 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) {
 	var res ConnectResult
 
+	// Same live resolution as Connect — a reconnect after switching backends must re-wire to
+	// the NEW backend, which is the repair an operator reaches for when channels won't play.
+	urls := c.urls()
+	if urls.M3U == "" || urls.XMLTV == "" {
+		return res, fmt.Errorf("live tv: no reachable playout URLs — set Loomarr's public address in Settings")
+	}
+
 	tuners, err := c.lib.LoomarrTuners(ctx)
 	if err != nil {
 		return res, fmt.Errorf("enumerate loomarr tuners: %w", err)
@@ -165,13 +239,13 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 		}
 		res.TunerRemoved++
 	}
-	if err := c.lib.AddTuner(ctx, c.urls.M3U); err != nil {
+	if err := c.lib.AddTuner(ctx, urls.M3U); err != nil {
 		return res, fmt.Errorf("re-add tuner: %w", err)
 	}
 	res.TunerAdded = true
 
 	// Also re-wire the guide provider so both halves are freshly bound.
-	staleListings, err := c.lib.StaleLoomarrListings(ctx, c.urls.XMLTV)
+	staleListings, err := c.lib.StaleLoomarrListings(ctx, urls.XMLTV)
 	if err == nil {
 		for _, id := range staleListings {
 			if rerr := c.lib.RemoveListingProvider(ctx, id); rerr == nil {
@@ -179,15 +253,15 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 			}
 		}
 	}
-	if there, lerr := c.lib.ListingRegistered(ctx, c.urls.XMLTV); lerr == nil && !there {
-		if aerr := c.lib.AddListingProvider(ctx, c.urls.XMLTV); aerr == nil {
+	if there, lerr := c.lib.ListingRegistered(ctx, urls.XMLTV); lerr == nil && !there {
+		if aerr := c.lib.AddListingProvider(ctx, urls.XMLTV); aerr == nil {
 			res.ListingAdded = true
 		}
 	}
 
 	// Poke so the re-added tuner's channels are re-read now (the whole point).
 	res.Poked = true
-	if err := c.lib.RescanTuner(ctx, c.urls.M3U); err != nil {
+	if err := c.lib.RescanTuner(ctx, urls.M3U); err != nil {
 		res.PokeErr = fmt.Errorf("rescan tuner: %w", err)
 	}
 	if err := c.lib.RefreshGuide(ctx); err != nil && res.PokeErr == nil {
@@ -199,11 +273,15 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 // Wired reports whether Tunarr is already registered as both a tuner and a guide
 // — the "media server has Tunarr wired" check for GET /v1/setup/status (§7/§6).
 func (c *LiveTVConnector) Wired(ctx context.Context) (bool, error) {
-	tuner, err := c.lib.TunerRegistered(ctx, c.urls.M3U)
+	urls := c.urls()
+	if urls.M3U == "" || urls.XMLTV == "" {
+		return false, nil // nothing wireable ⇒ not wired; the checklist reports it as such
+	}
+	tuner, err := c.lib.TunerRegistered(ctx, urls.M3U)
 	if err != nil {
 		return false, err
 	}
-	listing, err := c.lib.ListingRegistered(ctx, c.urls.XMLTV)
+	listing, err := c.lib.ListingRegistered(ctx, urls.XMLTV)
 	if err != nil {
 		return false, err
 	}
@@ -220,5 +298,9 @@ func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
 // RescanTuner implements channels.GuidePoker (§9): make the media server re-read
 // the tuner channel list so a newly-created channel is discovered. Best-effort.
 func (c *LiveTVConnector) RescanTuner(ctx context.Context) error {
-	return c.lib.RescanTuner(ctx, c.urls.M3U)
+	urls := c.urls()
+	if urls.M3U == "" {
+		return nil // nothing to rescan; the poke is best-effort by contract (§9)
+	}
+	return c.lib.RescanTuner(ctx, urls.M3U)
 }

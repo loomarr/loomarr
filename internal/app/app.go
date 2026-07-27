@@ -269,7 +269,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
-		connector := setup.NewLiveTVConnector(lib, setup.TunarrURLsFrom(set.str("tunarr.url")))
+		// Live TV points at whichever backend actually STREAMS (§9.1). `playout.backend`
+		// defaults to `internal`, and wiring Tunarr's URLs unconditionally pointed the media
+		// server at a backend that was not serving those channels — the channels appear in the
+		// guide and refuse to play. Resolved per call so a backend switch applies without a
+		// restart; the playout secret is read the same lazy way it is on the spawn path.
+		connector := setup.NewLiveTVConnector(lib, func() setup.TunarrURLs {
+			tok := ""
+			if secrets != nil {
+				tok = secrets.Value(settings.SecretPlayout)
+			}
+			return setup.LiveTVURLsFor(
+				set.str("playout.backend"), set.str("tunarr.url"), set.str("server.public_url"), tok)
+		})
 		liveTVSvc = liveTVAdapter{connector}
 
 		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):

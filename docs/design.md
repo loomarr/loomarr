@@ -668,7 +668,15 @@ playout. It is described in §11 alongside the credential paths rather than left
 3. **Loomarr publishes its own M3U/XMLTV**, so the §6 Live TV wiring points at Loomarr rather than
    Tunarr for internal channels. `StaleLoomarrListings` currently identifies Loomarr's provider **by
    its Tunarr-shaped path** — retargeting silently breaks stale cleanup unless that identification
-   changes with it.
+   changes with it. *(Both halves are now done: `isLoomarrManagedGuidePath` matches Tunarr's shape
+   AND internal playout's, and `LiveTVURLsFor` selects the URL pair from `playout.backend`. Until
+   the latter landed the wiring built Tunarr's URLs unconditionally while the backend defaulted to
+   `internal`, so the media server was registered against a backend that was not serving those
+   channels — the channels appeared in Emby's guide and refused to play, and a `livetv-reconnect`
+   "repaired" it by re-registering the same wrong URLs. The URLs resolve **per call**, not at
+   construction, so switching backends applies without a restart; and an internal backend with no
+   `server.public_url` yields NO urls rather than a relative path, because the media server
+   resolves the URL from its own host and would silently point at itself.)*
 4. **Restart is no longer free.** Prior copy promised *"Channels keep playing — Tunarr streams them,
    not Loomarr."* For internal-playout channels a restart **does** interrupt playback, and any
    restart UI must say so rather than inherit the old reassurance.
