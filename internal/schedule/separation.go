@@ -78,9 +78,22 @@ func backtrackArrange(programs []Slot, rp ResolvedPolicy) ([]Slot, bool) {
 			// Full arrangement — accept iff the cycle (incl. the last→first seam) is clean.
 			return len(checkWrapSeparation(out, rp)) == 0
 		}
+		order := newCandidateOrder(out, programs, used, rp)
+
 		// Try remaining candidates in greedy priority order (most-constrained-first,
 		// anti-clustering) so the first descent usually succeeds.
-		for _, idx := range pickOrder(out, programs, used, rp) {
+		//
+		// LAZILY: `order` yields the best candidate from an O(n) scan and only pays for a
+		// full sort of the rest if this loop actually asks for a second one. Measured on
+		// every SOLVABLE deck, it never does — the first candidate wins at every position
+		// (tried == number of positions, zero backtracks), so the old code sorted n
+		// candidates at each of n positions to consume exactly one of them each time.
+		//
+		// The unsolvable path is deliberately UNCHANGED: it still ranks every candidate and
+		// still spends budget on the separation-violating ones, which is what makes a hard
+		// pool exhaust backtrackBudget and fall back to greedyArrange promptly. Removing
+		// that was the 17× regression recorded on pickOrder.
+		for idx, ok := order.next(); ok; idx, ok = order.next() {
 			if budget <= 0 {
 				return false // out of budget — abandon (caller falls back to greedy)
 			}
@@ -121,34 +134,60 @@ func greedyArrange(programs []Slot, rp ResolvedPolicy) []Slot {
 	return out
 }
 
-// pickOrder returns the indices of not-yet-used candidates in the greedy priority
-// order (the same most-constrained-first / anti-clustering ranking pickNext uses),
-// so backtracking explores the most promising placements first. Deterministic.
-//
-// ⚠ DO NOT "optimize" this by dropping the tier-2 (separation-violating) candidates,
-// however wasteful they look. The caller skips them with `continue` — but only AFTER
-// decrementing its budget, so they are what makes a hard pool exhaust `backtrackBudget`
-// and fall back to greedyArrange promptly. Filtering them here removes that accidental
-// circuit-breaker: the search then explores a vastly larger space before it succeeds.
-// Measured on the maintainer's install — the "obvious" filter took GET /v1/guide from
-// ~250ms to ~4.3s, a 17× regression, with every existing test still green.
-//
-// Likewise the caller's own `separationOK` re-check is NOT redundant with the tier
-// assignment here; removing it removes the same budget accounting.
-//
-// This function IS genuinely hot (profiled at 55% of the guide's CPU, its sort alone
-// 34%), so it is worth making faster — but the fix has to preserve the budget dynamics,
-// and it has to be verified against a running server, not a microbenchmark. The
-// benchmarks in compute_scale_bench_test.go do NOT reach this path (they use decks the
-// backtracker solves on the first descent), which is exactly how the regression above
-// looked fine right up until it was measured live.
-func pickOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) []int {
-	type cand struct {
-		idx      int
-		tier     int // 0 = OK+switch series, 1 = OK same series, 2 = not OK (fallback)
-		rem      int // remaining count of this candidate's series (most-first)
-		posOrder int // stable tiebreak
+// cand is one placement candidate, ranked most-constrained-first with anti-clustering —
+// the same ranking pickNext applies, expressed as sortable fields.
+type cand struct {
+	idx      int
+	tier     int // 0 = OK+switch series, 1 = OK same series, 2 = not OK (fallback)
+	rem      int // remaining count of this candidate's series (most-first)
+	posOrder int // stable tiebreak
+}
+
+// candLess is THE ordering: lower tier first, then higher remaining count, then position.
+// One definition, used by both the lazy first pick and the full sort, so the two can never
+// disagree about which candidate is best.
+func candLess(a, b cand) bool {
+	if a.tier != b.tier {
+		return a.tier < b.tier
 	}
+	if a.rem != b.rem {
+		return a.rem > b.rem // most-remaining first
+	}
+	return a.posOrder < b.posOrder
+}
+
+// candidateOrder yields placement candidates in greedy priority order, LAZILY.
+//
+// Why lazily. Profiling put the old eager version at 55% of the guide's CPU, its sort alone
+// at 34%: it fully sorted every remaining candidate at every position. Instrumenting the
+// search showed why that is waste — on every SOLVABLE deck the first candidate wins at every
+// position (tried == positions, zero backtracks), so it sorted n candidates n times to consume
+// exactly one of them each time. The first `next()` is now an O(n) scan for the minimum; the
+// sort happens only if the caller comes back, which the measurements say it does not on the
+// path that matters.
+//
+// ⚠ What must NOT change, and why (this is a re-entry point for a mistake already made once).
+// Tier-2 candidates — the ones that FAIL separation — are still produced and still handed to
+// the caller, which skips them with `continue` but only AFTER spending budget. That budget
+// drain is what makes a hard pool exhaust backtrackBudget and fall back to greedyArrange
+// promptly. Filtering them out looks obviously correct and took GET /v1/guide from ~250ms to
+// ~4.3s (a 17× regression) with every existing test green, because it removed that accidental
+// circuit-breaker. Likewise the caller's own separationOK re-check is not redundant with the
+// tier assignment here.
+//
+// Verify any change to this against a RUNNING SERVER. The benchmarks in
+// compute_scale_bench_test.go do not reach this path — their decks solve on the first descent
+// — which is exactly how that regression looked fine until it was measured live.
+type candidateOrder struct {
+	cands  []cand
+	sorted bool
+	i      int
+}
+
+// newCandidateOrder builds the (unsorted) candidate set for the current partial arrangement.
+// The scan itself is unavoidable: every candidate's tier needs its separationOK, and `rem`
+// needs the per-series remaining counts.
+func newCandidateOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) *candidateOrder {
 	counts := map[provision.Key]int{}
 	for i, s := range programs {
 		if !used[i] {
@@ -159,7 +198,8 @@ func pickOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) []int {
 	if len(out) > 0 {
 		prevKey = seriesKeyOf(out[len(out)-1])
 	}
-	var cands []cand
+
+	cands := make([]cand, 0, len(programs))
 	for i, s := range programs {
 		if used[i] {
 			continue
@@ -175,21 +215,37 @@ func pickOrder(out, programs []Slot, used []bool, rp ResolvedPolicy) []int {
 		}
 		cands = append(cands, cand{idx: i, tier: tier, rem: counts[key], posOrder: i})
 	}
-	// Sort: lower tier first, then higher remaining count, then stable position.
-	sort.SliceStable(cands, func(i, j int) bool {
-		if cands[i].tier != cands[j].tier {
-			return cands[i].tier < cands[j].tier
-		}
-		if cands[i].rem != cands[j].rem {
-			return cands[i].rem > cands[j].rem
-		}
-		return cands[i].posOrder < cands[j].posOrder
-	})
-	out2 := make([]int, len(cands))
-	for i, c := range cands {
-		out2[i] = c.idx
+	return &candidateOrder{cands: cands}
+}
+
+// next returns the next-best candidate index, or ok=false when exhausted.
+//
+// The FIRST call selects the minimum in one O(n) pass and swaps it to the front — no sort.
+// A SECOND call means the first choice dead-ended, so the remainder is sorted once and served
+// from there. The result is identical to sorting up front, because both use candLess and the
+// comparator is a total order (posOrder is unique).
+func (c *candidateOrder) next() (int, bool) {
+	if c.i >= len(c.cands) {
+		return 0, false
 	}
-	return out2
+	switch {
+	case c.i == 0:
+		best := 0
+		for j := 1; j < len(c.cands); j++ {
+			if candLess(c.cands[j], c.cands[best]) {
+				best = j
+			}
+		}
+		c.cands[0], c.cands[best] = c.cands[best], c.cands[0]
+	case !c.sorted:
+		// The first pick failed. Sort what remains ONCE; every later call is a cursor read.
+		rest := c.cands[c.i:]
+		sort.Slice(rest, func(a, b int) bool { return candLess(rest[a], rest[b]) })
+		c.sorted = true
+	}
+	idx := c.cands[c.i].idx
+	c.i++
+	return idx, true
 }
 
 // remainingCounts tallies how many slots per series key are left to place.
