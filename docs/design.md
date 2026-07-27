@@ -180,6 +180,8 @@ Store interface:
   # scheduling
   GetChannel/UpsertChannel/ListChannels
   GetDesiredLineup/UpsertDesiredLineup
+  GetSeriesEpisodes/UpsertSeriesEpisodes  # §9 series expansion, cached (see below)
+  ListStaleSeriesEpisodes(before, limit)  # which shows the refresh job should re-enumerate
   # filler catalog (§10)
   GetClip/UpsertClip/DeleteClip
   ListClips(filter: kind/era/audience/category)
@@ -205,6 +207,34 @@ Store interface:
 ### Schema & migrations
 - Keep SQL ANSI where possible; `INSERT … ON CONFLICT(key) DO UPDATE` works on both.
 - **`goose`** (decided, §14) with an **embedded** FS and separate `migrations/sqlite` + `migrations/postgres` dirs so dialect DDL never leaks. Auto-run on startup (`AUTO_MIGRATE=true`).
+
+### Cached series episodes (§9 series expansion)
+
+A series lineup entry expands into its episodes, and enumerating them is a media-server call
+per SHOW. That call sat on the **request path**: `GET /v1/guide` re-expanded every series on
+every load, so a channel with four shows spent **232ms** in enumeration while a 25-film movie
+channel spent 1ms. Profiling put ~90% of the guide's latency there (`ComputeDesiredAt` itself
+benchmarks at 45ms for *200* channels, so it was never the cost).
+
+`series_episodes` caches one row per show — its episode list plus `fetched_at` — so expansion
+becomes a store read. The **library is still the source of truth**; this is a materialized
+answer, never a second opinion:
+
+- **Read path:** `GetSeriesEpisodes(libraryID)`. A miss (or a row older than the staleness
+  horizon) falls back to the live call and writes the result back, so a cold cache degrades to
+  today's behaviour rather than to an empty channel.
+- **Refresh:** the **`series-episode-refresh`** job (§18.1) re-enumerates shows whose rows have
+  aged out. Bounded to the shows actually referenced by channel lineups — the set that matters
+  is small and known, and sweeping the whole library would cost far more than it saves.
+- ⚠ **NOT hung off `library-scan`.** That job correlates *in-flight* acquisitions
+  (`requested`/`downloading`) and returns early when none exist, so a show that is already
+  `available` — precisely the ones the guide expands — is never revisited. Attaching episode
+  refresh there would produce a cache that looks invalidated and never is, on exactly the
+  settled installs where the guide is used most.
+- **New episodes still appear promptly by the other path:** a newly-landed episode arrives as an
+  acquisition, and that already triggers a reconcile + a `channel` SSE frame. The refresh job
+  covers the case nothing else does — episodes added to the media server directly, with no
+  Loomarr acquisition behind them.
 
 ### Retention & janitor
 State accumulates; a **janitor** (piggybacking the reconciler ticker) enforces retention so a year-old install isn't dragging a landfill:
@@ -1124,6 +1154,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) |
+| `episodes.max_age` | `24h` — how stale a cached series episode list may be before `series-episode-refresh` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `EVENT_WEBHOOK_URL` | optional external event target |
 | `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | `false` / `10` |
 | `SEASON_PRECISION` | `series` (default) \| `seasons` (§6) |
@@ -1274,6 +1305,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Availability jobs (§4, §6).** Poll-based availability runs as scheduler jobs: **`library-scan`** (incremental, default every 5m — `RecentlyAdded(since)` within `job.library_scan.lookback`) and **`library-full-scan`** (daily safety net — `AllItems()`). The scan confirms any in-flight (`requested`/`downloading`) title now present in the media server → `available`, correlating by `provision.Key`. This is the mechanism that replaces the retired inbound `/hooks/arr` webhook.
 - **Arr queue poller (§6, arr provider only).** When `requester.provider=arr`, a **`arr-queue-poll`** job (default every 1m) reads each configured arr's `/api/v3/queue` and correlates records to in-flight titles by `provision.Key` (via the arr's lookup id). A title with a live download record is **`Grabbed`** → `downloading` (resetting the deadline), and its **download progress is persisted on the title record** — `progress` (0..1), `eta_text`, and `download_status` (the arr's own status string, passed through so a `warning`/`stalled` download reads as such rather than fake healthy progress). Persisting (rather than an in-memory cache) means `GET /v1/titles` reads progress straight from the store and it survives a restart. A grabbed-but-stalled title still ages out under the reconciler's deadline discipline (§4). Availability itself still comes from the library scan; the poller adds the grabbed transition + progress, never the `available` flip.
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
+- **Series episode refresh (§5, §9).** A **`series-episode-refresh`** job (default hourly) re-enumerates the shows whose cached episode lists have aged past `episodes.max_age`, so `series_episodes` stays current without any expansion happening on the request path. **Bounded to the shows referenced by channel lineups** — that set is small and known, and sweeping the whole library would cost more than the cache saves. Deliberately its own job rather than a hook on `library-scan`: that job only correlates *in-flight* acquisitions and returns early when there are none, so it would never revisit an already-`available` show (see §5).
 - **API + UI.** `GET /v1/jobs` (status list — each job's cron `schedule`, its settings `scheduleKey`, a human label, last/next-run, result) + `POST /v1/jobs/{name}/run` (trigger), **admin-only** (they expose acquisition internals — §7 authorization model). Schedule editing reuses `PATCH /v1/settings` (the cron key). The Settings → **Tasks** page renders the list with relative last/next-run, a status dot, and a Run-now button; a **"Modify Job" modal** edits the schedule — **human-readable presets by default** ("Every 5 minutes", "Daily at 3 am", …) each mapping to a canonical cron, with an **"Advanced" toggle revealing the raw cron field** for power users (validated live). A schedule not matching a preset shows as "Custom".
 
 ---

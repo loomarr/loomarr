@@ -385,14 +385,17 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 		return nil, false
 	}
 
-	// Memoized like the others, and this is the biggest single win: enumerating a show's
-	// episodes is the most expensive library call there is, and a series in the lineup is
-	// re-resolved on every layout pass.
+	// THREE tiers, cheapest first. Enumerating a show is the most expensive library call there
+	// is, and a series in the lineup is re-resolved on every layout pass.
 	//
-	// PROFILED: a multi-series channel pays one enumeration PER SHOW, and that is what the
-	// Guide's latency actually was — Star Trek Classics (4 shows) spent 232ms here while a
-	// 25-film movie channel spent 1ms. The memo collapses the repeats; the durable answer is
-	// the persisted episode cache the library-scan job refreshes.
+	// PROFILED: a multi-series channel pays one enumeration PER SHOW, and that was ~90% of the
+	// Guide's latency — Star Trek Classics (4 shows) spent 232ms here while a 25-film movie
+	// channel spent 1ms.
+	//
+	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
+	//	2. persisted cache  — survives restarts; refreshed by series-episode-refresh (§18.1)
+	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
+	//	                      behaving exactly like today rather than emptying channels
 	now := s.clock()
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
@@ -401,18 +404,40 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	}
 	s.mu.Unlock()
 
+	// Tier 2. A store read replaces a media-server round-trip: this is the whole point of the
+	// cache. A cached EMPTY list is a HIT, not a miss — ErrNotFound is the only "never asked",
+	// so a genuinely-empty show does not re-enumerate on every request.
+	if s.store != nil {
+		if se, err := s.store.GetSeriesEpisodes(s.ctx, rec.LibraryID); err == nil {
+			s.memoEpisodes(rec.LibraryID, se.Episodes, now)
+			return se.Episodes, len(se.Episodes) > 0
+		}
+	}
+
+	// Tier 3. Never enumerated (or the store is unavailable) — ask the library and write the
+	// answer back, so the next request and the next restart both take tier 2.
 	eps, err := s.episodes(s.ctx, rec.LibraryID)
 	if err != nil {
 		eps = nil
+	} else if s.store != nil {
+		// Best-effort: a write failure costs a re-fetch next time, never correctness, so it
+		// must not fail the resolve that is otherwise complete.
+		_ = s.store.UpsertSeriesEpisodes(s.ctx, store.SeriesEpisodes{
+			LibraryID: rec.LibraryID, Episodes: eps, FetchedAt: now,
+		})
 	}
 
-	s.mu.Lock()
-	// The empty result is memoized too — see itemDuration.
-	s.epsMemo[rec.LibraryID] = memoEntry[[]schedule.ResolvedProgram]{val: eps, exp: now.Add(memoTTL)}
-	s.mu.Unlock()
-
+	s.memoEpisodes(rec.LibraryID, eps, now)
 	if len(eps) == 0 {
 		return nil, false
 	}
 	return eps, true
+}
+
+// memoEpisodes records an episode list in the in-process memo. The empty result is memoized
+// too — see itemDuration for why remembering a miss matters as much as remembering a hit.
+func (s *storeAvailability) memoEpisodes(libraryID string, eps []schedule.ResolvedProgram, now time.Time) {
+	s.mu.Lock()
+	s.epsMemo[libraryID] = memoEntry[[]schedule.ResolvedProgram]{val: eps, exp: now.Add(memoTTL)}
+	s.mu.Unlock()
 }
