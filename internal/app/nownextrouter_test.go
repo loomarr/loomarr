@@ -1,0 +1,315 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/playout"
+	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/schedule"
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// The shipped bug, as a test: a channel Loomarr streams internally must NOT be answered from
+// Tunarr's guide. Both readers return a programme; only one of them is about the schedule this
+// channel is actually playing.
+func TestNowNextRouter_InternalChannelDoesNotReadTunarrsGuide(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
+	// ⚠ A SECOND, TUNARR-BACKED CHANNEL IS LOAD-BEARING. With only internal channels present,
+	// anyOnTunarr short-circuits the guide read entirely, so `fromTunarr` is nil and the
+	// assertion below would pass even with the routing removed — the test would be vacuous.
+	// Verified by sabotage: without this channel, reverting the fix leaves this test green.
+	onTunarr := store.Channel{Channel: schedule.Channel{ID: "ch2", TunarrID: "tun-tun"}}
+
+	r := nowNextRouter{
+		tunarr:   stubGuide{now: "Tunarr Says This"},
+		internal: stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels: routerChannels{list: []store.Channel{ch, onTunarr}},
+		// Only ch1 is internal; ch2 keeps the Tunarr guide populated.
+		internalFor: func(c store.Channel) bool { return c.ID == "ch1" },
+		window:      2 * time.Hour,
+	}
+
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatalf("NowNext: %v", err)
+	}
+	entry, ok := got["tun1"]
+	if !ok {
+		t.Fatal("no entry for the internal channel")
+	}
+	if entry.Now == nil {
+		t.Fatal("no 'now' programme")
+	}
+	if entry.Now.Title != "Internal Says This" {
+		t.Errorf("now = %q, want the INTERNAL resolver's answer — reading Tunarr's guide for an "+
+			"internally-played channel is the bug this routes around", entry.Now.Title)
+	}
+}
+
+// The other half: a Tunarr-backed channel must keep reading Tunarr's guide, unchanged.
+func TestNowNextRouter_TunarrChannelStillReadsTunarrsGuide(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}
+
+	r := nowNextRouter{
+		tunarr:      stubGuide{now: "Tunarr Says This"},
+		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels:    routerChannels{list: []store.Channel{ch}},
+		internalFor: func(store.Channel) bool { return false },
+		window:      2 * time.Hour,
+	}
+
+	got, _ := r.NowNext(context.Background(), now)
+	if got["tun1"].Now == nil || got["tun1"].Now.Title != "Tunarr Says This" {
+		t.Errorf("now = %+v, want Tunarr's answer for a Tunarr-backed channel", got["tun1"].Now)
+	}
+}
+
+// `playout.backend` is per-channel overridable (§15), so a MIXED install must be right — this is
+// the case a global on/off switch would get wrong.
+func TestNowNextRouter_MixedInstallRoutesEachChannelSeparately(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	internalCh := store.Channel{
+		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
+		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "internal"}}},
+	}
+	tunarrCh := store.Channel{
+		Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"},
+		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "tunarr"}}},
+	}
+
+	r := nowNextRouter{
+		tunarr:   stubGuide{now: "From Tunarr"},
+		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels: routerChannels{list: []store.Channel{internalCh, tunarrCh}},
+		// The real precedence rule, not a stub — a mixed install is exactly where a
+		// hand-rolled second copy of it would drift.
+		internalFor: func(ch store.Channel) bool {
+			return schedule.PlaysInternally(ch.Policy, "internal")
+		},
+		window: 2 * time.Hour,
+	}
+
+	got, _ := r.NowNext(context.Background(), now)
+	if got["tun-int"].Now == nil || got["tun-int"].Now.Title != "From Internal" {
+		t.Errorf("internal channel: now = %+v, want the internal resolver", got["tun-int"].Now)
+	}
+	if got["tun-tun"].Now == nil || got["tun-tun"].Now.Title != "From Tunarr" {
+		t.Errorf("tunarr channel: now = %+v, want Tunarr's guide", got["tun-tun"].Now)
+	}
+}
+
+// An internal channel with no internal reader must yield NO entry — never a silent fall back to
+// Tunarr's guide, which is the defect itself.
+func TestNowNextRouter_InternalChannelWithNoResolverHasNoEntry(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	r := nowNextRouter{
+		tunarr:      stubGuide{now: "Tunarr Says This"},
+		internal:    nil,
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(store.Channel) bool { return true },
+		window:      2 * time.Hour,
+	}
+
+	got, _ := r.NowNext(context.Background(), now)
+	if entry, ok := got["tun1"]; ok {
+		t.Errorf("got entry %+v for an internal channel with no resolver; want none — "+
+			"falling back to Tunarr's guide is the bug", entry)
+	}
+}
+
+// An install with every channel on internal playout must not pay a Tunarr round trip to render
+// its channel list, and must not be degraded when Tunarr is slow or down.
+func TestNowNextRouter_AllInternalDoesNotCallTunarr(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	guide := &countingGuide{}
+	r := nowNextRouter{
+		tunarr:      guide,
+		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(store.Channel) bool { return true },
+		window:      2 * time.Hour,
+	}
+
+	if _, err := r.NowNext(context.Background(), now); err != nil {
+		t.Fatalf("NowNext: %v", err)
+	}
+	if guide.calls != 0 {
+		t.Errorf("called Tunarr %d times for an all-internal install; want 0", guide.calls)
+	}
+}
+
+// A Tunarr outage must not blank an internal channel's card — the internal half does not depend
+// on it and must still answer.
+func TestNowNextRouter_TunarrFailureDoesNotBlankInternalChannels(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	internalCh := store.Channel{
+		Channel: schedule.Channel{ID: "ch-int", TunarrID: "tun-int"},
+		Policy:  schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{Playout: &schedule.PlayoutPolicy{Backend: "internal"}}},
+	}
+	tunarrCh := store.Channel{Channel: schedule.Channel{ID: "ch-tun", TunarrID: "tun-tun"}}
+
+	r := nowNextRouter{
+		tunarr:   failingGuide{},
+		internal: stubBroadcasts{title: "From Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels: routerChannels{list: []store.Channel{internalCh, tunarrCh}},
+		internalFor: func(ch store.Channel) bool {
+			return schedule.PlaysInternally(ch.Policy, "tunarr")
+		},
+		window: 2 * time.Hour,
+	}
+
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatalf("NowNext returned an error on a Tunarr outage: %v", err)
+	}
+	if got["tun-int"].Now == nil {
+		t.Error("internal channel lost its card because Tunarr was down")
+	}
+	if _, ok := got["tun-tun"]; ok {
+		t.Error("tunarr channel got an entry despite the guide failing")
+	}
+}
+
+// A channel that has never been reconciled has no TunarrID and cannot be keyed into this
+// endpoint's map. That is pre-existing, and must stay a quiet omission rather than a panic.
+func TestNowNextRouter_ChannelWithNoTunarrIDIsSkipped(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	r := nowNextRouter{
+		internal:    stubBroadcasts{title: "Internal", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1"}}}},
+		internalFor: func(store.Channel) bool { return true },
+		window:      2 * time.Hour,
+	}
+	got, err := r.NowNext(context.Background(), now)
+	if err != nil {
+		t.Fatalf("NowNext: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %d entries, want 0 for a never-reconciled channel", len(got))
+	}
+}
+
+// Upcoming routes on the backend too — the strip and the card must not disagree with each other
+// any more than either may disagree with the grid.
+func TestNowNextRouter_UpcomingRoutesToTheStreamingBackend(t *testing.T) {
+	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
+	r := nowNextRouter{
+		tunarr:      stubGuide{now: "Tunarr Says This"},
+		internal:    stubBroadcasts{title: "Internal Says This", start: now.Add(-time.Hour), stop: now.Add(time.Hour)},
+		channels:    routerChannels{list: []store.Channel{{Channel: schedule.Channel{ID: "ch1", TunarrID: "tun1"}}}},
+		internalFor: func(store.Channel) bool { return true },
+		window:      2 * time.Hour,
+	}
+
+	got, err := r.Upcoming(context.Background(), "tun1", now, 6)
+	if err != nil {
+		t.Fatalf("Upcoming: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("no upcoming entries")
+	}
+	if got[0].Title != "Internal Says This" {
+		t.Errorf("upcoming[0] = %q, want the internal resolver's answer", got[0].Title)
+	}
+}
+
+// A series card reads as the SHOW, not the episode name — the same choice XMLTV's <title> makes.
+func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
+	b := playout.Broadcast{
+		Kind:        schedule.SlotProgram,
+		Title:       "Bart the Genius",
+		SeriesTitle: "The Simpsons",
+	}
+	if got := broadcastToNowNext(b).Title; got != "The Simpsons" {
+		t.Errorf("title = %q, want the series name", got)
+	}
+}
+
+// The tmdb id joins a card back to its provisioning key, so a tvdb key must yield NOTHING rather
+// than an id from a different space that would link to an unrelated title.
+func TestTMDBIDFromKey(t *testing.T) {
+	cases := map[string]string{
+		"movie:tmdb:603":    "603",
+		"series:tvdb:71663": "",
+		"":                  "",
+		"movie:tmdb":        "",
+	}
+	for key, want := range cases {
+		if got := tmdbIDFromKey(provision.Key(key)); got != want {
+			t.Errorf("tmdbIDFromKey(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// --- stubs ---
+
+type stubGuide struct{ now string }
+
+func (s stubGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+	return map[string]api.ChannelNowNext{
+		"tun1":    {Now: &api.NowNextEntry{Title: s.now}},
+		"tun-tun": {Now: &api.NowNextEntry{Title: s.now}},
+		"tun-int": {Now: &api.NowNextEntry{Title: s.now}},
+	}, nil
+}
+
+func (s stubGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+	return []api.NowNextEntry{{Title: s.now}}, nil
+}
+
+type countingGuide struct{ calls int }
+
+func (c *countingGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+	c.calls++
+	return map[string]api.ChannelNowNext{}, nil
+}
+
+func (c *countingGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+	c.calls++
+	return nil, nil
+}
+
+type failingGuide struct{}
+
+func (failingGuide) NowNext(context.Context, time.Time) (map[string]api.ChannelNowNext, error) {
+	return nil, errors.New("tunarr is down")
+}
+
+func (failingGuide) Upcoming(context.Context, string, time.Time, int) ([]api.NowNextEntry, error) {
+	return nil, errors.New("tunarr is down")
+}
+
+type stubBroadcasts struct {
+	title       string
+	start, stop time.Time
+}
+
+func (s stubBroadcasts) BroadcastsBetween(
+	_ context.Context, _ string, _, _ time.Time,
+) ([]playout.Broadcast, error) {
+	return []playout.Broadcast{{
+		Kind:  schedule.SlotProgram,
+		Title: s.title,
+		Start: s.start,
+		Stop:  s.stop,
+	}}, nil
+}
+
+type routerChannels struct{ list []store.Channel }
+
+func (s routerChannels) ListChannels(context.Context) ([]store.Channel, error) { return s.list, nil }
+
+func (s routerChannels) GetChannel(_ context.Context, id string) (store.Channel, error) {
+	for _, ch := range s.list {
+		if ch.ID == id {
+			return ch, nil
+		}
+	}
+	return store.Channel{}, store.ErrNotFound
+}

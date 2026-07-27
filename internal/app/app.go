@@ -380,7 +380,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
 			ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
-			log:        log,
+			// Preferred audio language (§9.1), read live so a Settings change applies to the
+			// next programme rather than the next restart. The prober derives ffprobe from the
+			// ffmpeg path — the two ship together, so an operator who moved one moved both.
+			audioLanguage: func() string { return set.str("playout.audio_language") },
+			probeAudio:    playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path")),
+			log:           log,
 		}
 		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
 		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
@@ -715,14 +720,43 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 
 	// The settings API surface (config-design §8): wired when the store (hence the
 	// settings service) is up. Connection Test probes reuse the live adapters.
-	// The guide reader powers /v1/channels/now-next. It reads the LIVE Tunarr connection
-	// through the settings snapshot, so saving a new Tunarr URL takes effect without a
-	// restart, like every other connection (config-design §3 hot-apply). A 2h window is
+	// The guide reader powers /v1/channels/now-next and …/{id}/upcoming.
+	//
+	// ⚠ ROUTED PER CHANNEL, by the backend that actually streams it (§9.1). Reading Tunarr's
+	// guide for a channel Loomarr plays internally is a real bug and was a shipped one: the
+	// channel keeps its `tunarr_id`, Tunarr keeps generating listings, and the card confidently
+	// reports a DIFFERENT programme than the grid and the XMLTV the television reads — measured
+	// ~30 minutes apart on the dev install. See nowNextRouter.
+	//
+	// The Tunarr half still reads the LIVE connection through the settings snapshot, so saving a
+	// new Tunarr URL takes effect without a restart (config-design §3 hot-apply). A 2h window is
 	// comfortably longer than any single program, so "next" is always present.
 	var guideSvc api.GuideReader
-	if set.str("tunarr.url") != "" {
-		guideSvc = guideAdapter{
-			tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+	if st != nil {
+		var tunarrGuide api.GuideReader
+		if set.str("tunarr.url") != "" {
+			tunarrGuide = guideAdapter{
+				tunarr: programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")),
+				window: 2 * time.Hour,
+			}
+		}
+		// playoutRes is nil when internal playout is not wired; the router then has no reader
+		// for internal channels and gives them no entry — never a fallback to Tunarr's guide,
+		// which is precisely the defect this replaces.
+		var internalGuide broadcastReader
+		if playoutRes != nil {
+			internalGuide = playoutRes
+		}
+		guideSvc = nowNextRouter{
+			tunarr:   tunarrGuide,
+			internal: internalGuide,
+			channels: st,
+			// The same nil-means-inherit precedence playoutChannels uses (§15): a channel's own
+			// policy.playout.backend wins, else the global. Resolved live so a backend switch
+			// applies to the next render.
+			internalFor: func(ch store.Channel) bool {
+				return schedule.PlaysInternally(ch.Policy, set.str("playout.backend"))
+			},
 			window: 2 * time.Hour,
 		}
 	}

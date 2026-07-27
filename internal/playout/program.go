@@ -42,7 +42,23 @@ const readrateInitialBurst = 10
 // stdout and then EXITS — that EOF is the sequencing signal the parent's concat demuxer acts
 // on (prior-art §1). Nothing here loops; a child that never ended would pin the channel to
 // one program forever.
+//
+// Audio track 0 — the file's first — which is the historical behaviour and correct only when
+// the caller has no language preference to apply. ProgramArgsWithAudio is what the resolver
+// uses; see audio.go for why the choice cannot be expressed in ffmpeg's args alone.
 func ProgramArgs(p Profile, streamURL string, offset, limit time.Duration) []string {
+	return ProgramArgsWithAudio(p, streamURL, offset, limit, 0)
+}
+
+// ProgramArgsWithAudio is ProgramArgs with an explicit audio track index (§9.1).
+//
+// `audioTrack` is an index among AUDIO streams — the `N` in `-map 0:a:N` — as returned by
+// PickAudioTrack. Out-of-range values are not clamped here: ffprobe and ffmpeg enumerate the
+// same file the same way, so a bad index means the two disagreed, and failing loudly at encode
+// beats silently playing a track the operator did not ask for.
+func ProgramArgsWithAudio(
+	p Profile, streamURL string, offset, limit time.Duration, audioTrack int,
+) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
@@ -113,9 +129,14 @@ func ProgramArgs(p Profile, streamURL string, offset, limit time.Duration) []str
 	// differ between programs, and a varying track count breaks the parent's `-c copy`
 	// exactly like a varying resolution does.
 	//
-	// First video, first audio, nothing else. Subtitles are dropped: burning them in would
+	// First video, ONE audio, nothing else. Subtitles are dropped: burning them in would
 	// vary per item and there is no subtitle track in a normalized MPEG-TS profile.
-	args = append(args, "-map", "0:v:0", "-map", "0:a:0")
+	//
+	// Which audio is chosen by the caller (see audio.go). It used to be hardcoded `0:a:0` —
+	// the first track in the file — which is how a channel ended up playing a film in Russian:
+	// the release simply carried its Russian dub first. Exactly one audio track either way,
+	// because a varying track count breaks `-c copy` as surely as a varying resolution.
+	args = append(args, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack))
 
 	// `-t` bounds the child to its slot. This is what makes the child exit at the program
 	// boundary rather than playing to the end of the file — which matters when the lineup

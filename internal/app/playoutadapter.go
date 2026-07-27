@@ -108,6 +108,14 @@ type playoutResolver struct {
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
+	// audioLanguage is the operator's preferred audio track language (§9.1, `eng` by default),
+	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
+	// did before this existed — and is how a channel played a film in Russian.
+	audioLanguage func() string
+	// probeAudio lists a source's audio tracks so the preference can be resolved to a concrete
+	// index. Nil ⇒ track 0, the pre-existing behaviour: an install that cannot probe still
+	// plays, it just cannot honour the preference.
+	probeAudio playout.AudioProber
 	log        *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
 	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
@@ -551,6 +559,42 @@ func (r *playoutResolver) airingFiller(
 // steps everyone down as their next program begins. That is the "best picture the hardware
 // sustains, then adapt" policy §9.1 states, and it is only implementable because the child
 // processes are short-lived.
+// AudioTrackFor resolves which audio track a source should play (§9.1).
+//
+// Returns an index among AUDIO streams — the `N` in `-map 0:a:N`. Zero means "the file's first
+// track", which is both the historical behaviour and the safe answer for every failure below.
+//
+// ⚠ BEST-EFFORT, NEVER FATAL, and every branch here degrades the same way for the same reason:
+// a probe that fails must cost the viewer the language preference, never the programme. No
+// preference set, no prober wired, an unreachable media server, an ffprobe that is missing or
+// slow — all of them fall through to track 0 and the channel keeps playing. The alternative is a
+// channel that goes dark because a metadata read timed out, which trades a small annoyance for a
+// total outage.
+//
+// One probe per PROGRAMME, not per request: the concat demuxer asks for a new program at each
+// boundary, so this runs about as often as a film is long. That is what makes an exec on the
+// broadcast path affordable — and why it must not become per-segment.
+func (r *playoutResolver) AudioTrackFor(ctx context.Context, streamURL string) int {
+	if r.audioLanguage == nil || r.probeAudio == nil || streamURL == "" {
+		return 0
+	}
+	prefer := r.audioLanguage()
+	if strings.TrimSpace(prefer) == "" {
+		// Explicitly cleared ⇒ the operator wants ffmpeg's original behaviour. Skip the probe
+		// entirely rather than paying for an answer that cannot change the outcome.
+		return 0
+	}
+	tracks, err := r.probeAudio(ctx, streamURL)
+	if err != nil {
+		if r.log != nil {
+			r.log.Debug("playout: audio tracks not probed, using the first",
+				"err", err)
+		}
+		return 0
+	}
+	return playout.PickAudioTrack(tracks, prefer)
+}
+
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {

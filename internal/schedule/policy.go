@@ -100,6 +100,26 @@ type PlayoutPolicy struct {
 	Backend string `json:"backend,omitempty"`
 }
 
+// PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
+const PlayoutBackendInternal = "internal"
+
+// PlaysInternally resolves the nil-means-inherit precedence §15 defines: a channel's own
+// `policy.playout.backend` wins when set, otherwise the global `playout.backend`.
+//
+// ⚠ ONE COPY, DELIBERATELY. This rule decides which subsystem answers for a channel, and it is
+// now consulted from at least three places — the tuner/XMLTV filter, the Live TV wiring, and the
+// now/next router. A second copy that drifted would not fail loudly; it would make one surface
+// answer for a backend that is not streaming the channel, which is exactly the class of bug that
+// put a channel in the guide that would not play and had the card contradict the grid. Callers
+// pass the resolved global rather than reading settings here, because this package must not
+// depend on the settings registry.
+func PlaysInternally(policy ChannelPolicy, globalBackend string) bool {
+	if p := policy.Playout; p != nil && p.Backend != "" {
+		return p.Backend == PlayoutBackendInternal
+	}
+	return strings.TrimSpace(globalBackend) == PlayoutBackendInternal
+}
+
 // AutoCurate is a channel's self-updating configuration (§8.2). Its mere presence is the
 // opt-in; the two optional overrides let a channel be stricter or looser than the global
 // recurate defaults. A zero-value (non-nil) AutoCurate means "opted in, use the global

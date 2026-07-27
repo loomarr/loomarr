@@ -41,6 +41,11 @@ type PlayoutResolver interface {
 	// Profile is the encode profile to normalize this program to, resolved against measured
 	// capacity and current load (§9.1 quality ladder).
 	Profile(ctx context.Context) playout.Profile
+	// AudioTrackFor picks which audio track to play from a source — the `N` in `-map 0:a:N`,
+	// honouring the operator's preferred language (§9.1). Best-effort: 0 (the file's first
+	// track) whenever the preference cannot be resolved, so a probe failure costs the language
+	// and never the programme.
+	AudioTrackFor(ctx context.Context, streamURL string) int
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -101,7 +106,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	args := playout.ProgramArgs(profile, streamURL, airing.Offset, airing.Remaining)
+	// Which audio track, honouring the operator's language preference (§9.1). Resolved here
+	// rather than inside ProgramArgs because it needs a probe of the source, and the args
+	// builder is deliberately a pure function.
+	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), streamURL)
+
+	args := playout.ProgramArgsWithAudio(profile, streamURL, airing.Offset, airing.Remaining, audioTrack)
 	s.streamChild(w, r, channelID, airing.Title, args, profile.Encoder)
 }
 
