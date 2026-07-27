@@ -97,7 +97,18 @@ func TestReconcileSeedsAndRuns(t *testing.T) {
 		t.Fatalf("seeded next_run = %v, want now", j.NextRun)
 	}
 	s.tick(ctx)
-	waitFor(t, func() bool { return ran.Load() == 1 })
+	// ⚠ Wait for the STORE WRITE, not the run counter. `ran` is incremented INSIDE the job
+	// function, while next_run/last_result are written after it returns — so waiting on the
+	// counter can observe a job that has run but not yet recorded, and the assertions below
+	// then read the seeded 30m default and an empty last_result.
+	//
+	// A real flake, not a theoretical one: it failed CI on main and reproduces locally with
+	// `-count=200 -cpu=1,2` (it needs contention, which is why a 24-core dev box never sees
+	// it and a 4-core runner does).
+	waitFor(t, func() bool {
+		j, err := st.GetScheduledJob(ctx, "a")
+		return err == nil && j.LastResult != ""
+	})
 
 	// After running, next_run is the next cron tick — strictly after now, within a minute.
 	j, _ := st.GetScheduledJob(ctx, "a")
