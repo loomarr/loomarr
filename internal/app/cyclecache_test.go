@@ -234,3 +234,72 @@ func TestCycleCache_NoStoreFallsBackToLiveComputation(t *testing.T) {
 		t.Fatalf("arrangements computed = %d, want 1", got)
 	}
 }
+
+// A channel that CANNOT vary with time must share one entry across every instant. This is the
+// whole win: the guide's window start advances with the wall clock, so a bucketed key missed
+// every sixty seconds and re-paid a full arrangement for a byte-identical answer — which is what
+// put the endpoint's p99 at 90ms against a p50 of 21ms.
+func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
+	ch := testChannel()
+	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // explicit off + no rules ⇒ invariant
+	r, eng, _ := cachedResolver(t, ch)
+	at := time.Now().Truncate(cycleBucket)
+
+	// Instants an hour and a day apart — many buckets — must all hit.
+	for _, d := range []time.Duration{0, cycleBucket, time.Hour, 24 * time.Hour} {
+		if _, err := r.cycleAt(context.Background(), "ch1", at.Add(d)); err != nil {
+			t.Fatalf("cycleAt(+%v): %v", d, err)
+		}
+	}
+
+	if got := eng.count(); got != 1 {
+		t.Fatalf("arrangements computed = %d, want 1 (the bucket is still fragmenting an invariant channel)", got)
+	}
+}
+
+// ⚠ THE TRAP. The resolved seasonal default is Auto, NOT Off, and activeHolidays walks the whole
+// built-in calendar when no holidays are explicitly selected — so a channel with an entirely
+// EMPTY seasonal policy still benches and unbenches items as holiday windows open. Treating
+// "nothing configured" as invariant would pass every test written against a rule-less channel and
+// then serve a Christmas lineup in January.
+func TestCycleCache_EmptySeasonalPolicyIsStillTimeVarying(t *testing.T) {
+	ch := testChannel() // zero policy: Mode == SeasonalDefault ("") ⇒ resolves to Auto
+	if ch.Policy.Seasonal.Mode == schedule.SeasonalOff {
+		t.Fatal("precondition: a zero policy must NOT be SeasonalOff, or this test proves nothing")
+	}
+	r, eng, _ := cachedResolver(t, ch)
+	at := time.Now().Truncate(cycleBucket)
+
+	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+		t.Fatalf("cycleAt: %v", err)
+	}
+	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
+		t.Fatalf("cycleAt: %v", err)
+	}
+
+	if got := eng.count(); got != 2 {
+		t.Fatalf("arrangements computed = %d, want 2 (an unset seasonal policy was treated as time-invariant)", got)
+	}
+}
+
+// A channel WITH curation rules keeps its bucket: a rule that switches the lineup at 21:00 is
+// exactly the case the bucket exists for, and dropping it there would serve the pre-boundary
+// lineup past the boundary.
+func TestCycleCache_RuledChannelKeepsItsBucket(t *testing.T) {
+	ch := testChannel()
+	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // off, so RULES are the only varying input
+	ch.Policy.Rules = []schedule.SchedulingRule{{ID: "r1", Label: "Marathon"}}
+	r, eng, _ := cachedResolver(t, ch)
+	at := time.Now().Truncate(cycleBucket)
+
+	if _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+		t.Fatalf("cycleAt: %v", err)
+	}
+	if _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
+		t.Fatalf("cycleAt: %v", err)
+	}
+
+	if got := eng.count(); got != 2 {
+		t.Fatalf("arrangements computed = %d, want 2 (a ruled channel lost its bucket)", got)
+	}
+}
