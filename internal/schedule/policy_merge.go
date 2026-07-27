@@ -61,29 +61,68 @@ func (current ChannelPolicy) MergeFromProposal(incoming ChannelPolicy) ChannelPo
 
 // MergeFromOperator applies an operator PATCH of the whole policy (the channel page). The
 // operator's values win wholesale; Applied is reconcile-owned so it is force-preserved from
-// current (never client-settable); and every proposal-owned field the operator CHANGED is
-// recorded in OperatorSet so a later refine can't revert it (§8.2). OperatorSet on the
-// incoming body is ignored — it is Loomarr's bookkeeping, not a client-settable field.
+// current (never client-settable); and every proposal-owned field the operator CHANGED TO A
+// NON-EMPTY VALUE is recorded in OperatorSet so a later refine can't revert it (§8.2).
+// OperatorSet on the incoming body is ignored — it is Loomarr's bookkeeping, not a
+// client-settable field.
+//
+// ⚠ AN EMPTY FIELD IS NEVER PINNED, and that exception is load-bearing rather than tidy.
+//
+// This PATCH replaces `policy` WHOLESALE, so a body that omits a field is byte-identical to one
+// that deliberately cleared it. Pinning on "differs from current" therefore records an edit the
+// operator may never have made — and the failure is silent AND permanent: the field is blanked
+// and simultaneously marked operator-dirty, so no later refine or re-curation can restore it.
+//
+// Observed on the dev "1980s Action Heroes": operatorSet ["ordering", "scope"] with scope {}.
+// One PATCH that changed ORDERING also carried an empty scope, which erased the 1980s era window
+// and pinned the erasure. Six out-of-era titles then bound legitimately — slotting's era filter
+// was working, there was simply nothing left to enforce — and every re-curation since preserved
+// a constraint that did not exist.
+//
+// A pin protects a VALUE; an empty field has none. Pinning one cannot preserve operator intent,
+// it can only stop a future proposal from filling the field in. The asymmetry settles it: a
+// wrongly-pinned empty field is silent permanent data loss, while a wrongly-unpinned one means a
+// refine re-suggests a value the operator can see and change again.
+//
+// This does NOT weaken stickiness — every non-empty edit pins exactly as before — and it does not
+// license a partial-PATCH client: the operator's values still win wholesale, so a caller must
+// still send the whole policy (the FE does: `{...policy, scope: next}`). Clearing a field the
+// operator DID set stays expressible; it simply unpins rather than pinning emptiness.
 func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPolicy {
 	out := incoming
 	out.Applied = current.Applied // reconcile-owned
 
 	set := pathSet(current.OperatorSet)
-	if !reflect.DeepEqual(current.Scope, incoming.Scope) {
-		set[pathScope] = true
+	// pin marks a field operator-dirty only when it CHANGED and the new value is non-empty.
+	// An edit that empties a field instead UNPINS it, so the field returns to proposal
+	// ownership rather than being frozen blank.
+	pin := func(path string, changed, empty bool) {
+		switch {
+		case !changed:
+			// Untouched: whatever the field's pin state was, it stays. A no-op PATCH must
+			// never change ownership.
+		case empty:
+			delete(set, path)
+		default:
+			set[path] = true
+		}
 	}
-	if current.Audience != incoming.Audience {
-		set[pathAudience] = true
-	}
-	if current.Separation != incoming.Separation {
-		set[pathSeparation] = true
-	}
-	if current.Ordering != incoming.Ordering {
-		set[pathOrdering] = true
-	}
-	if !reflect.DeepEqual(current.Seasonal, incoming.Seasonal) {
-		set[pathSeasonal] = true
-	}
+
+	pin(pathScope,
+		!reflect.DeepEqual(current.Scope, incoming.Scope),
+		reflect.DeepEqual(incoming.Scope, ScopePolicy{}))
+	pin(pathAudience,
+		current.Audience != incoming.Audience,
+		incoming.Audience == AudiencePolicy{})
+	pin(pathSeparation,
+		current.Separation != incoming.Separation,
+		incoming.Separation == SeparationPolicy{})
+	pin(pathOrdering,
+		current.Ordering != incoming.Ordering,
+		incoming.Ordering == OrderInherit)
+	pin(pathSeasonal,
+		!reflect.DeepEqual(current.Seasonal, incoming.Seasonal),
+		reflect.DeepEqual(incoming.Seasonal, SeasonalPolicy{}))
 	out.OperatorSet = sortedPaths(set)
 	return out
 }
