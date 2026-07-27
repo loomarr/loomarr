@@ -67,7 +67,12 @@ const AppShell = ({
   onOpenCommand,
   onLogout,
 }: AppShellProps) => (
-  <div className="grid min-h-screen grid-cols-[auto_1fr] bg-background text-foreground">
+  // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
+  // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
+  // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
+  // invisible on short pages and breaks anything that needs a real viewport: the Guide's
+  // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
+  <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden bg-background text-foreground">
     <nav aria-label="Primary" className="flex w-56 flex-col gap-1 border-border border-r bg-card px-3 py-4">
       <div className="mb-4 px-2">
         <BrandLockup variant="compact" />
@@ -129,7 +134,12 @@ const AppShell = ({
       </div>
     </nav>
 
-    <main className="min-w-0 overflow-auto">{children}</main>
+    {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
+        the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
+        to its content instead — which silently turns any inner `overflow-auto` region into a
+        non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
+        on the region that asked for it. */}
+    <main className="flex min-h-0 min-w-0 flex-col overflow-auto">{children}</main>
   </div>
 );
 

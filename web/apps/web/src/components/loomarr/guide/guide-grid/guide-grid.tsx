@@ -1,4 +1,6 @@
 import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRef } from "react";
 import { StatusDot } from "@/components/ui";
 import { cn } from "@/lib";
 import { ChannelIdent } from "../../channels";
@@ -17,6 +19,10 @@ import type { GuideGridProps } from "./guide-grid.type";
 // padding are four different facts, and the API distinguishes them precisely so this surface
 // can. A break is quieter than a programme but never invisible: an unexplained gap in a
 // schedule reads as a bug rather than as advertising.
+
+// The viewport height the row virtualizer assumes before the real one is measured. Only ever
+// used where measurement is unavailable (jsdom); a browser replaces it on the first frame.
+const INITIAL_VIEWPORT_H = 900;
 
 const MS_PER_MINUTE = 60_000;
 // Tick spacing follows the window: half-hours read well across an evening, hourly across a day.
@@ -159,8 +165,47 @@ const GuideGrid = ({
   const nowPct = nowMs === undefined ? -1 : pctOf(nowMs);
   const nowVisible = nowPct >= 0 && nowPct <= 100;
 
+  // Row windowing. The DOM here grows with channels × airings-in-window, so a wide window over
+  // a large lineup is thousands of absolutely-positioned nodes that all re-lay-out on a zoom
+  // change. The virtualizer renders only the rows near the viewport.
+  //
+  // Rows are a FIXED height (`rowH`, derived from zoom), so `estimateSize` is exact rather than
+  // an estimate and no dynamic measurement pass is needed. Changing zoom changes rowH, which
+  // re-runs the virtualizer — that is why rowH is in the dep-ish path via estimateSize.
+  //
+  // `overscan` keeps a few rows mounted beyond the viewport so scrolling does not flash empty
+  // bands, and — importantly here — so a row being hovered stays mounted while the detail card
+  // reads its position.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: channels.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowH,
+    overscan: 6,
+    initialRect: { width: 1280, height: INITIAL_VIEWPORT_H },
+    // jsdom reports every element as 0×0, so the default observer would report a zero-height
+    // viewport and the virtualizer would mount NO rows — not a rendering bug, but it makes
+    // every unit test assert against an empty grid. This wrapper substitutes a usable height
+    // ONLY when measurement comes back as zero, which never happens in a real browser, so
+    // production behaviour is untouched and the tests exercise the same code path as the app.
+    observeElementRect: (instance, cb) => {
+      const el = instance.scrollElement;
+      if (!el) return;
+      const report = () => {
+        const r = el.getBoundingClientRect();
+        cb({ width: r.width || 1280, height: r.height || INITIAL_VIEWPORT_H });
+      };
+      report();
+      if (typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(report);
+      ro.observe(el);
+      return () => ro.disconnect();
+    },
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
   return (
-    <div className={cn("relative flex-1 overflow-auto", className)} data-testid="guide-grid">
+    <div ref={scrollRef} className={cn("relative flex-1 overflow-auto", className)} data-testid="guide-grid">
       {/* min-w scales with zoom (the mock's `gridMin: 1000 * z`) instead of being a fixed
           880px. A constant floor meant the grid demanded 880px even when zoomed out to 75%,
           so a viewport with room to spare still showed a horizontal scrollbar. Now zooming
@@ -169,7 +214,12 @@ const GuideGrid = ({
         {/* Time ruler. Sticky so the axis stays readable while scrolling channels. */}
         <div className="sticky top-0 z-30 flex border-border border-b bg-background">
           <div style={{ width: railW }} className="shrink-0 border-border border-r" />
-          <div className="relative h-7.5 flex-1">
+          {/* overflow-hidden: the LAST tick sits near 100%, and its label is drawn to the
+              right of that line — so the text runs past the container and widens the scroll
+              area by roughly a label's width. Clipping it costs nothing (the final label is
+              partially legible either way) and removes a horizontal scrollbar that appears on
+              every window whose last tick lands near the edge. */}
+          <div className="relative h-7.5 flex-1 overflow-hidden">
             {ticks.map((t) => (
               <div
                 key={t}
@@ -210,18 +260,38 @@ const GuideGrid = ({
           </div>
         )}
 
-        <ul>
-          {channels.map((ch, rowIndex) => {
+        {/* The list is a SPACER of the full scroll height, with only the visible rows mounted
+            inside it, absolutely positioned at their real offsets. The spacer is what keeps the
+            scrollbar honest — it must be the height every row would occupy, not the height of
+            what is rendered.
+            ⚠ `w-full` is load-bearing. Absolutely-positioned rows no longer stretch their
+            parent the way in-flow rows did, so without an explicit width the spacer collapses
+            to zero and every row's `width: 100%` resolves against nothing — which brought the
+            horizontal scrollbar straight back the moment rows were virtualized. */}
+        <ul className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
+          {virtualRows.map((vr) => {
+            const ch = channels[vr.index];
+            if (!ch) return null;
+            const rowIndex = vr.index;
             const health = healthOf(ch);
             const chip = health ? HEALTH_CHIP[health] : null;
             const onAir = onAirOf(ch);
             return (
               <li
                 key={ch.channelId}
+                data-testid="guide-row"
                 // A channel that is off air is dimmed rather than hidden: it is still one of the
                 // operator's channels, and removing the row would read as a deletion.
-                style={{ opacity: onAir === "off" ? 0.55 : 1 }}
-                className="flex border-border/60 border-b last:border-b-0"
+                style={{
+                  opacity: onAir === "off" ? 0.55 : 1,
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: vr.size,
+                  transform: `translateY(${vr.start}px)`,
+                }}
+                className="flex border-border/60 border-b"
               >
                 <div
                   style={{ width: railW, height: rowH }}
