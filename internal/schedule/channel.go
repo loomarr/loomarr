@@ -84,6 +84,13 @@ type Channel struct {
 	// Sourced from FILLER_BREAKS_PER_HOUR at channel build; empty breaks fill with
 	// matched pods at reconcile (fillPods), else stay flex (never dead air).
 	BreaksPerHour int
+	// LastAired is when each key last aired on THIS channel (§3.1) — the recency signal
+	// placement biases on, loaded from the airings table by the caller.
+	//
+	// Observed state rather than configuration: nothing authors it, it has no ChannelPolicy
+	// counterpart, and an empty map is always valid (a fresh channel, or a store that could
+	// not answer) — placement then behaves exactly as it did before recency existed.
+	LastAired map[provision.Key]time.Time
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) reconcile sets from settings before ComputeDesiredAt — the pure
 	// schedule package can't read settings, so this transient field carries the default

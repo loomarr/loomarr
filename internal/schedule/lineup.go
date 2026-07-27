@@ -217,6 +217,10 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 
 	rp := policy.Resolved(ch.Strategy, singleSeriesEntries(entries))
 	rp = applyRuleHow(rp, rule.How) // overlay the active rule's ordering/separation
+	// Recency (§3.1): observed state, not policy — it rides the channel because that is what
+	// the caller already has, and it reaches placement through the resolved policy because
+	// that is what placement receives. Empty ⇒ ordering is unchanged from pre-§3.1.
+	rp.LastAired = ch.LastAired
 
 	// Hard filters first (§4 audience fail-closed + scope) — the never-relaxed gate.
 	// The rule's WHAT can only NARROW this set (applied next), never widen it. This

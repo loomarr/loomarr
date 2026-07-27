@@ -316,6 +316,13 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		}
 		item := fromCandidate(cand, p.Rationale, p.Confidence)
+		// Carry the adjacency consensus onto the pick so the approval surface can show WHY
+		// it was offered ("recommended by 5 of your films"). Zero for every other corpus.
+		//
+		// Derived from the intent rather than threaded through as another parameter: the
+		// intent is already here, and votes are a property of what was OFFERED, not of what
+		// the catalog returned — keeping them off Candidate keeps identity clean.
+		item.AdjacentVotes = adjacentVotesOf(intent, provision.Key(key))
 		// Grounding chokepoint: attach the model's proposed AIRING season window only
 		// for a series, and only after clamping (an inverted or non-positive range is
 		// dropped → all seasons, never an empty channel). The range can only NARROW an
@@ -888,4 +895,18 @@ func catalogTool() llm.ToolSchema {
 			},
 		},
 	}
+}
+
+// adjacentVotesOf reports the consensus an offered adjacency candidate carried (§8.3), or 0
+// for a key that did not come from that corpus.
+//
+// Linear over intent.Adjacent, which is bounded by adjacentLimit (12) — a map would be more
+// code than the scan it replaces at this size.
+func adjacentVotesOf(intent Intent, key provision.Key) int {
+	for _, a := range intent.Adjacent {
+		if provision.Key(a.Key) == key {
+			return a.Votes
+		}
+	}
+	return 0
 }

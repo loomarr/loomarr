@@ -236,6 +236,41 @@ answer, never a second opinion:
   covers the case nothing else does — episodes added to the media server directly, with no
   Loomarr acquisition behind them.
 
+### Airing history (§9 recency-aware placement)
+
+The scheduler had no memory of its own output. Separation (`programming-design.md` §3) constrains
+what recurs **within one cycle**; once the cycle wraps, the count resets and the deck replays from
+position. A viewer sees the same film every couple of days with no pattern behind it — reported
+from the dev "1980s Action Heroes": Akira at Tue 21:53, Fri 13:33, Sat 02:10, Mon 01:30.
+
+`airings` records one row per programme aired — `{channel_id, key, library_item_id, aired_at}` —
+written from playout at the moment a programme is resolved for streaming. It is the programme
+analogue of `RecordClipPlay` (§10 V28), which already does exactly this for commercial clips: the
+same write point, the same best-effort posture, and for the same reason (you cannot rotate what
+you cannot remember).
+
+- **Write path:** the playout resolver knows what it is about to stream, so the write costs no new
+  lookup. **Best-effort:** a failed insert is logged and the programme still airs — telemetry must
+  never be able to take a channel off the air.
+- **Read path:** `LastAiredByChannel(channelID)` returns the most recent airing per key, which is
+  all the scheduler needs. One row per distinct key, not the full history.
+- **Loomarr's own output, not viewer behaviour.** This deliberately does not touch the media
+  server's per-user watch state (`UserData`): that is a different signal with a per-user "whose
+  history counts?" question and privacy implications. This is the system remembering what it
+  broadcast — the minimum a human programmer does.
+- **Retention:** rows older than the janitor's horizon are purged like every other accumulating
+  table (below). History beyond the longest recency horizon has no reader.
+
+⚠ **A recency signal cannot make repeats rare on a small library, and must not pretend to.** The
+arithmetic is unforgiving: a 24h day consumes ~13 films, so a channel needs ~168h of content to
+avoid repeating inside a week. The dev channel has 34 titles ≈ 62h — a 3-day no-repeat is already
+*impossible* there, let alone 7. That is why placement consumes this as a **soft ranking signal**
+(`programming-design.md` §3.1) rather than a hard constraint with a ladder step: a constraint that
+is unsatisfiable on every real run produces a relaxation note on every real run, which teaches
+operators to ignore the ladder. The signal spreads airings evenly and stops a title clustering near
+its own last showing; only more content fixes the underlying frequency, which is what re-curation
+and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
+
 ### Retention & janitor
 State accumulates; a **janitor** (piggybacking the reconciler ticker) enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)

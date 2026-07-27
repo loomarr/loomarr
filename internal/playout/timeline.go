@@ -33,6 +33,13 @@ type Airing struct {
 	// LibraryItemID is the media-server item to stream, for a program slot. Empty for
 	// filler (which resolves to a clip) and for the nothing-to-play case.
 	LibraryItemID string
+	// Key is the provisioning key of what is airing — the identity airing history is
+	// recorded under (§5, programming-design §3.1).
+	//
+	// LibraryItemID would be the wrong key for that: it changes when a file is re-encoded or
+	// replaced, and a recency signal must survive an item being swapped underneath it. Empty
+	// for filler/flex, which have no provisioned title behind them.
+	Key provision.Key
 	// Source is a direct ffmpeg input for an item that is NOT a library title — currently a
 	// commercial clip resolved to a local file under FILLER_DIR (§10).
 	//
@@ -112,9 +119,14 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 			return Airing{
 				Kind:          s.Kind,
 				LibraryItemID: s.LibraryItemID,
-				Title:         s.Title,
-				Offset:        into,
-				Remaining:     d - into,
+				// Key identifies WHAT aired independently of which library item served it —
+				// the identity airing history is recorded under (§5, programming-design §3.1).
+				// LibraryItemID alone would not do: a re-encoded or replaced file changes it,
+				// and the recency signal must survive that.
+				Key:       s.Key,
+				Title:     s.Title,
+				Offset:    into,
+				Remaining: d - into,
 			}
 		}
 		into -= d

@@ -74,6 +74,7 @@ func (e *Engine) CyclePreviewDraft(
 		hasFillerPool = e.pods.HasPool(ctx, ch.ID, PodSeed(ch.ID), SelectionForChannel(ch))
 	}
 	chDomain := ch.Channel
+	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = 0
 	if hasFillerPool {
 		chDomain.BreaksPerHour = e.breaksPerHour

@@ -2,7 +2,9 @@ package schedule
 
 import (
 	"math/rand"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
 )
@@ -206,15 +208,21 @@ func slotByPolicy(slots []Slot, rp ResolvedPolicy, seed int64) []Slot {
 		return slots // nothing to order (all pending/filler) — preserve as-is
 	}
 
+	// Recency bias (§3.1): among the shuffled deck, float what has NOT been on recently toward
+	// the front. Applied BEFORE separation repair so the §3 constraint engine still has the
+	// final say — recency is a preference, never a rule it can override.
+	//
+	// SEQUENTIAL is deliberately exempt: that mode means "play this show in episode order", and
+	// re-ordering it by recency would destroy the one property it exists to provide.
 	var ordered []Slot
 	switch rp.Ordering {
 	case OrderSequential:
 		ordered = append([]Slot(nil), programs...) // keep resolved (season/episode + lineup) order
 	case OrderShuffle:
-		ordered = seededShuffle(programs, seed)
+		ordered = byRecency(seededShuffle(programs, seed), rp.LastAired)
 		ordered = separationRepair(ordered, rp)
 	case OrderSyndication:
-		ordered = syndicationDeck(programs, rp, seed)
+		ordered = syndicationDeck(byRecency(programs, rp.LastAired), rp, seed)
 	default:
 		ordered = append([]Slot(nil), programs...)
 	}
@@ -253,3 +261,44 @@ func seededShuffle(slots []Slot, seed int64) []Slot {
 // purposes: the slot's Key (a series' episodes all share the series Key). A movie's
 // Key is its own; blockMax/seriesMinGap then naturally apply per-title.
 func seriesKeyOf(s Slot) provision.Key { return s.Key }
+
+// byRecency floats least-recently-aired programmes toward the front of the deck (§3.1).
+//
+// # Why this is a SOFT signal
+//
+// It reorders a deck that is already valid; it never rejects a placement. A hard "no repeat
+// within N days" is arithmetically unsatisfiable on a real channel — a 24h day consumes ~13
+// films, so a week without repeats needs ~168h of content and the dev channel has ~62h — so a
+// constraint would relax on every single run and teach operators to ignore the ladder (§7). This
+// changes WHICH title fills a slot when several are equally valid, and nothing else.
+//
+// # Determinism
+//
+// STABLE sort over the already-seeded order, so equal-recency slots keep their shuffled
+// positions: same pool + policy + seed + history ⇒ same deck (§3). A title with no history sorts
+// FIRST — never aired is maximally "not recent", which is what puts new acquisitions on screen
+// promptly.
+//
+// Empty history (a fresh install, a channel that has never aired, a store that could not answer)
+// leaves the order untouched, so placement degrades to exactly its pre-§3.1 behaviour.
+func byRecency(slots []Slot, lastAired map[provision.Key]time.Time) []Slot {
+	if len(lastAired) == 0 || len(slots) <= 1 {
+		return slots
+	}
+	out := append([]Slot(nil), slots...)
+	sort.SliceStable(out, func(i, j int) bool {
+		ti, oki := lastAired[out[i].Key]
+		tj, okj := lastAired[out[j].Key]
+		switch {
+		case !oki && !okj:
+			return false // both never aired — keep the seeded order
+		case !oki:
+			return true // i has never aired; it goes first
+		case !okj:
+			return false
+		default:
+			return ti.Before(tj) // older airing first
+		}
+	})
+	return out
+}

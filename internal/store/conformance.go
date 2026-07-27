@@ -49,6 +49,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
+	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
 }
 
 // testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
@@ -1192,5 +1193,77 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	// row, not a playback error.
 	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
 		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
+	}
+}
+
+// testAiringHistory pins the recency signal's storage contract (§5, programming-design §3.1).
+//
+// The scheduler's separation rules are within-cycle; this table is the ONLY memory of what aired
+// across cycles, so its two properties — upsert-to-latest and per-channel scoping — are what make
+// recency-aware placement possible at all.
+func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+
+	base := time.Now().Truncate(time.Second)
+	kAkira := provision.Key("movie:tmdb:149")
+	kAliens := provision.Key("movie:tmdb:679")
+
+	if err := st.RecordAiring(ctx, "ch-1", kAkira, "lib-149", base.Add(-72*time.Hour)); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if err := st.RecordAiring(ctx, "ch-1", kAliens, "lib-679", base.Add(-24*time.Hour)); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	got, err := st.LastAiredByChannel(ctx, "ch-1")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("history has %d entries, want 2", len(got))
+	}
+
+	// UPSERT TO LATEST: re-airing moves the timestamp forward rather than adding a row. The
+	// reader asks "when did this LAST air", so an append-only log would accumulate rows to
+	// answer a question about its own maximum.
+	if err := st.RecordAiring(ctx, "ch-1", kAkira, "lib-149", base); err != nil {
+		t.Fatalf("re-record: %v", err)
+	}
+	got, err = st.LastAiredByChannel(ctx, "ch-1")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("re-airing added a row (%d entries); it must upsert", len(got))
+	}
+	if !got[kAkira].Equal(base) {
+		t.Errorf("last-aired = %v, want the LATEST airing %v", got[kAkira], base)
+	}
+
+	// PER-CHANNEL SCOPING: the same film on two channels is two independent rotations, and
+	// collapsing them would let one channel's schedule suppress another's.
+	if err := st.RecordAiring(ctx, "ch-2", kAkira, "lib-149", base.Add(-time.Hour)); err != nil {
+		t.Fatalf("record ch-2: %v", err)
+	}
+	other, err := st.LastAiredByChannel(ctx, "ch-2")
+	if err != nil {
+		t.Fatalf("read ch-2: %v", err)
+	}
+	if len(other) != 1 {
+		t.Fatalf("ch-2 history has %d entries, want 1 (channels are independent)", len(other))
+	}
+	if !other[kAkira].Equal(base.Add(-time.Hour)) {
+		t.Errorf("ch-2 timestamp leaked from ch-1: %v", other[kAkira])
+	}
+
+	// A channel that has never aired anything reads as empty, not as an error — that is what
+	// lets placement degrade to today's behaviour on a fresh install.
+	none, err := st.LastAiredByChannel(ctx, "ch-never")
+	if err != nil {
+		t.Fatalf("unknown channel must not error: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("unknown channel returned %d entries, want 0", len(none))
 	}
 }

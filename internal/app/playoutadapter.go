@@ -56,6 +56,12 @@ type clipPlayRecorder interface {
 	RecordClipPlay(ctx context.Context, clipPath string, at time.Time) error
 }
 
+// airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
+// signal placement ranks on. Narrowed to the one write, like every other store slice here.
+type airingRecorder interface {
+	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
+}
+
 // channelReader is the one store method the arranged-cycle cache needs: the channel whose
 // lineup and policy the cache fingerprints (see cyclecache.go). Narrowed like the readers above
 // — fingerprinting is a READ, and the cache must not be able to mutate what it is keyed on.
@@ -74,6 +80,10 @@ type playoutResolver struct {
 	// clipPlays counts a filler clip having aired (V28). Nil ⇒ no counting, which is the
 	// correct degradation: usage is telemetry and a channel must still play without it.
 	clipPlays clipPlayRecorder
+	// airings records that a PROGRAMME aired, feeding recency-aware placement
+	// (programming-design §3.1). Nil ⇒ no history, and placement degrades to the positional
+	// rotation it used before the signal existed.
+	airings airingRecorder
 
 	// tier / encoder / capacity are read live so an operator's Settings change applies to the
 	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
@@ -144,6 +154,23 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 		// Not an error: an empty lineup, or one where nothing has landed yet, is a real state.
 		// The handler renders it as the offline card.
 		return airing, "", nil
+	}
+
+	// Record that this programme aired (§5, programming-design §3.1) — the memory the
+	// scheduler lacked, and the input recency-aware placement ranks on.
+	//
+	// `Offset == 0` restricts it to the programme's START, exactly as the filler counter uses
+	// `into == 0`: this resolver answers every tune-in and every mid-programme re-resolve, and
+	// counting those would stamp a title as "just aired" repeatedly while it is merely still
+	// playing.
+	//
+	// ⚠ Telemetry, never correctness. A failed write is logged and the programme still airs —
+	// the same posture as RecordClipPlay, for the same reason: a channel must never go dark
+	// because a history table was unavailable.
+	if airing.Offset == 0 && r.airings != nil && airing.Key != "" {
+		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, now); aerr != nil && r.log != nil {
+			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", aerr)
+		}
 	}
 
 	url := r.lib.StreamURL(airing.LibraryItemID)

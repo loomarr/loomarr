@@ -70,6 +70,37 @@ Tunarr lineups are **cycles** — an ordered list that loops. So separation is e
 - **Cycle-length consequence:** the no-repeat window implies a minimum pool size. If the pool can't fill the window, do **not** fail and do not silently violate — descend the **relaxation ladder (§7)**.
 - All slotting is **seeded-deterministic** (seed = channel + cycle index, extending the main doc's pod rule) — same pool + same policy + same seed = same cycle, so tests reproduce exactly.
 
+## 3.1. Recency ("don't bring back what just played")
+
+Everything in §3 is **within-cycle**. When the cycle wraps, the deck replays from position and the
+scheduler's memory resets to nothing — so a title recurs on a fixed positional clock rather than a
+programmed one. Reported from the dev channel: Akira at Tue 21:53, Fri 13:33, Sat 02:10, Mon 01:30
+— four airings in a week, at no interval anyone chose.
+
+Recency closes that loop using `airings` (design.md §5): the last time each key aired **on this
+channel**, consumed at placement.
+
+- **A SOFT RANKING SIGNAL, not a constraint.** Among candidates that are equally valid under every
+  §3 rule, the least-recently-aired wins; a title that has never aired sorts first. It cannot be
+  "violated", so it has no ladder step (§7) and never emits a relaxation note.
+- **⚠ Why soft, and why this is the honest design.** A hard "no repeat within N days" is
+  *arithmetically unsatisfiable* on a real channel: a 24h day consumes ~13 films, so a week without
+  repeats needs ~168h of content, and the dev channel has ~62h. Even 3 days is impossible there. A
+  constraint that fails on every run produces a relaxation note on every run, and a ladder that
+  always fires is a ladder operators learn to ignore — it would make the §7 output *less*
+  trustworthy in exchange for a guarantee that was never available.
+- **What it does and does not fix.** It spreads airings evenly and stops a title clustering near
+  its own last showing, so repeats read as rotation rather than randomness. It does **not** make
+  repeats rare: at 62h of content everything returns within ~2.5 days no matter how it is ordered.
+  Only more content changes that frequency, which is what re-curation and adjacency candidates
+  (§8.2/§8.3) are for. Saying so here is deliberate — an operator who reads "recency-aware" as
+  "won't repeat" will file the same complaint again.
+- **Determinism holds.** Last-aired timestamps are an *input*, so the same pool + policy + seed +
+  history reproduce the same cycle. Tests pin history explicitly rather than relying on a clock.
+- **Degrades to today's behaviour.** No history (a fresh install, a channel that has never aired,
+  a store that cannot answer) ⇒ every candidate sorts equal and placement is exactly what it was
+  before this existed. The signal is additive, never load-bearing.
+
 ## 4. Audience safety ("Saturday cartoons must never go adult")
 
 The one heuristic where an error is a *harm*, not an aesthetic bug — so it fails closed:
