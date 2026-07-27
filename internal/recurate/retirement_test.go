@@ -196,3 +196,94 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 		t.Fatal("a tie retired the bench title — that is coin-flip churn")
 	}
 }
+
+// THE GAP THIS CLOSES: retiring only at 100% of cap made the lineup a RATCHET — every run
+// appended, nothing ever left, and the channel froze once full. A channel curated for weeks
+// still led with its original picks, which is what "why do I still see the same old movies"
+// describes. Above the rotation target a channel TRADES: a better candidate displaces the
+// stalest retirable title even while free slots remain.
+func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
+	st := newStore(t)
+	// Cap 4 ⇒ target 3. Three titles: at the target, with a free slot still available.
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{
+			lineupEntry(100, "Airing"), lineupEntry(200, "Stale"), lineupEntry(300, "Also Stale"),
+		},
+		[]provision.Key{provision.Key("movie:tmdb:100")})
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		acqItem(400, "Fresh Pick", 0.95),
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 4}, time.Now, testkit.Logger())
+
+	d, err := cur.Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 1 {
+		t.Fatalf("enqueued = %d, want 1", d.Enqueued)
+	}
+	// The observable is a RETIREMENT, not lineup size: a net-new acquisition becomes a
+	// `wanted` title and does not join ch.Lineup until it lands, so counting entries cannot
+	// distinguish "traded" from "took a free slot". One of the two stale titles must be gone.
+	got := lineupOf(t, st, "ch1")
+	staleGone := !got[provision.Key("movie:tmdb:200")] || !got[provision.Key("movie:tmdb:300")]
+	if !staleGone {
+		t.Fatal("above the rotation target a better candidate must retire a stale title, " +
+			"even though a free slot exists (the ratchet is back)")
+	}
+	if !got[provision.Key("movie:tmdb:100")] {
+		t.Error("the airing title must never be retired, target or no target")
+	}
+}
+
+// BELOW the target a young channel fills up rather than churning — rotation pressure applies to
+// a mature lineup, not to one that is still being assembled.
+func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
+	st := newStore(t)
+	// Cap 10 ⇒ target 7. Two titles is well below it.
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
+		[]provision.Key{provision.Key("movie:tmdb:100")})
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		acqItem(300, "New", 0.95),
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 10}, time.Now, testkit.Logger())
+
+	if _, err := cur.Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	got := lineupOf(t, st, "ch1")
+	if !got[provision.Key("movie:tmdb:100")] || !got[provision.Key("movie:tmdb:200")] {
+		t.Fatal("a young channel must fill up, not churn")
+	}
+}
+
+// Above the target, a candidate that beats NOTHING retirable still takes a free slot — rotation
+// is a preference, not a gate. Only at the hard cap does "nothing to displace" mean "dropped".
+func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
+	st := newStore(t)
+	// Cap 4 ⇒ target 3. Everything present is AIRING, so nothing is retirable.
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B"), lineupEntry(300, "C")},
+		[]provision.Key{
+			provision.Key("movie:tmdb:100"), provision.Key("movie:tmdb:200"), provision.Key("movie:tmdb:300"),
+		})
+
+	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+		acqItem(400, "New", 0.95),
+	})
+	cur := recurate.NewCurator(st, fixedThresholds{minScorePct: 60, maxTitles: 4}, time.Now, testkit.Logger())
+
+	d, err := cur.Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Enqueued != 1 {
+		t.Fatalf("enqueued = %d, want 1 (a free slot exists; rotation must not block the add)", d.Enqueued)
+	}
+	if len(lineupOf(t, st, "ch1")) != 3 {
+		t.Error("nothing airing should have been retired")
+	}
+}

@@ -170,9 +170,19 @@ const SortableLineupRow = ({
 // (§7 GET) — so the badge is DURABLE across reloads, not guessed from client-only memory.
 // An optimistic add seeds that state from the search result's `inLibrary` for instant
 // feedback; the refetch the add triggers replaces it with the server's authoritative value.
+// LineupSort is how the list is DISPLAYED — never how it plays.
+//
+// "Play order" is the stored order, which under a sequential channel IS the play order and is
+// what drag-to-reorder edits. The other views are read-only lenses over the same list: a channel
+// that has been auto-curated for weeks accumulates its newest titles at the BOTTOM, so the
+// default view shows the original lineup and buries everything that has been added since —
+// reported as "why do I still see the same old movies".
+type LineupSort = "order" | "newest" | "year";
+
 const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<LineupSort>("order");
 
   const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
 
@@ -200,6 +210,25 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
 
   const existingKeys = new Set(entries.map((e) => e.key));
 
+  // The DISPLAY list. `order` hands back the stored array untouched so drag-to-reorder keeps
+  // operating on real indices; the other lenses copy before sorting, because mutating `entries`
+  // would corrupt the order the PATCH sends back.
+  //
+  // "Newest" is the stored order reversed rather than a timestamp sort: a lineup entry carries
+  // no added-at (auto-curate unions onto the end), so append position IS the recency signal —
+  // and reversing it is exact rather than approximate.
+  const shown =
+    sort === "newest"
+      ? [...entries].reverse()
+      : sort === "year"
+        ? [...entries].sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
+        : entries;
+
+  // Dragging is only coherent while the list shows its real order — a drop in a sorted view
+  // would move the item to a position the user cannot see. Rather than silently misplace it,
+  // reordering is disabled outside "Play order" and the control says why.
+  const dragEnabled = sort === "order";
+
   const closeAdd = () => {
     setAdding(false);
     setQuery("");
@@ -214,24 +243,56 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
         </p>
       </div>
 
+      {/* Sort is a VIEW, not an edit — nothing here writes. Newest-first exists because
+          auto-curate appends, so the default play order shows the oldest picks first and hides
+          everything added since. */}
+      {entries.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.75">
+          <span className="font-mono text-2xs text-static-400 uppercase tracking-[0.06em]">Show</span>
+          {(
+            [
+              ["order", "Play order"],
+              ["newest", "Newest first"],
+              ["year", "Year"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSort(value)}
+              aria-pressed={sort === value}
+              className={cn(
+                "cursor-pointer rounded-md border px-2.5 py-0.5 font-mono text-2xs transition-colors",
+                sort === value
+                  ? "border-signal bg-signal-tint-15 text-signal"
+                  : "border-border text-static-400 hover:border-static-400",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+          {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
+        </div>
+      )}
+
       {entries.length === 0 ? (
         <p className="rounded-md border border-border border-dashed px-3 py-6 text-center text-muted-foreground text-sm">
           Nothing in the lineup yet — add a title below.
         </p>
       ) : (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-          <SortableContext items={entries.map((e) => e.key)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
             {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
                 channel with many titles otherwise runs the page off. max-height means a short
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
             <ul className="scroll-thin flex max-h-128 flex-col gap-2 overflow-y-auto">
-              {entries.map((entry) => (
+              {shown.map((entry) => (
                 <SortableLineupRow
                   key={entry.key}
                   entry={entry}
-                  disabled={isPending}
+                  disabled={isPending || !dragEnabled}
                   onRemove={() => remove(entry.key)}
                   onSeasonChange={(patch) => updateEntry(entry.key, patch)}
                 />

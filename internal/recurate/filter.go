@@ -113,18 +113,37 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 			room = 0
 		}
 	}
+
+	// ROTATION (§8.2a). A channel above its rotation target trades rather than only grows: a
+	// better candidate displaces the stalest retirable title even while free slots remain.
+	//
+	// Retiring ONLY at the cap was the wrong trigger. It made the lineup a ratchet — every run
+	// appended and nothing ever left until the channel hit 100% and froze — so a channel that
+	// had been curated for weeks still led with its original picks, which is exactly what
+	// "why do I still see the same old movies" describes. A real station retires a film once it
+	// has had its run; it does not wait until the shelf is full.
+	rotating := maxTitles > 0 && len(committed) >= rotationTarget(maxTitles)
 	// The turnstile (§8.2a): at the cap, a better candidate retires the weakest RETIRABLE
 	// title rather than being discarded. Built once, consumed as room runs out.
 	bench := retirableByWeakest(ch)
 
 	for _, c := range survivors {
-		if room == 0 {
+		if room == 0 || rotating {
 			// Try to rotate: find the weakest unscheduled title this candidate beats.
-			out, ok := bench.weakestBelow(c.item.Confidence)
+			out, ok := bench.weakestBelow(effectiveConfidence(c.item))
 			if !ok {
-				// Nothing retirable is weaker (or everything left is airing) — drop the
-				// newcomer, exactly as before. The safe direction.
-				res.OverCap = append(res.OverCap, dropped{Name: c.item.Name, Confidence: c.item.Confidence})
+				// Nothing retirable is weaker (or everything left is airing). Below the cap
+				// the newcomer simply takes a free slot — rotation is a preference, not a
+				// gate. At the cap there is nowhere to put it, so it drops.
+				if room == 0 {
+					res.OverCap = append(res.OverCap, dropped{Name: c.item.Name, Confidence: c.item.Confidence})
+					continue
+				}
+				kept = append(kept, c.item)
+				committed[c.key] = struct{}{}
+				if room > 0 {
+					room--
+				}
 				continue
 			}
 			res.Retired = append(res.Retired, retirement{
@@ -274,4 +293,28 @@ func retirableByWeakest(ch store.Channel) *bench {
 		return out[i].title < out[j].title
 	})
 	return &bench{entries: out}
+}
+
+// rotationFraction is how full a channel must be before it starts TRADING titles rather than
+// only accumulating them (§8.2a).
+//
+// Three quarters, not the whole cap. Retiring only at 100% made the lineup a ratchet: a channel
+// grew for weeks, never dropped anything, and then froze — so its oldest picks stayed at the
+// front forever. Starting the trade earlier means a mature channel keeps circulating stock while
+// still leaving genuine headroom, so a burst of good candidates can be absorbed without
+// immediately displacing anything.
+//
+// Below the target nothing is retired at all: a young channel should fill up, not churn.
+const rotationFraction = 3.0 / 4.0
+
+// rotationTarget is the lineup size at which rotation begins for a given cap.
+func rotationTarget(maxTitles int) int {
+	if maxTitles <= 0 {
+		return 0 // unbounded ⇒ no cap ⇒ no rotation pressure
+	}
+	t := int(float64(maxTitles) * rotationFraction)
+	if t < 1 {
+		t = 1
+	}
+	return t
 }
