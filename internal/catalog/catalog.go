@@ -266,6 +266,18 @@ const adjacentPerSeed = 20
 // two of them (Mad Max, T2) obvious holes the channel already implied.
 const minAdjacentConsensus = 2
 
+// Adjacency pairs a candidate with the consensus that surfaced it (§8.3).
+//
+// Votes rides ALONGSIDE the candidate rather than on it: `Candidate` is shared identity
+// (its Key/dedupeKey feed grounding and in-library-first ordering), and hanging a
+// corpus-specific score on it would invite exactly the identity drift the comments there
+// warn about. It is also the explainability payload — "recommended by 5 of your films" is
+// what the approval card shows and what the prompt renders.
+type Adjacency struct {
+	Candidate Candidate
+	Votes     int
+}
+
 // Adjacent walks the recommendation graph from a set of seed titles and returns the
 // candidates several of them agree on, ranked by that agreement (§8.3).
 //
@@ -283,7 +295,7 @@ const minAdjacentConsensus = 2
 // would not be.
 func (c *Catalog) Adjacent(
 	ctx context.Context, seeds []Candidate, exclude map[provision.Key]bool, limit int,
-) ([]Candidate, error) {
+) ([]Adjacency, error) {
 	rec, ok := c.tmdb.(TMDBRecommender)
 	if !ok || c.tmdb == nil {
 		return nil, nil // no adjacency corpus wired
@@ -351,14 +363,22 @@ func (c *Catalog) Adjacent(
 		return position[kept[a]] < position[kept[b]]
 	})
 
-	out := make([]Candidate, 0, limit)
+	out := make([]Adjacency, 0, limit)
+	cands := make([]Candidate, 0, limit)
 	for _, k := range kept {
 		if len(out) >= limit {
 			break
 		}
-		out = append(out, *byKey[k])
+		out = append(out, Adjacency{Candidate: *byKey[k], Votes: votes[k]})
+		cands = append(cands, *byKey[k])
 	}
-	c.backfillPresence(ctx, out)
+	// Backfill on the extracted slice, then copy the results back: a title the library
+	// already owns must come back InLibrary (a lineup pick, not a needless acquisition),
+	// exactly as Discover does.
+	c.backfillPresence(ctx, cands)
+	for i := range cands {
+		out[i].Candidate = cands[i]
+	}
 	return out, nil
 }
 

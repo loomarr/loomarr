@@ -119,6 +119,40 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	surfaced := map[provision.Key]catalog.Candidate{}
 	temp := groundedTemp
 
+	// PRE-SEED the adjacency corpus (§8.3) before generation. These are real catalog
+	// candidates with real ids — the same shape a tool call produces — so seeding them here
+	// widens what the model may pick from WITHOUT weakening the chokepoint: buildProposal
+	// still accepts a pick iff it appears in `surfaced`, and these appear because the
+	// catalog genuinely returned them. Merging after generation instead would append picks
+	// nothing ever checked, which is precisely what grounding prevents.
+	//
+	// The model still chooses. An offered title it ignores is simply not picked.
+	for _, a := range intent.Adjacent {
+		k := provision.Key(a.Key)
+		mt, provider, id, ok := provision.ParseKey(k)
+		if !ok {
+			continue // an unparseable key could never be acquired; drop rather than offer
+		}
+		if _, already := surfaced[k]; already {
+			continue // a tool result would win anyway; never overwrite richer data
+		}
+		cand := catalog.Candidate{
+			MediaType: mt, Name: a.Name, Year: a.Year, Source: catalog.ScopeAdjacent,
+		}
+		// Rebuild the external id from the key so the candidate's own Key() round-trips —
+		// a candidate whose identity doesn't reproduce would be dropped by the grounding
+		// resolve, silently making every adjacency pick unpickable.
+		switch provider {
+		case "tmdb":
+			cand.TMDBID = id
+		case "tvdb":
+			cand.TVDBID = id
+		default:
+			continue
+		}
+		surfaced[k] = cand
+	}
+
 	// Surface progress (§8): searching now (the model is about to ground via the
 	// catalog tool), reasoning once it returns a final turn, scoring at assembly.
 	reportProgress(ctx, PhaseSearching)
@@ -787,6 +821,22 @@ func userPrompt(i Intent) string {
 		}
 		b.WriteString("Keep the titles that still fit, drop the ones that don't, and add new ones as needed. " +
 			"Re-ground EVERY title (kept or new) through the catalog tool — use only ids the tool returns.\n")
+		// Adjacency offers (§8.3): titles this channel's own lineup points at, with the
+		// consensus that surfaced them. Presented as SUGGESTIONS, not instructions — the
+		// model weighs them against the intent like any other candidate, and a weak
+		// consensus should read as weaker evidence than a strong one. Their ids are already
+		// grounded (pre-seeded into `surfaced`), which is why they may be picked directly.
+		if len(i.Adjacent) > 0 {
+			b.WriteString("Viewers of the titles above also watch these — consider them if they fit the channel:\n")
+			for _, a := range i.Adjacent {
+				if a.Year > 0 {
+					fmt.Fprintf(&b, "  - %s (%d) [%s] — suggested by %d of its titles\n", a.Name, a.Year, a.Key, a.Votes)
+				} else {
+					fmt.Fprintf(&b, "  - %s [%s] — suggested by %d of its titles\n", a.Name, a.Key, a.Votes)
+				}
+			}
+			b.WriteString("These ids are already grounded — you may pick them directly. Ignore any that don't fit.\n")
+		}
 	} else {
 		fmt.Fprintf(&b, "Build a channel: %s\n", i.Description)
 	}
