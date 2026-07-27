@@ -223,7 +223,11 @@ type storeAvailability struct {
 	store    store.Store
 	ctx      context.Context
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
-	episodes EpisodeResolver  // optional; nil ⇒ series resolve to a pending slot
+	// durations is the BULK form of `duration`, used to prewarm durMemo before a layout so the
+	// per-key Resolve calls all hit the memo instead of issuing one HTTP request each. Optional:
+	// nil ⇒ no prewarm and the per-item path behaves exactly as before.
+	durations DurationsResolver
+	episodes  EpisodeResolver // optional; nil ⇒ series resolve to a pending slot
 
 	// Memo over the three lookups a cycle layout repeats. ComputeDesiredAt walks the lineup
 	// several times while laying out a cycle, and each miss used to be a fresh round-trip to
@@ -276,6 +280,24 @@ type titleLookup struct {
 // library client and unit tests need no live server.
 type DurationResolver func(ctx context.Context, libraryItemID string) (int64, error)
 
+// DurationsResolver is DurationResolver in BULK: many item ids, one round trip.
+//
+// It exists because the per-item resolver is an N+1 the scheduler cannot batch on its own.
+// ComputeDesiredAt asks Resolve(key) one key at a time as it lays out the cycle, so with only
+// the single-item resolver a 25-movie channel issues 25 sequential HTTP calls to the media
+// server. Measured against the dev Emby (behind Cloudflare, ~15ms per round trip): 25 calls ≈
+// 375ms, which was the whole of GET /v1/guide's cold latency — the arrangement itself is
+// microseconds.
+//
+// The media server has supported this all along: library.ItemMetadataByID already requests
+// RunTimeTicks and returns RuntimeMs for a comma-separated id list ("120 episodes returned in
+// 24ms"). Nothing new is asked of the server; the bulk answer was simply never wired to the
+// scheduler's duration path.
+//
+// Missing ids may be absent from the result — the caller treats an absent id as an unknown
+// duration (0) exactly as a failed single lookup does.
+type DurationsResolver func(ctx context.Context, libraryItemIDs []string) (map[string]int64, error)
+
 // EpisodeResolver enumerates a series' episodes as playable programs (§9 series
 // expansion), given the show's library item id. Injected (from the library
 // adapter) so the scheduler stays decoupled and tests need no live server.
@@ -293,6 +315,24 @@ func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResol
 		epsMemo:   map[string]memoEntry[[]schedule.ResolvedProgram]{},
 		now:       time.Now,
 	}
+}
+
+// WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
+// (see DurationsResolver / PrewarmDurations), and returns the same Availability for chaining.
+//
+// A SETTER rather than a NewStoreAvailability parameter on purpose: the constructor already has
+// four arguments and a dozen call sites across the tests, and every one of them would have had to
+// grow a `nil` for a capability they do not use. Optional-by-construction also keeps the
+// degradation honest — an install that never calls this behaves exactly as it did before.
+//
+// Takes an Availability (not the unexported concrete type) so the composition root can call it
+// without reaching inside this package; a non-storeAvailability implementation is returned
+// untouched, which is the correct no-op for the test doubles that substitute plain maps.
+func WithBulkDurations(a Availability, d DurationsResolver) Availability {
+	if sa, ok := a.(*storeAvailability); ok {
+		sa.durations = d
+	}
+	return a
 }
 
 // clock reads the injected time source. A field rather than a direct time.Now call so the memo's
@@ -352,6 +392,64 @@ func (s *storeAvailability) itemDuration(libraryID string) int64 {
 	s.durMemo[libraryID] = memoEntry[int64]{val: ms, exp: now.Add(memoTTL)}
 	s.mu.Unlock()
 	return ms
+}
+
+// PrewarmDurations resolves many item durations in ONE round trip and seeds durMemo, so the
+// per-key Resolve calls that follow all hit the memo.
+//
+// This is the fix for the N+1 described on DurationsResolver: without it a 25-movie channel
+// issues 25 sequential media-server calls during a single layout, which measured as ~375ms of
+// GET /v1/guide's cold latency.
+//
+// BEST-EFFORT, and deliberately so. A bulk failure seeds nothing and leaves every key to the
+// existing per-item path — slower, but identical in outcome. It must never make a layout fail:
+// duration is a refinement (ComputeDesired falls back to the lineup entry's own duration), not a
+// precondition.
+//
+// Ids ALREADY MEMOIZED are not re-requested: a second channel sharing a title with the first
+// should not re-fetch it, which is the same reason ItemMetadataByID de-duplicates its input.
+// Entries are written with the same memoTTL expiry the per-item path uses, so this changes WHEN
+// the answer is fetched, never how long it is trusted — the lifetime warning on storeAvailability
+// still holds in full.
+func (s *storeAvailability) PrewarmDurations(libraryIDs []string) {
+	if s.durations == nil || len(libraryIDs) == 0 {
+		return
+	}
+	now := s.clock()
+
+	// Only ask for what is actually missing or expired.
+	s.mu.Lock()
+	want := make([]string, 0, len(libraryIDs))
+	seen := make(map[string]bool, len(libraryIDs))
+	for _, id := range libraryIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if d, ok := s.durMemo[id]; ok && now.Before(d.exp) {
+			continue
+		}
+		want = append(want, id)
+	}
+	s.mu.Unlock()
+	if len(want) == 0 {
+		return
+	}
+
+	got, err := s.durations(s.ctx, want)
+	if err != nil && len(got) == 0 {
+		return // nothing usable; the per-item path still covers every key
+	}
+
+	// Seed MISSES as 0 too, exactly as itemDuration memoizes a failed lookup. Without this an id
+	// the server did not return would fall through to a per-item call for every occurrence —
+	// re-introducing the N+1 for precisely the items the bulk call could not answer.
+	s.mu.Lock()
+	exp := now.Add(memoTTL)
+	for _, id := range want {
+		s.durMemo[id] = memoEntry[int64]{val: got[id], exp: exp}
+	}
+	s.mu.Unlock()
 }
 
 func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {

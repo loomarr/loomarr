@@ -95,6 +95,30 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 	}
 }
 
+// bulkDurations adapts the library's BULK metadata call to channels.DurationsResolver.
+//
+// It reuses ItemMetadataByID rather than adding a duration-only endpoint: that call already asks
+// for RunTimeTicks, already batches a comma-separated id list, and already de-duplicates and
+// pages (maxIDsPerRequest). A separate bulk-duration call would be a second way to ask the media
+// server the same question — the §6 one-adapter rule — for no gain.
+//
+// The metadata it also returns is simply unused here; the cost is bytes on a call the guide's own
+// metadata pass makes anyway, against ONE round trip replacing one-per-movie.
+func bulkDurations(lib *library.Client) channels.DurationsResolver {
+	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
+		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
+		// Partial results ride WITH the error (ItemMetadataByID's contract), so convert whatever
+		// arrived before returning: a half-answered bulk call still saves that many round trips.
+		out := make(map[string]int64, len(meta))
+		for id, m := range meta {
+			if m.RuntimeMs > 0 {
+				out[id] = m.RuntimeMs
+			}
+		}
+		return out, err
+	}
+}
+
 // searchAdapter maps catalog.Catalog to api.SearchService (converts candidates
 // to the API's dependency-light shape).
 type searchAdapter struct{ cat *catalog.Catalog }

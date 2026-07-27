@@ -80,6 +80,32 @@ func (e *Engine) CyclePreviewDraft(
 	}
 	chDomain.DefaultWindow = e.defaultWindow
 
+	// Resolve every movie's runtime in ONE media-server call before the layout asks for them one
+	// at a time. ComputeDesiredAt calls Availability.Resolve per key (and walks the lineup several
+	// times), so without this a 25-movie channel issues 25 sequential HTTP requests — measured as
+	// ~375ms of GET /v1/guide's cold latency against a Cloudflare-fronted Emby, dwarfing the
+	// arrangement itself (microseconds).
+	//
+	// Type-asserted because Availability is an interface the tests substitute with plain maps: an
+	// implementation that cannot bulk-resolve simply skips this and takes the per-item path, which
+	// is the same answer at the old speed. Best-effort inside, too — see PrewarmDurations.
+	//
+	// SERIES keys are deliberately not prewarmed here: a series resolves through ResolveEpisodes,
+	// whose episode enumeration has its own (three-tier) caching, and whose library ids are not
+	// known until that enumeration runs.
+	if pw, ok := e.avail.(interface{ PrewarmDurations([]string) }); ok {
+		ids := make([]string, 0, len(lineup))
+		for i := range lineup {
+			if lineup[i].Key.IsSeries() {
+				continue
+			}
+			if rec, err := e.store.GetTitle(ctx, lineup[i].Key); err == nil && rec.LibraryID != "" {
+				ids = append(ids, rec.LibraryID)
+			}
+		}
+		pw.PrewarmDurations(ids)
+	}
+
 	desired := schedule.ComputeDesiredAt(chDomain, lineup, e.avail, e.policy, ch.Policy, at)
 	active = schedule.ActiveRuleAt(ch.Policy.Rules, at)
 	window = schedule.ResolveWindow(chDomain, ch.Policy, at)
