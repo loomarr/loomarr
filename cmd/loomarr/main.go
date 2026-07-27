@@ -63,10 +63,15 @@ func run() error {
 	if cfg.DevLogin {
 		log.Warn("LOOMARR_DEV_LOGIN is set — POST /v1/auth/dev-login grants an admin session with NO credential. Never set this on an install you care about.")
 	}
+	// Same reasoning as dev-login: a profiling surface exposing stack traces and memory, with
+	// no auth in front of it, is worth shouting about on every start rather than once.
+	if cfg.Pprof {
+		log.Warn("LOOMARR_PPROF is set — /debug/pprof/* is exposed UNAUTHENTICATED. Development only; never leave this on.")
+	}
 
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
-	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{DevLogin: cfg.DevLogin})
+	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{DevLogin: cfg.DevLogin, Pprof: cfg.Pprof})
 	if err != nil {
 		return err
 	}

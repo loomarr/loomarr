@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -44,6 +45,24 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// Prometheus exposition (§7 /metrics, §18). Unauthenticated on the LAN like
 	// the other ops probes; the metrics.Middleware below records every request.
 	mux.Handle("GET /metrics", metrics.Handler())
+
+	// Go's profiler (§7), mounted ONLY when the server was started with LOOMARR_PPROF=1.
+	// Not registering is the gate, the same posture as /v1/auth/dev-login: an install without
+	// the flag 404s because the routes genuinely do not exist, not because a handler refused.
+	//
+	// Unauthenticated by nature — a profiler is not a browser and holds no session — which is
+	// precisely why it is off by default: these handlers expose stack traces and memory
+	// contents, and a repeated CPU profile degrades a running server.
+	//
+	// Registered by explicit path rather than by prefix so the surface is exactly the four
+	// handlers listed, and `pprof.Index` serves its own links off /debug/pprof/.
+	if opts.Pprof {
+		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	}
 
 	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
@@ -120,7 +139,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// SPA and returns index.html with a 200. ffmpeg would then read HTML as a transport
 	// stream, and the failure surfaces as a corrupt-stream error naming neither the URL nor
 	// the typo.
-	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/playout/"}
+	// `/debug/` is here even though pprof is usually NOT mounted, and that is the point: with
+	// the flag off, a request to /debug/pprof/profile would otherwise fall through to the SPA
+	// and return index.html with a 200. `go tool pprof` then reports "unrecognized profile
+	// format" — which reads as a broken profiler rather than as a disabled endpoint, and cost
+	// two failed capture attempts before a test caught it.
+	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/playout/", "/debug/"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {
