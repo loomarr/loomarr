@@ -41,7 +41,7 @@ describe("FirstChannelStep", () => {
     }
   });
 
-  it("picking a template completes setup and hands off to Suggest with the intent", async () => {
+  it("picking a template completes setup and hands off to the Guide with the intent", async () => {
     const fetchMock = stubFetch();
     const router = renderStep();
 
@@ -55,7 +55,7 @@ describe("FirstChannelStep", () => {
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ edits: { "setup.completed": "true" } });
     });
     await waitFor(() => {
-      expect(router.history.location.pathname).toBe("/suggest");
+      expect(router.history.location.pathname).toBe("/guide");
       expect(decodeURIComponent(router.history.location.search)).toContain(String(first?.description));
     });
   });
@@ -67,7 +67,7 @@ describe("FirstChannelStep", () => {
     await userEvent.click(await screen.findByRole("button", { name: /finish setup without a channel/i }));
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/settings"))).toBe(true);
-      expect(router.history.location.pathname).toBe("/channels");
+      expect(router.history.location.pathname).toBe("/guide");
     });
   });
 });

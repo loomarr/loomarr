@@ -80,6 +80,45 @@ func (s *LoginService) Login(ctx context.Context, username, password, rateKey st
 	return token, expires, u, nil
 }
 
+// DevLogin issues a session for an existing admin with NO credential (§11), for the
+// maintainer's dev loop. The caller — api.registerAuth — mounts the route only when
+// LOOMARR_DEV_LOGIN=1, so reaching this function at all already required an operator
+// to opt in on the server; this is deliberately not re-checked here, because a gate
+// checked in two places is a gate that can disagree with itself.
+//
+// What it does NOT do is the point. It selects an EXISTING admin and never creates,
+// promotes, or enables one, so §11's invariant is untouched: you can sign in iff you
+// have a row. A disabled admin is skipped exactly as Login would reject it, and an
+// install with no admin gets ErrInvalidCredentials rather than a bootstrapped one —
+// this is a shortcut past the credential CHECK, never past the allowlist.
+func (s *LoginService) DevLogin(ctx context.Context) (token string, expires time.Time, u store.User, err error) {
+	users, err := s.store.ListUsers(ctx)
+	if err != nil {
+		return "", time.Time{}, store.User{}, err
+	}
+	// Lowest id wins, so the choice is stable across restarts rather than depending on
+	// store iteration order — a dev login that lands on a different account each time
+	// would be its own confusing bug.
+	var pick store.User
+	for _, candidate := range users {
+		if candidate.Role != store.RoleAdmin || candidate.Disabled {
+			continue
+		}
+		if pick.ID == "" || candidate.ID < pick.ID {
+			pick = candidate
+		}
+	}
+	if pick.ID == "" {
+		return "", time.Time{}, store.User{}, ErrInvalidCredentials
+	}
+
+	token, expires, err = s.mgr.Issue(ctx, pick.ID)
+	if err != nil {
+		return "", time.Time{}, store.User{}, err
+	}
+	return token, expires, pick, nil
+}
+
 // authenticate resolves a username to an allowlisted user and verifies the
 // password on the appropriate credential path (§11). A local match (has a hash)
 // verifies in-app; otherwise it delegates to the media server AND confirms the

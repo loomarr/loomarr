@@ -31,6 +31,11 @@ type Server struct {
 	passwords    PasswordService
 	userSync     UserSyncer
 	cookieSecure string // COOKIE_SECURE: auto|true|false (§11)
+	// devLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
+	// development (§11). Set from LOOMARR_DEV_LOGIN at boot and read ONCE here, when
+	// routes are registered: an unset flag means the route never exists, which is a
+	// stronger guarantee than a handler that checks a value it could later re-read.
+	devLogin bool
 	// channels/livetv wire /v1/channels* and /v1/setup/* (§7/§9); nil until
 	// Phase 10 is configured.
 	channels ChannelService
@@ -395,6 +400,10 @@ type Provisioner interface {
 // LoginService verifies credentials and issues a session (Phase 9, §11).
 type LoginService interface {
 	Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u store.User, err error)
+	// DevLogin issues a session for an existing admin with no credential (§11).
+	// Only ever called when the server was started with LOOMARR_DEV_LOGIN=1 — the
+	// route is not registered otherwise.
+	DevLogin(ctx context.Context) (token string, expires time.Time, u store.User, err error)
 	Disable(ctx context.Context, userID string) error
 }
 
@@ -441,6 +450,7 @@ type Options struct {
 	Sessions      SessionManager   // /v1/auth/logout (Phase 9)
 	UserSync      UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	CookieSecure  string           // COOKIE_SECURE: auto|true|false (§11)
+	DevLogin      bool             // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
 	Channels      ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV        LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunarrConnect TunarrConnector  // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501

@@ -33,6 +33,15 @@ type Config struct {
 	// default the promise held only via compose, which sets the same value.
 	DatabaseURL string `env:"DATABASE_URL" envDefault:"sqlite:///data/loomarr.db"`
 	AutoMigrate bool   `env:"AUTO_MIGRATE" envDefault:"true"`
+
+	// DevLogin mounts POST /v1/auth/dev-login — a credential-free admin sign-in for
+	// development (§11). It lives HERE, in the bootstrap tier, rather than in the
+	// settings registry, and that placement is the security property: a registry key
+	// is editable through the settings API by anyone who is already an admin, which
+	// would let a compromised session install a permanent credential-free door. An
+	// env var read once at boot cannot be switched on by a running process.
+	// Default false — a shipped install has no such route at all.
+	DevLogin bool `env:"LOOMARR_DEV_LOGIN" envDefault:"false"`
 }
 
 // Load reads the bootstrap configuration, resolving `env > file > default`

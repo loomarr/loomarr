@@ -84,6 +84,7 @@ func (s *Server) importCandidates(ctx context.Context, _ *struct{}) (*importCand
 type setupStateOutput struct {
 	Body struct {
 		Bootstrapped bool `json:"bootstrapped" doc:"Whether an owning admin exists. False ⇒ the install is unclaimed and the wizard's bootstrap step is the only way in (§11)."`
+		DevLogin     bool `json:"devLogin" doc:"Whether this server was started with LOOMARR_DEV_LOGIN=1, so the login screen may offer the credential-free dev sign-in (§11). False on every shipped install — the route does not exist there. Reporting it leaks nothing: an operator can already discover it by calling the endpoint."`
 	}
 }
 
@@ -97,6 +98,9 @@ type setupStateOutput struct {
 // bootstrap step cannot work.
 func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput, error) {
 	out := &setupStateOutput{}
+	// Mirrors exactly what registerAuth mounted, so the login screen can never offer a
+	// dev-login link that 404s (§11).
+	out.Body.DevLogin = s.devLogin
 	if s.provision == nil {
 		out.Body.Bootstrapped = true
 		return out, nil

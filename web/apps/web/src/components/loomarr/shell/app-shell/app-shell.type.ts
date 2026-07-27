@@ -2,16 +2,9 @@ import type { ComponentType, ReactNode } from "react";
 
 // The app's top-level nav destinations — literals so TanStack `Link to={to}` stays
 // type-checked against the route tree.
-type NavTo =
-  | "/dashboard"
-  | "/channels"
-  | "/guide"
-  | "/queue"
-  | "/suggest"
-  | "/filler"
-  | "/people"
-  | "/settings"
-  | "/help";
+// `/channels` and `/suggest` are absent because the routes are: both folded into
+// `/guide`, which is now the channels surface AND the origination door (§12).
+type NavTo = "/dashboard" | "/guide" | "/queue" | "/filler" | "/people" | "/settings" | "/help";
 
 interface NavItem {
   to: NavTo;

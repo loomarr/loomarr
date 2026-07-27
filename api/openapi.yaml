@@ -2853,8 +2853,12 @@ components:
         bootstrapped:
           description: Whether an owning admin exists. False ⇒ the install is unclaimed and the wizard's bootstrap step is the only way in (§11).
           type: boolean
+        devLogin:
+          description: "Whether this server was started with LOOMARR_DEV_LOGIN=1, so the login screen may offer the credential-free dev sign-in (§11). False on every shipped install — the route does not exist there. Reporting it leaks nothing: an operator can already discover it by calling the endpoint."
+          type: boolean
       required:
         - bootstrapped
+        - devLogin
       type: object
     SetupStatusOutputBody:
       additionalProperties: false

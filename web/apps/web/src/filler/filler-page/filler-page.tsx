@@ -320,7 +320,7 @@ const PageHeading = () => (
     <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
       Your whole library of commercials, bumpers, and station IDs — browse and tag them here. Tags are what
       let the scheduler match a clip to a channel. Each channel then{" "}
-      <Link to="/channels" className="text-signal underline-offset-2 hover:underline">
+      <Link to="/guide" className="text-signal underline-offset-2 hover:underline">
         picks and previews its own filler
       </Link>{" "}
       from this catalog.

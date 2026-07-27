@@ -46,6 +46,11 @@ type Overrides struct {
 	// (api.themoviedb.org), so unlike library/seerr it isn't settings-routable to a
 	// test double; tests pass tmdb.NewWithBase(double.URL, key) here to stay offline.
 	TMDB *tmdb.Client // nil ⇒ tmdb.New(tmdb.api_key)
+	// DevLogin mounts POST /v1/auth/dev-login (§11). run() sets it from
+	// LOOMARR_DEV_LOGIN; it rides Overrides so the §19 negative tests can build a
+	// handler BOTH ways through the real composition root, rather than asserting
+	// against a hand-rolled router that could drift from what production mounts.
+	DevLogin bool
 }
 
 // flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
@@ -728,6 +733,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Passwords:     passwordSvc,
 		UserSync:      userSync,
 		CookieSecure:  set.str("cookie.secure"),
+		DevLogin:      ov.DevLogin,
 		Channels:      channelSvc,
 		LiveTV:        liveTVSvc,
 		TunarrConnect: tunarrConnectSvc,

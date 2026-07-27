@@ -8,18 +8,20 @@ import { IntentForm } from "../intent-form";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
-// ChannelSuggestPanel — Suggest, inline on the Channels list. The create path IS describing a
-// channel: this composes the SAME flow as the /suggest page — IntentForm → useSuggestionRun →
-// GenerationProgress → ProposalReview — but scoped to "make one from here", and on approval it
-// hands the new channel id back so the list navigates to it. It does NOT fork the flow or the
-// approval gate: approve is the same admin-only useApproveProposal, and a member sees the
-// review without the controls (§7/§11). The full /suggest page stays the home for the
-// cross-user approval queue; this is the in-context create surface.
+// ChannelSuggestPanel — origination, inline in the Guide header (§12). The create path IS
+// describing a channel: IntentForm → useSuggestionRun → GenerationProgress → ProposalReview,
+// and on approval it hands the new channel id back so the Guide navigates to it. It does NOT
+// fork the flow or the approval gate: approve is the same admin-only useApproveProposal, and a
+// member sees the review without the controls (§7/§11).
+//
+// This is now the app's ONLY origination surface — the standalone `/suggest` page folded away
+// once this panel moved onto the channels surface. Nothing was stranded with it: the
+// cross-user approval queue had already moved into `/queue`'s tabs (V27).
 //
 // One expanding surface over useSuggestionRun's three states: idle → describe form; running →
 // live phases; a landed proposal → review with Approve/Deny. A successful approve or "Start
 // another" resets back to the form.
-const ChannelSuggestPanel = ({ onCreated, className }: ChannelSuggestPanelProps) => {
+const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSuggestPanelProps) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const run = useSuggestionRun();
@@ -60,7 +62,9 @@ const ChannelSuggestPanel = ({ onCreated, className }: ChannelSuggestPanelProps)
       </div>
 
       {/* Idle — the describe form (with optional constraints). */}
-      {!run.isRunning && !proposal && <IntentForm onSubmit={run.start} submitting={run.isRunning} />}
+      {!run.isRunning && !proposal && (
+        <IntentForm initialDescription={initialIntent} onSubmit={run.start} submitting={run.isRunning} />
+      )}
 
       {run.error != null && <ErrorState error={run.error} />}
 

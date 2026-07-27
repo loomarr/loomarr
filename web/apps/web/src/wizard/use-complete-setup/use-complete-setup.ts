@@ -4,8 +4,10 @@ import { useRouter } from "@tanstack/react-router";
 import { SETUP_COMPLETED_KEY } from "../setup-completed";
 
 interface FinishOptions {
-  to: "/suggest" | "/channels";
-  // Prefills the Suggest workspace from a template (§13's blank-page killer).
+  // `/guide` is the channels surface and owns origination (§12) — the old `/suggest` and
+  // `/channels` routes folded into it, so this is where a finished wizard lands.
+  to: "/guide";
+  // Prefills the Guide's inline describe panel from a template (§13's blank-page killer).
   intent?: string;
 }
 

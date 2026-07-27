@@ -48,13 +48,13 @@ afterEach(() => vi.restoreAllMocks());
 describe("app router auth", () => {
   it("bounces a signed-out visitor from a protected route to the login form", async () => {
     stubFetch(false);
-    renderApp("/channels");
+    renderApp("/guide");
     expect(await screen.findByLabelText("Username")).toBeInTheDocument();
   });
 
   it("renders the protected screen when already authenticated", async () => {
     stubFetch(true);
-    renderApp("/channels");
+    renderApp("/guide");
     expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
   });
 

@@ -1,16 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { GuidePage } from "@/channels";
 
-// The cross-channel time grid (§12). Readable by any authenticated user — the guide is
-// viewer-facing, the same posture as the channel list it complements, and GET /v1/guide is
-// likewise not admin-gated.
+// The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
+// the app's one origination door. Readable by any authenticated user: the guide is
+// viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// ⚠ This is the grid ONLY. The v2 IA rename (/channels → /guide, /users → /people, and the
-// two role-specific navs) is deliberately a separate change: bundling them would put the
-// rename's mechanical churn and the grid's new pixels in one visual-baseline diff, where
-// neither can be reviewed independently.
-const GuideScreen = () => <GuidePage />;
+// `?intent=` is part of the route contract. The wizard's guided first channel hands off here
+// with a template prefilled (§13's blank-page killer) — the page forwards it into the inline
+// describe panel and opens it, so the handoff lands on a filled form rather than an empty grid
+// with the operator wondering where their template went.
+interface GuideSearch {
+  intent?: string;
+}
 
-const Route = createFileRoute("/_authed/guide")({ component: GuideScreen });
+const GuideScreen = () => {
+  const { intent } = Route.useSearch();
+  return <GuidePage initialIntent={intent} />;
+};
+
+const Route = createFileRoute("/_authed/guide")({
+  component: GuideScreen,
+  validateSearch: (search: Record<string, unknown>): GuideSearch => ({
+    intent: typeof search.intent === "string" ? search.intent : undefined,
+  }),
+});
 
 export { Route };
