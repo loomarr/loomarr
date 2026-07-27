@@ -305,6 +305,21 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
 
 The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content over time (add titles) but never *weakens* a gate — the audience ceiling (§4, and the kids-only default), the approval gate, and the per-channel opt-in all still hold. It grows a channel toward its intent; it can't turn a kids channel adult or spend acquisitions a human never authorized.
 
+## 8.3. Adjacency candidates (a deterministic second corpus)
+
+Re-curation (§8.2) asks the LLM "what else fits this intent?". That is the right question for *interpreting* an intent ("gritty 80s action, nothing campy") and a weak one for *finding adjacency* inside an already-established set — the model free-associates from the intent text, not from the channel's actual contents, and it costs a token spend to do it.
+
+**A channel's own lineup is a query.** TMDB's `/{movie,tv}/{id}/recommendations` is a behavioural graph ("people who watched this also watched…"), and walking it from every title a channel already has, then counting **consensus**, yields candidates that are on-theme by construction. This is §1's prime principle applied to discovery: the LLM extracts intent, deterministic code finds neighbours.
+
+- **Consensus is the signal, not any single edge.** One film's recommendations are noisy; a title recommended by *several* of the channel's films is reliably on-theme. Rank by that count. Measured against the dev "1980s Action Heroes" (25 films): the consensus head was Terminator 2, Mad Max, Death Race 2000, Demolition Man, Missing in Action, Romancing the Stone — including two obvious holes (the channel had Mad Max 2 + Beyond Thunderdome but not *Mad Max*; The Terminator but not *T2*).
+- **⚠ `recommendations`, never `similar`.** The two endpoints sound interchangeable and are not: `similar` is computed from genre/keyword overlap and is effectively noise — the same probe returned *Land of the Blind* for Die Hard, The Terminator **and** RoboCop, and *A Man Escaped* for Die Hard. `recommendations` is behavioural and coherent (Terminator → Doomsday, Replicant, Hardware; RoboCop → Repo Men, Upgrade, Chappie). Building on `similar` would produce baffling channels that read as a Loomarr bug.
+- **It explains itself.** A candidate carries *why*: "recommended by 5 of your films." That is a better approval-card reason than an LLM paraphrase, and it is reproducible — same lineup, same candidates, no tokens.
+- **No new dependency and no new safety surface.** TMDB is already sanctioned (design.md §14) and the endpoint needs no additional API scope. Candidates enter as `catalog.Candidate` carrying a `Source` that records where they came from, then flow through the **existing** chokepoints unchanged: grounding, `scope`/`audience` filters (§4 fail-closed), the re-curation quality bar + title cap (§8.2), and the single `suggest.Approve` gate. Nothing about the approval model moves.
+- **⚠ NOT a `/v1/search` scope.** `GET /v1/search?scope=library|tmdb|all` (design.md §7.2) is a published enum over *corpora a human can type a query against*. Adjacency has no query — it is derived from a channel's lineup — so exposing it there would mean an enum value that ignores `q`, which is the same shape as the phantom `clips` scope design.md §7.2 records as a leak corrected rather than implemented. The `Source` value is **internal provenance** (`Candidate.Source` already exists for "which corpus surfaced this, for debugging"), and the retrieval is a catalog method the re-curation path calls directly — not a search enum, and not a new endpoint.
+- **Complementary, not a replacement.** Re-curation may run both corpora and merge: the LLM proposes against intent, the graph proposes against contents. A channel with a thin lineup has a thin graph, which is exactly when the LLM is strongest; a mature channel has a rich graph, which is exactly when the LLM starts repeating itself.
+
+**Deliberately deferred: TMDB `keywords`.** The endpoint works and looks tempting for thematic grouping, but the vocabulary is mixed — a probe across the same channel returned real themes (`dystopia`, `alien`, `creature`, `atomic bomb`) interleaved with mood tags (`excited`, `suspenseful`, `aggressive`), a structural tag (`sequel`), and a location (`los angeles, california`). Using it raw would group films by mood and geography and call it a theme. It needs a curated allowlist or a discriminating heuristic first — that is its own design decision, not a detail of this one. Logged in §9 rather than half-built here.
+
 ## 9. Extensibility — the checklist for "I'm sure I can think of more"
 
 Every future heuristic is added the same way; a heuristic is *done* when all five exist:
@@ -315,7 +330,9 @@ Every future heuristic is added the same way; a heuristic is *done* when all fiv
 4. **Proposal surface** — chip + effect visibility in review.
 5. **Tests** — binding + violation + relaxation + determinism.
 
-Candidates already visible from here (logged, not v1): dayparting audience ceilings (stricter mornings), episode-quality floors (community ratings), "premiere" slotting for newly-landed backfill, per-holiday custom calendars, inter-channel dedup (don't air the same movie on two channels the same night).
+Candidates already visible from here (logged, not v1): dayparting audience ceilings (stricter mornings), episode-quality floors (community ratings), "premiere" slotting for newly-landed backfill, per-holiday custom calendars, inter-channel dedup (don't air the same movie on two channels the same night), **thematic grouping from TMDB `keywords`** (blocked on separating real themes from mood tags and locations — see §8.3), **director/cast blocks from TMDB `credits`** ("a John Carpenter night" — the data is clean, the open question is whether it's a rule `What` or an ordering mode), and a **recency constraint** ("nothing re-aired within N days"), which needs an aired-history signal Loomarr does not yet record.
+
+⚠ **A candidate source is not a heuristic** and does not take the five-point shape above — it has no policy field and no slotting enforcer, because it feeds the *proposal* pipeline (§8/§8.2), not the lineup builder. Its checklist is different: a `catalog.Scope` value, a corpus fetch, entry through the existing grounding + audience + approval chokepoints, and provenance the approval card can show. §8.3 is the worked example.
 
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 
