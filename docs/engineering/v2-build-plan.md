@@ -138,7 +138,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | **V13b** | `D-J` — the guide endpoint: `GET /v1/guide?from=&to=`, multi-channel, **gaps preserved**, `kind` discriminator, per-airing pod composition, program metadata, timezone + retention | V6 | A window spanning past **and** future returns per-channel timelines; a pending slot and a filler pod are **distinguishable** (today `gap bool` cannot); `Upcoming`'s gap-filtering not reintroduced |
 | **V14** | IA rename + Guide time-grid (**bundled**, D-D) | V13b | §12 updated **first**; `/guide` + `/people`; **two distinct navs** (admin 7; member 4 incl. `Request a channel` + `My requests`), not one filtered list; grid renders duration-scaled programs, pods, pending slots, now-line, zoom; baselines regenerated |
 | **V15** | Help rebuild — two-rail reader, full-text search (closes ~~**H1**, **H2**~~, **H3**, **H4**, **H5**, **H6**) | V14 | ⚠ **H1/H2 are already closed, and the gate as written can never pass** (corrected 2026-07-26): `grep -ri "hooks/arr\|WEBHOOK_SECRET" docs/` returns 3 hits — `design.md` and the two v2 plan docs — but all three describe the retirement *historically*, which is the point of writing it down. The gate must scope to the **shipped** surface: `grep -ri "hooks/arr\|WEBHOOK_SECRET" docs/help/` returns nothing (verified), and `make retired-verify` is the standing guard (CLAUDE.md's retired-identifier rule, which exists *because* this exact webhook kept being documented as a live setup step). Remaining for this phase: search hits body text, not just titles (H3); channel-editing docs exist (H4); measure bounded by the two-rail layout (H5); links use `tune`, not the AI `suggest` colour (H6) |
-| **V18** | Mobile responsive (**S11**) | V9, V14 | AppShell collapses; mobile v2 screens render at 375px; desktop-only actions render as disabled affordances, not dead ends |
+| **V18** | Mobile responsive (**S11**) | V9, V14 | AppShell collapses; mobile v2 screens render at **390px**; desktop-only actions render as disabled affordances, not dead ends. ⚠ *Corrected 2026-07-26: this said 375px, but the visual harness's mobile project is pinned to 390×844 (`playwright.shared.ts:28`) and the committed `*-mobile-linux.png` baselines are that width. A gate naming a width the suite never renders cannot be checked as written — change the harness or the gate, deliberately, not by accident.* |
 
 ### Approvals & requests
 
@@ -170,7 +170,7 @@ Wizard → V20/V21/V22; Mobile → V18.
 | **V32** | Dashboard Recent activity feed | V31 | A persisted feed (not just live SSE); survives restart |
 | **V20** | Wizard **Database** step (step 1 per D-B) | V5, V11 | Choice persists across restart-and-resume; `setup/state` survives a DSN switch (it currently lives *in* the database being migrated) |
 | **V21** | Wizard **Playout** step + transcode check | V6, V20 | Encodes a real 15s test pattern; progress streams over `/v1/events`; **`IMAGE GATE` copy absent**. Note `tcOptions`/`poPresets` were never authored in the mock — invented here, deliberately |
-| **V22** | Wizard reconciliation: `bk.summary`, persisted `skipped`, strike the dead §20 bullet (**S12**) | V20, V21 | `skipped` survives a refresh; `design.md:940` struck |
+| **V22** | Wizard reconciliation: `bk.summary`, persisted `skipped`, strike the dead §20 bullet (**S12**) | V20, V21 | `skipped` survives a refresh; the §20 **"DB-backed settings UI"** bullet is struck. ⚠ *Corrected 2026-07-26: this cited `design.md:940`, which is now a row in §14's stack-decision table — §20 begins at `design.md:1333` and the doc has shifted repeatedly since. The bullet is identified by its TEXT rather than a line number so this cannot rot again; it is already marked "Resolved and superseded" in place, so the remaining work is removing it, not deciding it.* |
 
 ### Not scheduled — need a design decision first
 
@@ -187,15 +187,21 @@ Wizard → V20/V21/V22; Mobile → V18.
   (`*AutoCurate`, nil = off), so there is no boolean for a generic field editor to bind to —
   nothing could construct it. §12 also claimed a home ("Settings → lifecycle") for a tab that was
   never built, so the reachability question answered *yes*.
-- `C8` — **still open**: no hand-made channel create surface. Possibly working as designed per
-  §12's origination-vs-evolution model, which says the list has one door (describe → approve) and
-  says so. If kept, note the consequence recorded in the §12 map: `strategy` is a **required**
-  field of `POST /v1/channels`, so it is unsettable at creation even now that it is editable
-  afterwards.
+- ~~`C8` — no hand-made channel create surface.~~ **CLOSED 2026-07-26 — API-ONLY BY DECISION.**
+  The three honest options were *add the UI*, *remove the capability*, or *document it as
+  API-only*; the third was chosen and is now recorded in §12's surface map, so the row reads
+  "API-ONLY BY DECISION", not "ORPHANED". Removing it was off the table: §7 documents three
+  origination seeds and the single-series path is implemented and tested, while §12:345 calls
+  the seeds "express doors into the same object". The UI keeps exactly ONE origination door
+  (describe → approve, now in the Guide header) and says so. The consequence stands and is
+  recorded: `strategy` is a **required** field of `POST /v1/channels`, so it is unsettable at
+  creation — consistent with there being no form, and a §7 default would be needed before any
+  UI could offer one.
 
-**The v2 mock shows no UI for C8**, so there is nothing to port. It violates §12's surface-map
-rule; the honest options are *add the UI*, *remove the capability*, or *document it as API-only*.
-Decide, don't defer indefinitely.
+  ⚠ The claim that "the v2 mock shows no UI for C8" was right in substance and wrong in its
+  evidence: the mock DOES contain the string "New channel", above a `<textarea>` and a
+  `Suggest` button — it is the describe→approve path with a heading, not a create form. Reading
+  the string without reading the markup produces the opposite conclusion.
 
 ---
 
@@ -306,10 +312,12 @@ is a §15 conversation when V17c is built, not a V28 deliverable.
   Structural change is cheap now and expensive after more surfaces build on the old IA. The maintainer
   is still a user — the manual homelab smoke remains half the DoD.
 - **Nine phases are free.** Start V0 for a ten-minute win, or V2b for maximum unblocking.
-- **V14 is the rename-debt clock.** Every PR touching `/channels` before it lands gets renamed later.
-  D-D bundled the rename with the grid, and the grid needs V13b → V6 — so the debt runs longer than
-  the bundling decision assumed. If it becomes painful, the escape hatch is to revisit D-D and split
-  the rename out.
+- ~~**V14 is the rename-debt clock.**~~ **PAID OFF, 2026-07-26.** `/channels` and `/suggest` are
+  deleted and `/guide` is the channels surface; the admin nav is the mock's seven and the member's
+  is three. The fold was blocked for several phases on "the grid has no origination affordance yet"
+  — recorded in four places — and the mock had always carried one (`✦ Add a channel` in the header
+  of a Guide screen headed "Channels"). Nothing had ported it. **C8** is answered in the same pass:
+  API-ONLY BY DECISION, recorded in §12's surface map rather than left orphaned. See PROGRESS.md.
 - **V7 and V17a are fully independent** of the spine and good parallel work.
 - **Blocking counts** (transitive): V2b 28 · V3 27 · V4 26 · V5 12 · V9 11.
 

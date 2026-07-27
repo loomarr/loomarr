@@ -4,6 +4,92 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V14 remainder + the Guide's 17× latency fix (2026-07-26).** Branch
+`feat/guide-fold-and-dev-login`, 11 commits. Two threads: finish the IA fold V14 left open,
+then make the resulting surface fast enough to use.
+
+**The fold (V14's remaining gate, C8 answered).** `/channels` and `/suggest` are DELETED;
+`/guide` is the channels surface, headed "Channels", owning origination via `✦ Add a channel`
+in its header. Admin nav 9 → 7, matching the v2 mock's `navDefs` exactly; member nav 4 → 3
+(`Request a channel` was a nav entry only while `/suggest` was its own page — a second link to
+`/guide` would be a duplicate React key, not an IA choice). Members get the header affordance,
+labelled for them, since it is now the only origination door in the app.
+
+This had been blocked for several phases on one stated reason, recorded in four places: "the
+grid has no origination affordance yet". **The mock always had one** — its Guide screen is
+headed "Channels" and carries the button. Nothing had ported it; the blocker was a reading
+error, not a missing decision. §12 amended doc-first (the ⚠ note said "this line comes out with
+it"). **C8** is now recorded as API-ONLY BY DECISION rather than left orphaned. Also fixed in
+passing: `router.history.push("/channels")` after login — a raw string nothing type-checked,
+which would have 404'd every sign-in post-fold.
+
+**The Guide rebuilt against the RENDERED mock.** The first pass was built by reading
+`.dc.html` source and inferring, which produced ten defects the maintainer found by looking at
+it. Now the mock renders locally (`python -m http.server` over `design/`) so comparison is
+repeatable. Two were real bugs, not styling: `border-l-signal` never rendered (Tailwind emits
+`border-<color>` and `border-l-<color>` in a build-time-fixed order, so the all-sides utility
+won regardless of `cn()` ordering — every accent was #2A2E37, code reading correctly and
+rendering wrong), and clicking a block did nothing (a `<button>` with no handler). Plus: the
+now-line was 1px amber running through amber blocks (now 2px `onair` red + time chip), the row
+menu opened clipped and offered no Edit, the header had no toolbar, and a horizontal scrollbar
+sat under a grid that had room (`min-w` was a hardcoded 880px, so zooming out could never make
+it fit).
+
+**Perf: 1910ms → 103ms click-to-rows, measured in the browser.** Five layers, each found by
+measurement after the previous hypothesis was disproved:
+
+| | click→rows | what it was |
+| --- | --- | --- |
+| start | 1910ms | |
+| `5fcd031` | 610ms | N+1: availability re-resolved per layout pass (72 library calls/request) |
+| `97523e9` | 421ms | channels resolved sequentially |
+| `43fd680` | 218ms | `pickOrder` fully sorted n candidates at each of n positions to use one |
+| `b939576` | **103ms** | the relaxation ladder re-ran the whole placement per step |
+
+**Hypotheses disproved by measurement, recorded so nobody re-tries them:** Emby is slow (one
+`/Items` call is 1.5–10ms; an 803-episode enumeration is 40ms); the connection pool is starved
+(`MaxIdleConnsPerHost` 4 vs 64 — no difference, 29 concurrent calls in 4–7ms either way); JSON
+decode of large payloads (629KB in 5ms); and `ComputeDesiredAt` is inherently expensive (45ms
+for **200** channels). The warm split is now 4ms client + 87ms API + 12ms render — the client
+is not the cost.
+
+**A 17× REGRESSION, reverted (`eb55c7e`).** The "obvious" `pickOrder` fix — stop building the
+tier-2 candidates the caller discards — took the guide from 250ms to 4.3s with every test
+green. Those candidates are load-bearing: the caller skips them but only after `budget--`, so
+they are what makes a hard pool exhaust `backtrackBudget` and fall back to greedy. The
+wasteful-looking code was the circuit-breaker. A ⚠ comment records it with the measurement.
+
+**New in §5/§7/§14/§15/§18.1, all doc-first:** `series_episodes` (migration `00018`, both
+dialects) with the `series-episode-refresh` job — deliberately NOT a `library-scan` hook, which
+only correlates in-flight acquisitions and would never revisit an already-`available` show;
+`@tanstack/react-virtual` for row windowing (200 channels → 19 rows / 793 nodes, verified);
+`/debug/pprof/*` behind `LOOMARR_PPROF` (default off, not-registered-is-the-gate, boot WARN);
+and `POST /v1/auth/dev-login` behind `LOOMARR_DEV_LOGIN` (same posture; excluded from
+`api/openapi.yaml` on purpose — a dev bypass is not part of the product contract).
+
+**Three defects that only sabotage-testing caught**, each a test that looked right and guarded
+nothing: an expiry test written as `memoTTL + 1s` (so raising the TTL to 100h still passed); a
+§19 member negative using `getByRole("tab", {name})` where CountTabs puts the count inside the
+button, so the matcher matched nothing and passed whether or not the tab rendered; and a data
+race in `fakeXMLTVGuide` that `-race` missed — my own concurrency change turned a sequential
+interface concurrent, and every implementation including test doubles inherited a
+thread-safety obligation. Also: `/debug/` was missing from `apiPrefixes`, so with pprof OFF the
+profiler endpoint returned the SPA's index.html with a 200 (`go tool pprof` reports that as
+"unrecognized profile format", which reads as a broken profiler rather than a disabled one).
+
+Gate: `make check` GREEN (-race); `make test-pg` GREEN (migration `00018` conformant on both
+backends); `make fe` GREEN (biome 663 files, typecheck, 766 tests); **fe-visual 504 passed, 0
+flaky** (15 baselines regenerated — exactly GuideGrid + AppShell, verified by reading the diffs
+and re-running WITHOUT `--update-snapshots`); **e2e 7/7**; `openapi-verify` + `config-docs` no
+drift. Guide verified live in the browser throughout, per the maintainer's standing rule that a
+curl timing is not what a user experiences.
+
+**Still open:** click-to-rows is 103ms against a ≤50ms target — the remaining cost is the first
+placement (~6ms/channel, genuine work) plus store reads and JSON, so further gains need a
+different approach rather than more of this one. The V18 gate text says 375px while the
+harness renders 390px, and V22's gate cites `design.md:940`, which has shifted; both need a
+doc-first correction (found by `/register-check`, 2026-07-26).
+
 **Curation-rule-engine arc — self-updating channels / re-curation (Phase B, 2026-07-24).** The
 second half of the rotation/re-curation plan (`.claude/plans/curation-rotation-and-recuration.md`):
 a channel built from an intent no longer freezes — an **opted-in** channel periodically
