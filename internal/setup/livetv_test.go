@@ -11,7 +11,7 @@ import (
 
 func newConnector(lib *testkit.LiveTV) *setup.LiveTVConnector {
 	urls := setup.TunarrURLsFrom("http://tunarr:8000")
-	return setup.NewLiveTVConnector(lib, urls)
+	return setup.NewLiveTVConnectorFixed(lib, urls)
 }
 
 func TestTunarrURLsFrom(t *testing.T) {
