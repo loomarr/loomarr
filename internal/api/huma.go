@@ -451,6 +451,7 @@ type Options struct {
 	UserSync      UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
 	CookieSecure  string           // COOKIE_SECURE: auto|true|false (§11)
 	DevLogin      bool             // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof         bool             // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
 	Channels      ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV        LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunarrConnect TunarrConnector  // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501

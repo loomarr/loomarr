@@ -413,6 +413,7 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/openapi.json` / `/openapi.yaml` | OpenAPI 3.1 spec. |
 | GET | `/docs` | Interactive API docs (self-hosted assets). |
 | GET | `/healthz` / `/readyz` / `/metrics` | Ops. |
+| GET | `/debug/pprof/*` | **Development only, default OFF.** Go's standard profiler handlers (CPU, heap, goroutine, mutex), mounted **only** when `LOOMARR_PPROF=1` is set on the server; otherwise the routes do not exist and any call 404s — the same not-registered-is-the-gate posture as `/v1/auth/dev-login` (§11). Unauthenticated by nature (a profiler holds no session), which is exactly why it is boot-time and off by default: it exposes stack traces and memory contents, and a repeated CPU profile can degrade a running server. Boot WARNs while it is on. |
 
 **Authorization model:** every `/v1/*` route requires a session cookie or `Authorization: Bearer ${API_TOKEN}`; approval, destructive-channel, user-management, and filler-ingestion routes additionally require `admin` (§11) — **and so do `POST`/`DELETE /v1/titles`**, since enqueuing an acquisition directly is exactly what the approval gate exists to control (members reach acquisition only via submit→approve). Read visibility is global for all authenticated users — this is a household-scale app, and members see all channels and titles. SSE endpoints authenticate via the same cookie (EventSource sends cookies same-origin). `/healthz`, `/readyz`, `/metrics`, `/openapi.*`, and `/docs` are unauthenticated on the LAN.
 
@@ -1151,6 +1152,7 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `REQUEST_TTL` / `DOWNLOADING_TTL` / `RECONCILE_EVERY` | `48h` / `12h` / `5m` |
 | `CHANNEL_RECONCILE_EVERY` | `10m` (periodic channel sweep, §9) |
 | `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
+| `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
 | `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) |

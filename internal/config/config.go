@@ -42,6 +42,15 @@ type Config struct {
 	// env var read once at boot cannot be switched on by a running process.
 	// Default false — a shipped install has no such route at all.
 	DevLogin bool `env:"LOOMARR_DEV_LOGIN" envDefault:"false"`
+
+	// Pprof mounts Go's /debug/pprof/* handlers — CPU, heap, goroutine and mutex
+	// profiles (§7). Same reasoning and same tier as DevLogin: it is UNAUTHENTICATED
+	// by nature (a profiler is not a browser and holds no session), it exposes stack
+	// traces and memory contents, and a goroutine or CPU profile can be triggered
+	// repeatedly to degrade a running server. So it is boot-time, default off, and
+	// deliberately NOT a settings-registry key — a profiling surface that an admin
+	// session could switch on at runtime is a worse hole than the one it opens.
+	Pprof bool `env:"LOOMARR_PPROF" envDefault:"false"`
 }
 
 // Load reads the bootstrap configuration, resolving `env > file > default`

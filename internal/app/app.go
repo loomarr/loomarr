@@ -51,6 +51,10 @@ type Overrides struct {
 	// handler BOTH ways through the real composition root, rather than asserting
 	// against a hand-rolled router that could drift from what production mounts.
 	DevLogin bool
+	// Pprof mounts /debug/pprof/* (§7). Rides Overrides alongside DevLogin for the same
+	// reason: run() sets it from LOOMARR_PPROF, and a test can build a handler either way
+	// through the real composition root.
+	Pprof bool
 }
 
 // flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
@@ -748,6 +752,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		UserSync:      userSync,
 		CookieSecure:  set.str("cookie.secure"),
 		DevLogin:      ov.DevLogin,
+		Pprof:         ov.Pprof,
 		Channels:      channelSvc,
 		LiveTV:        liveTVSvc,
 		TunarrConnect: tunarrConnectSvc,

@@ -215,3 +215,22 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 		})
 	}
 }
+
+// pprof is gated exactly like dev-login (§7): mounted only when the server was started with
+// LOOMARR_PPROF=1, and simply ABSENT otherwise. The negative is the one that matters — these
+// handlers are unauthenticated by nature and expose stack traces and memory contents, so a
+// shipped install must not serve them.
+func TestPprofAbsentByDefault(t *testing.T) {
+	srv := devLoginServer(t, false, nil)
+
+	for _, p := range []string{"/debug/pprof/", "/debug/pprof/profile", "/debug/pprof/heap"} {
+		res, err := http.Get(srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s with LOOMARR_PPROF unset = %d, want 404 (the route must not exist)", p, res.StatusCode)
+		}
+	}
+}
