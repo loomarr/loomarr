@@ -67,6 +67,11 @@ type instrumentedTransport struct {
 }
 
 func (t *instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Attribute this call to the inbound request that caused it, if any (fanout.go). Done here
+	// rather than per-adapter for the same reason the counters below are: one boundary, so a new
+	// adapter is instrumented by construction instead of by remembering.
+	countOutbound(req.Context())
+
 	start := time.Now()
 	resp, err := t.next.RoundTrip(req)
 	outboundDuration.WithLabelValues(t.target).Observe(time.Since(start).Seconds())
