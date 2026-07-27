@@ -224,6 +224,32 @@ type storeAvailability struct {
 	ctx      context.Context
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
 	episodes EpisodeResolver  // optional; nil ⇒ series resolve to a pending slot
+
+	// Per-instance memo. ComputeDesiredAt walks the lineup repeatedly while laying out a
+	// cycle — every pass re-resolves the same keys — and each miss was a fresh round-trip to
+	// the media server. On the maintainer's install that made ONE guide request issue 72
+	// library calls and spend 208ms–1.01s per channel inside ComputeDesiredAt, which was the
+	// entire ~2s the Guide took to appear.
+	//
+	// Scoped to the INSTANCE, not to the client, and that is the whole safety argument: a
+	// storeAvailability is built per operation (its `ctx` bounds one reconcile or one
+	// request), so the memo cannot outlive the work it was built for and needs no
+	// invalidation. Caching in the library client would be a different, much riskier thing —
+	// a long-lived object where a stale duration survives an item being re-encoded.
+	//
+	// Guarded by a mutex: the guide resolves channels concurrently, and a map is not safe
+	// under that on its own.
+	mu        sync.Mutex
+	titleMemo map[provision.Key]titleLookup
+	durMemo   map[string]int64
+	epsMemo   map[string][]schedule.ResolvedProgram
+}
+
+// titleLookup memoizes one GetTitle result, including the MISS — re-asking the store for a key
+// that was absent a millisecond ago costs the same as asking for one that was present.
+type titleLookup struct {
+	rec provision.Record
+	err error
 }
 
 // DurationResolver returns a library item's runtime in ms (§9/§10, from the media
@@ -241,7 +267,59 @@ type EpisodeResolver func(ctx context.Context, showItemID string) ([]schedule.Re
 // be nil (e.g. tests): a nil dur ⇒ movies resolve with duration 0 (caller falls
 // back to the entry's); a nil eps ⇒ series resolve to a pending slot.
 func NewStoreAvailability(ctx context.Context, st store.Store, dur DurationResolver, eps EpisodeResolver) Availability {
-	return &storeAvailability{store: st, ctx: ctx, duration: dur, episodes: eps}
+	return &storeAvailability{
+		store: st, ctx: ctx, duration: dur, episodes: eps,
+		titleMemo: map[provision.Key]titleLookup{},
+		durMemo:   map[string]int64{},
+		epsMemo:   map[string][]schedule.ResolvedProgram{},
+	}
+}
+
+// title reads a title record once per key for this instance's lifetime. See the memo note on
+// storeAvailability for why instance scope is the safe scope.
+func (s *storeAvailability) title(key provision.Key) (provision.Record, error) {
+	s.mu.Lock()
+	if hit, ok := s.titleMemo[key]; ok {
+		s.mu.Unlock()
+		return hit.rec, hit.err
+	}
+	s.mu.Unlock()
+
+	// Deliberately OUTSIDE the lock: a store read can block, and holding the mutex across it
+	// would serialize every channel the guide resolves concurrently — trading one bottleneck
+	// for another. A duplicate read on a race is cheap and harmless; both writers store the
+	// same answer.
+	rec, err := s.store.GetTitle(s.ctx, key)
+
+	s.mu.Lock()
+	s.titleMemo[key] = titleLookup{rec: rec, err: err}
+	s.mu.Unlock()
+	return rec, err
+}
+
+// itemDuration resolves a library item's runtime once per item for this instance.
+// A failure memoizes as 0 — the caller falls back to the lineup entry's own duration, and
+// retrying a failing lookup once per occurrence is what made this slow in the first place.
+func (s *storeAvailability) itemDuration(libraryID string) int64 {
+	if s.duration == nil {
+		return 0
+	}
+	s.mu.Lock()
+	if d, ok := s.durMemo[libraryID]; ok {
+		s.mu.Unlock()
+		return d
+	}
+	s.mu.Unlock()
+
+	var ms int64
+	if d, err := s.duration(s.ctx, libraryID); err == nil {
+		ms = d
+	}
+
+	s.mu.Lock()
+	s.durMemo[libraryID] = ms
+	s.mu.Unlock()
+	return ms
 }
 
 func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
@@ -249,22 +327,16 @@ func (s *storeAvailability) Resolve(key provision.Key) (string, int64, bool) {
 	if key.IsSeries() {
 		return "", 0, false
 	}
-	rec, err := s.store.GetTitle(s.ctx, key)
+	rec, err := s.title(key)
 	if err != nil {
 		return "", 0, false // not found / error → treat as unavailable
 	}
 	if rec.State != provision.Available || rec.LibraryID == "" {
 		return "", 0, false
 	}
-	var durationMs int64
-	if s.duration != nil {
-		// Best-effort: a duration lookup failure shouldn't make an available title
-		// vanish. ComputeDesired falls back to the entry's own duration on 0.
-		if d, derr := s.duration(s.ctx, rec.LibraryID); derr == nil {
-			durationMs = d
-		}
-	}
-	return rec.LibraryID, durationMs, true
+	// Best-effort: a duration lookup failure shouldn't make an available title vanish.
+	// ComputeDesired falls back to the entry's own duration on 0.
+	return rec.LibraryID, s.itemDuration(rec.LibraryID), true
 }
 
 // ResolveEpisodes expands an available series into its episode programs (§9). The
@@ -276,12 +348,31 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) ([]schedule.Resol
 	if !key.IsSeries() || s.episodes == nil {
 		return nil, false
 	}
-	rec, err := s.store.GetTitle(s.ctx, key)
+	rec, err := s.title(key)
 	if err != nil || rec.State != provision.Available || rec.LibraryID == "" {
 		return nil, false
 	}
+
+	// Memoized like the others, and this is the biggest single win: enumerating a show's
+	// episodes is the most expensive library call there is, and a series in the lineup is
+	// re-resolved on every layout pass.
+	s.mu.Lock()
+	if eps, ok := s.epsMemo[rec.LibraryID]; ok {
+		s.mu.Unlock()
+		return eps, len(eps) > 0
+	}
+	s.mu.Unlock()
+
 	eps, err := s.episodes(s.ctx, rec.LibraryID)
-	if err != nil || len(eps) == 0 {
+	if err != nil {
+		eps = nil
+	}
+
+	s.mu.Lock()
+	s.epsMemo[rec.LibraryID] = eps // the empty result is memoized too — see itemDuration
+	s.mu.Unlock()
+
+	if len(eps) == 0 {
 		return nil, false
 	}
 	return eps, true
