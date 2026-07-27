@@ -133,35 +133,67 @@ func atoiSafe(s string) int {
 // rotating window seam because slicing runs on the collapsed deck). Order-preserving: a group collapses
 // at the position of its first part.
 //
-// A group's parts are assumed contiguous in `slots` here because resolveEntry emits them in
-// order and nothing between resolution and ordering reorders within a series' expansion.
+// ⚠ A group's members are NOT assumed contiguous, and must not be.
+//
+// Two different things assign PartGroup, and only one of them produces adjacency:
+//
+//   - EPISODES — assignPartGroups tags parts within ONE lineup entry's expansion
+//     (resolveEntry emits a series' episodes in order), so a two-parter is always adjacent.
+//   - FRANCHISES — assignFranchiseGroups tags films by TMDB collection across SEPARATE lineup
+//     entries, which sit wherever the operator's lineup put them. Raiders at position 1,
+//     Temple of Doom at 6, Last Crusade at 5 is the normal case, not the exotic one.
+//
+// Gathering only a contiguous run was a real defect: each scattered member became its OWN
+// super-slot carrying the same group id, and expandGroups then replaced EVERY one of them with
+// the group's full parts list. n scattered members ⇒ the group aired n times, and the standalone
+// programmes between them were pushed out of the window entirely. Observed on a 25-movie
+// channel: 88 airings a week from 11 distinct titles, three of them ~13x each, while 14 films —
+// Die Hard, The Terminator, RoboCop, Predator among them — never aired at all.
+//
+// So members are gathered by group id wherever they lie, and the super-slot lands at the FIRST
+// member's position. That keeps the collapse order-preserving (a franchise airs where its
+// earliest member was placed) while making the group genuinely atomic: exactly one super-slot
+// per group, so exactly one expansion.
 func collapseGroups(slots []Slot) (collapsed []Slot, expand map[string][]Slot) {
 	expand = map[string][]Slot{}
 	collapsed = make([]Slot, 0, len(slots))
-	i := 0
-	for i < len(slots) {
-		g := slots[i].PartGroup
-		if g == "" || !slots[i].IsProgram() {
-			collapsed = append(collapsed, slots[i])
-			i++
-			continue
+
+	// Gather every member of each group first, so a scattered franchise collapses once rather
+	// than once per contiguous run.
+	for _, s := range slots {
+		if s.PartGroup != "" && s.IsProgram() {
+			expand[s.PartGroup] = append(expand[s.PartGroup], s)
 		}
-		// Gather the contiguous run of this group.
-		j := i
-		var total int64
-		run := []Slot{}
-		for j < len(slots) && slots[j].PartGroup == g {
-			total += slots[j].DurationMs
-			run = append(run, slots[j])
-			j++
-		}
+	}
+	for g, run := range expand {
 		sortByPartIndex(run)
 		expand[g] = run
-		// The super-slot carries the group's identity + total runtime for windowing.
+	}
+
+	// Emit in the original order, replacing each group with ONE super-slot at the position of
+	// its first member and dropping that group's later members.
+	emitted := make(map[string]bool, len(expand))
+	for _, s := range slots {
+		g := s.PartGroup
+		if g == "" || !s.IsProgram() {
+			collapsed = append(collapsed, s)
+			continue
+		}
+		if emitted[g] {
+			continue // already represented by its super-slot
+		}
+		emitted[g] = true
+		// The super-slot carries the group's identity + total runtime for windowing, and is the
+		// group's FIRST part by PartIndex so the representative is stable regardless of which
+		// member happened to appear first in the deck.
+		run := expand[g]
+		var total int64
+		for _, p := range run {
+			total += p.DurationMs
+		}
 		rep := run[0]
 		rep.DurationMs = total
 		collapsed = append(collapsed, rep)
-		i = j
 	}
 	return collapsed, expand
 }
