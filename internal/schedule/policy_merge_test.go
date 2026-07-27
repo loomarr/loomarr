@@ -174,6 +174,106 @@ func TestMergeFromOperator_RecordsDirtyAndPreservesApplied(t *testing.T) {
 	}
 }
 
+// THE SHIPPED BUG (§8.2, dev "1980s Action Heroes"). PATCH replaces `policy` wholesale, so a
+// body that omits a field looks identical to one that cleared it. Pinning on "changed" alone
+// blanked the channel's era AND froze the blank, so no refine could ever restore it —
+// operatorSet ["ordering","scope"] with scope {}, and six out-of-era films bound legitimately
+// afterwards because there was no longer anything to enforce.
+func TestMergeFromOperator_DoesNotPinAFieldItEmptied(t *testing.T) {
+	era := Range{From: 1980, To: 1989}
+	current := ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{
+			Scope:    ScopePolicy{Era: &era},
+			Ordering: OrderSequential,
+		},
+	}
+	// A PATCH that means to change ORDERING, carrying a policy whose scope is absent.
+	incoming := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}
+
+	got := current.MergeFromOperator(incoming)
+
+	if pathSet(got.OperatorSet)[pathScope] {
+		t.Errorf("scope was emptied and must NOT be pinned — pinning it means no refine can "+
+			"ever restore the era. operatorSet=%v", got.OperatorSet)
+	}
+	// The ordering edit is a real one and must still stick.
+	if !pathSet(got.OperatorSet)[pathOrdering] {
+		t.Errorf("the actual edit (ordering) should still pin, got %v", got.OperatorSet)
+	}
+}
+
+// The other half of the same rule: a field the operator emptied returns to PROPOSAL ownership,
+// so the next refine can fill it back in. Without this, the fix above would only stop new
+// damage and leave every already-pinned empty field frozen forever.
+func TestMergeFromOperator_EmptyingAFieldUnpinsIt(t *testing.T) {
+	era := Range{From: 1980, To: 1989}
+	current := ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}},
+		OperatorSet:    []string{pathScope}, // already pinned by an earlier edit
+	}
+	got := current.MergeFromOperator(ChannelPolicy{})
+	if pathSet(got.OperatorSet)[pathScope] {
+		t.Errorf("clearing a pinned field must unpin it, got %v", got.OperatorSet)
+	}
+
+	// And the unpinned field must actually be refreshable by a proposal.
+	fresh := Range{From: 1975, To: 1995}
+	after := got.MergeFromProposal(ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &fresh}},
+	})
+	if after.Scope.Era == nil || after.Scope.Era.From != 1975 {
+		t.Errorf("an unpinned scope should refresh from the proposal, got %+v", after.Scope.Era)
+	}
+}
+
+// Stickiness itself must not be weakened: a NON-EMPTY edit pins exactly as it always did, and a
+// later proposal cannot revert it. This is the property the empty-field exception is carved out
+// of, so it is asserted beside it.
+func TestMergeFromOperator_NonEmptyEditStillPins(t *testing.T) {
+	era := Range{From: 1980, To: 1989}
+	edited := Range{From: 1990, To: 1999}
+	current := ChannelPolicy{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}}}
+
+	got := current.MergeFromOperator(ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &edited}},
+	})
+	if !pathSet(got.OperatorSet)[pathScope] {
+		t.Fatalf("a real scope edit must pin, got %v", got.OperatorSet)
+	}
+
+	proposed := Range{From: 1960, To: 1970}
+	after := got.MergeFromProposal(ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &proposed}},
+	})
+	if after.Scope.Era == nil || after.Scope.Era.From != 1990 {
+		t.Errorf("a proposal overwrote a pinned operator edit: %+v", after.Scope.Era)
+	}
+}
+
+// A no-op PATCH must not change ownership in either direction — neither pinning an untouched
+// empty field nor unpinning an untouched set one. Ownership changes on EDITS, not on saves.
+func TestMergeFromOperator_NoOpSaveLeavesPinsAlone(t *testing.T) {
+	era := Range{From: 1980, To: 1989}
+	current := ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}, Ordering: OrderSequential},
+		// audience is pinned but empty — the state an earlier build could produce.
+		OperatorSet: []string{pathScope, pathAudience},
+	}
+	// The FE's read-modify-write of an unchanged policy.
+	same := ChannelPolicy{
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}, Ordering: OrderSequential},
+	}
+	got := current.MergeFromOperator(same)
+
+	if !pathSet(got.OperatorSet)[pathScope] {
+		t.Errorf("an unchanged, non-empty pinned field must stay pinned, got %v", got.OperatorSet)
+	}
+	if !pathSet(got.OperatorSet)[pathAudience] {
+		t.Errorf("an UNTOUCHED pin must survive a no-op save — only an edit may change "+
+			"ownership, got %v", got.OperatorSet)
+	}
+}
+
 // A refine must never move a channel between playout backends (§9.1). Backend choice is
 // an operator decision about infrastructure; the LLM is proposing CONTENT. This is the
 // same class as the era/audience data loss that MergeFromProposal was rewritten to fix —
