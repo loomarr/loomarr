@@ -26,6 +26,17 @@ const (
 	ScopeLibrary Scope = "library"
 	ScopeTMDB    Scope = "tmdb"
 	ScopeAll     Scope = "all"
+	// ScopeAdjacent marks a candidate that came from the recommendation graph walked
+	// from a channel's own lineup (programming-design §8.3) rather than from a query.
+	//
+	// ⚠ PROVENANCE ONLY — never a /v1/search value. `Scope` does double duty: it is the
+	// published search enum AND `Candidate.Source`, the "which corpus surfaced this"
+	// debugging field. Adjacency belongs to the second and not the first: it has no query
+	// to search with, so offering it as a scope would ship an enum value that ignores `q`
+	// — the exact shape design.md §7.2 records as the phantom `clips` scope, corrected
+	// rather than implemented. ParseScope deliberately does not accept it, so it cannot
+	// arrive from a URL.
+	ScopeAdjacent Scope = "adjacent"
 )
 
 // ParseScope validates a scope, defaulting to all.
@@ -227,6 +238,126 @@ func (c *Catalog) Discover(ctx context.Context, mt provision.MediaType, genres [
 		order = append(order, k)
 	}
 	out := dedupeAndOrder(byKey, order, limit)
+	c.backfillPresence(ctx, out)
+	return out, nil
+}
+
+// TMDBRecommender is the adjacency corpus: TMDB's behavioural "also watched" graph for
+// one title (programming-design §8.3). Optional, like TMDBDiscoverer — a client that
+// doesn't implement it simply yields no adjacency candidates.
+type TMDBRecommender interface {
+	Recommendations(ctx context.Context, mt provision.MediaType, tmdbID, limit int) ([]Candidate, error)
+}
+
+// adjacentPerSeed bounds how many neighbours one seed title contributes.
+//
+// TMDB returns 20 per page and the tail is progressively weaker, so taking the head is
+// both cheaper and better: consensus across seeds is the signal we actually rank on, and
+// a long tail mostly adds one-vote noise for the cut below to discard.
+const adjacentPerSeed = 20
+
+// minAdjacentConsensus is how many seed titles must independently recommend a candidate
+// before it is offered.
+//
+// ONE vote is noise — TMDB's graph will connect almost anything to something. Requiring
+// two is what turns "a film someone also watched" into "a film this CHANNEL points at".
+// Probed against the dev 25-film action channel, the ≥2 head was Terminator 2, Mad Max,
+// Death Race 2000, Demolition Man, Missing in Action, Romancing the Stone — all on-theme,
+// two of them (Mad Max, T2) obvious holes the channel already implied.
+const minAdjacentConsensus = 2
+
+// Adjacent walks the recommendation graph from a set of seed titles and returns the
+// candidates several of them agree on, ranked by that agreement (§8.3).
+//
+// The seeds are a channel's own lineup, which is what makes this a deterministic
+// alternative to asking the model "what else fits?": the query is the channel's contents
+// rather than a paraphrase of its intent. Same seeds ⇒ same candidates, no tokens.
+//
+// `exclude` is the set of keys already on the channel — a neighbour the channel already
+// has is not a discovery. Callers pass the lineup's keys; the walk itself never inspects
+// channel state.
+//
+// BEST-EFFORT PER SEED. One seed's lookup failing (a title TMDB has no graph for, a
+// transient 5xx) skips that seed and keeps walking: an adjacency pass is a bonus corpus,
+// and degrading it to "fewer candidates" is right where failing the whole re-curation
+// would not be.
+func (c *Catalog) Adjacent(
+	ctx context.Context, seeds []Candidate, exclude map[provision.Key]bool, limit int,
+) ([]Candidate, error) {
+	rec, ok := c.tmdb.(TMDBRecommender)
+	if !ok || c.tmdb == nil {
+		return nil, nil // no adjacency corpus wired
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	votes := map[string]int{}
+	byKey := map[string]*Candidate{}
+	order := []string{}
+
+	for _, seed := range seeds {
+		if seed.TMDBID == 0 {
+			continue // no TMDB identity ⇒ no graph to walk (a TVDB-only series)
+		}
+		neighbours, err := rec.Recommendations(ctx, seed.MediaType, seed.TMDBID, adjacentPerSeed)
+		if err != nil {
+			continue // see BEST-EFFORT above
+		}
+		// One vote per SEED, not per occurrence: a neighbour listed twice by the same seed
+		// must not out-rank one that two different seeds both point at.
+		seen := map[string]bool{}
+		for _, n := range neighbours {
+			// A candidate with no resolvable provisioning key can neither be matched against
+			// `exclude` nor acquired later, so it is dropped here rather than carried as a
+			// pick the approve path would reject.
+			nk, kerr := n.Key()
+			if kerr != nil {
+				continue
+			}
+			k := dedupeKey(n)
+			if seen[k] || exclude[nk] {
+				continue
+			}
+			seen[k] = true
+			votes[k]++
+			if existing, ok := byKey[k]; ok {
+				mergeCandidate(existing, n)
+				continue
+			}
+			cp := n
+			cp.Source = ScopeAdjacent
+			byKey[k] = &cp
+			order = append(order, k)
+		}
+	}
+
+	// Rank by consensus, then by the order first seen so ties are deterministic rather
+	// than map-iteration order (§7 reproducibility).
+	position := make(map[string]int, len(order))
+	for i, k := range order {
+		position[k] = i
+	}
+	kept := make([]string, 0, len(order))
+	for _, k := range order {
+		if votes[k] >= minAdjacentConsensus {
+			kept = append(kept, k)
+		}
+	}
+	sort.SliceStable(kept, func(a, b int) bool {
+		if votes[kept[a]] != votes[kept[b]] {
+			return votes[kept[a]] > votes[kept[b]]
+		}
+		return position[kept[a]] < position[kept[b]]
+	})
+
+	out := make([]Candidate, 0, limit)
+	for _, k := range kept {
+		if len(out) >= limit {
+			break
+		}
+		out = append(out, *byKey[k])
+	}
 	c.backfillPresence(ctx, out)
 	return out, nil
 }

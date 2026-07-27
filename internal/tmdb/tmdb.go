@@ -154,6 +154,35 @@ func (c *Client) Discover(ctx context.Context, mt provision.MediaType, genres []
 	return out, nil
 }
 
+// Recommendations returns TMDB's behavioural neighbours for one title — the
+// "people who watched this also watched…" graph (programming-design §8.3).
+//
+// ⚠ /recommendations, NEVER /similar. The two endpoints read as interchangeable and
+// are not: /similar is computed from genre+keyword overlap and is effectively noise
+// (probing the dev channel, it returned "Land of the Blind" for Die Hard, The
+// Terminator AND RoboCop, and "A Man Escaped" for Die Hard). /recommendations is
+// behavioural and coherent (Terminator → Doomsday, Replicant, Hardware). Swapping
+// them would produce baffling channels that read as a Loomarr bug rather than as a
+// bad data source.
+//
+// A title with no neighbours (obscure, or newly added to TMDB) returns an empty
+// slice, not an error — one unproductive seed must not fail a whole adjacency walk.
+func (c *Client) Recommendations(ctx context.Context, mt provision.MediaType, tmdbID, limit int) ([]catalog.Candidate, error) {
+	path := "/movie/"
+	if mt == provision.Series {
+		path = "/tv/"
+	}
+	var resp discoverResponse
+	if err := c.get(ctx, fmt.Sprintf("%s%d/recommendations", path, tmdbID), &resp); err != nil {
+		return nil, err
+	}
+	out := appendDiscover(nil, resp.Results, mt)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (c *Client) discover(ctx context.Context, path string, genreIDs []int, yearFrom, yearTo int, dateField string) ([]discoverResult, error) {
 	q := url.Values{}
 	q.Set("include_adult", "false")
