@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/mantonx/loomarr/internal/catalog"
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -15,6 +17,13 @@ import (
 // so recurate doesn't depend on the concrete worker beyond the one method it calls.
 type Refiner interface {
 	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+}
+
+// Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
+// nil ⇒ re-curation runs the LLM corpus alone, exactly as it did before adjacency existed.
+// Narrowed to the one method, like every other dependency here.
+type Adjacencer interface {
+	Adjacent(ctx context.Context, seeds []catalog.Candidate, exclude map[provision.Key]bool, limit int) ([]catalog.Adjacency, error)
 }
 
 // RunnerStore is the slice of the store the runner needs.
@@ -32,7 +41,15 @@ type RunnerStore interface {
 type Runner struct {
 	store   RunnerStore
 	refiner Refiner
+	adj     Adjacencer // optional (§8.3); nil ⇒ LLM corpus only
 	log     *slog.Logger
+}
+
+// WithAdjacency wires the §8.3 adjacency corpus. Returns the runner for chaining, keeping
+// NewRunner's signature stable — the same pattern suggest.WithRatings uses.
+func (r *Runner) WithAdjacency(a Adjacencer) *Runner {
+	r.adj = a
+	return r
 }
 
 // NewRunner wires the job.
@@ -108,7 +125,59 @@ func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (suggest.I
 	// prefer keeping it). CurrentLineup drives the refine framing in the prompt (§7).
 	intent.RefineText = ""
 	intent.CurrentLineup = lineupContext(ch.Lineup)
+	intent.Adjacent = r.adjacentFor(ctx, ch)
 	return intent, true
+}
+
+// adjacentLimit bounds how many adjacency offers ride into one refine.
+//
+// They are prompt context, and an unbounded list would both crowd the intent and hand the
+// model more to weigh than it can use. The re-curation title cap (§8.2) bounds what can
+// actually be ADDED regardless; this bounds what is offered.
+const adjacentLimit = 12
+
+// adjacentFor walks the channel's own lineup through the recommendation graph and returns
+// the consensus picks as prompt context (§8.3).
+//
+// BEST-EFFORT and non-fatal in every direction: no corpus wired, a walk that errors, or a
+// channel whose lineup yields no TMDB seeds all return nil, and re-curation proceeds with
+// the LLM corpus alone. Adjacency widens a run; it must never fail one.
+func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []suggest.AdjacentContext {
+	if r.adj == nil || len(ch.Lineup) == 0 {
+		return nil
+	}
+	seeds := make([]catalog.Candidate, 0, len(ch.Lineup))
+	exclude := make(map[provision.Key]bool, len(ch.Lineup))
+	for _, e := range ch.Lineup {
+		exclude[e.Key] = true
+		mt, provider, id, ok := provision.ParseKey(e.Key)
+		if !ok || provider != "tmdb" {
+			continue // only TMDB ids have a graph to walk
+		}
+		seeds = append(seeds, catalog.Candidate{
+			MediaType: mt, TMDBID: id, Name: e.Title, Year: e.Year,
+		})
+	}
+	if len(seeds) == 0 {
+		return nil
+	}
+	found, err := r.adj.Adjacent(ctx, seeds, exclude, adjacentLimit)
+	if err != nil {
+		r.log.Warn("re-curation: adjacency walk failed; continuing with the LLM corpus alone",
+			"channel", ch.ID, "err", err)
+		return nil
+	}
+	out := make([]suggest.AdjacentContext, 0, len(found))
+	for _, a := range found {
+		k, kerr := a.Candidate.Key()
+		if kerr != nil {
+			continue
+		}
+		out = append(out, suggest.AdjacentContext{
+			Name: a.Candidate.Name, Year: a.Candidate.Year, Key: string(k), Votes: a.Votes,
+		})
+	}
+	return out
 }
 
 // lineupContext turns a channel's stored lineup into the lightweight name/year/key context the

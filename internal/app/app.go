@@ -536,7 +536,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// refine that produces the proposal the Curator considers.
 		curator := recurate.NewCurator(st, recurateThresholds{set}, time.Now, log)
 		svc = svc.WithAutoCurate(curator)
-		recurateRunner := recurate.NewRunner(st, svc, log)
+		// The §8.3 adjacency corpus rides the SAME catalog the suggester grounds against,
+		// so an adjacency candidate is the same shape (and gets the same in-library
+		// backfill) as one the model found itself. Nil-safe: a catalog without a TMDB
+		// client yields no adjacency and re-curation runs the LLM corpus alone.
+		recurateRunner := recurate.NewRunner(st, svc, log).WithAdjacency(cat)
 		jobReg.Add(scheduler.Job{
 			Name: "channel-recurate", Title: "Re-curate self-updating channels",
 			DefaultCron: "0 0 4 * * 0", ScheduleKey: "job.recurate.schedule",

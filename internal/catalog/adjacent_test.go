@@ -33,8 +33,8 @@ func TestAdjacent_RequiresConsensusAcrossSeeds(t *testing.T) {
 	}
 
 	names := map[string]bool{}
-	for _, cd := range got {
-		names[cd.Name] = true
+	for _, a := range got {
+		names[a.Candidate.Name] = true
 	}
 	if !names["The Matrix"] {
 		t.Errorf("The Matrix had 2 votes and must be offered; got %v", names)
@@ -62,8 +62,8 @@ func TestAdjacent_ExcludesWhatTheChannelAlreadyHas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
 	}
-	for _, cd := range got {
-		if cd.TMDBID == 603 {
+	for _, a := range got {
+		if a.Candidate.TMDBID == 603 {
 			t.Fatalf("The Matrix is already on the channel and must be excluded; got %v", got)
 		}
 	}
@@ -84,8 +84,8 @@ func TestAdjacent_IsDeterministic(t *testing.T) {
 			t.Fatalf("Adjacent: %v", err)
 		}
 		names := make([]string, 0, len(got))
-		for _, cd := range got {
-			names = append(names, cd.Name)
+		for _, a := range got {
+			names = append(names, a.Candidate.Name)
 		}
 		if first == nil {
 			first = names
@@ -151,9 +151,40 @@ func TestAdjacent_OneVotePerSeedNotPerOccurrence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Adjacent: %v", err)
 	}
-	for _, cd := range got {
-		if cd.TMDBID == 603 {
+	for _, a := range got {
+		if a.Candidate.TMDBID == 603 {
 			t.Fatalf("one seed repeated a neighbour into false consensus; got %v", got)
 		}
+	}
+}
+
+// The VOTE COUNT is the explainability payload — "recommended by N of your films" is what
+// the approval card shows and what makes an adjacency pick defensible where an LLM pick can
+// only paraphrase. Returning the candidates without it would leave the ranking legible only
+// to the ranker.
+func TestAdjacent_ReportsTheConsensusCount(t *testing.T) {
+	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
+		100: {603}, 101: {603}, 603: {603}, // three seeds all name The Matrix
+	})
+	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+
+	got, err := c.Adjacent(context.Background(),
+		[]catalog.Candidate{seed(100, "Speed"), seed(101, "The Rock"), seed(603, "The Matrix")},
+		map[provision.Key]bool{}, 10)
+	if err != nil {
+		t.Fatalf("Adjacent: %v", err)
+	}
+	var found bool
+	for _, a := range got {
+		if a.Candidate.TMDBID != 603 {
+			continue
+		}
+		found = true
+		if a.Votes != 3 {
+			t.Errorf("votes = %d, want 3 (one per seed that named it)", a.Votes)
+		}
+	}
+	if !found {
+		t.Fatalf("The Matrix should have been offered; got %v", got)
 	}
 }

@@ -29,6 +29,21 @@ type Intent struct {
 	// refine can't invent titles. Empty on a fresh (non-refine) suggestion.
 	RefineText    string          `json:"refineText,omitempty"`
 	CurrentLineup []LineupContext `json:"currentLineup,omitempty"`
+	// Adjacent are pre-seeded candidates from the recommendation graph walked over this
+	// channel's own lineup (programming-design §8.3) — the deterministic second corpus,
+	// merged with whatever the model finds through the catalog tool.
+	//
+	// They are OFFERED, never placed: the model still chooses, and an offered title it
+	// ignores is simply not picked. Grounding is unweakened because these are real
+	// catalog candidates with real ids that went through the same presence backfill a
+	// tool result does — Suggest seeds them into `surfaced` before generation, so
+	// buildProposal's "every pick traces to a candidate the catalog returned" invariant
+	// holds verbatim. Merging AFTER generation instead would append picks the chokepoint
+	// never checked, which is the one thing grounding exists to prevent.
+	//
+	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
+	// TMDB corpus wired.
+	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
 }
 
 // LineupContext is a lightweight "what's on this channel now" entry fed to the refiner —
@@ -38,6 +53,21 @@ type LineupContext struct {
 	Name string `json:"name"`
 	Year int    `json:"year,omitempty"`
 	Key  string `json:"key,omitempty"` // provisioning key, e.g. "movie:tmdb:603"
+}
+
+// AdjacentContext is one pre-seeded adjacency candidate (§8.3): a title the channel's own
+// lineup points at through TMDB's recommendation graph.
+//
+// Votes is how many of the channel's titles independently recommended it — the consensus
+// that makes this a signal rather than noise, and the reason the candidate can explain
+// itself ("recommended by 5 of your films") where an LLM pick can only paraphrase. It is
+// rendered in the prompt so the model can weigh a strong consensus differently from a
+// marginal one, and it is what the approval card shows.
+type AdjacentContext struct {
+	Name  string `json:"name"`
+	Year  int    `json:"year,omitempty"`
+	Key   string `json:"key,omitempty"`
+	Votes int    `json:"votes,omitempty"`
 }
 
 // ProposalItem is one entry in a lineup or acquisition list (§8 output contract).
