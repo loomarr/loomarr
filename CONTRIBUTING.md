@@ -25,7 +25,20 @@ green.
 ## Prerequisites
 
 - Go **1.26+**
-- Node **22+** and `pnpm` (via `corepack enable`)
+- Node **22.5+** and `pnpm` (via `corepack enable`) — 22.5 is a hard floor, not a
+  preference: pnpm 11.13 uses the built-in `node:sqlite` for its store index, and
+  anything older fails with `ERR_UNKNOWN_BUILTIN_MODULE`
+- **`ffmpeg` and `ffprobe` on PATH** — internal playout is the default backend
+  (§9.1), so without them channels appear in the guide and fail at tune time. The
+  image ships its own; a host run needs them installed:
+  - macOS: `brew install ffmpeg`
+  - Debian/Ubuntu: `sudo apt install ffmpeg`
+  - Arch: `sudo pacman -S ffmpeg`
+
+  Only `make test-ffmpeg` executes them from the test suite; `make check` stays
+  hermetic and needs neither. **Builds differ in what they carry** — Loomarr probes
+  the binary rather than assuming, so a build without `drawtext` (Homebrew's, for
+  one) renders an unlabelled card instead of killing the channel.
 - **Docker** — required for the Postgres conformance suite and the Playwright
   visual/e2e suites (from Phase 4 onward)
 

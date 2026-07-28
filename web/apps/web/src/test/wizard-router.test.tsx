@@ -249,4 +249,91 @@ describe("wizard", () => {
 
     expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
   });
+
+  // `?step=` / `?conn=` deep links (§13), through the REAL router so validateSearch runs —
+  // the narrowing lives there, and a unit test of resolveStep alone would not exercise it.
+  describe("deep links", () => {
+    it("opens the step a link names", async () => {
+      // The frontier here is Library (media_server + tunarr green, tunarr_library red), so a
+      // link to the earlier Connections step is behind it and honoured.
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=checklist");
+
+      expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+    });
+
+    // ⚠ The stranding case. Honouring this link would drop an unauthenticated operator on a
+    // step whose Continue can never enable, with no clickable rail and no way forward.
+    it("clamps a link that points past what the server says is done", async () => {
+      stubFetch({ authed: false });
+      renderAt("/wizard?step=channel");
+
+      expect(await screen.findByRole("heading", { name: /create your admin account/i })).toBeInTheDocument();
+    });
+
+    it("lands somewhere real when a link names a step that no longer exists", async () => {
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=not-a-step");
+
+      expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
+    });
+
+    // The support case this feature is really for: point someone at ONE service's form.
+    it("reveals the connection block a link names", async () => {
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=checklist&conn=tunarr");
+
+      expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+      // ⚠ Asserted on aria-expanded, NOT on the presence of Tunarr's field. ConnectionBlock
+      // keeps every body MOUNTED and reveals it with a CSS grid transition, so
+      // `findByLabelText("Tunarr URL")` succeeds whether the block is open or shut — an
+      // assertion that would pass with the deep link doing nothing at all.
+      const blocks = await screen.findAllByRole("button", { expanded: true });
+      expect(blocks.map((b) => b.textContent)).toEqual([expect.stringContaining("Tunarr")]);
+    });
+
+    // ⚠ Bootstrap runs ONCE, so revisiting it must show the OUTCOME, never the form. The
+    // defect: an operator walking Back (or deep-linking) got a full username/password/confirm
+    // form for an action guaranteed to 409 — discoverable only by filling it in and
+    // submitting. The backend was never at risk; the UI was advertising an impossible action.
+    it("shows the completed bootstrap step read-only instead of a form that can only fail", async () => {
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=bootstrap");
+
+      // Names the account, so the operator learns WHICH admin owns the instance — the
+      // question that brings them back to this step.
+      expect(await screen.findByText(/signed in as Ada/i)).toBeInTheDocument();
+      // The form is GONE — not merely disabled.
+      expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Confirm password")).not.toBeInTheDocument();
+    });
+
+    // ⚠ The trap the fix above creates if left alone: `advances` was hardcoded false on
+    // bootstrap because the step self-advanced via its own submit. With the form gone there
+    // would be no form AND no Continue — a worse dead end than the one being fixed.
+    it("still offers Continue on a completed bootstrap step, which has no form to self-advance", async () => {
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=bootstrap");
+
+      await screen.findByText(/signed in as Ada/i);
+      const next = await screen.findByRole("button", { name: "Continue" });
+      expect(next).toBeEnabled();
+
+      // And it actually moves: bootstrap is done, so Continue lands on the next step.
+      await userEvent.click(next);
+      expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+    });
+
+    it("falls back to the default block when a link names one that isn't a connection", async () => {
+      stubFetch({ authed: true, setupCompleted: false });
+      renderAt("/wizard?step=checklist&conn=library");
+
+      // `library` is a STEP id, not a connection — narrowed away, so the step opens on its
+      // default block (media server) instead of nothing.
+      // Same aria-expanded signal, for the same reason: every block's body is mounted, so
+      // only the expanded state distinguishes "opened" from "present".
+      const blocks = await screen.findAllByRole("button", { expanded: true });
+      expect(blocks.map((b) => b.textContent)).toEqual([expect.stringContaining("Media server")]);
+    });
+  });
 });

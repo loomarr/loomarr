@@ -15,8 +15,9 @@ func (s *Service) Resolve(key string) Resolved {
 	}
 	s.mu.RLock()
 	dbRaw, hasDB := s.db[key]
+	unlocked := s.unlocked[key]
 	s.mu.RUnlock()
-	return s.resolve(set, hasDB, dbRaw)
+	return s.resolve(set, hasDB, dbRaw, unlocked)
 }
 
 // resolve implements config-design §3's asymmetric resolution for one setting.
@@ -31,21 +32,34 @@ func (s *Service) Resolve(key string) Resolved {
 //   - default: the registry Default, always valid (registry_test enforces it).
 //
 // hasDB / dbRaw are the snapshot's stored override for this key (raw string).
-func (s *Service) resolve(set Setting, hasDB bool, dbRaw string) Resolved {
-	// env wins. It was validated at boot (New), so parse cannot fail here for a
-	// value the environment supplied; an I/O error reading a *_FILE that appeared
-	// after boot is the only surprise — treat it like a bad env and fall through
-	// rather than panic a read path.
-	if raw, ok, err := s.envValue(set); err == nil && ok {
-		if v, perr := set.parse(raw); perr == nil {
-			return Resolved{Setting: set, Value: v, Provenance: ProvenanceEnv}
+// unlocked is §3.1's claim: an admin has taken this key back from the environment.
+func (s *Service) resolve(set Setting, hasDB bool, dbRaw string, unlocked bool) Resolved {
+	// env wins — UNLESS an admin has explicitly taken this key back (§3.1). The claim is
+	// durable (a settings column), so it holds across the restart that re-reads env; an
+	// in-memory version of this check would let env silently reclaim the key on reboot and
+	// discard what the operator saved.
+	//
+	// Skipping the branch entirely — rather than resolving env and preferring db — is what
+	// makes the result honestly `db` rather than a third provenance. The lock STATE is
+	// reported separately (Resolved.EnvOverride), because "the operator overrode
+	// SEERR_URL" and "the environment never mentioned SEERR_URL" are different facts and a
+	// field that conflates them cannot explain itself.
+	//
+	// It was validated at boot (New), so parse cannot fail here for a value the environment
+	// supplied; an I/O error reading a *_FILE that appeared after boot is the only surprise
+	// — treat it like a bad env and fall through rather than panic a read path.
+	if !unlocked {
+		if raw, ok, err := s.envValue(set); err == nil && ok {
+			if v, perr := set.parse(raw); perr == nil {
+				return Resolved{Setting: set, Value: v, Provenance: ProvenanceEnv}
+			}
 		}
 	}
 	// db next. The app wrote it; if it no longer parses, self-heal to the default
 	// and surface a caution — never crash a running install for the app's own drift.
 	if hasDB {
 		if v, err := set.parse(dbRaw); err == nil {
-			return Resolved{Setting: set, Value: v, Provenance: ProvenanceDB}
+			return Resolved{Setting: set, Value: v, Provenance: ProvenanceDB, EnvOverride: unlocked}
 		} else {
 			// Redaction (§4): name the key and the shape error, never the value —
 			// set.parse already builds messages from the key, not the raw string,
@@ -55,11 +69,13 @@ func (s *Service) resolve(set Setting, hasDB bool, dbRaw string) Resolved {
 			} else {
 				s.log.Warn("settings: stored value invalid, using default", "key", set.Key, "error", err)
 			}
-			return s.defaultResolved(set, true)
+			return s.defaultResolved(set, true, unlocked)
 		}
 	}
-	// default.
-	return s.defaultResolved(set, false)
+	// default. An unlocked key can legitimately land here — a secret never seeds on unlock
+	// (§3.1), so it has no stored value until the operator enters one — and it is still
+	// overriding, so the flag rides along or the field would claim the env var is unset.
+	return s.defaultResolved(set, false, unlocked)
 }
 
 // defaultResolved builds a Resolved from the registry default. The default MUST parse
@@ -70,7 +86,7 @@ func (s *Service) resolve(set Setting, hasDB bool, dbRaw string) Resolved {
 // set.dur → window 0 → no truncation). The registry guarantees every default is valid
 // (registry_test), so parse cannot fail; if it somehow does, fall back to the raw string
 // rather than panic a read path.
-func (s *Service) defaultResolved(set Setting, caution bool) Resolved {
+func (s *Service) defaultResolved(set Setting, caution, unlocked bool) Resolved {
 	v := set.Default
 	if raw, ok := set.Default.(string); ok {
 		if parsed, err := set.parse(raw); err == nil {
@@ -78,10 +94,11 @@ func (s *Service) defaultResolved(set Setting, caution bool) Resolved {
 		}
 	}
 	return Resolved{
-		Setting:    set,
-		Value:      v,
-		Provenance: ProvenanceDefault,
-		Caution:    caution,
+		Setting:     set,
+		Value:       v,
+		Provenance:  ProvenanceDefault,
+		Caution:     caution,
+		EnvOverride: unlocked,
 	}
 }
 

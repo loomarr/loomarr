@@ -9,6 +9,17 @@ interface SettingFieldProps {
   onChange: (value: string) => void;
   // Per-key outcome of the last save: invalid(problem) | pinned | saved.
   result?: SettingResult;
+  // Take this key back from the environment, or hand it back (config-design §3.1).
+  //
+  // Optional, and its ABSENCE is what keeps the pre-3.1 behaviour available: a surface that
+  // does not supply it renders the plain "set via environment" lock with no way out, which is
+  // still correct for read-only contexts. Supplying it turns the lock into an affordance.
+  //
+  // Deliberately NOT folded into `onChange`: unlocking is a separate durable act that commits
+  // immediately (it is one of §9's inline-commit verbs), while `onChange` stages an edit into
+  // the cross-tab save buffer. Routing both through one handler would either make the unlock
+  // wait for a Save the operator cannot reach, or make ordinary edits commit instantly.
+  onEnvOverride?: (enabled: boolean) => void;
   // Compact renders ONLY the control — no label, doc tooltip, provenance badge or audit line.
   // For the All-settings table (V10), whose own columns already carry the key, group and
   // provenance; repeating them inside the cell would be the same facts twice.

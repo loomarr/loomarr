@@ -100,7 +100,15 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// time, so the loop paces itself — and the viewer sees "nothing scheduled" rather than a
 	// channel that fails to tune.
 	if !airing.Playable() || streamURL == "" {
-		args := playout.OfflineCardArgs(profile, playout.FindFont(),
+		// The font comes from the composition root, not playout.FindFont(), because the
+		// question is not "does this host have a font file?" but "can this ffmpeg BUILD draw
+		// one?" — a build without drawtext dies at graph-init and takes the channel with it.
+		// See playout.CardFontFor. Nil-guarded: "" is an unlabelled card, a valid rendering.
+		font := ""
+		if s.playoutFont != nil {
+			font = s.playoutFont()
+		}
+		args := playout.OfflineCardArgs(profile, font,
 			"Nothing scheduled", channelID, offlineCardDuration)
 		s.streamChild(w, r, channelID, "offline card", args, profile.Encoder)
 		return

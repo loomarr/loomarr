@@ -134,7 +134,11 @@ func bootSettings(ctx context.Context, st store.Store, baseLog *slog.Logger) (re
 		}
 		out := make([]settings.SettingRow, len(rows))
 		for i, r := range rows {
-			out[i] = settings.SettingRow{Key: r.Key, Value: r.Value, UpdatedBy: r.UpdatedBy}
+			// EnvOverride rides through here or §3.1's claim silently loads as false on
+			// every boot — the flag would persist correctly and never be read.
+			out[i] = settings.SettingRow{
+				Key: r.Key, Value: r.Value, UpdatedBy: r.UpdatedBy, EnvOverride: r.EnvOverride,
+			}
 		}
 		return out, nil
 	}}

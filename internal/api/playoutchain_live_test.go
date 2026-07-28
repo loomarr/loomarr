@@ -60,8 +60,8 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutSecret:   func() string { return playoutToken },
 		PlayoutResolver: &chainResolver{profile: profile, n: &requests, src: srcFile},
-		PlayoutEncoder: func(ctx context.Context, args []string) (*playout.Process, error) {
-			return playout.Start(ctx, bin, args, nil, nil)
+		PlayoutEncoder: func(ctx context.Context, args []string, onProgress func(playout.Progress)) (*playout.Process, error) {
+			return playout.Start(ctx, bin, args, nil, onProgress)
 		},
 	}
 	cfg := map[string]string{"playout.backend": "internal"}
@@ -148,5 +148,10 @@ func (c *chainResolver) AiringNow(context.Context, string) (playout.Airing, stri
 }
 
 func (c *chainResolver) Profile(context.Context) playout.Profile { return c.profile }
+
+// The source clip is built with a single `anullsrc` track, so track 0 is the only honest
+// answer here — and 0 is also the interface's documented fallback, which keeps this double
+// from asserting a language preference the chain test does not exercise.
+func (c *chainResolver) AudioTrackFor(context.Context, string) int { return 0 }
 
 var _ = http.MethodGet

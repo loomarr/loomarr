@@ -73,6 +73,66 @@ type Setting struct {
 - Env **set but empty** (`LLM_MODEL=`) counts as **unset**, and resolution falls through to db → default. A blank assignment is what an unfilled `.env` template looks like, not a decision to pin a setting to the empty string — and the two are indistinguishable to us, so we side with the reading that cannot silently destroy an operator's saved value. Treating it as a pin produced exactly that: the §8.1 picker wrote `llm.model` to the db and hot-swapped the live suggester, while every *read* still resolved to the empty env pin, so the checklist reported "no model selected" immediately after one was, and the choice vanished on the next restart. Consequently **there is no way to pin a setting to the empty string via env** — deliberate: "unset" and "set to nothing" mean the same thing to an operator, and clearing a value is what the db layer (and the Settings UI) is for.
 - **Boot logs every empty pin it ignored**, at WARN, naming the variable: an operator who *meant* to blank something must not have to infer that we disregarded it.
 
+### 3.1 Taking a key back from the environment (the unlock)
+
+An env pin is normally the one thing an admin cannot change from the UI, and §2's tagline —
+*"it wins and locks the field"* — is why. That is right for GitOps and wrong for the case that
+motivated this: an operator who put a value in `.env` to get the app booting, then reached the
+wizard and found the field they needed to correct was read-only, with the only documented way
+out being *edit a file on the host and restart*. On an appliance-style install that is not a
+workflow, it is a dead end.
+
+So a key can be **explicitly taken back**: an admin unlocks it, and from that moment the stored
+value wins **for that key** until it is handed back.
+
+**This is a durable claim, not a session toggle — and that is the whole design.** Env is
+re-read every boot, so an unlock that lived in memory would resolve back to env on restart and
+silently discard what the operator saved. That is precisely the `LLM_MODEL` failure recorded
+above (write succeeds, every read still returns env, the value vanishes on restart), and
+shipping a button that reproduces it would be worse than the locked field, which at least tells
+the truth. The claim therefore persists in the database (migration `00020`, `env_override`),
+rides §16 backups like any other durable state, and survives restarts and redeploys.
+
+**The rules:**
+
+- **Unlock is per key.** Never global, and never implied by writing a value — an ordinary PATCH
+  to a pinned key still returns `pinned` (§7). Taking a key from the deploy config is a
+  separate, deliberate act.
+- **Admin only, and audited.** It reuses `updated_by`/`updated_at`, so the field's existing
+  *"changed by … · when"* line reports who overrode the environment. An operator inspecting a
+  box that is not behaving like its `.env` must be able to find out why from the app.
+- **Provenance stays the three-value enum** `env | db | default` (§5 already rejected a fourth
+  chip). An unlocked key resolving to its stored value is honestly `db`. The *lock state* is a
+  separate boolean on the entry — `envOverride` — so the UI can say **"overriding `SEERR_URL`"**
+  rather than implying the environment is unset. Conflating the two would make an overridden
+  key indistinguishable from one the environment never mentioned.
+- **Re-locking is one click and loses nothing.** Clearing the flag returns the key to `env`
+  precedence with the stored value still in the database, so handing control back to GitOps is
+  reversible in both directions.
+- **`DELETE /v1/settings/{key}` still 409s on a *locked* key** (§7). The explicit clear drops a
+  stored override so a key falls back to env/default; on a pinned key that is a contradiction.
+  On an *unlocked* key it succeeds and the key reverts to the env value — which is the correct
+  meaning of "clear my override" once the operator has taken the key back.
+- **Bootstrap keys are never unlockable.** `DATABASE_URL`, `LISTEN_ADDR`, `LOG_LEVEL`, `TZ`,
+  `AUTO_MIGRATE` are read *before the database opens* (§2's classification rule), so a flag
+  stored in that database cannot affect them. Offering the control would be a lie; the API
+  rejects it rather than accepting a write that does nothing.
+- **Unlocking SEEDS the stored value from the env value it is taking over, and does not change
+  what the app is doing.** The alternative — unlock to an empty row — would make the act of
+  unlocking *blank the setting*, so an operator who wanted to correct one character in a URL
+  would instead knock the service offline the moment they clicked. Unlock is a transfer of
+  authority, not an edit; the value changes on the next save, by the human, deliberately.
+- **⚠ Secrets are the exception: they never seed.** Seeding would copy a credential out of the
+  environment into the database and therefore into every §16 backup, quietly widening where that
+  secret lives — a security change disguised as a convenience. An unlocked secret is `set:false`
+  and the operator must enter one, which is the same replace-only flow §4 already defines and
+  the only one that keeps "where did this credential come from" answerable.
+
+**The honest cost, recorded rather than glossed:** a redeployed `.env` no longer fully describes
+a running instance. That is a real loss for GitOps, and it is why the act is explicit, per-key,
+admin-only, audited, and visible on the field — an operator who never unlocks anything keeps
+exactly the old contract.
+
 **Secrets via files:** every secret env var also accepts the Docker-secrets idiom — `LIBRARY_TOKEN_FILE=/run/secrets/emby` loads the value from the file (trailing newline stripped). `<VAR>` and `<VAR>_FILE` both set → boot error (ambiguous).
 
 **Hot-apply (no restart to reconfigure):**

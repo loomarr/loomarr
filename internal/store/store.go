@@ -167,6 +167,13 @@ type Store interface {
 	// DeleteSetting removes an override so the key reverts to env/default
 	// (config-design §9: an empty PATCH on an optional key clears it).
 	DeleteSetting(ctx context.Context, key string) error
+	// SetSettingEnvOverride claims a key for the app or hands it back to the
+	// environment (config-design §3.1). Distinct from UpsertSetting because it
+	// writes AUTHORITY, not a value: a plain save must never disturb the flag.
+	// `seed` is the value to store when the row does not exist yet (the env value
+	// being taken over, so unlocking does not blank the setting; empty for secrets,
+	// which never seed). Existing rows keep their stored value.
+	SetSettingEnvOverride(ctx context.Context, key string, on bool, seed, by string) error
 
 	// --- observability counts (§17 /metrics state gauges) ---
 	// Read on scrape by the metrics collector, never on the write path.
