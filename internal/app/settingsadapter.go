@@ -42,6 +42,14 @@ func (p storePersister) Delete(ctx context.Context, key string) error {
 	return p.st.DeleteSetting(ctx, key)
 }
 
+// SetEnvOverride satisfies settings.EnvOverrideSetter (§3.1). Kept on the same adapter as
+// the value writes but routed to a DIFFERENT store method, because the two must not share
+// an UPSERT: a save that also wrote the claim would re-lock a key on the operator's next
+// edit (pinned by the store conformance suite).
+func (p storePersister) SetEnvOverride(ctx context.Context, key string, on bool, seed, by string) error {
+	return p.st.SetSettingEnvOverride(ctx, key, on, seed, by)
+}
+
 // storeAuditLister adapts store.ListSettings to settings.AuditLister (the audit
 // metadata List attaches per key).
 type storeAuditLister struct{ st store.Store }
@@ -89,6 +97,15 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
 	return api.SettingResult{Key: res.Key, Status: string(res.Status), Problem: res.Problem}
+}
+
+// SetEnvOverride is §3.1's unlock: claim a key for the app, or hand it back.
+func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) api.SettingResult {
+	st, err := a.svc.SetEnvOverride(ctx, storePersister{st: a.store}, key, on, updatedBy)
+	if err != nil {
+		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
+	}
+	return api.SettingResult{Key: key, Status: string(st)}
 }
 
 func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
@@ -288,6 +305,9 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		UpdatedBy:   e.UpdatedBy,
 		Set:         e.Set,
 		Preview:     e.Preview,
+		EnvOverride: e.EnvOverride,
+		EnvPinnable: e.EnvPinnable,
+		EnvVar:      e.Setting.EnvVar,
 	}
 	if !e.UpdatedAt.IsZero() {
 		out.UpdatedAt = e.UpdatedAt.UTC().Format(time.RFC3339)

@@ -20,7 +20,14 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 const spansFullWidth = (kind: string, secret: boolean): boolean =>
   secret || kind === "url" || kind === "string_list";
 
-const SettingsFields = ({ entries, values, onChange, results, className }: SettingsFieldsProps) => {
+const SettingsFields = ({
+  entries,
+  values,
+  onChange,
+  results,
+  onEnvOverride,
+  className,
+}: SettingsFieldsProps) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const resultFor = (key: string) => results?.find((r) => r.key === key);
 
@@ -56,6 +63,7 @@ const SettingsFields = ({ entries, values, onChange, results, className }: Setti
             value={values[entry.key] ?? entry.value ?? ""}
             onChange={(v) => onChange(entry.key, v)}
             result={resultFor(entry.key)}
+            onEnvOverride={onEnvOverride ? (enabled) => onEnvOverride(entry.key, enabled) : undefined}
             className={spansFullWidth(entry.kind, entry.secret) ? "sm:col-span-2" : undefined}
           />
         ),

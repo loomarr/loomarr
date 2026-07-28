@@ -29,6 +29,15 @@ func (s *Server) registerSettings(api huma.API) {
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
 	}, s.settingsClear)
 
+	// The unlock (config-design §3.1). A separate operation rather than a field on PATCH:
+	// taking a key from the deploy config is a deliberate act, not something that should
+	// ride along with an ordinary save of its value.
+	huma.Register(api, huma.Operation{
+		OperationID: "settings-env-override", Method: http.MethodPut, Path: "/v1/settings/{key}/env-override",
+		Summary: "Take a setting back from the environment", Description: "Admin only. Sets or clears the durable claim that this key is app-managed even though its environment variable is set (config-design §3.1). Unlocking seeds the stored value from the env value it takes over, so nothing changes until the operator saves; a secret never seeds. 404 unknown key (bootstrap keys are not in the registry), 409 when the environment does not pin the key.",
+		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
+	}, s.settingsEnvOverride)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "setup-test", Method: http.MethodPost, Path: "/v1/setup/test",
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
@@ -179,6 +188,38 @@ func (s *Server) settingsClear(ctx context.Context, in *settingsClearInput) (*st
 		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
 	case "pinned":
 		return nil, errConflict("Set by environment", "This setting is pinned by an environment variable. Unset that variable to manage it here.")
+	}
+	return nil, nil
+}
+
+type settingsEnvOverrideInput struct {
+	Key  string `path:"key" doc:"Registry key, e.g. seerr.url."`
+	Body struct {
+		Enabled bool `json:"enabled" doc:"true takes the key back from the environment; false hands it back (the stored value is kept either way)."`
+	}
+}
+
+// settingsEnvOverride is §3.1's unlock.
+//
+// ⚠ Admin-only, like every settings write — but worth stating plainly, because this is the
+// one control that overrides the deploy configuration. It is audited through the same
+// updated_by the rest of the settings surface uses, so an operator debugging a box that is
+// not behaving like its `.env` can find out from the app that someone took a key back.
+func (s *Server) settingsEnvOverride(ctx context.Context, in *settingsEnvOverrideInput) (*struct{}, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.settings == nil {
+		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
+	}
+	switch res := s.settings.SetEnvOverride(ctx, in.Key, in.Body.Enabled, auditActor(ctx)); res.Status {
+	case "unknown":
+		// Bootstrap keys land here too: they are read before the database opens, so a flag
+		// stored in that database could not affect them, and they are not in the registry.
+		return nil, errNotFound("Setting not found", "That setting doesn't exist — check the key and try again.")
+	case "not_pinned":
+		return nil, errConflict("Not set by environment",
+			"No environment variable is setting this, so there's nothing to take over. You can edit it directly.")
 	}
 	return nil, nil
 }

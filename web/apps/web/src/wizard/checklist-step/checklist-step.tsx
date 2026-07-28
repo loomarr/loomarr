@@ -59,6 +59,23 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
       },
     },
   });
+  // ⚠ THE CASE THIS WHOLE FEATURE EXISTS FOR (config-design §3.1). An operator puts a value
+  // in `.env` to get the app booting, reaches this step, and finds the field they need to
+  // correct is read-only — with no route forward but editing a file on the host and
+  // restarting. On an appliance-style install that is a dead end, so the wizard offers the
+  // same take-it-back affordance Settings does.
+  const envOverride = settingsApi.useSettingsEnvOverride({
+    mutation: {
+      onSuccess: async () => {
+        // Both, for the same reason the patch above refreshes both: taking a key back can
+        // change the resolved value, and a resolved value can flip a check.
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
+        ]);
+      },
+    },
+  });
   const runTest = settingsApi.useSetupTest();
 
   const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
@@ -152,6 +169,7 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
                   values={edits}
                   onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
                   results={patchResults}
+                  onEnvOverride={(key, enabled) => envOverride.mutate({ key, data: { enabled } })}
                 />
               )}
             </ConnectionBlock>

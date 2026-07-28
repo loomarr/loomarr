@@ -102,6 +102,8 @@ type Server struct {
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
+	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
+	playoutFont func() string
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -147,6 +149,11 @@ type SettingsService interface {
 	// clear, and the only way to unset a secret (config-design §8/§9). The result
 	// status maps to HTTP: invalid → 404, pinned → 409, saved → 204.
 	Clear(ctx context.Context, key string) SettingResult
+	// SetEnvOverride takes a key back from the environment, or hands it back
+	// (config-design §3.1). Status maps to HTTP: unknown → 404, not_pinned → 409,
+	// applied → 204. updatedBy is the admin's id, so the field's existing
+	// "changed by … · when" line reports who overrode the deploy config.
+	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
 	// RegenerateSecret rotates a generated secret and returns the new value if it
@@ -178,6 +185,9 @@ type SettingEntry struct {
 	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
 	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
 	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
 	Advanced    bool                `json:"advanced"`
 	Secret      bool                `json:"secret"`
 	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
@@ -482,6 +492,11 @@ type Options struct {
 	PlayoutEncoder PlayoutEncoder
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
+	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
+	// (filesystem + ffmpeg build), so it is injected like PlayoutSecret rather than resolved
+	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
+	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
+	PlayoutFont func() string
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

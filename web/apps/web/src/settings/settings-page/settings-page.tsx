@@ -44,6 +44,22 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
       },
     },
   });
+  // Taking a key back from the environment (config-design §3.1). One of §9's inline-commit
+  // verbs: it commits immediately rather than staging into the save buffer, because it
+  // changes WHO MANAGES the key rather than its value — and a field that stayed locked until
+  // Save could not be edited to produce something to save.
+  const envOverride = settingsApi.useSettingsEnvOverride({
+    mutation: {
+      onSuccess: async () => {
+        // Re-read: the claim changes provenance and lock state for that key, and unlocking
+        // seeds a stored value the field must now render.
+        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+      },
+    },
+  });
+  const onEnvOverride = (key: string, enabled: boolean) => {
+    envOverride.mutate({ key, data: { enabled } });
+  };
   const runTest = settingsApi.useSetupTest();
   // Standing verdicts for connection blocks — only fetched when a block needs one (a page
   // with no checks doesn't probe). The page reports each block's status without a click.
@@ -150,6 +166,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                       values={edits}
                       onChange={setEdit}
                       results={results}
+                      onEnvOverride={onEnvOverride}
                     />
                   </ConnectionBlock>
                 );
@@ -168,6 +185,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
                 values={edits}
                 onChange={setEdit}
                 results={results}
+                onEnvOverride={onEnvOverride}
               />
             </section>
           ))}

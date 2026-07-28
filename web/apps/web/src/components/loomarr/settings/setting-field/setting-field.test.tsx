@@ -45,6 +45,104 @@ describe("SettingField", () => {
     expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
   });
 
+  // The unlock (config-design §3.1). The dead end this closes: a pinned field is read-only,
+  // and before 3.1 the only route forward was editing a file on the host and restarting.
+
+  it("offers no way out when the surface supplies no handler", () => {
+    // A read-only context keeps the pre-3.1 behaviour exactly — a plain lock, no affordance.
+    render(
+      <SettingField
+        entry={entry({ provenance: "env", envPinnable: true })}
+        value="http://x"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
+    // The chip is still just a chip — not a button that would do nothing.
+    expect(screen.queryByRole("button", { name: /unlock library url/i })).not.toBeInTheDocument();
+  });
+
+  // Clicking the LOCK is the unlock: the chip explains why the field is read-only, so the way
+  // out belongs on it rather than on a separate control somewhere else in the row.
+  it("unlocks by clicking the lock itself", async () => {
+    const onEnvOverride = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ provenance: "env", envPinnable: true, envVar: "LIBRARY_URL" })}
+        value="http://x"
+        onChange={vi.fn()}
+        onEnvOverride={onEnvOverride}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /unlock library url/i }));
+    expect(onEnvOverride).toHaveBeenCalledWith(true);
+  });
+
+  // The visible chip text is the STATE ("set via environment"); the ACTION lives in the
+  // accessible name, or a screen-reader user hears "set via environment, button" and has to
+  // guess what pressing it does. The name also says which variable is in play.
+  it("names the action and the variable for assistive tech, and is keyboard-reachable", async () => {
+    const onEnvOverride = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ provenance: "env", envPinnable: true, envVar: "LIBRARY_URL" })}
+        value="http://x"
+        onChange={vi.fn()}
+        onEnvOverride={onEnvOverride}
+      />,
+    );
+    const lock = screen.getByRole("button", {
+      name: /unlock library url to edit it here — currently set by LIBRARY_URL/i,
+    });
+    lock.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onEnvOverride).toHaveBeenCalledWith(true);
+  });
+
+  // ⚠ An unlocked key resolves as `db` while its variable is still SET, so the field must be
+  // editable AND still say what it is overriding. "set via environment" here would contradict
+  // an enabled input; a bare db chip would imply the variable was never set at all.
+  it("an overriding field is editable and names the variable it overrides", () => {
+    render(
+      <SettingField
+        entry={entry({ provenance: "db", envPinnable: true, envOverride: true, envVar: "LIBRARY_URL" })}
+        value="http://x"
+        onChange={vi.fn()}
+        onEnvOverride={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Library URL")).not.toBeDisabled();
+    expect(screen.getByText(/overriding LIBRARY_URL/i)).toBeInTheDocument();
+    expect(screen.queryByText(/set via environment/i)).not.toBeInTheDocument();
+  });
+
+  it("hands an overriding key back to the environment", async () => {
+    const onEnvOverride = vi.fn();
+    render(
+      <SettingField
+        entry={entry({ provenance: "db", envPinnable: true, envOverride: true, envVar: "LIBRARY_URL" })}
+        value="http://x"
+        onChange={vi.fn()}
+        onEnvOverride={onEnvOverride}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /hand library url back to LIBRARY_URL/i }));
+    // false, not true: a toggle that always claimed would make the control one-way.
+    expect(onEnvOverride).toHaveBeenCalledWith(false);
+  });
+
+  it("does not offer the unlock on a key the environment never set", () => {
+    render(
+      <SettingField
+        entry={entry({ provenance: "db" })}
+        value="http://x"
+        onChange={vi.fn()}
+        onEnvOverride={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /unlock/i })).not.toBeInTheDocument();
+  });
+
   it("masks a stored secret until the operator chooses to replace it", async () => {
     const onChange = vi.fn();
     render(

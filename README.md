@@ -24,7 +24,7 @@ Distroless, non-root, cgo-free (~8 MB image). Full rationale in [`docs/design.md
 
 ## Develop
 
-Requires Go 1.26+, Node 20+, Docker (from Phase 4 for Postgres testcontainers).
+Requires Go 1.26+, Node 22.5+, `ffmpeg`/`ffprobe` on PATH, Docker (from Phase 4 for Postgres testcontainers).
 
 ```bash
 make check      # fmt + vet + lint + unit tests  (the default gate)

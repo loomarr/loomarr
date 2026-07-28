@@ -680,6 +680,21 @@ playout. It is described in §11 alongside the credential paths rather than left
    previous "two tags, one binary" split — a 31 MB default plus a 549 MB `loomarr:filler` — collapses
    into one 549 MB image. An 18× increase in the default download, accepted because a playout-capable
    Loomarr without an encoder is not a coherent artifact.
+
+   ⚠ **"ffmpeg is present" is not one fact — capability is per BUILD, and the build is the only
+   honest source.** The image controls its own ffmpeg; a developer running the binary on a host
+   does not, and distro/Homebrew bottles differ in which *optional* pieces they carry. The
+   detector already takes this seriously for encoders (`listEncoders` asks the binary rather than
+   inferring from hardware). **The same rule binds every optional filter, and `drawtext` is one:**
+   it needs libfreetype at compile time (plus libharfbuzz on ffmpeg 8), and a build without it
+   rejects the filter at graph-init with *"Filter not found"* — the encode exits 8 and the channel
+   is dead. Font *discovery* cannot answer this: the card code asked only "is there a font file?",
+   which on macOS is yes (Arial ships with the OS) while the Homebrew bottle carries no freetype
+   — so every offline card died on a machine that looked correctly provisioned. **The contract is
+   that a card degrades to an unlabelled colour field, never to a dead channel**, so text is
+   probed like an encoder and an unprobeable ffmpeg resolves to *unlabelled*, never to an assumed
+   yes. This is a Linux/macOS parity requirement, not a macOS workaround — a minimal Linux ffmpeg
+   fails identically.
 2. **`ffprobe` returns.** §16 excluded it on the grounds that *"Loomarr never probes media — Tunarr
    assigns duration during its `local`-source scan."* Once Loomarr owns playout it owns duration, so
    the premise no longer holds. This is the second reversal in this section; both follow from the

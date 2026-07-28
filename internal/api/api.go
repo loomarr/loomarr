@@ -83,7 +83,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
-		playoutGuide: opts.PlayoutGuide,
+		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
