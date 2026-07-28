@@ -70,4 +70,45 @@ const deriveStepStatuses = (ctx: {
 const firstIncompleteStep = (ctx: { checks: SetupCheck[]; isAuthenticated: boolean }): string =>
   WIZARD_STEPS.find((s) => !s.optional && !isStepDone(s.id, ctx))?.id ?? "channel";
 
-export { deriveStepStatuses, firstIncompleteStep, isStepDone, REQUIRED_CHECKS, WIZARD_STEPS };
+// Where a `?step=` link actually lands (§13 deep links).
+//
+// ⚠ THE URL IS A REQUEST, NOT A LOCATION — server truth still decides. A link is written by
+// whoever pastes it and read whenever someone clicks it, so it can easily name a step the
+// operator cannot yet complete (`?step=users` before an admin account exists). Honouring it
+// verbatim would STRAND them: the wizard offers only Back/Continue, the rail is not
+// clickable, and Continue on an unmet required step is disabled — a screen with no way
+// forward. This is the same reasoning SKIPPABLE encodes in the route.
+//
+// So a request beyond the frontier clamps to the frontier. Anything at or before it is
+// honoured, which is what makes a link to an EARLIER step (the support case — "open your
+// Connections step") work, and what lets the operator move back and forth.
+//
+// An unknown id falls through to the frontier too, so a stale link from an older release
+// lands somewhere real rather than on a blank screen — the narrowing `?tab=` already uses.
+const resolveStep = (
+  requested: string | undefined,
+  ctx: { checks: SetupCheck[]; isAuthenticated: boolean },
+): string => {
+  const frontier = firstIncompleteStep(ctx);
+  if (!requested) return frontier;
+  const wanted = WIZARD_STEPS.findIndex((s) => s.id === requested);
+  if (wanted === -1) return frontier;
+  const limit = WIZARD_STEPS.findIndex((s) => s.id === frontier);
+  return wanted <= limit ? requested : frontier;
+};
+
+// The connection sub-item a `?conn=` link may reveal (§13). Constrained to the Connections
+// step's OWN sub-items so a link cannot open a block that does not exist on that step;
+// anything else falls back to the default the step opens with.
+const isConnectionId = (id: string | undefined): boolean =>
+  WIZARD_STEPS.find((s) => s.id === "checklist")?.subItems?.some((i) => i.id === id) ?? false;
+
+export {
+  deriveStepStatuses,
+  firstIncompleteStep,
+  isConnectionId,
+  isStepDone,
+  REQUIRED_CHECKS,
+  resolveStep,
+  WIZARD_STEPS,
+};
