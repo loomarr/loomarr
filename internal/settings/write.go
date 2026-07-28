@@ -12,6 +12,72 @@ type Persister interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// EnvOverrideSetter is the write half for §3.1's unlock. Separate from Persister because
+// it writes AUTHORITY over a key rather than a value, and the two must not be conflated:
+// an ordinary save must never disturb the claim.
+type EnvOverrideSetter interface {
+	SetEnvOverride(ctx context.Context, key string, on bool, seed, by string) error
+}
+
+// EnvOverrideStatus is the outcome of claiming a key or handing it back (§3.1).
+type EnvOverrideStatus string
+
+const (
+	EnvOverrideApplied EnvOverrideStatus = "applied"
+	EnvOverrideUnknown EnvOverrideStatus = "unknown"
+	// EnvOverrideNotPinned: asked to unlock a key the environment does not pin. Refused
+	// rather than silently accepted — it would store a claim over nothing, and the field
+	// would then advertise "overriding X" about a variable that was never set.
+	EnvOverrideNotPinned EnvOverrideStatus = "not_pinned"
+)
+
+// SetEnvOverride takes a key back from the environment, or hands it back (config-design §3.1).
+//
+// Unlocking SEEDS the stored value from the env value it is taking over, so the act transfers
+// authority without changing what the app is doing: an operator correcting one character of a
+// URL must not knock the service offline the moment they click unlock. The value changes on
+// their next save, deliberately.
+//
+// ⚠ A SECRET NEVER SEEDS. Copying a credential out of the environment into the database would
+// put it in every §16 backup — a security change wearing a convenience's clothes. An unlocked
+// secret is simply unset, and the operator enters one through the §4 replace-only flow.
+//
+// Bootstrap keys (DATABASE_URL, LISTEN_ADDR, …) are not in the registry at all, so they fall
+// out here as `unknown`: they are read before the database opens, and a flag stored in that
+// database could not affect them. Refusing beats accepting a write that does nothing.
+func (s *Service) SetEnvOverride(
+	ctx context.Context, w EnvOverrideSetter, key string, on bool, updatedBy string,
+) (EnvOverrideStatus, error) {
+	set, ok := s.reg.Get(key)
+	if !ok {
+		return EnvOverrideUnknown, nil
+	}
+
+	var seed string
+	if on {
+		raw, pinned, err := s.envValue(set)
+		if err != nil || !pinned || raw == "" {
+			// Not actually pinned (or an unreadable *_FILE): nothing to take over. The
+			// empty-is-unset rule (§3) applies here exactly as it does in resolution, so
+			// `SEERR_URL=` is not something an operator can claim.
+			return EnvOverrideNotPinned, nil
+		}
+		if !set.IsSecret() {
+			seed = raw
+		}
+	}
+
+	if err := w.SetEnvOverride(ctx, key, on, seed, updatedBy); err != nil {
+		return "", err
+	}
+	// Reload so the claim hot-applies; without this the next read still resolves to env
+	// and the unlock looks like it did nothing until a restart.
+	if err := s.reload(ctx); err != nil {
+		return "", err
+	}
+	return EnvOverrideApplied, nil
+}
+
 // PatchStatus is one key's PATCH outcome (config-design §8).
 type PatchStatus string
 
@@ -143,7 +209,15 @@ func (s *Service) reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The env-override set is refreshed on the SAME path as the values (§3.1). Reloading
+	// one without the other would leave a just-unlocked key resolving to env until the
+	// next restart — the hot-apply gap that makes an unlock look like it did nothing.
+	unlocked, err := loadUnlocked(ctx, s.loader)
+	if err != nil {
+		return err
+	}
 	s.SetDB(db)
+	s.setUnlocked(unlocked)
 	return nil
 }
 

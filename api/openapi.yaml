@@ -2672,6 +2672,15 @@ components:
           type:
             - array
             - "null"
+        envOverride:
+          description: "An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."
+          type: boolean
+        envPinnable:
+          description: The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride.
+          type: boolean
+        envVar:
+          description: The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back.
+          type: string
         group:
           type: string
         key:
@@ -2751,6 +2760,22 @@ components:
       required:
         - key
         - status
+      type: object
+    SettingsEnvOverrideInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SettingsEnvOverrideInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          description: true takes the key back from the environment; false hands it back (the stored value is kept either way).
+          type: boolean
+      required:
+        - enabled
       type: object
     SettingsListOutputBody:
       additionalProperties: false
@@ -4578,6 +4603,36 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Clear a setting
+      tags:
+        - settings
+  /v1/settings/{key}/env-override:
+    put:
+      description: Admin only. Sets or clears the durable claim that this key is app-managed even though its environment variable is set (config-design §3.1). Unlocking seeds the stored value from the env value it takes over, so nothing changes until the operator saves; a secret never seeds. 404 unknown key (bootstrap keys are not in the registry), 409 when the environment does not pin the key.
+      operationId: settings-env-override
+      parameters:
+        - description: Registry key, e.g. seerr.url.
+          in: path
+          name: key
+          required: true
+          schema:
+            description: Registry key, e.g. seerr.url.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsEnvOverrideInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Take a setting back from the environment
       tags:
         - settings
   /v1/setup/bootstrap:

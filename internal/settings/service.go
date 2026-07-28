@@ -28,6 +28,11 @@ type Resolved struct {
 	Value      any
 	Provenance Provenance
 	Caution    bool // a db value failed to parse and self-healed to default (§3)
+	// EnvOverride: this key was taken back from the environment (§3.1), so the env var is
+	// set but deliberately not winning. Reported ALONGSIDE Provenance rather than as a
+	// fourth provenance value: such a key resolves honestly to `db`, and the UI needs both
+	// facts to say "overriding SEERR_URL" instead of implying the variable is unset.
+	EnvOverride bool
 }
 
 // Loader reads persisted overrides. The store implements it (accept-interfaces
@@ -36,6 +41,17 @@ type Resolved struct {
 type Loader interface {
 	Load(ctx context.Context, key string) (value string, ok bool, err error)
 	LoadAll(ctx context.Context) (map[string]string, error)
+}
+
+// EnvOverrideLoader is an OPTIONAL Loader capability: the set of keys an admin has taken
+// back from the environment (config-design §3.1).
+//
+// Optional rather than folded into Loader so a loader that knows nothing about unlocking —
+// every in-memory test double, and any future source that has no such concept — keeps the
+// original contract exactly: no overrides, env always wins. A Loader that does not implement
+// this is not broken, it simply never unlocks anything.
+type EnvOverrideLoader interface {
+	LoadEnvOverrides(ctx context.Context) (map[string]bool, error)
 }
 
 // Change is emitted on Watch channels when a watched key's value changes, so
@@ -58,9 +74,22 @@ type Service struct {
 	// tested without touching the filesystem. nil ⇒ the real os.Stat probe.
 	execProbe func(path string) bool
 
-	mu       sync.RWMutex
-	db       map[string]string // persisted overrides (raw strings)
+	mu sync.RWMutex
+	db map[string]string // persisted overrides (raw strings)
+	// unlocked holds the keys taken back from the environment (§3.1). Only true entries
+	// are present, so a missing key means "env still wins" — the default and the norm.
+	unlocked map[string]bool
 	watchers map[string][]chan Change
+}
+
+// loadUnlocked reads the env-override set when the loader supports it (§3.1). A loader
+// without the capability yields an empty set, which is the pre-3.1 contract.
+func loadUnlocked(ctx context.Context, loader Loader) (map[string]bool, error) {
+	el, ok := loader.(EnvOverrideLoader)
+	if !ok {
+		return map[string]bool{}, nil
+	}
+	return el.LoadEnvOverrides(ctx)
 }
 
 // New builds a Service over the registry, loading the current db overrides and
@@ -103,6 +132,11 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 		return nil, fmt.Errorf("load settings overrides: %w", err)
 	}
 	s.db = db
+	unlocked, err := loadUnlocked(ctx, loader)
+	if err != nil {
+		return nil, fmt.Errorf("load settings env overrides: %w", err)
+	}
+	s.unlocked = unlocked
 	return s, nil
 }
 
@@ -147,6 +181,25 @@ func (s *Service) envRaw(set Setting) (string, bool, error) {
 	default:
 		return "", false, nil
 	}
+}
+
+// setUnlocked replaces the env-override snapshot after a write (§3.1 hot-apply).
+//
+// Deliberately does NOT emit Change events. A Change means "this key's VALUE moved, rebuild
+// what you built from it", and unlocking alone does not move a value — it seeds the store
+// with the env value it is taking over, so the resolved answer is identical either side of
+// the claim. The value write that follows emits its own Change through SetDB.
+func (s *Service) setUnlocked(next map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unlocked = next
+}
+
+// IsUnlocked reports whether a key has been taken back from the environment (§3.1).
+func (s *Service) IsUnlocked(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.unlocked[key]
 }
 
 // SetDB replaces the in-memory override snapshot after a write (hot-apply), and

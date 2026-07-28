@@ -145,10 +145,13 @@ type SettingRow struct {
 	Value     string
 	UpdatedAt time.Time
 	UpdatedBy string // "" ⇒ NULL (no human author)
+	// EnvOverride marks a key an admin has taken back from the environment
+	// (config-design §3.1): while true, this stored value wins over the env var.
+	EnvOverride bool
 }
 
 func (s *sqlStore) ListSettings(ctx context.Context) ([]SettingRow, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value, updated_at, updated_by FROM settings`)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value, updated_at, updated_by, env_override FROM settings`)
 	if err != nil {
 		return nil, fmt.Errorf("list settings: %w", err)
 	}
@@ -160,7 +163,7 @@ func (s *sqlStore) ListSettings(ctx context.Context) ([]SettingRow, error) {
 			epoch int64
 			by    sql.NullString
 		)
-		if err := rows.Scan(&r.Key, &r.Value, &epoch, &by); err != nil {
+		if err := rows.Scan(&r.Key, &r.Value, &epoch, &by, &r.EnvOverride); err != nil {
 			return nil, fmt.Errorf("scan setting: %w", err)
 		}
 		if epoch > 0 {
@@ -183,10 +186,34 @@ func (s *sqlStore) UpsertSetting(ctx context.Context, row SettingRow) error {
 	if at.IsZero() {
 		at = time.Now()
 	}
+	// ⚠ env_override is deliberately ABSENT from the DO UPDATE list. It is a property of
+	// who controls the key, not of the value, and an ordinary save must not disturb it —
+	// listing it here would silently re-lock an unlocked key on the operator's very next
+	// edit, which is the one moment they are certain to be editing it. SetSettingEnvOverride
+	// is the only writer. On INSERT it takes the column default (false), so a first-time
+	// value write never claims the key either.
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
 		row.Key, row.Value, at.Unix(), by)
+	return err
+}
+
+// SetSettingEnvOverride claims a key for the app, or hands it back (config-design §3.1).
+//
+// Separate from UpsertSetting because the two answer different questions: that one writes a
+// value, this one writes who is in charge of it. The row is created if absent — a key can be
+// env-pinned with nothing stored, and unlocking it is exactly the case where that happens.
+// Handing a key back leaves the stored value intact, so re-locking is reversible.
+func (s *sqlStore) SetSettingEnvOverride(ctx context.Context, key string, on bool, seed string, by string) error {
+	var author any
+	if by != "" {
+		author = by
+	}
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO settings (key, value, updated_at, updated_by, env_override) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(key) DO UPDATE SET env_override=excluded.env_override, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
+		key, seed, time.Now().Unix(), author, on)
 	return err
 }
 

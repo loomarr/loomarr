@@ -951,6 +951,68 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 			t.Errorf("upsert did not overwrite audit: %+v", r)
 		}
 	}
+	// --- the env-override claim (config-design §3.1), one suite both backends ---
+	//
+	// ⚠ The bug this guards: env_override must NOT be in UpsertSetting's DO UPDATE list.
+	// If it were, an ordinary save would silently re-lock a key the operator had just
+	// unlocked — at the exact moment they are certain to be editing it.
+	if err := s.SetSettingEnvOverride(ctx, "library.url", true, "http://seed:8096", "matt"); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = s.ListSettings(ctx)
+	got = map[string]SettingRow{}
+	for _, r := range rows {
+		got[r.Key] = r
+	}
+	if r := got["library.url"]; !r.EnvOverride {
+		t.Errorf("claim not persisted: %+v", r)
+	}
+	// A plain value save must leave the claim standing.
+	if err := s.UpsertSetting(ctx, SettingRow{Key: "library.url", Value: "http://edited:8096", UpdatedAt: later, UpdatedBy: "ana"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = s.ListSettings(ctx)
+	for _, r := range rows {
+		if r.Key == "library.url" {
+			if !r.EnvOverride {
+				t.Error("an ordinary save cleared the env-override claim — the key silently re-locked")
+			}
+			if r.Value != "http://edited:8096" {
+				t.Errorf("value did not save alongside the claim: %+v", r)
+			}
+		}
+	}
+	// Seeding only applies when the row is absent; an existing value is never clobbered.
+	if err := s.SetSettingEnvOverride(ctx, "library.url", true, "http://should-not-apply:8096", "matt"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.GetSetting(ctx, "library.url"); v != "http://edited:8096" {
+		t.Errorf("re-claiming overwrote the stored value with the seed: %q", v)
+	}
+	// Handing the key back keeps the value, so the round trip loses nothing.
+	if err := s.SetSettingEnvOverride(ctx, "library.url", false, "", "matt"); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = s.ListSettings(ctx)
+	for _, r := range rows {
+		if r.Key == "library.url" {
+			if r.EnvOverride {
+				t.Error("claim not cleared on re-lock")
+			}
+			if r.Value != "http://edited:8096" {
+				t.Errorf("re-lock discarded the stored value: %+v", r)
+			}
+		}
+	}
+	// Claiming a key with NO existing row creates one carrying the seed — the ordinary
+	// unlock case, since an env-pinned key usually has nothing stored.
+	if err := s.SetSettingEnvOverride(ctx, "seerr.url", true, "http://seerr:5055", "matt"); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := s.GetSetting(ctx, "seerr.url"); err != nil || v != "http://seerr:5055" {
+		t.Errorf("unlock did not seed a new row: %q %v", v, err)
+	}
+
 	// Delete reverts the key (config-design §9).
 	if err := s.DeleteSetting(ctx, "library.url"); err != nil {
 		t.Fatal(err)

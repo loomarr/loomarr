@@ -19,6 +19,9 @@ type fakeSettings struct {
 	regen    string // last regenerated secret name
 	revealed string // last revealed secret name
 	cleared  string // last key passed to Clear
+
+	envOverride   string // last key passed to SetEnvOverride (§3.1)
+	envOverrideOn bool   // whether that call claimed the key or handed it back
 }
 
 func (f *fakeSettings) List(context.Context) []api.SettingEntry {
@@ -40,6 +43,22 @@ func (f *fakeSettings) Clear(_ context.Context, key string) api.SettingResult {
 		return api.SettingResult{Key: key, Status: "pinned", Problem: "set via environment"}
 	}
 	return api.SettingResult{Key: key, Status: "saved"}
+}
+
+// SetEnvOverride scripts §3.1's three outcomes: an unregistered key (bootstrap keys
+// included) → unknown (404), a key the environment does not pin → not_pinned (409),
+// otherwise applied (204).
+func (f *fakeSettings) SetEnvOverride(_ context.Context, key string, on bool, _ string) api.SettingResult {
+	f.envOverride = key
+	f.envOverrideOn = on
+	switch key {
+	case "nope.missing":
+		return api.SettingResult{Key: key, Status: "unknown"}
+	case "library.url":
+		// Provenance "db" in the fixture above — nothing in the environment to take back.
+		return api.SettingResult{Key: key, Status: "not_pinned"}
+	}
+	return api.SettingResult{Key: key, Status: "applied"}
 }
 
 func (f *fakeSettings) Patch(_ context.Context, edits map[string]string, by string) []api.SettingResult {
@@ -115,6 +134,9 @@ func TestSettings_RequireAdmin(t *testing.T) {
 		{http.MethodDelete, "/v1/settings/library.token", ""},
 		{http.MethodGet, "/v1/settings/secrets/api_token", ""},
 		{http.MethodPost, "/v1/settings/secrets/api_token/regenerate", ""},
+		// §3.1's unlock is the one control that overrides the deploy config, so the §19
+		// negative matters more here than anywhere else on this surface.
+		{http.MethodPut, "/v1/settings/seerr.url/env-override", `{"enabled":true}`},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // empty token → not admin
 		if resp.StatusCode != http.StatusForbidden {
@@ -226,6 +248,43 @@ func TestSettings_ClearOutcomes(t *testing.T) {
 			}
 			if fs.cleared != tc.key {
 				t.Errorf("service saw key %q, want %q", fs.cleared, tc.key)
+			}
+		})
+	}
+}
+
+// PUT /v1/settings/{key}/env-override is §3.1's unlock: the three service outcomes map to
+// HTTP, and the claim direction reaches the service verbatim.
+func TestSettings_EnvOverrideOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name, key string
+		enabled   bool
+		want      int
+	}{
+		{"takes a pinned key back", "job.workers", true, http.StatusNoContent},
+		{"hands a key back", "job.workers", false, http.StatusNoContent},
+		// Bootstrap keys (DATABASE_URL et al) arrive here as unknown: they are read before
+		// the database opens, so a flag stored IN that database could not affect them.
+		{"unknown key", "nope.missing", true, http.StatusNotFound},
+		{"nothing in the environment to take over", "library.url", true, http.StatusConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, fs := newSettingsServer(t)
+			body := `{"enabled":false}`
+			if tc.enabled {
+				body = `{"enabled":true}`
+			}
+			resp := do(t, srv, http.MethodPut, "/v1/settings/"+tc.key+"/env-override", adminToken, body)
+			if resp.StatusCode != tc.want {
+				t.Errorf("PUT %s → %d, want %d", tc.key, resp.StatusCode, tc.want)
+			}
+			if fs.envOverride != tc.key {
+				t.Errorf("service saw key %q, want %q", fs.envOverride, tc.key)
+			}
+			// The direction is load-bearing: a lock arriving as an unlock would silently do
+			// the opposite of what the operator clicked.
+			if fs.envOverrideOn != tc.enabled {
+				t.Errorf("service saw enabled=%v, want %v", fs.envOverrideOn, tc.enabled)
 			}
 		})
 	}

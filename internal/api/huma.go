@@ -149,6 +149,11 @@ type SettingsService interface {
 	// clear, and the only way to unset a secret (config-design §8/§9). The result
 	// status maps to HTTP: invalid → 404, pinned → 409, saved → 204.
 	Clear(ctx context.Context, key string) SettingResult
+	// SetEnvOverride takes a key back from the environment, or hands it back
+	// (config-design §3.1). Status maps to HTTP: unknown → 404, not_pinned → 409,
+	// applied → 204. updatedBy is the admin's id, so the field's existing
+	// "changed by … · when" line reports who overrode the deploy config.
+	SetEnvOverride(ctx context.Context, key string, on bool, updatedBy string) SettingResult
 	// Features returns the computed feature availability (config-design §7).
 	Features(ctx context.Context) map[string]bool
 	// RegenerateSecret rotates a generated secret and returns the new value if it
@@ -180,6 +185,9 @@ type SettingEntry struct {
 	Preview     string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
 	Provenance  string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
 	Caution     bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
+	EnvPinnable bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`
+	EnvOverride bool                `json:"envOverride,omitempty" doc:"An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."`
+	EnvVar      string              `json:"envVar,omitempty" doc:"The environment variable that pins (or would pin) this key — named so the UI can tell the operator exactly what it is overriding, and what to unset to hand it back."`
 	Advanced    bool                `json:"advanced"`
 	Secret      bool                `json:"secret"`
 	Enum        []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`

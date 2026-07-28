@@ -9,6 +9,8 @@ type SettingRow struct {
 	Key       string
 	Value     string
 	UpdatedBy string
+	// EnvOverride: this key has been taken back from the environment (§3.1).
+	EnvOverride bool
 }
 
 // RowLister is the store capability the loader needs: list every persisted
@@ -35,6 +37,23 @@ func (l StoreLoader) LoadAll(ctx context.Context) (map[string]string, error) {
 	out := make(map[string]string, len(rows))
 	for _, r := range rows {
 		out[r.Key] = r.Value
+	}
+	return out, nil
+}
+
+// LoadEnvOverrides implements EnvOverrideLoader: the set of keys an admin has taken back
+// from the environment (§3.1). Only true entries are returned — absence is the default and
+// the overwhelmingly common case, so a map of every key mapped to false would be noise.
+func (l StoreLoader) LoadEnvOverrides(ctx context.Context) (map[string]bool, error) {
+	rows, err := l.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, r := range rows {
+		if r.EnvOverride {
+			out[r.Key] = true
+		}
 	}
 	return out, nil
 }

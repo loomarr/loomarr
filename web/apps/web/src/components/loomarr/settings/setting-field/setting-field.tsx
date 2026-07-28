@@ -1,6 +1,6 @@
 import { SettingEntryProvenance, SettingResultStatus } from "@loomarr/api";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core";
-import { Lock, TriangleAlert } from "lucide-react";
+import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import {
   Badge,
@@ -36,11 +36,19 @@ const SettingField = ({
   result,
   compact,
   labelledBy,
+  onEnvOverride,
   className,
 }: SettingFieldProps) => {
   const [replacing, setReplacing] = useState(false);
   const id = `setting-${entry.key}`;
+  // `pinned` is the LOCK STATE, which is no longer the same question as "is this env's key".
+  // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
+  // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
+  const overriding = entry.envOverride === true;
+  // Offer the affordance only where it can actually do something: the environment must set
+  // the key, and the surface must have supplied a handler.
+  const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
   // Compact mode renders no doc element, so pointing at one would be a dangling reference.
   const describedBy = compact ? undefined : `${id}-doc`;
@@ -124,12 +132,57 @@ const SettingField = ({
             so the form isn't a wall of helper paragraphs. It stays programmatically associated
             via the sr-only doc below (aria-describedby), so screen readers still get it. */}
         {entry.doc && <FieldHelp label={humanizeSettingKey(entry.key)}>{entry.doc}</FieldHelp>}
-        {pinned && (
-          <Badge className="gap-1">
-            <Lock className="size-3" aria-hidden />
-            set via environment
-          </Badge>
-        )}
+        {/* THE LOCK IS THE CONTROL (config-design §3.1). The chip already says why the field
+            is read-only, so hanging a separate "unlock" button beside it would put the
+            explanation and the way out in two places — the operator reads "set via
+            environment", and the thing to click is somewhere else. Clicking the lock opens
+            it; clicking the open lock hands the key back.
+
+            Still a plain Badge when no handler is supplied: a read-only surface keeps the
+            pre-3.1 chip exactly, rather than rendering a button that does nothing. */}
+        {pinned &&
+          (canUnlock ? (
+            <button
+              type="button"
+              onClick={() => onEnvOverride(true)}
+              // The visible text is the STATE; the action belongs in the accessible name, or
+              // a screen-reader user hears "set via environment, button" and has to guess.
+              aria-label={`Unlock ${humanizeSettingKey(entry.key)} to edit it here — currently set by ${entry.envVar ?? "the environment"}`}
+              className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
+            >
+              <Badge className="gap-1">
+                <Lock className="size-3" aria-hidden />
+                set via environment
+              </Badge>
+            </button>
+          ) : (
+            <Badge className="gap-1">
+              <Lock className="size-3" aria-hidden />
+              set via environment
+            </Badge>
+          ))}
+        {/* Overriding is a DIFFERENT state from both locked and ordinary-db, and it names the
+            variable: "set via environment" on an editable field would contradict itself, and a
+            bare `db` chip would imply the environment never mentioned this key. */}
+        {overriding &&
+          (canUnlock ? (
+            <button
+              type="button"
+              onClick={() => onEnvOverride(false)}
+              aria-label={`Hand ${humanizeSettingKey(entry.key)} back to ${entry.envVar ?? "the environment"} — your saved value is kept`}
+              className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
+            >
+              <Badge variant="caution" className="gap-1">
+                <LockOpen className="size-3" aria-hidden />
+                overriding {entry.envVar ?? "the environment"}
+              </Badge>
+            </button>
+          ) : (
+            <Badge variant="caution" className="gap-1">
+              <LockOpen className="size-3" aria-hidden />
+              overriding {entry.envVar ?? "the environment"}
+            </Badge>
+          ))}
         {result?.status === SettingResultStatus.pinned && !pinned && (
           <Badge variant="caution">not saved — pinned</Badge>
         )}
