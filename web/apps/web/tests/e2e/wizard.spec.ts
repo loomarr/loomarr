@@ -34,19 +34,35 @@ test.describe("operator first-run wizard", () => {
     await page.getByRole("button", { name: /create admin/i }).click();
 
     // Bootstrap issues no session, so the step signs the new admin in for them.
-    await expect(page.getByRole("heading", { name: /connect your services/i })).toBeVisible();
+    // It lands on PLAYOUT, not Connections: which services are even required depends on who
+    // plays the channels (§9.1), so that question comes first.
+    await expect(page.getByRole("heading", { name: /how should loomarr play your channels/i })).toBeVisible();
     expect(backend.state.authed).toBe(true);
 
-    // --- step 2: connection checklist -------------------------------------------
-    await shot(page, "step-2-checklist", /connect your services/i);
+    // --- step 2: who plays the channels ------------------------------------------
+    // This mock backend is Tunarr-backed, so pick Tunarr and configure it right here — its
+    // form lives under the choice rather than in Connections.
+    await shot(page, "step-2-playout", /how should loomarr play your channels/i);
+    // ⚠ `.click()`, not `.check()`. The radio is CONTROLLED by the saved setting, so its
+    // checked state only flips once the PATCH round-trips and the settings query refetches.
+    // `.check()` asserts the state changed synchronously and fails on any controlled input
+    // whose source of truth is the server — which is exactly what this one is.
+    await page.getByRole("radio", { name: /^Tunarr/ }).click();
+    await expect(page.getByRole("radio", { name: /^Tunarr/ })).toBeChecked();
+    // The input specifically: the field also renders an "About Tunarr URL" help button.
+    await expect(page.getByRole("textbox", { name: "Tunarr URL" })).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    // --- step 3: connection checklist -------------------------------------------
+    await shot(page, "step-3-checklist", /connect your services/i);
     await page.getByRole("button", { name: "Continue" }).click();
 
     // (Neither a standalone "Live TV" step nor a "Webhooks" step: Live TV auto-wires on a
     // Connections save, and availability is polled — no inbound webhook to hand-shake. The
     // wizard goes straight from the checklist to the library step.)
 
-    // --- step 3: tunarr library --------------------------------------------------
-    await shot(page, "step-3-library", /give tunarr your library/i);
+    // --- step 4: tunarr library --------------------------------------------------
+    await shot(page, "step-4-library", /give tunarr your library/i);
     await page.getByRole("button", { name: /wire tunarr to your library/i }).click();
     await expect(page.getByRole("button", { name: /run again/i })).toBeVisible();
     expect(backend.state.checks.tunarr_library).toBe(true);
@@ -55,7 +71,7 @@ test.describe("operator first-run wizard", () => {
     // --- step 4: import users -----------------------------------------------------
     await expect(page.getByRole("heading", { name: /import media-server users/i })).toBeVisible();
     await page.getByLabel("Ada").check();
-    await shot(page, "step-4-users", /import media-server users/i);
+    await shot(page, "step-5-users", /import media-server users/i);
     await page.getByRole("button", { name: /^import/i }).click();
     // Only the picked account is allowlisted — signing in is not self-provisioning (§11).
     await expect(page.getByText("imported")).toBeVisible();
