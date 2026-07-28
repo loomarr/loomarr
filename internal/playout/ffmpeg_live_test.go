@@ -51,7 +51,11 @@ func TestLive_TestCardProducesValidMpegTsWithAudio(t *testing.T) {
 
 	p := DefaultProfile()
 	p.Width, p.Height = 640, 360 // small: this is about validity, not throughput
-	args := TestCardArgs(p, FindFont(), "Loomarr", "channel 1")
+	// CardFontFor, not FindFont: a font FILE is not enough, because drawtext is a compile-time
+	// option. Homebrew's ffmpeg carries no libfreetype while macOS ships Arial, so FindFont
+	// here produced `-vf drawtext=…` against a build that has no such filter — "Filter not
+	// found", exit 8, and this test failing for the same reason a real channel would go dead.
+	args := TestCardArgs(p, CardFontFor(bin)(), "Loomarr", "channel 1")
 	// Bound it and write to a file rather than the pipe the real thing uses.
 	args = replaceOutput(args, "-t", "2", out)
 

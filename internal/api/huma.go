@@ -102,6 +102,8 @@ type Server struct {
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
+	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
+	playoutFont func() string
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -482,6 +484,11 @@ type Options struct {
 	PlayoutEncoder PlayoutEncoder
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
+	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
+	// (filesystem + ffmpeg build), so it is injected like PlayoutSecret rather than resolved
+	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
+	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
+	PlayoutFont func() string
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

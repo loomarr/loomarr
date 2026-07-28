@@ -844,6 +844,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
 		PlayoutGuide:  playoutGuideSvc,
 		PlayoutSecret: playoutSecret,
+		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
+		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
+		// `-filters` exec happens on the first offline card and never again.
+		PlayoutFont: playout.CardFontFor(set.str("playout.ffmpeg_path")),
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {
