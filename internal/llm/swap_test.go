@@ -82,3 +82,57 @@ func TestSwappable_FullProviderSwap(t *testing.T) {
 func TestSwappable_IsProvider(t *testing.T) {
 	var _ Provider = NewSwappable(func(Selection) Provider { return stubProvider{} }, Selection{})
 }
+
+// warmSpy is a Provider that records Warm calls (§8.2).
+type warmSpy struct {
+	Provider
+	warmed int
+}
+
+func (w *warmSpy) Warm(context.Context) error { w.warmed++; return nil }
+
+// A Swappable forwards Warm to the ACTIVE provider when it supports preloading.
+func TestSwappable_WarmForwardsToActiveProvider(t *testing.T) {
+	spy := &warmSpy{Provider: &stubProvider{name: "ollama"}}
+	sw := NewSwappable(func(Selection) Provider { return spy }, Selection{Provider: "ollama"})
+
+	if err := sw.Warm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if spy.warmed != 1 {
+		t.Errorf("Warm calls = %d, want 1", spy.warmed)
+	}
+}
+
+// A provider that can't preload (any hosted endpoint — there is no residency to
+// manage) is a silent no-op, NOT an error. Returning one would make every caller
+// log a failure for the ordinary hosted case, training operators to ignore it.
+func TestSwappable_WarmIsNoOpForANonWarmerProvider(t *testing.T) {
+	sw := NewSwappable(
+		func(Selection) Provider { return &stubProvider{name: "openai"} },
+		Selection{Provider: "openai"},
+	)
+	if err := sw.Warm(context.Background()); err != nil {
+		t.Errorf("Warm on a non-Warmer provider should be a no-op, got %v", err)
+	}
+}
+
+// KeepAlive is part of the Selection, so a swap must CARRY it — a rebuild that
+// dropped it would silently revert to the 5-minute idle unload and quietly bring
+// the ~9s cold load back on the next run.
+func TestSwappable_SwapCarriesKeepAlive(t *testing.T) {
+	var got []string
+	sw := NewSwappable(func(sel Selection) Provider {
+		got = append(got, sel.KeepAlive)
+		return &stubProvider{name: "ollama"}
+	}, Selection{Provider: "ollama", Model: "a", KeepAlive: "30m"})
+
+	sw.SetModel("b") // the common local case: pick a different tag on the same host
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 builds (initial + swap), got %d", len(got))
+	}
+	if got[1] != "30m" {
+		t.Errorf("keep_alive after a model swap = %q, want %q", got[1], "30m")
+	}
+}

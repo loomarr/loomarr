@@ -14,6 +14,11 @@ type Selection struct {
 	URL      string // Ollama base, or the OpenAI-compatible base URL
 	Model    string // model tag / id
 	APIKey   string // hosted key; empty for local Ollama
+	// KeepAlive is the local model-residency hint (§8.2), e.g. "30m"; "" leaves the
+	// runtime's default and "0" unloads immediately. Part of the Selection because a
+	// rebuild must carry it — a swap that dropped it would silently revert to the
+	// 5-minute unload, and the cold-load cost would quietly come back.
+	KeepAlive string
 }
 
 // Swappable is a Provider whose underlying backend can change at runtime without
@@ -84,4 +89,24 @@ func (s *Swappable) Name() string {
 	return p.Name()
 }
 
-var _ Provider = (*Swappable)(nil)
+// Warm preloads the ACTIVE provider's model if that provider supports it (§8.2),
+// and is a no-op otherwise — so a hosted selection, which has no residency to
+// manage, silently does nothing rather than erroring.
+//
+// It reads the provider at call time, so a warm-up racing a Set warms whichever
+// selection is current: worst case it warms the outgoing model and the new one is
+// warmed by its own Set. That is a wasted load, never a wrong answer — Chat always
+// resolves the pointer independently.
+func (s *Swappable) Warm(ctx context.Context) error {
+	p := *s.current.Load()
+	w, ok := p.(Warmer)
+	if !ok {
+		return nil
+	}
+	return w.Warm(ctx)
+}
+
+var (
+	_ Provider = (*Swappable)(nil)
+	_ Warmer   = (*Swappable)(nil)
+)

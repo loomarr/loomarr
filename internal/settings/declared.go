@@ -269,6 +269,14 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
+			// Local-only (§8.2): a hosted service has no model to hold in memory, so this
+			// is hidden for the openai provider rather than shown as an inert control.
+			Key: "llm.keep_alive", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
+			Kind: KindDuration, Default: "30m", Advanced: true,
+			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster. Set to 0 to free the memory as soon as each request finishes.",
+			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
+		},
+		{
 			Key: "suggest.auto_approve", EnvVar: "SUGGEST_AUTO_APPROVE", Group: GroupAI,
 			Kind: KindBool, Default: false, Advanced: true,
 			Doc: "Automatically approve suggested downloads, with no review step. Off by default.",

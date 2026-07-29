@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { ErrorState, GenerationProgress, RefineReview } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
-import { useChannelRefine } from "@/suggest";
+import { useChannelRefine, useElapsed } from "@/suggest";
 import type { RefinePanelProps } from "./refine-panel.type";
 
 type PanelState = "idle" | "open" | "running" | "landed";
@@ -28,6 +28,7 @@ const RefinePanel = ({
   const [change, setChange] = useState("");
 
   const refine = useChannelRefine();
+  const elapsed = useElapsed(refine.isRunning);
 
   const close = () => {
     setState("idle");
@@ -129,7 +130,7 @@ const RefinePanel = ({
       {state === "running" && (
         <div className="flex flex-col gap-3">
           {refine.phase ? (
-            <GenerationProgress phase={refine.phase} />
+            <GenerationProgress phase={refine.phase} round={refine.round} elapsedSeconds={elapsed} />
           ) : (
             <p className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="size-4 animate-spin text-suggest-300" aria-hidden />

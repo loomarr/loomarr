@@ -18,10 +18,15 @@ import (
 type Ollama struct {
 	baseURL string
 	model   string
-	http    *http.Client
+	// keepAlive is the residency hint sent with every call (§8.2). Ollama accepts a
+	// duration string ("30m") or 0 to unload immediately; "" omits the field entirely,
+	// leaving Ollama's own 5-minute default.
+	keepAlive string
+	http      *http.Client
 }
 
-// NewOllama builds an Ollama provider. baseURL e.g. http://ollama:11434.
+// NewOllama builds an Ollama provider. baseURL e.g. http://ollama:11434. Residency
+// defaults to Ollama's own behavior; WithKeepAlive sets the §8.2 hint.
 func NewOllama(baseURL, model string) *Ollama {
 	if model == "" {
 		model = "llama3.1:8b"
@@ -31,6 +36,14 @@ func NewOllama(baseURL, model string) *Ollama {
 		model:   model,
 		http:    httpx.NewNamed("llm", httpx.TimeoutLLM),
 	}
+}
+
+// WithKeepAlive sets how long the model stays resident between calls (§8.2). An
+// empty string leaves Ollama's default (5m idle unload); "0" unloads immediately.
+// Returns the provider for chaining at construction.
+func (o *Ollama) WithKeepAlive(d string) *Ollama {
+	o.keepAlive = d
+	return o
 }
 
 func (o *Ollama) Name() string { return "ollama" }
@@ -55,6 +68,12 @@ type ollamaChatReq struct {
 	// tool results the model must ground against — set it explicitly. Omitted when
 	// empty so a zero-config call still works.
 	Options map[string]any `json:"options,omitempty"`
+	// KeepAlive is how long Ollama holds the model in VRAM after this call (§8.2).
+	// A string because Ollama accepts both a duration ("30m") and a bare number of
+	// seconds; omitted when empty so we inherit its 5-minute default rather than
+	// asserting one. This is the difference between a ~9s load and a ~0.5s answer on
+	// the next turn — including BETWEEN the rounds of one tool loop.
+	KeepAlive string `json:"keep_alive,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -93,11 +112,12 @@ type ollamaChatResp struct {
 // Chat implements Provider against Ollama /api/chat.
 func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error) {
 	req := ollamaChatReq{
-		Model:    o.model,
-		Stream:   false,
-		Messages: toOllamaMessages(messages),
-		Tools:    toOllamaTools(opts.Tools),
-		Options:  ollamaOptions(opts),
+		Model:     o.model,
+		Stream:    false,
+		Messages:  toOllamaMessages(messages),
+		Tools:     toOllamaTools(opts.Tools),
+		Options:   ollamaOptions(opts),
+		KeepAlive: o.keepAlive,
 	}
 	if opts.JSONMode {
 		req.Format = "json"
@@ -211,4 +231,44 @@ func fromOllamaToolCalls(tcs []ollamaToolCall) []ToolCall {
 	return out
 }
 
-var _ Provider = (*Ollama)(nil)
+// Warm asks Ollama to load the model into memory without generating anything
+// (§8.2). An /api/chat call with NO messages is Ollama's documented preload: it
+// resolves the model, loads the weights, and returns — so the next real call skips
+// the ~9s cold load that otherwise lands on whoever describes the first channel.
+//
+// The keep_alive hint rides along, which is what makes the warm-up outlive Ollama's
+// 5-minute idle unload; without it a preload at boot would have evaporated long
+// before anyone reached the suggest screen.
+//
+// Errors are returned for logging but are never fatal to a caller: a failed warm-up
+// costs latency, not correctness — the next Chat loads the model itself.
+func (o *Ollama) Warm(ctx context.Context) error {
+	body, err := json.Marshal(ollamaChatReq{
+		Model:     o.model,
+		Stream:    false,
+		KeepAlive: o.keepAlive,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal ollama warm request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/chat", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("ollama warm: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ollama warm: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+var (
+	_ Provider = (*Ollama)(nil)
+	_ Warmer   = (*Ollama)(nil)
+)

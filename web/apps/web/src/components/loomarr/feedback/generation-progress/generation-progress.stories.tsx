@@ -18,6 +18,9 @@ const Done: Story = { args: { phase: "done" } };
 const Failed: Story = {
   args: { phase: "failed", error: "The model returned no grounded candidates. Try a broader intent." },
 };
+// A slow run several passes in: the pass count and elapsed seconds are what distinguish
+// "the model is still working" from "this is stuck", which is the whole reason they exist.
+const SlowRun: Story = { args: { phase: "reasoning", round: 3, elapsedSeconds: 24 } };
 
 export default meta;
-export { Done, Failed, Reasoning, Scoring, Searching };
+export { Done, Failed, Reasoning, Scoring, Searching, SlowRun };

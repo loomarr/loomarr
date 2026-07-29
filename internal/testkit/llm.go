@@ -29,6 +29,14 @@ type LLM struct {
 	// "Source description: tunarr-local" (a provenance enum where a description
 	// belonged), which no assertion about outputs could ever have caught.
 	LastMessages []llm.Message
+	// OnChat fires at the START of each Chat call, before the scripted response is
+	// returned. It exists for assertions about WHEN something happened rather than
+	// what came back — chiefly that the suggester reports its progress phase BEFORE
+	// awaiting a model turn (§8), which no assertion over the final result can
+	// distinguish from reporting it after. Nil = no hook.
+	//
+	// Called while the mock's lock is NOT held, so a hook may re-enter the mock.
+	OnChat func()
 }
 
 // Prompt returns every message's content from the most recent Chat call, joined —
@@ -53,6 +61,9 @@ func NewLLM(responses ...llm.Response) *LLM {
 func (m *LLM) Name() string { return "mock" }
 
 func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
+	if m.OnChat != nil {
+		m.OnChat()
+	}
 	if m.Delay > 0 {
 		select {
 		case <-time.After(m.Delay):

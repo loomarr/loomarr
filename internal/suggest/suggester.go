@@ -153,9 +153,12 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		surfaced[k] = cand
 	}
 
-	// Surface progress (§8): searching now (the model is about to ground via the
-	// catalog tool), reasoning once it returns a final turn, scoring at assembly.
-	reportProgress(ctx, PhaseSearching)
+	// Progress is reported from INSIDE generate, at each real transition (§8). It used
+	// to be announced here — one `searching` before the loop and `reasoning` only after
+	// it returned — which made the UI read "Searching the library" for the whole run,
+	// including every model turn. That named the fastest step (a catalog query) as the
+	// explanation for the slowest (inference), so the one number the operator wanted —
+	// why is this taking so long — was exactly what the display hid.
 
 	// Generate → parse, with a bounded repair loop: if the model's final turn is
 	// empty or malformed JSON, append a corrective nudge and re-ask at a lower
@@ -166,10 +169,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		if err != nil {
 			return Proposal{}, err
 		}
-		reportProgress(ctx, PhaseReasoning)
 		out, perr := parsePicks(final)
 		if perr == nil {
-			reportProgress(ctx, PhaseScoring)
+			reportProgress(ctx, PhaseScoring, 0)
 			return s.buildProposal(ctx, intent, out, surfaced)
 		}
 		if repair >= maxRepairs {
@@ -188,11 +190,17 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 // caller's repair loop handles that).
 func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools []llm.ToolSchema, surfaced map[provision.Key]catalog.Candidate, temp float64) (string, error) {
 	for round := 0; round < maxToolRounds; round++ {
+		// The model turn is about to block — say so BEFORE awaiting it. This is the
+		// slow step (model load + inference), so reporting it afterwards would leave
+		// whatever ran previously on screen for the entire wait. See §8: a phase names
+		// what is happening now, not what is about to.
+		reportProgress(ctx, PhaseReasoning, round+1)
 		resp, err := s.llm.Chat(ctx, *messages, chatOpts(tools, temp))
 		if err != nil {
 			return "", fmt.Errorf("llm chat: %w", err)
 		}
 		if resp.WantsTools() {
+			reportProgress(ctx, PhaseSearching, round+1)
 			*messages = append(*messages, assistantToolCallMsg(resp.ToolCalls))
 			for _, tc := range resp.ToolCalls {
 				result, cands := s.runTool(ctx, tc)

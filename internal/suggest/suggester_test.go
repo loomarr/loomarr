@@ -317,12 +317,30 @@ func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 	}
 }
 
-// PROGRESS (§8): a clean grounded run reports its phases in order over the SSE
-// progress hook — searching → reasoning → scoring — so the workspace's
-// GenerationProgress advances live. (done/failed are the worker's to emit around
-// Suggest.) A bare context makes reporting a no-op, which every other test relies
-// on; here we thread a capturing ProgressFunc via WithProgress.
-func TestProgress_ReportsOrderedPhases(t *testing.T) {
+// frame is one captured progress report (phase + tool-loop round).
+type frame struct {
+	phase suggest.Phase
+	round int
+}
+
+// captureProgress threads a capturing ProgressFunc onto ctx (a bare context makes
+// reporting a no-op, which every other test relies on).
+func captureProgress(ctx context.Context, out *[]frame) context.Context {
+	return suggest.WithProgress(ctx, func(p suggest.Phase, round int) {
+		*out = append(*out, frame{p, round})
+	})
+}
+
+// PROGRESS (§8): each phase names what is happening NOW, and the tool-loop phases
+// REPEAT — the model thinks, searches, then thinks again about the results. A
+// two-round run must therefore report reasoning(1) → searching(1) → reasoning(2) →
+// scoring(0), not a single one-way searching→reasoning→scoring sequence.
+//
+// The ordering here is the whole point of the fix. `searching` was previously
+// emitted ONCE before the loop and `reasoning` only after it exited, so the UI read
+// "Searching the library" for the entire run — including every model turn, which is
+// where a slow run actually spends its time. This test pins the label to the work.
+func TestProgress_PhasesTrackTheToolLoop(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "speed"}),
 		testkit.FinalResponse(`{"rationale":"90s action","picks":[
@@ -331,20 +349,67 @@ func TestProgress_ReportsOrderedPhases(t *testing.T) {
 	)
 	s := buildSuggester(t, llmMock)
 
-	var phases []suggest.Phase
-	ctx := suggest.WithProgress(context.Background(), func(p suggest.Phase) { phases = append(phases, p) })
+	var got []frame
+	ctx := captureProgress(context.Background(), &got)
 	if _, err := s.Suggest(ctx, suggest.Intent{Description: "90s action"}); err != nil {
 		t.Fatal(err)
 	}
-	// A run whose first final turn parses cleanly (no repair) emits exactly these
-	// three, in this order.
-	want := []suggest.Phase{suggest.PhaseSearching, suggest.PhaseReasoning, suggest.PhaseScoring}
-	if len(phases) != len(want) {
-		t.Fatalf("phases = %v, want %v", phases, want)
+	want := []frame{
+		{suggest.PhaseReasoning, 1}, // round 1: the model turn that asks for the tool
+		{suggest.PhaseSearching, 1}, // round 1: running that catalog call
+		{suggest.PhaseReasoning, 2}, // round 2: the model composing its final answer
+		{suggest.PhaseScoring, 0},   // outside the loop → round 0
+	}
+	if len(got) != len(want) {
+		t.Fatalf("frames = %v, want %v", got, want)
 	}
 	for i := range want {
-		if phases[i] != want[i] {
-			t.Fatalf("phase[%d] = %q, want %q (full: %v)", i, phases[i], want[i], phases)
+		if got[i] != want[i] {
+			t.Fatalf("frame[%d] = %+v, want %+v (full: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// A model turn is reported BEFORE it is awaited, not after. This is the property
+// that makes the display honest on a slow local model: the first thing an operator
+// sees while waiting on a ~9s cold load must be "reasoning", not a stale label from
+// whatever ran previously (§8.2).
+//
+// Asserted by capturing what had already been reported at the moment the LLM was
+// entered — a test that only inspected the final slice would pass even if every
+// frame were emitted after its work finished.
+func TestProgress_ReasoningIsReportedBeforeTheModelTurn(t *testing.T) {
+	var got []frame
+	var atCall [][]frame
+
+	llmMock := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "speed"}),
+		testkit.FinalResponse(`{"rationale":"x","picks":[
+			{"mediaType":"movie","tmdbId":100,"name":"Speed"}
+		]}`),
+	)
+	// Snapshot the frames reported so far each time the model is called.
+	llmMock.OnChat = func() { atCall = append(atCall, append([]frame(nil), got...)) }
+
+	s := buildSuggester(t, llmMock)
+	ctx := captureProgress(context.Background(), &got)
+	if _, err := s.Suggest(ctx, suggest.Intent{Description: "90s action"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(atCall) != 2 {
+		t.Fatalf("expected 2 model turns, got %d", len(atCall))
+	}
+	for i, snap := range atCall {
+		if len(snap) == 0 {
+			t.Fatalf("turn %d: no phase reported before the model was called — the UI would show a stale label for the whole wait", i+1)
+		}
+		last := snap[len(snap)-1]
+		if last.phase != suggest.PhaseReasoning {
+			t.Errorf("turn %d: phase at model entry = %q, want %q", i+1, last.phase, suggest.PhaseReasoning)
+		}
+		if last.round != i+1 {
+			t.Errorf("turn %d: round at model entry = %d, want %d", i+1, last.round, i+1)
 		}
 	}
 }

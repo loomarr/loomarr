@@ -5,6 +5,7 @@ import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loo
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
 import { IntentForm } from "../intent-form";
+import { useElapsed } from "../use-elapsed";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
@@ -25,6 +26,7 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const run = useSuggestionRun();
+  const elapsed = useElapsed(run.isRunning);
 
   const approve = suggestionsApi.useApproveProposal({
     mutation: {
@@ -69,7 +71,12 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
       {run.error != null && <ErrorState error={run.error} />}
 
       {/* Running — the live generation phases. */}
-      {run.isRunning && <GenerationProgress phase={run.phase ?? "searching"} />}
+      {/* Before the first frame lands the model is already loading and thinking, so
+          "reasoning" is the honest default. It used to fall back to "searching", which
+          announced a library search that had not started and could not be the slow part. */}
+      {run.isRunning && (
+        <GenerationProgress phase={run.phase ?? "reasoning"} round={run.round} elapsedSeconds={elapsed} />
+      )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
       {proposal && (
