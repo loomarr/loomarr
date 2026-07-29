@@ -56,6 +56,18 @@ const (
 	// the library and substituted it (§9 slot revalidation) — surfaced so the
 	// operator knows the lineup changed under them.
 	StatusDrifted ChannelStatus = "drifted"
+	// StatusEmpty: the lineup is non-empty but every entry was filtered out, so the
+	// channel has NOTHING to air. Distinct from `building` (which is on its way) and
+	// from `live` (which is playing).
+	//
+	// ⚠ This exists because the alternative was silence. `statusFor` used to return
+	// `live` without ever looking at the deck, so a channel could report healthy while
+	// broadcasting nothing — which is exactly how a seasonal-bench bug hid: six titles
+	// on the lineup, `desired_json` literally `[]`, status `live`, and an empty grid
+	// as the operator's only symptom. The reason is already computed (the
+	// ExclusionReport names each benched entry and why); this status is what makes it
+	// worth surfacing.
+	StatusEmpty ChannelStatus = "empty"
 	// StatusDetached: Loomarr no longer manages this channel (soft-deleted; the
 	// Tunarr channel may still exist unless purge=true).
 	StatusDetached ChannelStatus = "detached"

@@ -91,7 +91,7 @@ type GuideChannelTimeline struct {
 	// derives its health chip and on-air dot from it through the one shared mapping
 	// (channel-health.ts), so "is this channel OK?" cannot mean one thing on the list and
 	// another here.
-	Status string `json:"status" enum:"building,live,drifted,detached,paused"`
+	Status string `json:"status" enum:"building,live,empty,drifted,detached,paused"`
 	// PendingCount is how many titles are still being acquired. Drives the "Filling in" chip:
 	// a live channel with acquisitions in flight is on air but not yet what was asked for.
 	PendingCount int           `json:"pendingCount"`

@@ -379,11 +379,34 @@ func (e *Engine) ensureChannel(ctx context.Context, spec programmer.ChannelSpec)
 }
 
 // statusFor derives the channel's Loomarr-side status from its desired lineup.
+//
+// ⚠ AN EMPTY DECK IS NOT `live`. This used to return `live` without ever looking at
+// the slots, so a channel that computed to nothing still reported healthy — and the
+// operator's only symptom was an empty grid, with no hint that filtering was the
+// cause. That is how a seasonal-bench bug hid: six titles on the lineup, every one
+// benched `out_of_season`, `desired_json` literally `[]`, status `live`.
+//
+// Checked AFTER drift, because drift is the more specific claim: a channel that both
+// drifted and emptied is better described by what changed under it.
+//
+// This does not collide with `building`, which is set once at create time
+// (api/channels.go) and never by this function — reconcile only ever runs on a channel
+// that has already been created, so "no slots yet" here means filtering removed them,
+// not that the channel is still on its way.
 func (e *Engine) statusFor(d schedule.DesiredLineup, drifted bool) schedule.ChannelStatus {
 	if drifted {
 		return schedule.StatusDrifted
 	}
-	return schedule.StatusLive
+	// ⚠ Counts PROGRAMMES, not slots. `len(d.Slots) == 0` was the obvious predicate and
+	// the wrong one: a deck with nothing to play still carries SlotFiller entries
+	// (breaks/flex), so it is non-empty while airing no content. Caught by the test
+	// below, which reported `live` against that first version.
+	for _, s := range d.Slots {
+		if s.Kind == schedule.SlotProgram {
+			return schedule.StatusLive
+		}
+	}
+	return schedule.StatusEmpty
 }
 
 // pokeGuide triggers a guide refresh, logging (never returning) failures (§9).
