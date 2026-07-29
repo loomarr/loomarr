@@ -444,7 +444,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
             // override wins.
             icon={
               <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
-                <ColorBars size="lg" className="h-full w-full" />
+                <ColorBars size="lg" breathe className="h-full w-full" />
               </div>
             }
             title="Dead air"
