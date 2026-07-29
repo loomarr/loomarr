@@ -63,6 +63,23 @@ type Server struct {
 	// backups wires /v1/system/backups* — the backups on disk (§16, V12); nil ⇒ routes
 	// 501, which is the Postgres case (in-app backup is SQLite-only by design).
 	backups BackupsService
+	// startedAt is when THIS GENERATION came up — the instant About counts uptime from
+	// (§16). Set per Server, never a package-level var.
+	//
+	// ⚠ It was a package-level `var processStart = time.Now()` and the restart loop
+	// (§9.2) proved that wrong on the first live test: the value survived the rebuild, so
+	// About kept reporting the ORIGINAL boot and would have claimed days of uptime on a
+	// freshly restarted instance. Exactly the silent package-level-state hazard §9.2
+	// warns about — no panic, no log line, just a number quietly lying in a bug report.
+	startedAt time.Time
+	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
+	// answer for a handler built without main's generation loop behind it (tests, the
+	// integration harness): a button that silently does nothing is worse than none.
+	restart RestartService
+	// bootstrapDrift names the boot-time settings whose saved value differs from the one
+	// this process is running (config-design §3). nil ⇒ no drift is reported, which is
+	// correct for a handler with no config seam rather than a false "restart needed".
+	bootstrapDrift func() []string
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
@@ -480,12 +497,17 @@ type Options struct {
 	Database DatabaseService
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
-	Backups   BackupsService
-	Jobs      JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
-	Settings  SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
-	Guide     GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
-	Provision Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
-	Binder    ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
+	Backups BackupsService
+	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
+	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
+	Restart RestartService
+	// BootstrapDrift names boot-time settings waiting on a restart (config-design §3).
+	BootstrapDrift func() []string
+	Jobs           JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
+	Settings       SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
+	Guide          GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next
+	Provision      Provisioner     // /v1/setup/bootstrap + /v1/users/import (§11); nil ⇒ routes absent
+	Binder         ChannelBinder   // materializes an approved proposal onto a channel (§7); required for approve to bind a channel
 	// PlayoutSessions serves the /playout/ stream routes (§9.1) — implemented by
 	// playout.Manager. Nil ⇒ the routes mount but report "not running".
 	PlayoutSessions PlayoutSessions

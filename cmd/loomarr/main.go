@@ -25,17 +25,60 @@ func main() {
 	}
 }
 
+// run boots Loomarr and keeps booting it until a generation exits for a reason other
+// than "restart" (§9.2).
+//
+// ⚠ **The loop IS the restart mechanism.** Loomarr never re-execs and never exits to be
+// restarted by something else: `syscall.Exec` is a stub on Windows (compiles, fails at
+// runtime), and exiting assumes a supervisor that `make dev-be` and any bare binary do
+// not have. Rebuilding in place works identically on both platforms and cannot strand an
+// operator with a dead service.
+//
+// Only work that must NOT re-run belongs out here. Everything a generation owns — config,
+// store, background context, handler, HTTP server — is constructed inside runOnce and torn
+// down before the next pass, because a value carried across generations is a value still
+// pointing at the closed resources of the last one.
 func run() error {
-	cfg, err := config.Load()
+	// Config is loaded once for the log level only. Each generation re-loads it, so an
+	// operator who edits a boot-time setting gets the new value on restart — which is the
+	// entire point of the RestartRequired flag (config-design §3).
+	bootCfg, err := config.Load()
 	if err != nil {
 		return err
+	}
+	// Logging is hoisted above the loop deliberately: slog.SetDefault mutates process
+	// state, and re-running it per generation would be the exact package-level-mutation
+	// hazard §9.2 warns about.
+	log := newLogger(bootCfg.LogLevel)
+	slog.SetDefault(log)
+
+	for generation := 1; ; generation++ {
+		restart, err := runOnce(log, generation)
+		if err != nil {
+			return err
+		}
+		if !restart {
+			return nil
+		}
+		log.Info("restarting in place", "next_generation", generation+1)
+	}
+}
+
+// runOnce is one generation: build everything, serve, tear it all down. It returns true
+// when the operator asked for a restart, so run() can build the next generation.
+//
+// The returned bool and error are deliberately separate: "the operator restarted us" is
+// not a failure, and collapsing it into an error would make a normal action look like one
+// in the logs.
+func runOnce(log *slog.Logger, generation int) (restart bool, err error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return false, err
 	}
 	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
 	// boot (an invalid enum fails there, config-design §3) — no separate check here.
 
-	log := newLogger(cfg.LogLevel)
-	slog.SetDefault(log)
-	log.Info("loomarr starting", "listen", cfg.ListenAddr, "log_level", cfg.LogLevel)
+	log.Info("loomarr starting", "listen", cfg.ListenAddr, "log_level", cfg.LogLevel, "generation", generation)
 
 	// Open the store (§5): backend chosen by DATABASE_URL scheme, migrations run
 	// on startup when AUTO_MIGRATE. If unset, run without a store for now (later
@@ -44,8 +87,11 @@ func run() error {
 	if cfg.DatabaseURL != "" {
 		st, err = store.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)
 		if err != nil {
-			return err // downgrade guard / bad scheme / unreachable DB fail fast
+			return false, err // downgrade guard / bad scheme / unreachable DB fail fast
 		}
+		// Closed on EVERY exit from this generation, including a restart — the next
+		// generation opens its own handle, and a leaked one would hold the SQLite file
+		// (and, on a migration, the database it just moved off).
 		defer func() { _ = st.Close() }()
 		log.Info("store opened", "auto_migrate", cfg.AutoMigrate)
 	} else {
@@ -69,13 +115,32 @@ func run() error {
 		log.Warn("LOOMARR_PPROF is set — /debug/pprof/* is exposed UNAUTHENTICATED. Development only; never leave this on.")
 	}
 
+	// restartCh carries the operator's restart request from the API handler back here.
+	// Buffered so POST /v1/system/restart can respond and return WITHOUT waiting for this
+	// loop to read it — a client that never gets a reply cannot tell "restarting" from
+	// "crashed" (§7).
+	restartCh := make(chan struct{}, 1)
+
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
-	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{DevLogin: cfg.DevLogin, Pprof: cfg.Pprof})
+	handler, err := app.BuildHandler(rootCtx, st, log, app.Overrides{
+		DevLogin: cfg.DevLogin,
+		Pprof:    cfg.Pprof,
+		Restart: func() {
+			// Non-blocking: a second click while the first restart is draining is a
+			// no-op, not a queued second restart.
+			select {
+			case restartCh <- struct{}{}:
+			default:
+			}
+		},
+	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	// A FRESH server per generation. http.Server is single-use by design — Shutdown sets
+	// `inShutdown` and never clears it, so a reused one would refuse to serve (§9.2).
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           handler,
@@ -90,28 +155,47 @@ func run() error {
 		}
 	}()
 
-	// Block until a signal or a server error.
+	// Block until a signal, a restart request, or a server error.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	select {
 	case err := <-serverErr:
-		return err
+		return false, err
+	case <-restartCh:
+		log.Info("restart requested")
+		restart = true
 	case <-ctx.Done():
-		slog.Default().Info("shutdown signal received")
+		log.Info("shutdown signal received")
 	}
+	// ⚠ Stop trapping signals BEFORE the next generation starts. NotifyContext keeps the
+	// handler registered until stop() runs, and on a restart the deferred stop() would not
+	// fire until this function returns — leaving the old generation's context able to
+	// swallow the Ctrl-C an operator uses on the new one.
+	stop()
 
-	// Signal background work to stop alongside the HTTP drain (§7).
+	// Signal background work to stop alongside the HTTP drain (§7). On a restart this is
+	// what tears down playout sessions: ffmpeg is spawned under rootCtx with Setpgid, so
+	// cancelling kills each process GROUP rather than orphaning the children (§9.1).
 	cancelRoot()
 
 	// Graceful drain.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return err
+		// A drain that timed out is worth reporting, but on a restart it must not abort
+		// the loop: the generation is finished either way, and refusing to come back up
+		// because a client held a connection open is the outage this feature prevents.
+		if !restart {
+			return false, err
+		}
+		log.Warn("drain did not finish cleanly before restart", "err", err)
 	}
-	slog.Default().Info("loomarr stopped cleanly")
-	return nil
+	if restart {
+		return true, nil
+	}
+	log.Info("loomarr stopped cleanly")
+	return false, nil
 }
 
 // newLogger builds a JSON slog logger at the configured level (§14, §17).
