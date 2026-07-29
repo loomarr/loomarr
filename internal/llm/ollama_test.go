@@ -169,3 +169,91 @@ func TestOllama_DisablesThinkingWithTools(t *testing.T) {
 		t.Error("without tools, think should be omitted")
 	}
 }
+
+// KEEP-ALIVE (§8.2): the residency hint rides on every chat request when set, and is
+// OMITTED when unset so Ollama's own default applies rather than us asserting one.
+//
+// This is the difference between a ~9s cold load and a ~0.5s answer (measured, 8B
+// local model), and it matters BETWEEN the rounds of a single tool loop as well as
+// between a suggestion and its refine — Ollama unloads after 5m idle by default.
+func TestOllama_KeepAliveSentWhenSet(t *testing.T) {
+	resp := testkit.Fixture(t, "llm/ollama_final_response.json")
+	var sentReq map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sentReq)
+		_, _ = w.Write(resp)
+	}))
+	defer srv.Close()
+
+	// Set → sent verbatim (Ollama parses the duration string itself).
+	o := llm.NewOllama(srv.URL, "").WithKeepAlive("30m")
+	if _, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if sentReq["keep_alive"] != "30m" {
+		t.Errorf("keep_alive = %v, want %q", sentReq["keep_alive"], "30m")
+	}
+
+	// Unset → omitted entirely. An empty string must not be sent: Ollama would have to
+	// interpret it, and inheriting its documented default is the honest "no opinion".
+	sentReq = nil
+	plain := llm.NewOllama(srv.URL, "")
+	if _, err := plain.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "x"}}, llm.ChatOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sentReq["keep_alive"]; ok {
+		t.Errorf("keep_alive should be omitted when unset, got %v", sentReq["keep_alive"])
+	}
+}
+
+// WARM (§8.2) preloads the model: it POSTs to /api/chat with the model + keep_alive
+// and NO messages, which is Ollama's documented preload — it loads the weights and
+// returns without generating. Sending messages would burn a real generation on a
+// warm-up nobody asked for.
+func TestOllama_WarmPreloadsWithoutGenerating(t *testing.T) {
+	var sentReq map[string]any
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sentReq)
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":""}}`))
+	}))
+	defer srv.Close()
+
+	o := llm.NewOllama(srv.URL, "qwen3:8b").WithKeepAlive("30m")
+	if err := o.Warm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/api/chat" {
+		t.Errorf("warm path = %q, want /api/chat", path)
+	}
+	if sentReq["model"] != "qwen3:8b" {
+		t.Errorf("warm model = %v, want qwen3:8b", sentReq["model"])
+	}
+	// The keep_alive must ride along, or the preload would evaporate at Ollama's
+	// 5-minute idle unload long before anyone reached the suggest screen.
+	if sentReq["keep_alive"] != "30m" {
+		t.Errorf("warm keep_alive = %v, want 30m", sentReq["keep_alive"])
+	}
+	// No messages: the field serializes as JSON null (it has no omitempty), so the
+	// check is that it carries no ENTRIES — `ok` alone would be true for that null.
+	if msgs, _ := sentReq["messages"].([]any); len(msgs) != 0 {
+		t.Errorf("warm should send no messages (preload only), got %v", msgs)
+	}
+}
+
+// A warm-up failure is reported, never swallowed — callers log it and carry on
+// (§8.2: best-effort, the next Chat loads the model itself). Returning nil here
+// would make a permanently-cold host look like a working warm-up.
+func TestOllama_WarmReportsFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if err := llm.NewOllama(srv.URL, "m").Warm(context.Background()); err == nil {
+		t.Fatal("expected an error from a failing warm-up")
+	}
+}

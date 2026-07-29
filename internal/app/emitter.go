@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/mantonx/loomarr/internal/channels"
@@ -55,10 +56,14 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 // done/failed live. Satisfies suggest.ProgressEmitter. Best-effort like the
 // title sink: a dropped frame is a latency bug, never a correctness bug — GET
 // /v1/suggestions/{id} is the source of truth on reconnect.
-func (e *eventEmitter) SuggestionPhase(jobID, phase string) {
+// round carries the tool-loop iteration so the UI can show a long run progressing;
+// it is stringified because the SSE payload is a flat map[string]string, and 0
+// (outside the loop) is sent as "0" rather than omitted so the frame shape never
+// varies — a receiver reads one field, not a field that sometimes exists.
+func (e *eventEmitter) SuggestionPhase(jobID, phase string, round int) {
 	e.bus.Publish(events.Event{
 		Type:    "suggestion",
-		Payload: map[string]string{"jobId": jobID, "phase": phase},
+		Payload: map[string]string{"jobId": jobID, "phase": phase, "round": strconv.Itoa(round)},
 	})
 }
 

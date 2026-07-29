@@ -2,6 +2,7 @@ import { type Intent, suggestionsApi } from "@loomarr/api";
 import type { SuggestionPhase } from "@loomarr/core";
 import { useState } from "react";
 import { useLoomarrEventListener } from "@/events";
+import { roundOf } from "../round";
 import type { SuggestionRun } from "./use-suggestion-run.type";
 
 const TERMINAL: SuggestionPhase[] = ["done", "failed"];
@@ -25,6 +26,7 @@ const TERMINAL: SuggestionPhase[] = ["done", "failed"];
 const useSuggestionRun = (): SuggestionRun => {
   const [jobId, setJobId] = useState<string | undefined>();
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
+  const [round, setRound] = useState<number | undefined>();
 
   const submit = suggestionsApi.useSubmitSuggestion();
   const proposals = suggestionsApi.useListProposals(
@@ -34,7 +36,9 @@ const useSuggestionRun = (): SuggestionRun => {
 
   useLoomarrEventListener({
     onSuggestion: (e) => {
-      if (e.jobId === jobId) setPhase(e.phase);
+      if (e.jobId !== jobId) return;
+      setPhase(e.phase);
+      setRound(roundOf(e.round));
     },
   });
 
@@ -43,6 +47,7 @@ const useSuggestionRun = (): SuggestionRun => {
 
   return {
     phase,
+    round,
     proposal,
     // A run stops being "running" once it lands a proposal or reports a terminal phase,
     // whichever the client learns first.
@@ -50,11 +55,13 @@ const useSuggestionRun = (): SuggestionRun => {
     error: submit.error,
     start: (intent: Intent) => {
       setPhase(undefined);
+      setRound(undefined);
       submit.mutate({ data: intent }, { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) });
     },
     reset: () => {
       setJobId(undefined);
       setPhase(undefined);
+      setRound(undefined);
     },
   };
 };

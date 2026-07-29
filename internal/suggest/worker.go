@@ -106,8 +106,11 @@ func (s *Service) WithAutoCurate(c ChannelAutoCurator) *Service {
 // bug, never a correctness bug — GET /v1/suggestions/{id} stays the source of
 // truth. The composition root implements it over events.Bus; unit tests leave it
 // nil. Kept as a narrow interface so the suggest package doesn't import events.
+// round is the 1-based tool-loop iteration (0 outside the loop) — it lets the UI
+// show a long run PROGRESSING rather than looking hung, since the same phase
+// legitimately repeats as the model alternates thinking and searching.
 type ProgressEmitter interface {
-	SuggestionPhase(jobID, phase string)
+	SuggestionPhase(jobID, phase string, round int)
 }
 
 // WithProgressEmitter wires the SSE progress emitter and returns the service for
@@ -117,10 +120,11 @@ func (s *Service) WithProgressEmitter(e ProgressEmitter) *Service {
 	return s
 }
 
-// emitPhase publishes one phase frame if an emitter is wired.
-func (s *Service) emitPhase(jobID string, p Phase) {
+// emitPhase publishes one phase frame if an emitter is wired. round is 0 for the
+// phases emitted around the pipeline (done/failed) rather than inside its tool loop.
+func (s *Service) emitPhase(jobID string, p Phase, round int) {
 	if s.emit != nil {
-		s.emit.SuggestionPhase(jobID, string(p))
+		s.emit.SuggestionPhase(jobID, string(p), round)
 	}
 }
 
@@ -260,7 +264,7 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 
 	// Thread live progress (§8) into the pipeline: the suggester reports
 	// searching→reasoning→scoring off this context; done/failed are emitted here.
-	jobCtx = WithProgress(jobCtx, func(p Phase) { s.emitPhase(job.ID, p) })
+	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(job.ID, p, round) })
 
 	var intent Intent
 	if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
@@ -352,7 +356,7 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	job.Status = "done"
 	job.UpdatedAt = now
 	_ = s.store.UpdateJob(ctx, job)
-	s.emitPhase(job.ID, PhaseDone)
+	s.emitPhase(job.ID, PhaseDone, 0)
 }
 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
@@ -362,7 +366,7 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error) {
 	job.Attempts++
 	job.UpdatedAt = s.now()
 	_ = s.store.UpdateJob(ctx, job)
-	s.emitPhase(job.ID, PhaseFailed)
+	s.emitPhase(job.ID, PhaseFailed, 0)
 }
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field
