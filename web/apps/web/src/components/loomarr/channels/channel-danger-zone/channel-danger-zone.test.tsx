@@ -23,7 +23,7 @@ describe("ChannelDangerZone", () => {
     render(<ChannelDangerZone {...base} status="paused" />);
     expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
-    expect(screen.getByText("Paused — off air but kept.")).toBeInTheDocument();
+    expect(screen.getByText("Paused: off air but kept.")).toBeInTheDocument();
   });
 
   it("calls onPause / onResume from the respective control", async () => {

@@ -66,7 +66,7 @@ describe("WizardAiBlock", () => {
   it("confirms the detected Ollama model when one is active", async () => {
     stubFetch({ reachable: true, model: "qwen3:8b" });
     renderBlock();
-    await waitFor(() => expect(screen.getByText(/Ollama detected — using qwen3:8b/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Ollama detected: using qwen3:8b/i)).toBeInTheDocument());
   });
 
   it("shows a neutral 'no local Ollama' hint (never a red error) when unreachable", async () => {

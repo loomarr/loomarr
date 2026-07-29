@@ -48,7 +48,7 @@ const ChannelDangerZone = ({
       {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
       <div className="flex items-center justify-between gap-3 border-onair-tint-15 border-t pt-4">
         <p className="text-sm">
-          {paused ? "Paused — off air but kept." : "Take this channel off air without deleting it."}
+          {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
         </p>
         {paused ? (
           <Button variant="outline" size="sm" disabled={busy} onClick={onResume}>

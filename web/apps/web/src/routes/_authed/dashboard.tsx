@@ -50,7 +50,7 @@ const DashboardScreen = () => {
       <div className="p-6">
         <EmptyState
           title="The dashboard is for admins"
-          description="It shows how the machine is doing — encoders, streams and what's waiting on someone. Your channels and requests are under Guide and My requests."
+          description="It shows how the machine is doing: encoders, streams and what's waiting on someone. Your channels and requests are under Guide and My requests."
         />
       </div>
     );

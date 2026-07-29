@@ -27,7 +27,7 @@ const OPT_IN_LABEL = "Add new titles without asking";
 const OPT_IN_HELP =
   "Loomarr re-checks this channel's intent against your library on a schedule. Off, it proposes " +
   "changes and waits for approval. On, in-library matches are added and net-new titles are " +
-  "requested automatically — still through the approval gate, and still bounded by the limits below.";
+  "requested automatically, still through the approval gate, and still bounded by the limits below.";
 
 // Both overrides are `0 = inherit the global default` on the wire (int64, omitempty). So a
 // blank field must send 0, never undefined: undefined is dropped by omitempty and the previous
@@ -77,7 +77,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               unit tests passed and the story screenshot caught it.) */}
           <p id="policy-auto-curate-hint" className="text-muted-foreground text-sm">
             {!intentBacked
-              ? "Only for channels built from an intent — this one was made by hand, so there is no intent to re-check."
+              ? "Only for channels built from an intent. This one was made by hand, so there is no intent to re-check."
               : enabled
                 ? "New titles that fit are added on their own, within the limits below."
                 : "Off, new titles wait for your approval."}

@@ -87,7 +87,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
         {channels.error != null && <ErrorState error={channels.error} onRetry={() => channels.refetch()} />}
 
         {rows.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No channels yet — create one first.</p>
+          <p className="text-muted-foreground text-sm">No channels yet. Create one first.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {rows.map((ch) => {

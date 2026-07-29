@@ -94,7 +94,7 @@ const LoginForm = ({ onSubmit, isPending = false, error, onDevLogin, className }
             Skip sign-in (dev)
           </Button>
           <p className="text-muted-foreground text-xs">
-            <code>LOOMARR_DEV_LOGIN</code> is on — signs you in as an admin with no password.
+            <code>LOOMARR_DEV_LOGIN</code> is on. It signs you in as an admin with no password.
           </p>
         </div>
       )}

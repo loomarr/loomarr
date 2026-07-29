@@ -116,7 +116,7 @@ const ApprovalQueue = () => {
           </span>
           {edited.size > 0 && (
             <span className="text-caution text-xs">
-              {`${edited.size} edited ${edited.size === 1 ? "request is" : "requests are"} excluded — approve those individually so the edit is kept.`}
+              {`${edited.size} edited ${edited.size === 1 ? "request is" : "requests are"} excluded. Approve those individually so the edit is kept.`}
             </span>
           )}
           <Button

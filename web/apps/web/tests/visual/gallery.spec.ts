@@ -10,6 +10,13 @@ import { expect, type Page, test } from "@playwright/test";
 const here = dirname(fileURLToPath(import.meta.url));
 const indexPath = join(here, "..", "..", "storybook-static", "index.json");
 
+// The slice of Storybook's preview API this file depends on. Typed here rather than pulled
+// from a Storybook package: it is one field read through `page.waitForFunction`, and the
+// import would have to resolve inside the browser context, not this Node process.
+interface StorybookPreviewWindow {
+  __STORYBOOK_PREVIEW__?: { storyRenders?: { id: string; phase?: string }[] };
+}
+
 interface StoryEntry {
   id: string;
   title: string;
@@ -47,6 +54,32 @@ for (const story of stories) {
     // for self-hosted Geist to finish loading — otherwise a screenshot can race a
     // fallback-font paint and drift at the strict 0.001 threshold (§5.2).
     await page.locator("#storybook-root > *").first().waitFor({ state: "visible" });
+
+    // ⚠ WAIT FOR THE PLAY FUNCTION, or a story with one is shot MID-INTERACTION.
+    //
+    // "First child visible" happens on mount, long before an async `play()` has finished
+    // typing and clicking, so the screenshot raced it. This is not theoretical: it produced
+    // ChannelLineupEditor/AddingATitle at 340px most runs and 416px intermittently, against
+    // a 306px baseline, which read like a mystery flake for weeks.
+    //
+    // `toHaveScreenshot`'s own stability check does NOT save us. It shoots until two
+    // consecutive frames match, and `play()` pauses between keystrokes — so two frames
+    // taken inside one of those pauses agree, and it settles on an intermediate state.
+    //
+    // Storybook tracks the phase per render (`playing` → `finished`); a story with no
+    // `play()` reaches a terminal phase immediately, so this costs those nothing. `errored`
+    // and `aborted` are terminal too and must not hang here: a broken play function should
+    // fail on its own assertion, not time out on this wait.
+    await page.waitForFunction(
+      (id) => {
+        const renders = (window as unknown as StorybookPreviewWindow).__STORYBOOK_PREVIEW__?.storyRenders;
+        const phase = renders?.find((r) => r.id === id)?.phase;
+        return phase === "finished" || phase === "errored" || phase === "aborted";
+      },
+      story.id,
+      { timeout: 15_000 },
+    );
+
     await page.evaluate(async () => {
       await document.fonts.ready;
     });

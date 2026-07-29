@@ -66,7 +66,7 @@ describe("ChannelCyclePreview", () => {
 
     render(<ChannelCyclePreview channelId="ch-1" />);
 
-    expect(screen.getByText(/no rule active — base policy/i)).toBeInTheDocument();
+    expect(screen.getByText(/no rule active: base policy/i)).toBeInTheDocument();
   });
 
   it("renders program, pending, and break slots distinctly", () => {

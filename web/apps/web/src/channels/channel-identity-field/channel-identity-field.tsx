@@ -60,7 +60,7 @@ const ChannelIdentityField = ({
       // Success: the parent's mutation updated the source; `committed` will follow on the next
       // render. Nothing to reset here — dirty resolves once `value` reflects the save.
     } catch (e) {
-      setServerError(e instanceof Error ? e.message : "Couldn't save — try a different value.");
+      setServerError(e instanceof Error ? e.message : "Couldn't save. Try a different value.");
     } finally {
       setSaving(false);
     }

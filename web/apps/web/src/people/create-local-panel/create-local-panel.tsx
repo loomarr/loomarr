@@ -64,8 +64,8 @@ const CreateLocalPanel = ({ onCreated, className }: CreateLocalPanelProps) => {
       <div>
         <h2 className="font-medium">Add someone without a media-server account</h2>
         <p className="mt-1 text-muted-foreground text-sm">
-          For someone with no media-server account. Loomarr stores this password itself — the only kind of
-          account it can reset.
+          For someone with no media-server account. Loomarr stores this password itself. It is the only kind
+          of account it can reset.
         </p>
       </div>
 

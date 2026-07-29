@@ -113,7 +113,7 @@ const ChannelProgramming = ({
 
       <Block
         title="When it changes"
-        hint="Play different things at different times — weekend marathons, holiday blocks, day-parts."
+        hint="Play different things at different times: weekend marathons, holiday blocks, day-parts."
       >
         {vocabulary ? (
           <>

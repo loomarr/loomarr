@@ -13,7 +13,9 @@ import { SettingsPage, useSettingsEntries } from "@/settings";
 const DefaultsSettings = () => (
   <SettingsPage
     title="Defaults"
-    description="What a new channel inherits — ordering, how gaps are filled, and the programming policy — plus where your filler comes from and how densely breaks play. Browse and tag the clips themselves on the Filler page; each channel can override any of this on its own Programming section."
+    // A paired parenthetical: swapping both em-dashes for commas made a four-comma sentence
+    // where the aside and the list ran together. Split instead.
+    description="What a new channel inherits: ordering, how gaps are filled, and the programming policy. Also where your filler comes from and how densely breaks play. Browse and tag the clips themselves on the Filler page; each channel can override any of this on its own Programming section."
     entries={useSettingsEntries()}
     blocks={[
       { group: "channels", title: "Scheduling defaults" },

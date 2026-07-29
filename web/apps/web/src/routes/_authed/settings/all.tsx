@@ -31,7 +31,7 @@ const AllSettings = () => {
         <h1 className="font-semibold text-xl">All settings</h1>
         <p className="mt-1 text-muted-foreground text-sm">
           Every key Loomarr knows about, searchable by name, group, or value. Edit a setting on the page that
-          owns it — the Group column says which.
+          owns it. The Group column says which.
         </p>
       </div>
       <AllSettingsTable

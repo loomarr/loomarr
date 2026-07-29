@@ -64,7 +64,7 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
         <div>
           <h2 className="font-semibold text-lg">Import from your media server</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            Pick who may sign in. They authenticate with their existing media-server password — Loomarr never
+            Pick who may sign in. They authenticate with their existing media-server password. Loomarr never
             stores it.
           </p>
         </div>

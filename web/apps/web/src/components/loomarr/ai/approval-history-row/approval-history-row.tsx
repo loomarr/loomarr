@@ -51,7 +51,7 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
               {`Approved by ${proposal.approvedBy}`}
             </span>
           )}
-          {changed && <span className="text-caution">{` — ${proposal.modSummary}`}</span>}
+          {changed && <span className="text-caution">{`, ${proposal.modSummary}`}</span>}
         </p>
       )}
 

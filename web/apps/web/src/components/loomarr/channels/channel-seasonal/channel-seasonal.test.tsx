@@ -113,7 +113,7 @@ describe("ChannelSeasonal", () => {
   // legend says so rather than leaving the operator to guess that none means every.
   it("says an empty selection means all holidays", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.getByText(/none picked — all of them/)).toBeInTheDocument();
+    expect(screen.getByText(/none picked: all of them/)).toBeInTheDocument();
   });
 
   it("hides the holiday list when holidays are ignored", () => {

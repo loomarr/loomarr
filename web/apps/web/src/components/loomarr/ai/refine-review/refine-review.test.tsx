@@ -91,7 +91,7 @@ describe("RefineReview", () => {
         onDiscard={vi.fn()}
       />,
     );
-    expect(screen.getByText("No changes — your channel already matches.")).toBeInTheDocument();
+    expect(screen.getByText("No changes. Your channel already matches.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /discard/i })).toBeInTheDocument();
   });

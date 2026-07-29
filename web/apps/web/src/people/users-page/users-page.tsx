@@ -92,7 +92,7 @@ const UsersPage = () => {
         <h1 className="font-semibold text-xl">Users</h1>
         <p className="mt-1 text-muted-foreground text-sm">
           Who may sign in, what they may spend, and what they may approve. An account grants no access until
-          you add it here — by importing a media-server account, or creating a local one.
+          you add it here: by importing a media-server account, or creating a local one.
         </p>
       </div>
 
@@ -135,14 +135,14 @@ const UsersPage = () => {
       {resetting && (
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-lg">{`Reset password — ${resetting.name}`}</h2>
+            <h2 className="font-semibold text-lg">{`Reset password, ${resetting.name}`}</h2>
             <Button variant="ghost" size="sm" onClick={() => setResetting(undefined)}>
               Close
             </Button>
           </div>
           <p className="text-muted-foreground text-sm">
             Set a new password for this account. They'll be signed out everywhere and will need the new one to
-            get back in — so tell them what it is.
+            get back in, so tell them what it is.
           </p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={resetId}>New password</Label>
@@ -165,7 +165,7 @@ const UsersPage = () => {
       {openSessions && (
         <Card className="flex flex-col gap-3 p-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-semibold text-lg">{`Sessions — ${openSessions.name}`}</h2>
+            <h2 className="font-semibold text-lg">{`Sessions, ${openSessions.name}`}</h2>
             <Button variant="ghost" size="sm" onClick={() => setOpenSessions(undefined)}>
               Close
             </Button>

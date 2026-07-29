@@ -25,7 +25,7 @@ const TunarrLibraryStep = ({ check }: TunarrLibraryStepProps) => {
       error={connect.error}
     >
       Points Tunarr at your Emby/Jellyfin library and scans it, so channels play real programs instead of dead
-      air. Safe to run again — Loomarr only scans when you ask.
+      air. Safe to run again. Loomarr only scans when you ask.
     </ConnectStep>
   );
 };

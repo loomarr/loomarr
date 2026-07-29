@@ -97,14 +97,14 @@ const ApprovalQueueItem = ({
       {denying && (
         <div className="flex flex-col gap-2 border-border border-t pt-2">
           <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
-            Why not? Optional — the requester sees this.
+            Why not? Optional: the requester sees this.
           </label>
           <Input
             id={reasonId}
             autoFocus
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. over the acquisition cap this week — ask again Monday"
+            placeholder="e.g. over the acquisition cap this week, ask again Monday"
             disabled={busy}
           />
           <div className="flex justify-end gap-2">
