@@ -92,7 +92,7 @@ describe("SettingField", () => {
       />,
     );
     const lock = screen.getByRole("button", {
-      name: /unlock library url to edit it here — currently set by LIBRARY_URL/i,
+      name: /unlock library url to edit it here, currently set by LIBRARY_URL/i,
     });
     lock.focus();
     await userEvent.keyboard("{Enter}");

@@ -27,7 +27,7 @@ const SessionList = ({
   if (sessions.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        {`${userName} has no active sessions — they are not signed in anywhere.`}
+        {`${userName} has no active sessions. They are not signed in anywhere.`}
       </p>
     );
   }

@@ -100,7 +100,7 @@ const ChannelIconField = ({
   const handleFile = async (file: File) => {
     setUploadError(undefined);
     if (file.size > MAX_UPLOAD_BYTES) {
-      setUploadError("That file is over the 2 MB limit — try a smaller image.");
+      setUploadError("That file is over the 2 MB limit. Try a smaller image.");
       return;
     }
     setUploading(true);
@@ -236,7 +236,7 @@ const ChannelIconField = ({
                   <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
                 )}
               </div>
-              <p className="mt-1 text-static-400 text-xs">PNG, JPEG, WebP, or GIF — up to 2 MB.</p>
+              <p className="mt-1 text-static-400 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
               {uploadError && <p className="mt-1 text-onair-300 text-xs">{uploadError}</p>}
             </div>
 

@@ -277,7 +277,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
 
       {entries.length === 0 ? (
         <p className="rounded-md border border-border border-dashed px-3 py-6 text-center text-muted-foreground text-sm">
-          Nothing in the lineup yet — add a title below.
+          Nothing in the lineup yet. Add a title below.
         </p>
       ) : (
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>

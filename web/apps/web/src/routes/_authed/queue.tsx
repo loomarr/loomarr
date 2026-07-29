@@ -16,7 +16,7 @@ import { ApprovalQueue } from "@/suggest";
 // not "what does `requested` mean". The per-title state badge is still there for the
 // operator who wants the detail. Live via `title` SSE.
 const STAGE_COPY = {
-  waiting: { title: "Waiting", hint: "Approved and queued — Loomarr will request these next." },
+  waiting: { title: "Waiting", hint: "Approved and queued. Loomarr will request these next." },
   acquiring: { title: "On the way", hint: "Requested from your *arr apps and downloading." },
   ready: { title: "Ready", hint: "In your library and playable on a channel." },
 } as const;
@@ -164,7 +164,7 @@ const QueueScreen = () => {
             {rows.length === 0 && !isLoading ? (
               <EmptyState
                 title="Nothing in flight"
-                description="Approved acquisitions show their journey here — from queued, to downloading, to playable."
+                description="Approved acquisitions show their journey here: from queued, to downloading, to playable."
               />
             ) : (
               <div className="flex flex-col gap-6">

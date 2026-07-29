@@ -95,13 +95,13 @@ const WizardAiBlock = () => {
           <p className="flex items-center gap-2 text-lock text-sm">
             <CheckCircle2 className="size-4" aria-hidden />
             {status.model
-              ? `Ollama detected — using ${status.model}.`
+              ? `Ollama detected: using ${status.model}.`
               : "Ollama detected. Pick a model below to turn on suggestions."}
           </p>
         ) : (
           <p className="text-muted-foreground text-sm">
             No local Ollama found. Start Ollama on this machine, or switch the provider above to an
-            OpenAI-compatible service. You can skip this and add it later — suggestions stay off until you do.
+            OpenAI-compatible service. You can skip this and add it later. Suggestions stay off until you do.
           </p>
         ))}
 

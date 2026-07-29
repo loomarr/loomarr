@@ -40,9 +40,9 @@ const OFF_SEASON_OPTIONS: { value: string; label: string }[] = [
 // vs "auto" is not self-evident and the difference is what the channel plays in December.
 const MODE_HINT: Record<string, string> = {
   default: "Same as leaning into the season.",
-  off: "Holidays are ignored — nothing is boosted or benched.",
+  off: "Holidays are ignored. Nothing is boosted or benched.",
   auto: "In-season titles come up more often; out-of-season ones are held back.",
-  exclusive: "The channel IS the holiday — only in-season titles play during the window.",
+  exclusive: "The channel IS the holiday: only in-season titles play during the window.",
 };
 
 // The holiday tokens the BE publishes, as `holiday:<id>` entries in the rule vocabulary's
@@ -104,7 +104,7 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
       {mode !== "off" && (
         <fieldset className="flex flex-col gap-2">
           <legend className="pb-1 text-muted-foreground text-xs">
-            Which holidays {selected.length === 0 ? "(none picked — all of them)" : ""}
+            Which holidays {selected.length === 0 ? "(none picked: all of them)" : ""}
           </legend>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
             {holidays.map((h) => (

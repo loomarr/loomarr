@@ -60,7 +60,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
       <div className="flex items-center gap-1.5">
         <Label>Only these shows</Label>
         <FieldHelp label="Only these shows">
-          Restrict the channel to specific series. Leave empty for no restriction — the lineup decides on its
+          Restrict the channel to specific series. Leave empty for no restriction. The lineup decides on its
           own.
         </FieldHelp>
       </div>

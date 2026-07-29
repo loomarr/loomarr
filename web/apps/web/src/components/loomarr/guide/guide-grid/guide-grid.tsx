@@ -361,7 +361,7 @@ const GuideGrid = ({
                     const when = `${timeFmt.format(new Date(a.startMs))}–${timeFmt.format(new Date(a.stopMs))}`;
                     // The caveat rides in the accessible name, not only in the styling — a
                     // screen-reader user must not be told a placeholder is a schedule.
-                    const described = `${label} · ${when}${a.nominal ? " (estimated — still acquiring)" : ""}`;
+                    const described = `${label} · ${when}${a.nominal ? " (estimated, still acquiring)" : ""}`;
 
                     return (
                       <button

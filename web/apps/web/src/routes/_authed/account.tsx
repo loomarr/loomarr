@@ -57,7 +57,7 @@ const AccountScreen = () => {
         // rather than sparing the caller's, because keeping a session means trusting
         // the request that might itself be the compromise. Say that plainly instead
         // of the friendlier-but-weaker "other sessions revoked, this one kept".
-        toast.success("Password changed — sign in again with the new one.");
+        toast.success("Password changed. Sign in again with the new one.");
       },
       onError: (e) => setFormError(toProblem(e).detail ?? "Couldn't change your password."),
     },
@@ -67,7 +67,7 @@ const AccountScreen = () => {
     mutation: {
       onSuccess: () => {
         void sessions.refetch();
-        toast.success("Session revoked — that device signs in again next visit.");
+        toast.success("Session revoked. That device signs in again next visit.");
       },
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't revoke that session"),
     },
@@ -156,7 +156,7 @@ const AccountScreen = () => {
           </>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Your password lives on your media server and Loomarr never sees it — change it there and the new
+            Your password lives on your media server and Loomarr never sees it. Change it there and the new
             one works here immediately.
           </p>
         )}

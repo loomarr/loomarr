@@ -230,22 +230,22 @@ describe("ChannelPolicyFields", () => {
   // option names its current resolution, and these two pin that it tracks the ceiling above it.
   it("says Automatic currently SKIPS unrated under a kids ceiling", () => {
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-Y7" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — skipped");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: skipped");
   });
 
   it("says Automatic currently ALLOWS unrated with no ceiling, and above the kids boundary", () => {
     const { unmount } = render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — allowed");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: allowed");
     unmount();
 
     // TV-PG (rank 3) is the LAST kids ceiling; TV-14 (rank 4) is the first that is not.
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-14" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — allowed");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: allowed");
   });
 
   it("treats TV-PG as the last kids ceiling (the rank-3 boundary)", () => {
     render(<ChannelPolicyFields policy={{ audience: { ceiling: "TV-PG" } }} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic — skipped");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveTextContent("Automatic: skipped");
   });
 
   // The channel's strategy is what Ordering's "Inherit channel default" refers to. Rendered

@@ -24,7 +24,7 @@ const FirstChannelStep = () => {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
-        Pick a starting point — you can edit it before Loomarr builds anything. Since you're an admin, you can
+        Pick a starting point. You can edit it before Loomarr builds anything. Since you're an admin, you can
         approve your own lineup and watch it go on the air.
       </p>
 

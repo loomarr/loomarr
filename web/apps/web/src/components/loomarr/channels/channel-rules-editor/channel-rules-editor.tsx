@@ -314,15 +314,15 @@ const ChannelRulesEditor = ({
       <div>
         <h3 className="font-semibold text-base">Wall-clock rules</h3>
         <p className="text-muted-foreground text-sm">
-          Play different things at different times — weekend marathons, holiday programming, day-parts. The
-          top rule wins when more than one matches a moment; drag to reprioritize.
+          Play different things at different times: weekend marathons, holiday programming, day-parts. The top
+          rule wins when more than one matches a moment; drag to reprioritize.
         </p>
       </div>
 
       {drafts.length === 0 ? (
         <div className="rounded-md border border-border border-dashed px-3 py-6 text-center">
           <p className="text-muted-foreground text-sm">
-            No rules yet — this channel always follows its base policy above.
+            No rules yet. This channel always follows its base policy above.
           </p>
           <Button variant="outline" size="sm" className="mt-3" onClick={addRule}>
             <Plus aria-hidden />

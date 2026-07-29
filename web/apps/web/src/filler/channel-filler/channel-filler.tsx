@@ -49,7 +49,7 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
     >
       <div className="flex flex-col gap-5">
         <p className="text-muted-foreground text-sm">
-          Tweak and watch the break update below — nothing saves until you apply. Clips come from your{" "}
+          Tweak and watch the break update below. Nothing saves until you apply. Clips come from your{" "}
           <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
             filler catalog
           </Link>
@@ -70,7 +70,7 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
           />
           <FillerClipList
             label="Never include"
-            hint="Block clips you don't want on this channel — they win over a pin."
+            hint="Block clips you don't want on this channel. They win over a pin."
             ids={excluded}
             onChange={(next) => setDraft({ ...draft, excluded: next })}
             resolve={resolve}
@@ -92,7 +92,7 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
                 "Assembling preview…"
               ) : (
                 <>
-                  No clips match this selection yet — breaks fall back to the bumper card. Loosen the theme
+                  No clips match this selection yet. Breaks fall back to the bumper card. Loosen the theme
                   above, or{" "}
                   <Link to="/filler" className="text-signal underline-offset-2 hover:underline">
                     add and tag clips

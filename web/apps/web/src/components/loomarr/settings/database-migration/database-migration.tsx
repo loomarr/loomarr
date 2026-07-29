@@ -61,7 +61,7 @@ const DatabaseMigration = ({
           <h3 className="font-medium text-sm">Running on PostgreSQL</h3>
         </div>
         <p className="mt-2 text-muted-foreground text-sm">
-          Nothing to migrate. Back PostgreSQL up with your usual tooling — Loomarr does not try to own that,
+          Nothing to migrate. Back PostgreSQL up with your usual tooling. Loomarr does not try to own that,
           because an operator already running Postgres has a strategy better than anything it would invent.
         </p>
       </section>
@@ -84,9 +84,8 @@ const DatabaseMigration = ({
         {/* Why anyone would do this — and why they might not need to. Stating the SQLite
             constraint is the honest framing: Postgres is not "better", it buys replicas. */}
         <p className="mt-2 text-muted-foreground text-xs">
-          SQLite: run exactly one instance — a second process writing the same file will corrupt it.
-          PostgreSQL enables replicas, and is worth it if you already run Postgres and would rather back up
-          one thing.
+          SQLite: run exactly one instance: a second process writing the same file will corrupt it. PostgreSQL
+          enables replicas, and is worth it if you already run Postgres and would rather back up one thing.
         </p>
       </header>
 
@@ -99,7 +98,7 @@ const DatabaseMigration = ({
           <div>
             <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
             <p className="mt-1 text-muted-foreground text-sm">
-              Loomarr can copy your data to PostgreSQL, but it cannot record the switch — an environment
+              Loomarr can copy your data to PostgreSQL, but it cannot record the switch. An environment
               variable always wins at boot. Migrate the data, then change DATABASE_URL where you set it and
               restart.
             </p>
@@ -156,8 +155,8 @@ const DatabaseMigration = ({
                     aria-describedby="migration-dsn-doc"
                   />
                   <p id="migration-dsn-doc" className="text-muted-foreground text-xs">
-                    sslmode=prefer negotiates TLS and falls back — right for a docker network. Use require for
-                    a database across the internet.
+                    sslmode=prefer negotiates TLS and falls back, which is right for a docker network. Use
+                    require for a database across the internet.
                   </p>
                 </div>
                 <Button
@@ -212,7 +211,7 @@ const DatabaseMigration = ({
             {step === "backup" && (
               <div className="flex flex-col gap-3">
                 <p className="text-sm">
-                  A backup is required, not suggested — it&rsquo;s the only thing that makes this reversible.
+                  A backup is required, not suggested. It&rsquo;s the only thing that makes this reversible.
                   Loomarr writes it before touching either database.
                 </p>
                 <p className="font-mono text-muted-foreground text-xs">
@@ -237,7 +236,7 @@ const DatabaseMigration = ({
               <div className="flex flex-col gap-3">
                 <p className="font-mono text-tune text-xs">
                   {status.phase === "failed"
-                    ? "aborted — source database untouched"
+                    ? "aborted: source database untouched"
                     : "copying table by table · source stays read-only"}
                 </p>
                 <ul className="flex flex-col gap-2">
@@ -286,7 +285,7 @@ const DatabaseMigration = ({
                   <p className="flex items-start gap-2 text-onair-300 text-sm">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
                     Row counts do not match, so nothing was switched over. Your SQLite database was only read
-                    from — this install is still running on it.
+                    from, this install is still running on it.
                   </p>
                 )}
               </div>
