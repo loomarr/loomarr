@@ -22,6 +22,29 @@ components:
         - priority
         - matched
       type: object
+    Activity:
+      additionalProperties: false
+      properties:
+        at:
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          type: string
+        level:
+          type: string
+        subjectId:
+          type: string
+        text:
+          type: string
+      required:
+        - id
+        - at
+        - kind
+        - level
+        - text
+      type: object
     AdjacentContext:
       additionalProperties: false
       properties:
@@ -1712,6 +1735,25 @@ components:
         - key
         - name
       type: object
+    ListActivityOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListActivityOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        activity:
+          items:
+            $ref: "#/components/schemas/Activity"
+          type:
+            - array
+            - "null"
+      required:
+        - activity
+      type: object
     ListChannelsOutputBody:
       additionalProperties: false
       properties:
@@ -2689,6 +2731,51 @@ components:
       required:
         - key
       type: object
+    ServiceRow:
+      additionalProperties: false
+      properties:
+        docHref:
+          description: Anchor into the embedded Troubleshooting docs
+          type: string
+        hint:
+          description: Actionable detail when not OK
+          type: string
+        name:
+          description: "Probe key: media_server, tunarr, llm, …"
+          type: string
+        ok:
+          type: boolean
+        settingsGroup:
+          description: Settings group owning this connection
+          type: string
+        target:
+          type: string
+      required:
+        - name
+        - ok
+      type: object
+    ServicesView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ServicesView.json
+          format: uri
+          readOnly: true
+          type: string
+        loomarr:
+          $ref: "#/components/schemas/ServiceRow"
+        rows:
+          items:
+            $ref: "#/components/schemas/ServiceRow"
+          type:
+            - array
+            - "null"
+      required:
+        - loomarr
+        - rows
+      type: object
     SessionBody:
       additionalProperties: false
       properties:
@@ -2988,6 +3075,9 @@ components:
           type: string
         ok:
           type: boolean
+        target:
+          description: The URL or path this check probed
+          type: string
       required:
         - name
         - ok
@@ -3679,6 +3769,35 @@ info:
   version: 0.1.0
 openapi: 3.1.0
 paths:
+  /v1/activity:
+    get:
+      description: Admin only. Reads the persisted activity table (§5), NOT the SSE bus — the bus is deliberately lossy, so a feed built on it would drop entries exactly when the install is busiest. Survives a restart.
+      operationId: list-activity
+      parameters:
+        - description: How many entries to return (default 20, max 200)
+          explode: false
+          in: query
+          name: limit
+          schema:
+            description: How many entries to return (default 20, max 200)
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListActivityOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What Loomarr has been doing, newest first
+      tags:
+        - system
   /v1/auth/login:
     post:
       operationId: login
@@ -5416,6 +5535,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Restart Loomarr in place
+      tags:
+        - system
+  /v1/system/services:
+    get:
+      description: Admin only. Runs the SAME connection checks as the wizard checklist and /v1/system/reload — one probe implementation, so the three surfaces cannot disagree about whether the media server is reachable. Polled by the Dashboard every 30s.
+      operationId: system-services
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicesView"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Every configured integration and whether it answers
       tags:
         - system
   /v1/system/version:

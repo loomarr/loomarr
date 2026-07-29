@@ -37,6 +37,7 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemBackups(humaAPI)
 	srv.registerSystemRestart(humaAPI)
+	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerDashboard(humaAPI)

@@ -97,6 +97,16 @@ interface DatabaseEvent {
   [k: string]: unknown;
 }
 
+// ActivityEvent announces that a Dashboard feed row was written (§7, §12, V32).
+//
+// ⚠ **Deliberately EMPTY.** The frame says "something happened"; the page refetches
+// GET /v1/activity, which is the truth on reconnect (§8). Carrying the row would invite a
+// client to build the list from frames — and this bus drops frames for a slow subscriber by
+// design, so that list would be silently missing entries.
+interface ActivityEvent {
+  [k: string]: unknown;
+}
+
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
   onChannel?: (e: ChannelEvent) => void;
@@ -106,9 +116,11 @@ interface EventHandlers {
   onJob?: (e: JobEvent) => void;
   onPlayout?: (e: PlayoutEvent) => void;
   onDatabase?: (e: DatabaseEvent) => void;
+  onActivity?: (e: ActivityEvent) => void;
 }
 
 export type {
+  ActivityEvent,
   ChannelEvent,
   DatabaseEvent,
   EventHandlers,

@@ -8,13 +8,15 @@ import {
   titlesApi,
 } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useAuth } from "@/auth";
 import {
+  ActivityFeed,
   EmptyState,
   RestartNeededBanner,
   ServiceControl,
+  ServicesPanel,
   StatCard,
   TranscodingPanel,
 } from "@/components/loomarr";
@@ -63,7 +65,14 @@ const DashboardScreen = () => {
 
   // Restart control (§9.2, V13). One cost query drives the restart-needed banner AND the
   // confirm line, so the two can never disagree about what a restart would do.
+  const navigate = useNavigate();
   const restartCost = systemApi.useSystemRestartCost({ query: { enabled } });
+  // ⚠ Services POLLS (30s); the feed does NOT (§12). A probe result only exists because the
+  // server went and asked, so pushing it would mean probing forever on an idle install. A
+  // feed row IS an event the server knows at write time, so it rides the `activity` frame —
+  // wired centrally in @loomarr/core, which is why there is no refetchInterval here.
+  const services = systemApi.useSystemServices({ query: { enabled, refetchInterval: 30_000 } });
+  const activity = systemApi.useListActivity({ limit: 8 }, { query: { enabled } });
   const [serviceError, setServiceError] = useState<string | null>(null);
   const controlRef = useRef<HTMLDivElement>(null);
   // The SHARED watch (app shell). The overlay it drives covers the whole app, so an
@@ -136,6 +145,18 @@ const DashboardScreen = () => {
         </div>
 
         <TranscodingPanel telemetry={telemetry} loading={playout.isLoading} />
+
+        {services.data?.status === 200 ? (
+          <ServicesPanel
+            view={services.data.data}
+            refreshing={services.isFetching}
+            // "Fix →" routes to the settings that own the failing connection. A red dot
+            // with nowhere to go is a puzzle, not a diagnosis (§12).
+            onFix={(group) => navigate({ to: "/settings/connections", hash: group })}
+          />
+        ) : null}
+
+        {activity.data?.status === 200 ? <ActivityFeed entries={activity.data.data.activity ?? []} /> : null}
 
         {cost ? (
           <div ref={controlRef}>

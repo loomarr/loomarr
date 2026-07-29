@@ -103,6 +103,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.timeout` (`JOB_TIMEOUT`) | duration | `10m` | How long one channel suggestion may run before it's stopped. |
 | `jobs.retention` (`JOBS_RETENTION`) | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
+| `activity.retention` (`ACTIVITY_RETENTION`) | duration | `720h` | How long the Dashboard's recent-activity entries are kept before they're cleaned up. |
+| `job.activity_purge.schedule` (`JOB_ACTIVITY_PURGE_SCHEDULE`) | cron | `0 15 4 * * *` | When to clean up old recent-activity entries. |
 | `event.webhook_url` (`EVENT_WEBHOOK_URL`) | url | — | Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip. |
 | `setup.completed` (`SETUP_COMPLETED`) | bool | `false` | Whether first-run setup is done. Until it is, Loomarr opens the setup wizard. _(advanced)_ |
 

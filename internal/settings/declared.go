@@ -533,6 +533,16 @@ func declared() []Setting {
 			Doc: "How long suggested lineups are kept before they're cleaned up.",
 		},
 		{
+			Key: "activity.retention", EnvVar: "ACTIVITY_RETENTION", Group: GroupAdvanced,
+			Kind: KindDuration, Default: "720h",
+			Doc: "How long the Dashboard's recent-activity entries are kept before they're cleaned up.",
+		},
+		{
+			Key: "job.activity_purge.schedule", EnvVar: "JOB_ACTIVITY_PURGE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 15 4 * * *",
+			Doc: "When to clean up old recent-activity entries.",
+		},
+		{
 			Key: "event.webhook_url", EnvVar: "EVENT_WEBHOOK_URL", Group: GroupAdvanced,
 			Kind: KindURL, Default: "",
 			Doc: "Optional webhook Loomarr calls when a title finishes (or gives up). Leave empty to skip.",
