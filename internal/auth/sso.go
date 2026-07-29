@@ -221,15 +221,38 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 		return "", time.Time{}, store.User{}, claims, p.returnTo, ErrSSOStateMismatch
 	}
 
-	var raw struct {
-		Sub               string `json:"sub"`
-		PreferredUsername string `json:"preferred_username"`
-		Email             string `json:"email"`
-		Name              string `json:"name"`
-	}
+	var raw ssoRawClaims
 	if err := idTok.Claims(&raw); err != nil {
 		return "", time.Time{}, store.User{}, claims, p.returnTo, fmt.Errorf("sso: claims: %w", err)
 	}
+
+	// ⚠ **The profile claims come from USERINFO, not the id_token** — found by testing against
+	// a real Authelia (4.39), which follows the spec strictly: the id_token carries `sub` and
+	// the profile lives at the userinfo endpoint. Reading only the id_token made `MatchName()`
+	// fall through to an opaque `sub` UUID, so EVERY login against a default Authelia was
+	// refused. A hand-written stub IdP that put everything inline never showed it.
+	//
+	// Fetched unconditionally rather than only when the id_token lacks a name: userinfo returns
+	// the claims either way, and a conditional would leave the most common provider on the
+	// less-travelled code path.
+	if ui, err := provider.UserInfo(ctx, oauth2.StaticTokenSource(tok)); err == nil {
+		var uiClaims ssoRawClaims
+		if err := ui.Claims(&uiClaims); err == nil {
+			// ⚠ The userinfo `sub` MUST match the token's. Without this a substituted response
+			// could name a different person than the one the provider authenticated — the
+			// spec requires the check for exactly that reason.
+			if ui.Subject == raw.Sub {
+				raw.merge(uiClaims)
+			} else if s.log != nil {
+				s.log.Warn("sso: userinfo subject does not match the id_token; ignoring it",
+					"token_sub", raw.Sub, "userinfo_sub", ui.Subject)
+			}
+		}
+	} else if s.log != nil {
+		// Not fatal: a provider that inlines claims needs no userinfo call to succeed.
+		s.log.Info("sso: userinfo unavailable; using id_token claims", "err", err)
+	}
+
 	claims = SSOClaims{Subject: raw.Sub, PreferredUsername: raw.PreferredUsername, Email: raw.Email, Name: raw.Name}
 
 	// ⚠ THE ALLOWLIST. Everything above proves identity; this decides access.
@@ -259,6 +282,29 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 		return "", time.Time{}, store.User{}, claims, p.returnTo, err
 	}
 	return token, expires, row, claims, p.returnTo, nil
+}
+
+// ssoRawClaims is the wire shape, read from BOTH the id_token and userinfo.
+type ssoRawClaims struct {
+	Sub               string `json:"sub"`
+	PreferredUsername string `json:"preferred_username"`
+	Email             string `json:"email"`
+	Name              string `json:"name"`
+}
+
+// merge fills empty fields from another source. Additive only — a claim already present in
+// the verified id_token is never overwritten by the userinfo response, which is the weaker
+// of the two (the id_token is signed; userinfo is a bearer-authenticated GET).
+func (c *ssoRawClaims) merge(other ssoRawClaims) {
+	if c.PreferredUsername == "" {
+		c.PreferredUsername = other.PreferredUsername
+	}
+	if c.Email == "" {
+		c.Email = other.Email
+	}
+	if c.Name == "" {
+		c.Name = other.Name
+	}
 }
 
 // logRefusal records a verified-but-unallowlisted login at INFO, not as an error.

@@ -432,3 +432,85 @@ func TestSSO_PendingLoginExpires(t *testing.T) {
 		t.Error("a session was issued from an expired pending login")
 	}
 }
+
+// ⚠ **A userinfo response whose `sub` does not match the id_token is IGNORED.**
+//
+// Sabotage found this unguarded (replacing the comparison with `true` broke nothing). Loomarr
+// reads profile claims from userinfo — a spec-compliant Authelia puts them nowhere else — and
+// userinfo is a bearer-authenticated GET, weaker evidence than the signed id_token. Without
+// the check, a substituted response could name a DIFFERENT person than the provider
+// authenticated, and Loomarr would look that name up in the allowlist.
+//
+// Here the provider authenticates `op-1` but userinfo claims to describe `op-999` and calls
+// them `admin`. The mismatched claims must be discarded, leaving only what the token said.
+func TestSSO_UserinfoWithAMismatchedSubjectIsIgnored(t *testing.T) {
+	// ⚠ The id_token carries NO name — Authelia's real shape. That is what makes this test
+	// able to see the guard: `merge` is additive, so with a name already in the token a
+	// mismatched userinfo could not overwrite it and the test would pass either way. The
+	// dangerous case is precisely the one where userinfo is the ONLY source of a name.
+	idp := newStubIDP(t, map[string]any{"sub": "op-1"})
+	idp.userinfoClaims = map[string]any{"sub": "op-999", "preferred_username": "admin"}
+
+	st := newSSOStore(t)
+	ctx := context.Background()
+	// `admin` IS allowlisted — so if the mismatched claim were trusted, the login would
+	// SUCCEED as the wrong person. That is the failure this guards.
+	if err := st.UpsertUser(ctx, store.User{ID: "u-admin", Name: "admin", Role: "admin", UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	token, _, u, claims, _, err := svc.Exchange(ctx, state, "code")
+	// With the mismatched claims discarded, the only name left is the opaque `sub`, which
+	// matches no row — so the login is REFUSED rather than succeeding as someone else.
+	if err != auth.ErrInvalidCredentials {
+		t.Fatalf("Exchange = %v, want ErrInvalidCredentials — a mismatched userinfo must not name the identity", err)
+	}
+	if token != "" {
+		t.Error("a session was issued from a userinfo response describing a different subject")
+	}
+	if u.Role == "admin" {
+		t.Error("signed in as the ADMIN named by a mismatched userinfo response")
+	}
+	if claims.PreferredUsername == "admin" {
+		t.Errorf("claims took the name %q from a userinfo response for another subject", claims.PreferredUsername)
+	}
+}
+
+// The spec-compliant shape a real Authelia uses: the id_token carries only `sub`, and the
+// profile comes from userinfo. This is the case that was broken until a real provider showed
+// it — every login on a default Authelia was refused with an opaque `sub` as the match name.
+func TestSSO_ProfileClaimsFromUserinfo(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{"sub": "op-1"}) // no name in the token, as Authelia does
+	idp.userinfoClaims = map[string]any{"sub": "op-1", "preferred_username": "sam", "email": "sam@x.test"}
+
+	st := newSSOStore(t)
+	ctx := context.Background()
+	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	token, _, u, claims, _, err := svc.Exchange(ctx, state, "code")
+	if err != nil {
+		t.Fatalf("Exchange with userinfo-only claims: %v", err)
+	}
+	if token == "" || u.ID != "u-sam" {
+		t.Errorf("no session for a userinfo-named identity (user=%+v)", u)
+	}
+	if claims.PreferredUsername != "sam" {
+		t.Errorf("preferred_username = %q, want it from userinfo", claims.PreferredUsername)
+	}
+}

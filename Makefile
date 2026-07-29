@@ -53,6 +53,14 @@ build: ## build the loomarr binary (static, cgo-free — §16)
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
 	docker compose -f docker/compose.dev.yaml up -d
 
+.PHONY: test-sso
+test-sso: ## SSO against a REAL Authelia container (requires Docker)
+	@# Not in `make check`: §19 keeps the default suite Docker-free, like test-pg. This exists
+	@# because a hand-written stub IdP agreed with our own misreading of the spec — a real
+	@# Authelia found that profile claims live at userinfo, not in the id_token, which meant
+	@# EVERY login against a default Authelia was refused.
+	$(GO) test -count=1 -tags=integration -run TestSSO_AgainstRealAuthelia ./internal/auth/
+
 .PHONY: dev-be
 dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go change
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to

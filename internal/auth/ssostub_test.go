@@ -27,12 +27,20 @@ import (
 // same signature, audience, expiry and nonce checks it will do in production, and the tests
 // exercise our decisions on top of a genuinely verified identity.
 //
-// It speaks only the three endpoints the flow touches: discovery, token, and JWKS. No
-// userinfo — the claims ride in the id_token, which is what the service reads.
+// It speaks discovery, token, JWKS and userinfo.
+//
+// ⚠ **Userinfo was added AFTER a real Authelia proved the stub was misleading.** The stub put
+// every claim in the id_token, so it never exercised the spec-compliant shape Authelia uses
+// (id_token carries `sub`; the profile lives at userinfo) — and Loomarr read only the
+// id_token, so every login against a default Authelia was refused. `userinfoClaims` now lets
+// a test choose which style a provider uses, including a MISMATCHED subject.
 type stubIDP struct {
 	server *httptest.Server
 	key    *rsa.PrivateKey
 	claims map[string]any
+	// userinfoClaims is what /userinfo returns. nil ⇒ the endpoint 404s, modelling a provider
+	// that inlines everything in the id_token.
+	userinfoClaims map[string]any
 
 	// nonce is captured from the authorize URL the service builds and echoed back inside the
 	// signed token, so the service's replay check has something real to compare. Held per
@@ -57,6 +65,7 @@ func newStubIDP(t *testing.T, claims map[string]any) *stubIDP {
 			"authorization_endpoint":                idp.server.URL + "/authorize",
 			"token_endpoint":                        idp.server.URL + "/token",
 			"jwks_uri":                              idp.server.URL + "/jwks",
+			"userinfo_endpoint":                     idp.server.URL + "/userinfo",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		})
 	})
@@ -67,6 +76,16 @@ func newStubIDP(t *testing.T, claims map[string]any) *stubIDP {
 			"n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
 			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
 		}}})
+	})
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, _ *http.Request) {
+		idp.mu.Lock()
+		ui := idp.userinfoClaims
+		idp.mu.Unlock()
+		if ui == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeJSON(w, ui)
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
 		idp.mu.Lock()
