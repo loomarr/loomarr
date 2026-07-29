@@ -444,6 +444,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/system/llm/discover` | The **downloadable** local models that are **compatible with this machine**, ranked best-first (admin, §8.1). Takes the most-popular GGUF repos from a live source (Hugging Face, §14), sizes each against detected VRAM (the repo's Q4_K_M-class build — what Ollama's `latest` resolves to and what actually downloads), drops repos too big for the machine, and returns each with a bare `pullRef` (`hf.co/<repo>`, implicit `:latest`) to hand to `/pull`. Tool-capability is confirmed only **after** pull + probe. No keyword — it's the compatible set. Best-effort — a source outage returns an empty list (browse on huggingface.co instead), never a 5xx. |
 | GET | `/v1/search?q=&scope=` | Federated search (§7.2): library + TMDB. Any authenticated user. Clips are not a scope — see §7.2; use `/v1/filler?q=`. |
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
+| POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down playout sessions by process group, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, works identically on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
+| GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any boot-time setting is pending (`restartRequired`). |
+| POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
 | GET | `/v1/system/backups` | List the backups on disk in `backup.dir`, newest first (admin, §16, V12): filename, bytes, `writtenAt`. Also reports `dir`, `retain`, `schedule`, and `supported` (false on Postgres, where the listing is empty and the UI explains `pg_dump` rather than showing an empty table). Never 5xxs on a missing/unreadable directory — nothing written yet is an empty list, not an error. |
 | GET | `/v1/system/backups/{name}` | Download one **already-written** backup by filename (admin, §16, V12). `name` is validated against the `loomarr-<timestamp>.db` pattern and resolved inside `backup.dir` — it is a client-supplied path segment, so anything else is rejected before it reaches the filesystem. |
 | GET | `/v1/events` | SSE stream of state changes. Frame `event:` types: `title` (provisioning) · `channel` (lineup/health) · `suggestion` (generation progress — `searching`→`reasoning`→`scoring`→`done`/`failed`, payload `{jobId, phase}`) · `llm_pull` (model-download percent). Latency-only: a dropped frame is never a correctness bug — the `GET` endpoints are the source of truth on reconnect (§8). |
@@ -756,6 +759,58 @@ playout. It is described in §11 alongside the credential paths rather than left
    restart dialog (V13) therefore needs the live session count, which `GET /v1/playout/sessions`
    now provides: *"3 channels Loomarr is streaming will drop for a few seconds; Tunarr-backed
    channels keep playing."*
+
+### 9.2 Restarting in place (V13)
+
+**Loomarr restarts by rebuilding itself in the same process, never by exiting.** `main` runs a
+loop — `for { app := Build(); app.Run(); app.Shutdown() }` — and a restart request ends the
+current iteration so the next one constructs a fresh store, handler, scheduler and HTTP server.
+Same PID, no re-exec, **no supervisor required**.
+
+The three mechanisms were weighed against the constraint that an operator must never be left
+with a dead service and no way back:
+
+| | Unix | Windows | Needs a supervisor |
+| --- | --- | --- | --- |
+| `syscall.Exec` (execve) | ideal — same PID, bounded failure | **unsupported** | no |
+| **In-process rebuild (chosen)** | works | **works identically** | no |
+| Exit and let a supervisor restart | works | works | **yes** |
+
+- ⚠ **`syscall.Exec` is a stub on Windows, not an absence.** `syscall/exec_windows.go` returns
+  `EWINDOWS`, so cross-platform code **compiles cleanly and fails only at runtime** — the button
+  would ship broken rather than refuse to build. Windows has no execve at all (`CreateProcess`
+  always makes a new process), so any exec-based design needs a permanent platform branch.
+- ⚠ **Exit-and-be-restarted is the option that can strand an operator.** It assumes a supervisor
+  exists — false for `make dev-be` and any bare binary — and the exit-code contract is
+  supervisor-specific (Docker `unless-stopped` restarts on 0; systemd `Restart=on-failure` does
+  not). Docker's restart backoff is also exponential, so a wrong guess costs minutes of downtime.
+- **Prior art:** this is what **Jellyfin** does (`Jellyfin.Server/Program.cs`: `do { await
+  StartServer(...); } while (_restartOnShutdown);`) — a full host rebuild, same PID, and the
+  reason Windows needs no special case there. Sonarr, by contrast, spawns a detached child and
+  branches on `IsWindowsService`, which is exactly the platform-specific complexity this avoids.
+
+**What the loop costs, stated plainly.** Rebuilding in-process makes package-level mutable state
+a correctness constraint the compiler cannot enforce:
+
+- **Anything constructed per iteration must be per iteration.** `http.Server` is single-use by
+  design (`inShutdown` is set on `Shutdown` and never cleared), so each pass allocates a fresh
+  one. The same applies to the mux, the store handle, and the scheduler.
+- **Global registries are the loud failure.** `prometheus.MustRegister`, `http.HandleFunc` on
+  `DefaultServeMux`, `expvar.Publish` and `sql.Register` all panic on a second registration.
+  Loomarr uses **none** of them except Prometheus, and `metrics.RegisterStoreCollector` already
+  tolerates `AlreadyRegisteredError` — written for "a second boot in one test process", which is
+  precisely a restart iteration.
+- ⚠ **`sync.Once` is the quiet failure**, and the one to watch: a package-level `Once` guarding a
+  resource makes iteration 2 inherit iteration 1's closed handle, with no panic and no log line.
+  Every `sync.Once` in this repo is closure-local or a struct field, so it rebuilds with its
+  owner; a package-level one would be a bug.
+- **Once-only work stays ABOVE the loop** — logger setup and anything that genuinely must not
+  re-run. Jellyfin hoists migrations and path setup for the same reason.
+
+**The gate is a test, not a rule.** A restart is only correct if the loop can run repeatedly
+without accumulating goroutines or stale state, so the phase ships an N-iteration
+Build/Run/Shutdown test asserting a stable goroutine count (`go.uber.org/goleak`, §14). A prose
+rule would not have caught it.
 
 ### What does not change
 
@@ -1109,6 +1164,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
+| Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
 | Model discovery source | **Hugging Face model API** (`huggingface.co/api/models`), plain HTTP via the existing factory | The **only** live source of *downloadable* Ollama models — Ollama ships no such API (`/api/search` unshipped; ollama.com is HTML-only). Anonymous GET, **no new Go dependency** (one `net/http` call), and `ollama pull hf.co/<repo>` consumes its ids directly (§8.1). Best-effort: an outage degrades to a "browse on huggingface.co" link, never a page failure. A single read-only outbound endpoint, pinned via a captured fixture like the others |
