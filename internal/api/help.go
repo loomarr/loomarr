@@ -114,12 +114,6 @@ type systemVersionOutput struct {
 // Registering them in huma to get them into the generated client would have put an auth
 // requirement in front of a container health probe. So the UI gets this instead — same
 // readiness, typed and authenticated, alongside the version the operator needs anyway.
-// processStart is when this process came up. Captured at package init rather than injected:
-// it is a property of the host, not of a request or of any configured service, so there is
-// nothing for a caller to decide and nothing a test needs to vary — the value's only job is
-// to be the instant the UI counts from. (`PlayoutSecret` is injected for the opposite
-// reason: it IS configuration.)
-var processStart = time.Now()
 
 func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOutput, error) {
 	info := buildinfo.Get()
@@ -128,7 +122,7 @@ func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOu
 	out.Body.BuiltAt, out.Body.Dirty = info.BuiltAt, info.Dirty
 	out.Body.GoVersion = runtime.Version()
 	out.Body.Platform = runtime.GOOS + "/" + runtime.GOARCH
-	out.Body.StartedAt = processStart.UTC().Format(time.RFC3339)
+	out.Body.StartedAt = s.startedAt.UTC().Format(time.RFC3339)
 	// Schema version and backend need the store. A store-less boot (§7 readiness) still
 	// serves this endpoint — it is what an operator reads to find out WHY the install is
 	// unhealthy — so both rows are simply absent rather than the handler failing.

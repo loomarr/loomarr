@@ -178,6 +178,43 @@ func TestSystemVersion_ReportsRuntimeAndSchema(t *testing.T) {
 	}
 }
 
+// ⚠ REGRESSION: `startedAt` must be per-handler, not per-process.
+//
+// It began as a package-level `var processStart = time.Now()`, and the §9.2 restart loop
+// proved that wrong on its first live test: the value survived the rebuild, so About kept
+// reporting the ORIGINAL boot and would have claimed days of uptime on an instance
+// restarted seconds ago. No panic, no log line — just a number quietly lying in the one
+// place an operator looks when writing a bug report.
+//
+// Two handlers built moments apart must report different instants, which a package-level
+// var cannot do.
+func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
+	read := func() string {
+		srv := newHelpServer(t, nil)
+		resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("version → %d, want 200", resp.StatusCode)
+		}
+		var body struct {
+			StartedAt string `json:"startedAt"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body.StartedAt
+	}
+
+	first := read()
+	// RFC3339 is second-resolution, so two builds in the same second would legitimately
+	// match. Wait past the boundary rather than asserting on a value that cannot differ.
+	time.Sleep(1100 * time.Millisecond)
+	second := read()
+
+	if first == second {
+		t.Errorf("both generations report startedAt=%s — a restart would keep counting from the original boot", first)
+	}
+}
+
 // A store-less boot still serves this endpoint — it is what an operator reads to find out
 // WHY the install is unhealthy. The two store-derived rows are absent rather than the whole
 // call failing.

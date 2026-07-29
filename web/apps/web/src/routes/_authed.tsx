@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { meQueryOptions, needsBootstrap, useAuth } from "@/auth";
-import { AppShell } from "@/components/loomarr";
+import { AppShell, RestartOverlay } from "@/components/loomarr";
+import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { LoomarrEventsProvider } from "@/events";
 import { CommandPalette, useCommandShortcut } from "@/palette";
 
@@ -15,12 +16,21 @@ import { CommandPalette, useCommandShortcut } from "@/palette";
 // frames out to screens that need the payload itself, like the Suggest workspace's live
 // phases. Identity comes from useAuth (real name, admin-only nav), and logout clears the
 // query cache and drops back to /login.
-const AuthedLayout = () => {
+// The shell split in two so the overlay can read the restart state the provider holds —
+// a provider cannot consume its own context.
+const AuthedLayout = () => (
+  <RestartWatchProvider>
+    <AuthedFrame />
+  </RestartWatchProvider>
+);
+
+const AuthedFrame = () => {
   const [commandOpen, setCommandOpen] = useState(false);
   useCommandShortcut(setCommandOpen);
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const restartWatch = useRestartWatchContext();
 
   const logout = authApi.useLogout({
     mutation: {
@@ -42,6 +52,14 @@ const AuthedLayout = () => {
         <Outlet />
       </AppShell>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      {/* ⚠ App-wide, not per page. The restart control lives on the Dashboard, but the
+          operator can navigate away the instant they click it — and every page is equally
+          dead while the server rebuilds. */}
+      <RestartOverlay
+        restarting={restartWatch.restarting}
+        justCameBack={restartWatch.justCameBack}
+        failed={restartWatch.failed}
+      />
     </LoomarrEventsProvider>
   );
 };

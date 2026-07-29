@@ -2428,6 +2428,38 @@ components:
       required:
         - next
       type: object
+    RestartCost:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RestartCost.json
+          format: uri
+          readOnly: true
+          type: string
+        available:
+          description: Whether this process can restart itself
+          type: boolean
+        pendingKeys:
+          description: Boot-time settings waiting on a restart, e.g. DATABASE_URL
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        restartRequired:
+          description: A boot-time setting has changed and needs a restart to apply
+          type: boolean
+        streamingChannels:
+          description: Channels Loomarr is streaming that will drop
+          format: int64
+          type: integer
+      required:
+        - streamingChannels
+        - restartRequired
+        - available
+      type: object
     RuleOrdering:
       additionalProperties: false
       properties:
@@ -3247,6 +3279,25 @@ components:
           type: string
       required:
         - provider
+      type: object
+    SystemReloadOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SystemReloadOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        checks:
+          items:
+            $ref: "#/components/schemas/SetupCheck"
+          type:
+            - array
+            - "null"
+      required:
+        - checks
       type: object
     SystemVersionOutputBody:
       additionalProperties: false
@@ -5310,6 +5361,61 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Test a hosted provider + key
+      tags:
+        - system
+  /v1/system/reload:
+    post:
+      description: Admin only. Re-runs the connection checks without restarting or tearing anything down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two can never disagree.
+      operationId: system-reload
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemReloadOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Re-probe every configured service
+      tags:
+        - system
+  /v1/system/restart:
+    get:
+      description: Admin only. The live count of channels Loomarr is streaming (which drop for a few seconds; Tunarr-backed channels keep playing), plus any boot-time setting waiting on a restart. Read-only — this does not restart anything.
+      operationId: system-restart-cost
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestartCost"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What a restart would cost right now
+      tags:
+        - system
+    post:
+      description: Admin only. Drains connections, tears down playout, and rebuilds every subsystem in the same process (§9.2) — no supervisor required. Responds before the drain begins, because a client that never gets a reply cannot tell 'restarting' from 'crashed'.
+      operationId: system-restart
+      responses:
+        "202":
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Restart Loomarr in place
       tags:
         - system
   /v1/system/version:

@@ -19,6 +19,7 @@ import (
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/clipfetch"
+	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/library"
@@ -55,6 +56,14 @@ type Overrides struct {
 	// reason: run() sets it from LOOMARR_PPROF, and a test can build a handler either way
 	// through the real composition root.
 	Pprof bool
+	// Restart asks the process to rebuild itself in place (§9.2). nil ⇒ the restart
+	// routes report 501 rather than pretending: an embedded or test-built handler has no
+	// loop behind it, and a button that silently does nothing is worse than an absent one.
+	//
+	// A func rather than a channel so the API package never learns how restarting works —
+	// only main owns the generation loop. It must NOT block: the handler calls it while
+	// responding, and the drain it triggers cannot begin until that response is written.
+	Restart func()
 }
 
 // flavorOrDefault resolves the media-server flavor, defaulting to Emby when unset.
@@ -705,6 +714,22 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		})
 	}
 
+	// Restart control (§9.2, V13). Wired only when main passed a restart func — a handler
+	// built by a test or the integration harness has no generation loop behind it, and
+	// 501 is the honest answer there rather than a button that silently does nothing.
+	var restartSvc api.RestartService
+	if ov.Restart != nil {
+		restartSvc = restartAdapter{fn: ov.Restart}
+	}
+	// What this generation booted with, for the RestartRequired derivation. A load
+	// failure leaves it nil, which reports no drift — the safe direction, since a false
+	// "restart required" points the operator at an action that cannot help.
+	bootCfg, cfgErr := config.Load()
+	if cfgErr != nil {
+		log.Warn("could not read boot config for restart-required detection", "err", cfgErr)
+		bootCfg = nil
+	}
+
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
 	// Session auth (cookie) with API_TOKEN Bearer break-glass; SQLite gets a
 	// backup streamer, Postgres passes nil (→ 501).
@@ -879,13 +904,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		SystemLLM:     systemLLM,
 		Database:      databaseSvc,
 		Backups:       backupsSvc,
-		Jobs:          jobsSvc,
-		Settings:      settingsSvc,
-		Guide:         guideSvc,
-		Provision:     provisionSvc,
-		Binder:        chBinder,
-		LiveConfig:    liveConfig,
-		LiveConfigInt: set.intv,
+		Restart:       restartSvc,
+		// The baseline for "has a boot-time setting changed?" is what THIS generation
+		// booted with, captured here rather than per call (config-design §3).
+		BootstrapDrift: bootstrapDrift(bootCfg),
+		Jobs:           jobsSvc,
+		Settings:       settingsSvc,
+		Guide:          guideSvc,
+		Provision:      provisionSvc,
+		Binder:         chBinder,
+		LiveConfig:     liveConfig,
+		LiveConfigInt:  set.intv,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutSessions: playoutSessions,
