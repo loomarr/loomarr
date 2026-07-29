@@ -182,7 +182,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// guard at each write point.
 	var activityRec *activity.Recorder
 	if st != nil {
-		activityRec = activity.New(st, log)
+		activityRec = activity.New(st, log).WithNotifier(emitter)
 	}
 
 	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always

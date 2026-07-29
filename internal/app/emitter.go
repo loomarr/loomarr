@@ -87,3 +87,14 @@ func (e *eventEmitter) JobChanged(name string) {
 		Payload: map[string]string{"name": name},
 	})
 }
+
+// ActivityRecorded publishes an `activity` frame when a Dashboard feed row is written (§12,
+// V32). Satisfies activity.Notifier.
+//
+// ⚠ **No payload.** The frame says "something happened"; the page refetches GET /v1/activity,
+// which is the truth on reconnect (§8). Carrying the row itself would invite a client to
+// render a list assembled from frames — and this bus drops frames for a slow subscriber by
+// design, so that list would silently be missing entries.
+func (e *eventEmitter) ActivityRecorded() {
+	e.bus.Publish(events.Event{Type: "activity"})
+}

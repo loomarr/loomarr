@@ -26,17 +26,34 @@ type Sink interface {
 	RecordActivity(ctx context.Context, a store.Activity) error
 }
 
+// Notifier receives a signal after a row is written, for the SSE bus (optional).
+//
+// The frame carries NO payload beyond "something was written": the Dashboard re-reads
+// GET /v1/activity, which is the truth on reconnect (§8). Pushing the row itself would
+// invite a client to render from a frame it might have missed one of.
+type Notifier interface{ ActivityRecorded() }
+
 // Recorder writes feed rows. Nil-safe throughout: a subsystem constructed without one (unit
 // tests, a store-less boot) records nothing rather than guarding at every call site.
 type Recorder struct {
-	sink Sink
-	log  *slog.Logger
+	sink   Sink
+	log    *slog.Logger
+	notify Notifier
 }
 
 // New builds a Recorder. A nil sink yields a recorder whose writes are no-ops.
 func New(sink Sink, log *slog.Logger) *Recorder {
 	return &Recorder{sink: sink, log: log}
 }
+
+// WithNotifier wires the SSE bus so the Dashboard learns of a new row without polling
+// (§7 `activity` frame). Chainable, matching the scheduler's WithNotifier.
+//
+// ⚠ The feed takes a frame precisely BECAUSE it is event-shaped — the server knows at write
+// time and GET /v1/activity is authoritative on reconnect. The Services panel next to it
+// polls instead, because a probe result is not an event anyone observes: the server only
+// learns it by asking, so a "push" would just be a server-side timer probing forever.
+func (r *Recorder) WithNotifier(n Notifier) *Recorder { r.notify = n; return r }
 
 // Record appends one row.
 //
@@ -49,8 +66,14 @@ func (r *Recorder) Record(ctx context.Context, a store.Activity) {
 	if r == nil || r.sink == nil {
 		return
 	}
-	if err := r.sink.RecordActivity(ctx, a); err != nil && r.log != nil {
-		r.log.Warn("activity not recorded", "kind", a.Kind, "err", err)
+	if err := r.sink.RecordActivity(ctx, a); err != nil {
+		if r.log != nil {
+			r.log.Warn("activity not recorded", "kind", a.Kind, "err", err)
+		}
+		return // nothing was written, so there is nothing to announce
+	}
+	if r.notify != nil {
+		r.notify.ActivityRecorded()
 	}
 }
 
