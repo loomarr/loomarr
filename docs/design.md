@@ -261,6 +261,32 @@ you cannot remember).
 - **Retention:** rows older than the janitor's horizon are purged like every other accumulating
   table (below). History beyond the longest recency horizon has no reader.
 
+`activity` records what Loomarr did, one row per notable event — `{id, at, kind, level, text,
+subject_id}` — for the Dashboard's **Recent activity** feed (§12, V32).
+
+- ⚠ **Written at each domain TRANSITION, not at the event bus.** Publishing to the bus is one
+  line and would look like a free feed, but the bus is deliberately **in-memory and lossy**
+  (`events/bus.go`: *"a dropped event is a latency bug, not a correctness bug"*) — so a feed
+  built on it would silently lose rows under load, which is exactly what a persisted feed
+  exists to prevent. It is also domain-neutral: it knows `{type: "title"}`, not *"Darkwing Duck
+  landed — CH 42 slot 05 backfilled in place"*. The subsystem making the change is the only
+  place that knows what actually happened, so that is where the row is written.
+- **Best-effort, exactly like `airings`.** A failed insert is logged and the operation
+  continues. Recording that a title landed must never be able to stop it landing.
+- **`text` is composed at the write point and stored**, not templated at read time. A feed row
+  is a historical record: re-rendering it later against current data would let last week's entry
+  change its wording when a channel is renamed, which is the opposite of an audit trail.
+- **`level`** (`info` | `warn` | `error`) drives the mock's coloured dot. Bounded, not free
+  text, so the UI cannot receive a colour it has no rendering for.
+- **Read path:** `ListActivity(limit)` — newest first, and nothing else. The feed is a glance,
+  not a query surface; a filterable log is a different feature (§20).
+- **Retention:** `activity.retention` (§15), purged by the `activity-purge` job (§18.1). ⚠ The
+  key is **consumed in the same PR that declares it**. `jobs.retention` and
+  `proposals.retention` were declared long ago and are read by **nothing** — no purge exists
+  for either table — which is the same dead-setting shape V12 found in `backup.retain`. Adding
+  a third would make the Advanced settings page a list of promises. *(Those two remain open;
+  they are a pre-existing gap, not this phase's.)*
+
 ⚠ **A recency signal cannot make repeats rare on a small library, and must not pretend to.** The
 arithmetic is unforgiving: a 24h day consumes ~13 films, so a channel needs ~168h of content to
 avoid repeating inside a week. The dev channel has 34 titles ≈ 62h — a 3-day no-repeat is already
@@ -274,8 +300,8 @@ and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
 ### Retention & janitor
 State accumulates; a **janitor** (piggybacking the reconciler ticker) enforces retention so a year-old install isn't dragging a landfill:
 - **Sessions:** sliding TTL, `SESSION_TTL` default 30d; expired rows purged. (Without this, sessions live forever — both a growth and a security problem.)
-- **Jobs:** completed/failed jobs purged after `JOBS_RETENTION` (default 30d).
-- **Proposals:** `denied`/superseded purged after `PROPOSALS_RETENTION` (default 90d); **approved proposals are kept indefinitely** — they're the audit trail behind `approved_by`.
+- **Activity:** feed rows purged after `activity.retention` (default 30d) by the `activity-purge` job (§18.1, V32).
+- ⚠ **Jobs and proposals are NOT purged, though `JOBS_RETENTION`/`PROPOSALS_RETENTION` are declared** (default 30d/90d). No purge exists for either table; both keys are read by nothing. Recorded here because this section described the behaviour as shipped and it never was — the same declared-but-unconsumed shape V12 found in `backup.retain`. The intent stands (`denied`/superseded proposals go, **approved ones are kept indefinitely** as the audit trail behind `approved_by`); the implementation is open work.
 - Filler catalog sync (§10) already removes clips that vanished from the media server.
 
 ### Concurrency consequence of supporting Postgres (important)
@@ -446,6 +472,8 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/backup` | Stream a consistent DB snapshot (admin; SQLite backend — §16). Postgres → 501 + pg_dump docs. Generates a fresh snapshot and keeps nothing; see `/v1/system/backups` for the ones on disk. |
 | POST | `/v1/system/restart` | Restart Loomarr in place (admin, §9.2, V13). Drains HTTP, tears down playout sessions by process group, closes the store, and rebuilds every subsystem in the **same process** — no re-exec, no supervisor needed, works identically on Windows. Responds **before** the drain begins, since a client that never gets a reply cannot tell "restarting" from "crashed". |
 | GET | `/v1/system/restart` | What a restart would cost right now (admin, §9.2, V13), so the confirm dialog states consequences rather than guessing: the count of channels **Loomarr is currently streaming** (from `/v1/playout/sessions`) which drop for a few seconds, versus Tunarr-backed channels which keep playing (§9.1), plus whether any boot-time setting is pending (`restartRequired`). |
+| GET | `/v1/system/services` | The Dashboard's **Services** panel (admin, §12, V31): one row per configured integration with its probe result and the **target** it was probed against, plus a `loomarr` row carrying version/backend/schema. Runs the **same `runConnectionChecks`** the wizard checklist and `/v1/system/reload` use — one probe implementation, asserted by a test, so three surfaces cannot disagree about whether Emby is reachable. |
+| GET | `/v1/activity?limit=` | The Dashboard's **Recent activity** feed (admin, §12, V32), newest first. Reads the persisted `activity` table (§5) rather than the SSE bus, so the feed survives a restart and is not subject to the bus's deliberate lossiness. |
 | POST | `/v1/system/reload` | Re-probe every configured service without restarting (admin, §9.2, V13) — reuses the **one** `POST /v1/setup/test` probe implementation rather than a second copy, so a reload and the wizard's checklist can never disagree. No downtime: nothing is torn down. |
 | GET | `/v1/system/backups` | List the backups on disk in `backup.dir`, newest first (admin, §16, V12): filename, bytes, `writtenAt`. Also reports `dir`, `retain`, `schedule`, and `supported` (false on Postgres, where the listing is empty and the UI explains `pg_dump` rather than showing an empty table). Never 5xxs on a missing/unreadable directory — nothing written yet is an empty list, not an error. |
 | GET | `/v1/system/backups/{name}` | Download one **already-written** backup by filename (admin, §16, V12). `name` is validated against the `loomarr-<timestamp>.db` pattern and resolved inside `backup.dir` — it is a client-supplied path segment, so anything else is rejected before it reaches the filesystem. |
@@ -1009,6 +1037,8 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   Data comes from `GET /v1/playout/sessions` (admin-only), with the **`playout` SSE frame as the latency path**: the frame fires when a channel starts or stops, and the dashboard re-reads the endpoint. Deliberately not per progress sample — those arrive about once a second per stream, and republishing each would push several frames a second at every open browser for numbers that move by fractions. This is §8's standing rule applied: SSE is a latency optimization, the GET is truth on reconnect.
 
+  Below it sit two more panels. **Services** (V31) lists every configured integration with the target it was probed against and a pass/fail state, **polled every 30s**, with a *"Fix →"* on a failing row that routes to the settings block owning it — a red dot that does not say where to go is a puzzle, not a diagnosis. It runs the same `runConnectionChecks` as the wizard checklist and `/v1/system/reload`; a test asserts the single implementation, because three surfaces disagreeing about whether Emby is reachable is worse than any one of them being wrong. **Recent activity** (V32) is the persisted `activity` feed (§5) — *what Loomarr did*, newest first. ⚠ It reads the table, **not** the SSE bus: the bus is deliberately lossy, so a feed built on it would drop rows precisely when the system is busiest and most worth watching.
+
   **`running: false` is not the same as "nothing playing".** On a Tunarr-backed install the session list is legitimately empty, and a panel that cannot tell those apart renders a blank table that reads as every channel having just died — so the flag is explicit on the wire. A **member** who reaches the route sees a short explanation that this is machine state kept to admins, never a 403 wall.
 
 - **Guide (time grid)** — the cross-channel schedule: every channel a row, time the shared horizontal axis, each programme a block whose width IS its duration. Answers the question the per-channel Upcoming strip cannot — *"what is on across all my channels right now?"* — and is the product's most recognisable surface, because it is what a TV guide has always looked like.
@@ -1342,7 +1372,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
 | `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
 | `JOB_WORKERS` / `JOB_TIMEOUT` | `2` / `10m` (§8) |
-| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) |
+| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 janitor) — ⚠ **declared but not consumed**; no purge exists for either table yet (§5). |
+| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `activity-purge` removes them (§5, §18.1, V32). |
 | `episodes.max_age` | `24h` — how stale a cached series episode list may be before `series-episode-refresh` re-enumerates it (§5). A miss or an aged-out row still falls back to the live library call, so this bounds staleness, never correctness. |
 | `EVENT_WEBHOOK_URL` | optional external event target |
 | `SUGGEST_AUTO_APPROVE` / `SUGGEST_MAX_ACQUISITIONS` | `false` / `10` |
@@ -1514,6 +1545,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Seerr queue poller (§6, seerr provider only).** When the provider is Seerr, a **`seerr-queue-poll`** job (default every 1m) shares the same poller but a different source: Seerr exposes no download *queue*, so it cannot report a byte percentage. Instead one `GET /api/v1/media?filter=processing` returns Seerr's coarse per-title lifecycle enum, correlated to in-flight titles by TMDB id. `PROCESSING`/`PARTIALLY_AVAILABLE` are **`Grabbed`** → `downloading` and persist a **coarse `download_status` label** ("Downloading" / "Partly available") with `progress` left **0** (indeterminate — never a fabricated percentage); `PENDING` and `AVAILABLE` are not grabbed (`AVAILABLE` is the library scan's flip). Observed caveat: Jellyseerr's `downloadStatus` array *can* carry the arr's size/sizeleft, but it is empty on the deployments seen, so this path deliberately reads only the enum. The UI shows the label as the acquiring entry's chip text (no progress bar, since there's no percentage). Both pollers register mutually exclusively (a provider is arr XOR seerr).
 - **Series episode refresh (§5, §9).** A **`series-episode-refresh`** job (default hourly) re-enumerates the shows whose cached episode lists have aged past `episodes.max_age`, so `series_episodes` stays current without any expansion happening on the request path. **Bounded to the shows referenced by channel lineups** — that set is small and known, and sweeping the whole library would cost more than the cache saves. Deliberately its own job rather than a hook on `library-scan`: that job only correlates *in-flight* acquisitions and returns early when there are none, so it would never revisit an already-`available` show (see §5).
 - **Backup (§16, SQLite only).** A **`backup`** job (default `0 30 3 * * *`) writes one `VACUUM INTO` snapshot into `backup.dir` and then prunes that directory to the newest `backup.retain` files, matching only the `loomarr-<timestamp>.db` names it writes. Prune runs **after** a successful write, so a failed snapshot never costs the operator a backup they already had. On Postgres it registers as a **disabled job** (below): `WriteBackup` is SQLite-only, so it cannot run there — but an operator whose backup strategy is `pg_dump` should read that as a stated fact, not infer it from an absent row.
+- **Activity purge (§5, §12, V32).** An **`activity-purge`** job (default daily) deletes feed rows older than `activity.retention`. The feed is append-only on a busy install, so it needs a reader for its own retention key — declared and consumed in one PR, unlike `JOBS_RETENTION`/`PROPOSALS_RETENTION`, which are still read by nothing.
 - **Disabled jobs.** A job may register with a `DisabledReason`. It appears on the Tasks page with that reason and is **never scheduled, never claimed, and refuses "Run now"** (`409`), so "cannot run here" is a property of the job rather than a UI convention a client could ignore.
   - **The alternative was silence, and silence is a claim too.** A conditionally-registered job simply vanishes, which is indistinguishable — from the Tasks page alone — from a job that runs fine and has never failed. For backup specifically, the failure mode of that ambiguity is an operator believing they are covered when they are not.
   - **Disabled is not "off".** It is not operator-settable and carries no enable control: it means *this build/backend cannot run this job*, which no amount of clicking changes. A per-job on/off switch would be a different feature.
