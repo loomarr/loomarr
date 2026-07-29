@@ -15,6 +15,14 @@ type SuggestionPhase = "searching" | "reasoning" | "scoring" | "done" | "failed"
 interface SuggestionEvent {
   jobId: string;
   phase: SuggestionPhase;
+  // The 1-based tool-loop round, "0" outside the loop. A STRING because the SSE payload
+  // is a flat map of strings on the BE (emitter.go) — declaring it as a number here would
+  // typecheck and then compare wrong at runtime.
+  //
+  // Phases repeat: the model thinks, searches, then thinks again about what came back. The
+  // round is what distinguishes "still working, third pass" from "stuck", which is the
+  // whole reason a long run needs to look like it is progressing.
+  round?: string;
 }
 
 // Mirrors the BE's llm_pull frame (internal/app/systemllm.go publishPull). Every field

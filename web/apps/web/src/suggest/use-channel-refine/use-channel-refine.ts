@@ -2,6 +2,7 @@ import { channelsApi, suggestionsApi } from "@loomarr/api";
 import type { SuggestionPhase } from "@loomarr/core";
 import { useState } from "react";
 import { useLoomarrEventListener } from "@/events";
+import { roundOf } from "../round";
 import type { ChannelRefine } from "./use-channel-refine.type";
 
 const TERMINAL: SuggestionPhase[] = ["done", "failed"];
@@ -26,6 +27,7 @@ const TERMINAL: SuggestionPhase[] = ["done", "failed"];
 const useChannelRefine = (): ChannelRefine => {
   const [jobId, setJobId] = useState<string | undefined>();
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
+  const [round, setRound] = useState<number | undefined>();
 
   const refine = channelsApi.useRefineChannel();
   const proposals = suggestionsApi.useListProposals(
@@ -35,7 +37,9 @@ const useChannelRefine = (): ChannelRefine => {
 
   useLoomarrEventListener({
     onSuggestion: (e) => {
-      if (e.jobId === jobId) setPhase(e.phase);
+      if (e.jobId !== jobId) return;
+      setPhase(e.phase);
+      setRound(roundOf(e.round));
     },
   });
 
@@ -44,6 +48,7 @@ const useChannelRefine = (): ChannelRefine => {
 
   return {
     phase,
+    round,
     proposal,
     // A run stops being "running" once it lands a proposal or reports a terminal phase,
     // whichever the client learns first.
@@ -51,6 +56,7 @@ const useChannelRefine = (): ChannelRefine => {
     error: refine.error,
     start: (channelId: string, change: string) => {
       setPhase(undefined);
+      setRound(undefined);
       refine.mutate(
         { id: channelId, data: { change } },
         { onSuccess: (res) => res.status === 200 && setJobId(res.data.jobId) },
@@ -59,6 +65,7 @@ const useChannelRefine = (): ChannelRefine => {
     reset: () => {
       setJobId(undefined);
       setPhase(undefined);
+      setRound(undefined);
     },
   };
 };

@@ -83,6 +83,20 @@ type Provider interface {
 	Name() string
 }
 
+// Warmer is an OPTIONAL Provider capability (§8.2): preload the model so the next
+// Chat doesn't pay the cold-load cost (~9s vs ~0.5s warm for an 8B local model).
+//
+// Deliberately separate from Provider rather than a method on it, because it is only
+// meaningful for a LOCAL runtime that loads weights on demand. A hosted endpoint has
+// no residency to manage — there is nothing for it to implement, and a no-op method
+// on every provider would imply otherwise. Callers type-assert; a provider that
+// doesn't implement it is simply never warmed.
+type Warmer interface {
+	// Warm loads the model, returning once it is resident. Best-effort by contract:
+	// an error is worth logging but never fatal, since the next Chat loads it anyway.
+	Warm(ctx context.Context) error
+}
+
 // ParseProvider validates the configured provider (§15 LLM_PROVIDER). `ollama` is
 // the local default; `openai` is the OpenAI-compatible client (which also reaches
 // hosted OpenAI/Gemini/Groq/OpenRouter/… and Ollama's own /v1 mode).

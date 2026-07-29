@@ -22,6 +22,10 @@ const (
 	setLLMURL      = "llm.url"
 	setLLMModel    = "llm.model"
 	setLLMAPIKey   = "llm.api_key" //nolint:gosec // settings key name, not a credential
+	// setLLMKeepAlive is the local model-residency hint (§8.2). Local-only: the
+	// registry hides it for a hosted provider, and buildProviderFor only applies it
+	// to Ollama.
+	setLLMKeepAlive = "llm.keep_alive"
 	// setLLMHosted preserves the BRANDED hosted provider key (openrouter, custom, …)
 	// across restart. llm.provider only stores the wire kind (ollama|openai) — its
 	// enum can't hold a brand — so without this the brand (and thus the namespaced key
@@ -38,11 +42,21 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	sel := resolveSelection(set)
 	sw := llm.NewSwappable(buildProviderFor, sel)
 
+	// Preload the model at boot (§8.2) so the first channel someone describes doesn't
+	// pay the ~9s cold load. Backgrounded and best-effort: startup must not block on a
+	// model load, and an Ollama that isn't up yet is a normal state at boot — the next
+	// Chat loads the model itself, so a failure here costs latency, never correctness.
+	warm(ctx, sw, log)
+
 	// Hot-swap on a persisted llm.* change (config-design §3 hot-apply, §8.1): the
 	// in-app model picker writes the settings store; the Watch fires and the
 	// Swappable rebuilds the live provider with no restart. Runs until ctx is done.
+	//
+	// keep_alive is watched too: it is a property of how the provider is BUILT
+	// (WithKeepAlive at construction), so without it here an operator's change would
+	// sit in the store, apply to nothing, and appear to have been ignored until restart.
 	go func() {
-		ch := set.svc.Watch(setLLMProvider, setLLMURL, setLLMModel, setLLMAPIKey)
+		ch := set.svc.Watch(setLLMProvider, setLLMURL, setLLMModel, setLLMAPIKey, setLLMKeepAlive)
 		for {
 			select {
 			case <-ctx.Done():
@@ -50,6 +64,10 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 			case <-ch:
 				sw.Set(resolveSelection(set))
 				log.Info("llm provider hot-swapped from a settings change")
+				// Warm the newly-selected model: a swap points at weights that are almost
+				// certainly not resident, and the operator who just picked one is the very
+				// next person to run a job.
+				warm(ctx, sw, log)
 			}
 		}
 	}()
@@ -84,9 +102,55 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 
 // buildProviderFor is the Swappable factory: build the concrete provider for a
 // Selection. Ollama for local, the OpenAI-compatible client for everything else.
+// keepAliveArg renders the resolved llm.keep_alive duration for the Ollama wire
+// (§8.2). The registry parses it as a time.Duration; Ollama takes a string.
+//
+// A NEGATIVE value is Ollama's "keep loaded indefinitely", and 0 is "unload as soon as
+// this request finishes" — both are meaningful, so neither may collapse to "". Only an
+// unset key would yield "" (inherit Ollama's own default), which the registry's 30m
+// default makes unreachable in practice; the branch stays because a default can change
+// and silently swapping "unload now" for "inherit" would be invisible.
+func keepAliveArg(d time.Duration) string {
+	if d == 0 {
+		return "0"
+	}
+	return d.String()
+}
+
+// warmTimeout bounds a background warm-up. Generous, because it covers a real
+// cold model load from disk (the ~9s measured for an 8B model can be far longer for
+// a large model on a slow disk), but bounded so a wedged Ollama can't leak a
+// goroutine for the life of the process.
+const warmTimeout = 2 * time.Minute
+
+// warm preloads the active model in the BACKGROUND (§8.2). Fire-and-forget by
+// design: every caller is on a path that must not wait — app startup and the
+// settings hot-swap watcher — and a warm-up is a latency optimization whose failure
+// mode is simply the old behavior (the next Chat loads the model itself).
+//
+// A hosted provider isn't a Warmer, so Swappable.Warm no-ops and this costs one
+// goroutine that returns immediately.
+func warm(ctx context.Context, w llm.Warmer, log *slog.Logger) {
+	go func() {
+		wctx, cancel := context.WithTimeout(ctx, warmTimeout)
+		defer cancel()
+		start := time.Now()
+		if err := w.Warm(wctx); err != nil {
+			// Debug, not Warn: at boot an Ollama that hasn't started yet is ordinary,
+			// and this is an optimization nobody asked for — logging it as a problem
+			// would train operators to ignore a level that should mean something.
+			log.Debug("llm warm-up skipped", "err", err)
+			return
+		}
+		log.Info("llm model warmed", "took", time.Since(start).Round(time.Millisecond))
+	}()
+}
+
 func buildProviderFor(sel llm.Selection) llm.Provider {
 	if sel.Provider == "ollama" || sel.Provider == "" {
-		return llm.NewOllama(sel.URL, sel.Model)
+		// KeepAlive is local-only (§8.2) — a hosted endpoint has no residency to manage,
+		// which is why it's applied here rather than in the shared construction below.
+		return llm.NewOllama(sel.URL, sel.Model).WithKeepAlive(sel.KeepAlive)
 	}
 	return llm.NewOpenAI(sel.URL, sel.Model, sel.APIKey)
 }
@@ -98,10 +162,11 @@ func buildProviderFor(sel llm.Selection) llm.Provider {
 // back to the registry's base llm.api_key (the LLM_API_KEY env pin).
 func resolveSelection(set resolved) llm.Selection {
 	sel := llm.Selection{
-		Provider: set.str(setLLMProvider),
-		URL:      set.str(setLLMURL),
-		Model:    set.str(setLLMModel),
-		APIKey:   set.str(setLLMAPIKey),
+		Provider:  set.str(setLLMProvider),
+		URL:       set.str(setLLMURL),
+		Model:     set.str(setLLMModel),
+		APIKey:    set.str(setLLMAPIKey),
+		KeepAlive: keepAliveArg(set.dur(setLLMKeepAlive)),
 	}
 	// Restore the BRANDED provider (openrouter, custom, …) that llm.provider flattened
 	// to the "openai" wire kind: llm.hosted_provider holds the brand persisted at

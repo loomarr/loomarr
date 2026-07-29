@@ -74,6 +74,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `llm.url` (`LLM_URL`) | url | — | The base URL of your OpenAI-compatible service, ending in /v1. |
 | `llm.model` (`LLM_MODEL`) | string | — | The model name for your hosted AI service (e.g. gpt-4o-mini). |
 | `llm.api_key` (`LLM_API_KEY`) | secret | (secret) | API key for your hosted AI service. Never shown again after saving. |
+| `llm.keep_alive` (`LLM_KEEP_ALIVE`) | duration | `30m` | How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster. Set to 0 to free the memory as soon as each request finishes. _(advanced)_ |
 | `suggest.auto_approve` (`SUGGEST_AUTO_APPROVE`) | bool | `false` | Automatically approve suggested downloads, with no review step. Off by default. _(advanced)_ |
 | `suggest.max_acquisitions` (`SUGGEST_MAX_ACQUISITIONS`) | int | `10` | The most titles a single suggestion may download. |
 | `recurate.min_score_pct` (`RECURATE_MIN_SCORE_PCT`) | int | `60` | Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser. _(advanced)_ |

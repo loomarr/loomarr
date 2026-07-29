@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -95,5 +96,28 @@ func TestWireKind(t *testing.T) {
 		if got := wireKind(in); got != want {
 			t.Errorf("wireKind(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// keepAliveArg renders the residency duration for Ollama's wire format (§8.2). The two
+// edge values are the point: 0 means "unload as soon as this request finishes" and a
+// negative means "keep loaded indefinitely" — both are real instructions to Ollama, so
+// neither may collapse to "" (which would instead mean "inherit Ollama's 5m default",
+// silently reversing what the operator asked for).
+func TestKeepAliveArg(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   time.Duration
+		want string
+	}{
+		{"a normal residency", 30 * time.Minute, "30m0s"},
+		{"zero unloads immediately, and must not read as unset", 0, "0"},
+		{"negative keeps the model loaded indefinitely", -1, "-1ns"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := keepAliveArg(tc.in); got != tc.want {
+				t.Errorf("keepAliveArg(%v) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
