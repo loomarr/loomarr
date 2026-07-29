@@ -140,6 +140,16 @@ type Store interface {
 	// recency-aware placement (programming-design §3.1). A key that has never aired is simply
 	// absent — callers treat absence as "least recently aired", which sorts it first.
 	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+
+	// RecordActivity appends one Dashboard feed row (§5, §12, V32). Best-effort by
+	// contract: callers log the error and carry on — recording that something happened must
+	// never be able to stop it happening.
+	RecordActivity(ctx context.Context, a Activity) error
+	// ListActivity returns the newest feed rows first, capped at limit.
+	ListActivity(ctx context.Context, limit int) ([]Activity, error)
+	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
+	// is the one append-only table here, so it is the one that needs a purge.
+	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer

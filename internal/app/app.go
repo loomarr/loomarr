@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/binder"
@@ -176,6 +177,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// at the end. This replaces the previous scattering of bespoke time.Ticker goroutines.
 	jobReg := scheduler.NewRegistry()
 
+	// Dashboard activity feed (§12, V32). One recorder, passed to every subsystem that
+	// records a line — nil-safe, so a store-less boot records nothing rather than needing a
+	// guard at each write point.
+	var activityRec *activity.Recorder
+	if st != nil {
+		activityRec = activity.New(st, log)
+	}
+
 	// Provisioning reconciler (§7), registered as scheduler jobs (§18.1). Always
 	// constructed given a store so acquisitions process the moment a requester is
 	// configured — no restart (§8.1). Its dynamic seerr/library connections are empty
@@ -196,6 +205,25 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		})
 		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
 		// ticker via the janitor).
+		// The feed is the one append-only table here, so it is the one that needs a purge —
+		// and `activity.retention` is CONSUMED in the same PR that declares it, unlike
+		// `jobs.retention`/`proposals.retention`, which are still read by nothing (§5).
+		activityStore := st
+		jobReg.Add(scheduler.Job{
+			Name: "activity-purge", Title: "Clean up old activity",
+			DefaultCron: "0 15 4 * * *", ScheduleKey: "job.activity_purge.schedule",
+			Run: func(ctx context.Context) error {
+				n, err := activityStore.PurgeActivity(ctx, time.Now().Add(-set.dur("activity.retention")))
+				if err != nil {
+					return err
+				}
+				if n > 0 {
+					log.Info("activity purged", "rows", n)
+				}
+				return nil
+			},
+		})
+
 		sessionSweeper := auth.NewSessionSweeper(st)
 		jobReg.Add(scheduler.Job{
 			Name: "session-sweep", Title: "Clear expired sessions",
@@ -208,7 +236,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// in-flight title now present — the same LibraryConfirmed transition the reconciler's
 		// deadline backstop applies, but continuous. `lib` (a *library.Client) satisfies
 		// LibraryScanner. Incremental runs often (recent window); Full is the daily safety net.
-		libScan := reconcile.NewLibraryScan(st, lib, emitter, set.dur("job.library_scan.lookback"), time.Now, log)
+		libScan := reconcile.NewLibraryScan(st, lib, emitter, set.dur("job.library_scan.lookback"), time.Now, log).
+			WithActivity(activityRec)
 		jobReg.Add(scheduler.Job{
 			Name: "library-scan", Title: "Scan library for new titles",
 			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
@@ -905,6 +934,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Database:      databaseSvc,
 		Backups:       backupsSvc,
 		Restart:       restartSvc,
+		Activity:      activityRec,
 		// The baseline for "has a boot-time setting changed?" is what THIS generation
 		// booted with, captured here rather than per call (config-design §3).
 		BootstrapDrift: bootstrapDrift(bootCfg),

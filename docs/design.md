@@ -1282,6 +1282,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `settings` | The typed registry; `env > database > default` (config-design) |
 | `config` | ENV-ONLY bootstrap — the handful of values needed before the store opens |
 | `scheduler` | Recurring work as named, tunable, on-demand jobs (§18.1) |
+| `activity` | Records what Loomarr did, for the Dashboard feed (§5, §12) — written at each domain transition, never off the lossy event bus |
 | `auth` | Sessions and their validation (§11) |
 | `events` | The in-memory bus behind SSE (§7) |
 | `httpx` | The shared outbound HTTP client factory (§6) |
