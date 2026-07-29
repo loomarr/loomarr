@@ -223,6 +223,21 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           connEntry("seerr.url", "connections.requester", "Seerr base URL."),
           connEntry("tmdb.api_key", "connections.tmdb", "TMDB API key."),
           {
+            // Who plays the channels (§9.1). Reads back whatever the wizard last PATCHed, so
+            // picking Tunarr in the walk genuinely reshapes the remaining steps rather than
+            // being a click the mock ignores.
+            key: "playout.backend",
+            group: "playout",
+            kind: "enum",
+            enum: ["internal", "tunarr"],
+            doc: "Who streams a channel.",
+            advanced: false,
+            secret: false,
+            set: true,
+            provenance: "db",
+            value: state.edits["playout.backend"] ?? "internal",
+          },
+          {
             key: "setup.completed",
             group: "advanced",
             kind: "bool",

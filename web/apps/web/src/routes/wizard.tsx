@@ -1,10 +1,11 @@
-import { setupApi } from "@loomarr/api";
+import { SettingEntryProvenance, setupApi } from "@loomarr/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
 import { WizardShell } from "@/components/loomarr";
 import { useDocumentTitle } from "@/lib";
+import { useSettingsEntries } from "@/settings";
 import {
   BootstrapStep,
   ChecklistStep,
@@ -12,10 +13,14 @@ import {
   FirstChannelStep,
   isConnectionId,
   isStepDone,
+  PLAYOUT_INTERNAL,
+  PLAYOUT_TUNARR,
+  type PlayoutBackend,
+  PlayoutStep,
   resolveStep,
   TunarrLibraryStep,
   UsersStep,
-  WIZARD_STEPS,
+  wizardSteps,
 } from "@/wizard";
 
 // `?step=` and `?conn=` make the wizard deep-linkable (§13) — a support thread or a doc can
@@ -43,13 +48,19 @@ const COPY: Record<string, { title: string; description: string }> = {
     title: "Create your admin account",
     description: "This account owns Loomarr. You can set it up before connecting a media server.",
   },
+  playout: {
+    title: "How should Loomarr play your channels?",
+    // Says what the answer CHANGES, because it changes the rest of the wizard. An operator
+    // who does not know what Tunarr is should still be able to answer confidently.
+    description: "This decides what you'll need to set up next. Most people should keep the default.",
+  },
   checklist: {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
   },
   library: {
     title: "Give Tunarr your library",
-    description: "Without this, channels schedule slots that have no program to play.",
+    description: "Without this, Tunarr schedules slots that have no programme to play.",
   },
   users: {
     title: "Import media-server users",
@@ -64,12 +75,14 @@ const COPY: Record<string, { title: string; description: string }> = {
 
 // A step the operator may pass on. Skipped reads neutral, never red (§6).
 //
-// The blocking set is media_server + tunarr (§13, config-design §6) — "the shortest honest
-// path to a live channel" — and a step that gates on a check the operator cannot satisfy is
-// a dead end, because the wizard offers only Back/Continue and the rail is not clickable:
-// they'd be stranded on that screen for good. It bit hardest on `library`, whose entire
-// purpose (§6) is to stop channels scheduling slots with no program. (Live TV is no longer a
-// step — it auto-wires on the Tunarr save — so it can't strand anyone here either.)
+// The blocking set is "the shortest honest path to a live channel" (§13, config-design §6),
+// which since §9.1 depends on the playout backend (see requiredChecks). A step that gates on
+// a check the operator cannot satisfy is a dead end, because the wizard offers only
+// Back/Continue and the rail is not clickable: they'd be stranded on that screen for good.
+// It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling slots
+// with no programme, and hardest of all on `tunarr`, which an internal-playout install can
+// never turn green. (Live TV is no longer a step, it auto-wires on the Tunarr save, so it
+// can't strand anyone here either.)
 const SKIPPABLE = new Set(["library", "users"]);
 
 const WizardScreen = () => {
@@ -77,6 +90,21 @@ const WizardScreen = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const status = setupApi.useSetupStatus({ query: { enabled: isAuthenticated, retry: false } });
   const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+
+  // Who plays the channels (§9.1). Read from the registry rather than held in component
+  // state, because it is a SETTING the operator may already have pinned via env or chosen on
+  // a previous visit — and because it decides which steps exist, so a local copy would let
+  // the rail and the resolver disagree.
+  const entries = useSettingsEntries();
+  const playoutEntry = entries.find((e) => e.key === "playout.backend");
+  const backend: PlayoutBackend = playoutEntry?.value === PLAYOUT_TUNARR ? PLAYOUT_TUNARR : PLAYOUT_INTERNAL;
+  // An env-pinned backend cannot be changed here (config-design §3); the step says so rather
+  // than offering a control whose write would come back `pinned`.
+  const playoutPinnedBy =
+    playoutEntry?.provenance === SettingEntryProvenance.env
+      ? (playoutEntry.envVar ?? "An environment variable")
+      : undefined;
+  const stepCtx = { checks, isAuthenticated, backend };
 
   const { step: requestedStep, conn: requestedConn } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -108,10 +136,13 @@ const WizardScreen = () => {
 
   // Server truth decides; the URL only asks. A link past the frontier clamps back to it, so
   // no link can strand the operator on a step whose Continue can never enable.
-  const currentId = resolveStep(requestedStep, { checks, isAuthenticated });
-  const statusById = deriveStepStatuses({ checks, isAuthenticated, currentId, skipped });
-  const index = WIZARD_STEPS.findIndex((s) => s.id === currentId);
-  const step = WIZARD_STEPS[index];
+  // Every derivation reads the SAME list, built once from the chosen backend, so the rail,
+  // the resolver and the Back/Continue indices cannot disagree about which steps exist.
+  const steps = wizardSteps(backend);
+  const currentId = resolveStep(requestedStep, stepCtx);
+  const statusById = deriveStepStatuses({ ...stepCtx, currentId, skipped });
+  const index = steps.findIndex((s) => s.id === currentId);
+  const step = steps[index];
   const copy = COPY[currentId];
   const checkFor = (name: string) => checks.find((c) => c.name === name);
   // Moving between steps is real navigation (Back should undo it), so this pushes rather
@@ -125,9 +156,11 @@ const WizardScreen = () => {
       case "bootstrap":
         // The owner is resolved HERE, not in the step: this route already read identity to
         // decide which step to show, so passing it down keeps one answer to one question.
-        return <BootstrapStep onDone={() => goTo("checklist")} ownerName={user?.name} />;
+        return <BootstrapStep onDone={() => goTo("playout")} ownerName={user?.name} />;
+      case "playout":
+        return <PlayoutStep value={backend} pinnedBy={playoutPinnedBy} />;
       case "checklist":
-        return <ChecklistStep openId={openConn} onToggle={toggleConn} />;
+        return <ChecklistStep openId={openConn} onToggle={toggleConn} backend={backend} />;
       case "library":
         return <TunarrLibraryStep check={checkFor("tunarr_library")} />;
       case "users":
@@ -146,15 +179,15 @@ const WizardScreen = () => {
   // operator who walked Back to it would find no form AND no Continue: a dead end created by
   // fixing the other one.
   const bootstrapSelfAdvances = currentId === "bootstrap" && !isAuthenticated;
-  const advances = !bootstrapSelfAdvances && index < WIZARD_STEPS.length - 1;
+  const advances = !bootstrapSelfAdvances && index < steps.length - 1;
   const skip = () => {
     setSkipped((prev) => new Set(prev).add(currentId));
-    goTo(WIZARD_STEPS[index + 1]?.id);
+    goTo(steps[index + 1]?.id);
   };
 
   return (
     <WizardShell
-      steps={WIZARD_STEPS}
+      steps={steps}
       currentId={currentId}
       statusById={statusById}
       // The rail's connection sub-items drive (and reflect) which block is revealed. Only
@@ -163,16 +196,14 @@ const WizardScreen = () => {
       onSubItem={toggleConn}
       title={copy?.title ?? step?.title ?? "Setup"}
       description={copy?.description}
-      onBack={index > 0 ? () => goTo(WIZARD_STEPS[index - 1]?.id) : undefined}
-      onNext={advances ? () => goTo(WIZARD_STEPS[index + 1]?.id) : undefined}
+      onBack={index > 0 ? () => goTo(steps[index - 1]?.id) : undefined}
+      onNext={advances ? () => goTo(steps[index + 1]?.id) : undefined}
       onSkip={advances && SKIPPABLE.has(currentId) ? skip : undefined}
       // A skippable step has no server check to satisfy, so it must never BLOCK: gating
       // Continue on `isStepDone` there would strand an operator who did the optional work
       // (imported users) behind a button that can never enable. Skip stays, to record the
       // deliberate pass as `skipped` rather than merely unfinished.
-      nextDisabled={
-        advances && !SKIPPABLE.has(currentId) && !isStepDone(currentId, { checks, isAuthenticated })
-      }
+      nextDisabled={advances && !SKIPPABLE.has(currentId) && !isStepDone(currentId, stepCtx)}
       busy={status.isFetching}
     >
       {body()}
@@ -186,10 +217,22 @@ const Route = createFileRoute("/wizard")({
   // instead of an error. The step is only sanity-checked for shape here — whether it is
   // REACHABLE depends on server truth the router does not have, so that clamp lives in
   // resolveStep, where the checks are.
-  validateSearch: (search: Record<string, unknown>): WizardSearch => ({
-    step: WIZARD_STEPS.some((s) => s.id === search.step) ? (search.step as string) : undefined,
-    conn: isConnectionId(search.conn as string | undefined) ? (search.conn as string) : undefined,
-  }),
+  //
+  // ⚠ Checked against EVERY step and connection either backend can have, not the chosen
+  // one's: validateSearch runs before the component, so the settings query has not resolved
+  // and the backend is unknown here. Narrowing to the internal path would silently drop
+  // `?step=library` and `?conn=tunarr` on a Tunarr install, turning a valid deep link into
+  // a fall-through. resolveStep does the backend-aware clamp once the answer is in hand.
+  validateSearch: (search: Record<string, unknown>): WizardSearch => {
+    const known = (id: unknown) =>
+      [...wizardSteps(PLAYOUT_INTERNAL), ...wizardSteps(PLAYOUT_TUNARR)].some((s) => s.id === id);
+    const knownConn = (id: string | undefined) =>
+      isConnectionId(id, PLAYOUT_INTERNAL) || isConnectionId(id, PLAYOUT_TUNARR);
+    return {
+      step: known(search.step) ? (search.step as string) : undefined,
+      conn: knownConn(search.conn as string | undefined) ? (search.conn as string) : undefined,
+    };
+  },
   component: WizardScreen,
 });
 
