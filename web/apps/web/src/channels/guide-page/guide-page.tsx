@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth";
-import { EmptyState, ErrorState, GuideDetailCard, GuideGrid } from "@/components/loomarr";
+import { ColorBars, EmptyState, ErrorState, GuideDetailCard, GuideGrid } from "@/components/loomarr";
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 import { cn } from "@/lib";
@@ -170,6 +170,10 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
 
   const body = guide.data?.status === 200 ? guide.data.data : undefined;
   const channels = useMemo(() => body?.channels ?? [], [body]);
+  // "Known empty", not "nothing loaded yet": during the first fetch `channels` is also [],
+  // and treating that as empty would flash the empty state (and hide the header button)
+  // before the guide has answered.
+  const isEmpty = channels.length === 0 && !guide.isLoading;
 
   const dayChoices = useMemo(() => {
     const out: number[] = [];
@@ -206,15 +210,27 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
 
             The LABEL carries the role difference, not the presence: an admin adds a channel
             (their approval is the last step), a member requests one (an admin approves it).
-            Same panel, same call — §7 enforces the gate server-side either way. */}
-        <Button
-          variant={adding ? "outline" : "suggest"}
-          onClick={() => (adding ? closePanel() : setAdding(true))}
-          aria-expanded={adding}
-        >
-          {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
-          {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
-        </Button>
+            Same panel, same call — §7 enforces the gate server-side either way.
+
+            ⚠ HIDDEN ON AN EMPTY GUIDE, because the empty state below already offers this
+            exact action — same onClick, same panel. Two buttons a few hundred pixels apart
+            firing one handler read as two different features, which is precisely how it
+            landed for the maintainer on a fresh install.
+
+            ⚠ …but NOT while the panel is open. Once `adding` is true this button is the
+            "Close", and an empty guide is exactly when the operator is most likely to have
+            opened it: hiding it there would leave the panel with no way out. So the door
+            reappears the moment it becomes the exit. */}
+        {(!isEmpty || adding) && (
+          <Button
+            variant={adding ? "outline" : "suggest"}
+            onClick={() => (adding ? closePanel() : setAdding(true))}
+            aria-expanded={adding}
+          >
+            {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
+            {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+          </Button>
+        )}
       </div>
 
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
@@ -372,16 +388,36 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
         </div>
       )}
 
-      {channels.length === 0 && !guide.isLoading ? (
+      {isEmpty ? (
         // No channels yet is a real, expected state on a fresh install — not an error. The
         // one next action (§6) opens the same inline panel the header toggles, worded for
         // who is asking.
+        //
+        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
+        // channel" while the header said "Add a channel" and the panel that opened was
+        // titled "Add a channel" — three names for one handler. One action, one name.
         <div className="flex flex-1 items-center justify-center p-10">
           <EmptyState
+            // SMPTE bars over "Dead air": a test card is literally what a set showed when
+            // nothing was broadcasting, so the motif IS the state rather than decoration
+            // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
+            // rather than a new asset — it is the design's namesake strip, in the same
+            // tokens the rest of the UI uses for state.
+            //
+            // The scanline drifts down it on a slow loop: a sign of life on the one screen
+            // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
+            // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
+            // The whole thing is aria-hidden, so none of it reaches assistive tech.
+            icon={
+              <div className="relative overflow-hidden rounded-[2px]" aria-hidden>
+                <ColorBars size="lg" />
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-b from-transparent via-white/35 to-transparent motion-safe:animate-scanline-sweep" />
+              </div>
+            }
             title="Dead air"
             description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
             action={{
-              label: isAdmin ? "Describe your first channel" : "Request your first channel",
+              label: isAdmin ? "Add a channel" : "Request a channel",
               onClick: () => setAdding(true),
             }}
           />
