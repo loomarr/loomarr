@@ -10,6 +10,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -94,8 +95,19 @@ type Provider interface {
 type Warmer interface {
 	// Warm loads the model, returning once it is resident. Best-effort by contract:
 	// an error is worth logging but never fatal, since the next Chat loads it anyway.
+	// Returns ErrNothingToWarm when there is no model to preload.
 	Warm(ctx context.Context) error
 }
+
+// ErrNothingToWarm reports that a warm-up was declined because there is no model to
+// preload — not that one was attempted and failed. A caller distinguishes it with
+// errors.Is so it can stay silent instead of claiming either outcome.
+//
+// It exists because both alternatives lie. Returning nil makes a skip indistinguishable
+// from a successful preload, and a fresh install logged `llm model warmed took=0` having
+// warmed nothing; returning a plain error makes an expected, correct state read as a
+// failure. This is a third outcome, so it gets its own name.
+var ErrNothingToWarm = errors.New("llm: no model configured to warm")
 
 // ParseProvider validates the configured provider (§15 LLM_PROVIDER). `ollama` is
 // the local default; `openai` is the OpenAI-compatible client (which also reaches

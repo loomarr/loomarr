@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -100,8 +101,6 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	return sw, svc
 }
 
-// buildProviderFor is the Swappable factory: build the concrete provider for a
-// Selection. Ollama for local, the OpenAI-compatible client for everything else.
 // keepAliveArg renders the resolved llm.keep_alive duration for the Ollama wire
 // (§8.2). The registry parses it as a time.Duration; Ollama takes a string.
 //
@@ -135,7 +134,13 @@ func warm(ctx context.Context, w llm.Warmer, log *slog.Logger) {
 		wctx, cancel := context.WithTimeout(ctx, warmTimeout)
 		defer cancel()
 		start := time.Now()
-		if err := w.Warm(wctx); err != nil {
+		switch err := w.Warm(wctx); {
+		case errors.Is(err, llm.ErrNothingToWarm):
+			// No model configured yet (a fresh install before the §8.1 picker runs).
+			// Say nothing: there was no attempt to report, and logging either a
+			// failure or a success here would describe something that didn't happen.
+			return
+		case err != nil:
 			// Debug, not Warn: at boot an Ollama that hasn't started yet is ordinary,
 			// and this is an optimization nobody asked for — logging it as a problem
 			// would train operators to ignore a level that should mean something.
@@ -146,6 +151,8 @@ func warm(ctx context.Context, w llm.Warmer, log *slog.Logger) {
 	}()
 }
 
+// buildProviderFor is the Swappable factory: build the concrete provider for a
+// Selection. Ollama for local, the OpenAI-compatible client for everything else.
 func buildProviderFor(sel llm.Selection) llm.Provider {
 	if sel.Provider == "ollama" || sel.Provider == "" {
 		// KeepAlive is local-only (§8.2) — a hosted endpoint has no residency to manage,

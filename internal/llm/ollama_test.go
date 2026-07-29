@@ -3,6 +3,7 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -255,5 +256,43 @@ func TestOllama_WarmReportsFailure(t *testing.T) {
 
 	if err := llm.NewOllama(srv.URL, "m").Warm(context.Background()); err == nil {
 		t.Fatal("expected an error from a failing warm-up")
+	}
+}
+
+// A GUESSED model is never warmed (§8.2). On a fresh install nobody has picked a model
+// yet — §8.1 deliberately leaves LLM_MODEL blank so the wizard's ranked picker owns the
+// choice — so warming would fire the built-in fallback tag at a host that has almost
+// certainly never pulled it. That is a 404 logged as a warm-up failure, on every boot,
+// for a model the operator never asked for.
+//
+// Observed on a real fresh boot before this guard: `llm warm-up skipped err="ollama warm:
+// status 404"`. Chat is deliberately NOT gated the same way — a misconfigured install
+// should fail loudly on a real request, not silently.
+func TestOllama_WarmSkipsAGuessedModel(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusNotFound) // what a real host says about an unpulled tag
+	}))
+	defer srv.Close()
+
+	// No model configured → the constructor substitutes its fallback tag. The sentinel
+	// distinguishes "nothing to warm" from both a success and a failure, so the caller
+	// can stay silent instead of claiming either.
+	err := llm.NewOllama(srv.URL, "").Warm(context.Background())
+	if !errors.Is(err, llm.ErrNothingToWarm) {
+		t.Errorf("warming a guessed model = %v, want ErrNothingToWarm", err)
+	}
+	if calls != 0 {
+		t.Errorf("warm made %d request(s) for a model nobody picked; want 0", calls)
+	}
+
+	// An EXPLICIT model is still warmed — the guard must not disable warm-up wholesale.
+	err = llm.NewOllama(srv.URL, "qwen3:8b").Warm(context.Background())
+	if err == nil || errors.Is(err, llm.ErrNothingToWarm) {
+		t.Errorf("an explicitly chosen model should be warmed and report the 404, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("explicit model: %d warm request(s), want 1", calls)
 	}
 }
