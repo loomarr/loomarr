@@ -2,6 +2,7 @@ export * from "./bootstrap-step";
 export * from "./checklist-step";
 export * from "./connect-step";
 export * from "./first-channel-step";
+export * from "./playout-step";
 export * from "./setup-completed";
 export * from "./steps";
 export * from "./tunarr-library-step";

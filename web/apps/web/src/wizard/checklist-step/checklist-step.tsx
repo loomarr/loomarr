@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { blockTitle, useSettingsEntries } from "@/settings";
-import { REQUIRED_CHECKS } from "../steps";
+import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
 import type { ChecklistStepProps } from "./checklist-step.type";
 
@@ -12,7 +12,8 @@ import type { ChecklistStepProps } from "./checklist-step.type";
 // system: each block renders the relevant settings group's form (essentials only) with its
 // live test inline — configure → validate → save, right here — NOT a read-only checklist
 // that punts the operator off to Settings. It writes through the exact same PATCH path
-// Settings uses. Only media server + Tunarr must pass to continue; the rest add features.
+// Settings uses. Which blocks must pass depends on the playout backend (§9.1): the media
+// server alone when Loomarr streams, plus Tunarr when Tunarr does. The rest add features.
 //
 // Each connection is a collapsible section: its header shows a status dot + summary, and
 // picking it (here or from the rail's sub-items) reveals its form with a slide-open. Blocks
@@ -29,6 +30,16 @@ const BLOCKS = [
   { id: "ai", title: "AI", custom: true },
 ] as const;
 
+// ⚠ Tunarr NEVER appears here. On the internal path it is not part of the install at all; on
+// the Tunarr path its form lives on the Playout step, directly under the choice that makes it
+// relevant (design §13). Splitting "which one plays your channels" from "where is it" across
+// two screens made one decision feel like two, and left Connections showing a block whose
+// reason for existing was three steps back.
+//
+// It stays in BLOCKS because `requiredChecks` and the footer copy still name it: on the Tunarr
+// path it is genuinely a blocking check, just not one configured from this screen.
+const blocksFor = (): (typeof BLOCKS)[number][] => BLOCKS.filter((b) => b.id !== "tunarr");
+
 // titleFor appends the chosen-provider suffix for the provider-selected blocks (requester,
 // AI), reading the saved value from the settings entries; every other block keeps its title.
 const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): string => {
@@ -37,7 +48,7 @@ const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): stri
   return block.title;
 };
 
-const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
+const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: ChecklistStepProps) => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries();
   const status = setupApi.useSetupStatus();
@@ -117,7 +128,7 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
 
   return (
     <div className="flex flex-col gap-3">
-      {BLOCKS.map((block) => {
+      {blocksFor().map((block) => {
         const custom = "custom" in block && block.custom;
         // "group" in block narrows the union so TS knows block.group exists (the AI block is
         // custom and carries no group); a custom block has no settings-group entries.
@@ -133,7 +144,7 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
         const live = testResult[block.id];
         const standing = checks.find((c) => c.name === checkName);
         const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
-        const required = (REQUIRED_CHECKS as readonly string[]).includes(block.id);
+        const required = requiredChecks(backend).includes(block.id);
 
         return (
           // Wrapped so the open block can still be scrolled into view (ConnectionBlock owns
@@ -177,10 +188,15 @@ const ChecklistStep = ({ openId, onToggle }: ChecklistStepProps) => {
         );
       })}
 
+      {/* Names the blocks that actually gate THIS install. Reading the derived set rather
+          than a hardcoded pair is what keeps the sentence honest on the internal path, where
+          it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
       <p className="mt-1 text-muted-foreground text-xs">
-        {REQUIRED_CHECKS.map((c) => (c === "media_server" ? "Media server" : "Tunarr")).join(" and ")} must
-        pass to continue. The rest add features you can wire up later — Settings re-runs these checks for the
-        life of the install.
+        {requiredChecks(backend)
+          .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
+          .join(" and ")}{" "}
+        must pass to continue. The rest add features you can wire up later, and Settings re-runs these checks
+        for the life of the install.
       </p>
 
       {patch.error != null && <ErrorState error={patch.error} />}

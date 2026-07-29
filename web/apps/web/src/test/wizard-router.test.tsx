@@ -47,7 +47,16 @@ const CONNECTION_ENTRIES = [
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const stubFetch = (opts: { authed: boolean; setupCompleted?: boolean; checks?: unknown[] }) => {
+// `backend` is the saved `playout.backend` (§9.1), which decides which steps the wizard has
+// at all. Defaults to `tunarr` here rather than to the registry default, because most of the
+// assertions in this file predate the playout choice and describe the Tunarr-shaped flow;
+// the internal path gets its own explicit cases below.
+const stubFetch = (opts: {
+  authed: boolean;
+  setupCompleted?: boolean;
+  checks?: unknown[];
+  backend?: "internal" | "tunarr";
+}) => {
   let authed = opts.authed;
   const mock = vi.fn((url: string, _init?: RequestInit) => {
     const u = String(url);
@@ -74,6 +83,12 @@ const stubFetch = (opts: { authed: boolean; setupCompleted?: boolean; checks?: u
             features: {},
             settings: [
               ...CONNECTION_ENTRIES,
+              {
+                ...entry("playout.backend", "playout"),
+                kind: "enum",
+                enum: ["internal", "tunarr"],
+                value: opts.backend ?? "tunarr",
+              },
               {
                 key: "setup.completed",
                 group: "advanced",
@@ -145,7 +160,11 @@ describe("wizard", () => {
     await userEvent.type(screen.getByLabelText("Confirm password"), "hunter2!");
     await userEvent.click(screen.getByRole("button", { name: /create admin/i }));
 
-    expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+    // Advances to PLAYOUT, not Connections: the playout choice decides which connections are
+    // even required (§9.1), so it has to be answered before the checklist is meaningful.
+    expect(
+      await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
+    ).toBeInTheDocument();
     const called = (path: string) => fetchMock.mock.calls.some(([u]) => String(u).includes(path));
     expect(called("/v1/setup/bootstrap")).toBe(true);
     expect(called("/v1/auth/login")).toBe(true);
@@ -178,19 +197,19 @@ describe("wizard", () => {
     // Each connection is a collapsible block AND a rail sub-item (§13 sub-nav), so the
     // names appear twice — that is the point, not a bug.
     expect(await screen.findAllByText("Media server")).not.toHaveLength(0);
-    const rail = within(screen.getByRole("complementary"));
-    const tunarrSubItem = rail.getByRole("button", { name: "Tunarr" });
 
     // The connections step renders the settings-group FORM, not a read-only checklist —
     // configure in place (§6). A Test-connection button per block is the tell (there is no
     // "Fix ↗ go to Settings" here anymore).
     expect(screen.getAllByRole("button", { name: /test connection/i }).length).toBeGreaterThan(0);
 
-    // Opening Tunarr from the rail reveals its red verdict — the BE's plain-language hint,
-    // never a stack trace (§13) — and Continue stays disabled while a required check is red.
-    await userEvent.click(tunarrSubItem);
-    expect(await screen.findByText("Tunarr didn't answer on that URL.")).toBeInTheDocument();
+    // A required check that is red keeps Continue disabled. Tunarr is required here (this
+    // install is Tunarr-backed) even though its FORM now lives on the Playout step — being
+    // configured elsewhere does not make it stop blocking.
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    // …and Tunarr is not offered as a connection block on this screen any more.
+    const rail = within(screen.getByRole("complementary"));
+    expect(rail.queryByRole("button", { name: "Tunarr" })).not.toBeInTheDocument();
   });
 
   it("saves the flavor before testing — Test checks what's on screen, not stale settings", async () => {
@@ -281,15 +300,15 @@ describe("wizard", () => {
     // The support case this feature is really for: point someone at ONE service's form.
     it("reveals the connection block a link names", async () => {
       stubFetch({ authed: true, setupCompleted: false });
-      renderAt("/wizard?step=checklist&conn=tunarr");
+      renderAt("/wizard?step=checklist&conn=requester");
 
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
-      // ⚠ Asserted on aria-expanded, NOT on the presence of Tunarr's field. ConnectionBlock
-      // keeps every body MOUNTED and reveals it with a CSS grid transition, so
-      // `findByLabelText("Tunarr URL")` succeeds whether the block is open or shut — an
-      // assertion that would pass with the deep link doing nothing at all.
+      // ⚠ Asserted on aria-expanded, NOT on the presence of a field. ConnectionBlock keeps
+      // every body MOUNTED and reveals it with a CSS grid transition, so a findByLabelText
+      // succeeds whether the block is open or shut — an assertion that would pass with the
+      // deep link doing nothing at all.
       const blocks = await screen.findAllByRole("button", { expanded: true });
-      expect(blocks.map((b) => b.textContent)).toEqual([expect.stringContaining("Tunarr")]);
+      expect(blocks.map((b) => b.textContent)).toEqual([expect.stringContaining("Requester")]);
     });
 
     // ⚠ Bootstrap runs ONCE, so revisiting it must show the OUTCOME, never the form. The
@@ -319,9 +338,91 @@ describe("wizard", () => {
       const next = await screen.findByRole("button", { name: "Continue" });
       expect(next).toBeEnabled();
 
-      // And it actually moves: bootstrap is done, so Continue lands on the next step.
+      // And it actually moves: bootstrap is done, so Continue lands on the next step, which
+      // is now the playout choice.
       await userEvent.click(next);
+      expect(
+        await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
+      ).toBeInTheDocument();
+    });
+
+    // The internal path, end to end through the real route tree. ⚠ This is the case the whole
+    // change exists for: before it, an operator who wanted Loomarr to play its own channels
+    // was shown a Tunarr connection block, given a "Give Tunarr your library" step, and
+    // BLOCKED on a `tunarr` check they could never turn green.
+    it("hides Tunarr's connection block when Loomarr does the streaming", async () => {
+      stubFetch({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        checks: [{ name: "media_server", ok: true }],
+      });
+      renderAt("/wizard?step=checklist");
+
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+      // The media server is still there (the library lives there either way)…
+      expect(await screen.findByLabelText("Media server URL")).toBeInTheDocument();
+      // …and Tunarr is absent, not merely collapsed: its field is not in the DOM at all.
+      expect(screen.queryByLabelText("Tunarr URL")).not.toBeInTheDocument();
+      // Nor is it offered in the rail.
+      const rail = within(screen.getByRole("complementary"));
+      expect(rail.queryByRole("button", { name: "Tunarr" })).not.toBeInTheDocument();
+    });
+
+    it("does not block the internal path on a Tunarr check it can never satisfy", async () => {
+      stubFetch({
+        authed: true,
+        setupCompleted: false,
+        backend: "internal",
+        // Tunarr is RED and stays red: an internal install has no Tunarr to fix.
+        checks: [
+          { name: "media_server", ok: true },
+          { name: "tunarr", ok: false, hint: "Tunarr didn't answer on that URL." },
+        ],
+      });
+      renderAt("/wizard?step=checklist");
+
+      await screen.findByRole("heading", { name: /connect your services/i });
+      expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+    });
+
+    it("drops the Tunarr library step from the rail on the internal path", async () => {
+      stubFetch({ authed: true, setupCompleted: false, backend: "internal" });
+      renderAt("/wizard?step=checklist");
+
+      await screen.findByRole("heading", { name: /connect your services/i });
+      const rail = within(screen.getByRole("complementary"));
+      expect(rail.queryByText("Library")).not.toBeInTheDocument();
+      // The playout choice itself IS in the rail, on both paths.
+      expect(rail.getByText("Playout")).toBeInTheDocument();
+    });
+
+    it("keeps the Tunarr library step when Tunarr does the streaming", async () => {
+      stubFetch({ authed: true, setupCompleted: false, backend: "tunarr" });
+      renderAt("/wizard?step=checklist");
+
+      await screen.findByRole("heading", { name: /connect your services/i });
+      const rail = within(screen.getByRole("complementary"));
+      expect(rail.getByText("Library")).toBeInTheDocument();
+    });
+
+    // Tunarr's own settings live on the Playout step, under the choice that makes them
+    // relevant — not in Connections, which would split one decision across two screens.
+    it("puts Tunarr's connection form on the playout step when Tunarr is chosen", async () => {
+      stubFetch({ authed: true, setupCompleted: false, backend: "tunarr" });
+      renderAt("/wizard?step=playout");
+
+      await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
+      expect(await screen.findByLabelText("Tunarr URL")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /test connection/i })).toBeInTheDocument();
+    });
+
+    it("shows no Tunarr form on the playout step when Loomarr does the streaming", async () => {
+      stubFetch({ authed: true, setupCompleted: false, backend: "internal" });
+      renderAt("/wizard?step=playout");
+
+      await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
+      expect(screen.queryByLabelText("Tunarr URL")).not.toBeInTheDocument();
     });
 
     it("falls back to the default block when a link names one that isn't a connection", async () => {
