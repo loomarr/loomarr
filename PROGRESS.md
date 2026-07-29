@@ -18,6 +18,11 @@ snapshot fails); and the download's client-supplied filename is validated before
 filesystem (without it, `../loomarr.db` serves the live database). Each verified by sabotage,
 the traversal one against the real service rather than a fake. Full row below.
 
+✅ **CI is running again** (2026-07-29). The GitHub Actions billing block recorded against
+Phases 4–5 and several v2 rows below is **resolved** — runs on `main` are green, so a PR goes
+through real CI rather than the merge-on-green-local exception those older rows describe.
+Treat every "billing-blocked" note below as history, not as the current state.
+
 **Three follow-ups the same day, two of them maintainer corrections to my judgment.** (1) I
 argued the backup job should stay *unregistered* on Postgres since three other surfaces
 explain `pg_dump`; the maintainer overruled it, correctly — **an omitted row is also a
