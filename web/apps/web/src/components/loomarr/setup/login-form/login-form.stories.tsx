@@ -27,5 +27,13 @@ const Rejected: Story = {
   },
 };
 
+// ⚠ SSO sits BELOW the password form on purpose: Loomarr's own sign-in works alongside it,
+// never instead of it, so an install whose provider is down is still enterable (§11).
+const WithSso: Story = { args: { onSso: () => {} } };
+
+// The refusal an operator will actually hit: the provider was happy, Loomarr's allowlist was
+// not. The copy says what to do about it rather than just reporting a failure.
+const SsoNoAccount: Story = { args: { onSso: () => {}, ssoError: "sso_no_account" } };
+
 export default meta;
-export { Idle, Rejected, Submitting };
+export { Idle, Rejected, SsoNoAccount, Submitting, WithSso };
