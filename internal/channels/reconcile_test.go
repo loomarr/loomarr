@@ -389,3 +389,30 @@ var errPoke = errPokeType("poke boom")
 type errPokeType string
 
 func (e errPokeType) Error() string { return string(e) }
+
+// ⚠ A channel that computes to NOTHING must not report `live`. This used to: statusFor
+// returned live without looking at the deck, so a channel with a full lineup and zero
+// airable slots read healthy while broadcasting nothing — and an empty grid was the
+// operator's only symptom. That is how a seasonal-bench bug stayed invisible.
+//
+// Driven through the availability gate (no entry resolves to a library id) because it
+// is the simplest way to empty a deck; the seasonal path that actually hit this in the
+// wild is covered in internal/schedule.
+func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	// Entries exist on the lineup, but NOTHING is available, so no slot survives.
+	e := newEngine(st, tun, mapAvail{}, nil)
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+
+	if err := e.Reconcile(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := st.GetChannel(context.Background(), "c1")
+	if ch.Status == schedule.StatusLive {
+		t.Fatal("a channel with nothing to air reported live — the symptom that hid the bench bug")
+	}
+	if ch.Status != schedule.StatusEmpty {
+		t.Fatalf("status = %s, want %s", ch.Status, schedule.StatusEmpty)
+	}
+}
