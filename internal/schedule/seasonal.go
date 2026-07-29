@@ -27,7 +27,7 @@ type holiday struct {
 }
 
 // builtinCalendar is the v1 holiday set (§6). Keyword matching is case-insensitive
-// substring against an entry's title + genres.
+// substring against an entry's TITLE — never its genres (see isSeasonal for why).
 var builtinCalendar = []holiday{
 	{
 		id:       "halloween",
@@ -109,9 +109,25 @@ func holidayActive(h holiday, now time.Time) bool {
 }
 
 // isSeasonal reports whether an entry matches ANY holiday's keyword set (detection,
-// §6). Matching is case-insensitive substring against title + genres.
+// §6). Matching is case-insensitive substring against the entry's TITLE.
+//
+// ⚠ GENRES ARE DELIBERATELY NOT MATCHED, and this is a correction. Haying over
+// title + genres conflated "this title is ABOUT a holiday" with "this title is in a
+// genre that correlates with one" — different claims, and only the first is something
+// a holiday window should act on.
+//
+// The failure was total, not cosmetic: `horror` is in the Halloween keyword set, so on
+// a year-round horror channel EVERY entry detected as seasonal and `auto` mode benched
+// all of them `out_of_season` for the eleven months outside October. The channel was
+// legal to configure, reported `live`, and aired nothing.
+//
+// A genre is what a channel IS; a holiday keyword is what a title is ABOUT. §6's own
+// example — "Christmas episodes in July break the spell" — is a title, and this
+// restores that reading. Dropping the one genre-shaped keyword would have fixed this
+// channel and left the mechanism to re-fire on the next collision (Romance near
+// Valentine's, Family near Christmas).
 func isSeasonal(e LineupEntry, holidays []holiday) bool {
-	hay := strings.ToLower(e.Title + " " + strings.Join(e.Genres, " "))
+	hay := strings.ToLower(e.Title)
 	for _, h := range holidays {
 		for _, kw := range h.keywords {
 			if strings.Contains(hay, kw) {

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
@@ -92,5 +93,52 @@ func TestSeasonal_Exclusive(t *testing.T) {
 	jul := schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14)
 	if len(programKeys(jul)) != 0 {
 		t.Errorf("exclusive+dark out of window should go dark: got %v", programKeys(jul))
+	}
+}
+
+// ⚠ THE OUTAGE THIS EXISTS FOR. Detection used to hay over title + genres, and `horror`
+// is in the Halloween keyword set — so on a year-round horror channel EVERY entry
+// detected as seasonal and `auto` mode benched all of them for the eleven months
+// outside October. The channel was legal to configure, reported `live`, and aired
+// nothing. Reproduced from the real lineup that hit it.
+func TestSeasonal_GenreIsNotAHolidaySignal(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:348", "Alien", "", 1979, "Horror", "Science Fiction"),
+		ratedEntry("movie:tmdb:1091", "The Thing", "", 1982, "Horror", "Science Fiction"),
+		ratedEntry("movie:tmdb:70981", "Prometheus", "", 2012, "Horror", "Science Fiction"),
+	}
+	avail := mapAvail{"movie:tmdb:348": "l1", "movie:tmdb:1091": "l2", "movie:tmdb:70981": "l3"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}}
+
+	// July: nothing here is ABOUT Halloween, so nothing is benched. Before the fix this
+	// deck was empty.
+	jul := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14))
+	if len(jul) == 0 {
+		t.Fatal("a horror channel went dark out of season — genre was treated as a holiday signal")
+	}
+	for _, k := range []string{"movie:tmdb:348", "movie:tmdb:1091", "movie:tmdb:70981"} {
+		if !hasKey(jul, provision.Key(k)) {
+			t.Errorf("%s benched in July on genre alone", k)
+		}
+	}
+}
+
+// The other half of the same rule: a TITLE that is about a holiday is still benched,
+// even when its genre is the one that used to trigger the false positive. Removing
+// genre matching must not remove detection.
+func TestSeasonal_TitleStillBenchesWithinAHorrorGenre(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:1", "Halloween", "", 1978, "Horror"),
+		ratedEntry("movie:tmdb:2", "The Thing", "", 1982, "Horror"),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}}
+
+	jul := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14))
+	if hasKey(jul, "movie:tmdb:1") {
+		t.Error(`"Halloween" is about the holiday and must still be benched in July`)
+	}
+	if !hasKey(jul, "movie:tmdb:2") {
+		t.Error("a horror title that is not about a holiday must keep airing")
 	}
 }

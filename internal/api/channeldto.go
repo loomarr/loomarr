@@ -29,7 +29,7 @@ type ChannelDTO struct {
 	Group        string `json:"group,omitempty" example:"Kids"`
 	Logo         string `json:"logo,omitempty" doc:"Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)"`
 	Strategy     string `json:"strategy" enum:"sequential,shuffle,time_slot"`
-	Status       string `json:"status" enum:"building,live,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
+	Status       string `json:"status" enum:"building,live,empty,drifted,detached,paused" doc:"Loomarr-side channel status (§9)"`
 	TunarrID     string `json:"tunarrId,omitempty" doc:"Server-assigned Tunarr channel id; empty until first reconcile"`
 	IntentRef    string `json:"intentRef,omitempty"`
 	ProgramCount int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
