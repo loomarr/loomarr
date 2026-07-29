@@ -142,6 +142,18 @@ exactly the old contract.
 - **Long-lived constructions rebuild on change:** the LLM client subscribes via `Watch(keys...) <-chan Change` and reconstructs. (This is the same seam the §8.1 model-selection hot-swap uses — an atomic-pointer provider that rebuilds on a persisted `llm.*` change.)
 - `RestartRequired` exists as a flag for honesty and applies only to the bootstrap set. **Revised (V5): the UI now edits exactly one of them** — the wizard's Database step writes `DATABASE_URL` to the bootstrap file (above). That is precisely why the flag stops being decorative: the step that writes it is also the step that must say a restart is coming.
 
+  **Revised again (V13): the flag is now computed, and there is a restart control to act on it.**
+  It was a hardcoded `true` on the database switchover response — the only place that could set
+  it — which made it a property of *one endpoint* rather than of the instance. It is now derived
+  by comparing each bootstrap key's **running** value against its **resolved** value, so
+  `GET /v1/system/restart` can name the specific key: *"You changed a boot-time setting
+  (`DATABASE_URL`). Loomarr is still running the old value until it restarts."*
+  ⚠ **Derived, never a sticky boolean someone remembers to set.** A flag written at the moment of
+  an edit is wrong the moment the operator edits it back, and would nag about a restart that is
+  no longer needed. Comparing running-vs-resolved cannot drift, because it re-reads the same
+  resolution the app itself uses.
+  The restart mechanism (in-process rebuild, no supervisor, no re-exec) is `design.md` §9.2.
+
 **Audit:** the settings table carries `updated_at` + `updated_by` (nullable — env/migration writes have none). The UI shows "changed by Matt · 2d ago" per field; same spirit as `approved_by`.
 
 ---

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
@@ -73,12 +74,18 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	cfg.Transformers = append(cfg.Transformers, errorTransformer(log))
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
-		store: opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
+		// Stamped per handler build, so a restart (§9.2) resets the uptime About reports
+		// — a package-level var would survive the rebuild and keep counting from the
+		// original boot.
+		startedAt: time.Now(),
+		store:     opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
-		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
+		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart,
+		bootstrapDrift: opts.BootstrapDrift,
+		settings:       opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
@@ -103,6 +110,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemBackups(humaAPI)
+	srv.registerSystemRestart(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerProvisioning(humaAPI)

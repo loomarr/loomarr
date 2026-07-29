@@ -74,6 +74,18 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 		return nil, err
 	}
 	out := &setupStatusOutput{}
+	out.Body.Checks = s.runConnectionChecks(ctx)
+	return out, nil
+}
+
+// runConnectionChecks probes every configured service and returns one check each.
+//
+// ⚠ Extracted so `POST /v1/system/reload` (§9.2, V13) runs THIS implementation rather
+// than a second copy. A reload that disagreed with the wizard's checklist would send an
+// operator chasing a discrepancy that exists only in our code — and two copies of a
+// probe list drift the moment one gains a check.
+func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
+	var checks []SetupCheck
 
 	// Connection probes (media_server, requester, tunarr, llm, tmdb, filler) via
 	// the shared registry. filler is optional — shown only when configured.
@@ -83,7 +95,7 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 				continue
 			}
 			ok, hint := s.settings.Test(ctx, c.name)
-			out.Body.Checks = append(out.Body.Checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref})
+			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref})
 		}
 	}
 
@@ -99,7 +111,7 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 			// is to (re)save that connection, not to run a separate action.
 			check.Hint = "Tunarr isn't registered as a tuner + guide yet. Re-save the Tunarr connection to wire it up."
 		}
-		out.Body.Checks = append(out.Body.Checks, check)
+		checks = append(checks, check)
 	}
 	if s.tunarrConnect != nil {
 		ready, err := s.tunarrConnect.LibrariesReady(ctx)
@@ -114,10 +126,10 @@ func (s *Server) setupStatus(ctx context.Context, _ *struct{}) (*setupStatusOutp
 		} else if !ready {
 			check.Hint = "Tunarr can't see your library yet — run Connect (POST /v1/setup/tunarr-connect); otherwise channels air flex/dead-air"
 		}
-		out.Body.Checks = append(out.Body.Checks, check)
+		checks = append(checks, check)
 	}
 
-	return out, nil
+	return checks
 }
 
 // configValue reads a live setting for gating optional checks; empty when the
