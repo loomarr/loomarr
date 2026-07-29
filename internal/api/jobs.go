@@ -21,6 +21,11 @@ type JobService interface {
 // ErrJobNotFound is returned by JobService.Trigger for an unregistered job name.
 var ErrJobNotFound = huma.Error404NotFound("no such job") // sentinel; handler re-wraps friendly
 
+// ErrJobDisabled is returned by JobService.Trigger for a job this backend cannot run (e.g.
+// `backup` on Postgres). A 409 rather than a 404: the job exists and is listed, it just
+// cannot run here — a 404 would send an admin looking for a name that is on their screen.
+var ErrJobDisabled = huma.Error409Conflict("job disabled") // sentinel; handler re-wraps friendly
+
 // JobView is the API/UI read model for one scheduled job (§18.1). All timing is BE-authored;
 // the FE renders these values verbatim (it does not compute countdowns). Schedule is a cron
 // expression; scheduleKey is the settings key the "Modify Job" modal PATCHes to change it.
@@ -34,6 +39,9 @@ type JobView struct {
 	LastError   string    `json:"lastError,omitempty" doc:"Error detail when lastResult is error"`
 	NextRun     time.Time `json:"nextRun,omitempty" doc:"When the job is next due"`
 	Running     bool      `json:"running" doc:"True while the job is currently executing"`
+	// DisabledReason is non-empty when this backend cannot run the job at all — it is
+	// listed so its absence is never inferred, but it never runs and Run-now 409s.
+	DisabledReason string `json:"disabledReason,omitempty" doc:"Why this job cannot run here; empty when it can"`
 }
 
 func (s *Server) registerJobs(api huma.API) {
@@ -47,7 +55,7 @@ func (s *Server) registerJobs(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "jobs-run", Method: http.MethodPost, Path: "/v1/jobs/{name}/run",
 		Summary:       "Run a job now",
-		Description:   "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it).",
+		Description:   "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it). A job this backend cannot run (a non-empty disabledReason) returns 409.",
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
 	}, s.jobsRun)
@@ -89,6 +97,9 @@ func (s *Server) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, erro
 	if err := s.jobs.Trigger(ctx, in.Name); err != nil {
 		if err == ErrJobNotFound {
 			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+		}
+		if err == ErrJobDisabled {
+			return nil, huma.Error409Conflict("This job isn't available on this backend, so it can't be run.")
 		}
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't run the job", "Loomarr couldn't trigger that job. Try again in a moment.", err)
 	}

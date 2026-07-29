@@ -73,3 +73,31 @@ func highestMigration(dir string) (int64, error) {
 	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
 	return versions[len(versions)-1], nil
 }
+
+// SchemaVersion reports the migration version currently applied to the store's database
+// — the number the About page shows and an operator quotes in a bug report (§16, V12).
+//
+// Read live rather than cached at boot: the migration stepper (§5, V11) can move an
+// install onto a different database within one process lifetime, and a value captured at
+// startup would then describe a database the app is no longer talking to.
+//
+// Returns 0 for a non-SQL store or an unreadable version table. 0 is "unknown", which the
+// API omits rather than rendering as a real schema 0 — a wrong number in a bug report is
+// worse than an absent one.
+func SchemaVersion(st Store) int64 {
+	s, ok := st.(*sqlStore)
+	if !ok || s.db == nil {
+		return 0
+	}
+	// goose keeps global dialect state, set during migrate(). Re-assert it: this may run
+	// long after boot, and on a mixed process (the V11 stepper touches both) the last
+	// dialect set is not necessarily this store's.
+	if err := goose.SetDialect(string(s.dialect)); err != nil {
+		return 0
+	}
+	v, err := goose.GetDBVersion(s.db)
+	if err != nil {
+		return 0
+	}
+	return v
+}

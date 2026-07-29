@@ -14,6 +14,22 @@ const formatDuration = (ms: number): string => {
 // Runtime given in minutes (TMDB/Emby convention).
 const formatRuntime = (minutes: number): string => formatDuration(minutes * 60000);
 
+// "6d 4h 12m" · "4h 12m" · "12m" · "just started" — how long a process has been up.
+//
+// Distinct from formatDuration, which caps at hours: a server that has been up for a week
+// would read "148h 12m" there, and the unit an operator thinks in for uptime is days. Also
+// distinct from formatRelative ("5d ago"), which is deliberately coarse — uptime is a
+// number people compare against a suspected restart, so it keeps the minutes.
+const formatUptime = (ms: number): string => {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  if (totalMin < 1) return "just started";
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
+
 // Sub-minute-aware duration for filler clips (a ":30 spot", a ":05 bumper"), where
 // the minute rounding above would collapse a 15s bumper and a 45s ad to the same
 // "1m". "45s" · "1m 30s" · "2m" — from a millisecond duration.
@@ -52,6 +68,20 @@ const formatPercentPoints = (points: number): string => `${Math.round(points)}%`
 // 4.866521958261728 must not leak into the UI (it did, in the model picker). Centralized
 // because it renders in the picker's summary AND per-row, and will render in the Expo app.
 const formatGiB = (n: number): string => `${Math.round(n * 10) / 10} GiB`;
+
+// "412 B" · "8.4 KB" · "4.2 MB" · "1.3 GB" — a byte count from the API.
+//
+// Distinct from formatGiB, which takes a number already IN GiB (a VRAM probe). This takes
+// raw bytes, which is what every API field carrying a file size uses. Lives here because
+// the migration stepper and the Backup page both render one, and a second local copy is
+// how four core formatters ended up with a live grammar bug nobody noticed.
+const formatBytes = (n: number): string => {
+  if (!Number.isFinite(n) || n < 0) return "0 B";
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
 
 // A large count compacted: 2854700 → "2.9M", 1200 → "1.2K", 640 → "640". Used for the
 // Hugging Face download/like counts in the model-discover list, where the raw number is
@@ -156,6 +186,7 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
 export type { Instant };
 export {
   channelNumber,
+  formatBytes,
   formatClipDuration,
   formatCompactCount,
   formatDuration,
@@ -166,6 +197,7 @@ export {
   formatRelative,
   formatRuntime,
   formatUntil,
+  formatUptime,
   humanizeRelaxation,
   humanizeSettingKey,
   pluralize,

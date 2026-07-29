@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"net/http"
+	"runtime"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/mantonx/loomarr/docs"
 	"github.com/mantonx/loomarr/internal/buildinfo"
+	"github.com/mantonx/loomarr/internal/store"
 )
 
 // registerHelp mounts the in-app Help + system-info routes (§13). Both are readable by
@@ -87,6 +90,20 @@ type systemVersionOutput struct {
 		Dirty   bool   `json:"dirty,omitempty" doc:"Built from a working tree with uncommitted changes"`
 		Ready   bool   `json:"ready" doc:"Same readiness /readyz reports"`
 		Detail  string `json:"detail,omitempty" doc:"Why it is not ready"`
+
+		// The About page's remaining rows (§16, V12) — what an operator quotes in a bug
+		// report alongside the version.
+		GoVersion string `json:"goVersion,omitempty" example:"go1.23.4" doc:"Go runtime this binary was built with"`
+		Platform  string `json:"platform,omitempty" example:"linux/amd64" doc:"os/arch this process is running on"`
+		// StartedAt is the process start as RFC3339 — NOT a pre-computed uptime. A
+		// duration is stale the moment it is serialized; the client renders elapsed time
+		// from this instant and can keep it current without re-fetching.
+		StartedAt string `json:"startedAt,omitempty" doc:"When this process started (RFC3339); the UI derives uptime from it"`
+		// SchemaVersion is the applied migration version. Omitted when unknown (0) rather
+		// than sent as a real schema 0 — a wrong number in a bug report is worse than an
+		// absent one.
+		SchemaVersion int64  `json:"schemaVersion,omitempty" example:"20" doc:"Applied database migration version"`
+		Backend       string `json:"backend,omitempty" example:"sqlite" doc:"Active database backend"`
 	}
 }
 
@@ -97,11 +114,28 @@ type systemVersionOutput struct {
 // Registering them in huma to get them into the generated client would have put an auth
 // requirement in front of a container health probe. So the UI gets this instead — same
 // readiness, typed and authenticated, alongside the version the operator needs anyway.
+// processStart is when this process came up. Captured at package init rather than injected:
+// it is a property of the host, not of a request or of any configured service, so there is
+// nothing for a caller to decide and nothing a test needs to vary — the value's only job is
+// to be the instant the UI counts from. (`PlayoutSecret` is injected for the opposite
+// reason: it IS configuration.)
+var processStart = time.Now()
+
 func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOutput, error) {
 	info := buildinfo.Get()
 	out := &systemVersionOutput{}
 	out.Body.Version, out.Body.Commit = info.Version, info.Commit
 	out.Body.BuiltAt, out.Body.Dirty = info.BuiltAt, info.Dirty
+	out.Body.GoVersion = runtime.Version()
+	out.Body.Platform = runtime.GOOS + "/" + runtime.GOARCH
+	out.Body.StartedAt = processStart.UTC().Format(time.RFC3339)
+	// Schema version and backend need the store. A store-less boot (§7 readiness) still
+	// serves this endpoint — it is what an operator reads to find out WHY the install is
+	// unhealthy — so both rows are simply absent rather than the handler failing.
+	if s.store != nil {
+		out.Body.SchemaVersion = store.SchemaVersion(s.store)
+		out.Body.Backend = string(store.DialectOf(s.store))
+	}
 	out.Body.Ready, out.Body.Detail = true, ""
 	if s.ready != nil {
 		out.Body.Ready, out.Body.Detail = s.ready()

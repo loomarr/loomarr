@@ -34,3 +34,6 @@ packages/api/generated/
 # TanStack Router's generated route tree — `tsr generate` (pnpm codegen) rebuilds it
 # from the file-based routes in src/routes; gitignored like orval output, never hand-edited.
 apps/web/src/routeTree.gen.ts
+# TanStack Router's codegen scratch dir — build artifacts, written mid-generate.
+# Not ignoring it once cost a 616-line generated temp file committed by `git add -A`.
+apps/web/.tanstack/

@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/store"
@@ -122,6 +124,88 @@ func TestSystemVersion_ReportsVersionAndReadiness(t *testing.T) {
 	}
 	if body.Detail != "migrations pending" {
 		t.Errorf("detail = %q, want the probe's reason", body.Detail)
+	}
+}
+
+// The About page's remaining rows (§16, V12). Every one is server-truth: a runtime or
+// schema version the frontend guessed would describe the frontend, which is exactly the
+// wrong answer when the two are out of step.
+func TestSystemVersion_ReportsRuntimeAndSchema(t *testing.T) {
+	srv := newHelpServer(t, nil)
+	resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("version → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		GoVersion     string `json:"goVersion"`
+		Platform      string `json:"platform"`
+		StartedAt     string `json:"startedAt"`
+		SchemaVersion int64  `json:"schemaVersion"`
+		Backend       string `json:"backend"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasPrefix(body.GoVersion, "go1.") {
+		t.Errorf("goVersion = %q, want the Go runtime version", body.GoVersion)
+	}
+	if body.Platform != runtime.GOOS+"/"+runtime.GOARCH {
+		t.Errorf("platform = %q, want %s/%s", body.Platform, runtime.GOOS, runtime.GOARCH)
+	}
+	if body.Backend != "sqlite" {
+		t.Errorf("backend = %q, want sqlite", body.Backend)
+	}
+
+	// ⚠ A REAL applied version, not a placeholder. The helper opens a freshly migrated
+	// store, so the number must match what goose actually applied — a hardcoded 0 or a
+	// count of embedded files would both pass a weaker assertion and be wrong.
+	if body.SchemaVersion <= 0 {
+		t.Errorf("schemaVersion = %d, want the applied migration version", body.SchemaVersion)
+	}
+
+	// ⚠ startedAt is an INSTANT, not a duration. A pre-computed uptime is stale the moment
+	// it is serialized; the client counts from this.
+	started, err := time.Parse(time.RFC3339, body.StartedAt)
+	if err != nil {
+		t.Fatalf("startedAt = %q, want RFC3339: %v", body.StartedAt, err)
+	}
+	if started.After(time.Now().Add(time.Second)) {
+		t.Errorf("startedAt %v is in the future", started)
+	}
+	if time.Since(started) > time.Hour {
+		t.Errorf("startedAt %v is implausibly old for a test process", started)
+	}
+}
+
+// A store-less boot still serves this endpoint — it is what an operator reads to find out
+// WHY the install is unhealthy. The two store-derived rows are absent rather than the whole
+// call failing.
+func TestSystemVersion_WithoutStoreOmitsSchemaRows(t *testing.T) {
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Auth: api.NewTokenAuthorizer(adminToken),
+		Log:  slog.New(slog.DiscardHandler),
+	}))
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/system/version", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("version with no store → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Version       string `json:"version"`
+		GoVersion     string `json:"goVersion"`
+		SchemaVersion int64  `json:"schemaVersion"`
+		Backend       string `json:"backend"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Version == "" || body.GoVersion == "" {
+		t.Error("the store-independent rows must still be reported")
+	}
+	if body.SchemaVersion != 0 || body.Backend != "" {
+		t.Errorf("schemaVersion/backend = %d/%q with no store, want both absent", body.SchemaVersion, body.Backend)
 	}
 }
 

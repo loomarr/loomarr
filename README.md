@@ -37,6 +37,26 @@ The full `make` contract (`test-pg`, `openapi`, `fe`, `e2e`, `seed`, …) is in 
 
 Copy [`.env.example`](.env.example) to `.env` and fill in (config reference: `docs/design.md` §15).
 
+### Working on the app itself
+
+Two processes, each with live reload — run them in separate terminals:
+
+```bash
+make dev-be     # backend on :8080  — Air rebuilds + restarts on any Go change
+pnpm --filter @loomarr/web dev   # frontend on :5173 — Vite HMR (run from web/)
+```
+
+Develop against **:5173**. It proxies `/v1` to :8080, so both halves reload as you edit.
+
+⚠ **:8080 serves the embedded SPA that was built into the binary, not your working copy** —
+it is only stale-looking, never wrong, but a frontend change will not appear there.
+
+⚠ **A backend started with a bare `go run ./cmd/loomarr` does not reload.** Go's `run`
+supervises rather than execs, so killing the terminal can orphan the child; it then keeps
+serving pre-change code with no indication anything is out of date. If an API change is not
+showing up, check `curl -s localhost:8080/v1/system/version` — it reports the commit it was
+built from and whether the tree was dirty. Use `make dev-be` and this cannot happen.
+
 ## Run (Docker)
 
 ```bash
