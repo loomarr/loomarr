@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
@@ -72,6 +73,10 @@ type Server struct {
 	// freshly restarted instance. Exactly the silent package-level-state hazard §9.2
 	// warns about — no panic, no log line, just a number quietly lying in a bug report.
 	startedAt time.Time
+	// activity records Dashboard feed lines (§12, V32). Nil-safe on the Recorder itself, so
+	// a handler built without one (unit tests) records nothing rather than needing a guard
+	// at every write point.
+	activity *activity.Recorder
 	// restart wires POST /v1/system/restart (§9.2, V13); nil ⇒ 501. Nil is the honest
 	// answer for a handler built without main's generation loop behind it (tests, the
 	// integration harness): a button that silently does nothing is worse than none.
@@ -498,6 +503,8 @@ type Options struct {
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
 	Backups BackupsService
+	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
+	Activity *activity.Recorder
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService

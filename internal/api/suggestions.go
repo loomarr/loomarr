@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -330,6 +331,19 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	out.Body.Status = "approved"
 	out.Body.Enqueued = enqueued
 
+	// The Dashboard feed (§12, V32). Written AFTER the gate, so a line only appears for an
+	// approval that actually happened — recording intent would put entries in the feed for
+	// requests that were refused.
+	//
+	// Deliberately NOT inside suggest.Approve: that is the one chokepoint every approve path
+	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
+	// widen the gate's signature for telemetry.
+	//
+	// The line says WHAT HAPPENED, not what was requested: the proposal's channel name lives
+	// inside ProposalJSON and this handler never unmarshals it, so parsing one purely for a
+	// feed label would add a failure mode to the approval path for a cosmetic gain.
+	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(enqueued))
+
 	// …and materialize the channel. §7: approve → "enqueue acquisitions + create/patch
 	// channel". Only the first half was ever implemented, which made Loomarr's whole
 	// purpose unreachable from the UI: describe → review → approve, and then no channel
@@ -463,4 +477,20 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 	out := &denyOutput{}
 	out.Body.Status = "denied"
 	return out, nil
+}
+
+// approvedLine is the Dashboard feed's wording for an approval (§12, V32).
+//
+// Zero enqueued is the COMMON case on a well-stocked library — every picked title is already
+// there — so it gets its own phrasing rather than "0 titles queued", which reads like a
+// failure of the thing that just succeeded.
+func approvedLine(enqueued int) string {
+	switch enqueued {
+	case 0:
+		return "Request approved — everything is already in the library"
+	case 1:
+		return "Request approved — 1 title queued for download"
+	default:
+		return fmt.Sprintf("Request approved — %d titles queued for download", enqueued)
+	}
 }

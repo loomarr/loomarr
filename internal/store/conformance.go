@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -50,6 +52,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
+	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 }
 
 // testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
@@ -1327,5 +1330,90 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(none) != 0 {
 		t.Errorf("unknown channel returned %d entries, want 0", len(none))
+	}
+}
+
+// testActivityFeed covers the Dashboard feed's three operations on both backends (§5, V32):
+// append, newest-first read, and age-based purge.
+func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+
+	base := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	for i, tc := range []struct {
+		text  string
+		level string
+		age   time.Duration
+	}{
+		{"oldest — CH 12 reconciled", ActivityInfo, 90 * time.Minute},
+		{"middle — Seerr timed out, retrying", ActivityWarn, 60 * time.Minute},
+		{"newest — Darkwing Duck landed", ActivityInfo, 30 * time.Minute},
+	} {
+		if err := st.RecordActivity(ctx, Activity{
+			At: base.Add(-tc.age).Unix(), Kind: ActivityKindTitle, Level: tc.level,
+			Text: tc.text, SubjectID: fmt.Sprintf("subj-%d", i),
+		}); err != nil {
+			t.Fatalf("record activity %d: %v", i, err)
+		}
+	}
+
+	// Newest first — the ONLY ordering the feed has.
+	got, err := st.ListActivity(ctx, 10)
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("listed %d rows, want 3", len(got))
+	}
+	if !strings.HasPrefix(got[0].Text, "newest") || !strings.HasPrefix(got[2].Text, "oldest") {
+		t.Errorf("wrong order: %q ... %q", got[0].Text, got[2].Text)
+	}
+	if got[1].Level != ActivityWarn {
+		t.Errorf("level = %q, want warn — it drives the UI dot", got[1].Level)
+	}
+	if got[0].ID == "" {
+		t.Error("row has no id; the store must mint one")
+	}
+
+	// The limit is honoured, or a dashboard panel would render the whole table.
+	if two, err := st.ListActivity(ctx, 2); err != nil || len(two) != 2 {
+		t.Errorf("ListActivity(2) = %d rows, %v; want 2", len(two), err)
+	}
+
+	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
+	// storing it would render an invisible dot.
+	if err := st.RecordActivity(ctx, Activity{Text: "odd", Level: "banana"}); err != nil {
+		t.Fatalf("record odd level: %v", err)
+	}
+	after, _ := st.ListActivity(ctx, 1)
+	if len(after) != 1 || after[0].Level != ActivityInfo {
+		t.Errorf("level %q was stored as-is; want normalisation to info", after[0].Level)
+	}
+
+	// An empty text is dropped rather than stored: a blank row occupies a slot in a list
+	// the operator is scanning.
+	before, _ := st.ListActivity(ctx, 100)
+	if err := st.RecordActivity(ctx, Activity{Text: ""}); err != nil {
+		t.Fatalf("record empty: %v", err)
+	}
+	if all, _ := st.ListActivity(ctx, 100); len(all) != len(before) {
+		t.Errorf("an empty-text row was stored (%d -> %d)", len(before), len(all))
+	}
+
+	// Purge is by AGE — the feed is the one append-only table here, so it is the one that
+	// would otherwise grow without bound.
+	n, err := st.PurgeActivity(ctx, base.Add(-45*time.Minute))
+	if err != nil {
+		t.Fatalf("purge activity: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("purged %d rows, want 2 (the two older than the horizon)", n)
+	}
+	left, _ := st.ListActivity(ctx, 100)
+	for _, a := range left {
+		if strings.HasPrefix(a.Text, "oldest") || strings.HasPrefix(a.Text, "middle") {
+			t.Errorf("row %q survived a purge that should have removed it", a.Text)
+		}
 	}
 }

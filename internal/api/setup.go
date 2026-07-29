@@ -42,19 +42,28 @@ type SetupCheck struct {
 	// DocHref deep-links this check to its Troubleshooting section so a red check
 	// is one click from the exact fix (§13 "failures never blame").
 	DocHref string `json:"docHref,omitempty" doc:"Anchor into the embedded Troubleshooting docs"`
+	// Target is what this check connected TO — the Services panel shows it beside the state
+	// (§12, V31), because "media server: FAIL" without an address makes an operator go
+	// looking for which one. Empty when the probe has no configurable endpoint (TMDB) or the
+	// setting is unset.
+	Target string `json:"target,omitempty" doc:"The URL or path this check probed"`
 }
 
 // connectionChecklist is the ordered set of connection probes surfaced by
 // setup/status, reusing the §8 setup/test registry (SettingsService.Test). Each
 // maps a probe name to its Troubleshooting anchor. `filler` is optional — shown
 // only when a filler dir is configured (§13 "if configured").
-var connectionChecklist = []struct{ name, docHref string }{
-	{"media_server", "troubleshooting#media-server"},
-	{"requester", "troubleshooting#seerr"},
-	{"tunarr", "troubleshooting#tunarr"},
-	{"llm", "troubleshooting#llm"},
-	{"tmdb", "troubleshooting#tmdb"},
-	{"filler", "troubleshooting#filler"},
+// targetKey names the setting holding what this probe connects TO, so the Services panel
+// (§12, V31) can show `emby.lan:8096` beside a red dot. Empty where there is nothing to
+// show — TMDB is a fixed vendor endpoint nobody configures, so a "target" there would be a
+// constant dressed up as diagnostics.
+var connectionChecklist = []struct{ name, docHref, targetKey string }{
+	{"media_server", "troubleshooting#media-server", "library.url"},
+	{"requester", "troubleshooting#seerr", "seerr.url"},
+	{"tunarr", "troubleshooting#tunarr", "tunarr.url"},
+	{"llm", "troubleshooting#llm", "llm.url"},
+	{"tmdb", "troubleshooting#tmdb", ""},
+	{"filler", "troubleshooting#filler", "filler.dir"},
 }
 
 type setupStatusOutput struct {
@@ -95,7 +104,11 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 				continue
 			}
 			ok, hint := s.settings.Test(ctx, c.name)
-			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref})
+			target := ""
+			if c.targetKey != "" {
+				target = s.configValue(c.targetKey)
+			}
+			checks = append(checks, SetupCheck{Name: c.name, OK: ok, Hint: hint, DocHref: c.docHref, Target: target})
 		}
 	}
 

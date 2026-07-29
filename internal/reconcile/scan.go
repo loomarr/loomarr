@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/activity"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
@@ -23,6 +24,9 @@ type LibraryScan struct {
 	emit    Emitter
 	now     func() time.Time
 	log     *slog.Logger
+	// activity records Dashboard feed lines (§12, V32). Optional: nil-safe on the Recorder,
+	// so a scan built without one (unit tests) simply records nothing.
+	activity *activity.Recorder
 
 	// lookback bounds the incremental RecentlyAdded window. It intentionally exceeds the scan
 	// interval (a few multiples) so a briefly-missed tick — a slow scan, a restart — still
@@ -41,6 +45,11 @@ func NewLibraryScan(st store.Store, scanner library.LibraryScanner, emit Emitter
 	}
 	return &LibraryScan{store: st, scanner: scanner, emit: emit, now: now, lookback: lookback, log: log}
 }
+
+// WithActivity wires the Dashboard feed recorder (§12, V32). Optional and chainable, matching
+// how the scheduler takes its notifier: a scan without one records nothing rather than
+// forcing every test to construct a recorder it does not assert on.
+func (s *LibraryScan) WithActivity(r *activity.Recorder) *LibraryScan { s.activity = r; return s }
 
 // Incremental confirms availability for in-flight titles added to the library within the
 // lookback window — the frequent (5-minute) job. Returns the number of titles confirmed.
@@ -130,7 +139,27 @@ func (s *LibraryScan) persist(ctx context.Context, rec provision.Record, emitted
 		if s.emit != nil {
 			s.emit.Emit(ctx, ev)
 		}
+		// The Dashboard feed (§12, V32). Written HERE rather than off the event bus: the bus
+		// is lossy by design, and it carries `{type:"title"}` where the feed needs "Die Hard
+		// landed — ready to schedule". Only this point knows the title.
+		//
+		// Only `available` earns a line. Every intermediate transition would turn a five-row
+		// glance into a log, and the operator's question is "did it arrive?", not "what state
+		// is it in now?".
+		if ev.State == provision.Available {
+			s.activity.Info(ctx, store.ActivityKindTitle, string(ev.Key),
+				titleLabel(rec)+" landed — ready to schedule")
+		}
 	}
+}
+
+// titleLabel is what a human calls the title, falling back to the key when the record has no
+// name — a feed line reading "landed" with nothing in front of it is worse than an ugly one.
+func titleLabel(rec provision.Record) string {
+	if rec.Title.Name != "" {
+		return rec.Title.Name
+	}
+	return string(rec.Key)
 }
 
 // scanItemKeys builds EVERY provision.Key a scanned library item can be identified by, via the

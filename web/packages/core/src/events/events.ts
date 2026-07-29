@@ -9,6 +9,7 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type {
+  ActivityEvent,
   ChannelEvent,
   DatabaseEvent,
   EventHandlers,
@@ -45,6 +46,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<JobEvent>("job", handlers.onJob);
   on<PlayoutEvent>("playout", handlers.onPlayout);
   on<DatabaseEvent>("database", handlers.onDatabase);
+  on<ActivityEvent>("activity", handlers.onActivity);
   return () => es.close();
 };
 
@@ -104,6 +106,17 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         // renders the BE's fresh last/next-run + status. BE is the single timing source.
         invalidateByPrefix(qc, "/v1/jobs");
         extraRef.current?.onJob?.(e);
+      },
+      onActivity: (e) => {
+        // A Dashboard feed row was written (§12, V32). The frame is empty on purpose —
+        // refetch the list rather than appending from the payload, because this bus drops
+        // frames for a slow subscriber and a locally-assembled list would be missing rows.
+        //
+        // This is why the feed does NOT poll, while the Services panel beside it does: a
+        // feed row is a real event the server knows at write time, whereas a probe result
+        // only exists because the server went and asked.
+        invalidateByPrefix(qc, "/v1/activity");
+        extraRef.current?.onActivity?.(e);
       },
     });
   }, [qc]);
