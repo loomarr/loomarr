@@ -22,19 +22,26 @@ type Ollama struct {
 	// duration string ("30m") or 0 to unload immediately; "" omits the field entirely,
 	// leaving Ollama's own 5-minute default.
 	keepAlive string
-	http      *http.Client
+	// guessedModel records that NO model was configured, so `model` below is the
+	// built-in fallback tag rather than anybody's choice. A Chat still tries it (a
+	// misconfigured install failing loudly on a real request is correct), but Warm
+	// does not — see Warm.
+	guessedModel bool
+	http         *http.Client
 }
 
 // NewOllama builds an Ollama provider. baseURL e.g. http://ollama:11434. Residency
 // defaults to Ollama's own behavior; WithKeepAlive sets the §8.2 hint.
 func NewOllama(baseURL, model string) *Ollama {
-	if model == "" {
+	guessed := model == ""
+	if guessed {
 		model = "llama3.1:8b"
 	}
 	return &Ollama{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		model:   model,
-		http:    httpx.NewNamed("llm", httpx.TimeoutLLM),
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		model:        model,
+		guessedModel: guessed,
+		http:         httpx.NewNamed("llm", httpx.TimeoutLLM),
 	}
 }
 
@@ -242,7 +249,18 @@ func fromOllamaToolCalls(tcs []ollamaToolCall) []ToolCall {
 //
 // Errors are returned for logging but are never fatal to a caller: a failed warm-up
 // costs latency, not correctness — the next Chat loads the model itself.
+//
+// A GUESSED model is not warmed. On a fresh install nobody has picked one yet (§8.1
+// leaves LLM_MODEL blank so the wizard's ranked picker owns the choice), so warming
+// would fire the built-in fallback tag at a host that has almost certainly never
+// pulled it: a 404 logged as a warm-up "failure" for a model the operator never
+// asked for, on every boot until they finish onboarding. There is nothing to warm
+// yet, and saying so by doing nothing is more honest than a request we expect to
+// fail. The pick itself warms (Swappable.Set), so this costs no real latency.
 func (o *Ollama) Warm(ctx context.Context) error {
+	if o.guessedModel {
+		return ErrNothingToWarm
+	}
 	body, err := json.Marshal(ollamaChatReq{
 		Model:     o.model,
 		Stream:    false,
