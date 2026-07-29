@@ -96,5 +96,10 @@ func (e *eventEmitter) JobChanged(name string) {
 // render a list assembled from frames — and this bus drops frames for a slow subscriber by
 // design, so that list would silently be missing entries.
 func (e *eventEmitter) ActivityRecorded() {
-	e.bus.Publish(events.Event{Type: "activity"})
+	// An explicit empty object rather than a nil payload. `json.Marshal(nil)` yields the
+	// literal `null`, which the browser's JSON.parse accepts today — but the client wraps
+	// every frame's parse in a try/catch that SWALLOWS failures (a latency bus is never
+	// load-bearing), so a future change making that unparseable would disable this frame
+	// silently, with no error anywhere.
+	e.bus.Publish(events.Event{Type: "activity", Payload: map[string]any{}})
 }

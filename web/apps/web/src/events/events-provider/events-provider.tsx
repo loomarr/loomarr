@@ -52,6 +52,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onPlayout: (e) => {
         for (const l of listeners.current) l.onPlayout?.(e);
       },
+      onActivity: (e) => {
+        for (const l of listeners.current) l.onActivity?.(e);
+      },
       onDatabase: (e) => {
         for (const l of listeners.current) l.onDatabase?.(e);
       },
@@ -79,6 +82,7 @@ const useLoomarrEventListener = (handlers: EventHandlers): void => {
       onSuggestion: (e) => ref.current.onSuggestion?.(e),
       onLlmPull: (e) => ref.current.onLlmPull?.(e),
       onJob: (e) => ref.current.onJob?.(e),
+      onActivity: (e) => ref.current.onActivity?.(e),
     });
   }, [subscribe]);
 };
