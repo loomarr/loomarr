@@ -40,7 +40,6 @@
   /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
      keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
   --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
-  --animate-scanline-sweep: scanline-sweep 8s ease-in-out infinite;
   --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -125,28 +124,6 @@ body {
     transform: translate(6%, 4%);
   }
 }
-/* Scanline sweep — a soft CRT highlight drifting down an idle surface (§1). Used on the
-   "Dead air" empty state's colour bars: the one screen whose entire message is "nothing is
-   on", where a slow sign-of-life is the point and anything faster would compete with the
-   single action next to it.
-
-   TRANSLATE-ONLY, deliberately. Animating a gradient's colour stops or a background-position
-   repaints the element every frame; moving one pre-composited layer is a transform the
-   compositor owns, so the bars underneath are never re-rastered.
-
-   8s and eased at both ends so it reads as a drift rather than a wipe. Applied via
-   `motion-safe:` at the call site, with the reduced-motion killswitch below as the second
-   guard, and the visual suite's `animation: none` as the third — the snapshot freezes it at
-   0% (fully above the bars, invisible), so it cannot flake a diff. */
-@keyframes scanline-sweep {
-  0% {
-    transform: translateY(-120%);
-  }
-  100% {
-    transform: translateY(320%);
-  }
-}
-
 /* Reveal — animate a collapsible section open/closed WITHOUT knowing its height, via the
    grid 0fr→1fr trick (the modern height:auto transition). The wizard's connection blocks
    use it so a section slides open delightfully when picked from the rail (§13). The inner
