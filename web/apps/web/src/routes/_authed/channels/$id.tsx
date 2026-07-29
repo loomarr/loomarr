@@ -57,14 +57,14 @@ const airStateOf = (ch: ChannelDTO): AirState => {
     return {
       dot: "off",
       label: "Paused",
-      detail: "Off air, but kept — resume it below whenever you like.",
+      detail: "Off air, but kept. Resume it below whenever you like.",
     };
   }
   if (ch.status === "drifted") {
     return {
       dot: "reconciling",
       label: "On air (catching up)",
-      detail: "Something changed in your library — Loomarr is bringing the lineup back in line.",
+      detail: "Something changed in your library. Loomarr is bringing the lineup back in line.",
     };
   }
   if (ch.status === "live" && pushed) {
@@ -268,7 +268,7 @@ const ChannelDetailScreen = () => {
                 {ready < total && (
                   <span className="text-muted-foreground">
                     {" "}
-                    — the rest fill in as titles arrive, so the channel never goes dark.
+                    , the rest fill in as titles arrive, so the channel never goes dark.
                   </span>
                 )}
               </p>
@@ -290,7 +290,7 @@ const ChannelDetailScreen = () => {
           {isAdmin && activeId === "info" && (
             <CollapsibleSection
               title="Diagnostics"
-              description="How this channel is being built right now — relaxations applied and its Tunarr link."
+              description="How this channel is being built right now, relaxations applied and its Tunarr link."
             >
               <ChannelAdvanced channel={ch} onPolicyChange={savePolicy} />
             </CollapsibleSection>

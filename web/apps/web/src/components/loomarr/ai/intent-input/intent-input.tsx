@@ -14,7 +14,7 @@ const IntentInput = ({
   onSubmit,
   templates = [],
   submitting = false,
-  placeholder = "Describe a channel — 90s action movies, high energy, keep it PG-13",
+  placeholder = "Describe a channel: 90s action movies, high energy, keep it PG-13",
   className,
 }: IntentInputProps) => {
   const canSubmit = value.trim().length >= 3 && !submitting;

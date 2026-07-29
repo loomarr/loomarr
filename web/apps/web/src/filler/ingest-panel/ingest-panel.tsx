@@ -35,7 +35,7 @@ const IngestPanel = ({ ingestAvailable, onIngested, className }: IngestPanelProp
               at Settings would be a dead end, so the copy names the image instead. */}
           <p className="mt-1 text-muted-foreground text-sm">
             This image doesn't include the downloader. Switch to the{" "}
-            <code className="font-mono text-static-200">loomarr:filler</code> image to fetch clips in-app —
+            <code className="font-mono text-static-200">loomarr:filler</code> image to fetch clips in-app,
             same setup, just a different tag. You can also drop clips into the folder by hand.
           </p>
         </div>

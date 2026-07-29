@@ -127,7 +127,7 @@ const ProposalReview = ({
             <Badge variant={s.variant}>{s.label}</Badge>
           </div>
           {proposal.channelName && (
-            <p className="mt-0.5 text-static-400 text-xs">Proposed channel name — editable after approval.</p>
+            <p className="mt-0.5 text-static-400 text-xs">Proposed channel name, editable after approval.</p>
           )}
           {proposal.rationale && (
             <p className="mt-1 max-w-prose text-muted-foreground text-sm">{proposal.rationale}</p>
@@ -194,14 +194,14 @@ const ProposalReview = ({
                explanation is the thing that makes a member re-submit the same intent. */
             <div className="flex flex-col gap-2">
               <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
-                Why not? Optional — the requester sees this.
+                Why not? Optional: the requester sees this.
               </label>
               <Input
                 id={reasonId}
                 autoFocus
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. we're over the acquisition cap this week — ask again Monday"
+                placeholder="e.g. we're over the acquisition cap this week, ask again Monday"
                 disabled={busy}
               />
               <div className="flex justify-end gap-2">

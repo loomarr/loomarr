@@ -82,7 +82,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
             <span className="text-muted-foreground">{d.label}</span>
             {d.pinned ? (
               <span className="text-static-400">
-                keeping <span className="text-foreground">{d.from}</span> — you set this; the AI suggested{" "}
+                keeping <span className="text-foreground">{d.from}</span>, you set this; the AI suggested{" "}
                 {d.to}
               </span>
             ) : (
@@ -246,7 +246,7 @@ const RefineReview = ({
         <h2 className="font-semibold text-lg">Refined lineup</h2>
         <p className="text-muted-foreground text-sm">
           {noChanges
-            ? "No changes — your channel already matches."
+            ? "No changes. Your channel already matches."
             : "Review what changes before applying it."}
         </p>
       </header>

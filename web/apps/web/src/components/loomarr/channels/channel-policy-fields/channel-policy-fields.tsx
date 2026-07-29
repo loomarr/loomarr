@@ -182,7 +182,7 @@ const ChannelPolicyFields = ({
         <div className="flex flex-col gap-1.5">
           <FieldLabel
             htmlFor="policy-ceiling"
-            help="Content stays at or below this — a safety limit Loomarr never loosens."
+            help="Content stays at or below this, a safety limit Loomarr never loosens."
           >
             Audience ceiling
           </FieldLabel>
@@ -217,7 +217,7 @@ const ChannelPolicyFields = ({
         <div className="flex flex-col gap-1.5">
           <FieldLabel
             htmlFor="policy-unrated"
-            help="Titles with no content rating. Automatic follows the ceiling — strict for a kids ceiling, permissive otherwise."
+            help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
           >
             Unrated titles
           </FieldLabel>
@@ -240,7 +240,7 @@ const ChannelPolicyFields = ({
                       falls without knowing the kids-ceiling rule. Naming the current resolution
                       turns it into a real choice. */}
                   {o.value === "default"
-                    ? `${o.label} — ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
+                    ? `${o.label}: ${unratedResolvesToExclude(policy.audience?.ceiling) ? "skipped" : "allowed"}`
                     : o.label}
                 </SelectItem>
               ))}

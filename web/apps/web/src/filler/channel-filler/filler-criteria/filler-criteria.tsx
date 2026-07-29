@@ -150,7 +150,7 @@ const FillerCriteria = ({
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <FieldLabel
           htmlFor="filler-audience"
-          help="Keep breaks age-appropriate — kids' cartoons get kids' ads."
+          help="Keep breaks age-appropriate: kids' cartoons get kids' ads."
         >
           Audience
         </FieldLabel>

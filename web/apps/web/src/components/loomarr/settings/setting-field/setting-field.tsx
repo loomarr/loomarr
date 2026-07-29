@@ -147,7 +147,7 @@ const SettingField = ({
               onClick={() => onEnvOverride(true)}
               // The visible text is the STATE; the action belongs in the accessible name, or
               // a screen-reader user hears "set via environment, button" and has to guess.
-              aria-label={`Unlock ${humanizeSettingKey(entry.key)} to edit it here — currently set by ${entry.envVar ?? "the environment"}`}
+              aria-label={`Unlock ${humanizeSettingKey(entry.key)} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
               <Badge className="gap-1">
@@ -169,7 +169,7 @@ const SettingField = ({
             <button
               type="button"
               onClick={() => onEnvOverride(false)}
-              aria-label={`Hand ${humanizeSettingKey(entry.key)} back to ${entry.envVar ?? "the environment"} — your saved value is kept`}
+              aria-label={`Hand ${humanizeSettingKey(entry.key)} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
               <Badge variant="caution" className="gap-1">
@@ -184,7 +184,7 @@ const SettingField = ({
             </Badge>
           ))}
         {result?.status === SettingResultStatus.pinned && !pinned && (
-          <Badge variant="caution">not saved — pinned</Badge>
+          <Badge variant="caution">not saved: pinned</Badge>
         )}
       </div>
 

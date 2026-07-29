@@ -55,7 +55,7 @@ const HostedModelPicker = ({
             </p>
           ) : models.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No models returned — check the key and base URL above, then Test again.
+              No models returned. Check the key and base URL above, then Test again.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

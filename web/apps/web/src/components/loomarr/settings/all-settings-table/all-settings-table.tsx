@@ -116,7 +116,7 @@ const AllSettingsTable = ({
                     key was not where they looked, and "it's advanced" is the answer. */}
                 {entry.advanced && (
                   <span
-                    title="advanced — also shown behind its home page's disclosure"
+                    title="advanced: also shown behind its home page's disclosure"
                     className="shrink-0 rounded-sm border border-border px-1 font-mono text-2xs text-muted-foreground"
                   >
                     ADV

@@ -33,7 +33,7 @@ const ApprovalHistory = () => {
     return (
       <EmptyState
         title="Nothing decided yet"
-        description="Once requests are approved or declined, they're recorded here — who decided, when, and what they changed."
+        description="Once requests are approved or declined, they're recorded here: who decided, when, and what they changed."
       />
     );
   }

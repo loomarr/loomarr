@@ -48,7 +48,7 @@ const HelpPage = () => {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="font-semibold text-xl">Help</h1>
-        <p className="mt-1 text-muted-foreground text-sm">Ships with Loomarr — no internet needed.</p>
+        <p className="mt-1 text-muted-foreground text-sm">Ships with Loomarr. No internet needed.</p>
       </div>
 
       <div className="flex flex-col gap-6 md:flex-row">

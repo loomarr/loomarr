@@ -95,8 +95,7 @@ const RefinePanel = ({
             <p className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
-                Refine couldn't complete — the model didn't return a lineup. Try again or rephrase your
-                change.
+                Refine couldn't complete. The model didn't return a lineup. Try again or rephrase your change.
               </span>
             </p>
           )}

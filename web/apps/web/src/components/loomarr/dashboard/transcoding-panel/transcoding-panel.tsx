@@ -81,7 +81,7 @@ const TranscodingPanel = ({ telemetry, loading, className }: TranscodingPanelPro
           this distinction is possible at all. */}
       {!loading && telemetry != null && !telemetry.running && (
         <p className="px-4 py-6 text-muted-foreground text-sm">
-          Loomarr isn't streaming these channels — Tunarr is. Per-stream telemetry appears here for channels
+          Loomarr isn't streaming these channels. Tunarr is. Per-stream telemetry appears here for channels
           Loomarr plays itself.
         </p>
       )}

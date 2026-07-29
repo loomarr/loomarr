@@ -56,7 +56,7 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
       <div>
         <h2 className="font-semibold text-lg">Add a channel</h2>
         <p className="text-muted-foreground text-sm">
-          Describe the channel you want — Loomarr grounds every pick against your library and TMDB, then you
+          Describe the channel you want. Loomarr grounds every pick against your library and TMDB, then you
           review and approve before anything is built.
         </p>
       </div>
@@ -83,7 +83,7 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
           />
           {(approve.error ?? deny.error) != null && (
             <p className="text-onair-300 text-sm">
-              {toProblem(approve.error ?? deny.error).title ?? "That didn't go through — try again."}
+              {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
             </p>
           )}
           <Button variant="outline" size="sm" className="w-fit" onClick={run.reset}>

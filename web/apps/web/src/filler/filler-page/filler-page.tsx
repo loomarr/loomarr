@@ -117,7 +117,7 @@ const FillerPage = () => {
               size="sm"
               disabled={sync.isPending}
               onClick={() => sync.mutate()}
-              title="Re-scan the drop-folder (Loomarr probes it directly since §9.1 — no Tunarr needed)"
+              title="Re-scan the drop-folder (Loomarr probes it directly since §9.1, no Tunarr needed)"
             >
               <RefreshCw aria-hidden />
               {sync.isPending ? "Syncing…" : "Sync"}
@@ -250,7 +250,7 @@ const FillerPage = () => {
               description={
                 filtered
                   ? "Try a wider filter, or clear the search."
-                  : "Drop files into the filler folder, then Sync — Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
+                  : "Drop files into the filler folder, then Sync. Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
               }
               {...(filtered
                 ? {
@@ -318,8 +318,8 @@ const PageHeading = () => (
   <div>
     <h1 className="font-semibold text-xl">Filler</h1>
     <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-      Your whole library of commercials, bumpers, and station IDs — browse and tag them here. Tags are what
-      let the scheduler match a clip to a channel. Each channel then{" "}
+      Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
+      the scheduler match a clip to a channel. Each channel then{" "}
       <Link to="/guide" className="text-signal underline-offset-2 hover:underline">
         picks and previews its own filler
       </Link>{" "}

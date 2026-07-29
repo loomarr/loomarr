@@ -64,7 +64,7 @@ const fromDatetimeLocalValue = (v: string): string => {
 
 // humanWindow — windowMs (0 = whole run) as a short horizon phrase.
 const humanWindow = (windowMs: number): string => {
-  if (!windowMs || windowMs <= 0) return "Whole run — no rolling window";
+  if (!windowMs || windowMs <= 0) return "Whole run, no rolling window";
   const hours = Math.round(windowMs / (60 * 60 * 1000));
   if (hours < 24) return `Showing ~${hours}h`;
   const days = Math.round(hours / 24);
@@ -151,7 +151,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCycleP
       <div>
         <h3 className="font-semibold text-base">Preview what airs</h3>
         <p className="text-muted-foreground text-sm">
-          Time-travel the schedule — see exactly which rule wins and what plays at any moment, past or future.
+          Time-travel the schedule. See exactly which rule wins and what plays at any moment, past or future.
         </p>
       </div>
 
@@ -191,7 +191,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCycleP
                 <span className="text-muted-foreground">(priority {body.activeRule.priority})</span>
               </p>
             ) : (
-              <p className="text-muted-foreground text-sm">No rule active — base policy</p>
+              <p className="text-muted-foreground text-sm">No rule active: base policy</p>
             )}
             <span className="ml-auto font-mono text-muted-foreground text-xs">
               {humanWindow(body.windowMs)}

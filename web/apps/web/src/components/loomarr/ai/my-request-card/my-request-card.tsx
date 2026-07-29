@@ -54,7 +54,7 @@ const MyRequestCard = ({ proposal, className }: MyRequestCardProps) => {
           <span className="font-mono text-2xs uppercase tracking-wide">
             {proposal.approvedBy ? `Changed by ${proposal.approvedBy}` : "Changed"}
           </span>
-          {` — ${proposal.modSummary}`}
+          {`, ${proposal.modSummary}`}
         </p>
       )}
 

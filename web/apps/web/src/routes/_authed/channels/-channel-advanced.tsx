@@ -11,13 +11,13 @@ const relaxationSentence = (step: { kind: string; from: string; to: string }): s
   const { label, from, to } = humanizeRelaxation(step);
   switch (step.kind) {
     case "episodeNoRepeat":
-      return `Episodes can come back around a bit sooner — after ${to}, not ${from}.`;
+      return `Episodes can come back around a bit sooner, after ${to}, not ${from}.`;
     case "movieNoRepeat":
-      return `Movies can come back around a bit sooner — after ${to}, not ${from}.`;
+      return `Movies can come back around a bit sooner, after ${to}, not ${from}.`;
     case "seriesMinGap":
       return to === "none"
         ? `A series can play a few in a row now (it used to wait ${from}).`
-        : `A series waits less between episodes now — ${to} instead of ${from}.`;
+        : `A series waits less between episodes now, ${to} instead of ${from}.`;
     case "blockMax":
       return `No cap on how many episodes run back-to-back (was ${from}).`;
     default:
@@ -81,7 +81,7 @@ const ChannelAdvanced = ({
           </>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Running exactly as specified — nothing had to be eased.
+            Running exactly as specified. Nothing had to be eased.
           </p>
         )}
       </section>
@@ -132,7 +132,7 @@ const ChannelAdvanced = ({
           <p className="font-mono text-muted-foreground text-xs">Tunarr channel: {channel.tunarrId}</p>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Not on Tunarr yet — it's created there automatically once Tunarr is connected.
+            Not on Tunarr yet. It's created there automatically once Tunarr is connected.
           </p>
         )}
       </section>

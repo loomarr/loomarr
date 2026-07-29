@@ -12,7 +12,9 @@ const SECRETS: SecretRow[] = [
     label: "API token",
     purpose: "Break-glass admin access for scripts and automation.",
     consequence:
-      "The current token stops working immediately. Anything using it — scripts, automation — must be updated with the new one.",
+      // Paired parenthetical: commas here gave "Anything using it, scripts, automation, must
+      // be updated", where the aside reads as a list of subjects. Moved to the end instead.
+      "The current token stops working immediately. Anything using it must be updated with the new one: scripts, automation.",
     displayable: true,
   },
   {
@@ -20,7 +22,7 @@ const SECRETS: SecretRow[] = [
     label: "Session secret",
     purpose: "Signs session cookies. There is nothing to paste anywhere, so it is never displayed.",
     consequence:
-      "Every session is revoked, including yours — you will be signed out immediately. The API token still works as break-glass, so you cannot lock yourself out.",
+      "Every session is revoked, including yours. You will be signed out immediately. The API token still works as break-glass, so you cannot lock yourself out.",
     displayable: false,
   },
 ];

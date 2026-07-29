@@ -51,7 +51,7 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
     // with the same visible names. Without this scope, a screen-reader user hears two
     // identical controls and cannot tell which one edits the clip in front of them.
     <Card>
-      <section aria-label={`Edit tags — ${clip.name}`} className="flex flex-col gap-4 p-4">
+      <section aria-label={`Edit tags: ${clip.name}`} className="flex flex-col gap-4 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate font-semibold text-lg">{clip.name}</h2>
