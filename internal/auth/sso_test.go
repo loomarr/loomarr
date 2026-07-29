@@ -292,3 +292,143 @@ func TestSSO_TokenFromAnotherLoginIsRefused(t *testing.T) {
 		t.Error("a session was issued from a replayed token")
 	}
 }
+
+// ⚠ **Three more checks that sabotage found UNGUARDED**, after the nonce hole. Each was
+// already implemented correctly; nothing would have noticed if it stopped being.
+//
+// Found by enumerating every security-relevant branch in the SSO path and breaking each in
+// turn, rather than by writing tests for the cases that occurred to me. The first round of
+// eight tests missed all four.
+
+// A token minted for a DIFFERENT OIDC client must be refused.
+//
+// Sabotage: `SkipClientIDCheck: true`. Nothing failed. The audience claim is what stops a
+// token issued for some other application on the same provider — a wiki, a router UI —
+// being replayed at Loomarr. On a shared homelab IdP that is the realistic attack, not a
+// theoretical one.
+func TestSSO_TokenForAnotherClientIsRefused(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{
+		"sub": "op-1", "preferred_username": "sam",
+		// The provider signed a perfectly valid token — for someone else's client.
+		"aud": "some-other-app",
+	})
+	st := newSSOStore(t)
+	ctx := context.Background()
+
+	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
+	if err == nil {
+		t.Error("a token whose audience is another client was ACCEPTED")
+	}
+	if token != "" {
+		t.Error("a session was issued from a token minted for a different client")
+	}
+}
+
+// An EXPIRED token must be refused, however valid its signature.
+//
+// Sabotage: `SkipExpiryCheck: true`. Nothing failed. Expiry is what bounds the damage of a
+// leaked token — without it, one captured id_token is a permanent credential.
+func TestSSO_ExpiredTokenIsRefused(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{
+		"sub": "op-1", "preferred_username": "sam",
+		"exp": time.Now().Add(-time.Hour).Unix(), // signed correctly, an hour stale
+	})
+	st := newSSOStore(t)
+	ctx := context.Background()
+
+	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
+	if err == nil {
+		t.Error("an EXPIRED token was accepted")
+	}
+	if token != "" {
+		t.Error("a session was issued from an expired token")
+	}
+}
+
+// ⚠ State is SINGLE USE: a callback cannot be replayed.
+//
+// Sabotage: removing the `delete(s.pending, state)`. Nothing failed. Without it, a captured
+// callback URL — which sits in browser history and any proxy log in between — could be
+// replayed to mint a fresh session repeatedly.
+func TestSSO_StateCannotBeReplayed(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{"sub": "op-1", "preferred_username": "sam"})
+	st := newSSOStore(t)
+	ctx := context.Background()
+
+	if err := st.UpsertUser(ctx, store.User{ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	// First use succeeds — so the refusal below is about REPLAY, not a broken flow.
+	if _, _, _, _, _, err := svc.Exchange(ctx, state, "code"); err != nil {
+		t.Fatalf("first exchange: %v", err)
+	}
+	// Second use of the same state must fail.
+	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
+	if err != auth.ErrSSOStateMismatch {
+		t.Errorf("replayed state = %v, want ErrSSOStateMismatch", err)
+	}
+	if token != "" {
+		t.Error("a replayed callback minted a second session")
+	}
+}
+
+// A pending login EXPIRES, so an abandoned one cannot be completed days later.
+//
+// Sabotage: widening pendingTTL. Nothing failed. Driven through an injected clock rather
+// than by sleeping, so the test states the rule instead of waiting for it.
+func TestSSO_PendingLoginExpires(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{"sub": "op-1", "preferred_username": "sam"})
+	st := newSSOStore(t)
+	ctx := context.Background()
+
+	now := time.Now()
+	clock := func() time.Time { return now }
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), clock, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	// Well past the window a browser round trip needs.
+	now = now.Add(2 * time.Hour)
+
+	token, _, _, _, _, err := svc.Exchange(ctx, state, "code")
+	if err != auth.ErrSSOStateMismatch {
+		t.Errorf("stale pending login = %v, want ErrSSOStateMismatch", err)
+	}
+	if token != "" {
+		t.Error("a session was issued from an expired pending login")
+	}
+}
