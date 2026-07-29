@@ -417,9 +417,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
         // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
         // The bars stay crisp and STILL on top, so the anchor never moves.
         <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
-          {/* Behind, and dimmer than the login/wizard hero: this panel sits inside the app
-              shell rather than filling the viewport, so the same wash reads heavier here. */}
-          <TvStatic className="z-0 opacity-60" />
+          {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
+              carries `opacity-[0.11]` internally — so an `opacity-60` wrapper (which this had)
+              multiplied out to roughly 6.6% over a near-black background, i.e. nothing you
+              could see. The login and wizard shells both use it plain, and this matches them. */}
+          <TvStatic className="z-0" />
           <EmptyState
             className="relative z-10"
             // SMPTE bars over "Dead air": a test card is literally what a set showed when
