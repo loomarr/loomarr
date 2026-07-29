@@ -121,6 +121,69 @@ components:
           format: int64
           type: integer
       type: object
+    BackupEntry:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BackupEntry.json
+          format: uri
+          readOnly: true
+          type: string
+        bytes:
+          description: Size on disk
+          format: int64
+          type: integer
+        name:
+          description: Filename, e.g. loomarr-2026-07-29-033000.db
+          type: string
+        writtenAt:
+          description: Unix seconds
+          format: int64
+          type: integer
+      required:
+        - name
+        - bytes
+        - writtenAt
+      type: object
+    BackupList:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BackupList.json
+          format: uri
+          readOnly: true
+          type: string
+        backups:
+          description: On disk, newest first
+          items:
+            $ref: "#/components/schemas/BackupEntry"
+          type:
+            - array
+            - "null"
+        dir:
+          description: Where backups are written (backup.dir)
+          type: string
+        retain:
+          description: How many backups are kept; 0 keeps everything
+          format: int64
+          type: integer
+        schedule:
+          description: Cron for the scheduled backup (backup.schedule)
+          type: string
+        supported:
+          description: Whether in-app backup is available on this backend
+          type: boolean
+      required:
+        - supported
+        - dir
+        - schedule
+        - retain
+        - backups
+      type: object
     BootstrapInputBody:
       additionalProperties: false
       properties:
@@ -4947,6 +5010,45 @@ paths:
       summary: Deny a proposal (admin)
       tags:
         - suggestions
+  /v1/system/backups:
+    get:
+      description: Admin only. What the scheduled backup job has written into the configured directory, plus the schedule and retention in force. A directory that does not exist yet is an empty list, not an error — nothing written yet is the normal state of a fresh install.
+      operationId: system-backups-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupList"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Backups on disk, newest first
+      tags:
+        - system
+    post:
+      description: Admin only. Writes one snapshot into the configured directory and prunes to the retention policy — the same work the scheduled job does, without waiting for it.
+      operationId: system-backups-run
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupEntry"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Write a backup now
+      tags:
+        - system
   /v1/system/database:
     get:
       description: Admin only. Which backend is live, whether a migration is offered, and how far one has got — including per-table row counts and the parity verdict.

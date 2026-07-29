@@ -60,6 +60,9 @@ type Server struct {
 	// database wires /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11); nil ⇒ routes 501.
 	database DatabaseService
+	// backups wires /v1/system/backups* — the backups on disk (§16, V12); nil ⇒ routes
+	// 501, which is the Postgres case (in-app backup is SQLite-only by design).
+	backups BackupsService
 	// settings wires /v1/settings* + secrets regeneration (config-design §8);
 	// nil ⇒ routes 501. Implemented by a thin adapter over settings.Service.
 	settings SettingsService
@@ -474,7 +477,10 @@ type Options struct {
 	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
-	Database  DatabaseService
+	Database DatabaseService
+	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
+	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
+	Backups   BackupsService
 	Jobs      JobService      // /v1/jobs* background-job scheduler (§18.1); nil ⇒ routes 501
 	Settings  SettingsService // /v1/settings* (config-design §8); nil ⇒ routes 501
 	Guide     GuideReader     // /v1/channels/now-next (§6, §9); nil ⇒ empty now/next

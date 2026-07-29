@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"time"
 )
 
@@ -91,6 +93,101 @@ func (s *sqlStore) WriteBackup(ctx context.Context, dir string) (BackupFile, err
 		return BackupFile{}, fmt.Errorf("stat %s: %w", path, err)
 	}
 	return BackupFile{Path: path, Bytes: info.Size(), WrittenAt: now.Unix()}, nil
+}
+
+// backupNamePattern matches exactly the filenames WriteBackup produces:
+// loomarr-YYYY-MM-DD-HHMMSS.db. It is the safety boundary for BOTH listing and
+// pruning (§16, V12).
+//
+// ⚠ `backup.dir` is operator-configurable and may point at a directory holding other
+// things — a NAS share, a folder that also receives another tool's dumps. Retention
+// that deleted "the oldest files in the directory" would delete files this code never
+// created, which is data loss wearing a feature's clothes. So both readers filter on
+// this pattern and anything else in the directory is invisible to them.
+var backupNamePattern = regexp.MustCompile(`^loomarr-\d{4}-\d{2}-\d{2}-\d{6}\.db$`)
+
+// IsBackupName reports whether name is one of ours. Exported because the download
+// handler validates a CLIENT-SUPPLIED path segment against the same rule, and two
+// definitions of "a backup filename" is one more than can stay in agreement.
+func IsBackupName(name string) bool { return backupNamePattern.MatchString(name) }
+
+// ListBackups returns the backups in dir, NEWEST FIRST.
+//
+// Sorted by filename, which is equivalent to sorting by time because the timestamp
+// format is fixed-width and lexically sortable — deliberately chosen for that in
+// WriteBackup. Reading mtime instead would be a second source of truth that a file
+// copy or a restore could desynchronize from the name the operator reads.
+//
+// A missing or unreadable directory is an EMPTY LIST, not an error: "no backup has
+// been written yet" is the normal state of a fresh install, and a 5xx on the Backup
+// page would read as a broken feature rather than an empty one.
+func ListBackups(dir string) ([]BackupFile, error) {
+	if dir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", dir, err)
+	}
+	out := make([]BackupFile, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !IsBackupName(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			// A file that vanished between ReadDir and Info (a concurrent prune) is
+			// not an error for the caller — it is simply no longer a backup.
+			continue
+		}
+		out = append(out, BackupFile{
+			Path:      filepath.Join(dir, e.Name()),
+			Bytes:     info.Size(),
+			WrittenAt: info.ModTime().Unix(),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path > out[j].Path })
+	return out, nil
+}
+
+// PruneBackups deletes all but the newest `retain` backups in dir and returns how many
+// it removed (§16, V12).
+//
+// retain <= 0 keeps everything. That is the honest reading of "keep 0 backups": an
+// operator who wants unbounded history needs a way to say so, and the alternative
+// meaning — delete every backup including the one just written — is never what anyone
+// wants from a retention setting.
+//
+// ⚠ Callers must prune AFTER a successful write, never before. Pruning first would
+// satisfy retention by destroying the oldest backup and then, if the snapshot fails,
+// leave the instance with fewer backups than it started with — the worst possible
+// behaviour at the exact moment the database is unhealthy.
+func PruneBackups(dir string, retain int) (int, error) {
+	if retain <= 0 {
+		return 0, nil
+	}
+	files, err := ListBackups(dir) // newest first
+	if err != nil {
+		return 0, err
+	}
+	if len(files) <= retain {
+		return 0, nil
+	}
+	removed := 0
+	var firstErr error
+	for _, f := range files[retain:] {
+		if err := os.Remove(f.Path); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("prune %s: %w", f.Path, err)
+			}
+			continue
+		}
+		removed++
+	}
+	return removed, firstErr
 }
 
 // SQLiteBackuper exposes StreamBackup when the store is the SQLite backend; the

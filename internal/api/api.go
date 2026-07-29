@@ -78,7 +78,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
-		systemLLM: opts.SystemLLM, database: opts.Database, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
+		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, settings: opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
@@ -102,6 +102,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerDashboard(humaAPI)
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
+	srv.registerSystemBackups(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerProvisioning(humaAPI)
@@ -109,6 +110,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
 	// (not a typed Huma op — §16). Auth checked inline.
 	mux.HandleFunc("GET /v1/backup", srv.backupHandler)
+
+	// Downloading an ALREADY-WRITTEN backup (§16, V12) — same reason it isn't a Huma op:
+	// it streams a file. The list half of /v1/system/backups IS typed and lives with the
+	// other system routes.
+	mux.HandleFunc("GET /v1/system/backups/{name}", srv.downloadBackupHandler)
 
 	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
 	// bodies). Auth checked inline via the same authorizer.

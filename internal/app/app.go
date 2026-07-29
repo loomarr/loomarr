@@ -657,6 +657,41 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	}
 
+	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`
+	// and `backup.retain` were declared without in V4. Writes one snapshot into
+	// `backup.dir`, then prunes to the newest `backup.retain`.
+	//
+	// ⚠ Registered ONLY on SQLite. `WriteBackup` is SQLite-only by design (Postgres has
+	// mature backup tooling and an operator running it already has a strategy), so
+	// registering this on Postgres would put a permanently failing row on the Tasks page
+	// for a backup strategy the operator is correctly running with pg_dump.
+	var backupsSvc api.BackupsService
+	if w := store.BackupWriter(st); w != nil {
+		bs := &backupsService{
+			w:      w,
+			dir:    func() string { return set.str("backup.dir") },
+			retain: func() int { return set.intv("backup.retain") },
+			sched:  func() string { return set.str("backup.schedule") },
+		}
+		backupsSvc = bs
+		// ⚠ The job calls the SAME service the "Back up now" button does, rather than a
+		// second copy of write-then-prune. Two implementations of a retention policy is
+		// how the scheduled path and the manual path come to disagree about which files
+		// are safe to delete.
+		jobReg.Add(scheduler.Job{
+			Name: "backup", Title: "Back up the database",
+			DefaultCron: "0 30 3 * * *", ScheduleKey: "backup.schedule",
+			Run: func(ctx context.Context) error {
+				entry, err := bs.Run(ctx)
+				if err != nil {
+					return err
+				}
+				log.Info("backup written", "name", entry.Name, "bytes", entry.Bytes)
+				return nil
+			},
+		})
+	}
+
 	// API server (§7): titles + ops + OpenAPI/docs + backup + auth/users (§11).
 	// Session auth (cookie) with API_TOKEN Bearer break-glass; SQLite gets a
 	// backup streamer, Postgres passes nil (→ 501).
@@ -830,6 +865,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Pods:          podPreview,
 		SystemLLM:     systemLLM,
 		Database:      databaseSvc,
+		Backups:       backupsSvc,
 		Jobs:          jobsSvc,
 		Settings:      settingsSvc,
 		Guide:         guideSvc,
