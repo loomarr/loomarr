@@ -4,7 +4,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth";
-import { EmptyState, ErrorState, GuideDetailCard, GuideGrid } from "@/components/loomarr";
+import {
+  ColorBars,
+  EmptyState,
+  ErrorState,
+  GuideDetailCard,
+  GuideGrid,
+  TvStatic,
+} from "@/components/loomarr";
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 import { cn } from "@/lib";
@@ -170,6 +177,10 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
 
   const body = guide.data?.status === 200 ? guide.data.data : undefined;
   const channels = useMemo(() => body?.channels ?? [], [body]);
+  // "Known empty", not "nothing loaded yet": during the first fetch `channels` is also [],
+  // and treating that as empty would flash the empty state (and hide the header button)
+  // before the guide has answered.
+  const isEmpty = channels.length === 0 && !guide.isLoading;
 
   const dayChoices = useMemo(() => {
     const out: number[] = [];
@@ -206,15 +217,27 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
 
             The LABEL carries the role difference, not the presence: an admin adds a channel
             (their approval is the last step), a member requests one (an admin approves it).
-            Same panel, same call — §7 enforces the gate server-side either way. */}
-        <Button
-          variant={adding ? "outline" : "suggest"}
-          onClick={() => (adding ? closePanel() : setAdding(true))}
-          aria-expanded={adding}
-        >
-          {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
-          {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
-        </Button>
+            Same panel, same call — §7 enforces the gate server-side either way.
+
+            ⚠ HIDDEN ON AN EMPTY GUIDE, because the empty state below already offers this
+            exact action — same onClick, same panel. Two buttons a few hundred pixels apart
+            firing one handler read as two different features, which is precisely how it
+            landed for the maintainer on a fresh install.
+
+            ⚠ …but NOT while the panel is open. Once `adding` is true this button is the
+            "Close", and an empty guide is exactly when the operator is most likely to have
+            opened it: hiding it there would leave the panel with no way out. So the door
+            reappears the moment it becomes the exit. */}
+        {(!isEmpty || adding) && (
+          <Button
+            variant={adding ? "outline" : "suggest"}
+            onClick={() => (adding ? closePanel() : setAdding(true))}
+            aria-expanded={adding}
+          >
+            {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
+            {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+          </Button>
+        )}
       </div>
 
       {/* The inline create surface — describe a channel, review, approve, land on it. */}
@@ -372,16 +395,62 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
         </div>
       )}
 
-      {channels.length === 0 && !guide.isLoading ? (
+      {isEmpty ? (
         // No channels yet is a real, expected state on a fresh install — not an error. The
         // one next action (§6) opens the same inline panel the header toggles, worded for
         // who is asking.
-        <div className="flex flex-1 items-center justify-center p-10">
+        //
+        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
+        // channel" while the header said "Add a channel" and the panel that opened was
+        // titled "Add a channel" — three names for one handler. One action, one name.
+        // ⚠ The MOTION lives here, behind everything, not on the test card itself.
+        //
+        // A scanline sweeping over the bars was tried first and removed: to register on a
+        // small element it had to be scaled up and brightened, at which point it dominated a
+        // surface whose whole job is to stay calm and point at one button. Tuning it was the
+        // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
+        // RESTING state.
+        //
+        // Ambient snow is the honest read: a real test card is not still because nothing is
+        // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
+        // and its doc names empty states specifically), it is `motion-safe:` gated, and the
+        // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
+        // The bars stay crisp and STILL on top, so the anchor never moves.
+        <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
+          {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
+              carries `opacity-[0.11]` internally — so an `opacity-60` wrapper (which this had)
+              multiplied out to roughly 6.6% over a near-black background, i.e. nothing you
+              could see. The login and wizard shells both use it plain, and this matches them. */}
+          <TvStatic className="z-0" />
           <EmptyState
+            className="relative z-10"
+            // SMPTE bars over "Dead air": a test card is literally what a set showed when
+            // nothing was broadcasting, so the motif IS the state rather than decoration
+            // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
+            // rather than a new asset — it is the design's namesake strip, in the same
+            // tokens the rest of the UI uses for state.
+            //
+            // The scanline drifts down it on a slow loop: a sign of life on the one screen
+            // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
+            // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
+            // The whole thing is aria-hidden, so none of it reaches assistive tech.
+            // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
+            // card. A test card that jitters reads as a fault; one that holds while snow
+            // drifts behind it reads as standing by, which is what "Dead air" means.
+            //
+            // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
+            // from size here, not movement. `h-16` on the wrapper with the bars told to fill
+            // it — ColorBars fixes its own height, and `cn` puts className last so the
+            // override wins.
+            icon={
+              <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
+                <ColorBars size="lg" breathe className="h-full w-full" />
+              </div>
+            }
             title="Dead air"
             description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
             action={{
-              label: isAdmin ? "Describe your first channel" : "Request your first channel",
+              label: isAdmin ? "Add a channel" : "Request a channel",
               onClick: () => setAdding(true),
             }}
           />

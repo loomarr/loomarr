@@ -73,12 +73,15 @@ const GUIDE = {
   ],
 };
 
-const stubFetch = (me: unknown = ADMIN) => {
+// `empty` serves a guide with NO channels, which is the fresh-install state the "Dead air"
+// empty state and the hidden header door both hang off.
+const stubFetch = (me: unknown = ADMIN, opts: { empty?: boolean } = {}) => {
   const mock = vi.fn((url: string, _init?: RequestInit) => {
     const u = String(url);
     if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
-    if (u.includes("/v1/guide")) return Promise.resolve(json(GUIDE));
-    if (u.includes("/v1/channels")) return Promise.resolve(json({ channels: CHANNELS }));
+    if (u.includes("/v1/guide"))
+      return Promise.resolve(json(opts.empty ? { ...GUIDE, channels: [] } : GUIDE));
+    if (u.includes("/v1/channels")) return Promise.resolve(json({ channels: opts.empty ? [] : CHANNELS }));
     // GET /v1/titles is a single-state FILTER, and it 400s without a `state` — mirror the
     // real handler (internal/api/titles.go) rather than answering any URL, so a caller
     // that forgets the param fails here exactly as it would in production. Returning the
@@ -120,7 +123,10 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
-  render(
+  // Returns the render RESULT so a test can scope its queries to its own tree. `screen`
+  // searches the shared document.body, and a query that reaches a neighbouring test's markup
+  // clicks a detached button, which silently does nothing.
+  return render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
@@ -169,6 +175,53 @@ describe("Guide", () => {
     const add = screen.getByRole("button", { name: /add a channel/i });
     await user.click(add);
     expect(await screen.findByLabelText("Channel intent")).toBeInTheDocument();
+  });
+
+  // The fresh-install state. ⚠ Before this, the header's "Add a channel" and the empty
+  // state's "Describe your first channel" were BOTH on screen, both calling the same
+  // handler, opening the same panel — which then titled itself "Add a channel". Three
+  // labels, one action, two of them visible at once.
+  it("shows only ONE origination door on an empty guide, and names it the same as the header", async () => {
+    stubFetch(ADMIN, { empty: true });
+    renderAt("/guide");
+
+    expect(await screen.findByText("Dead air")).toBeInTheDocument();
+    // Exactly one control offers the action, and it uses the header's own wording.
+    const doors = screen.getAllByRole("button", { name: /add a channel/i });
+    expect(doors).toHaveLength(1);
+    // The old second label is gone entirely.
+    expect(screen.queryByRole("button", { name: /describe your first channel/i })).not.toBeInTheDocument();
+  });
+
+  // ⚠ The dead end this avoids: the header button becomes "Close" once the panel is open,
+  // and an empty guide is exactly when someone is most likely to have opened it. Hiding it
+  // unconditionally would leave the panel with no way out.
+  it("brings the header door back as Close once the panel is open on an empty guide", async () => {
+    const user = userEvent.setup();
+    stubFetch(ADMIN, { empty: true });
+    const view = renderAt("/guide");
+
+    // Wait for the EMPTY STATE, not just the button. "Dead air" only renders once the guide
+    // query has answered; before that `channels` is [] for a different reason (still loading)
+    // and the header door is still on screen. Clicking that one opens the panel in a tree the
+    // very next render replaces, so the Close never appears.
+    await view.findByText("Dead air");
+    await user.click(view.getByRole("button", { name: /add a channel/i }));
+
+    // Scoped to THIS render rather than `screen`: document.body is shared across tests in
+    // the file, and a query that reaches a neighbour's markup clicks a detached button, which
+    // silently does nothing. The point of the assertion is only that the EXIT exists; the
+    // panel's own contents are covered by the origination test above.
+    expect(await view.findByRole("button", { name: /close/i })).toBeInTheDocument();
+  });
+
+  it("keeps the header door on a populated guide, where no empty state offers it", async () => {
+    stubFetch();
+    renderAt("/guide");
+
+    expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add a channel/i })).toBeInTheDocument();
+    expect(screen.queryByText("Dead air")).not.toBeInTheDocument();
   });
 
   it("names the origination door for a member — they request rather than add", async () => {
