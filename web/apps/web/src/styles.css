@@ -40,6 +40,7 @@
   /* CRT flicker for TvStatic (§1). `steps(1,end)` per cycle makes the grain jump between
      keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
   --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
+  --animate-bar-breathe: bar-breathe 4s ease-in-out infinite;
   --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -124,6 +125,28 @@ body {
     transform: translate(6%, 4%);
   }
 }
+/* Bar breathe — the idle test card's sign of life (§1). Each colour segment dips out of
+   phase, so the strip SHIMMERS across its width like a signal holding steady rather than
+   pulsing as one block (which reads as a loading spinner).
+
+   Opacity-only, so it composites without re-rastering the bars. 4s and eased at both ends,
+   with the trough at 62%: deep enough to notice on a glance back at the screen, shallow
+   enough that it never pulls the eye away from the one button beside it. The per-segment
+   delays live in ColorBars, which is the only thing that knows how many segments there are.
+
+   Applied via `motion-safe:` at the call site, with the reduced-motion killswitch below as
+   the second guard — the visual suite pins `reducedMotion: reduce`, so baselines freeze it
+   at full opacity and never diff on a mid-cycle frame. */
+@keyframes bar-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
 /* Reveal — animate a collapsible section open/closed WITHOUT knowing its height, via the
    grid 0fr→1fr trick (the modern height:auto transition). The wizard's connection blocks
    use it so a section slides open delightfully when picked from the rail (§13). The inner
