@@ -53,6 +53,20 @@ const formatPercentPoints = (points: number): string => `${Math.round(points)}%`
 // because it renders in the picker's summary AND per-row, and will render in the Expo app.
 const formatGiB = (n: number): string => `${Math.round(n * 10) / 10} GiB`;
 
+// "412 B" · "8.4 KB" · "4.2 MB" · "1.3 GB" — a byte count from the API.
+//
+// Distinct from formatGiB, which takes a number already IN GiB (a VRAM probe). This takes
+// raw bytes, which is what every API field carrying a file size uses. Lives here because
+// the migration stepper and the Backup page both render one, and a second local copy is
+// how four core formatters ended up with a live grammar bug nobody noticed.
+const formatBytes = (n: number): string => {
+  if (!Number.isFinite(n) || n < 0) return "0 B";
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
 // A large count compacted: 2854700 → "2.9M", 1200 → "1.2K", 640 → "640". Used for the
 // Hugging Face download/like counts in the model-discover list, where the raw number is
 // noise — the operator only needs the order of magnitude to gauge popularity. Negative
@@ -156,6 +170,7 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
 export type { Instant };
 export {
   channelNumber,
+  formatBytes,
   formatClipDuration,
   formatCompactCount,
   formatDuration,
