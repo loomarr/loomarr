@@ -54,6 +54,22 @@ make fe-install     # pnpm install (web/)
 make fe             # biome + codegen + typecheck + unit tests + SPA + storybook
 ```
 
+### Running the app while you work
+
+Copy `.env.example` to `.env` first, then run both halves with live reload:
+
+```bash
+make dev-be                        # backend  :8080 — Air rebuilds on any Go change
+pnpm --filter @loomarr/web dev     # frontend :5173 — Vite HMR (from web/)
+```
+
+Develop against **:5173**, which proxies `/v1` to :8080.
+
+⚠ Do not start the backend with a bare `go run ./cmd/loomarr`: it does not reload, and
+because `go run` supervises rather than execs, closing the terminal can leave an orphan
+serving pre-change code indefinitely. `GET /v1/system/version` reports the commit a running
+binary was built from — the fastest way to confirm you are not talking to a stale process.
+
 ## Before you open a PR
 
 Run the gates your change touches:

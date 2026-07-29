@@ -3,10 +3,16 @@
 # restarts the running binary. Not a build/runtime dependency (§14): a dev tool, the
 # Go analogue of Vite's HMR — never imported, never shipped. Run from the repo root:
 #
-#   air
+#   make dev-be     (installs Air on first use, then watches)
 #
 # The FE has its own Vite dev server (pnpm --filter @loomarr/web dev); Air only owns
 # the Go backend, so web/ is excluded to avoid pointless rebuilds on .ts edits.
+#
+# ⚠ full_bin SOURCES .env rather than setting variables inline. The binary does not read
+# .env itself — it expects the shell to have exported it — so an inline DATABASE_URL is
+# not "the same as the manual launch": it is a DIFFERENT, EMPTY instance with no media
+# server, no Tunarr, and no LLM, on the same port. That reads as data loss until you work
+# out it is pointing at another database. One source of truth: .env.
 
 root = "."
 tmp_dir = "tmp"
@@ -16,8 +22,9 @@ tmp_dir = "tmp"
   # (pure-Go sqlite), so no C toolchain is needed for the dev build.
   cmd = "go build -o ./tmp/loomarr-dev ./cmd/loomarr"
   bin = "./tmp/loomarr-dev"
-  # Self-contained run command: the dev SQLite DB, same as the manual launch.
-  full_bin = "DATABASE_URL=sqlite://./loomarr-dev.db ./tmp/loomarr-dev"
+  # Same environment the manual launch uses. `set -a` exports everything .env defines;
+  # a missing .env is not fatal (the binary falls back to §15 defaults and boot-WARNs).
+  full_bin = "sh -c 'set -a; [ -f .env ] && . ./.env; set +a; exec ./tmp/loomarr-dev'"
   # Rebuild only on backend Go source changes.
   include_ext = ["go"]
   exclude_dir = ["web", "tmp", "docs", "design", "node_modules", ".git", "internal/testkit/fixtures"]
