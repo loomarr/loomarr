@@ -14,6 +14,22 @@ const formatDuration = (ms: number): string => {
 // Runtime given in minutes (TMDB/Emby convention).
 const formatRuntime = (minutes: number): string => formatDuration(minutes * 60000);
 
+// "6d 4h 12m" · "4h 12m" · "12m" · "just started" — how long a process has been up.
+//
+// Distinct from formatDuration, which caps at hours: a server that has been up for a week
+// would read "148h 12m" there, and the unit an operator thinks in for uptime is days. Also
+// distinct from formatRelative ("5d ago"), which is deliberately coarse — uptime is a
+// number people compare against a suspected restart, so it keeps the minutes.
+const formatUptime = (ms: number): string => {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  if (totalMin < 1) return "just started";
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
+
 // Sub-minute-aware duration for filler clips (a ":30 spot", a ":05 bumper"), where
 // the minute rounding above would collapse a 15s bumper and a 45s ad to the same
 // "1m". "45s" · "1m 30s" · "2m" — from a millisecond duration.
@@ -181,6 +197,7 @@ export {
   formatRelative,
   formatRuntime,
   formatUntil,
+  formatUptime,
   humanizeRelaxation,
   humanizeSettingKey,
   pluralize,

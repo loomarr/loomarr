@@ -1,14 +1,20 @@
 import type { SystemVersionOutputBody } from "@loomarr/api";
 
 interface AboutPanelProps {
-  /** What the binary knows about itself, from GET /v1/system/version. */
+  /**
+   * What the binary knows about itself, from GET /v1/system/version — including the Go
+   * runtime, process start, database backend and applied schema version.
+   *
+   * Every row comes from here. There is deliberately no second source: the backend used to
+   * be passed separately from the database endpoint, which made "which one is right?" a
+   * question this panel could ask about its own content.
+   */
   version: SystemVersionOutputBody;
   /**
-   * Active database backend ("sqlite" | "postgres"), when it is known. Optional because
-   * it comes from a different endpoint than the version, and About must render whether or
-   * not that one resolved — a missing row is better than a blocked page.
+   * Clock for the derived uptime, injectable so tests and stories are deterministic — an
+   * uptime computed from the real clock would churn a visual baseline on every run.
    */
-  backend?: string;
+  now?: number;
   className?: string;
 }
 

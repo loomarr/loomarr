@@ -3258,6 +3258,11 @@ components:
           format: uri
           readOnly: true
           type: string
+        backend:
+          description: Active database backend
+          examples:
+            - sqlite
+          type: string
         builtAt:
           type: string
         commit:
@@ -3268,9 +3273,28 @@ components:
         dirty:
           description: Built from a working tree with uncommitted changes
           type: boolean
+        goVersion:
+          description: Go runtime this binary was built with
+          examples:
+            - go1.23.4
+          type: string
+        platform:
+          description: os/arch this process is running on
+          examples:
+            - linux/amd64
+          type: string
         ready:
           description: Same readiness /readyz reports
           type: boolean
+        schemaVersion:
+          description: Applied database migration version
+          examples:
+            - 20
+          format: int64
+          type: integer
+        startedAt:
+          description: When this process started (RFC3339); the UI derives uptime from it
+          type: string
         version:
           description: Release tag, or 'dev' for an unstamped build
           examples:
