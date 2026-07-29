@@ -424,9 +424,13 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 		p.Audience.Unrated = schedule.UnratedPolicy(raw.Audience.Unrated)
 	}
 
-	// Era: accept a sane year window (the enforcer treats 0 as unbounded).
+	// Era: accept a sane year window (the enforcer treats 0 as unbounded), then WIDEN it
+	// to admit the channel's own grounded picks (programming-design §4). Acquisitions
+	// count alongside the lineup: one becomes a real airing the moment it lands, so an
+	// era that excluded it would quietly drop the title after the download finished.
 	if raw.Era.From > 0 || raw.Era.To > 0 {
-		p.Scope.Era = &schedule.Range{From: raw.Era.From, To: raw.Era.To}
+		era := schedule.Range{From: raw.Era.From, To: raw.Era.To}
+		p.Scope.Era = eraAdmittingPicks(era, lineup, acquisitions)
 	}
 
 	// Genres: pass through include/exclude names (matched case-insensitively at
@@ -683,6 +687,42 @@ func ceilingAdmittingPicks(ceiling schedule.Rating, picks []ProposalItem) schedu
 		return "" // nothing to admit that a raise (within the kids band) would fix
 	}
 	return ratingForRank(needed)
+}
+
+// eraAdmittingPicks widens a model-proposed year window just far enough to include the
+// channel's OWN grounded picks (programming-design §4), the era twin of
+// ceilingAdmittingPicks. It returns the era to persist, never nil for a non-empty input.
+//
+// Caught live: a "Midnight Sci-Fi Horror" proposal carried era.from 1982 AND Alien (1979)
+// on its approved lineup, so the §4 enforcer filtered out a title the operator had
+// explicitly approved — six on the lineup, four in the guide, nothing naming the other two.
+// Extraction and enforcement disagreeing about one proposal is a self-contradiction, and it
+// resolves toward the content the operator asked for.
+//
+// Unlike the audience raise this needs NO bound: a year is a curation choice, never a safety
+// property, so there is no era analogue of the kids line to cross. Only picks with a known
+// year (>0) participate — an unknown year can't argue for widening anything.
+//
+// The era still constrains everything NOT picked (backfill, re-curation, filler); only the
+// already-approved titles are grandfathered in.
+func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) *schedule.Range {
+	out := era
+	for _, g := range groups {
+		for _, it := range g {
+			if it.Year <= 0 {
+				continue
+			}
+			// A bound of 0 is "unbounded" to the enforcer, so it never needs widening —
+			// stretching it would turn an open end into a closed one and NARROW the era.
+			if out.From > 0 && it.Year < out.From {
+				out.From = it.Year
+			}
+			if out.To > 0 && it.Year > out.To {
+				out.To = it.Year
+			}
+		}
+	}
+	return &out
 }
 
 // ratingForRank returns the canonical TV rating at a ladder rank (for the kids band the

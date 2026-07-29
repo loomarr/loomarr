@@ -295,3 +295,83 @@ func TestGroundRules_NoneProposed(t *testing.T) {
 		t.Errorf("no rules proposed should yield nil Rules, got %+v", p.Rules)
 	}
 }
+
+// ERA AUTO-WIDEN (programming-design §4): a model-proposed era that would exclude the
+// channel's OWN grounded picks is widened to admit them. Caught live — a "Midnight Sci-Fi
+// Horror" proposal carried era.from 1982 AND Alien (1979) on its approved lineup, so the
+// enforcer filtered out a title the operator had explicitly approved: six on the lineup,
+// four in the guide, and nothing naming the missing two.
+func TestGroundPolicy_EraWidenedToAdmitPicks(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Era.From, raw.Era.To = 1982, 2026
+	lineup := []ProposalItem{
+		{Name: "Alien", Year: 1979},          // older than from → must widen
+		{Name: "The Thing", Year: 1982},      // exactly on the bound
+		{Name: "Alien: Romulus", Year: 2024}, // inside
+	}
+	p := groundPolicy(raw, lineup, nil, Intent{Description: "sci-fi horror"})
+	if p.Scope.Era == nil {
+		t.Fatal("era should survive, widened")
+	}
+	if p.Scope.Era.From != 1979 {
+		t.Errorf("era.from = %d, want 1979 (widened to admit Alien, a title the operator approved)", p.Scope.Era.From)
+	}
+	if p.Scope.Era.To != 2026 {
+		t.Errorf("era.to = %d, want 2026 (unchanged — no pick is later)", p.Scope.Era.To)
+	}
+}
+
+// An acquisition counts too: it becomes a real airing the moment it lands, so an era that
+// excluded it would quietly drop the title AFTER the download finished — the most
+// confusing possible timing for the operator.
+func TestGroundPolicy_EraWidenedForAcquisitionsToo(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Era.From, raw.Era.To = 2000, 2010
+	acquisitions := []ProposalItem{{Name: "Nosferatu", Year: 2024}}
+	p := groundPolicy(raw, nil, acquisitions, Intent{Description: "horror"})
+	if p.Scope.Era == nil || p.Scope.Era.To != 2024 {
+		t.Errorf("era = %+v, want to=2024 (widened for a pending acquisition)", p.Scope.Era)
+	}
+}
+
+// The widen only ever LOOSENS. An era that already admits every pick is left exactly as the
+// model proposed it — the guard must not become a way to silently rewrite a good scope.
+func TestGroundPolicy_EraUntouchedWhenItAlreadyAdmitsPicks(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Era.From, raw.Era.To = 1990, 1999
+	lineup := []ProposalItem{{Name: "The Matrix", Year: 1999}, {Name: "Speed", Year: 1994}}
+	p := groundPolicy(raw, lineup, nil, Intent{Description: "90s action"})
+	if p.Scope.Era == nil || p.Scope.Era.From != 1990 || p.Scope.Era.To != 1999 {
+		t.Errorf("era = %+v, want 1990-1999 unchanged", p.Scope.Era)
+	}
+}
+
+// A 0 bound means UNBOUNDED to the enforcer, so it must never be "widened" — stretching it
+// to a pick's year would turn an open end into a closed one and NARROW the era, excluding
+// content the open bound admitted.
+func TestGroundPolicy_EraOpenBoundStaysOpen(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Era.From = 1990 // to is 0 = open-ended
+	lineup := []ProposalItem{{Name: "Old Thing", Year: 1975}, {Name: "New Thing", Year: 2024}}
+	p := groundPolicy(raw, lineup, nil, Intent{Description: "stuff"})
+	if p.Scope.Era == nil {
+		t.Fatal("era should survive")
+	}
+	if p.Scope.Era.From != 1975 {
+		t.Errorf("era.from = %d, want 1975 (widened for the 1975 pick)", p.Scope.Era.From)
+	}
+	if p.Scope.Era.To != 0 {
+		t.Errorf("era.to = %d, want 0 (already unbounded — closing it would EXCLUDE content)", p.Scope.Era.To)
+	}
+}
+
+// A pick with no year can't argue for widening anything.
+func TestGroundPolicy_UnknownYearDoesNotWidenEra(t *testing.T) {
+	raw := &pickPolicy{}
+	raw.Era.From, raw.Era.To = 1990, 1999
+	lineup := []ProposalItem{{Name: "Mystery", Year: 0}}
+	p := groundPolicy(raw, lineup, nil, Intent{Description: "x"})
+	if p.Scope.Era == nil || p.Scope.Era.From != 1990 || p.Scope.Era.To != 1999 {
+		t.Errorf("era = %+v, want 1990-1999 unchanged by a yearless pick", p.Scope.Era)
+	}
+}
