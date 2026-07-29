@@ -661,10 +661,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// and `backup.retain` were declared without in V4. Writes one snapshot into
 	// `backup.dir`, then prunes to the newest `backup.retain`.
 	//
-	// ⚠ Registered ONLY on SQLite. `WriteBackup` is SQLite-only by design (Postgres has
-	// mature backup tooling and an operator running it already has a strategy), so
-	// registering this on Postgres would put a permanently failing row on the Tasks page
-	// for a backup strategy the operator is correctly running with pg_dump.
+	// ⚠ On Postgres this registers as a DISABLED job rather than not registering at all.
+	// `WriteBackup` is SQLite-only by design (Postgres has mature backup tooling and an
+	// operator running it already has a strategy) — but an omitted row is indistinguishable
+	// on the Tasks page from a job that runs fine and has never failed, and for backup that
+	// ambiguity means believing you are covered when you are not. So the row is present and
+	// states why it cannot run. It is never scheduled and Run-now 409s (§18.1).
 	var backupsSvc api.BackupsService
 	if w := store.BackupWriter(st); w != nil {
 		bs := &backupsService{
@@ -689,6 +691,17 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Info("backup written", "name", entry.Name, "bytes", entry.Bytes)
 				return nil
 			},
+		})
+	} else if st != nil {
+		// No writer, but there IS a store — i.e. Postgres. (A store-less boot registers
+		// nothing at all, since there is no scheduler to list it on.)
+		jobReg.Add(scheduler.Job{
+			Name: "backup", Title: "Back up the database",
+			DefaultCron: "0 30 3 * * *", ScheduleKey: "backup.schedule",
+			DisabledReason: "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule.",
+			// No Run func: the scheduler never calls one for a disabled job, and leaving it
+			// nil means a regression that DID schedule it panics loudly in tests rather
+			// than silently running a no-op that looks like a successful backup.
 		})
 	}
 

@@ -1556,6 +1556,9 @@ components:
     JobView:
       additionalProperties: false
       properties:
+        disabledReason:
+          description: Why this job cannot run here; empty when it can
+          type: string
         lastError:
           description: Error detail when lastResult is error
           type: string
@@ -4410,7 +4413,7 @@ paths:
         - jobs
   /v1/jobs/{name}/run:
     post:
-      description: "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it)."
+      description: "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it). A job this backend cannot run (a non-empty disabledReason) returns 409."
       operationId: jobs-run
       parameters:
         - description: The job's stable id (from GET /v1/jobs)

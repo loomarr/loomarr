@@ -17,12 +17,16 @@ type fakeJobs struct {
 	list      []api.JobView
 	triggered []string
 	unknown   string // a name that Trigger reports as not-found
+	disabled  string // a name that Trigger reports as disabled on this backend
 }
 
 func (f *fakeJobs) List(context.Context) ([]api.JobView, error) { return f.list, nil }
 func (f *fakeJobs) Trigger(_ context.Context, name string) error {
 	if name == f.unknown {
 		return api.ErrJobNotFound
+	}
+	if name == f.disabled {
+		return api.ErrJobDisabled
 	}
 	f.triggered = append(f.triggered, name)
 	return nil
@@ -97,6 +101,56 @@ func TestJobs_RunTriggers(t *testing.T) {
 	resp = do(t, srv, http.MethodPost, "/v1/jobs/ghost/run", adminToken, "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("run unknown → %d, want 404", resp.StatusCode)
+	}
+}
+
+// ⚠ Run-now on a job this backend cannot run is refused BY THE SERVER with a 409. The
+// Tasks page hides the button, but a disabled control is a hint — anything a client can be
+// shown, a client can skip.
+//
+// 409 rather than 404 on purpose: the job EXISTS and is listed (that is the whole point of
+// a disabled job), it just cannot run here. A 404 would send an admin hunting for a name
+// that is on their screen.
+func TestJobs_RunDisabledIsConflictNotFound(t *testing.T) {
+	svc := &fakeJobs{unknown: "ghost", disabled: "backup"}
+	srv := serverWithJobs(t, svc)
+
+	resp := do(t, srv, http.MethodPost, "/v1/jobs/backup/run", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("run disabled → %d, want 409", resp.StatusCode)
+	}
+	if len(svc.triggered) != 0 {
+		t.Errorf("a disabled job was triggered: %v", svc.triggered)
+	}
+}
+
+// The read model carries the reason, so the UI can state why rather than rendering a row
+// that looks broken.
+func TestJobs_ListCarriesDisabledReason(t *testing.T) {
+	const reason = "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."
+	srv := serverWithJobs(t, &fakeJobs{list: []api.JobView{
+		{Name: "reconcile", Title: "Reconcile"},
+		{Name: "backup", Title: "Back up the database", DisabledReason: reason},
+	}})
+
+	resp := do(t, srv, http.MethodGet, "/v1/jobs", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Jobs []api.JobView `json:"jobs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Jobs) != 2 {
+		t.Fatalf("jobs = %+v, want the disabled one LISTED alongside the enabled one", body.Jobs)
+	}
+	if body.Jobs[1].DisabledReason != reason {
+		t.Errorf("disabledReason = %q, want the reason", body.Jobs[1].DisabledReason)
+	}
+	if body.Jobs[0].DisabledReason != "" {
+		t.Errorf("an enabled job carries disabledReason %q, want empty", body.Jobs[0].DisabledReason)
 	}
 }
 

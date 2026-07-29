@@ -16,9 +16,14 @@ import { JobEditModal } from "./job-edit-modal/job-edit-modal";
 // All timing is server-authored — the page renders `lastRun`/`nextRun`/`running` verbatim and
 // refetches on the `job` SSE frame (wired in core), never computing countdowns client-side.
 
-// statusDot colors a job by its last result: running (amber) > error (red) > ok (green) >
-// never-run (muted). A tiny, at-a-glance health signal.
+// statusDot colors a job by its last result: disabled (muted, first) > running (amber) >
+// error (red) > ok (green) > never-run (muted). A tiny, at-a-glance health signal.
+//
+// ⚠ Disabled is checked FIRST and has its own label. Falling through to "Not run yet" would
+// reproduce, one cell over, exactly the ambiguity a disabled row exists to remove: a job
+// that cannot run here looking like one that simply has not run yet.
 const statusDot = (job: JobView): { cls: string; label: string } => {
+  if (job.disabledReason) return { cls: "bg-static-500", label: "Not available on this backend" };
   if (job.running) return { cls: "bg-signal", label: "Running" };
   if (job.lastResult === "error") return { cls: "bg-onair", label: "Failed last run" };
   if (job.lastResult === "ok") return { cls: "bg-lock", label: "OK" };
@@ -96,41 +101,65 @@ const TasksPage = () => {
                     {job.lastResult === "error" && job.lastError && (
                       <p className="mt-0.5 text-onair-300 text-xs">{job.lastError}</p>
                     )}
+                    {/* The reason sits under the title, where lastError sits for a failed
+                        job — it is the same kind of fact: why this row is not doing work. */}
+                    {job.disabledReason && (
+                      <p className="mt-0.5 text-muted-foreground text-xs">{job.disabledReason}</p>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground" title={job.schedule}>
-                    {describeCron(job.schedule)}
+                  <td
+                    className="px-4 py-3 text-muted-foreground"
+                    title={job.disabledReason ? undefined : job.schedule}
+                  >
+                    {/* A disabled job has a cron in the registry but will never fire on it.
+                        Rendering "Daily at 3 am" next to a job that never runs is the lie
+                        this whole concept exists to stop. */}
+                    {job.disabledReason ? "Not scheduled" : describeCron(job.schedule)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {job.running ? "running…" : isZero(job.nextRun) ? "—" : formatUntil(job.nextRun ?? zero)}
+                    {job.disabledReason
+                      ? "—"
+                      : job.running
+                        ? "running…"
+                        : isZero(job.nextRun)
+                          ? "—"
+                          : formatUntil(job.nextRun ?? zero)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground"
-                        onClick={() => setEditing(job)}
-                      >
-                        <Pencil className="size-4" aria-hidden />
-                        Modify
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={running || job.running}
-                        onClick={() => run.mutate({ name: job.name })}
-                      >
-                        {running ? (
-                          <Loader2 className="size-4 animate-spin" aria-hidden />
-                        ) : (
-                          <Play className="size-4" aria-hidden />
-                        )}
-                        Run now
-                      </Button>
-                    </div>
+                    {/* ⚠ ABSENT, not disabled. A greyed-out "Run now" invites the operator
+                        to hover it looking for a tooltip; the reason is already stated in
+                        the row. Modify goes too — editing the cron of a job that never
+                        fires changes nothing. The server refuses the call either way
+                        (409), so this is presentation, not the gate. */}
+                    {job.disabledReason ? null : (
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground"
+                          onClick={() => setEditing(job)}
+                        >
+                          <Pencil className="size-4" aria-hidden />
+                          Modify
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={running || job.running}
+                          onClick={() => run.mutate({ name: job.name })}
+                        >
+                          {running ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Play className="size-4" aria-hidden />
+                          )}
+                          Run now
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

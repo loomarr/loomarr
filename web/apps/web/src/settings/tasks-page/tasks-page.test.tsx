@@ -42,7 +42,7 @@ const jobs: JobView[] = [
 
 // Dispatches GET /v1/jobs (the list) and POST /v1/jobs/{name}/run (Run now); captures the
 // names that were triggered so the test can assert the right job was run.
-const stubFetch = () => {
+const stubFetch = (list: JobView[] = jobs) => {
   const runs: string[] = [];
   let listGets = 0;
   vi.stubGlobal(
@@ -56,11 +56,27 @@ const stubFetch = () => {
         return Promise.resolve(jsonResponse(202, {}));
       }
       if (method === "GET" && /\/v1\/jobs$/.test(u)) listGets += 1;
-      return Promise.resolve(jsonResponse(200, { jobs }));
+      return Promise.resolve(jsonResponse(200, { jobs: list }));
     }),
   );
   return { runs, listCount: () => listGets };
 };
+
+// A job this backend cannot run — `backup` on Postgres. It carries a cron and a schedule
+// key like any other job, because it IS registered; only DisabledReason distinguishes it.
+const PG_REASON = "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule.";
+const disabledJobs: JobView[] = [
+  jobs[0] as JobView,
+  {
+    name: "backup",
+    title: "Back up the database",
+    schedule: "0 30 3 * * *",
+    scheduleKey: "backup.schedule",
+    lastResult: "",
+    running: false,
+    disabledReason: PG_REASON,
+  },
+];
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -104,5 +120,49 @@ describe("TasksPage", () => {
 
     // The dialog titles itself with the job it's editing.
     expect(await screen.findByText("Modify Reconcile acquisitions")).toBeInTheDocument();
+  });
+
+  // ⚠ THE GATE: a job this backend cannot run is LISTED, carrying its reason. The
+  // alternative — omitting it — is what this replaced, and an absent row is
+  // indistinguishable from a job that runs fine and has never failed.
+  it("lists a disabled job with the reason it cannot run", async () => {
+    stubFetch(disabledJobs);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("Back up the database")).toBeInTheDocument();
+    expect(screen.getByText(PG_REASON)).toBeInTheDocument();
+  });
+
+  // Its schedule reads "Not scheduled", not "Daily at 3 am". The cron exists in the
+  // registry but will never fire, and rendering it is the lie this concept exists to stop.
+  it("does not advertise a schedule a disabled job will never run on", async () => {
+    stubFetch(disabledJobs);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    await screen.findByText("Back up the database");
+    expect(screen.getByText("Not scheduled")).toBeInTheDocument();
+    expect(screen.queryByText("Daily at 3 am")).not.toBeInTheDocument();
+  });
+
+  // ⚠ The controls are ABSENT, not disabled — a greyed-out button invites a hunt for a
+  // tooltip when the reason is already on the row. The enabled job keeps both, so this
+  // asserts a real distinction rather than an empty table.
+  it("offers neither Run now nor Modify for a disabled job", async () => {
+    stubFetch(disabledJobs);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    await screen.findByText("Back up the database");
+    expect(screen.getAllByRole("button", { name: /Run now/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Modify" })).toHaveLength(1);
+  });
+
+  // The status dot must not read "Not run yet" — that is the same ambiguity one cell over.
+  it("marks a disabled job as unavailable rather than merely never-run", async () => {
+    stubFetch(disabledJobs);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    await screen.findByText("Back up the database");
+    expect(screen.getByRole("img", { name: "Not available on this backend" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Not run yet" })).not.toBeInTheDocument();
   });
 });
