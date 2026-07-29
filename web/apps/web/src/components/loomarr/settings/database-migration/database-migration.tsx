@@ -1,3 +1,4 @@
+import { formatBytes } from "@loomarr/core";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
 import { Badge, Button, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
@@ -23,12 +24,6 @@ const STEPS: { key: MigrationStep; label: string }[] = [
   { key: "verify", label: "Verify" },
   { key: "restart", label: "Restart" },
 ];
-
-const formatBytes = (n: number): string => {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-};
 
 const DatabaseMigration = ({
   status,

@@ -27,7 +27,24 @@ type Job struct {
 	DefaultCron string // built-in cron schedule, e.g. "0 */5 * * * *"
 	ScheduleKey string // settings key, e.g. "job.reconcile.schedule"; "" ⇒ always DefaultCron
 	Run         func(ctx context.Context) error
+
+	// DisabledReason, when non-empty, means this build/backend CANNOT run this job. It is
+	// listed on the Tasks page carrying this reason, is never scheduled or claimed, and
+	// refuses Trigger.
+	//
+	// ⚠ This is not an operator "off" switch and there is no enable control: it states a
+	// fact about the environment (backup needs SQLite; WriteBackup does not exist on
+	// Postgres), which no amount of clicking changes.
+	//
+	// It exists because the alternative — not registering the job at all — is also a
+	// claim. An absent row is indistinguishable, from the Tasks page alone, from a job
+	// that runs fine and has simply never failed; for backup that ambiguity means an
+	// operator believing they are covered when they are not.
+	DisabledReason string
 }
+
+// Disabled reports whether the job cannot run in this environment.
+func (j Job) Disabled() bool { return j.DisabledReason != "" }
 
 // JobStatus is the read model the Tasks API/UI renders.
 type JobStatus struct {
@@ -40,6 +57,9 @@ type JobStatus struct {
 	LastError   string    `json:"lastError"`
 	NextRun     time.Time `json:"nextRun"`
 	Running     bool      `json:"running"`
+	// DisabledReason is non-empty when this job cannot run in this environment. The UI
+	// renders it in place of the schedule and offers neither Run-now nor Modify.
+	DisabledReason string `json:"disabledReason,omitempty"`
 }
 
 // ScheduleStore is the persistence the scheduler needs (satisfied by store.Store). It uses
@@ -172,6 +192,13 @@ func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 		if existing[name] {
 			continue
 		}
+		// A disabled job gets no state row, so it can never become due and the claim query
+		// never sees it. Enforcing it here as well as in tick() is deliberate: this is the
+		// only point that would otherwise write a due-now row, and a job that is disabled
+		// today may have been seeded by an earlier boot that was not.
+		if s.jobs[name].Disabled() {
+			continue
+		}
 		if err := s.store.UpsertScheduledJob(ctx, store.ScheduledJob{Name: name, NextRun: now, UpdatedAt: now}); err != nil {
 			s.log.Warn("scheduler: seed job state", "job", name, "err", err)
 		}
@@ -190,6 +217,15 @@ func (s *Scheduler) tick(ctx context.Context) {
 		j, ok := s.jobs[row.Name]
 		if !ok {
 			continue // a state row with no code job (e.g. renamed) — skip; it won't be reclaimed until we reschedule, which we don't, so it stays leased far out. Acceptable: stale rows are inert.
+		}
+		// ⚠ Load-bearing, not belt-and-braces. reconcileRegistry declines to SEED a
+		// disabled job, but a row can already exist from a boot where the job was enabled
+		// — precisely what a SQLite → Postgres migration (§18, V11) produces: the same
+		// install, the same `backup` row, a backend that can no longer run it. Without
+		// this the first tick after that migration would claim the row and run a job whose
+		// writer does not exist.
+		if j.Disabled() {
+			continue
 		}
 		go s.execute(ctx, j)
 	}
@@ -234,8 +270,15 @@ func (s *Scheduler) safeRun(ctx context.Context, j Job) (err error) {
 // Trigger forces a job to run off-cycle ("Run now"): mark it due, then wake the loop.
 // Returns ErrUnknownJob if the name isn't registered.
 func (s *Scheduler) Trigger(ctx context.Context, name string) error {
-	if _, ok := s.jobs[name]; !ok {
+	j, ok := s.jobs[name]
+	if !ok {
 		return ErrUnknownJob
+	}
+	// ⚠ The refusal lives HERE, not only in the UI. The Tasks page hides Run-now for a
+	// disabled job, but that is a hint — anything a client can be shown, a client can
+	// skip, and this one would run a job the backend cannot support.
+	if j.Disabled() {
+		return ErrJobDisabled
 	}
 	now := s.now()
 	cur, err := s.store.GetScheduledJob(ctx, name)
@@ -265,12 +308,21 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 	for _, name := range s.order {
 		j := s.jobs[name]
 		st := state[name]
-		out = append(out, JobStatus{
+		status := JobStatus{
 			Name: j.Name, Title: j.Title,
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),
-		})
+			DisabledReason: j.DisabledReason,
+		}
+		// A disabled job has no next run — it is never claimed. Any NextRun in the state
+		// row is a leftover from a boot where it WAS enabled (the SQLite → Postgres case),
+		// and rendering it would promise a run that will never happen. Zeroing it here
+		// means the read model cannot disagree with what the loop actually does.
+		if j.Disabled() {
+			status.NextRun = time.Time{}
+		}
+		out = append(out, status)
 	}
 	return out, nil
 }

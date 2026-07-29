@@ -8,6 +8,11 @@ import (
 // ErrUnknownJob is returned by Trigger when the requested job name isn't registered.
 var ErrUnknownJob = errors.New("unknown job")
 
+// ErrJobDisabled is returned by Trigger for a job this build/backend cannot run (e.g.
+// `backup` on Postgres). Distinct from ErrUnknownJob: the job exists and is listed, it
+// just cannot be run here — which is a 409, not a 404.
+var ErrJobDisabled = errors.New("job is not available on this backend")
+
 // Registry collects the code-defined jobs before the scheduler is built. The composition
 // root (internal/app) builds it: reg.Add(Job{...}).Add(Job{...}). Order is preserved so the
 // Tasks page lists jobs in a stable, intentional order.

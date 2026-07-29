@@ -56,15 +56,19 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
 			NextRun: j.NextRun, Running: j.Running,
+			DisabledReason: j.DisabledReason,
 		})
 	}
 	return out, nil
 }
 
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
-	if err := a.s.Trigger(ctx, name); err == scheduler.ErrUnknownJob {
+	switch err := a.s.Trigger(ctx, name); {
+	case err == scheduler.ErrUnknownJob:
 		return api.ErrJobNotFound
-	} else if err != nil {
+	case err == scheduler.ErrJobDisabled:
+		return api.ErrJobDisabled
+	case err != nil:
 		return err
 	}
 	return nil

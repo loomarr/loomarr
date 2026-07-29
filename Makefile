@@ -53,6 +53,13 @@ build: ## build the loomarr binary (static, cgo-free — §16)
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
 	docker compose -f docker/compose.dev.yaml up -d
 
+.PHONY: dev-be
+dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go change
+	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
+	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
+	@# is how this box spent a session serving a stale binary.
+	$(GO) run github.com/air-verse/air@v1.67.3
+
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
 	docker compose -f docker/compose.dev.yaml -f docker/compose.dev.gpu.yaml up -d

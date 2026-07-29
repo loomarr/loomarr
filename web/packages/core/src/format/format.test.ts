@@ -11,6 +11,7 @@ import {
   formatRelative,
   formatRuntime,
   formatUntil,
+  formatUptime,
   humanizeRelaxation,
   humanizeSettingKey,
   pluralize,
@@ -72,6 +73,38 @@ describe("Instant accepts both wire shapes", () => {
   it("formats an EPG time from Unix ms", () => {
     // now/next carry stopMs, so the channel card's "·til 8:00 PM" needs ms support.
     expect(formatEpgTime(Date.parse("2026-07-17T20:00:00"))).toBe("8:00 PM");
+  });
+});
+
+describe("formatUptime", () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+
+  it("keeps days as days rather than a large hour count", () => {
+    // ⚠ The reason this is not formatDuration: a week of uptime reads "168h 0m" there,
+    // and days is the unit an operator thinks in.
+    expect(formatUptime(6 * DAY + 4 * HOUR + 12 * MIN)).toBe("6d 4h 12m");
+    expect(formatUptime(7 * DAY)).toBe("7d 0h 0m");
+  });
+
+  it("drops empty leading units", () => {
+    expect(formatUptime(4 * HOUR + 12 * MIN)).toBe("4h 12m");
+    expect(formatUptime(12 * MIN)).toBe("12m");
+  });
+
+  // A just-restarted server must not read "0m", which looks like a broken value; it is
+  // also the state an operator is most likely looking at (they just restarted it).
+  it("names the sub-minute case instead of showing 0m", () => {
+    expect(formatUptime(0)).toBe("just started");
+    expect(formatUptime(59_000)).toBe("just started");
+    expect(formatUptime(-5)).toBe("just started");
+  });
+
+  // Floor, not round: 59 minutes of uptime is not an hour.
+  it("floors rather than rounding up into a unit that has not elapsed", () => {
+    expect(formatUptime(59 * MIN + 59_000)).toBe("59m");
+    expect(formatUptime(23 * HOUR + 59 * MIN)).toBe("23h 59m");
   });
 });
 
