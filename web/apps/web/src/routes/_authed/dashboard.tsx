@@ -1,8 +1,24 @@
-import { channelsApi, dashboardApi, fillerApi, suggestionsApi, TitleDTOState, titlesApi } from "@loomarr/api";
+import {
+  channelsApi,
+  dashboardApi,
+  fillerApi,
+  suggestionsApi,
+  systemApi,
+  TitleDTOState,
+  titlesApi,
+} from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { useAuth } from "@/auth";
-import { EmptyState, StatCard, TranscodingPanel } from "@/components/loomarr";
+import {
+  EmptyState,
+  RestartNeededBanner,
+  ServiceControl,
+  StatCard,
+  TranscodingPanel,
+} from "@/components/loomarr";
+import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib";
 
 // Dashboard (§12, V16) — "is everything alright?" in one screen.
@@ -45,6 +61,25 @@ const DashboardScreen = () => {
 
   const clips = fillerApi.useListFiller(undefined, { query: { enabled } });
 
+  // Restart control (§9.2, V13). One cost query drives the restart-needed banner AND the
+  // confirm line, so the two can never disagree about what a restart would do.
+  const restartCost = systemApi.useSystemRestartCost({ query: { enabled } });
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const controlRef = useRef<HTMLDivElement>(null);
+  // The SHARED watch (app shell). The overlay it drives covers the whole app, so an
+  // operator who navigates away mid-restart still sees what is happening.
+  const watch = useRestartWatchContext();
+
+  const restart = systemApi.useSystemRestart({
+    mutation: {
+      onSuccess: () => {
+        setServiceError(null);
+        watch.begin();
+      },
+      onError: () => setServiceError("Couldn't restart. Loomarr is still running the old settings."),
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="p-6">
@@ -60,6 +95,7 @@ const DashboardScreen = () => {
   const onAir = rows.filter((c) => c.status === "live").length;
   const telemetry = playout.data?.status === 200 ? playout.data.data : undefined;
   const clipCount = clips.data?.status === 200 ? (clips.data.data.clips?.length ?? 0) : 0;
+  const cost = restartCost.data?.status === 200 ? restartCost.data.data : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -68,6 +104,14 @@ const DashboardScreen = () => {
       </header>
 
       <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
+        {/* Above the cards, because a setting that has not taken effect changes how every
+            number below it should be read. The restart ITSELF is announced by the shell's
+            overlay, which covers every page rather than just this one. */}
+        <RestartNeededBanner
+          pendingKeys={cost?.pendingKeys ?? []}
+          onGoToRestart={() => controlRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        />
+
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Link to="/guide">
             <StatCard label="On air" value={onAir} note="channels in the guide right now" tone="onair" />
@@ -92,6 +136,19 @@ const DashboardScreen = () => {
         </div>
 
         <TranscodingPanel telemetry={telemetry} loading={playout.isLoading} />
+
+        {cost ? (
+          <div ref={controlRef}>
+            <ServiceControl
+              cost={cost}
+              onRestart={() => restart.mutate()}
+              restarting={watch.restarting}
+              // A restart that never came back is the failure worth naming — it outranks
+              // a request-level error, because the app is actually down.
+              error={watch.failed ?? serviceError}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );
