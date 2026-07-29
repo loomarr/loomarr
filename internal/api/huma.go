@@ -73,6 +73,10 @@ type Server struct {
 	// freshly restarted instance. Exactly the silent package-level-state hazard §9.2
 	// warns about — no panic, no log line, just a number quietly lying in a bug report.
 	startedAt time.Time
+	// sso wires /v1/auth/sso/* — the OIDC credential path (§11, V8). nil ⇒ the routes are
+	// NOT MOUNTED, which is the honest posture for an unconfigured provider: a
+	// sign-in-with button that 501s is worse than one that is not offered.
+	sso SSOService
 	// activity records Dashboard feed lines (§12, V32). Nil-safe on the Recorder itself, so
 	// a handler built without one (unit tests) records nothing rather than needing a guard
 	// at every write point.
@@ -503,6 +507,8 @@ type Options struct {
 	// Backups backs /v1/system/backups* — listing, downloading and writing the backups
 	// on disk (§16, V12). nil ⇒ routes 501 (a Postgres install wires it nil).
 	Backups BackupsService
+	// SSO backs /v1/auth/sso/* (§11, V8); nil ⇒ the routes are not mounted.
+	SSO SSOService
 	// Activity records Dashboard feed lines (§12, V32); nil ⇒ nothing is recorded.
 	Activity *activity.Recorder
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's

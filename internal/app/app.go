@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/activity"
@@ -774,6 +775,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	}
 	authorizer := api.Authorizer(api.NewTokenAuthorizer(apiToken))
 	var loginSvc api.LoginService
+	var ssoSvc api.SSOService
 	var sessMgr api.SessionManager
 	var userSync api.UserSyncer
 	var provisionSvc api.Provisioner
@@ -800,6 +802,28 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			loginSvc = auth.NewLoginService(nil, st, mgr, limiter, time.Now)
 			provisionSvc = auth.NewProvisioner(st, nil, newID, time.Now)
 		}
+		// SSO: the third credential path (§11, D-F, V8). Config is read PER CALL so a saved
+		// change applies without a restart (config-design §3).
+		//
+		// ⚠ The redirect URL is DERIVED from `server.public_url` rather than configured
+		// separately. Two places to state one address is two places for it to disagree, and
+		// a mismatched redirect is the most common OIDC misconfiguration — the provider
+		// refuses and neither side says which value it expected.
+		ssoSvc = auth.NewSSOService(func() auth.SSOConfig {
+			base := strings.TrimRight(set.str("server.public_url"), "/")
+			redirect := ""
+			if base != "" {
+				redirect = base + "/v1/auth/sso/callback"
+			}
+			return auth.SSOConfig{
+				Enabled:      set.boolv("auth.sso.enabled"),
+				Issuer:       set.str("auth.sso.issuer"),
+				ClientID:     set.str("auth.sso.client_id"),
+				ClientSecret: set.str("auth.sso.client_secret"),
+				RedirectURL:  redirect,
+			}
+		}, st, mgr, time.Now, log)
+
 		// Local account management (§11) needs no media server — a local user is
 		// verified entirely in-app, exactly like the bootstrap admin. So it is wired
 		// unconditionally alongside the store, not inside the `lib != nil` branch.
@@ -933,6 +957,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		SystemLLM:     systemLLM,
 		Database:      databaseSvc,
 		Backups:       backupsSvc,
+		SSO:           ssoSvc,
 		Restart:       restartSvc,
 		Activity:      activityRec,
 		// The baseline for "has a boot-time setting changed?" is what THIS generation

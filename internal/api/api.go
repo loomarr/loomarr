@@ -83,7 +83,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
 		suggest: opts.Suggest, search: opts.Search, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
-		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity,
+		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		bootstrapDrift: opts.BootstrapDrift,
 		settings:       opts.Settings, provision: opts.Provision, guide: opts.Guide,
 		liveConfig: opts.LiveConfig, liveConfigInt: opts.LiveConfigInt, ready: ready,
@@ -124,6 +124,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// it streams a file. The list half of /v1/system/backups IS typed and lives with the
 	// other system routes.
 	mux.HandleFunc("GET /v1/system/backups/{name}", srv.downloadBackupHandler)
+
+	// SSO's two routes are browser REDIRECTS (§11, V8), so they are plain mux handlers like
+	// /v1/backup — Huma models typed JSON, and a 302 carrying Set-Cookie is neither. Not
+	// mounted at all when no provider is wired.
+	srv.registerSSO(mux)
 
 	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
 	// bodies). Auth checked inline via the same authorizer.
