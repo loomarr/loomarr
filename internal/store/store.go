@@ -118,6 +118,14 @@ type Store interface {
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 
+	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
+	// In-flight jobs (queued/running) are never removed by age.
+	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
+	// PurgeDeniedProposals removes denied proposals older than `before` (§5
+	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
+	// indefinitely; submitted ones are still awaiting an answer.
+	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+
 	// --- filler clips (§10) ---
 	UpsertClip(ctx context.Context, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
