@@ -446,22 +446,22 @@ func declared() []Setting {
 		// decision to someone else's directory. Adding either key later is a §11 conversation,
 		// not a settings change.
 		{
-			Key: "auth.sso.enabled", EnvVar: "AUTH_SSO_ENABLED", Group: GroupUsersSecurity,
+			Key: "auth.sso.enabled", EnvVar: "AUTH_SSO_ENABLED", Group: GroupSSO,
 			Kind: KindBool, Default: "false",
 			Doc: "Let people sign in with your identity provider. They still need an account here — signing in with your provider does not create one.",
 		},
 		{
-			Key: "auth.sso.issuer", EnvVar: "AUTH_SSO_ISSUER", Group: GroupUsersSecurity,
+			Key: "auth.sso.issuer", EnvVar: "AUTH_SSO_ISSUER", Group: GroupSSO,
 			Kind: KindURL, Default: "",
 			Doc: "Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there.",
 		},
 		{
-			Key: "auth.sso.client_id", EnvVar: "AUTH_SSO_CLIENT_ID", Group: GroupUsersSecurity,
+			Key: "auth.sso.client_id", EnvVar: "AUTH_SSO_CLIENT_ID", Group: GroupSSO,
 			Kind: KindString, Default: "",
 			Doc: "The client ID your provider issued for Loomarr.",
 		},
 		{
-			Key: "auth.sso.client_secret", EnvVar: "AUTH_SSO_CLIENT_SECRET", Group: GroupUsersSecurity,
+			Key: "auth.sso.client_secret", EnvVar: "AUTH_SSO_CLIENT_SECRET", Group: GroupSSO,
 			Kind: KindSecret, Default: "",
 			Doc: "The client secret your provider issued for Loomarr.",
 		},

@@ -281,6 +281,11 @@ describe("feature-gated panels mount when their flag is on", () => {
   it.each([
     ["/settings/ai", /probing your llm host|model|provider/i, "the §8.1 model picker"],
     ["/settings/security", /api token|session secret/i, "the generated-secrets panel"],
+    // ⚠ The SSO block AND the note stating what SSO does not do (§11, V8). The note is the
+    // part most likely to be lost in a tidy-up — it looks like prose rather than a control —
+    // and losing it leaves §11's unusual model (most apps DO auto-create) reading as an
+    // oversight.
+    ["/settings/security", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from your media server/i, "the §11 import panel"],
     ["/filler", /download clips/i, "the ingest panel"],
   ])("%s mounts %s", async (path, pattern) => {
