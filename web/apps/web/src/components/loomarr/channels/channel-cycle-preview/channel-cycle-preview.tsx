@@ -1,6 +1,6 @@
-import { type CycleSlotDTO, channelsApi } from "@loomarr/api";
+import { type ChannelPolicy, type CycleSlotDTO, channelsApi } from "@loomarr/api";
 import { Clapperboard, Clock, Tv } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Button, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -9,6 +9,10 @@ import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
 // A quick-pick preset: label + a function from "now" to the RFC3339 `at` it produces.
 // Kept as pure date math (no server round trip) — the preview endpoint is what actually
 // resolves holidays/dayparts, this is just convenient starting points for the picker.
+// Matches use-channel-filler-draft's debounce: the two draft previews on this page should
+// settle on the same rhythm, or editing filler and editing rules feel like different apps.
+const PREVIEW_DEBOUNCE_MS = 300;
+
 interface TimePreset {
   label: string;
   at: () => string;
@@ -136,12 +140,40 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
 // ComputeDesiredAt the reconciler runs. Its whole point is making first-match-by-
 // priority legible — "at Saturday 9am, the Weekend TNG marathon rule is active" — so the
 // active-rule attribution is the most prominent thing on the panel, not a footnote.
-const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCyclePreviewProps) => {
+const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: ChannelCyclePreviewProps) => {
   const [at, setAt] = useState("");
 
-  const preview = channelsApi.usePreviewChannelCycle(channelId, at ? { at } : undefined);
+  // ⚠ **The draft REPLACES the saved preview while editing, rather than sitting beside it.**
+  // Two panes would make the reader diff them; one pane that always answers "what would air
+  // if I applied what I am looking at" is the question an author actually has. The saved
+  // schedule is still one Apply-or-discard away, and the badge below says which is on screen.
+  const saved = channelsApi.usePreviewChannelCycle(channelId, at ? { at } : undefined, {
+    query: { enabled: !draftPolicy },
+  });
+  const draft = channelsApi.usePreviewChannelProgramming();
 
-  const body = preview.data?.status === 200 ? preview.data.data : undefined;
+  // Debounced re-preview whenever the canonical draft settles — the same shape
+  // use-channel-filler-draft uses for the filler sandbox, deliberately, rather than a second
+  // hand-rolled debounce that could drift from it. Keying on the SERIALIZED policy means a
+  // parent re-render, or editing a field back to its old value, does not re-POST.
+  const draftKey = draftPolicy ? JSON.stringify(draftPolicy) : "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey + at ARE the dependencies
+  useEffect(() => {
+    if (!draftKey) return;
+    const t = setTimeout(() => {
+      draft.mutate({
+        id: channelId,
+        params: at ? { at } : undefined,
+        data: { policy: JSON.parse(draftKey) as ChannelPolicy },
+      });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [channelId, draftKey, at]);
+
+  // One source, chosen once: every consumer below reads `body`, `isLoading` and `error` and
+  // never asks which endpoint produced them.
+  const active = draftPolicy ? draft : saved;
+  const body = active.data?.status === 200 ? active.data.data : undefined;
 
   // key → show title, from the channel's lineup, so each episode slot names its show.
   const showByKey = new Map((lineupKeys ?? []).map((e) => [e.key, e.title]));
@@ -149,9 +181,17 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCycleP
   return (
     <section className={cn("flex flex-col gap-3", className)}>
       <div>
-        <h3 className="font-semibold text-base">Preview what airs</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-base">Preview what airs</h3>
+          {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
+              are indistinguishable — and an author who has just edited a rule would have no
+              way to tell whether they are looking at their change or at what is live. */}
+          {draftPolicy ? <Badge variant="neutral">Unsaved changes</Badge> : null}
+        </div>
         <p className="text-muted-foreground text-sm">
-          Time-travel the schedule. See exactly which rule wins and what plays at any moment, past or future.
+          {draftPolicy
+            ? "What would air if you applied these changes. Time-travel to any moment to check a rule before saving."
+            : "Time-travel the schedule. See exactly which rule wins and what plays at any moment, past or future."}
         </p>
       </div>
 
@@ -177,10 +217,24 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, className }: ChannelCycleP
         </div>
       </div>
 
-      {preview.isLoading ? (
+      {(draftPolicy ? draft.isPending : saved.isLoading) ? (
         <p className="text-muted-foreground text-sm">Loading preview…</p>
-      ) : preview.error || !body ? (
-        <ErrorState error={preview.error} onRetry={() => preview.refetch()} />
+      ) : active.error || !body ? (
+        // ⚠ Retry differs by source: the saved preview is a QUERY (refetch), the draft is a
+        // MUTATION (re-POST the current draft). Calling refetch on the mutation would be a
+        // runtime TypeError, so the branch is explicit rather than clever.
+        <ErrorState
+          error={active.error}
+          onRetry={() =>
+            draftPolicy
+              ? draft.mutate({
+                  id: channelId,
+                  params: at ? { at } : undefined,
+                  data: { policy: draftPolicy },
+                })
+              : void saved.refetch()
+          }
+        />
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5">

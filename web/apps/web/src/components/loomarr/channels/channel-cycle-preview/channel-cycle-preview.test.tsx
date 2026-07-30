@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelCyclePreview } from "./channel-cycle-preview";
 
 // ChannelCyclePreview drives channelsApi.usePreviewChannelCycle directly (no fetch layer
@@ -9,6 +9,7 @@ import { ChannelCyclePreview } from "./channel-cycle-preview";
 // is used elsewhere in this app for a hook whose shape (not its wire request) is what a
 // unit test cares about.
 const mockUsePreviewChannelCycle = vi.fn();
+const mockUsePreviewChannelProgramming = vi.fn();
 vi.mock("@loomarr/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@loomarr/api")>();
   return {
@@ -16,13 +17,19 @@ vi.mock("@loomarr/api", async (importOriginal) => {
     channelsApi: {
       ...actual.channelsApi,
       usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
+      usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
     },
   };
 });
 
 afterEach(() => {
   mockUsePreviewChannelCycle.mockReset();
+  mockUsePreviewChannelProgramming.mockReset();
 });
+
+// The draft path is a MUTATION, so its idle shape differs from a query's: no `refetch`, and
+// `isPending` is false before it has ever fired.
+const draftIdle = () => ({ data: undefined, isPending: false, error: null, mutate: vi.fn() });
 
 const loaded = (body: {
   at: string;
@@ -37,6 +44,12 @@ const loaded = (body: {
 });
 
 describe("ChannelCyclePreview", () => {
+  // Every test renders the component, which calls BOTH hooks regardless of which path is
+  // active — so the mutation mock needs a shape even when the saved path is under test.
+  beforeEach(() => {
+    mockUsePreviewChannelProgramming.mockReturnValue(draftIdle());
+  });
+
   it("shows the matched rule attribution with its label and priority", () => {
     mockUsePreviewChannelCycle.mockReturnValue(
       loaded({
@@ -133,8 +146,12 @@ describe("ChannelCyclePreview", () => {
 
     render(<ChannelCyclePreview channelId="ch-1" />);
 
-    // Initial render: no `at` yet ("Now"), so the params arg is undefined.
-    expect(mockUsePreviewChannelCycle).toHaveBeenLastCalledWith("ch-1", undefined);
+    // Initial render: no `at` yet ("Now"), so the params arg is undefined. The third arg is
+    // the react-query options carrying `enabled` — the saved query is DISABLED whenever a
+    // draft is being previewed, so it is asserted rather than ignored.
+    expect(mockUsePreviewChannelCycle).toHaveBeenLastCalledWith("ch-1", undefined, {
+      query: { enabled: true },
+    });
 
     await userEvent.click(screen.getByRole("button", { name: "Christmas morning" }));
 
@@ -170,5 +187,68 @@ describe("ChannelCyclePreview", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ⚠ THE DRAFT PATH (programming-design §8.1). Editing a rule and watching the pane beneath it
+// show the OLD schedule is worse than no preview at all — it reads as the edit having done
+// nothing. These pin that a draft replaces the saved read rather than sitting beside it.
+describe("ChannelCyclePreview — unsaved draft", () => {
+  beforeEach(() => {
+    mockUsePreviewChannelCycle.mockReturnValue(
+      loaded({
+        at: "2026-07-30T12:00:00Z",
+        activeRule: { id: "saved", label: "Saved rule", priority: 1, matched: true },
+        windowMs: 0,
+        slots: [],
+      }),
+    );
+  });
+
+  it("previews the DRAFT instead of the saved channel, and says so", async () => {
+    mockUsePreviewChannelProgramming.mockReturnValue({
+      ...draftIdle(),
+      data: {
+        status: 200,
+        data: {
+          at: "2026-07-30T12:00:00Z",
+          activeRule: { id: "draft", label: "Weekend marathon", priority: 5, matched: true },
+          windowMs: 0,
+          slots: [],
+        },
+      },
+    });
+
+    render(<ChannelCyclePreview channelId="ch-1" draftPolicy={{ ordering: "shuffle" }} />);
+
+    // The DRAFT's rule is shown, not the saved one — the assertion that the pane actually
+    // switched source rather than merely rendering.
+    expect(screen.getByText("Weekend marathon")).toBeInTheDocument();
+    expect(screen.queryByText("Saved rule")).not.toBeInTheDocument();
+    // And the reader is told which schedule they are looking at.
+    expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument();
+  });
+
+  it("disables the saved query while a draft is being previewed", () => {
+    mockUsePreviewChannelProgramming.mockReturnValue(draftIdle());
+
+    render(<ChannelCyclePreview channelId="ch-1" draftPolicy={{ ordering: "shuffle" }} />);
+
+    // ⚠ Not cosmetic: leaving it enabled would fire a second request per keystroke-settle
+    // for a result nothing renders.
+    expect(mockUsePreviewChannelCycle).toHaveBeenLastCalledWith("ch-1", undefined, {
+      query: { enabled: false },
+    });
+  });
+
+  it("without a draft, behaves exactly as before", () => {
+    mockUsePreviewChannelProgramming.mockReturnValue(draftIdle());
+
+    render(<ChannelCyclePreview channelId="ch-1" />);
+
+    // The saved rule renders and the draft badge is absent — the additive guarantee: a caller
+    // that passes no draft cannot tell the prop exists.
+    expect(screen.getByText("Saved rule")).toBeInTheDocument();
+    expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument();
   });
 });

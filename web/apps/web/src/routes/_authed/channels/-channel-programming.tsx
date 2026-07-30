@@ -1,4 +1,5 @@
 import { type ChannelPolicy, channelsApi, type LineupEntryDTO } from "@loomarr/api";
+import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import {
   ChannelAutoCurate,
   ChannelCyclePreview,
@@ -9,6 +10,7 @@ import {
   ChannelSeriesScope,
   RefinePanel,
 } from "@/components/loomarr";
+import { Button } from "@/components/ui";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
 // what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface
@@ -20,10 +22,17 @@ import {
 //   3. When it changes  — wall-clock curation rules (marathons, holidays, dayparts)
 //   · Preview          — one shared "what airs at a moment" pane, docked at the bottom
 //
-// Every edit saves seamlessly and auto-reconciles (§9), except the two review-before-apply
-// affordances that say so: Refine (a diff) and the Filler sandbox (its own tab). The single
-// cycle preview replaces the old split between the series-level lineup and a separate
-// episode-level "preview what airs" list.
+// Most edits save seamlessly and auto-reconcile (§9). The review-before-apply affordances say
+// so: Refine (a diff), the Filler sandbox (its own tab), and the scheduling RULES below.
+//
+// ⚠ Rules are the odd one out on this page, and deliberately (§12): they resolve
+// first-match-by-priority, so a rule's effect depends on every rule above it and each
+// intermediate state is a different schedule. Everything else here — lineup, era/ceiling,
+// ordering, seasonal, auto-curate — is self-contained and stays seamless.
+//
+// The single cycle preview replaces the old split between the series-level lineup and a
+// separate episode-level "preview what airs" list. It follows the rules DRAFT while one is
+// dirty, so what you are looking at is what applying would ship.
 
 interface ChannelProgrammingProps {
   channelId: string;
@@ -66,6 +75,10 @@ const ChannelProgramming = ({
   onRefined,
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
+
+  // The scheduling-rules draft (§12). Only the rules block reads it; everything else on this
+  // surface keeps saving inline through `onPolicyChange`.
+  const rules = useChannelRulesDraft(channelId, policy);
 
   // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
@@ -117,12 +130,36 @@ const ChannelProgramming = ({
       >
         {vocabulary ? (
           <>
+            {/* ⚠ The rules editor edits the DRAFT, not the saved policy (§12 — the third
+                review-before-apply surface). Rules resolve first-match-by-priority, so an
+                intermediate state is a different schedule; inline-saving each step would
+                reconcile half-finished rule sets to Tunarr. */}
             <ChannelRulesEditor
-              policy={policy}
-              onChange={onPolicyChange}
+              policy={rules.draft}
+              onChange={rules.setDraft}
               lineupKeys={lineupKeys}
               vocabulary={vocabulary}
             />
+
+            {/* Apply / Discard — offered only when the draft differs from what is saved, and
+                deliberately the same shape as the filler sandbox's bar: two drafts on one page
+                that commit differently would be two things to learn. */}
+            {rules.isDirty && (
+              <div className="flex items-center gap-2 border-border border-t pt-4">
+                <Button variant="suggest" size="sm" disabled={rules.isApplying} onClick={rules.apply}>
+                  {rules.isApplying ? "Applying…" : "Apply rules"}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={rules.isApplying} onClick={rules.discard}>
+                  Discard
+                </Button>
+                <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
+              </div>
+            )}
+
+            {/* ⚠ Seasonal stays SEAMLESS: it writes `policy.seasonal`, a self-contained field,
+                not `policy.rules`. §12 scopes the draft to the interdependent surface, so a
+                block that happens to sit nearby does not inherit an Apply click it never
+                needed. It reads the SAVED policy for the same reason. */}
             {/* Seasonal (§6) belongs to "when it changes" on the longest clock of the three:
                 the rules above switch by wall-clock time of day/week, auto-curate below grows
                 the lineup over weeks, and this one follows the calendar year. It shares the
@@ -150,7 +187,11 @@ const ChannelProgramming = ({
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
           wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
       <div className="border-border border-t pt-6">
-        <ChannelCyclePreview channelId={channelId} lineupKeys={lineupKeys} />
+        <ChannelCyclePreview
+          channelId={channelId}
+          lineupKeys={lineupKeys}
+          draftPolicy={rules.isDirty ? rules.draft : undefined}
+        />
       </div>
     </div>
   );
