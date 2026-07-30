@@ -1,7 +1,7 @@
 import { channelsApi, type GuideAiring } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth";
 import {
@@ -34,10 +34,17 @@ import type { GuidePageProps } from "./guide-page.type";
 // block, so a programme, a commercial pod and a still-acquiring slot render as three different
 // things rather than as one undifferentiated "gap".
 
-// Zoom scales the CHROME (rail width, row height, type) on the mock's own stops — never the
-// time scale. The window always fits; you change how much detail each row carries.
-const ZOOM_STOPS = [0.75, 0.875, 1, 1.15, 1.35, 1.6] as const;
-const DEFAULT_ZOOM_INDEX = 2;
+// Zoom magnifies the TIME AXIS: at 2× an hour occupies twice the pixels, so the grid overflows
+// its viewport and scrolls horizontally. It no longer scales chrome (rail, row height, type) —
+// that made zooming out shrink titles to ~9px, and it is the reason titles were unreadable.
+//
+// 1 means "the whole requested window fits the viewport exactly", which is where the guide
+// opens and the only stop with no horizontal scrolling. Below it the window still fits (the
+// grid just gets denser, useful for scanning a long day); above it you are genuinely zoomed in.
+// The ceiling is 4× — beyond that a 4-hour window is a dozen screens wide and the day-picker is
+// the better tool.
+const ZOOM_STOPS = [0.75, 1, 1.5, 2, 3, 4] as const;
+const DEFAULT_ZOOM_INDEX = 1;
 
 // How far a window may span. The mock's 2H/4H/6H, plus a whole day for planning.
 const WINDOW_CHOICES = [
@@ -342,6 +349,9 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
           </div>
 
           <div className="ml-auto flex items-center gap-1 border-border border-r pr-3">
+            {/* Magnifier icons, not − / +: a bare minus reads as "remove" and a plus as "add"
+                (they are the add/remove glyphs everywhere else in the app), while a magnifying
+                glass says MAGNIFY without a label — which is what these now actually do. */}
             <Button
               variant="outline"
               size="icon"
@@ -350,13 +360,23 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
               disabled={zoomIndex === 0}
               onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
             >
-              −
+              <ZoomOut className="size-3.5" aria-hidden />
             </Button>
             {/* The percentage is the mock's, and it earns its place: without it the two
-                buttons give no sense of where you are in the range. */}
-            <span className="w-9 text-center font-mono text-2xs text-static-400">
+                buttons give no sense of where you are in the range. Clicking it returns to
+                100% — the one stop where the whole window fits, and the way back from a deep
+                zoom without repeatedly clicking out. */}
+            <button
+              type="button"
+              onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
+              aria-label="Reset zoom to 100%"
+              className={cn(
+                "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
+                zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
+              )}
+            >
               {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
-            </span>
+            </button>
             <Button
               variant="outline"
               size="icon"
@@ -365,7 +385,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
               disabled={zoomIndex === ZOOM_STOPS.length - 1}
               onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
             >
-              +
+              <ZoomIn className="size-3.5" aria-hidden />
             </Button>
           </div>
 

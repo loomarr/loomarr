@@ -192,6 +192,47 @@ body {
   background-color: var(--color-static-600);
 }
 
+/* guide-scroll — the guide grid's own scrollbars, and a deliberate variant of .scroll-thin
+   rather than a reuse of it.
+
+   The distinction is what the bar IS on each surface. On an inner list the scrollbar is an
+   incidental overflow indicator, so .scroll-thin keeps it faint and refuses a stable gutter.
+   On the guide the HORIZONTAL bar is a primary control — it is how you move forward and back
+   in time once zoomed in — so it is a little chunkier, rides the same rounded token thumb,
+   and brightens on hover to read as grabbable. It also sits at the bottom of a surface that
+   is always scrollable at zoom > 1, so there is no "reserved gutter on content that never
+   scrolls" cost to avoid here.
+
+   The vertical bar stays slim: scrolling CHANNELS is ordinary overflow, and two heavy bars
+   would frame the grid in chrome. */
+.guide-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-static-600) transparent;
+}
+.guide-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 11px;
+}
+.guide-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.guide-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-static-600);
+  border-radius: 9999px;
+  /* A transparent border painted over the content box keeps the thumb visually inset from the
+     grid's edge, so the bar floats rather than butting against the last row. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.guide-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-static-400);
+}
+/* The corner where the two bars meet — left unstyled it renders as a pale system square that
+   reads as a rendering artefact against a dark grid. */
+.guide-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
