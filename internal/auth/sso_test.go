@@ -2,7 +2,10 @@ package auth_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -512,5 +515,59 @@ func TestSSO_ProfileClaimsFromUserinfo(t *testing.T) {
 	}
 	if claims.PreferredUsername != "sam" {
 		t.Errorf("preferred_username = %q, want it from userinfo", claims.PreferredUsername)
+	}
+}
+
+// ⚠ **PKCE reaches the provider, and the verifier matches the challenge.**
+//
+// Asserting the S256 relationship rather than merely that the parameters are non-empty: a
+// challenge unrelated to the verifier is exactly what a broken refactor produces, and every
+// presence-only assertion would still pass. The provider is the only party that can catch it
+// in production, so the test has to do that job here.
+//
+// PKCE does not replace the API layer's state cookie — an attacker running their own flow
+// holds their own verifier. It binds the CODE to a flow; the cookie binds the FLOW to a
+// browser (§11).
+func TestSSO_SendsPKCE(t *testing.T) {
+	idp := newStubIDP(t, map[string]any{"sub": "op-1", "preferred_username": "sam"})
+	st := newSSOStore(t)
+	ctx := context.Background()
+
+	if err := st.UpsertUser(ctx, store.User{
+		ID: "u-sam", Name: "sam", Role: "member", UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := auth.NewSSOService(idp.config(), st, auth.NewManager(st, time.Hour, nil), time.Now, slog.New(slog.DiscardHandler))
+
+	authURL, state, err := svc.Start(ctx, "")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	idp.captureNonce(authURL)
+
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge := u.Query().Get("code_challenge")
+	if challenge == "" {
+		t.Fatal("no code_challenge on the authorize URL — the authorization code is unbound")
+	}
+	if method := u.Query().Get("code_challenge_method"); method != "S256" {
+		t.Errorf("code_challenge_method = %q, want S256 (plain offers no protection)", method)
+	}
+
+	if _, _, _, _, _, err := svc.Exchange(ctx, state, "code"); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	verifier := idp.tokenForm.Get("code_verifier")
+	if verifier == "" {
+		t.Fatal("no code_verifier on the token request — the challenge proves nothing")
+	}
+	sum := sha256.Sum256([]byte(verifier))
+	if want := base64.RawURLEncoding.EncodeToString(sum[:]); want != challenge {
+		t.Errorf("S256(verifier) = %q, but the challenge sent was %q", want, challenge)
 	}
 }

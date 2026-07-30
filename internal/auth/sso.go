@@ -40,8 +40,14 @@ import (
 var ErrSSONotConfigured = errors.New("sso is not configured")
 
 // ErrSSOStateMismatch is returned when a callback's state does not match a pending login.
-// Its own error because it means the request did not originate from this server's redirect —
-// a CSRF attempt or a stale bookmark, not a bad credential.
+// Its own error because nothing was rejected on credentials: it is a stale bookmark, a
+// replayed callback, or a login this server never started.
+//
+// ⚠ **This alone is not CSRF protection, and an earlier version of this comment claimed it
+// was.** `pending` is a per-process map, so a hit proves only that SOME login started here
+// within pendingTTL — not that the browser presenting the state is the one that started it.
+// The binding is the state COOKIE the API layer sets at /start and checks at /callback
+// (§11). Keep both: this covers expiry and single-use, the cookie covers origin.
 var ErrSSOStateMismatch = errors.New("sso state does not match a pending login")
 
 // SSOClaims is what the provider told us about the person signing in.
@@ -117,7 +123,13 @@ type SSOService struct {
 }
 
 type pendingLogin struct {
-	nonce     string
+	nonce string
+	// verifier is the PKCE secret. Held here and sent only at the token exchange, so a
+	// stolen authorization code cannot be redeemed without it (RFC 7636; required by OAuth
+	// 2.1). It does NOT replace the API layer's state cookie: an attacker running their own
+	// flow holds their own verifier, so PKCE binds the CODE to a flow while the cookie binds
+	// the FLOW to a browser. Different jobs.
+	verifier  string
 	returnTo  string
 	createdAt time.Time
 }
@@ -162,15 +174,18 @@ func (s *SSOService) Start(ctx context.Context, returnTo string) (authURL, state
 		return "", "", err
 	}
 
+	// PKCE: the verifier stays here, only its S256 hash goes to the provider.
+	verifier := oauth2.GenerateVerifier()
+
 	s.mu.Lock()
 	s.sweepLocked()
-	s.pending[state] = pendingLogin{nonce: nonce, returnTo: returnTo, createdAt: s.now()}
+	s.pending[state] = pendingLogin{nonce: nonce, verifier: verifier, returnTo: returnTo, createdAt: s.now()}
 	s.mu.Unlock()
 
 	conf := s.oauthConfig(cfg, provider)
 	// The nonce goes to the provider AND is kept here; Exchange verifies they match, which
 	// is what stops a token minted for one login being replayed into another.
-	return conf.AuthCodeURL(state, oidc.Nonce(nonce)), state, nil
+	return conf.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), state, nil
 }
 
 // Exchange completes the flow: verify the token, then resolve the identity against the
@@ -200,7 +215,7 @@ func (s *SSOService) Exchange(ctx context.Context, state, code string) (token st
 	}
 	conf := s.oauthConfig(cfg, provider)
 
-	tok, err := conf.Exchange(ctx, code)
+	tok, err := conf.Exchange(ctx, code, oauth2.VerifierOption(p.verifier))
 	if err != nil {
 		return "", time.Time{}, store.User{}, claims, p.returnTo, fmt.Errorf("sso: code exchange: %w", err)
 	}

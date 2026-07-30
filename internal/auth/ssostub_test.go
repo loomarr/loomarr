@@ -48,6 +48,10 @@ type stubIDP struct {
 	// interfere through it.
 	mu    sync.Mutex
 	nonce string
+	// tokenForm is the last form the /token endpoint received, so a test can assert what
+	// Loomarr actually SENT rather than only what it accepted back. Without it a PKCE
+	// assertion would pass whether or not the verifier ever left the process.
+	tokenForm url.Values
 }
 
 func newStubIDP(t *testing.T, claims map[string]any) *stubIDP {
@@ -87,8 +91,10 @@ func newStubIDP(t *testing.T, claims map[string]any) *stubIDP {
 		}
 		writeJSON(w, ui)
 	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		idp.mu.Lock()
+		idp.tokenForm = r.Form
 		nonce := idp.nonce
 		idp.mu.Unlock()
 		writeJSON(w, map[string]any{
