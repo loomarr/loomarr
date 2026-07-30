@@ -4,7 +4,12 @@
     "noEmit": true,
     "declaration": false,
     "jsx": "react-jsx",
-    "types": ["node"],
+    // ⚠ `vite/client` is what declares the side-effect module types — `*.css`, and the
+    // font packages `main.tsx` imports for their bundled assets. Listing `types` at all
+    // OPTS OUT of automatic @types discovery, so omitting it here left those imports
+    // undeclared. TypeScript 5 tolerated that silently; TypeScript 7 reports TS2882, which
+    // is the more honest answer — the declarations were always missing.
+    "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     }
