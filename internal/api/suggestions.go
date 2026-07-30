@@ -30,40 +30,40 @@ func userIDFromHuma(ctx context.Context) string {
 // is the ONLY path from a proposal to an acquisition, and it is admin-gated, so
 // nothing unapproved ever reaches /v1/titles (§19).
 func (s *Server) registerSuggestions(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "submit-suggestion", Method: http.MethodPost, Path: "/v1/suggestions",
 		Summary: "Start a suggestion job from an intent", Description: "Any authenticated user (§8).",
 		Tags: []string{"suggestions"},
-	}, s.submitSuggestion)
+	}, RoleMember), s.submitSuggestion)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-proposals", Method: http.MethodGet, Path: "/v1/suggestions",
 		Summary: "List proposals by status", Description: "status=submitted is the approval queue.",
 		Tags: []string{"suggestions"},
-	}, s.listProposals)
+	}, RoleMember), s.listProposals)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-proposal", Method: http.MethodGet, Path: "/v1/suggestions/{id}",
 		Summary: "Get a proposal + its job status", Tags: []string{"suggestions"},
-	}, s.getProposal)
+	}, RoleMember), s.getProposal)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "approve-proposal", Method: http.MethodPost, Path: "/v1/suggestions/{id}/approve",
 		Summary: "Approve a proposal (admin)", Description: "Admin only. Enqueues acquisitions through the approval gate (§8).",
 		Tags: []string{"suggestions"},
-	}, s.approveProposal)
+	}, RoleAdmin), s.approveProposal)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "bulk-approve-proposals", Method: http.MethodPost, Path: "/v1/suggestions/approve",
 		Summary:     "Approve several proposals (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.",
 		Tags:        []string{"suggestions"},
-	}, s.bulkApproveProposals)
+	}, RoleAdmin), s.bulkApproveProposals)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "deny-proposal", Method: http.MethodPost, Path: "/v1/suggestions/{id}/deny",
 		Summary: "Deny a proposal (admin)", Description: "Admin only.", Tags: []string{"suggestions"},
-	}, s.denyProposal)
+	}, RoleAdmin), s.denyProposal)
 }
 
 // --- submit ---

@@ -16,6 +16,35 @@ import (
 
 const adminToken = "test-admin-token"
 
+// memberToken authenticates as a MEMBER in tests.
+//
+// ⚠ **Its absence is why the anonymous-read gap survived review.** The production
+// `tokenAuthorizer` resolves admin-or-anonymous only — by design, since API_TOKEN is a
+// break-glass admin credential (§11). So member-vs-anonymous was structurally untestable in
+// the default harness, and four tests asserting "a member can read this" were passing NO
+// token at all: they proved an ANONYMOUS caller could read it, under names that said
+// otherwise.
+//
+// Deliberately a test-only authorizer rather than a member branch on the real one: adding a
+// second credential to shipped auth code so a test can express itself is how production
+// grows a path that only tests use.
+const memberToken = "test-member-token"
+
+// testAuthorizer resolves two fixed bearer tokens to two roles. It exists so a test can say
+// "member" and mean it.
+type testAuthorizer struct{}
+
+func (testAuthorizer) Authorize(r *http.Request) api.Role {
+	switch strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") {
+	case adminToken:
+		return api.RoleAdmin
+	case memberToken:
+		return api.RoleMember
+	default:
+		return api.RoleAnonymous
+	}
+}
+
 func newServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
 	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
@@ -25,7 +54,7 @@ func newServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         testAuthorizer{},
 		Log:          slog.New(slog.DiscardHandler),
 		BackupSQLite: store.SQLiteBackuper(st),
 	})
@@ -108,8 +137,8 @@ func TestTitlesMutationRequiresAdmin(t *testing.T) {
 	srv, _ := newServer(t)
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPost, "/v1/titles", tok, `{"mediaType":"movie","tmdbId":1}`)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("POST with token %q → %d, want 403", tok, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("POST with token %q → %d, want 401", tok, resp.StatusCode)
 		}
 	}
 }
@@ -166,8 +195,8 @@ func TestBackupSQLite(t *testing.T) {
 func TestBackupRequiresAdmin(t *testing.T) {
 	srv, _ := newServer(t)
 	resp := do(t, srv, http.MethodGet, "/v1/backup", "", "")
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("backup without admin → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("backup without admin → %d, want 401", resp.StatusCode)
 	}
 }
 

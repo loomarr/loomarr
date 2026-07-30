@@ -64,7 +64,7 @@ func newGridServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.St
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         testAuthorizer{},
 		Log:          log,
 		PlayoutGuide: g,
 	}))
@@ -93,7 +93,7 @@ func newGridServerWithConfig(
 	log := slog.New(slog.DiscardHandler)
 	opts := api.Options{
 		Store:        st,
-		Auth:         api.NewTokenAuthorizer(adminToken),
+		Auth:         testAuthorizer{},
 		Log:          log,
 		PlayoutGuide: g,
 		Pods:         p,
@@ -358,11 +358,14 @@ func TestGuide_IsNotAdminGated(t *testing.T) {
 	srv, st := newGridServer(t, g)
 	seedGridChannel(t, st, "ch1", 1)
 
-	resp := do(t, srv, http.MethodGet, "/v1/guide", "", "") // no admin token
+	// A real MEMBER, not an anonymous caller. This previously passed "" and asserted the
+	// guide was reachable — which proved an ANONYMOUS caller could read it, not a member.
+	// The distinction is the whole point of §8.1 being viewer-facing rather than public.
+	resp := do(t, srv, http.MethodGet, "/v1/guide", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusForbidden {
-		t.Error("GET /v1/guide → 403 for a non-admin; the guide is viewer-facing (§8.1), so " +
-			"members must be able to see what is on")
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		t.Errorf("GET /v1/guide → %d for a MEMBER; the guide is viewer-facing (§8.1), so "+
+			"members must be able to see what is on", resp.StatusCode)
 	}
 }
 

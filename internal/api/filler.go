@@ -16,34 +16,34 @@ import (
 // authenticated user; tag edit, sync, and the AI-tagging job require admin
 // (filler ingestion is an admin concern, §7).
 func (s *Server) registerFiller(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
 		Summary: "List filler clips", Description: "Filter by kind/era/audience/category.",
 		Tags: []string{"filler"},
-	}, s.listFiller)
+	}, RoleMember), s.listFiller)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/{id}",
 		Summary: "Edit a clip's tags", Description: "Admin only.", Tags: []string{"filler"},
-	}, s.patchFillerClip)
+	}, RoleAdmin), s.patchFillerClip)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "sync-filler", Method: http.MethodPost, Path: "/v1/filler/sync",
 		Summary: "Sync the clip catalog from the media server", Description: "Admin only (§10).",
 		Tags: []string{"filler"},
-	}, s.syncFiller)
+	}, RoleAdmin), s.syncFiller)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler", Method: http.MethodPost, Path: "/v1/filler/tag",
 		Summary: "AI-tag untagged clips", Description: "Admin only. Text-signal classification (§10).",
 		Tags: []string{"filler"},
-	}, s.tagFiller)
+	}, RoleAdmin), s.tagFiller)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
 		Summary: "Download clips into the drop-folder (admin; loomarr:filler image only)",
 		Tags:    []string{"filler"},
-	}, s.ingestFiller)
+	}, RoleAdmin), s.ingestFiller)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the clip's PATH relative to

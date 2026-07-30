@@ -47,8 +47,8 @@ func TestSystemRestart_RequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/v1/system/reload"},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", "") // no token
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without admin → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
 	// ⚠ The refusal must happen BEFORE the loop is asked to rebuild — a 403 that still

@@ -43,7 +43,7 @@ func newSessionsServer(t *testing.T) (*httptest.Server, *fakeSessions, store.Sto
 	fs := &fakeSessions{}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     testAuthorizer{},
 		Log:      slog.New(slog.DiscardHandler),
 		Sessions: fs,
 	}))
@@ -59,8 +59,8 @@ func TestSessions_RequireAdmin(t *testing.T) {
 		{http.MethodGet, "/v1/users/u1/sessions"},
 		{http.MethodDelete, "/v1/sessions/abc123"},
 	} {
-		if resp := do(t, srv, tc.method, tc.path, "", ""); resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without admin → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		if resp := do(t, srv, tc.method, tc.path, "", ""); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
 }
@@ -149,7 +149,7 @@ func TestListUsers_ReadsTheIntConfigSeam(t *testing.T) {
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		// The seam a real composition root wires. Its absence is what hid the bug.
 		LiveConfigInt: func(key string) int {

@@ -10,28 +10,28 @@ import (
 // registerSetup mounts /v1/setup/* (§7/§13). These power the operator wizard +
 // Settings troubleshooting; all are admin-only.
 func (s *Server) registerSetup(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "setup-status", Method: http.MethodGet, Path: "/v1/setup/status",
 		Summary: "Connection checklist", Description: "Admin only. Per-integration pass/fail (§13).",
 		Tags: []string{"setup"},
-	}, s.setupStatus)
+	}, RoleAdmin), s.setupStatus)
 
 	// Note: there is no standalone livetv-connect route. Live TV wiring is idempotent and
 	// fully derived from the Tunarr connection, so it auto-runs on a Connections save
 	// (settings.go autoWireAfterSave) — a separate manual endpoint would be a redundant
 	// no-op. The wiring STATUS still surfaces via the `livetv` setup check above.
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tunarr-connect", Method: http.MethodPost, Path: "/v1/setup/tunarr-connect",
 		Summary: "Wire the library as Tunarr's media source", Description: "Admin only. Ensures Tunarr's Emby/Jellyfin source (Loomarr's admin token) + enables/scans the movie/show libraries. One-time, idempotent (§6).",
 		Tags: []string{"setup"},
-	}, s.tunarrConnectHandler)
+	}, RoleAdmin), s.tunarrConnectHandler)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "livetv-reconnect", Method: http.MethodPost, Path: "/v1/setup/livetv-reconnect",
 		Summary: "Force-re-wire the Tunarr tuner", Description: "Admin only. Removes + re-adds Loomarr's Tunarr tuner in the media server and re-scans it, clearing a STALE channel→stream binding (the media server streaming a since-deleted channel id — 'guide right, plays wrong'). Use when a channel plays the wrong content in the media server but is correct in Tunarr (§6/§9).",
 		Tags: []string{"setup"},
-	}, s.livetvReconnectHandler)
+	}, RoleAdmin), s.livetvReconnectHandler)
 }
 
 // SetupCheck is one integration's checklist result (§13).

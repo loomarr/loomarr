@@ -298,7 +298,7 @@ func guideAiringOf(b playout.Broadcast) GuideAiring {
 
 // registerGuide mounts /v1/guide (§12, V13b).
 func (s *Server) registerGuide(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-guide", Method: http.MethodGet, Path: "/v1/guide",
 		Summary: "Every channel's timeline over a window",
 		Description: "Per-channel programme timelines across [from, to), for Loomarr's own time grid. " +
@@ -308,5 +308,5 @@ func (s *Server) registerGuide(api huma.API) {
 			"NOT the XMLTV guide a media server reads — that is /playout/guide.xml. " +
 			"Read-only: any authenticated user (§8.1 viewer-facing).",
 		Tags: []string{"channels"},
-	}, s.channelGuide)
+	}, RoleMember), s.channelGuide)
 }

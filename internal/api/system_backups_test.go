@@ -60,7 +60,7 @@ func serverWithBackups(t *testing.T, svc api.BackupsService) *httptest.Server {
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:   st,
-		Auth:    api.NewTokenAuthorizer(adminToken),
+		Auth:    testAuthorizer{},
 		Log:     slog.New(slog.DiscardHandler),
 		Backups: svc,
 	})
@@ -81,8 +81,8 @@ func TestSystemBackups_RequiresAdmin(t *testing.T) {
 		{http.MethodGet, "/v1/system/backups/loomarr-2026-07-29-033000.db"},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", "") // no token
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without admin → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
 	if fake.ran {

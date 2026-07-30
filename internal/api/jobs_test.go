@@ -41,7 +41,7 @@ func serverWithJobs(t *testing.T, svc api.JobService) *httptest.Server {
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Jobs:  svc,
 	})
@@ -58,8 +58,8 @@ func TestJobs_RequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/v1/jobs/reconcile/run"},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", "") // no token
-		if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("%s %s without admin → %d, want 401/403", tc.method, tc.path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
 	}

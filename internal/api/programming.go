@@ -16,19 +16,19 @@ import (
 // registerProgramming mounts the programming authoring surface's read endpoints (§6.6/§8.1,
 // P6): the BE-authoritative rule vocabulary, and the whole-definition draft preview.
 func (s *Server) registerProgramming(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-programming-vocabulary", Method: http.MethodGet, Path: "/v1/programming/vocabulary",
 		Summary:     "The closed rule authoring vocabulary",
 		Description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user.",
 		Tags:        []string{"channels"},
-	}, s.getProgrammingVocabulary)
+	}, RoleMember), s.getProgrammingVocabulary)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-programming", Method: http.MethodPost, Path: "/v1/channels/{id}/programming/preview",
 		Summary:     "Preview an unsaved programming draft",
 		Description: "Previews what a DRAFT {lineup?, policy?} would air — the cycle slots (which rule wins at `at`, the rolling window) AND the assembled break pool — WITHOUT saving or touching Tunarr. Runs the same ComputeDesiredAt + pod assembler as reconcile, so the preview cannot drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool).",
 		Tags:        []string{"channels"},
-	}, s.previewChannelProgramming)
+	}, RoleMember), s.previewChannelProgramming)
 }
 
 type programmingVocabularyOutput struct {

@@ -48,7 +48,7 @@ func TestPlayoutTelemetry_RequiresAdmin(t *testing.T) {
 
 	for _, tok := range []string{"", "not-the-admin-token"} {
 		resp := do(t, srv, http.MethodGet, "/v1/playout/sessions", tok, "")
-		if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusUnauthorized {
+		if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 			t.Errorf("token %q → %d, want 401/403", tok, resp.StatusCode)
 		}
 		_ = resp.Body.Close()

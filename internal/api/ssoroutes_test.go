@@ -61,7 +61,7 @@ func serverWithSSO(t *testing.T, svc api.SSOService) *httptest.Server {
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		SSO:   svc,
 	}))

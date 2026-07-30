@@ -1,0 +1,110 @@
+package app
+
+import (
+	"context"
+	"log/slog"
+	"testing"
+
+	"github.com/mantonx/loomarr/internal/store"
+)
+
+// ⚠ **THE QUALITY LADDER'S DEPENDENCIES ARE CALLED UNGUARDED.**
+//
+// `Profile` reaches `r.tier()`, `r.encoder()`, `r.capacity()` and `r.activeChannels()` with
+// no nil checks, so any one of them missing is a panic on the LIVE playout path — when a
+// viewer tunes in, which is the worst place to find out.
+//
+// That was not hypothetical: `activeChannels` used to be back-patched onto the resolver
+// after construction, and deleting the assignment broke NO test. It is now set in the
+// constructor literal, and this is the test that notices if it stops being.
+func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
+	// A resolver wired the way BuildHandler wires it — every ladder input present.
+	full := func() *playoutResolver {
+		return &playoutResolver{
+			tier:           func() string { return "720p" },
+			encoder:        func() string { return "libx264" },
+			capacity:       func() int { return 4 },
+			activeChannels: func() int { return 1 },
+		}
+	}
+
+	// The positive case first, so the negatives below are proven to be panics rather than a
+	// resolver that never works.
+	if got := full().Profile(context.Background()); got.Encoder == "" {
+		t.Fatalf("Profile with every input wired returned %+v, want a usable profile", got)
+	}
+
+	// ⚠ Each input removed IN TURN must panic rather than silently degrade. A zero value
+	// here would be worse than a crash: the ladder would quietly pick the wrong quality and
+	// nobody would know which input was missing.
+	for _, tc := range []struct {
+		name string
+		bust func(*playoutResolver)
+	}{
+		{"activeChannels", func(r *playoutResolver) { r.activeChannels = nil }},
+		{"capacity", func(r *playoutResolver) { r.capacity = nil }},
+		{"tier", func(r *playoutResolver) { r.tier = nil }},
+		{"encoder", func(r *playoutResolver) { r.encoder = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := full()
+			tc.bust(r)
+			defer func() {
+				if recover() == nil {
+					t.Errorf("Profile with %s unset did NOT panic — it is called unguarded, "+
+						"so an unset input must fail loudly rather than resolve a wrong quality",
+						tc.name)
+				}
+			}()
+			_ = r.Profile(context.Background())
+		})
+	}
+}
+
+// ⚠ **THE ASSERTION THAT WAS MISSING.** The test above pins the invariant (an unset ladder
+// input panics); this pins that BuildHandler actually SATISFIES it.
+//
+// Both are needed, and the gap between them is exactly where the original defect lived:
+// `activeChannels` was back-patched after construction, and deleting the assignment left
+// every test green while a viewer tuning in would panic.
+//
+// Reads the resolver BuildHandler really constructed rather than one assembled here, since
+// a test-built resolver only proves the test knows how to fill a struct.
+func TestBuildHandler_WiresEveryLadderInput(t *testing.T) {
+	lastPlayoutResolver = nil
+
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/ladder.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	// Playout is only wired on the internal backend; without this the resolver is nil and
+	// the test would pass vacuously.
+	if err := st.SetSetting(context.Background(), "playout.backend", "internal"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := BuildHandler(context.Background(), st, slog.New(slog.DiscardHandler), Overrides{}); err != nil {
+		t.Fatal(err)
+	}
+	r := lastPlayoutResolver
+	if r == nil {
+		t.Fatal("BuildHandler wired no playout resolver on the internal backend — " +
+			"this test can no longer see what it is meant to guard")
+	}
+
+	for _, tc := range []struct {
+		name string
+		set  bool
+	}{
+		{"tier", r.tier != nil},
+		{"encoder", r.encoder != nil},
+		{"capacity", r.capacity != nil},
+		{"activeChannels", r.activeChannels != nil},
+	} {
+		if !tc.set {
+			t.Errorf("BuildHandler left %s unset — Profile calls it unguarded, so a viewer "+
+				"tuning in would panic", tc.name)
+		}
+	}
+}

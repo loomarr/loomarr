@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -98,4 +100,59 @@ func (b *backupsService) Run(ctx context.Context) (api.BackupEntry, error) {
 		Bytes:     bf.Bytes,
 		WrittenAt: bf.WrittenAt,
 	}, nil
+}
+
+// --- the scheduled backup (§16, §18.1) ---
+
+// backupJobName, backupJobTitle and backupJobCron are shared by BOTH branches below.
+//
+// ⚠ They are constants rather than repeated literals because the two branches must agree:
+// the Tasks page keys off the NAME, so a SQLite install and a Postgres install disagreeing
+// on it would look like two different jobs to anyone comparing them, and a settings override
+// written on one would not apply to the other.
+const (
+	backupJobName  = "backup"
+	backupJobTitle = "Back up the database"
+	backupJobCron  = "0 30 3 * * *"
+	backupJobKey   = "backup.schedule"
+)
+
+// Job returns the scheduled backup.
+//
+// ⚠ It calls the SAME service the "Back up now" button does, rather than a second copy of
+// write-then-prune. Two implementations of a retention policy is how the scheduled path and
+// the manual path come to disagree about which files are safe to delete.
+func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
+	return scheduler.Job{
+		Name: backupJobName, Title: backupJobTitle,
+		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
+		Run: func(ctx context.Context) error {
+			entry, err := s.Run(ctx)
+			if err != nil {
+				return err
+			}
+			if log != nil {
+				log.Info("backup written", "name", entry.Name, "bytes", entry.Bytes)
+			}
+			return nil
+		},
+	}
+}
+
+// unavailableBackupJob is the Postgres listing: the job EXISTS and says why it cannot run.
+//
+// ⚠ Registering a disabled row rather than nothing at all is the point. An absent row is
+// indistinguishable, from the Tasks page alone, from a job that runs fine and has simply
+// never failed — and for backup that ambiguity means an operator believing they are covered
+// when they are not.
+//
+// No Run func: the scheduler never calls one for a disabled job, so leaving it nil means a
+// regression that DID schedule it panics loudly in tests rather than silently running a
+// no-op that looks like a successful backup.
+func unavailableBackupJob(reason string) scheduler.Job {
+	return scheduler.Job{
+		Name: backupJobName, Title: backupJobTitle,
+		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
+		DisabledReason: reason,
+	}
 }

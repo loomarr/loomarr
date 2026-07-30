@@ -151,12 +151,56 @@ the module cache is shared and `go build ./...` works immediately.
 `git worktree remove ../loomarr-<phase>` when the phase merges. `node_modules` is ~470MB
 per worktree, which is disk rather than download.
 
+### The `using-git-worktrees` skill — where this repo overrides it
+
+The installed `using-git-worktrees` skill (obra/superpowers) is good on the parts this
+section does not cover: **detecting** that you are already in a linked worktree
+(`git rev-parse --git-dir` vs `--git-common-dir`, with a submodule guard) and asking
+consent before creating one. Use it for that.
+
+It disagrees with the above in three places, and **this file wins**:
+
+1. ⚠ **Placement.** The skill defaults to a project-local `.worktrees/`; this repo uses a
+   SIBLING directory (`../loomarr-<phase>`). Sibling placement is deliberate — the
+   Playwright targets bind-mount the repo root into a container, so a worktree *inside*
+   the root would be mounted into every visual run.
+2. ⚠ **It will edit and COMMIT `.gitignore`.** Its safety step adds the worktree directory
+   and commits that change. `.worktrees/` is not ignored here, so following the skill
+   unmodified produces an unrequested commit. Don't; use the sibling path instead.
+3. ⚠ **Its Step 2/3 do not fit.** `go mod download` + `go test ./...` is not this repo's
+   setup: the load-bearing step is `pnpm codegen` (the generated API client is gitignored,
+   so a fresh worktree typechecks red without it), and the baseline gate is `make check`.
+
+Prefer the native `EnterWorktree` tool when one is available — the skill says so itself,
+and it owns placement and cleanup that manual `git worktree add` leaves as phantom state.
+
 ## Ask the maintainer (stop points)
 
 - Any Phase-0 contract deviation from §6/§9 (Tunarr shape, webhook payloads, auth quirks).
 - The Tunarr API-key question (§6) if Phase 0 doesn't settle it.
 - Go module path, license, and name availability (§20) before anything is published.
 - Any gate that seems to require weakening a prime directive — that's a design conversation, not a workaround.
+
+## Agent skills
+
+Config the `mattpocock-skills` engineering skills read. Edit `docs/agents/*.md` directly.
+
+### Issue tracker
+
+GitHub Issues (`gh` CLI) — for work that is NOT a phase. ⚠ `PROGRESS.md` remains the phase
+record; an issue duplicating a phase row is a process bug. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, unchanged (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`). Only `wontfix` exists today. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. **`CONTEXT.md` (repo root) is the glossary — what a word MEANS**; it holds no
+behavior. **`docs/design.md` stays the source of truth — what the system DOES**, and wins on
+every overlap. ⚠ A `CONTEXT.md` that grows into a spec becomes the second authority the
+doc-first directive exists to prevent. No `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Companion & seed docs
 
