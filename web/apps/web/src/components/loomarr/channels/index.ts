@@ -1,5 +1,6 @@
 export * from "./channel-auto-curate";
 export * from "./channel-card";
+export * from "./channel-collections-scope";
 export * from "./channel-cycle-preview";
 export * from "./channel-danger-zone";
 export * from "./channel-icon-field";
