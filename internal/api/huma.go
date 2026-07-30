@@ -48,6 +48,9 @@ type Server struct {
 	// Phase 11 is configured.
 	suggest SuggestService
 	search  SearchService
+	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
+	// nil-semantics every other optional service here uses.
+	collections CollectionService
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
 	icons  IconService
@@ -317,6 +320,27 @@ type SearchService interface {
 	Search(ctx context.Context, query, scope string, limit int) ([]SearchCandidate, error)
 }
 
+// CollectionService backs GET /v1/library/collections — the media server's collections
+// (Emby/Jellyfin BoxSets) that back `scope.collections` (programming-design §2.2).
+//
+// ⚠ A LIST, not a search. Collections are a small closed set the operator curates by hand,
+// so the picker shows all of them; there is no query parameter because there is nothing to
+// narrow. This is why it is not a `scope` on /v1/search — a Candidate models a provisionable
+// title and a collection is not one, the same distinction that keeps clips off that route.
+type CollectionService interface {
+	Collections(ctx context.Context) ([]LibraryCollection, error)
+}
+
+// LibraryCollection is the API view of one media-server collection. The ID is opaque and
+// server-local — it is what `scope.collections` stores — so the Name is carried alongside it
+// purely so the picker can show a human something. ⚠ Never a TMDB collection (franchise) id;
+// see programming-design §2.2 on the two namespaces sharing one English word.
+type LibraryCollection struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ChildCount int    `json:"childCount,omitempty"`
+}
+
 // SearchCandidate is the API view of a catalog candidate (§7.2). Genres +
 // officialRating carry the same theme/enforcement metadata the LLM grounding tool
 // gets, so the human search box can show and filter by genre — the doc's "humans and
@@ -484,23 +508,24 @@ type Options struct {
 	Log           *slog.Logger
 	BackupSQLite  BackupStreamer // nil ⇒ /v1/backup returns 501 (Postgres)
 	Ready         ReadyFunc
-	Login         LoginService     // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
-	Passwords     PasswordService  // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
-	Sessions      SessionManager   // /v1/auth/logout (Phase 9)
-	UserSync      UserSyncer       // POST /v1/users/sync (Phase 9); nil ⇒ route absent
-	CookieSecure  string           // COOKIE_SECURE: auto|true|false (§11)
-	DevLogin      bool             // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
-	Pprof         bool             // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
-	Channels      ChannelService   // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
-	LiveTV        LiveTVService    // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
-	TunarrConnect TunarrConnector  // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest       SuggestService   // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
-	Search        SearchService    // /v1/search (Phase 11); nil ⇒ search route 501
-	Icons         IconService      // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
-	Events        EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler        FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods          PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM     SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Login         LoginService      // /v1/auth/login + user disable (Phase 9); nil ⇒ routes absent
+	Passwords     PasswordService   // /v1/auth/password + local account create/reset (§11); nil ⇒ routes absent
+	Sessions      SessionManager    // /v1/auth/logout (Phase 9)
+	UserSync      UserSyncer        // POST /v1/users/sync (Phase 9); nil ⇒ route absent
+	CookieSecure  string            // COOKIE_SECURE: auto|true|false (§11)
+	DevLogin      bool              // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
+	Pprof         bool              // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	Channels      ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
+	LiveTV        LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
+	TunarrConnect TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	Suggest       SuggestService    // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
+	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
+	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
+	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
+	Events        EventSource       // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler        FillerService     // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods          PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	SystemLLM     SystemLLMService  // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
 	Database DatabaseService

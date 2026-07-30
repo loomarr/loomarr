@@ -498,6 +498,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// one impl (§7.2).
 	var suggestSvc api.SuggestService
 	var searchSvc api.SearchService
+	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
 	var iconSvc api.IconService
 	if st != nil {
@@ -532,6 +533,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// library already owns as in-library (a lineup pick, not an acquisition).
 		cat := catalog.New(lib, tmdbSearcher).WithPresence(libraryPresence{lib})
 		searchSvc = searchAdapter{cat}
+		// The scope.collections picker (§2.2). Gated on the library alone — unlike search it
+		// needs no TMDB, because a collection is the operator's own shelf and never a TMDB
+		// lookup. Shares this block's library client.
+		collectionsSvc = libraryCollections{lib: lib}
 
 		// Channel icon suggestions (§icon P2): gated on TMDB, same as search/suggest above —
 		// posters are TMDB-only, so no TMDB key means no suggestions, and the route 501s.
@@ -910,6 +915,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		TunarrConnect: tunarrConnectSvc,
 		Suggest:       suggestSvc,
 		Search:        searchSvc,
+		Collections:   collectionsSvc,
 		Icons:         iconSvc,
 		Events:        eventBus,
 		Filler:        fillerSvc,

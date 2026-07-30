@@ -235,6 +235,27 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 	return idx, nil
 }
 
+// libraryCollections adapts library.Client to api.CollectionService: the read-only list
+// behind the scope.collections picker (programming-design §2.2).
+//
+// Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
+// lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
+// operator who just made a collection in Emby and opened the picker expects to see it. The
+// list is one cheap call; the index is the expensive one.
+type libraryCollections struct{ lib *library.Client }
+
+func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
+	colls, err := a.lib.Collections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.LibraryCollection, 0, len(colls))
+	for _, c := range colls {
+		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: c.ChildCount})
+	}
+	return out, nil
+}
+
 // tmdbFranchises adapts the tmdb.Client to channels.FranchiseResolver: it resolves a MOVIE
 // entry's TMDB collection (franchise) id from the entry's Key, for the reconcile-time heal
 // (§5 franchise ordering). Only a tmdb-keyed movie can be resolved — a tvdb-keyed movie or a
