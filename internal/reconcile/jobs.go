@@ -23,6 +23,7 @@ import (
 func (r *Reconciler) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "reconcile", Title: "Reconcile downloads",
+		Description: "Checks titles you approved that are still downloading, and retries or gives up on ones that have stalled past their deadline.",
 		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
 		Run: func(ctx context.Context) error { _, err := r.Tick(ctx); return err },
 	}
@@ -38,11 +39,13 @@ func (s *LibraryScan) Jobs() []scheduler.Job {
 	return []scheduler.Job{
 		{
 			Name: "library-scan", Title: "Scan library for new titles",
+			Description: "Looks at what your media server added recently and marks any approved title that has landed as available to schedule.",
 			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Incremental(ctx); return err },
 		},
 		{
 			Name: "library-full-scan", Title: "Full library sweep",
+			Description: "Checks your whole library rather than just recent additions, as a safety net for anything the frequent scan missed.",
 			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
 			Run: func(ctx context.Context) error { _, err := s.Full(ctx); return err },
 		},
@@ -57,6 +60,7 @@ func (s *LibraryScan) Jobs() []scheduler.Job {
 func (e *EpisodeRefresh) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "series-episode-refresh", Title: "Refresh series episode lists",
+		Description: "Re-reads the episode list for shows your channels play, so newly added episodes start airing without waiting for a rebuild.",
 		DefaultCron: "0 0 * * * *", ScheduleKey: "job.series_episode_refresh.schedule",
 		Run: func(ctx context.Context) error { _, err := e.Run(ctx); return err },
 	}
@@ -71,9 +75,9 @@ func (e *EpisodeRefresh) Job() scheduler.Job {
 // that Loomarr is polling Sonarr.
 //
 // The two are mutually exclusive (a provider is arr XOR seerr), so the names never collide.
-func (q *QueuePoll) Job(name, title string) scheduler.Job {
+func (q *QueuePoll) Job(name, title, description string) scheduler.Job {
 	return scheduler.Job{
-		Name: name, Title: title,
+		Name: name, Title: title, Description: description,
 		DefaultCron: "0 * * * * *", ScheduleKey: "job." + jobKey(name) + ".schedule",
 		Run: func(ctx context.Context) error { _, err := q.Poll(ctx); return err },
 	}

@@ -22,8 +22,16 @@ import (
 // expression (6-field, seconds-leading) resolved from ScheduleKey (a settings key) falling
 // back to DefaultCron — matching how Sonarr/Overseerr expose per-task schedules.
 type Job struct {
-	Name        string // stable id, e.g. "reconcile" — the API/UI key
-	Title       string // human label for the Tasks page
+	Name  string // stable id, e.g. "reconcile" — the API/UI key
+	Title string // human label for the Tasks page, e.g. "Reconcile acquisitions"
+	// Description is one plain sentence saying what running this job actually DOES, in the
+	// operator's terms rather than the code's ("Checks in-flight downloads and moves finished
+	// ones into your library"). Rendered under the title on the Tasks page.
+	//
+	// ⚠ REQUIRED — the registry panics without it. Someone deciding whether to run or pause a
+	// task needs to know what it does, and an optional field is one where the next job ships
+	// without one and its row reads as a bare identifier.
+	Description string
 	DefaultCron string // built-in cron schedule, e.g. "0 */5 * * * *"
 	ScheduleKey string // settings key, e.g. "job.reconcile.schedule"; "" ⇒ always DefaultCron
 	Run         func(ctx context.Context) error
@@ -50,6 +58,7 @@ func (j Job) Disabled() bool { return j.DisabledReason != "" }
 type JobStatus struct {
 	Name        string    `json:"name"`
 	Title       string    `json:"title"`
+	Description string    `json:"description"`
 	Schedule    string    `json:"schedule"`    // effective cron expression (settings override or default)
 	ScheduleKey string    `json:"scheduleKey"` // settings key the modal PATCHes to change it
 	LastRun     time.Time `json:"lastRun"`
@@ -313,7 +322,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		j := s.jobs[name]
 		st := state[name]
 		status := JobStatus{
-			Name: j.Name, Title: j.Title,
+			Name: j.Name, Title: j.Title, Description: j.Description,
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),

@@ -1598,6 +1598,9 @@ components:
     JobView:
       additionalProperties: false
       properties:
+        description:
+          description: One plain sentence saying what running this job does
+          type: string
         disabledReason:
           description: Why this job cannot run here; empty when it can
           type: string
@@ -1633,6 +1636,7 @@ components:
       required:
         - name
         - title
+        - description
         - schedule
         - scheduleKey
         - lastResult

@@ -246,10 +246,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads"))
+			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads",
+				"Asks Sonarr and Radarr how your in-progress downloads are doing, so the queue shows real progress and stalled grabs are visible."))
 		} else if seerr := set.seerrRequester(); seerr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status"))
+			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status",
+				"Asks Seerr which requested titles are still being fetched. Seerr reports a coarse status rather than a percentage."))
 		}
 	}
 

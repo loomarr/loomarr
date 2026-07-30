@@ -32,6 +32,7 @@ var ErrJobDisabled = huma.Error409Conflict("job disabled") // sentinel; handler 
 type JobView struct {
 	Name        string    `json:"name" doc:"Stable job id (also the run/trigger key)"`
 	Title       string    `json:"title" doc:"Human label for the Tasks page"`
+	Description string    `json:"description" doc:"One plain sentence saying what running this job does"`
 	Schedule    string    `json:"schedule" doc:"Effective cron expression (settings override or default)"`
 	ScheduleKey string    `json:"scheduleKey" doc:"Settings key to PATCH to change the schedule"`
 	LastRun     time.Time `json:"lastRun,omitempty" doc:"When the job last started (zero = never)"`
