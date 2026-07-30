@@ -85,6 +85,12 @@ type setupStateOutput struct {
 	Body struct {
 		Bootstrapped bool `json:"bootstrapped" doc:"Whether an owning admin exists. False ⇒ the install is unclaimed and the wizard's bootstrap step is the only way in (§11)."`
 		DevLogin     bool `json:"devLogin" doc:"Whether this server was started with LOOMARR_DEV_LOGIN=1, so the login screen may offer the credential-free dev sign-in (§11). False on every shipped install — the route does not exist there. Reporting it leaks nothing: an operator can already discover it by calling the endpoint."`
+		// SSO says whether the login screen should offer a sign-in-with button. Answered by
+		// the SERVER, on the same request the bootstrap guard already makes, so the button
+		// appears only when the route it points at actually exists — the same posture as
+		// devLogin above. Reporting it leaks nothing an unauthenticated caller could not
+		// learn by following the redirect.
+		SSO bool `json:"sso" doc:"Whether single sign-on is configured, so the login screen may offer it (§11, V8)."`
 	}
 }
 
@@ -98,6 +104,7 @@ type setupStateOutput struct {
 // bootstrap step cannot work.
 func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput, error) {
 	out := &setupStateOutput{}
+	out.Body.SSO = s.sso != nil && s.sso.Available()
 	// Mirrors exactly what registerAuth mounted, so the login screen can never offer a
 	// dev-login link that 404s (§11).
 	out.Body.DevLogin = s.devLogin

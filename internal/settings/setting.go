@@ -43,7 +43,13 @@ const (
 	GroupFiller        Group = "filler"
 	GroupBackup        Group = "backup"
 	GroupUsersSecurity Group = "users_security"
-	GroupAdvanced      Group = "advanced"
+	// GroupSSO is its own group rather than more keys in users_security (§11, V8): the
+	// Security page renders one block per group, and provider settings sitting unlabelled
+	// among session TTLs would read as more session config. It also gives the block
+	// somewhere to state what SSO does NOT do — §11's model is unusual enough that the
+	// absence of "create people on first sign-in" needs saying.
+	GroupSSO      Group = "sso"
+	GroupAdvanced Group = "advanced"
 )
 
 // Feature is a capability gated on settings completeness (config-design §7). A

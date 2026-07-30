@@ -12,13 +12,16 @@ import { useDocumentTitle } from "@/lib";
 // typed (replaces react-router's location.state) and set by the _authed guard.
 interface LoginSearch {
   redirect?: string;
+  // A reason code from a refused SSO round trip. A CODE, never a message — the callback
+  // redirects with one so no server text can be reflected into this page (§11, V8).
+  sso?: string;
 }
 
 const LoginScreen = () => {
   useDocumentTitle("Sign in");
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { redirect: dest } = Route.useSearch();
+  const { redirect: dest, sso: ssoError } = Route.useSearch();
 
   const landing = async () => {
     await queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
@@ -33,6 +36,9 @@ const LoginScreen = () => {
   // than from a build-time constant that could ship enabled.
   const setupState = useQuery(setupApi.getSetupStateQueryOptions({ query: { retry: false } }));
   const devLoginOffered = setupState.data?.status === 200 && setupState.data.data.devLogin === true;
+  // Same request, same posture as devLogin: the SERVER says whether SSO is configured, so the
+  // button can never appear pointing at routes that are not mounted.
+  const ssoOffered = setupState.data?.status === 200 && setupState.data.data.sso === true;
 
   // The endpoint is deliberately ABSENT from api/openapi.yaml (a dev bypass is not part
   // of the product contract), so there is no generated hook for it — this is the one
@@ -54,6 +60,18 @@ const LoginScreen = () => {
         isPending={login.isPending}
         error={login.error}
         {...(devLoginOffered ? { onDevLogin: () => void devLogin() } : {})}
+        {...(ssoOffered
+          ? {
+              // A full navigation, not a fetch: the flow is a redirect to the provider and
+              // back, which an XHR cannot follow. `next` carries the deep link the guard
+              // remembered, and the server validates it as a same-app path.
+              onSso: () => {
+                const next = dest ? `?next=${encodeURIComponent(dest)}` : "";
+                window.location.assign(`/v1/auth/sso/start${next}`);
+              },
+            }
+          : {})}
+        {...(ssoError ? { ssoError } : {})}
       />
     </LoginShell>
   );
@@ -62,6 +80,7 @@ const LoginScreen = () => {
 const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    sso: typeof search.sso === "string" ? search.sso : undefined,
   }),
   beforeLoad: async ({ context, search }) => {
     try {
