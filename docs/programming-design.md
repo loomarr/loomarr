@@ -22,7 +22,7 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
 {
   "scope": {                       // WHAT is allowed on this channel
     "series":      ["tmdb:456"],   // resolved ids only — never names
-    "collections": [],             // media-server collections (Kometa etc.)
+    "collections": [],             // media-server collection (BoxSet) ids — §2.2
     "seasons":     {"min": 1, "max": 10},   // per-series season window
     "era":         {"from": 1990, "to": 1999}, // by first-air/release year
     "genres":      {"include": ["Animation"], "exclude": ["Documentary"]},
@@ -67,6 +67,47 @@ Observed on the dev "1980s Action Heroes": `operatorSet: ["ordering", "scope"]` 
 *This does not weaken stickiness*, which exists so a refine cannot revert a **deliberate** operator value — every non-empty edit still pins exactly as before. Nor is it a licence for a partial-PATCH client: the FE still sends the whole policy (`{...policy, scope: next}`), because clearing a field the operator *did* set must remain expressible.
 
 **Rules merge by provenance.** Each `SchedulingRule` carries a `source` (`llm` or `operator`) + stable id. A refresh proposal **replaces only the `llm` rules and preserves the `operator` rules**, so "make weekends a TNG marathon" expressed *as a refine* adds/updates an LLM rule while a hand-authored rule is untouched — refine and hand-authoring **compose** instead of one clobbering the other. (This supersedes the earlier "operator-locked after first seed" behavior.)
+
+### 2.2 `scope.collections` — media-server collections, and why it is stamped
+
+`scope.collections` restricts a channel to titles the operator has curated into a **media-server
+collection** (Emby/Jellyfin call these **BoxSets**; Kometa and similar tools write them). It is a
+hand-curated set — "my Halloween shelf" — which is precisely what makes it worth having: it is the
+one scope field whose membership is an explicit human judgment rather than derived metadata.
+
+⚠ **This is NOT `LineupEntry.CollectionID`, which is the TMDB franchise id (§5 ordering).** Two
+different namespaces share the English word "collection": a TMDB collection is an integer
+identifying a *franchise* (the Alien films), a BoxSet id is an opaque server-local string
+identifying a *shelf someone made*. They are never interchangeable, and a filter that compared one
+to the other would type-check and silently match nothing. The Go field is therefore named
+`BoxSetIDs`, in the media server's own vocabulary, so the two cannot be confused at the point of
+use. The wire/DTO name stays `collections` (it is what an operator calls it).
+
+**Membership is STAMPED on the entry and healed at reconcile**, exactly like `OfficialRating`
+(§4) and `CollectionID` (§5), for the reason those two are: `filterEntries` is a pure function
+over `[]LineupEntry` with **no per-reconcile library I/O**, and that property is load-bearing for
+scheduling latency rather than incidental. Resolving BoxSet membership inside the filter would put
+a media-server round trip on the scheduling path, per entry, per pass — the N+1 shape that
+dominated the guide-latency work (1910ms → 103ms; the first fix was removing exactly this).
+
+⚠ **The `CollectionID` tri-state does not transfer, and the difference is a real trap.** `-1`
+works as "resolved, standalone" because the field is an `int`. `BoxSetIDs` is a `[]string`, where
+"not resolved yet" and "resolved, belongs to no collection" are **both empty** — so an entry in no
+BoxSet would be re-fetched on every reconcile forever, reintroducing the N+1 through the back
+door for the most common case. Resolution state is therefore carried by an explicit
+`BoxSetsResolved bool`, not by nil-vs-empty: the entry is JSON-persisted, and a nil/empty slice
+distinction does not survive a round trip through encoding/json, let alone a later refactor.
+
+**The consequence, stated plainly:** adding a title to a BoxSet in Emby takes effect on the
+channel's **next reconcile**, not instantly. That is the deliberate trade for keeping the
+scheduler I/O-free, and it matches how a rating change already propagates.
+
+**Fail-OPEN, unlike audience.** An unresolved entry (`BoxSetsResolved == false`) is **not**
+filtered out — a media server that is down or slow must not silently empty a channel's lineup.
+This is the opposite of the §4 audience ceiling, and the asymmetry is the same one §4 states: a
+missing rating risks showing adult content to a kids channel, so it fails closed; a missing
+collection membership risks showing an in-library title the operator did not shelve, which is a
+taste miss, not a safety one. Scope is never a safety property (see the era grandfathering rule).
 
 ## 3. Separation & repetition ("don't show the same thing twice in a row")
 
@@ -402,6 +443,7 @@ Candidates already visible from here (logged, not v1): dayparting audience ceili
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 
 - **Binding:** "seasons 1–10" policy → zero slots outside the range across many seeded cycles; era and genre filters likewise.
+- **Collections bind, and fail OPEN (§2.2):** a `scope.collections` channel airs only stamped members; an entry whose membership is **unresolved** still airs (a down media server must not empty a lineup), while a *resolved* non-member is excluded. The heal is one-time — a fully-stamped channel makes ZERO library calls on the next pass.
 - **Fail-closed audience:** unrated item + `TV-Y7` ceiling → excluded, counted in the exclusion report; `TV-MA` never appears under any kids ceiling *including after full ladder relaxation*.
 - **Separation with wrap:** property test — no episode twice inside the window, no series-gap violation across the cycle seam.
 - **Syndication deck:** every eligible episode airs exactly once per deck before any repeats.

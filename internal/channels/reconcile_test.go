@@ -198,6 +198,71 @@ func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 	}
 }
 
+// countingBoxSets is a BoxSetResolver over a fixed key→collections map that COUNTS calls, so
+// a test can prove the heal is one-time. A key absent from the map resolves to "belongs to no
+// collection" (empty, ok=true) — a real settled answer, not a failure.
+type countingBoxSets struct {
+	sets  map[provision.Key][]string
+	calls int
+}
+
+func (c *countingBoxSets) BoxSets(_ context.Context, k provision.Key) ([]string, bool, error) {
+	c.calls++
+	return c.sets[k], true, nil
+}
+
+// Media-server collection membership is stamped at reconcile and PERSISTED, so the scheduler
+// filters on it with no library I/O (programming-design §2.2).
+func TestReconcile_StampsBoxSetMembership(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:1": {"star-trek"}}}
+	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
+
+	seedChannel(t, st, "cbs", 8, entry("movie:tmdb:1", "A"))
+	if err := e.Reconcile(context.Background(), "cbs"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := st.GetChannel(context.Background(), "cbs")
+	if ids := got.Lineup[0].BoxSetIDs; len(ids) != 1 || ids[0] != "star-trek" {
+		t.Errorf("BoxSetIDs = %v, want [star-trek] (stamped from the library + persisted)", ids)
+	}
+	if !got.Lineup[0].BoxSetsResolved {
+		t.Error("BoxSetsResolved = false after a successful stamp — the entry will be re-fetched forever")
+	}
+}
+
+// ⚠ The re-fetch guard, which is the entire reason BoxSetsResolved exists as a separate flag.
+// A title in NO collection resolves to an empty slice, so a heal guarded on len(BoxSetIDs)==0
+// would re-ask the library for it on every reconcile, for every such entry, forever — the N+1
+// that stamping exists to prevent, reintroduced for the most common case. Verified by counting
+// calls across two passes rather than by reading the guard.
+func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
+	st := newStore(t)
+	tun := testkit.NewTunarr()
+	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	res := &countingBoxSets{sets: map[provision.Key][]string{}} // in no collection at all
+	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
+
+	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:1", "A"))
+	for i := range 2 {
+		if err := e.Reconcile(context.Background(), "cbs2"); err != nil {
+			t.Fatalf("pass %d: %v", i+1, err)
+		}
+	}
+
+	if res.calls != 1 {
+		t.Errorf("resolver called %d times across 2 reconciles, want 1 — a non-member is being "+
+			"re-fetched every pass (guard on BoxSetsResolved, not on len(BoxSetIDs))", res.calls)
+	}
+	got, _ := st.GetChannel(context.Background(), "cbs2")
+	if !got.Lineup[0].BoxSetsResolved {
+		t.Error("BoxSetsResolved = false for a resolved non-member — 'in no collection' must settle")
+	}
+}
+
 // Backfill: a pending slot is pod-filled, then the title lands and an availability
 // event places the real program IN PLACE, re-pushing the lineup.
 func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {

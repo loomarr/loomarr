@@ -89,6 +89,18 @@ func filterEntries(entries []LineupEntry, rp ResolvedPolicy) ([]LineupEntry, Exc
 			report.add(e, "out_of_scope")
 			continue
 		}
+		// Media-server collections (programming-design §2.2). Reads the membership stamped
+		// on the entry by the reconcile heal — no library I/O here, which is what keeps this
+		// a pure entry-set filter.
+		//
+		// ⚠ Fails OPEN, unlike the audience ceiling below: an entry whose membership is
+		// UNRESOLVED still airs. A media server that is down or slow must not silently empty
+		// a channel's lineup, and scope is a taste filter, not a safety one (§4 owns the
+		// safety asymmetry, and it points the other way).
+		if !boxSetOK(e, rp.Scope.Collections) {
+			report.add(e, "out_of_scope")
+			continue
+		}
 		// Audience ceiling (§4) — the fail-closed safety filter, NEVER relaxed.
 		if rp.Ceiling != "" {
 			switch audienceVerdict(e.OfficialRating, rp.Ceiling, rp.Unrated) {
@@ -172,6 +184,36 @@ func genreOK(genres []string, f GenreFilter) bool {
 		return false // Include set but nothing matched
 	}
 	return true
+}
+
+// boxSetOK reports whether an entry satisfies a media-server collection scope
+// (programming-design §2.2). An empty scope admits everything (the additive default,
+// as with every other scope field).
+//
+// ⚠ It FAILS OPEN on an unresolved entry, and that is the whole subtlety. Membership is
+// stamped by the reconcile heal; until it has answered, BoxSetsResolved is false and the
+// entry is admitted rather than dropped. Reversing this would mean a media server that is
+// down — or simply a channel reconciled once before the heal ran — empties its own lineup
+// to dead air, which is exactly the §4-shaped failure a taste filter must not cause.
+// Once resolved, a non-member is excluded normally.
+//
+// Ids are compared exactly, never folded: a BoxSet id is an opaque server-local token, not
+// a name, so case-insensitivity would only ever create false matches.
+func boxSetOK(e LineupEntry, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	if !e.BoxSetsResolved {
+		return true // unresolved: admit, retry the heal next pass
+	}
+	for _, have := range e.BoxSetIDs {
+		for _, w := range want {
+			if have == w {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // singleSeriesEntries reports whether the eligible set is exactly one series and no

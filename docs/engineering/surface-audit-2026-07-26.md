@@ -70,10 +70,15 @@ before believing anything below.
   which holidays a channel observes* — the audit conflated the two. So this was a checkbox list
   over a closed set, with no backend work. Off-season fallback renders only in `exclusive` mode,
   the only mode that reads it (`seasonal.go:154`).
-- **`scope.collections`** — still open, and the blocker is **not** the control. `[]string` of
-  media-server collection ids; the frontend has no endpoint that lists them, so a picker has
-  nothing to pick from. **The endpoint is the prerequisite** — build that first, then this is
-  the same shape as the series picker.
+- ~~**`scope.collections`**~~ — **SHIPPED** (engine filter → `GET /v1/library/collections` →
+  checkbox picker). ⚠ **This entry's own diagnosis was wrong, and the same way the entry above
+  it was wrong**: it called the endpoint "the prerequisite", but the endpoint was the easy half.
+  `filterEntries` is a pure no-I/O function over `[]LineupEntry`, so the load-bearing work was
+  stamping membership onto the entry at reconcile — a lookup inside the filter would have been
+  an N+1 on the scheduling path. It is also **not** "the same shape as the series picker": a
+  checkbox list, because collections are a small closed set rather than an open corpus.
+  **Twice now the audit's cost estimate was wrong in the direction its own rule predicts** —
+  scanning a field and reasoning about what it must need, rather than tracing what reads it.
 - **`policy.window`** at channel level — still open. Only per-rule windows are settable, and
   only implicitly via the marathon preset.
 - **`POST …/{id}/programming/preview`** — still open, and not a control: rewiring the

@@ -2,6 +2,7 @@ import { type ChannelPolicy, channelsApi, type LineupEntryDTO } from "@loomarr/a
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import {
   ChannelAutoCurate,
+  ChannelCollectionsScope,
   ChannelCyclePreview,
   ChannelLineupEditor,
   ChannelPolicyFields,
@@ -112,6 +113,9 @@ const ChannelProgramming = ({
             fields because it is the same question ("what may play?") at a coarser grain than
             era/ceiling — and beside the lineup editor whose search picker it reuses. */}
         <ChannelSeriesScope policy={policy} onChange={onPolicyChange} />
+        {/* `scope.collections` — the same "what may play?" question against the operator's own
+            media-server shelves. Renders nothing when no library is configured. */}
+        <ChannelCollectionsScope policy={policy} onChange={onPolicyChange} />
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
