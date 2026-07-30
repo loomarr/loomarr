@@ -1409,6 +1409,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `recurate` | Scheduled re-curation: a channel that keeps itself current (§8.2) |
 | `provision` | The Title/Key identity model and the acquisition state machine (§3–§4) |
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
+| `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
 

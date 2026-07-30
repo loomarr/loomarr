@@ -14,16 +14,34 @@ var ErrUnknownJob = errors.New("unknown job")
 var ErrJobDisabled = errors.New("job is not available on this backend")
 
 // Registry collects the code-defined jobs before the scheduler is built. The composition
-// root (internal/app) builds it: reg.Add(Job{...}).Add(Job{...}). Order is preserved so the
-// Tasks page lists jobs in a stable, intentional order.
-type Registry struct{ jobs []Job }
+// root (internal/app) collects them: reg.AddAll(reconcile.Jobs(...)).AddAll(…). Order is
+// preserved so the Tasks page lists jobs in a stable, intentional order.
+//
+// ⚠ **A job that owns work should declare its own Job.** The cron default, the settings key
+// and the body belong next to the code they schedule, not in the composition root — see the
+// `Jobs()` constructors on the subsystem packages. The root's remaining task is to decide
+// WHICH sets apply to this build, which is genuinely its job (SQLite vs Postgres backup).
+type Registry struct {
+	jobs   []Job
+	sealed bool
+}
 
 // NewRegistry returns an empty registry.
 func NewRegistry() *Registry { return &Registry{} }
 
 // Add appends a job. Returns the registry for chaining. Panics on a duplicate or empty name —
 // a programming error, caught at boot rather than silently shadowing a job.
+//
+// ⚠ **Panics if the registry is SEALED**, and that is the point of Seal existing. `New`
+// snapshots the jobs into a map, so an Add afterwards used to be accepted here and then
+// silently never scheduled — while `Jobs()` still listed it, so `GET /v1/jobs` showed a
+// task that could never run. Verified: registry reported 2 jobs, scheduler ran 1, nothing
+// logged. A boot-time panic naming the job is the honest failure.
 func (r *Registry) Add(j Job) *Registry {
+	if r.sealed {
+		panic(fmt.Sprintf("scheduler: job %q registered after the scheduler was built — "+
+			"New() snapshots the registry, so this job would never run", j.Name))
+	}
 	if j.Name == "" {
 		panic("scheduler: job with empty name")
 	}
@@ -36,8 +54,23 @@ func (r *Registry) Add(j Job) *Registry {
 	return r
 }
 
+// AddAll appends every job in js, in order. The shape a subsystem's `Jobs()` returns.
+//
+// A nil or empty slice is fine and means "this build registers none" — a subsystem that is
+// not wired (no store, no provider) returns nothing rather than making the root ask.
+func (r *Registry) AddAll(js []Job) *Registry {
+	for _, j := range js {
+		r.Add(j)
+	}
+	return r
+}
+
 // Jobs returns the registered jobs in registration order.
 func (r *Registry) Jobs() []Job { return append([]Job(nil), r.jobs...) }
+
+// seal closes the registry to further Adds. Called by New, because that is the moment the
+// job set stops being able to change: anything added later is invisible to the scheduler.
+func (r *Registry) seal() { r.sealed = true }
 
 // panicError wraps a recovered panic value so a job that panics becomes a normal job error
 // (last_result="error") instead of crashing the scheduler goroutine.
