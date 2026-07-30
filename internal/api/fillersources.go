@@ -54,22 +54,22 @@ type fillerSourcesOutput struct {
 // registerFillerSources mounts the sources read-model. Admin-only: it names filesystem paths
 // and library targets, which is infrastructure detail a member has no business reading.
 func (s *Server) registerFillerSources(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler-sources", Method: http.MethodGet, Path: "/v1/filler/sources",
 		Summary: "Where the clip catalog comes from",
 		Description: "Admin only. Derived from the configured drop-folder and library scan plus live " +
 			"per-source clip counts — there is no sources table (§10). A source the install could use " +
 			"but has not configured is returned with configured:false rather than omitted.",
 		Tags: []string{"filler"},
-	}, s.listFillerSources)
+	}, RoleAdmin), s.listFillerSources)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "fetch-filler-source", Method: http.MethodPost, Path: "/v1/filler/sources/fetch",
 		Summary: "Re-scan the catalog now",
 		Description: "Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's " +
 			"per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.",
 		Tags: []string{"filler"},
-	}, s.fetchFillerSource)
+	}, RoleAdmin), s.fetchFillerSource)
 }
 
 func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSourcesOutput, error) {

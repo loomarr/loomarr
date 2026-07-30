@@ -175,8 +175,8 @@ func TestFillerSources_RequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/v1/filler/sources/fetch"},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", "")
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without admin → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
 }

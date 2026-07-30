@@ -53,23 +53,23 @@ type ServicesView struct {
 }
 
 func (s *Server) registerDashboardPanels(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-services", Method: http.MethodGet, Path: "/v1/system/services",
 		Summary: "Every configured integration and whether it answers",
 		Description: "Admin only. Runs the SAME connection checks as the wizard checklist and " +
 			"/v1/system/reload — one probe implementation, so the three surfaces cannot disagree " +
 			"about whether the media server is reachable. Polled by the Dashboard every 30s.",
 		Tags: []string{"system"},
-	}, s.systemServices)
+	}, RoleAdmin), s.systemServices)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-activity", Method: http.MethodGet, Path: "/v1/activity",
 		Summary: "What Loomarr has been doing, newest first",
 		Description: "Admin only. Reads the persisted activity table (§5), NOT the SSE bus — the bus " +
 			"is deliberately lossy, so a feed built on it would drop entries exactly when the install " +
 			"is busiest. Survives a restart.",
 		Tags: []string{"system"},
-	}, s.listActivity)
+	}, RoleAdmin), s.listActivity)
 }
 
 type systemServicesOutput struct {

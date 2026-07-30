@@ -123,8 +123,8 @@ func TestBootstrap_Invalid(t *testing.T) {
 func TestImport_RequiresAdmin(t *testing.T) {
 	srv, _ := provServer(t)
 	resp := do(t, srv, http.MethodPost, "/v1/users/import", "", `{"ids":["c9c1815f5b7e46308169209bf320e196"]}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member import → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member import → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -164,8 +164,8 @@ func TestImportCandidates(t *testing.T) {
 	srv, _ := provServer(t)
 
 	// Admin-only (§19).
-	if resp := do(t, srv, http.MethodGet, "/v1/users/candidates", "", ""); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("candidates without admin → %d, want 403", resp.StatusCode)
+	if resp := do(t, srv, http.MethodGet, "/v1/users/candidates", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("candidates without admin → %d, want 401", resp.StatusCode)
 	}
 
 	decode := func() []api.ImportCandidate {

@@ -17,29 +17,29 @@ func (s *Server) registerProvisioning(api huma.API) {
 	if s.provision == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "bootstrap", Method: http.MethodPost, Path: "/v1/setup/bootstrap",
 		Summary: "Create the first admin", Description: "First-run only: creates the owning local admin. Succeeds exactly once (409 once an admin exists). Unauthenticated by design — it is functional only while no admin exists (§11).",
 		Tags: []string{"setup"},
-	}, s.bootstrap)
+	}, RolePublic), s.bootstrap)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "setup-state", Method: http.MethodGet, Path: "/v1/setup/state",
 		Summary: "Whether the install has an owning admin", Description: "Unauthenticated. Reports only whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13). Exposes nothing that POST /v1/setup/bootstrap doesn't already reveal by answering 409-vs-created.",
 		Tags: []string{"setup"},
-	}, s.setupState)
+	}, RolePublic), s.setupState)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "import-users", Method: http.MethodPost, Path: "/v1/users/import",
 		Summary: "Import media-server users", Description: "Admin only. Allowlists the named media-server user ids — the only way a media-server user gains access (§11).",
 		Tags: []string{"users"},
-	}, s.importUsers)
+	}, RoleAdmin), s.importUsers)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "import-candidates", Method: http.MethodGet, Path: "/v1/users/candidates",
 		Summary: "List importable media-server accounts", Description: "Admin only. The media-server accounts available to import, each flagged whether it is already allowlisted (§11). Read-only — listing never provisions.",
 		Tags: []string{"users"},
-	}, s.importCandidates)
+	}, RoleAdmin), s.importCandidates)
 }
 
 // ImportCandidate is one media-server account an admin may allowlist (§11).

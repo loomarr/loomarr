@@ -50,16 +50,16 @@ type RestartCost struct {
 // registerSystemRestart mounts the restart + reload routes. Admin-only: restarting
 // interrupts playback for every internally-streamed channel.
 func (s *Server) registerSystemRestart(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-restart-cost", Method: http.MethodGet, Path: "/v1/system/restart",
 		Summary: "What a restart would cost right now",
 		Description: "Admin only. The live count of channels Loomarr is streaming (which drop for a few " +
 			"seconds; Tunarr-backed channels keep playing), plus any boot-time setting waiting on a " +
 			"restart. Read-only — this does not restart anything.",
 		Tags: []string{"system"},
-	}, s.systemRestartCost)
+	}, RoleAdmin), s.systemRestartCost)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-restart", Method: http.MethodPost, Path: "/v1/system/restart",
 		Summary: "Restart Loomarr in place",
 		Description: "Admin only. Drains connections, tears down playout, and rebuilds every subsystem in " +
@@ -67,16 +67,16 @@ func (s *Server) registerSystemRestart(api huma.API) {
 			"a client that never gets a reply cannot tell 'restarting' from 'crashed'.",
 		Tags:          []string{"system"},
 		DefaultStatus: http.StatusAccepted,
-	}, s.systemRestart)
+	}, RoleAdmin), s.systemRestart)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-reload", Method: http.MethodPost, Path: "/v1/system/reload",
 		Summary: "Re-probe every configured service",
 		Description: "Admin only. Re-runs the connection checks without restarting or tearing anything " +
 			"down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two " +
 			"can never disagree.",
 		Tags: []string{"system"},
-	}, s.systemReload)
+	}, RoleAdmin), s.systemReload)
 }
 
 type systemRestartCostOutput struct {

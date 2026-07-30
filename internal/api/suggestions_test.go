@@ -62,7 +62,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
 		Store:   st,
-		Auth:    api.NewTokenAuthorizer(adminToken),
+		Auth:    testAuthorizer{},
 		Log:     log,
 		Suggest: fs,
 		Search:  fakeSearch{},
@@ -140,8 +140,8 @@ func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
 	seedProposal(t, st, "p1")
 
 	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", "", "")
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("member approve → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("member approve → %d, want 401", resp.StatusCode)
 	}
 	// The approval-gate guarantee: NOTHING unapproved reached /v1/titles.
 	wanted, _ := st.ListTitlesByState(context.Background(), "wanted")
@@ -210,8 +210,8 @@ func TestDeny_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
 	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/deny", "", `{"reason":"no"}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member deny → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member deny → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -702,8 +702,8 @@ func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
 
 	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-member/approve", "",
 		`{"drop":["movie:tmdb:100"],"note":"let me in"}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("member approve with an edit → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("member approve with an edit → %d, want 401", resp.StatusCode)
 	}
 	if _, err := st.GetTitle(context.Background(), "movie:tmdb:100"); err == nil {
 		t.Error("a member's rejected approval still enqueued a title")
@@ -897,7 +897,7 @@ func TestBulkApprove_MemberIsRejected(t *testing.T) {
 
 	for _, tok := range []string{"", "not-the-admin-token"} {
 		resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", tok, `{"ids":["p1"]}`)
-		if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusUnauthorized {
+		if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 			t.Errorf("bulk approve with token %q → %d, want 401/403", tok, resp.StatusCode)
 		}
 		_ = resp.Body.Close()

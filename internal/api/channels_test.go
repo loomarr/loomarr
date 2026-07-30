@@ -107,7 +107,7 @@ func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeC
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     testAuthorizer{},
 		Log:      log,
 		Channels: chSvc,
 		LiveTV:   ltv,
@@ -175,8 +175,8 @@ func TestCreateChannelRequiresAdmin(t *testing.T) {
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPost, "/v1/channels", tok,
 			`{"id":"c","name":"n","number":1,"strategy":"sequential"}`)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("create with token %q → %d, want 403", tok, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("create with token %q → %d, want 401", tok, resp.StatusCode)
 		}
 	}
 }
@@ -240,8 +240,8 @@ func TestReconcileChannelAdmin(t *testing.T) {
 func TestReconcileChannelRequiresAdmin(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/reconcile", "", "")
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member reconcile → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member reconcile → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -347,7 +347,7 @@ func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
 func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	mkChannel(t, srv, "c1", "Trek", 5)
-	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", "", ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member cycle preview → %d, want 200 (read-only)", resp.StatusCode)
 	}
 }
@@ -500,7 +500,7 @@ func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, store.Sto
 	fs := &fakeSuggest{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     testAuthorizer{},
 		Log:      slog.New(slog.DiscardHandler),
 		Channels: &fakeChannelSvc{},
 		Suggest:  fs,
@@ -514,8 +514,8 @@ func TestRefineChannel_RequiresAdmin(t *testing.T) {
 	srv, _, _ := newServerWithSchedulerAndSuggest(t)
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", tok, `{"change":"more action"}`)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("refine with token %q → %d, want 403", tok, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("refine with token %q → %d, want 401", tok, resp.StatusCode)
 		}
 	}
 }
@@ -727,8 +727,8 @@ func TestUpdateChannel_RequiresAdmin(t *testing.T) {
 	mkChannel(t, srv, "c1", "A", 5)
 	for _, tok := range []string{"", "wrong"} {
 		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", tok, `{"name":"X"}`)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("patch with token %q → %d, want 403", tok, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("patch with token %q → %d, want 401", tok, resp.StatusCode)
 		}
 	}
 }
@@ -958,8 +958,8 @@ func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", "",
 		`{"lineup":[]}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member lineup edit → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member lineup edit → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -1121,8 +1121,8 @@ func TestSetupStatusReportsLiveTVCheck(t *testing.T) {
 func TestSetupStatusRequiresAdmin(t *testing.T) {
 	srv, _, _, _ := newServerWithScheduler(t)
 	resp := do(t, srv, http.MethodGet, "/v1/setup/status", "", "")
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member status → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member status → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -1169,7 +1169,7 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Guide: fakeGuide{byTunarr: map[string]api.ChannelNowNext{
 			"tunarr-1": {Now: &api.NowNextEntry{Title: "On Now"}, Next: &api.NowNextEntry{Title: "Up Next", Gap: true}},

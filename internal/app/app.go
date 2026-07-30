@@ -31,6 +31,7 @@ import (
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/recurate"
+	"github.com/mantonx/loomarr/internal/retention"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/settings"
@@ -199,65 +200,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}, time.Now, log)
 		// The reconcile tick is now a scheduler job (§18.1) — same Tick logic, driven by the
 		// shared heartbeat on a cron schedule instead of its own ticker.
-		jobReg.Add(scheduler.Job{
-			Name: "reconcile", Title: "Reconcile downloads",
-			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
-			Run: func(ctx context.Context) error { _, err := rec.Tick(ctx); return err },
-		})
+		jobReg.Add(rec.Job())
 		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
 		// ticker via the janitor).
-		// Retention for the accumulating suggester tables (§5, §18.1). `jobs.retention` and
-		// `proposals.retention` were declared long before anything read them; this is the
-		// reader.
-		//
-		// ⚠ PROPOSALS FIRST, THEN JOBS. `proposals.job_id` has no foreign key, so the
-		// ordering constraint is ours to keep: removing a job first would leave a proposal
-		// pointing at nothing. No read path joins the two, so an orphan is cosmetic — but a
-		// purge that manufactures one on every run makes the data harder to reason about for
-		// no gain.
-		retentionStore := st
-		jobReg.Add(scheduler.Job{
-			Name: "retention-purge", Title: "Clean up old jobs and proposals",
-			DefaultCron: "0 30 4 * * *", ScheduleKey: "job.retention_purge.schedule",
-			Run: func(ctx context.Context) error {
-				now := time.Now()
-				proposals, err := retentionStore.PurgeDeniedProposals(ctx, now.Add(-set.dur("proposals.retention")))
-				if err != nil {
-					return err
-				}
-				jobs, err := retentionStore.PurgeFinishedJobs(ctx, now.Add(-set.dur("jobs.retention")))
-				if err != nil {
-					return err
-				}
-				if proposals > 0 || jobs > 0 {
-					log.Info("retention purge", "denied_proposals", proposals, "finished_jobs", jobs)
-				}
-				return nil
-			},
-		})
+		// Retention for the accumulating tables (§5, §18.1). The purge POLICY — what may be
+		// deleted, in what order, after how long — lives in internal/retention; the store owns
+		// only the SQL. Windows are read live, so a settings change applies on the next run.
+		jobReg.AddAll(retention.New(st, retention.Windows{
+			Proposals: func() time.Duration { return set.dur("proposals.retention") },
+			Jobs:      func() time.Duration { return set.dur("jobs.retention") },
+			Activity:  func() time.Duration { return set.dur("activity.retention") },
+		}, time.Now, log).Jobs())
 
-		activityStore := st
-		jobReg.Add(scheduler.Job{
-			Name: "activity-purge", Title: "Clean up old activity",
-			DefaultCron: "0 15 4 * * *", ScheduleKey: "job.activity_purge.schedule",
-			Run: func(ctx context.Context) error {
-				n, err := activityStore.PurgeActivity(ctx, time.Now().Add(-set.dur("activity.retention")))
-				if err != nil {
-					return err
-				}
-				if n > 0 {
-					log.Info("activity purged", "rows", n)
-				}
-				return nil
-			},
-		})
-
-		sessionSweeper := auth.NewSessionSweeper(st)
-		jobReg.Add(scheduler.Job{
-			Name: "session-sweep", Title: "Clear expired sessions",
-			DefaultCron: "0 0 * * * *", ScheduleKey: "job.session_sweep.schedule",
-			Run: func(ctx context.Context) error { _, err := sessionSweeper.Sweep(ctx, time.Now()); return err },
-		})
+		jobReg.Add(auth.NewSessionSweeper(st).Job(time.Now))
 
 		// Poll-based availability (§4, §18.1): the PRIMARY path a requested title reaches
 		// `available`. The scan lists what the media server recently added and confirms any
@@ -266,16 +221,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// LibraryScanner. Incremental runs often (recent window); Full is the daily safety net.
 		libScan := reconcile.NewLibraryScan(st, lib, emitter, set.dur("job.library_scan.lookback"), time.Now, log).
 			WithActivity(activityRec)
-		jobReg.Add(scheduler.Job{
-			Name: "library-scan", Title: "Scan library for new titles",
-			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
-			Run: func(ctx context.Context) error { _, err := libScan.Incremental(ctx); return err },
-		})
-		jobReg.Add(scheduler.Job{
-			Name: "library-full-scan", Title: "Full library sweep",
-			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
-			Run: func(ctx context.Context) error { _, err := libScan.Full(ctx); return err },
-		})
+		jobReg.AddAll(libScan.Jobs())
 
 		// Keeps the cached series episode lists current (§5, §18.1) so the guide never
 		// enumerates a show on the request path. Deliberately NOT folded into library-scan:
@@ -285,11 +231,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		epRefresh := reconcile.NewEpisodeRefresh(st, episodeResolver(lib), func() time.Duration {
 			return set.dur("episodes.max_age")
 		}, time.Now, log)
-		jobReg.Add(scheduler.Job{
-			Name: "series-episode-refresh", Title: "Refresh series episode lists",
-			DefaultCron: "0 0 * * * *", ScheduleKey: "job.series_episode_refresh.schedule",
-			Run: func(ctx context.Context) error { _, err := epRefresh.Run(ctx); return err },
-		})
+		jobReg.Add(epRefresh.Job())
 
 		// Queue poller (§18.1) — one poll job, whichever requester is active. The direct arr
 		// reads Sonarr/Radarr queues for real byte-progress; Seerr reads /media for a COARSE
@@ -299,18 +241,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(scheduler.Job{
-				Name: "arr-queue-poll", Title: "Poll Sonarr/Radarr downloads",
-				DefaultCron: "0 * * * * *", ScheduleKey: "job.arr_queue_poll.schedule",
-				Run: func(ctx context.Context) error { _, err := queuePoll.Poll(ctx); return err },
-			})
+			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads"))
 		} else if seerr := set.seerrRequester(); seerr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(scheduler.Job{
-				Name: "seerr-queue-poll", Title: "Poll Seerr acquisition status",
-				DefaultCron: "0 * * * * *", ScheduleKey: "job.seerr_queue_poll.schedule",
-				Run: func(ctx context.Context) error { _, err := queuePoll.Poll(ctx); return err },
-			})
+			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status"))
 		}
 	}
 
@@ -503,11 +437,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// (with its own ClaimDueChannels lease), driven by the shared heartbeat. The Runner's
 		// lease/batch are still constructed; only its standalone loop is gone.
 		chSweep := channels.NewRunner(engine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(scheduler.Job{
-			Name: "channel-sweep", Title: "Reconcile channels with Tunarr",
-			DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_sweep.schedule",
-			Run: func(ctx context.Context) error { chSweep.Sweep(ctx); return nil },
-		})
+		jobReg.Add(chSweep.Job())
 		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
 	}
 
@@ -628,11 +558,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// backfill) as one the model found itself. Nil-safe: a catalog without a TMDB
 		// client yields no adjacency and re-curation runs the LLM corpus alone.
 		recurateRunner := recurate.NewRunner(st, svc, log).WithAdjacency(cat)
-		jobReg.Add(scheduler.Job{
-			Name: "channel-recurate", Title: "Re-curate self-updating channels",
-			DefaultCron: "0 0 4 * * 0", ScheduleKey: "job.recurate.schedule",
-			Run: func(ctx context.Context) error { _, err := recurateRunner.Run(ctx); return err },
-		})
+		jobReg.Add(recurateRunner.Job())
 
 		suggestSvc = svc // *suggest.Service satisfies api.SuggestService directly
 		systemLLM = systemLLMSvc
@@ -714,12 +640,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 
 		// Filler catalog sync is a scheduler job now (§18.1) — same Syncer.Sync, on the
 		// shared heartbeat. Interval key: filler.sync_every.
-		fillerSyncer := syncer
-		jobReg.Add(scheduler.Job{
-			Name: "filler-sync", Title: "Sync filler catalog",
-			DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
-			Run: func(ctx context.Context) error { _, err := fillerSyncer.Sync(ctx); return err },
-		})
+		jobReg.Add(fillerSyncJob(syncer))
 		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 	}
 
@@ -742,33 +663,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			sched:  func() string { return set.str("backup.schedule") },
 		}
 		backupsSvc = bs
-		// ⚠ The job calls the SAME service the "Back up now" button does, rather than a
-		// second copy of write-then-prune. Two implementations of a retention policy is
-		// how the scheduled path and the manual path come to disagree about which files
-		// are safe to delete.
-		jobReg.Add(scheduler.Job{
-			Name: "backup", Title: "Back up the database",
-			DefaultCron: "0 30 3 * * *", ScheduleKey: "backup.schedule",
-			Run: func(ctx context.Context) error {
-				entry, err := bs.Run(ctx)
-				if err != nil {
-					return err
-				}
-				log.Info("backup written", "name", entry.Name, "bytes", entry.Bytes)
-				return nil
-			},
-		})
+		jobReg.Add(bs.Job(log))
 	} else if st != nil {
 		// No writer, but there IS a store — i.e. Postgres. (A store-less boot registers
-		// nothing at all, since there is no scheduler to list it on.)
-		jobReg.Add(scheduler.Job{
-			Name: "backup", Title: "Back up the database",
-			DefaultCron: "0 30 3 * * *", ScheduleKey: "backup.schedule",
-			DisabledReason: "Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule.",
-			// No Run func: the scheduler never calls one for a disabled job, and leaving it
-			// nil means a regression that DID schedule it panics loudly in tests rather
-			// than silently running a no-op that looks like a successful backup.
-		})
+		// nothing at all, since there is no scheduler to list it on.) The job is still
+		// LISTED, carrying why it cannot run — see unavailableBackupJob.
+		jobReg.Add(unavailableBackupJob(
+			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
 
 	// Restart control (§9.2, V13). Wired only when main passed a restart func — a handler

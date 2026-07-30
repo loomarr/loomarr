@@ -1063,6 +1063,54 @@ Internal playout (§9.1) serves segments to a **television**, which cannot hold 
 
 **Auto-approve.** When a proposal is produced for a user holding the `auto_approve` grant, it is approved automatically **iff** its new acquisitions keep that user at or under their cap; otherwise it stays `submitted` for an admin, with the reason recorded. Approval — auto or manual — runs the identical code path, so the two can never diverge on what approving means (§19: "`auto_approve` respects quota").
 
+### The required role is part of registering a route
+
+**Every route declares the role it needs, and the middleware enforces it.** The role is an
+argument at the registration site — not a sentence in a `Description`, and not a call a
+handler body may forget to make.
+
+⚠ **Anonymous is denied by DEFAULT.** A route with no declared role is refused, so the
+failure mode of forgetting is a closed door rather than an open one. The genuinely
+pre-authentication routes — login, logout, bootstrap, setup-state, version — say
+`RolePublic` **explicitly**, which makes the public surface a list you can read in one
+grep instead of an absence you have to infer.
+
+- **`RoleAdmin`** — the destructive and resource-spending surface (approve, channels,
+  users, settings, jobs, filler).
+- **`RoleMember`** — reads, and the member actions §11 already grants above: run suggestion
+  jobs, submit proposals. Being signed in is the whole requirement.
+- **`RolePublic`** — the five routes that must work before a session can exist.
+
+**This was found by probing, not by reading, and it had already gone wrong.** Enforcement
+lived in `requireAdmin` at the top of a handler body — 56 call sites against 83 registered
+operations. The other 27 consulted no role at all, so they were reachable with **no
+credential of any kind**. Two consequences that were live in shipped code:
+
+- ⚠ **`POST /v1/suggestions` returned 200 to an anonymous caller and invoked the LLM.**
+  Unauthenticated spend, with `created_by` stamped `""` because there was no user to
+  attribute it to. §11's own text above says a member "runs suggestion jobs" — the model
+  was right; nothing enforced it.
+- ⚠ **`RoleMember` was declared, returned by the authorizer, and never checked anywhere.**
+  The role existed as vocabulary only, which is why the gap survived: the tests could not
+  express it. The default harness's token authorizer resolves to admin-or-anonymous, so
+  member-vs-anonymous was **structurally untestable**, and a test asserting an anonymous
+  read passed under the name `…VisibleToAnyAuthenticatedUser`.
+
+**A test enumerates the registry** and asserts every operation declares a role, so a route
+added without one fails the gate rather than shipping open (§19).
+
+### Plain-mux routes carry the same guarantee
+
+The routes that are not typed JSON — SSE, backup download, icons, playout, SSO redirects —
+are mounted directly on the mux and **do not pass through the Huma middleware**. They
+therefore authorize with a shared guard that fails closed, rather than each re-deriving the
+rule inline.
+
+⚠ **Two handwritten guards had already diverged on what `nil` means:** the backup handler
+denied when the authorizer was absent, the events handler allowed. Same package, same
+concern, opposite fail-safe defaults — which is what an unshared rule decays into. The
+shared guard has one answer: no authorizer ⇒ denied.
+
 ### Bootstrap — first-run local admin
 First run creates a **Loomarr-native admin** with a local username + bcrypt password, working with **zero media-server config**: `POST /v1/setup/bootstrap` (username, password) succeeds **exactly once** — only while `CountAdmins() == 0` — and creates the owning admin (`password_hash` set). It is unauthenticated *because* it is gated on "no admin exists yet"; the first success closes the door (a second call 409s), and the wizard (§13) drives it as its first step. `API_TOKEN` works throughout as break-glass, including to run bootstrap in automation. Media-server users are added afterward via explicit import — the bootstrap admin does the importing.
 
@@ -1361,6 +1409,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `recurate` | Scheduled re-curation: a channel that keeps itself current (§8.2) |
 | `provision` | The Title/Key identity model and the acquisition state machine (§3–§4) |
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
+| `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
 
