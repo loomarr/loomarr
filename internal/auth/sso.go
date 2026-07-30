@@ -328,7 +328,17 @@ func (s *SSOService) oidcProvider(ctx context.Context, issuer string) (*oidc.Pro
 	if s.provider != nil && s.providerFor == issuer {
 		return s.provider, nil
 	}
-	p, err := oidc.NewProvider(ctx, strings.TrimRight(issuer, "/"))
+	// ⚠ **Do NOT normalise the trailing slash** — found by testing against Authentik.
+	//
+	// OIDC requires the issuer a client uses to match the provider's advertised `issuer`
+	// EXACTLY, and Authentik's is path-based WITH a trailing slash
+	// (`…/application/o/loomarr/`). Trimming it produced a hard failure: "issuer URL provided
+	// to client did not match the issuer URL returned by provider" — so an operator pasting
+	// Authentik's issuer exactly as Authentik displays it could never connect.
+	//
+	// Only whitespace is trimmed. The operator's value is passed through as given, because
+	// the provider is the authority on its own issuer and any cleanup we do is a guess.
+	p, err := oidc.NewProvider(ctx, strings.TrimSpace(issuer))
 	if err != nil {
 		return nil, fmt.Errorf("sso: reach provider at %s: %w", issuer, err)
 	}
