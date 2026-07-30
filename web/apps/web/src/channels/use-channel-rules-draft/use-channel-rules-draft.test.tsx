@@ -94,7 +94,9 @@ describe("useChannelRulesDraft", () => {
       expect(post).toBeDefined();
       // The EDITED policy is on the wire — the assertion that this previews the draft rather
       // than re-reading what is saved.
-      expect((post?.body as { policy: ChannelPolicy }).policy.ordering).toBe("sequential");
+      // Non-null after the toBeDefined above — Biome rightly refuses `(x?.y as T).z`, which
+      // would throw rather than fail the assertion if the request were missing.
+      expect((post as { body: { policy: ChannelPolicy } }).body.policy.ordering).toBe("sequential");
     });
   });
 
@@ -116,7 +118,7 @@ describe("useChannelRulesDraft", () => {
     await waitFor(() => {
       const patch = calls.find((c) => c.method === "PATCH");
       expect(patch).toBeDefined();
-      expect((patch?.body as { policy: ChannelPolicy }).policy.ordering).toBe("sequential");
+      expect((patch as { body: { policy: ChannelPolicy } }).body.policy.ordering).toBe("sequential");
     });
   });
 

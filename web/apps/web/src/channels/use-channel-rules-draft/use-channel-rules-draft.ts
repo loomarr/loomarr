@@ -42,10 +42,7 @@ const canonicalize = (p: ChannelPolicy | undefined): string =>
 // Shaped after useChannelFillerDraft on purpose — same interface, same debounce, same
 // render-time resync — so the page's two drafts behave identically rather than each having
 // its own personality.
-const useChannelRulesDraft = (
-  channelId: string,
-  policy: ChannelPolicy | undefined,
-): ChannelRulesDraft => {
+const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelRulesDraft => {
   const queryClient = useQueryClient();
 
   // The saved policy this draft was seeded from, as a canonical string — its identity, not its
