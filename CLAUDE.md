@@ -158,6 +158,26 @@ per worktree, which is disk rather than download.
 - Go module path, license, and name availability (§20) before anything is published.
 - Any gate that seems to require weakening a prime directive — that's a design conversation, not a workaround.
 
+## Agent skills
+
+Config the `mattpocock-skills` engineering skills read. Edit `docs/agents/*.md` directly.
+
+### Issue tracker
+
+GitHub Issues (`gh` CLI) — for work that is NOT a phase. ⚠ `PROGRESS.md` remains the phase
+record; an issue duplicating a phase row is a process bug. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, unchanged (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`). Only `wontfix` exists today. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+⚠ Single-context, and deliberately NOT the skills' `CONTEXT.md` layout: `docs/design.md` is
+already the single source of truth, so a parallel domain doc could silently disagree with it.
+Skills read the existing design docs instead. See `docs/agents/domain.md`.
+
 ## Companion & seed docs
 
 **Companion design docs — in `docs/`, authoritative for their own domains:**
