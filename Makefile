@@ -159,7 +159,7 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 # `process.env.CI` was undefined inside the image: the worker count fell back to Playwright's
 # half-the-cores default (2 on a 4-core runner, for 504 tests), AND `forbidOnly` never applied
 # — so a stray `test.only` would have silently narrowed the suite in CI while passing.
-PW_IMAGE := mcr.microsoft.com/playwright:v1.61.1-noble
+PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
