@@ -53,6 +53,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
 	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
+	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 }
 
 // testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
@@ -1415,5 +1416,80 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 		if strings.HasPrefix(a.Text, "oldest") || strings.HasPrefix(a.Text, "middle") {
 			t.Errorf("row %q survived a purge that should have removed it", a.Text)
 		}
+	}
+}
+
+// testRetentionPurge covers §5's retention on both backends — and, more importantly, what it
+// must NOT remove.
+func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+
+	old := time.Now().Add(-100 * 24 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
+
+	// Jobs: one of each status, all OLD, so status is the only thing distinguishing them.
+	for _, j := range []Job{
+		{ID: "j-done", Kind: "suggest", Status: "done", UpdatedAt: old},
+		{ID: "j-failed", Kind: "suggest", Status: "failed", UpdatedAt: old},
+		{ID: "j-queued", Kind: "suggest", Status: "queued", UpdatedAt: old},
+		{ID: "j-running", Kind: "suggest", Status: "running", UpdatedAt: old},
+		{ID: "j-fresh", Kind: "suggest", Status: "done", UpdatedAt: recent},
+	} {
+		if err := st.CreateJob(ctx, j); err != nil {
+			t.Fatalf("seed job %s: %v", j.ID, err)
+		}
+	}
+
+	n, err := st.PurgeFinishedJobs(ctx, time.Now().Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("purge jobs: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("purged %d jobs, want 2 (done + failed, both old)", n)
+	}
+	// ⚠ The invariants: in-flight work survives regardless of age, and a recent finished job
+	// is inside the window.
+	for _, id := range []string{"j-queued", "j-running", "j-fresh"} {
+		if _, err := st.GetJob(ctx, id); err != nil {
+			t.Errorf("job %s was purged; only finished jobs past the window may go (%v)", id, err)
+		}
+	}
+	for _, id := range []string{"j-done", "j-failed"} {
+		if _, err := st.GetJob(ctx, id); err == nil {
+			t.Errorf("job %s survived a purge that should have removed it", id)
+		}
+	}
+
+	// Proposals: one of each status, all OLD.
+	for _, p := range []Proposal{
+		{ID: "p-denied", Status: "denied", UpdatedAt: old},
+		{ID: "p-approved", Status: "approved", UpdatedAt: old},
+		{ID: "p-submitted", Status: "submitted", UpdatedAt: old},
+		{ID: "p-fresh-denied", Status: "denied", UpdatedAt: recent},
+	} {
+		if err := st.CreateProposal(ctx, p); err != nil {
+			t.Fatalf("seed proposal %s: %v", p.ID, err)
+		}
+	}
+
+	n, err = st.PurgeDeniedProposals(ctx, time.Now().Add(-90*24*time.Hour))
+	if err != nil {
+		t.Fatalf("purge proposals: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("purged %d proposals, want 1 (the old denied one)", n)
+	}
+	// ⚠ THE AUDIT TRAIL. An approved proposal is the record that someone authorized spending
+	// real resources (§7); a submitted one is a member still waiting for an answer. Neither
+	// may be aged out.
+	for _, id := range []string{"p-approved", "p-submitted", "p-fresh-denied"} {
+		if _, err := st.GetProposal(ctx, id); err != nil {
+			t.Errorf("proposal %s was purged; only OLD DENIED proposals may go (%v)", id, err)
+		}
+	}
+	if _, err := st.GetProposal(ctx, "p-denied"); err == nil {
+		t.Error("the old denied proposal survived a purge that should have removed it")
 	}
 }

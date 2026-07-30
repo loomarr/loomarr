@@ -206,9 +206,36 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		})
 		// Session cleanup is its own scheduler job now (was piggybacking the reconcile
 		// ticker via the janitor).
-		// The feed is the one append-only table here, so it is the one that needs a purge —
-		// and `activity.retention` is CONSUMED in the same PR that declares it, unlike
-		// `jobs.retention`/`proposals.retention`, which are still read by nothing (§5).
+		// Retention for the accumulating suggester tables (§5, §18.1). `jobs.retention` and
+		// `proposals.retention` were declared long before anything read them; this is the
+		// reader.
+		//
+		// ⚠ PROPOSALS FIRST, THEN JOBS. `proposals.job_id` has no foreign key, so the
+		// ordering constraint is ours to keep: removing a job first would leave a proposal
+		// pointing at nothing. No read path joins the two, so an orphan is cosmetic — but a
+		// purge that manufactures one on every run makes the data harder to reason about for
+		// no gain.
+		retentionStore := st
+		jobReg.Add(scheduler.Job{
+			Name: "retention-purge", Title: "Clean up old jobs and proposals",
+			DefaultCron: "0 30 4 * * *", ScheduleKey: "job.retention_purge.schedule",
+			Run: func(ctx context.Context) error {
+				now := time.Now()
+				proposals, err := retentionStore.PurgeDeniedProposals(ctx, now.Add(-set.dur("proposals.retention")))
+				if err != nil {
+					return err
+				}
+				jobs, err := retentionStore.PurgeFinishedJobs(ctx, now.Add(-set.dur("jobs.retention")))
+				if err != nil {
+					return err
+				}
+				if proposals > 0 || jobs > 0 {
+					log.Info("retention purge", "denied_proposals", proposals, "finished_jobs", jobs)
+				}
+				return nil
+			},
+		})
+
 		activityStore := st
 		jobReg.Add(scheduler.Job{
 			Name: "activity-purge", Title: "Clean up old activity",

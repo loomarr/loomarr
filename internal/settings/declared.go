@@ -566,6 +566,11 @@ func declared() []Setting {
 			Doc: "How long the Dashboard's recent-activity entries are kept before they're cleaned up.",
 		},
 		{
+			Key: "job.retention_purge.schedule", EnvVar: "JOB_RETENTION_PURGE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 30 4 * * *",
+			Doc: "When to clean up finished suggestion jobs and declined requests.",
+		},
+		{
 			Key: "job.activity_purge.schedule", EnvVar: "JOB_ACTIVITY_PURGE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 15 4 * * *",
 			Doc: "When to clean up old recent-activity entries.",
