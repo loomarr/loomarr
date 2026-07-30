@@ -110,6 +110,10 @@ type Scheduler struct {
 // New builds a scheduler over the given registry. schedule resolves each job's cron from its
 // settings key (falling back to the job's default cron).
 func New(st ScheduleStore, reg *Registry, schedule ScheduleFn, now func() time.Time, log *slog.Logger) *Scheduler {
+	// ⚠ Sealed here because this is where the job set stops being able to change: the map
+	// below is a SNAPSHOT, so a later reg.Add would be accepted, listed by Jobs(), and never
+	// scheduled. Sealing turns that silent no-op into a panic naming the job.
+	reg.seal()
 	jobs := make(map[string]Job, len(reg.jobs))
 	order := make([]string, 0, len(reg.jobs))
 	for _, j := range reg.jobs {
