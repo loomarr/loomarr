@@ -172,3 +172,34 @@ func TestEnforce_Deterministic(t *testing.T) {
 		}
 	}
 }
+
+// ⚠ **`scope.collections` does NOT bind, and this pins that it is honest about it.**
+//
+// The field exists on ScopePolicy and round-trips through PATCH → policy_json → the engine,
+// but no filter reads it: the scope pass above checks Series, Era, Genres and RuntimeMax and
+// skips Collections entirely. There is no library-adapter support for listing collections or
+// resolving membership either (§12 records it as ORPHANED, pending `scripts/capture-collections.sh`).
+//
+// So this asserts the CURRENT truth rather than the desired one: setting a collection scope
+// filters nothing. It is deliberately not skipped or commented out — a test that documents an
+// inert field is what stops the next reader assuming it works, and it will fail the moment
+// collections starts binding, which is exactly when someone should come back and rewrite it
+// into the positive assertion.
+func TestEnforce_CollectionsDoesNotBindYet(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:1", "Nominally In The Collection", "", 1994),
+		ratedEntry("movie:tmdb:2", "Nominally Outside It", "", 1994),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
+		Collections: []string{"star-trek"},
+	}}}
+
+	keys := programKeys(computeWithPolicy(entries, avail, p))
+	if len(keys) != 2 {
+		t.Fatalf("collections now filters (%d of 2 scheduled) — the field has started binding.\n"+
+			"That is good news, and this test is now wrong: rewrite it as the positive assertion "+
+			"(in-collection scheduled, out-of-collection filtered) and drop the Collections "+
+			"exclusion from suggest.scopeNarrows.", len(keys))
+	}
+}
