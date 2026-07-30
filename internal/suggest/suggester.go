@@ -578,6 +578,11 @@ func capitalizeASCII(s string) string {
 // all-empty scope (e.g. left after a phantom series intersection dropped its only series)
 // narrows nothing, so the caller nils it — a rule's What should be nil ("inherit channel
 // scope"), never a non-nil no-op that reads as an active-but-empty narrower.
+// `Collections` IS counted. It was excluded while inert — nothing filtered on it, so a
+// collections-only scope would have survived the nil-out below as a "narrower" that narrows
+// nothing. It now binds in the scheduler's scope filter (schedule/slotting.go, via the
+// membership stamped at reconcile — programming-design §2.2), so it constrains a rule's What
+// exactly as Series or Era does and must vote accordingly.
 func scopeNarrows(s *schedule.ScopePolicy) bool {
 	if s == nil {
 		return false

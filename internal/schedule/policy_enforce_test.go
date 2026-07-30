@@ -172,3 +172,86 @@ func TestEnforce_Deterministic(t *testing.T) {
 		}
 	}
 }
+
+// ⚠ **`scope.collections` does NOT bind, and this pins that it is honest about it.**
+//
+// The field exists on ScopePolicy and round-trips through PATCH → policy_json → the engine,
+// but no filter reads it: the scope pass above checks Series, Era, Genres and RuntimeMax and
+// skips Collections entirely. There is no library-adapter support for listing collections or
+// resolving membership either (§12 records it as ORPHANED, pending `scripts/capture-collections.sh`).
+//
+// So this asserts the CURRENT truth rather than the desired one: setting a collection scope
+// filters nothing. It is deliberately not skipped or commented out — a test that documents an
+// inert field is what stops the next reader assuming it works, and it will fail the moment
+// collections starts binding, which is exactly when someone should come back and rewrite it
+// into the positive assertion.
+// boxSetEntry builds a movie entry with media-server collection membership STAMPED, as the
+// reconcile heal leaves it (programming-design §2.2).
+func boxSetEntry(key, title string, boxSets ...string) schedule.LineupEntry {
+	e := ratedEntry(key, title, "", 1994)
+	e.BoxSetIDs = boxSets
+	e.BoxSetsResolved = true
+	return e
+}
+
+// A collections scope keeps stamped members and drops stamped non-members
+// (programming-design §2.2). This replaces the earlier inert-field test, exactly as that
+// test's own failure message instructed when the field started binding.
+func TestEnforce_CollectionsBind(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		boxSetEntry("movie:tmdb:1", "In The Collection", "star-trek"),
+		boxSetEntry("movie:tmdb:2", "Outside It", "halloween"),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
+		Collections: []string{"star-trek"},
+	}}}
+
+	keys := programKeys(computeWithPolicy(entries, avail, p))
+	if !hasKey(keys, "movie:tmdb:1") {
+		t.Errorf("a stamped member of the scoped collection was excluded; got %v", keys)
+	}
+	if hasKey(keys, "movie:tmdb:2") {
+		t.Errorf("a stamped NON-member scheduled anyway — the collections filter is not binding; got %v", keys)
+	}
+}
+
+// ⚠ An UNRESOLVED entry airs. Membership is stamped by the reconcile heal, so before it has
+// answered (media server down, or a channel reconciled once before the resolver was wired)
+// BoxSetsResolved is false — and dropping those would let a dependency outage silently empty a
+// channel to dead air. Scope is a taste filter; the fail-CLOSED rule belongs to audience (§4),
+// and it points the other way. This is the assertion that fails if someone "tidies" boxSetOK
+// into treating unresolved as a non-member.
+func TestEnforce_CollectionsFailOpenWhenUnresolved(t *testing.T) {
+	unresolved := ratedEntry("movie:tmdb:3", "Never Stamped", "", 1994) // BoxSetsResolved stays false
+	entries := []schedule.LineupEntry{
+		boxSetEntry("movie:tmdb:1", "In The Collection", "star-trek"),
+		unresolved,
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:3": "l3"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
+		Collections: []string{"star-trek"},
+	}}}
+
+	keys := programKeys(computeWithPolicy(entries, avail, p))
+	if !hasKey(keys, "movie:tmdb:3") {
+		t.Errorf("an UNRESOLVED entry was filtered out — a down media server would empty the "+
+			"lineup. scope.collections must fail open (§2.2); got %v", keys)
+	}
+}
+
+// An empty collections scope admits everything, including entries that were never stamped —
+// the additive default every other scope field follows. Without this, wiring the resolver
+// would change behaviour on channels that use no collection scope at all.
+func TestEnforce_CollectionsEmptyScopeAdmitsAll(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		boxSetEntry("movie:tmdb:1", "In Some Collection", "star-trek"),
+		ratedEntry("movie:tmdb:2", "Never Stamped", "", 1994),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
+	p := schedule.ChannelPolicy{} // no scope at all
+
+	if keys := programKeys(computeWithPolicy(entries, avail, p)); len(keys) != 2 {
+		t.Errorf("an empty collections scope filtered something (%d of 2 scheduled); got %v", len(keys), keys)
+	}
+}

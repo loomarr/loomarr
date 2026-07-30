@@ -556,6 +556,25 @@ components:
         - aiTagged
         - tagged
       type: object
+    CollectionsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CollectionsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        collections:
+          items:
+            $ref: "#/components/schemas/LibraryCollection"
+          type:
+            - array
+            - "null"
+      required:
+        - collections
+      type: object
     CreateChannelInputBody:
       additionalProperties: false
       properties:
@@ -1674,6 +1693,20 @@ components:
         - tools
         - recommended
         - why
+      type: object
+    LibraryCollection:
+      additionalProperties: false
+      properties:
+        childCount:
+          format: int64
+          type: integer
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - id
+        - name
       type: object
     LineupContext:
       additionalProperties: false
@@ -4633,6 +4666,25 @@ paths:
       summary: Run a job now
       tags:
         - jobs
+  /v1/library/collections:
+    get:
+      operationId: listLibraryCollections
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List media-server collections
+      tags:
+        - library
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."

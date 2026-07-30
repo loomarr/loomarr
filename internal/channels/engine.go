@@ -87,6 +87,10 @@ type Engine struct {
 	// franchises heals a movie entry's TMDB collection id (§5 franchise ordering) so a
 	// franchise's films stay together, in release order. Optional (nil ⇒ no grouping).
 	franchises FranchiseResolver
+	// boxSets stamps a title's media-server collection membership (§2.2) so scope.collections
+	// enforces with no library I/O. Optional (nil ⇒ membership never resolves and the filter
+	// admits everything, rather than emptying a lineup).
+	boxSets BoxSetResolver
 	// notify publishes a UI-facing `channel` SSE frame after a reconcile changes a
 	// channel, so the Channels/detail pages update live without a manual refresh
 	// (§9 self-maintaining; the "no rebuild button" model). Optional: nil ⇒ no emit
@@ -177,6 +181,27 @@ type FranchiseResolver interface {
 // reconcile (§5). Optional (nil ⇒ no franchise grouping). Returns the engine for chaining.
 func (e *Engine) WithFranchises(r FranchiseResolver) *Engine {
 	e.franchises = r
+	return e
+}
+
+// BoxSetResolver returns the MEDIA-SERVER collections (Emby/Jellyfin BoxSets) a title
+// belongs to, backing scope.collections (programming-design §2.2). An empty slice with
+// ok=true is a real answer — "belongs to no collection" — and is stamped as settled so it
+// is never re-fetched; ok=false means it could not be resolved (media server down, no
+// library wired) and the entry is left for the next pass.
+//
+// ⚠ Nothing to do with FranchiseResolver above, which resolves the TMDB franchise id.
+// Same word, different namespaces (programming-design §2.2).
+type BoxSetResolver interface {
+	BoxSets(ctx context.Context, key provision.Key) (boxSetIDs []string, ok bool, err error)
+}
+
+// WithBoxSets wires the resolver that stamps a title's media-server collection membership
+// at reconcile (§2.2). Optional (nil ⇒ membership never resolves, and scope.collections
+// consequently admits everything rather than emptying a lineup — see boxSetOK's fail-open
+// rule). Returns the engine for chaining.
+func (e *Engine) WithBoxSets(r BoxSetResolver) *Engine {
+	e.boxSets = r
 	return e
 }
 
