@@ -5,6 +5,7 @@ cd "$ROOT"
 RETIRED=(
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
   'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
+  'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh)'
 ALLOW_LINE='[Rr]etired|[Ss]uperseded|no longer exists|was deleted|used to'
