@@ -3,21 +3,29 @@
 How the engineering skills should consume this repo's domain documentation when
 exploring the codebase.
 
-## ⚠ This repo already has a source of truth, and it is not `CONTEXT.md`
+## Two files, two questions — `CONTEXT.md` and `docs/design.md`
 
-The skills' standard layout is a root `CONTEXT.md` plus `docs/adr/`. **Loomarr
-deliberately does not use it.** CLAUDE.md names `docs/design.md` the single source of
-truth and requires that code deviating from it update the doc *first*, in the same PR —
-"never let the doc and the code disagree silently".
+**`CONTEXT.md` (repo root) is the glossary: what a word MEANS.** It is a glossary and
+nothing else — deliberately devoid of behavior, endpoints, and decisions. Read it first
+so your output uses the project's own vocabulary.
 
-A `CONTEXT.md` scaffolded alongside that would be a second authority describing the
-same domain, free to drift from the first. That is exactly the failure the prime
-directive exists to prevent, so the domain model lives where it already lives.
+**`docs/design.md` is the source of truth: what the system DOES.** CLAUDE.md's prime
+directive stands unchanged — code deviating from it updates the doc *first*, in the same
+PR, and its numbered sections (`§7`, `§11`, …) are cited from ~2,600 places in the code.
 
-**Do not create `CONTEXT.md`, `CONTEXT-MAP.md`, or `docs/adr/` in this repo.** If a
-skill's instructions assume they exist, read the files below instead. If a skill wants
-to *record* a decision, it belongs in `docs/design.md` or the relevant companion doc,
-under the doc-first rule.
+These are not competing authorities, which is the thing worth being precise about: a
+glossary and a behavior spec answer different questions. **Where they appear to overlap,
+`docs/design.md` wins** — every `CONTEXT.md` entry carries the § reference that governs
+its behavior, so the glossary points at the authority rather than restating it.
+
+⚠ **Do not let `CONTEXT.md` grow into a spec.** The moment it starts describing flows,
+endpoints, or decisions, it becomes the second authority that CLAUDE.md's doc-first rule
+exists to prevent. Add a term; put the behavior behind its §.
+
+⚠ **`docs/adr/` does not exist here, and creating one is a decision, not a default.**
+Architectural decisions are recorded in `docs/design.md` and the companion docs, in prose,
+with the reasoning inline. A skill that wants to record an ADR should say so and let the
+maintainer choose.
 
 ## Before exploring, read these
 

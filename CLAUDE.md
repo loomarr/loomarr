@@ -197,9 +197,10 @@ The five canonical roles, unchanged (`needs-triage`, `needs-info`, `ready-for-ag
 
 ### Domain docs
 
-⚠ Single-context, and deliberately NOT the skills' `CONTEXT.md` layout: `docs/design.md` is
-already the single source of truth, so a parallel domain doc could silently disagree with it.
-Skills read the existing design docs instead. See `docs/agents/domain.md`.
+Single-context. **`CONTEXT.md` (repo root) is the glossary — what a word MEANS**; it holds no
+behavior. **`docs/design.md` stays the source of truth — what the system DOES**, and wins on
+every overlap. ⚠ A `CONTEXT.md` that grows into a spec becomes the second authority the
+doc-first directive exists to prevent. No `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Companion & seed docs
 
