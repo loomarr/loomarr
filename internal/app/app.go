@@ -120,6 +120,11 @@ func flavorOrDefault(set resolved) library.Flavor {
 //	playout device token     §11 rotation-safe (a func, never a captured value)
 //	scheduler start          §18.1 — after every subsystem has registered its jobs
 //	api.Options              the single assembly point
+//
+// lastPlayoutResolver records the resolver the most recent BuildHandler constructed, for
+// the package's own tests. Never read by production code — see the note at its assignment.
+var lastPlayoutResolver *playoutResolver
+
 func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov Overrides) (http.Handler, error) {
 	// Readiness is true only once the store is connected + migrated (§17).
 	ready := func() (bool, string) {
@@ -347,10 +352,33 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// where BOTH halves already exist — the engine that answers "what airs when" and the
 		// library client that resolves an item to a streamable URL.
 		//
-		// The resolver and the session manager need each other: the manager spawns encodes that
-		// ask the resolver for a profile, and the profile depends on how many channels the
-		// manager is running (the load-aware ladder). The cycle is broken with a func — the
-		// resolver holds `activeChannels`, assigned after the manager exists.
+		// ⚠ **The manager is built FIRST, and the resolver second.** The profile depends on
+		// how many channels are encoding (the load-aware ladder), so the resolver needs
+		// `playoutMgr.ActiveCount`.
+		//
+		// This used to read "the cycle is broken with a func … assigned after the manager
+		// exists", and there was no cycle: the manager never references the resolver. The
+		// resolver was simply constructed 45 lines too early, and the field was back-patched
+		// to compensate. Since `activeChannels` is called UNGUARDED, forgetting that patch
+		// was a nil-func panic when a viewer tuned in — and nothing tested it. Building in
+		// dependency order puts the field in the literal, where an omission is visible.
+		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
+		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
+		// rather than at boot — the worst place to find out.
+		playoutTokenFn := func() string {
+			if secrets == nil {
+				return ""
+			}
+			return secrets.Value(settings.SecretPlayout)
+		}
+		playoutMgr := playout.NewManager(
+			playoutSpawner(set.str("playout.ffmpeg_path"),
+				func() string { return set.str("server.public_url") },
+				playoutTokenFn, log),
+			set.intv("playout.max_channels"),
+			playout.DefaultGrace,
+			log,
+		)
 		playoutRes = &playoutResolver{
 			engine: engine, lib: lib, now: time.Now,
 			// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
@@ -386,25 +414,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			audioLanguage: func() string { return set.str("playout.audio_language") },
 			probeAudio:    playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path")),
 			log:           log,
+			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
+			// It is called UNGUARDED (playout.Resolve → r.activeChannels()), so a missing
+			// assignment is a nil-func panic on the quality-ladder path — i.e. when a viewer
+			// tunes in, which is the worst place to discover it. Verified: dropping the old
+			// back-patch broke no test.
+			//
+			// There was never a construction cycle to break: the manager does not reference
+			// the resolver, so the resolver simply had to be built AFTER it.
+			activeChannels: playoutMgr.ActiveCount,
 		}
-		// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
-		// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
-		// rather than at boot — the worst place to find out.
-		playoutTokenFn := func() string {
-			if secrets == nil {
-				return ""
-			}
-			return secrets.Value(settings.SecretPlayout)
-		}
-		playoutMgr := playout.NewManager(
-			playoutSpawner(set.str("playout.ffmpeg_path"),
-				func() string { return set.str("server.public_url") },
-				playoutTokenFn, log),
-			set.intv("playout.max_channels"),
-			playout.DefaultGrace,
-			log,
-		)
-		playoutRes.activeChannels = playoutMgr.ActiveCount
 		// A channel starting or stopping is a STRUCTURAL change the dashboard should see
 		// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET
 		// /v1/playout/sessions is truth). Deliberately NOT fired per ffmpeg progress sample —
@@ -422,6 +441,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		})
 		playoutSessions = playoutMgr
 		playoutResolverSvc = playoutRes
+		// ⚠ A test-only observation point, unexported and write-only from here.
+		//
+		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
+		// Profile, so leaving one unset is a panic when a viewer tunes in. `Profile` is
+		// invoked by the spawner rather than over HTTP, so no route reaches it and no
+		// end-to-end test can observe the wiring. This lets the package's own test assert
+		// that BuildHandler wired them — the assertion that was missing when the old
+		// back-patch could be deleted with every test still green.
+		lastPlayoutResolver = playoutRes
 		playoutGuideSvc = playoutRes
 		// A live encoder never exits on its own (playout/process.go), so shutdown MUST tear
 		// them down explicitly or they outlive the process that started them.
