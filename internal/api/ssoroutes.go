@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"net/url"
@@ -24,9 +25,16 @@ import (
 // browser follows is not a client contract, and generating an orval hook for it would invite
 // a fetch that cannot work.
 //
-// ⚠ **Unauthenticated by necessity** — this is how you sign IN. What protects them is the
-// state/nonce pair (a callback that did not come from our redirect is refused) and, after
-// verification, §11's allowlist. Neither route can create a user.
+// ⚠ **Unauthenticated by necessity** — this is how you sign IN. Three things protect them:
+// the state COOKIE (below) binds the callback to the browser that started the login, the
+// state/nonce pair bounds it in time and to one use, and §11's allowlist decides access after
+// the token verifies. Neither route can create a user.
+//
+// ⚠ **The cookie is the CSRF protection, not the state map.** An earlier version of this
+// comment credited "the state/nonce pair", and that was wrong: `pending` lives in one process
+// and answers "did a login start here?", never "did THIS browser start it?". Nor does the
+// `X-Loomarr-Csrf` header help — it guards mutating Huma routes, and these are plain-mux GETs
+// registered outside that middleware. Do not delete the cookie check as redundant.
 
 // SSOService is the credential path the routes drive. nil ⇒ the routes are not mounted at
 // all, which is the honest posture for an unconfigured provider: a Sign-in-with button that
@@ -50,6 +58,49 @@ func (s *Server) registerSSO(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/auth/sso/callback", s.ssoCallback)
 }
 
+// ssoStateCookie is the name of the short-lived cookie that binds a callback to the browser
+// that started the login.
+const ssoStateCookie = "loomarr_sso_state"
+
+// ssoStateTTL bounds the cookie's life. Matches the service's pendingTTL: two different
+// answers to "how long may a login take" would mean the shorter one silently governs, and a
+// mismatch would read as a flaky provider rather than a deliberate limit.
+const ssoStateTTL = 10 * time.Minute
+
+// stateCookie binds a pending login to this browser.
+//
+// ⚠ **`SameSite=Lax` is load-bearing, and `Strict` would break every SSO login.** The callback
+// arrives as a cross-site TOP-LEVEL NAVIGATION from the provider, and a Strict cookie is not
+// sent on those — so Strict does not harden this, it silently guarantees the check can never
+// pass. Verified against real Authelia and Authentik, which is the only place this shows up:
+// no stub IdP performs a real cross-site redirect.
+//
+// Scoped to /v1/auth/sso so it is never attached to ordinary app requests, and Secure follows
+// the same COOKIE_SECURE policy as the session cookie (§11) — a plain-HTTP LAN install must
+// still be able to sign in.
+func (s *Server) stateCookie(r *http.Request, state string, expires time.Time) http.Cookie {
+	return http.Cookie{
+		Name:     ssoStateCookie,
+		Value:    state,
+		Path:     "/v1/auth/sso",
+		Expires:  expires,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   s.secureCookie(r),
+	}
+}
+
+// clearStateCookie expires the state cookie. Called on every callback outcome, so one
+// browser round trip can never satisfy two callbacks.
+//
+// Attributes must MATCH the ones it was set with — a browser keys a cookie by name+domain+
+// path, so an expiry with the wrong Path deletes nothing and leaves the original in place.
+func (s *Server) clearStateCookie(w http.ResponseWriter, r *http.Request) {
+	cookie := s.stateCookie(r, "", time.Unix(0, 0))
+	cookie.MaxAge = -1
+	http.SetCookie(w, &cookie)
+}
+
 // ssoStart redirects to the provider.
 func (s *Server) ssoStart(w http.ResponseWriter, r *http.Request) {
 	// `next` is where to land after signing in, so a deep link survives the round trip.
@@ -58,7 +109,7 @@ func (s *Server) ssoStart(w http.ResponseWriter, r *http.Request) {
 	// page, and the domain in the address bar would have been ours right up to the hop.
 	next := safeReturnPath(r.URL.Query().Get("next"))
 
-	authURL, _, err := s.sso.Start(r.Context(), next)
+	authURL, state, err := s.sso.Start(r.Context(), next)
 	if err != nil {
 		if errors.Is(err, auth.ErrSSONotConfigured) {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Single sign-on isn't set up",
@@ -71,6 +122,14 @@ func (s *Server) ssoStart(w http.ResponseWriter, r *http.Request) {
 			"Loomarr couldn't load the provider's configuration. Check the issuer address in Settings.")
 		return
 	}
+
+	// ⚠ Set BEFORE the redirect. `http.Redirect` writes the status line and headers
+	// immediately, so a Set-Cookie after it is discarded by net/http — the same structural
+	// property `redirectToLogin` relies on to guarantee no session escapes a refusal. Here it
+	// cuts the other way: get the order wrong and the cookie is silently never sent, which
+	// presents as "SSO always says the login expired".
+	cookie := s.stateCookie(r, state, time.Now().Add(ssoStateTTL))
+	http.SetCookie(w, &cookie)
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -86,7 +145,26 @@ func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, expires, u, claims, returnTo, err := s.sso.Exchange(r.Context(), q.Get("state"), q.Get("code"))
+	// ⚠ **THE CSRF CHECK, and it must run BEFORE the exchange.** The state cookie is the only
+	// thing proving this browser is the one that started the login — the pending map proves
+	// only that SOME login started on this server. Without it, someone the provider
+	// authenticates can capture their own ?state=&code= redirect and get a victim's browser
+	// to follow it, landing the victim in the app signed in AS THEM.
+	//
+	// Before the exchange, not after: an unbound callback should never spend a code or reach
+	// the provider at all.
+	state := q.Get("state")
+	sc, err := r.Cookie(ssoStateCookie)
+	if err != nil || sc.Value == "" || subtle.ConstantTimeCompare([]byte(sc.Value), []byte(state)) != 1 {
+		s.clearStateCookie(w, r)
+		s.log.Warn("sso: callback did not carry the state cookie from this browser")
+		s.redirectToLogin(w, r, "sso_expired")
+		return
+	}
+	// Single use, whatever happens next.
+	s.clearStateCookie(w, r)
+
+	token, expires, u, claims, returnTo, err := s.sso.Exchange(r.Context(), state, q.Get("code"))
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrSSONotConfigured):
@@ -116,7 +194,11 @@ func (s *Server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("sso login", "user", u.ID, "matched_on", claims.MatchName())
 
 	// Back to wherever they started, or the app root.
-	dest := returnTo
+	//
+	// ⚠ Re-validated HERE, not merely at /start. This value crossed a package boundary and a
+	// map that outlives the request, so the header defends itself rather than trusting a gate
+	// three hops upstream — the check that matters is the one next to the Location it writes.
+	dest := safeReturnPath(returnTo)
 	if dest == "" {
 		dest = "/"
 	}
@@ -142,14 +224,28 @@ func (s *Server) redirectToLogin(w http.ResponseWriter, r *http.Request, reason 
 
 // safeReturnPath keeps only a same-app path, so `next` can never become an open redirect.
 //
-// Rejects anything with a scheme or host, and `//evil.test` — which browsers treat as
-// protocol-relative and would follow off-site despite looking like a path.
+// ⚠ **PARSED, not prefix-matched, and the backslash is why.** An earlier version checked
+// HasPrefix("/") + !HasPrefix("//") + !Contains("://"), which reads as thorough and let
+// `/\evil.test` straight through: browsers resolving a special-scheme URL treat `\` as `/`
+// (WHATWG URL), so that Location navigates to https://evil.test while looking like a path.
+// Go does not normalise it away either — `path.Clean` treats `\` as an ordinary character and
+// `http.Redirect` emits the value verbatim.
+//
+// The backslash is rejected explicitly BEFORE parsing, because url.Parse does not apply the
+// WHATWG backslash rule — it would report an empty Host and wave `/\evil.test` through. A
+// narrower fix (rejecting only a leading `/\`) still admits `/\/evil.test`, which is why this
+// rejects the character anywhere in the value.
 func safeReturnPath(next string) string {
 	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
 		return ""
 	}
-	if strings.Contains(next, "://") {
+	if strings.Contains(next, `\`) {
 		return ""
 	}
-	return next
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" ||
+		!strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return ""
+	}
+	return u.RequestURI()
 }

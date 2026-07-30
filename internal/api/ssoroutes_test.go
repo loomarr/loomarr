@@ -79,6 +79,59 @@ func get(t *testing.T, srv *httptest.Server, path string) *http.Response {
 	return resp
 }
 
+// startThenCallback plays the REAL two-step flow: hit /start, carry the state cookie it sets
+// into /callback, exactly as a browser would.
+//
+// ⚠ The callback now REFUSES a request that does not carry that cookie, so a test that skips
+// /start is testing the CSRF refusal rather than whatever it meant to test. This helper exists
+// so that is a deliberate choice (callbackWithoutStateCookie) rather than an accident.
+func startThenCallback(t *testing.T, srv *httptest.Server, callbackQuery string) *http.Response {
+	t.Helper()
+	client := noRedirectClient()
+
+	startResp, err := client.Get(srv.URL + "/v1/auth/sso/start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = startResp.Body.Close()
+
+	var state *http.Cookie
+	for _, c := range startResp.Cookies() {
+		if c.Name == "loomarr_sso_state" && c.Value != "" {
+			state = c
+		}
+	}
+	if state == nil {
+		t.Fatal("/start set no state cookie — the callback can never be bound to this browser")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/sso/callback?"+callbackQuery, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: state.Name, Value: state.Value})
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
+// sessionCookieValue returns the session cookie's value, or "" if none was issued with one.
+//
+// ⚠ Asserts on the VALUE, never merely the name: a refusal emits an empty-token cookie either
+// way, so a name-only check passes against a sabotage that issues a session on refusal. That
+// mistake was made once here already.
+func sessionCookieValue(resp *http.Response) string {
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			return c.Value
+		}
+	}
+	return ""
+}
+
 // With no provider wired the routes are NOT MOUNTED — a 404, not a 501. An unconfigured
 // install should look like one that never had SSO, so nothing offers a button that cannot work.
 func TestSSORoutes_NotMountedWithoutAProvider(t *testing.T) {
@@ -111,6 +164,14 @@ func TestSSOStart_RedirectsToTheProvider(t *testing.T) {
 // `//evil.test` is in the table deliberately: browsers treat a protocol-relative URL as
 // off-site despite it looking like a path, which is the case a naive `HasPrefix("/")` check
 // lets through.
+//
+// ⚠ **The BACKSLASH forms are the ones the first version of this table missed**, and they got
+// past the guard for a year of review because they satisfy every check that reads as thorough:
+// they start with `/`, they are not `//`, they contain no `://`. Browsers resolving a
+// special-scheme URL treat `\` as `/` (WHATWG URL), so `/\evil.test` navigates to
+// https://evil.test — and Go emits it verbatim, since `path.Clean` treats `\` as an ordinary
+// character. `/\/evil.test` is here too: it is what a narrower fix (rejecting only a leading
+// `/\`) would still let through.
 func TestSSOStart_RefusesAnOffSiteReturnPath(t *testing.T) {
 	for _, next := range []string{
 		"https://evil.test/login",
@@ -119,6 +180,10 @@ func TestSSOStart_RefusesAnOffSiteReturnPath(t *testing.T) {
 		"//evil.test/path",
 		"javascript:alert(1)",
 		"https://loomarr.test.evil.test/",
+		`/\evil.test`,
+		`/\evil.test/login`,
+		`/\/evil.test`,
+		`/\\evil.test`,
 	} {
 		t.Run(next, func(t *testing.T) {
 			fake := &fakeSSO{available: true, authURL: "https://auth.test/authorize"}
@@ -161,16 +226,111 @@ func TestSSOCallback_IssuesTheSessionAndReturns(t *testing.T) {
 		returnTo:  "/guide",
 	})
 
-	resp := get(t, srv, "/v1/auth/sso/callback?state=state-1&code=abc")
+	resp := startThenCallback(t, srv, "state=state-1&code=abc")
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("callback → %d, want 302", resp.StatusCode)
 	}
 	if loc := resp.Header.Get("Location"); loc != "/guide" {
 		t.Errorf("Location = %q, want the deep link the login started from", loc)
 	}
-	if !strings.Contains(resp.Header.Get("Set-Cookie"), auth.CookieName) {
+	if sessionCookieValue(resp) == "" {
 		t.Errorf("no session cookie in %q", resp.Header.Get("Set-Cookie"))
 	}
+}
+
+// ⚠ **THE CSRF GATE (§11).** A callback that does not carry the state cookie THIS browser was
+// given at /start is refused — even when the state, the code, and the provider's token are all
+// perfectly valid.
+//
+// Without it, someone the provider authenticates can capture their own ?state=&code= redirect
+// and get a victim's browser to follow it; the victim lands in the app signed in AS THE
+// ATTACKER, and everything they then do is attributed to the attacker's account.
+//
+// The fake Exchange SUCCEEDS here on purpose. If the refusal came from the exchange rather
+// than the cookie check, this test would pass for the wrong reason and keep passing after the
+// cookie check was deleted.
+func TestSSOCallback_RefusesACallbackFromAnotherBrowser(t *testing.T) {
+	for _, tc := range []struct {
+		name, cookie string
+	}{
+		{"no state cookie at all", ""},
+		{"a cookie from a different login", "state-from-another-browser"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := serverWithSSO(t, &fakeSSO{
+				available: true,
+				user:      store.User{ID: "u-sam", Name: "sam", Role: "member"},
+				returnTo:  "/guide",
+			})
+
+			req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/sso/callback?state=state-1&code=abc", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: "loomarr_sso_state", Value: tc.cookie})
+			}
+			resp, err := noRedirectClient().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if got := sessionCookieValue(resp); got != "" {
+				t.Errorf("a callback unbound to this browser issued a session (%q) — login CSRF", got)
+			}
+			if loc := resp.Header.Get("Location"); !strings.Contains(loc, "sso_expired") {
+				t.Errorf("Location = %q, want the sso_expired reason", loc)
+			}
+		})
+	}
+}
+
+// The state cookie must be single-use: replaying one callback URL cannot mint a second
+// session. /start clears nothing, so the CALLBACK has to expire it on every outcome.
+func TestSSOCallback_ClearsTheStateCookie(t *testing.T) {
+	srv := serverWithSSO(t, &fakeSSO{
+		available: true,
+		user:      store.User{ID: "u-sam", Name: "sam"},
+	})
+
+	resp := startThenCallback(t, srv, "state=state-1&code=abc")
+	for _, c := range resp.Cookies() {
+		if c.Name == "loomarr_sso_state" {
+			if c.MaxAge >= 0 && !c.Expires.Before(time.Now()) {
+				t.Errorf("state cookie not expired after use: %+v", c)
+			}
+			return
+		}
+	}
+	t.Error("the callback did not clear the state cookie — the binding would outlive its login")
+}
+
+// ⚠ `SameSite=Lax`, and getting this wrong breaks every real SSO login rather than failing
+// loudly. The callback arrives as a cross-site TOP-LEVEL NAVIGATION from the provider, and a
+// `Strict` cookie is not sent on those — so `Strict` would guarantee the CSRF check can never
+// pass. No stub IdP performs a real cross-site redirect, so nothing else in the unit suite can
+// catch it.
+func TestSSOStart_StateCookieIsLaxAndScoped(t *testing.T) {
+	srv := serverWithSSO(t, &fakeSSO{available: true, authURL: "https://auth.test/authorize"})
+
+	resp := get(t, srv, "/v1/auth/sso/start")
+	for _, c := range resp.Cookies() {
+		if c.Name != "loomarr_sso_state" {
+			continue
+		}
+		if c.SameSite != http.SameSiteLaxMode {
+			t.Errorf("SameSite = %v, want Lax — Strict is never sent on the provider's redirect back", c.SameSite)
+		}
+		if !c.HttpOnly {
+			t.Error("state cookie must be HttpOnly")
+		}
+		if c.Path != "/v1/auth/sso" {
+			t.Errorf("Path = %q, want /v1/auth/sso so it rides only the SSO routes", c.Path)
+		}
+		return
+	}
+	t.Error("/start set no state cookie — nothing binds the callback to this browser")
 }
 
 // ⚠ Every refusal lands on the login screen with a REASON CODE, never a server message.
@@ -188,7 +348,7 @@ func TestSSOCallback_RefusalsCarryAReasonCodeAndNoCookie(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := serverWithSSO(t, &fakeSSO{available: true, exchangeErr: tc.err})
 
-			resp := get(t, srv, "/v1/auth/sso/callback?state=s&code=c")
+			resp := startThenCallback(t, srv, "state=state-1&code=c")
 			if resp.StatusCode != http.StatusFound {
 				t.Fatalf("callback → %d, want 302", resp.StatusCode)
 			}
@@ -202,10 +362,31 @@ func TestSSOCallback_RefusalsCarryAReasonCodeAndNoCookie(t *testing.T) {
 			// early return on the refusal path still emits `Set-Cookie` — with an empty
 			// token — so a name-only assertion passed against that sabotage and proved
 			// nothing. The bug it must catch is "a refusal issued a usable session".
-			for _, c := range resp.Cookies() {
-				if c.Name == auth.CookieName && c.Value != "" {
-					t.Errorf("a refused SSO login issued a session cookie (%q)", c.Value)
-				}
+			if got := sessionCookieValue(resp); got != "" {
+				t.Errorf("a refused SSO login issued a session cookie (%q)", got)
+			}
+		})
+	}
+}
+
+// ⚠ The callback RE-VALIDATES returnTo rather than trusting /start's gate.
+//
+// The value crosses a package boundary and a map that outlives the request between the two
+// routes, so the check that matters is the one standing next to the `Location` header it
+// writes. The fake returns an off-site value directly — which is precisely what a future
+// refactor storing returnTo somewhere else, or validating it one hop too early, would produce.
+func TestSSOCallback_WillNotRedirectOffSiteEvenIfHandedOne(t *testing.T) {
+	for _, returnTo := range []string{"https://evil.test/login", "//evil.test", `/\evil.test`} {
+		t.Run(returnTo, func(t *testing.T) {
+			srv := serverWithSSO(t, &fakeSSO{
+				available: true,
+				user:      store.User{ID: "u-sam", Name: "sam"},
+				returnTo:  returnTo,
+			})
+
+			resp := startThenCallback(t, srv, "state=state-1&code=abc")
+			if loc := resp.Header.Get("Location"); loc != "/" {
+				t.Errorf("Location = %q, want / — an off-site returnTo must not reach the header", loc)
 			}
 		})
 	}
