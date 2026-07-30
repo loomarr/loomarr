@@ -66,9 +66,24 @@ test.describe("idle-surface motion", () => {
 
     // Frame-to-frame difference, not a snapshot: the grain is deliberately random, so the
     // only stable assertion is that it CHANGES.
-    const a = await layer.screenshot();
-    await page.waitForTimeout(700);
-    const b = await layer.screenshot();
-    expect(a.equals(b)).toBe(false);
+    //
+    // ⚠ **Sampled repeatedly rather than twice, because the animation is DISCRETE.**
+    // `--animate-tv-snow` is `tv-snow 0.45s steps(1, end)` over five keyframe stops, so the
+    // transform changes every ~112ms and holds still in between. Two shots 700ms apart
+    // normally straddle several steps — but a loaded CI runner can stall both inside ONE,
+    // and then identical frames mean "the sampler was starved", not "the animation stopped".
+    //
+    // That is exactly how this failed on a React 19 bump that had nothing to do with it:
+    // all three retries red in CI, 574/574 green locally on the same commit and image.
+    // Comparing against several later samples makes a pass require only that SOME step
+    // boundary was observed, which is the property actually being claimed. It cannot pass a
+    // genuinely frozen animation — every sample would be identical.
+    const first = await layer.screenshot();
+    let moved = false;
+    for (let i = 0; i < 6 && !moved; i++) {
+      await page.waitForTimeout(200);
+      moved = !first.equals(await layer.screenshot());
+    }
+    expect(moved, "the snow never changed across ~1.2s — the animation is not running").toBe(true);
   });
 });
