@@ -308,6 +308,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
             query={query}
             onQueryChange={setQuery}
             loading={search.isFetching}
+            // Escape does what Cancel does — the same `closeAdd`, so the two paths cannot
+            // drift. Opt-in because the ⌘K palette binds Escape window-level (see onEscape).
+            onEscape={closeAdd}
             // Two kinds of candidate are left out entirely rather than shown-then-rejected:
             // (1) one already on the lineup (the backend 422s on a duplicate key), and
             // (2) one with no usable id, whose key falls back to `name:…` — the backend's

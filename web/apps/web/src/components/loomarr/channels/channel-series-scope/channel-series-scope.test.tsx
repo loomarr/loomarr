@@ -140,4 +140,21 @@ describe("ChannelSeriesScope", () => {
       expect.objectContaining({ scope: { series: ["series:tvdb:71663"] } }),
     );
   });
+
+  // ⚠ Escape closes the picker, the same as Cancel. SearchCommand does not bind it by default
+  // (the ⌘K palette binds it window-level and would close twice), so this consumer opts in —
+  // and this test is what stops the opt-in being dropped in a later refactor. The gap shipped
+  // in all four consumers precisely because every test clicked Cancel instead.
+  it("closes the picker on Escape, discarding the query", async () => {
+    stubSearch([]);
+    render(<ChannelSeriesScope policy={POPULATED} onChange={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
+    await userEvent.type(screen.getByLabelText("Search"), "simp");
+    await userEvent.keyboard("{Escape}");
+
+    expect(await screen.findByRole("button", { name: /Add a show/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Add a show/ }));
+    expect(screen.getByLabelText("Search")).toHaveValue("");
+  });
 });

@@ -110,6 +110,12 @@ const FillerClipList = ({
             query={query}
             onQueryChange={setQuery}
             loading={search.isFetching}
+            // Escape does what Cancel does. Opt-in because the ⌘K palette binds Escape at the
+            // window level and a default binding would close both (see onEscape).
+            onEscape={() => {
+              setAdding(false);
+              setQuery("");
+            }}
             // Only clips not already in THIS list and not in the counterpart list are
             // offered — the same filter-don't-disable choice the lineup editor makes.
             results={clips

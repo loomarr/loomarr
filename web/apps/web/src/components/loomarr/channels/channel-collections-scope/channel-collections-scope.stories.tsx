@@ -68,5 +68,31 @@ const NoCollectionsYet: Story = {
   decorators: [withStubbedCollections(200, { collections: [] })],
 };
 
+// ⚠ **The story that should have existed first.** The others use three collections, which is
+// what "a small closed set the operator curates by hand" predicted — and the maintainer's real
+// Emby returns **125**, because Kometa and similar tools generate a franchise collection per
+// movie series in bulk. As a checkbox list that was taller than every other control on the
+// Programming page combined, and no story could show it while they all stayed tiny.
+//
+// It is why the control is a type-ahead at all: the collapsed field is two rows whether the
+// library holds 5 collections or 500. Kept as a story so the crowded case is always one click
+// away in the gallery.
+const MANY = {
+  collections: [
+    { id: "c-1", name: "80s Best" },
+    { id: "c-2", name: "Top Scariest" },
+    { id: "c-3", name: "Oscars 2024" },
+    ...Array.from({ length: 40 }, (_, i) => ({
+      id: `f-${i}`,
+      name: `${["Alien", "Batman", "Die Hard", "Rocky", "Bond"][i % 5]} ${i} Collection`,
+    })),
+  ],
+};
+
+const ManyCollections: Story = {
+  args: { policy: { scope: { collections: ["c-1"] } } },
+  decorators: [withStubbedCollections(200, MANY)],
+};
+
 export default meta;
-export { Empty, NoCollectionsYet, Picked };
+export { Empty, ManyCollections, NoCollectionsYet, Picked };
