@@ -195,6 +195,12 @@ const ProposalEdit = ({ lineup, acquisitions, onChange, disabled, className }: P
               query={query}
               onQueryChange={setQuery}
               loading={search.isFetching}
+              // Escape does what Cancel does. Opt-in because the ⌘K palette binds Escape at
+              // the window level and a default binding would close both (see onEscape).
+              onEscape={() => {
+                setQuery("");
+                setAdding(false);
+              }}
               // Already-picked titles and ones with no usable id are filtered out rather than
               // offered and then silently ignored by the backend.
               results={candidates

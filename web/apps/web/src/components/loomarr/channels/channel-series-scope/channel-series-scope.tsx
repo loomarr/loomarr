@@ -92,6 +92,13 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
             query={query}
             onQueryChange={setQuery}
             loading={search.isFetching}
+            // Escape does what Cancel does. SearchCommand does not bind it by default (the ⌘K
+            // palette binds it window-level and would close twice), so each consumer opts in —
+            // a Cancel button is a POINTER affordance, and a keyboard user presses Escape.
+            onEscape={() => {
+              setQuery("");
+              setAdding(false);
+            }}
             // Movies, already-picked series, and series with no resolvable id are left out
             // rather than shown-then-rejected — the same prevention the lineup editor uses.
             results={candidates

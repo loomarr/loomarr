@@ -185,4 +185,43 @@ describe("SearchCommand", () => {
     await userEvent.keyboard("{Enter}");
     expect(onSelect).toHaveBeenCalledWith(results[2]);
   });
+
+  it("calls onEscape when Escape is pressed", async () => {
+    const onEscape = vi.fn();
+    render(<SearchCommand query="a" onQueryChange={() => {}} results={results} onEscape={onEscape} />);
+
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(onEscape).toHaveBeenCalledOnce();
+  });
+
+  // ⚠ Escape must reach onEscape even with NO results. It is handled before the empty-list
+  // guard in onKeyDown, because a picker showing nothing is exactly when a user wants out —
+  // binding it after that guard makes the key work only when it is least needed.
+  it("calls onEscape even when the result list is empty", async () => {
+    const onEscape = vi.fn();
+    render(<SearchCommand query="zzz" onQueryChange={() => {}} results={[]} onEscape={onEscape} />);
+
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(onEscape).toHaveBeenCalledOnce();
+  });
+
+  // ⚠ The ⌘K palette passes NO onEscape and binds Escape at the window level itself. If this
+  // component ever bound the key unconditionally, the palette would close twice — which is the
+  // whole reason the behaviour is opt-in rather than a default. This is the control case: it
+  // fails if someone "fixes" the missing default.
+  it("does not swallow Escape when no onEscape is supplied", async () => {
+    const onWindowEscape = vi.fn();
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onWindowEscape();
+    };
+    window.addEventListener("keydown", handler);
+    render(<SearchCommand query="a" onQueryChange={() => {}} results={results} />);
+
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{Escape}");
+    window.removeEventListener("keydown", handler);
+    expect(onWindowEscape).toHaveBeenCalledOnce();
+  });
 });
