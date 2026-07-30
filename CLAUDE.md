@@ -151,6 +151,29 @@ the module cache is shared and `go build ./...` works immediately.
 `git worktree remove ../loomarr-<phase>` when the phase merges. `node_modules` is ~470MB
 per worktree, which is disk rather than download.
 
+### The `using-git-worktrees` skill — where this repo overrides it
+
+The installed `using-git-worktrees` skill (obra/superpowers) is good on the parts this
+section does not cover: **detecting** that you are already in a linked worktree
+(`git rev-parse --git-dir` vs `--git-common-dir`, with a submodule guard) and asking
+consent before creating one. Use it for that.
+
+It disagrees with the above in three places, and **this file wins**:
+
+1. ⚠ **Placement.** The skill defaults to a project-local `.worktrees/`; this repo uses a
+   SIBLING directory (`../loomarr-<phase>`). Sibling placement is deliberate — the
+   Playwright targets bind-mount the repo root into a container, so a worktree *inside*
+   the root would be mounted into every visual run.
+2. ⚠ **It will edit and COMMIT `.gitignore`.** Its safety step adds the worktree directory
+   and commits that change. `.worktrees/` is not ignored here, so following the skill
+   unmodified produces an unrequested commit. Don't; use the sibling path instead.
+3. ⚠ **Its Step 2/3 do not fit.** `go mod download` + `go test ./...` is not this repo's
+   setup: the load-bearing step is `pnpm codegen` (the generated API client is gitignored,
+   so a fresh worktree typechecks red without it), and the baseline gate is `make check`.
+
+Prefer the native `EnterWorktree` tool when one is available — the skill says so itself,
+and it owns placement and cleanup that manual `git worktree add` leaves as phantom state.
+
 ## Ask the maintainer (stop points)
 
 - Any Phase-0 contract deviation from §6/§9 (Tunarr shape, webhook payloads, auth quirks).
