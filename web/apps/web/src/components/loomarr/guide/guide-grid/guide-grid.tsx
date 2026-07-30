@@ -1,19 +1,27 @@
 import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { StatusDot } from "@/components/ui";
 import { cn } from "@/lib";
 import { ChannelIdent } from "../../channels";
 import type { GuideGridProps } from "./guide-grid.type";
 
 // GuideGrid — the cross-channel schedule (§12, built to the v2 mock): a fixed channel rail,
-// then one flexed time area per row where every block's width IS its duration.
+// then one time area per row where every block's width IS its duration.
 //
-// THE LAYOUT RULE. The rail is a real flex column and the programme area is its sibling, so
-// ticks and blocks are percentages of the SAME flexed container. That makes ruler/block
-// misalignment structurally impossible — an earlier version positioned both in absolute pixels
-// with the rail width added at one call site and not the other, and the "9:00" label ended up
-// pointing at whatever was on at 8:12.
+// THE LAYOUT RULE. Ticks and blocks are percentages of the SAME time-area container, so
+// ruler/block misalignment is structurally impossible — an earlier version positioned both in
+// absolute pixels with the rail width added at one call site and not the other, and the "9:00"
+// label ended up pointing at whatever was on at 8:12. Percentages survive zoom for free: the
+// container's pixel width changes, the percentages inside it do not.
+//
+// ZOOM IS TIME, NOT CHROME. Zoom gives the time area a pixel width of `viewport × zoom` and
+// lets the grid scroll horizontally, so zooming in genuinely magnifies the schedule — a 4-minute
+// break that was an unreadable smear becomes a labelled block. It deliberately does NOT scale
+// the rail, the row height or the type: an earlier version multiplied every font size by `zoom`,
+// which meant zooming out to 75% rendered 9px titles. Chrome stays at one readable size and
+// zoom changes only how many pixels an hour occupies. The window itself (2h/4h/…) is a separate
+// control — that changes what you REQUEST, zoom changes how closely you look at it.
 //
 // KIND IS NOT DECORATION. A programme, a commercial break, a still-acquiring slot and dead-time
 // padding are four different facts, and the API distinguishes them precisely so this surface
@@ -30,24 +38,71 @@ const TICK_MINUTES_SHORT = 30;
 const TICK_MINUTES_LONG = 60;
 const LONG_WINDOW_MINUTES = 180;
 
+// Fixed chrome (see the ZOOM IS TIME note): the rail and row heights zoom no longer touches.
+const RAIL_W = 220;
+const ROW_H = 56;
+// The time axis never collapses below this, so a very narrow viewport still shows a schedule
+// rather than a sliver.
+const MIN_TIME_W = 480;
+// Stand-in viewport width before the real one is measured (and in jsdom, which reports 0×0).
+const FALLBACK_VIEWPORT_W = 1280;
+// How many viewports wide the time axis is at zoom 1. 1.6 is enough that the scrollbar is
+// always present and there is real room to move forward and back, without making the default
+// view so dense that the window you asked for is mostly off screen.
+const OVERSCAN_FACTOR = 1.6;
+
+// tickStep — how many minutes between ruler ticks, given the window and the zoom.
+//
+// Zoom buys resolution: the base step suits the window (half-hours across an evening, hours
+// across a day), and each doubling of zoom halves it, down to a 5-minute floor. Without this
+// the ruler stayed hourly while blocks doubled in width, so a magnified guide had all the
+// detail and none of the reference points to read it against.
+const tickStep = (spanMinutes: number, zoom: number): number => {
+  const base = spanMinutes > LONG_WINDOW_MINUTES ? TICK_MINUTES_LONG : TICK_MINUTES_SHORT;
+  const steps = [5, 10, 15, 30, 60];
+  const target = base / Math.max(1, zoom);
+  // The coarsest step that is still no finer than the target, so ticks never crowd.
+  return steps.find((s) => s >= target) ?? base;
+};
+
 // Below this share of the row a block cannot show even a truncated word, so it renders as a
 // bare colour band. A FLOOR rather than a filter: dropping short blocks would leave holes that
 // every later block slides into, and the schedule would stop matching the clock.
 const MIN_BLOCK_PCT = 0.25;
-// Under these widths a label is unreadable noise rather than information.
+
+// The legibility thresholds are PIXELS, not percentages — and that is the fix for "you can't
+// read any of the titles".
 //
-// Both are shares OF THE WINDOW, so they scale with how much time is on screen: a 4-minute
-// break is legible across a 2-hour window and a smear across a day, and its label should
-// vanish in the second case rather than truncate.
+// They used to be shares of the window (6%), which was correct only while the time area was
+// always exactly one viewport wide. Now that zoom changes the time area's pixel width, a
+// percentage no longer describes a width you can read: 6% of a 2× zoomed grid is twice the
+// pixels of 6% at 1×, so labels stayed hidden on blocks that had plenty of room. Measuring the
+// real rendered width in px means "is there space for this text" is answered by the same
+// number at every zoom — which is exactly the question being asked.
 //
-// 6% was MEASURED, not guessed. At 2.2% a 4-minute break rendered "Commercials" clipped to the
-// single letter "C", which reads as a rendering glitch rather than as a name — worse than
-// showing nothing, because it invites the viewer to wonder what it means. A screenshot caught
-// it; no DOM assertion would have, since the text was genuinely present.
-const LABEL_MIN_PCT = 6;
-const CLIP_NAME_MIN_PCT = 6;
-// A block needs roughly this much width before its time range fits alongside the title.
-const META_MIN_MINUTES = 25;
+// 74px was MEASURED: below it "The Simpsons · Bart…" degrades to a couple of glyphs and an
+// ellipsis, which reads as a rendering glitch rather than as a name.
+const LABEL_MIN_PX = 74;
+const CLIP_NAME_MIN_PX = 54;
+// A block needs roughly this much width before the time range is worth showing at all.
+const META_MIN_PX = 132;
+// …and this much BLOCK HEIGHT, which is the constraint that actually binds. A series line + a
+// title + a time range is ~42px of text in a 44px block: it technically fits, but with no slack
+// the descenders sit flush against the border and read as clipped. So the time range yields on
+// a block that already spends a line on its series — it is also the most redundant of the
+// three, since the ruler directly above already says what time it is.
+const META_MIN_BLOCK_H = 52;
+// The block is inset from its row by `top-1.5 bottom-1.5` (6px each), so its usable height is
+// the row height minus this. Kept as a named constant because the check above is comparing
+// against the BLOCK, and reading `rowH` there without it silently compares the wrong box.
+const BLOCK_INSET_Y = 12;
+
+// The type scale. Fixed — see the ZOOM IS TIME note above; these do not multiply by zoom.
+// Titles are 13px (up from an effective 12) and carry the row's strongest weight, because the
+// title is the thing the whole surface exists to communicate.
+const TITLE_PX = 13;
+const META_PX = 10.5;
+const CLIP_PX = 10;
 
 const KIND_FALLBACK_LABEL: Record<GuideAiringKind, string> = {
   program: "Programme",
@@ -151,12 +206,55 @@ const GuideGrid = ({
   const spanMinutes = spanMs / MS_PER_MINUTE;
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
-  const railW = Math.round(220 * zoom);
-  const rowH = Math.round(56 * zoom);
+  // Chrome is FIXED (see the zoom note at the top): the rail and rows are the same size at
+  // every zoom level, so channel names stay readable and the same number of rows stay on
+  // screen while you magnify the time axis.
+  const railW = RAIL_W;
+  const rowH = ROW_H;
+
+  // The scroll viewport's own width, measured — the baseline the zoom model is built on.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [viewportW, setViewportW] = useState(0);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewportW(el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Before the first measurement (and in jsdom, which reports every element as 0×0) fall back
+  // to a sane width so the grid renders a usable layout rather than a zero-width smear.
+  const effectiveViewportW = viewportW || FALLBACK_VIEWPORT_W;
+  const availW = Math.max(MIN_TIME_W, effectiveViewportW - railW);
+
+  // THE TIME AXIS IS ALWAYS WIDER THAN THE VIEWPORT — that is what gives the guide a horizontal
+  // scrollbar, and it is deliberate rather than incidental.
+  //
+  // An earlier version defined zoom 1 as "the requested window fits exactly", which quietly
+  // coupled two independent things: how much time you ASKED for (the 2h/4h/6h chips) and
+  // whether you could scroll within it. At 100% there was nothing to scroll, so "scroll forward
+  // or back in time" was only possible after zooming in — the control existed but the everyday
+  // view could not use it.
+  //
+  // So the axis renders the requested window at a readable density and then keeps going: the
+  // window is guaranteed at least OVERSCAN_FACTOR viewports wide, which is the scrollable
+  // headroom. Zoom multiplies on top of that, so it still magnifies, but scrolling through time
+  // never depends on having zoomed first.
+  const timeW = Math.max(MIN_TIME_W, Math.round(availW * OVERSCAN_FACTOR * zoom));
+  // What one percent of the time axis is worth in pixels — the bridge between the percentage
+  // geometry (which keeps ticks and blocks aligned) and the px legibility thresholds.
+  const pxPerPct = timeW / 100;
 
   // Ticks land on real clock boundaries, not on `fromMs` — a ruler reading "13:07, 13:37, …"
   // because that is when the request happened is unusable.
-  const tickMinutes = spanMinutes > LONG_WINDOW_MINUTES ? TICK_MINUTES_LONG : TICK_MINUTES_SHORT;
+  //
+  // Zoom earns finer ticks: at 2× there is room for a label every 15 minutes, and a ruler that
+  // stayed hourly while the blocks doubled in width would waste the magnification.
+  const tickMinutes = tickStep(spanMinutes, zoom);
   const tickMs = tickMinutes * MS_PER_MINUTE;
   const ticks: number[] = [];
   for (let t = Math.ceil(fromMs / tickMs) * tickMs; t < toMs; t += tickMs) ticks.push(t);
@@ -169,14 +267,13 @@ const GuideGrid = ({
   // a large lineup is thousands of absolutely-positioned nodes that all re-lay-out on a zoom
   // change. The virtualizer renders only the rows near the viewport.
   //
-  // Rows are a FIXED height (`rowH`, derived from zoom), so `estimateSize` is exact rather than
-  // an estimate and no dynamic measurement pass is needed. Changing zoom changes rowH, which
-  // re-runs the virtualizer — that is why rowH is in the dep-ish path via estimateSize.
+  // Rows are a FIXED height (`rowH`), so `estimateSize` is exact rather than an estimate and no
+  // dynamic measurement pass is needed. Zoom no longer changes rowH — the time axis is what
+  // magnifies — so row virtualization is now entirely independent of the zoom level.
   //
   // `overscan` keeps a few rows mounted beyond the viewport so scrolling does not flash empty
   // bands, and — importantly here — so a row being hovered stays mounted while the detail card
   // reads its position.
-  const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
     count: channels.length,
     getScrollElement: () => scrollRef.current,
@@ -202,24 +299,91 @@ const GuideGrid = ({
       return () => ro.disconnect();
     },
   });
+
+  // ZOOM ANCHORING. Magnifying around the scroll container's origin would shove whatever you
+  // were reading off screen — the higher the zoom, the further it travels — so zoom keeps one
+  // instant pinned under the same screen position.
+  //
+  // The anchor is the NOW-LINE when it is on screen, because on the guide "now" is what you are
+  // reading around; otherwise it is whatever time sits at the centre of the current view, which
+  // is the same promise for a day you are planning rather than watching.
+  //
+  // Implemented against the PREVIOUS time width (kept in a ref) rather than a scroll fraction:
+  // the fraction changes as the container resizes too, and using it would make a window resize
+  // masquerade as a zoom. Comparing widths isolates the zoom.
+  const prevTimeW = useRef(timeW);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const was = prevTimeW.current;
+    prevTimeW.current = timeW;
+    // Nothing to preserve on the first paint or when the width did not actually change.
+    if (!el || was === timeW || was <= 0) return;
+
+    // The anchor as a fraction of the time axis, and where it currently sits on screen.
+    const viewW = el.clientWidth - railW;
+    const anchorFrac = nowVisible && nowPct >= 0 ? nowPct / 100 : (el.scrollLeft + viewW / 2) / was;
+    // Keep the anchor at the same screen offset it occupied before the zoom. For the now-line
+    // that is wherever it already was; for a centred anchor it is the middle of the view.
+    const screenOffset = nowVisible && nowPct >= 0 ? anchorFrac * was - el.scrollLeft : viewW / 2;
+
+    const next = anchorFrac * timeW - screenOffset;
+    el.scrollLeft = Math.max(0, Math.min(next, timeW - viewW));
+    // `railW` is a module constant, not reactive — including it would be a no-op dependency.
+  }, [timeW, nowPct, nowVisible]);
+
+  // OPENING POSITION. The axis is now wider than the viewport even at 100%, so "scrollLeft 0"
+  // is no longer the present — it is the left edge of a window that extends past both sides of
+  // it. Landing there would open the guide on the earliest time it holds and make the operator
+  // scroll to find what is on right now, which inverts the whole point of the surface.
+  //
+  // So the first paint scrolls the now-line into view, a third from the left: enough history
+  // visible to see what just finished, most of the width spent on what is coming. Runs ONCE
+  // (guarded by a ref) — re-running would yank the view back every time the now-line ticks, or
+  // fight the operator the moment they scrolled somewhere deliberately.
+  const didInitialScroll = useRef(false);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || didInitialScroll.current || !nowVisible || nowPct < 0) return;
+    // Wait for the real measurement; positioning against the fallback width would land wrong
+    // and then be locked in by the guard.
+    if (!viewportW) return;
+    didInitialScroll.current = true;
+    const viewW = el.clientWidth - railW;
+    const next = (nowPct / 100) * timeW - viewW / 3;
+    el.scrollLeft = Math.max(0, Math.min(next, timeW - viewW));
+  }, [viewportW, timeW, nowPct, nowVisible]);
+
   const virtualRows = rowVirtualizer.getVirtualItems();
 
   return (
-    <div ref={scrollRef} className={cn("relative flex-1 overflow-auto", className)} data-testid="guide-grid">
-      {/* min-w scales with zoom (the mock's `gridMin: 1000 * z`) instead of being a fixed
-          880px. A constant floor meant the grid demanded 880px even when zoomed out to 75%,
-          so a viewport with room to spare still showed a horizontal scrollbar. Now zooming
-          out genuinely makes it fit — which is what the zoom control is for. */}
-      <div className="relative" style={{ minWidth: Math.round(1000 * zoom) }}>
+    <div
+      ref={scrollRef}
+      className={cn("guide-scroll relative flex-1 overflow-auto", className)}
+      data-testid="guide-grid"
+      data-zoom={zoom}
+    >
+      {/* The grid's content box: the rail plus the ZOOMED time axis. Its width is explicit
+          rather than `flex-1`, which is what lets the grid overflow and scroll horizontally at
+          zoom > 1 — the flexed version could never overflow, so there was nothing to scroll and
+          zoom could only ever change chrome. */}
+      <div className="relative" style={{ width: railW + timeW }}>
         {/* Time ruler. Sticky so the axis stays readable while scrolling channels. */}
         <div className="sticky top-0 z-30 flex border-border border-b bg-background">
-          <div style={{ width: railW }} className="shrink-0 border-border border-r" />
+          {/* The rail corner is sticky on BOTH axes: it must stay put while the time axis
+              scrolls under it, or the channel names slide away from their own rows. */}
+          <div
+            style={{ width: railW }}
+            // z-20 for the same reason as the row rail below: the tick strip is a `relative`
+            // sibling later in DOM order, so a lower layer would let tick labels scroll
+            // visibly through this corner.
+            className="sticky left-0 z-20 shrink-0 border-border border-r bg-background"
+          />
           {/* overflow-hidden: the LAST tick sits near 100%, and its label is drawn to the
               right of that line — so the text runs past the container and widens the scroll
               area by roughly a label's width. Clipping it costs nothing (the final label is
               partially legible either way) and removes a horizontal scrollbar that appears on
               every window whose last tick lands near the edge. */}
-          <div className="relative h-7.5 flex-1 overflow-hidden">
+          <div className="relative h-7.5 shrink-0 overflow-hidden" style={{ width: timeW }}>
             {ticks.map((t) => (
               <div
                 key={t}
@@ -250,8 +414,14 @@ const GuideGrid = ({
           <div
             aria-hidden="true"
             data-testid="guide-now-line"
-            className="pointer-events-none absolute top-0 bottom-0 z-20 w-0.5 bg-onair"
-            style={{ left: `calc(${railW}px + (100% - ${railW}px) * ${nowPct / 100})` }}
+            // z-10 keeps the line UNDER the sticky rail (z-20): scrolled far enough forward,
+            // the now-line's own position falls behind the rail, and a higher layer would draw
+            // a red line and its time chip across the channel names.
+            className="pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-onair"
+            // Positioned off the REAL time width, not `100% - rail`: the content box is now
+            // wider than the viewport when zoomed, so a percentage of the container would put
+            // the line at the wrong instant the moment zoom left 1.
+            style={{ left: railW + (nowPct / 100) * timeW }}
           >
             {/* The time chip: a bare line says "here", not "here is 9:42". */}
             <span className="absolute top-1 -left-5 whitespace-nowrap rounded-[3px] bg-onair px-1.25 py-px font-mono text-[9.5px] text-static-950 leading-none">
@@ -295,29 +465,28 @@ const GuideGrid = ({
               >
                 <div
                   style={{ width: railW, height: rowH }}
-                  className="flex shrink-0 items-center gap-2.25 border-border border-r pr-1 pl-3"
+                  // Sticky + its own background: the time axis scrolls horizontally underneath,
+                  // and a transparent rail would let programme blocks slide visibly beneath the
+                  // channel names.
+                  //
+                  // ⚠ z-20, not z-10. The time area is a `relative` SIBLING that comes after
+                  // this in DOM order, so it paints above anything at a lower or equal layer —
+                  // a rail at z-10 let a block scrolled underneath it show its label through
+                  // the rail (a stray "PM" floating beside the channel names). The rail must
+                  // out-rank the sibling it is covering, not merely its own children.
+                  className="sticky left-0 z-20 flex shrink-0 items-center gap-2.25 border-border border-r bg-background pr-1 pl-3"
                 >
-                  <ChannelIdent
-                    name={ch.name}
-                    number={ch.number}
-                    logo={ch.logo}
-                    size={Math.round(30 * zoom)}
-                  />
+                  <ChannelIdent name={ch.name} number={ch.number} logo={ch.logo} size={30} />
                   <button
                     type="button"
                     onClick={() => onSelectChannel?.(ch.channelId)}
                     className="flex min-w-0 flex-1 items-center gap-2.25 text-left"
                   >
-                    <span
-                      style={{ fontSize: 19 * zoom }}
-                      className="shrink-0 font-mono font-semibold text-signal tabular-nums leading-none"
-                    >
+                    <span className="shrink-0 font-mono font-semibold text-[19px] text-signal tabular-nums leading-none">
                       {ch.number}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span style={{ fontSize: 13 * zoom }} className="block truncate font-medium">
-                        {ch.name}
-                      </span>
+                      <span className="block truncate font-medium text-[13px]">{ch.name}</span>
                       {/* The chip states what is WRONG (or in progress); a healthy channel
                         shows nothing, because a row saying "fine" on every healthy channel
                         is noise on the majority of rows. */}
@@ -344,7 +513,7 @@ const GuideGrid = ({
                   {renderRowMenu?.(ch)}
                 </div>
 
-                <div style={{ height: rowH }} className="relative flex-1 overflow-hidden">
+                <div style={{ height: rowH, width: timeW }} className="relative shrink-0 overflow-hidden">
                   {ch.airings?.map((a) => {
                     // Clip to the window: a programme already in progress reports its REAL
                     // start, which may precede `fromMs`.
@@ -354,7 +523,8 @@ const GuideGrid = ({
                     const width = Math.max(MIN_BLOCK_PCT, right - left);
 
                     const airing = nowMs !== undefined && nowMs >= a.startMs && nowMs < a.stopMs;
-                    const minutes = (a.stopMs - a.startMs) / MS_PER_MINUTE;
+                    // The block's REAL rendered width, which is what legibility depends on.
+                    const blockPx = width * pxPerPct;
                     const clips = a.pod?.entries ?? [];
                     const podTotal = clips.reduce((n, c) => n + (c.durationMs || 0), 0) || 1;
                     const label = blockLabel(a);
@@ -406,7 +576,7 @@ const GuideGrid = ({
                           // so keyboard inspection reads identically to hover.
                           "transition-[box-shadow,border-color] duration-100 ease-out",
                           "hover:border-static-400 focus-visible:border-static-400 focus-visible:outline-none",
-                          clips.length > 0 ? "p-0.5" : "px-2",
+                          clips.length > 0 ? "p-0.5" : "gap-px px-2 py-1",
                           a.kind === "filler" &&
                             "border-signal-tint-40 bg-signal-tint-30 hover:shadow-[0_0_0_1px_#D6409F] focus-visible:shadow-[0_0_0_1px_#D6409F]",
                           // Dashed, never solid: a pending block's times are an ESTIMATE, so it
@@ -442,9 +612,9 @@ const GuideGrid = ({
                                     CLIP_FILL[c.kind] ?? "bg-static-700",
                                   )}
                                 >
-                                  {share > CLIP_NAME_MIN_PCT && (
+                                  {share * pxPerPct > CLIP_NAME_MIN_PX && (
                                     <span
-                                      style={{ fontSize: 10 * zoom }}
+                                      style={{ fontSize: CLIP_PX }}
                                       className="truncate text-static-0 leading-tight"
                                     >
                                       {c.name}
@@ -455,19 +625,43 @@ const GuideGrid = ({
                             })}
                           </div>
                         ) : (
-                          width > LABEL_MIN_PCT && (
+                          blockPx > LABEL_MIN_PX && (
+                            // TWO LINES, series above title — the fix for "you can't read any of
+                            // the titles". The old single line rendered "The Simpsons · Bart Gets
+                            // an F" and truncated to "The Simpsons ·…", so every block on a
+                            // marathon channel read IDENTICALLY: the series name is the part
+                            // they share, and the episode is the part that tells them apart.
+                            //
+                            // Splitting them gives the episode its own line and its own budget,
+                            // and makes the series the quiet one (dimmer, smaller) since it is
+                            // already established by the row you are reading.
                             <>
-                              <span style={{ fontSize: 12 * zoom }} className="truncate leading-snug">
-                                {label}
-                              </span>
-                              {minutes >= META_MIN_MINUTES && (
-                                <span
-                                  style={{ fontSize: 10 * zoom }}
-                                  className="truncate font-mono text-static-400"
-                                >
-                                  {when}
+                              {a.series && (
+                                <span className="truncate font-mono text-[10px] text-static-400 uppercase leading-tight tracking-[0.04em]">
+                                  {a.series}
                                 </span>
                               )}
+                              <span
+                                style={{ fontSize: TITLE_PX }}
+                                className={cn(
+                                  "truncate font-medium leading-snug",
+                                  // The title carries the row's strongest contrast: it is the
+                                  // one thing this surface exists to communicate. Airing blocks
+                                  // go brightest of all.
+                                  airing ? "text-static-0" : "text-static-100",
+                                )}
+                              >
+                                {a.series ? (a.title?.trim() ?? label) : label}
+                              </span>
+                              {blockPx >= META_MIN_PX &&
+                                (!a.series || rowH - BLOCK_INSET_Y >= META_MIN_BLOCK_H) && (
+                                  <span
+                                    style={{ fontSize: META_PX }}
+                                    className="truncate font-mono text-static-400 leading-tight"
+                                  >
+                                    {when}
+                                  </span>
+                                )}
                             </>
                           )
                         )}

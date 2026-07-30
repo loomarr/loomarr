@@ -2,9 +2,11 @@ import { channelsApi, toProblem } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, Pause, Pencil, Play, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui";
+import { cn } from "@/lib";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
 
@@ -17,6 +19,14 @@ const swallow = (e: React.MouseEvent) => {
   e.stopPropagation();
 };
 
+// The panel's own size, used to keep it inside the viewport. Width matches `w-59` (236px);
+// the height is an UPPER bound (the armed delete-confirm state is the tallest the panel gets),
+// so the flip-upward decision is made against the worst case rather than against whichever
+// state happened to be rendered when the menu opened.
+const PANEL_W = 236;
+const PANEL_MAX_H = 210;
+const VIEWPORT_MARGIN = 8;
+
 // ChannelRowMenu — the per-row ⋮ menu on the channels list: pause/resume and delete without
 // opening the channel. Pause/resume is reversible → a single click. Delete is irreversible →
 // a two-step confirm (arm, then execute) via the shared useDeleteConfirm hook — the SAME gate
@@ -25,11 +35,56 @@ const swallow = (e: React.MouseEvent) => {
 // Self-contained (no dropdown primitive in the kit, no new dep): a trigger + a floating panel
 // over a full-bleed backdrop that closes on an outside click — which also keeps the outside-
 // click handling off the document and away from the row link.
+//
+// ⚠ THE PANEL IS PORTALLED, and that is not a preference — it is the only thing that works.
+// On the guide, this menu renders inside a virtualized row whose `<li>` carries
+// `transform: translateY(...)`. A non-`none` transform CREATES A STACKING CONTEXT, so the
+// panel's `z-50` was scoped to its own row and every later row painted straight over it: the
+// menu rendered as a ~40px sliver with its labels overpainted by rows 2 and 3, and no z-index
+// value could have fixed it. The grid's `overflow-auto` clipped what survived. A portal to
+// document.body escapes both the stacking context and the clip; the cost is that position must
+// then be computed from the trigger's viewport rect rather than inherited from `absolute`.
 const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  // Position is measured from the trigger AFTER paint but BEFORE the browser draws (layout
+  // effect), so the panel never appears at 0,0 for a frame and then jump to place.
+  //
+  // Both axes are clamped into the viewport: the trigger sits at the right edge of a narrow
+  // rail, so a naively left-aligned panel runs off screen, and a trigger on the last visible
+  // row would open a downward panel below the fold.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.min(Math.max(VIEWPORT_MARGIN, r.left), window.innerWidth - PANEL_W - VIEWPORT_MARGIN);
+      // Prefer opening below the trigger; flip above when that would overflow the bottom.
+      const below = r.bottom + 4;
+      const top =
+        below + PANEL_MAX_H > window.innerHeight - VIEWPORT_MARGIN
+          ? Math.max(VIEWPORT_MARGIN, r.top - 4 - PANEL_MAX_H)
+          : below;
+      setPos({ left, top });
+    };
+    place();
+    // The guide scrolls under this menu, and a portalled panel does not travel with its row.
+    // Rather than track the row, close on scroll/resize — the anchor would otherwise drift
+    // away from the ⋮ it belongs to. `capture` catches the grid's own scroll container, which
+    // does not bubble scroll events to window.
+    const dismiss = () => setOpen(false);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
 
   const paused = channel.status === "paused";
 
@@ -71,6 +126,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   return (
     <div className="relative shrink-0">
       <Button
+        ref={triggerRef}
         variant="ghost"
         size="icon"
         className="size-8"
@@ -85,112 +141,120 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
         <MoreVertical className="size-4" aria-hidden />
       </Button>
 
-      {open && (
-        <>
-          {/* Backdrop: an outside click closes the menu. Full-bleed + fixed so a click
+      {open &&
+        createPortal(
+          <>
+            {/* Backdrop: an outside click closes the menu. Full-bleed + fixed so a click
               anywhere lands here first; it swallows so the click never reaches the row link. */}
-          <button
-            type="button"
-            aria-hidden
-            tabIndex={-1}
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={(e) => {
-              swallow(e);
-              close();
-            }}
-          />
-          <div
-            role="menu"
-            // `left-0` (not `right-0`): the trigger sits at the RIGHT edge of a narrow rail,
-            // so a right-anchored panel opens leftward past the rail and gets clipped by the
-            // page edge. The mock clamps it the same way — `max(8, railW - 242)` — i.e. the
-            // menu is pinned inside the viewport rather than to the trigger.
-            className="absolute left-0 z-50 mt-1 flex w-59 flex-col gap-0.5 rounded-lg border border-border bg-popover p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.6)]"
-          >
-            {/* Edit channel — FIRST, and the reason the menu is worth opening: the row's own
-                click target opens the channel too, but a menu whose only options are Pause and
-                Delete reads as a destructive-actions menu. The mock leads with Edit. */}
             <button
               type="button"
-              role="menuitem"
+              aria-hidden
+              tabIndex={-1}
+              className="fixed inset-0 z-60 cursor-default"
               onClick={(e) => {
                 swallow(e);
                 close();
-                void navigate({ to: "/channels/$id", params: { id: channel.id } });
               }}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-700 hover:text-static-0"
+            />
+            <div
+              role="menu"
+              // Fixed + measured coordinates, not `absolute left-0`: inside the portal there is
+              // no positioned ancestor to be absolute WITHIN, and the whole point of portalling
+              // was to stop inheriting the row's transform. `pos` is clamped to the viewport
+              // (see the layout effect), which is the same intent as the mock's
+              // `max(8, railW - 242)` clamp — pin the menu inside the window, not to the trigger.
+              // `invisible` until measured so it never flashes at the origin.
+              style={{ left: pos?.left ?? 0, top: pos?.top ?? 0 }}
+              className={cn(
+                "fixed z-61 flex w-59 flex-col gap-0.5 rounded-lg border border-border bg-popover p-1.5 shadow-[0_14px_36px_rgba(0,0,0,0.6)]",
+                pos ? "visible" : "invisible",
+              )}
             >
-              <Pencil className="size-4 text-static-400" aria-hidden />
-              Edit channel
-            </button>
+              {/* Edit channel — FIRST, and the reason the menu is worth opening: the row's own
+                click target opens the channel too, but a menu whose only options are Pause and
+                Delete reads as a destructive-actions menu. The mock leads with Edit. */}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  swallow(e);
+                  close();
+                  void navigate({ to: "/channels/$id", params: { id: channel.id } });
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-700 hover:text-static-0"
+              >
+                <Pencil className="size-4 text-static-400" aria-hidden />
+                Edit channel
+              </button>
 
-            {/* Pause / Resume — reversible, single click. */}
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              onClick={(e) => {
-                swallow(e);
-                update.mutate({ id: channel.id, data: { status: paused ? "building" : "paused" } });
-              }}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-800 disabled:opacity-50"
-            >
-              {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-              {paused ? "Resume" : "Pause"}
-            </button>
-
-            {/* Delete — a FULL removal (purge: the channel leaves the list AND Tunarr), so a
-                deleted row actually disappears rather than lingering as a "detached" record.
-                Irreversible → a typed-confirm gate (the exact name), same as ChannelDangerZone. */}
-            {!confirming ? (
+              {/* Pause / Resume — reversible, single click. */}
               <button
                 type="button"
                 role="menuitem"
                 disabled={busy}
                 onClick={(e) => {
                   swallow(e);
-                  arm();
+                  update.mutate({ id: channel.id, data: { status: paused ? "building" : "paused" } });
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-onair-300 text-sm transition-colors hover:bg-onair-tint-15 disabled:opacity-50"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-800 disabled:opacity-50"
               >
-                <Trash2 className="size-4" aria-hidden />
-                Delete…
+                {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+                {paused ? "Resume" : "Pause"}
               </button>
-            ) : (
-              <div className="flex flex-col gap-2 rounded border border-onair-tint-15 bg-onair-tint-15 p-2">
-                <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={busy}
-                    onClick={(e) => {
-                      swallow(e);
-                      // purge: a Delete from the LIST should remove the channel outright, not
-                      // leave a detached record behind (the maintainer's choice). The detail-
-                      // page danger zone still offers detach-vs-purge for the finer distinction.
-                      del.mutate({ id: channel.id, params: { purge: true } });
-                    }}
-                  >
-                    Delete
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={(e) => {
-                      swallow(e);
-                      resetConfirm();
-                    }}
-                  >
-                    Cancel
-                  </Button>
+
+              {/* Delete — a FULL removal (purge: the channel leaves the list AND Tunarr), so a
+                deleted row actually disappears rather than lingering as a "detached" record.
+                Irreversible → a typed-confirm gate (the exact name), same as ChannelDangerZone. */}
+              {!confirming ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={(e) => {
+                    swallow(e);
+                    arm();
+                  }}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-onair-300 text-sm transition-colors hover:bg-onair-tint-15 disabled:opacity-50"
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Delete…
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2 rounded border border-onair-tint-15 bg-onair-tint-15 p-2">
+                  <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={busy}
+                      onClick={(e) => {
+                        swallow(e);
+                        // purge: a Delete from the LIST should remove the channel outright, not
+                        // leave a detached record behind (the maintainer's choice). The detail-
+                        // page danger zone still offers detach-vs-purge for the finer distinction.
+                        del.mutate({ id: channel.id, params: { purge: true } });
+                      }}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={(e) => {
+                        swallow(e);
+                        resetConfirm();
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 };

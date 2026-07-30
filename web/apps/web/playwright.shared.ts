@@ -18,7 +18,17 @@ const DETERMINISM = {
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.001, animations: "disabled" as const } },
   use: {
     reducedMotion: "reduce" as const,
-    // The three sources of screenshot drift, pinned: software GL, a fixed sRGB profile,
+    // ⚠ **TIMEZONE, and it is not a nicety.** Fixtures pin instants with `Date.UTC(...)`,
+    // but anything rendering a WALL-CLOCK time formats it in the browser's zone — so the
+    // same story shot on an EDT laptop and in the UTC container disagree by four hours.
+    // The guide's FullDay story renders ~8 hourly labels across a 12-hour window and every
+    // one of them moved; its 2-hour siblings show too few labels to notice, which is how a
+    // whole class of drift hid behind five passing stories.
+    //
+    // UTC because the container already runs it, so a baseline shot on a developer's
+    // machine matches CI rather than the reverse.
+    timezoneId: "UTC",
+    // The three sources of PIXEL drift, pinned: software GL, a fixed sRGB profile,
     // and grayscale (non-subpixel) text AA.
     launchOptions: { args: ["--disable-gpu", "--force-color-profile=srgb", "--disable-lcd-text"] },
   },
