@@ -148,3 +148,12 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `cookie.secure` (`COOKIE_SECURE`) | enum | `auto` | When to mark the login cookie secure: auto (match the request), always, or never (for local dev only). _(one of: auto \| always \| never)_ |
 | `user.sync_every` (`USER_SYNC_EVERY`) | duration | `1h` | How often Loomarr refreshes imported users from your media server. _(advanced)_ |
 
+## Single sign-on
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `auth.sso.enabled` (`AUTH_SSO_ENABLED`) | bool | `false` | Let people sign in with your identity provider. They still need an account here — signing in with your provider does not create one. |
+| `auth.sso.issuer` (`AUTH_SSO_ISSUER`) | url | — | Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there. |
+| `auth.sso.client_id` (`AUTH_SSO_CLIENT_ID`) | string | — | The client ID your provider issued for Loomarr. |
+| `auth.sso.client_secret` (`AUTH_SSO_CLIENT_SECRET`) | secret | (secret) | The client secret your provider issued for Loomarr. |
+

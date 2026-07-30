@@ -924,7 +924,7 @@ Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` m
 
 ## 11. Users, authentication & permissions
 
-Multi-user, **Loomarr-owned identity**: the local `users` table is the source of truth (the allowlist — you can sign in iff you have a row), and roles gate the actions that spend real resources. Two credential paths land on that one identity: **local** users authenticate against a Loomarr-stored bcrypt hash; **imported** media-server users authenticate against Emby/Jellyfin (Loomarr never stores their password). A media-server account grants no access until an admin has **explicitly imported** it — signing in is not self-provisioning.
+Multi-user, **Loomarr-owned identity**: the local `users` table is the source of truth (the allowlist — you can sign in iff you have a row), and roles gate the actions that spend real resources. **Three** credential paths land on that one identity: **local** users authenticate against a Loomarr-stored bcrypt hash; **imported** media-server users authenticate against Emby/Jellyfin (Loomarr never stores their password); and **SSO** users authenticate against an OIDC provider (V8, below). All three resolve to the same allowlist — a credential proves who you are, the `users` row decides whether you may enter. A media-server account grants no access until an admin has **explicitly imported** it — signing in is not self-provisioning.
 
 *This replaces the earlier "first media-server admin to sign in claims the instance / users created lazily on first login" model. The reason: identity should be Loomarr's to own, so an install works with zero media-server config, and access is an admin decision, not a side effect of who happens to hold a media-server account.*
 
@@ -934,12 +934,107 @@ Multi-user, **Loomarr-owned identity**: the local `users` table is the source of
 
 ### Authentication
 - **Local users:** `POST /v1/auth/login` verifies the password against the row's bcrypt `password_hash` (constant-time; a missing hash never verifies).
-- **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. This is the only sanctioned third credential path; it exists for the maintainer's dev loop and must never be reachable in a shipped install.
+- **Dev login (development only, default OFF):** `POST /v1/auth/dev-login` issues an ordinary admin session with no credential, so a maintainer working on the UI is not locked out by a wedged backend or a forgotten password. It is **gated by a server-side environment variable, `LOOMARR_DEV_LOGIN=1`** — deliberately *not* a build-time flag, because a bundler constant travels inside the artifact and the same `dist/` could ship to production carrying the bypass. An operator must set the variable on the server; the default is closed. When unset the route is **not registered at all** and returns 404 — indistinguishable from a build that never had it (§19 pins this as a negative test). It selects the **lowest-id existing admin** and never creates, promotes, or enables a user: it is a shortcut past the *credential check*, never past the allowlist (§11's invariant holds — you can sign in iff you have a row). It refuses when no admin row exists, rather than bootstrapping one. Boot **WARNs on every startup** while the flag is on, because a bypass nobody remembers enabling is the failure mode worth shouting about. It is not a credential path in the sense the other three are — it is a sanctioned bypass of the *credential check*, for the maintainer's dev loop, and must never be reachable in a shipped install. (The phrase "the only sanctioned third credential path" here predated SSO, V8; the distinction that matters is bypass-vs-credential, not the count.)
 - **Imported media-server users:** verification delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName` (shared Emby/Jellyfin endpoint). On success the server returns an `AccessToken` + `User`; Loomarr verifies, **discards** the media-server token (best-effort `POST /Sessions/Logout`), and — critically — only proceeds if the user id is already an allowlisted row. Media-server passwords are never persisted or logged.
 - **Flavor quirk (encode in the adapter):** Jellyfin requires a client-identification authorization header **on the login request itself** — `Authorization: MediaBrowser Client="Loomarr", Device="…", DeviceId="…", Version="…"` — even before any token exists. Emby accepts the equivalent `X-Emby-Authorization` header. Extend the existing flavor-specific auth handling (§6) rather than special-casing.
 - Either path issues Loomarr's **own session**: HTTP-only, `SameSite=Strict` cookie signed with the generated `SESSION_SECRET` (config-design §4). Sessions are rows in the store (revocable **and reviewable** — `GET /v1/users/{id}/sessions` lists a user's live sessions for an admin, `DELETE /v1/sessions/{hash}` ends one), not stateless JWTs — disabling a user kills their sessions immediately; sliding `SESSION_TTL` (§5) expires idle ones. Cookies set `Secure` per `cookie.secure=auto|always|never` (`auto` honors direct TLS or `X-Forwarded-Proto: https` from a reverse proxy — plain-HTTP LAN installs still work). Session tokens are random 256-bit values, **SHA-256-hashed at rest** (a DB read never yields a usable cookie). Mutating routes additionally require a static `X-Loomarr-Csrf: 1` header — combined with `SameSite=Strict`, that closes form-based CSRF cheaply. Rate-limit login attempts.
 - The `DeviceId` in the media-server login header is stable per install (derived from an instance id generated at first migration), so Loomarr appears as one device in the media server's dashboard.
 - **Machine access:** the generated `API_TOKEN` (config-design §4) authenticates non-human clients (scripts, an external scheduler) via `Authorization: Bearer` and doubles as break-glass admin — it is the escape hatch if the media server is down *and* before any user exists.
+
+### SSO is a credential path, not a provisioning path (D-F, V8)
+
+An **OIDC** provider (Authelia, Authentik, Keycloak, any compliant issuer) becomes a **third
+credential path onto the one identity §11 already owns** — exactly parallel to imported
+media-server accounts. The provider proves *who you are*; the `users` table decides *whether
+you may enter and what you may do*.
+
+Every existing invariant holds verbatim, which is why this is an addition rather than a
+change:
+
+- ⚠ **An SSO identity with no allowlist row is REJECTED**, even with a perfectly valid token
+  from a correctly configured provider. This is the direct analogue of *"an un-imported
+  media-server user is denied even with valid Emby credentials"*, and it is pinned by a §19
+  negative test.
+- ⚠ **SSO does not provision.** There is no `auth.sso.auto_create` key and no code path that
+  creates a row on first sign-in. Lazy self-provision is what §11 exists to prevent: it makes
+  access a side effect of who holds an account somewhere else. **Explicit import (or an
+  admin creating a local user) remains the only way in.**
+- ⚠ **Roles stay Loomarr-owned.** There is no `auth.sso.admin_group` and no group-to-role
+  mapping. A provider that says you are in `loomarr-admins` is telling us about *its* world;
+  role is a decision an admin makes here — consistent with the People tab's existing stance
+  that Loomarr does not infer role from the media server either.
+- **Loomarr's own sign-in always works alongside** SSO, never instead of it. An install whose
+  provider is down or misconfigured must not be an install nobody can enter; the break-glass
+  `API_TOKEN` remains the final escape hatch.
+
+**Mechanism: OIDC only — deliberately not forward-auth.** The mock also draws a proxy header
+mode (`Remote-User` + a trusted-CIDR allowlist). It is not built, and the reason is a safety
+asymmetry rather than effort: header trust is only as strong as the operator's network wiring,
+and a Loomarr reachable on the LAN *beside* its proxy would accept `Remote-User: anyone` as
+proof of identity — a total authentication bypass with no signal that anything is wrong. OIDC
+carries its own proof (a signed token verified against the issuer's published keys), so there
+is no network-topology assumption to get wrong. Forward-auth stays open work (§20); if it is
+ever added, the trusted-CIDR check is load-bearing in the way the allowlist is.
+
+**Verified against two real providers, and each found a bug the other could not.** `make
+test-sso` stands up **Authelia** and **Authentik** in containers and drives the whole flow.
+This is not belt-and-braces: a hand-written stub IdP is one reading of the spec on *both*
+sides of the wire, so a misunderstanding agrees with itself and stays invisible.
+
+- **Authelia** found that profile claims live at the **userinfo endpoint**, not in the
+  id_token — it follows the spec strictly. Loomarr read only the id_token, so `MatchName()`
+  fell through to an opaque `sub` UUID and **every login against a default Authelia was
+  refused**. Claims are now fetched from userinfo, with the response's `sub` cross-checked
+  against the token's (a substituted response could otherwise name a different person).
+- **Authentik** found that its issuer is path-based **with a trailing slash**
+  (`…/application/o/loomarr/`). OIDC requires an exact issuer match, and Loomarr was
+  trimming it — discovery failed outright, so an operator pasting the value Authentik
+  *displays* could never connect. Only whitespace is trimmed now.
+- They also **disagree** about something easy to mistake for a rule: Authelia refuses plain
+  HTTP (it derives its issuer from the request); Authentik serves discovery over it happily.
+  So "a provider requires HTTPS" is per-provider, and Loomarr assumes neither.
+- Two operator-facing setup requirements worth knowing, both harness findings rather than
+  Loomarr bugs: **Authentik needs a signing key assigned to the provider**, or it signs with
+  HS256 and a compliant client rejects the token; and **Authelia's session cookie domain must
+  match the URL Loomarr is reached at**, or discovery 400s.
+
+**Matching an identity to a row.** The provider's subject (`sub`) is stable but opaque and
+means nothing to an operator reading the People list, so an SSO login matches on the
+**preferred username** claim (falling back to `email`) against the same `users.name` the other
+paths use. That keeps one allowlist rather than a parallel SSO-identity table, and it is why
+the *"what the provider told us"* claims dump is worth building: when a login is refused, the
+operator needs to see which claim arrived so they can tell a misconfigured provider from a
+missing row.
+
+**The callback is bound to the browser that started the login.** State and nonce are minted
+per login and held server-side, but a server-side map answers *"did some login start here?"*,
+not *"did **this** browser start it?"* — those are different questions, and only the second
+one is CSRF protection. So `start` also writes the state to a **short-lived cookie**, and
+`callback` refuses unless that cookie matches the `state` it was handed.
+
+- ⚠ **`SameSite=Lax`, not `Strict`, and this one is load-bearing.** The callback arrives as a
+  cross-site top-level navigation *from the provider*, and a `Strict` cookie is not sent on
+  it — so `Strict` here does not harden the flow, it breaks every SSO login. `Secure` follows
+  the same `cookie.secure=auto|always|never` the session cookie uses (§11), because a homelab
+  install on plain HTTP must still be able to sign in.
+- ⚠ **`SameSite` on the *session* cookie does not cover this.** SameSite governs when a cookie
+  is **sent**, not whether a `Set-Cookie` is **stored** — and the callback's job is to store
+  one. Nor does the `X-Loomarr-Csrf` header: that guards mutating Huma routes, and this is a
+  plain-mux `GET` mounted outside that middleware.
+- Without the cookie, someone the provider authenticates could capture their own
+  `?state=&code=` redirect and get another person's browser to follow it, landing that person
+  in the app signed in **as them** — every subsequent action attributed to the wrong account,
+  including anything the approval gate (§7) records.
+- **PKCE** (S256) is sent alongside. It does not close the above on its own — an attacker
+  holds their own verifier — but it binds the authorization code to the flow that requested
+  it, and OAuth 2.1 requires it.
+
+**The post-login redirect is validated where it is emitted, not only where it is accepted.**
+`next` is a same-app path, and *path* means parsed rather than prefix-matched: a backslash is
+the case that prefix-matching misses, because browsers resolving a special-scheme URL treat
+`\` as `/`, so a `Location: /\evil.test` navigates off-site while looking like a path. The
+value crosses a package boundary and a persisted map between the two routes, so `callback`
+re-validates rather than trusting a gate three hops upstream.
 
 ### Device authentication for playout (§9.1) — the one path that isn't a person
 
@@ -1199,6 +1294,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Local passwords | `golang.org/x/crypto/bcrypt` (DefaultCost) | Local-admin bootstrap + local users (§11 identity rework) need a password hash at rest. bcrypt is the boring, correct choice; already in the module tree transitively — this promotes it to a direct dependency. Session *tokens* stay SHA-256 (fast, high-entropy); only human passwords use bcrypt. |
 | Rate limiting | `golang.org/x/time/rate`, per-IP+username, in-memory | Login only; per-instance is acceptable v1 |
 | Metrics / logs | `prometheus/client_golang` / `slog` | Standard |
+| OIDC (SSO) | **`github.com/coreos/go-oidc/v3`** (+ `golang.org/x/oauth2`, `github.com/go-jose/go-jose/v4`) | SSO is a third credential path (§11, V8), and OIDC means verifying a signed token against the issuer's published JWKS — discovery, key rotation, `nonce`/`aud`/`exp` validation. Hand-rolling JWT verification is the kind of security code that looks right and is not. **Three modules total**, all current and maintained; `go-jose` does the crypto and `x/oauth2` the code exchange. Deliberately chosen over building forward-auth instead, which needs no dependency but trusts network topology (§11). |
 | Goroutine-leak gate | **`go.uber.org/goleak`** (test-only) | The in-process restart loop (§9.2) is only correct if Build/Run/Shutdown can repeat without accumulating goroutines or stale state, and a leak there is **silent** — it degrades an install over successive restarts rather than failing anything. goleak is the standard detector, test-only (never in a shipped binary), zero runtime cost. Added by V13 alongside the N-iteration restart test, because a prose rule would not have caught it. |
 | LLM clients | **Ollama via plain HTTP** (`/api/chat` with tools) + a hand-written **OpenAI-compatible** client (`/v1/chat/completions` with tools) — both plain `net/http`, no SDK | One OpenAI-compat client covers OpenAI, Gemini (compat endpoint), Groq, Together, OpenRouter, **and** local Ollama's own `/v1` mode — so the model is a config choice, not a per-vendor code fork. Replaces the earlier `anthropics/anthropic-sdk-go` intent (a net dependency *reduction*); Claude is still reachable via OpenRouter. Ollama stays first-class as the local default. |
 | TMDB / Seerr / media server / Tunarr | **plain HTTP, hand-written thin clients** | Each uses a handful of endpoints; generating from Tunarr's full pre-1.0 spec couples us to its churn. Pin + record versions tested against |
@@ -1572,7 +1668,7 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
 - **Search:** `/v1/search` fans out to mock media server + mock TMDB + clip store; `in_library` flags correct; a member can search (read-only) but adding a missing title still routes through submit→approve; scope filters honored.
 - **Suggestion grounding (critical):** mock LLM returns fabricated titles → **zero** unresolvable items reach a proposal, **nothing** unapproved reaches `/v1/titles`; already-present acquisitions filtered; `auto_approve` respects quota; output validates against schema.
 - **Filler & pods:** catalog sync from a **mock media server's** filler library lands clips with duration + metadata; pod assembly is **seeded-deterministic** (seed = channel + window, so tests reproduce exactly) and respects era/audience matching, category variety, density, and no-repeat-in-window; the fallback ladder degrades gracefully to a bumper card; filler never appears as a lineup "program". Grounding applies to AI tagging and pod assembly (only real catalog clips).
-- **Auth & roles:** bootstrap creates the first local admin and succeeds **exactly once** (a second call 409s while an admin exists); a **local** user logs in against its bcrypt hash; an **imported** media-server user logs in against a mock media server with the correct flavor header (MediaBrowser vs X-Emby-Authorization); an **un-imported** media-server user is **rejected even with valid credentials** (the allowlist — no lazy self-provision); passwords/media-server tokens never persisted; import is admin-only and creates rows, sync refreshes but **never adds**; `member` cannot hit approve/admin routes **or `POST /v1/titles`** (403 — the approval bypass is closed); disabling a user (directly or via sync of a server-disabled user) revokes their sessions immediately; `API_TOKEN` grants break-glass admin.
+- **Auth & roles:** bootstrap creates the first local admin and succeeds **exactly once** (a second call 409s while an admin exists); a **local** user logs in against its bcrypt hash; an **imported** media-server user logs in against a mock media server with the correct flavor header (MediaBrowser vs X-Emby-Authorization); an **un-imported** media-server user is **rejected even with valid credentials** (the allowlist — no lazy self-provision); passwords/media-server tokens never persisted; import is admin-only and creates rows, sync refreshes but **never adds**; `member` cannot hit approve/admin routes **or `POST /v1/titles`** (403 — the approval bypass is closed); disabling a user (directly or via sync of a server-disabled user) revokes their sessions immediately; `API_TOKEN` grants break-glass admin; ⚠ **an SSO identity with no allowlist row is rejected even with a valid provider token** (§11 V8 — the direct analogue of the un-imported media-server case), and no SSO login path creates a row.
 - **Onboarding:** `GET /v1/setup/status` reports each integration pass/fail correctly against mocks (including the Tunarr media-source-matches-library check); a Sonarr/Radarr `Test` webhook with minimal payload is acked and flips the handshake check; a failing check carries an actionable hint + doc link.
 - **API contract:** `/openapi.json` valid 3.1; served spec == committed `api/openapi.yaml` (fail CI on drift); spec `State` enum == code enum; `/docs` renders offline.
 - **Frontend:** typed-client generation compiles; e2e smoke of approve flow vs mocked backend; SSE board updates on simulated `available`.

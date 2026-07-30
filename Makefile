@@ -53,6 +53,17 @@ build: ## build the loomarr binary (static, cgo-free — §16)
 dev: ## dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode)
 	docker compose -f docker/compose.dev.yaml up -d
 
+.PHONY: test-sso
+test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
+	@# Not in `make check`: §19 keeps the default suite Docker-free, like test-pg.
+	@#
+	@# TWO providers, because each found a bug the other could not. Authelia: profile claims
+	@# live at userinfo, not in the id_token, so every login against a default install was
+	@# refused. Authentik: its issuer is path-based WITH a trailing slash, which our
+	@# normalisation stripped — discovery failed outright. A hand-written stub IdP showed
+	@# neither, because it was our own reading of the spec on both sides of the wire.
+	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
+
 .PHONY: dev-be
 dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go change
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
