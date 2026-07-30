@@ -1621,6 +1621,9 @@ components:
           description: When the job is next due
           format: date-time
           type: string
+        paused:
+          description: True when the operator paused the schedule; the job stays listed but never runs when due
+          type: boolean
         running:
           description: True while the job is currently executing
           type: boolean
@@ -1641,6 +1644,7 @@ components:
         - scheduleKey
         - lastResult
         - running
+        - paused
       type: object
     JobsListOutputBody:
       additionalProperties: false
@@ -1660,6 +1664,22 @@ components:
             - "null"
       required:
         - jobs
+      type: object
+    JobsPauseInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/JobsPauseInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        paused:
+          description: true to pause the schedule, false to resume
+          type: boolean
+      required:
+        - paused
       type: object
     LLMModelView:
       additionalProperties: false
@@ -4644,6 +4664,36 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List background jobs
+      tags:
+        - jobs
+  /v1/jobs/{name}/pause:
+    post:
+      description: "Admin only. Pausing stops a job running on its schedule (§18.1); it stays listed, keeps its cron, and reports no next run. Run now still works on a paused job — pause stops the schedule, not the task. A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference."
+      operationId: jobs-pause
+      parameters:
+        - description: Job name (the stable id from GET /v1/jobs)
+          in: path
+          name: name
+          required: true
+          schema:
+            description: Job name (the stable id from GET /v1/jobs)
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobsPauseInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Pause or resume a job
       tags:
         - jobs
   /v1/jobs/{name}/run:

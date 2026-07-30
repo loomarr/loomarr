@@ -22,10 +22,23 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]store.ScheduledJob{}} }
 
+// ⚠ Upsert PRESERVES `paused`, exactly as the SQL does by omitting it from ON CONFLICT DO
+// UPDATE. A fake that let the flag through would pass tests the database fails: this call runs
+// after every execution, so carrying paused would clear it on the next run of a paused job.
 func (f *fakeStore) UpsertScheduledJob(_ context.Context, j store.ScheduledJob) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	j.Paused = f.rows[j.Name].Paused
 	f.rows[j.Name] = j
+	return nil
+}
+
+func (f *fakeStore) SetScheduledJobPaused(_ context.Context, name string, paused bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row := f.rows[name]
+	row.Name, row.Paused = name, paused
+	f.rows[name] = row
 	return nil
 }
 func (f *fakeStore) GetScheduledJob(_ context.Context, name string) (store.ScheduledJob, error) {
@@ -54,6 +67,10 @@ func (f *fakeStore) ClaimDueScheduledJobs(_ context.Context, now time.Time, leas
 	defer f.mu.Unlock()
 	var due []store.ScheduledJob
 	for name, j := range f.rows {
+		// Paused rows are skipped, as the claim SQL does with `AND paused = 0/FALSE`.
+		if j.Paused {
+			continue
+		}
 		if !j.NextRun.After(now) {
 			leased := j
 			leased.NextRun = now.Add(lease)

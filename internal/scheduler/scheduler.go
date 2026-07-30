@@ -66,6 +66,10 @@ type JobStatus struct {
 	LastError   string    `json:"lastError"`
 	NextRun     time.Time `json:"nextRun"`
 	Running     bool      `json:"running"`
+	// Paused is the operator's own stop switch (§18.1): the job stays listed and keeps its
+	// schedule, but is never claimed when due. ⚠ Distinct from DisabledReason below — paused
+	// is a choice with a Resume control, disabled is a fact about the environment.
+	Paused bool `json:"paused"`
 	// DisabledReason is non-empty when this job cannot run in this environment. The UI
 	// renders it in place of the schedule and offers neither Run-now nor Modify.
 	DisabledReason string `json:"disabledReason,omitempty"`
@@ -77,6 +81,7 @@ type JobStatus struct {
 // internal/reconcile importing store).
 type ScheduleStore interface {
 	UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error
+	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	GetScheduledJob(ctx context.Context, name string) (store.ScheduledJob, error)
 	ListScheduledJobs(ctx context.Context) ([]store.ScheduledJob, error)
 	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]store.ScheduledJob, error)
@@ -306,6 +311,36 @@ func (s *Scheduler) Trigger(ctx context.Context, name string) error {
 	return nil
 }
 
+// SetPaused pauses or resumes a job (§18.1). A paused job keeps its schedule and stays listed,
+// but is never claimed when due. Returns ErrUnknownJob for an unregistered name.
+//
+// ⚠ A DISABLED job cannot be paused: pausing states an operator preference about a job that
+// would otherwise run, and this one cannot run at all. Accepting the call would put the row in
+// two contradictory states and imply Resume would make it work.
+//
+// ⚠ **Run-now still works on a paused job, deliberately.** Pause stops the SCHEDULE, not the
+// task; an admin clicking Run now on a row that visibly says "Paused" is making a specific
+// one-off request, and refusing it would mean unpause → run → repause to do something the
+// operator already asked for unambiguously.
+func (s *Scheduler) SetPaused(ctx context.Context, name string, paused bool) error {
+	j, ok := s.jobs[name]
+	if !ok {
+		return ErrUnknownJob
+	}
+	if j.Disabled() {
+		return ErrJobDisabled
+	}
+	if err := s.store.SetScheduledJobPaused(ctx, name, paused); err != nil {
+		return err
+	}
+	// Resuming wakes the loop so a job already past its next_run runs promptly rather than
+	// waiting out a heartbeat it spent paused.
+	if !paused {
+		s.signal()
+	}
+	return nil
+}
+
 // List returns the current status of every registered job (registration order), joining the
 // code registry (name/title/interval) with the state table (last/next run, result).
 func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
@@ -326,7 +361,15 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),
+			Paused:         st.Paused,
 			DisabledReason: j.DisabledReason,
+		}
+		// ⚠ A PAUSED job has no next run either, for the same reason a disabled one does not:
+		// the claim query skips it, so any next_run in the row is a time that will not fire.
+		// Rendering it would have the page promise a run that never comes — the more
+		// misleading half of the two, since a paused job looks otherwise healthy.
+		if st.Paused {
+			status.NextRun = time.Time{}
 		}
 		// A disabled job has no next run — it is never claimed. Any NextRun in the state
 		// row is a leftover from a boot where it WAS enabled (the SQLite → Postgres case),

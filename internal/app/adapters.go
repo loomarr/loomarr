@@ -58,11 +58,22 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 			Name: j.Name, Title: j.Title, Description: j.Description,
 			Schedule: j.Schedule, ScheduleKey: j.ScheduleKey,
 			LastRun: j.LastRun, LastResult: j.LastResult, LastError: j.LastError,
-			NextRun: j.NextRun, Running: j.Running,
+			NextRun: j.NextRun, Running: j.Running, Paused: j.Paused,
 			DisabledReason: j.DisabledReason,
 		})
 	}
 	return out, nil
+}
+
+func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
+	switch err := a.s.SetPaused(ctx, name, paused); err {
+	case scheduler.ErrUnknownJob:
+		return api.ErrJobNotFound
+	case scheduler.ErrJobDisabled:
+		return api.ErrJobDisabled
+	default:
+		return err
+	}
 }
 
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {

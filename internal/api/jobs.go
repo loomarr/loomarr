@@ -16,6 +16,10 @@ type JobService interface {
 	// Trigger forces a job to run off-cycle ("Run now"). Returns ErrJobNotFound for an
 	// unknown name.
 	Trigger(ctx context.Context, name string) error
+	// SetPaused pauses or resumes a job's SCHEDULE (§18.1). A paused job stays listed and
+	// keeps its cron, but never runs when due. ErrJobNotFound for an unknown name;
+	// ErrJobDisabled for one this backend cannot run at all.
+	SetPaused(ctx context.Context, name string, paused bool) error
 }
 
 // ErrJobNotFound is returned by JobService.Trigger for an unregistered job name.
@@ -40,6 +44,7 @@ type JobView struct {
 	LastError   string    `json:"lastError,omitempty" doc:"Error detail when lastResult is error"`
 	NextRun     time.Time `json:"nextRun,omitempty" doc:"When the job is next due"`
 	Running     bool      `json:"running" doc:"True while the job is currently executing"`
+	Paused      bool      `json:"paused" doc:"True when the operator paused the schedule; the job stays listed but never runs when due"`
 	// DisabledReason is non-empty when this backend cannot run the job at all — it is
 	// listed so its absence is never inferred, but it never runs and Run-now 409s.
 	DisabledReason string `json:"disabledReason,omitempty" doc:"Why this job cannot run here; empty when it can"`
@@ -60,6 +65,42 @@ func (s *Server) registerJobs(api huma.API) {
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
 	}, RoleAdmin), s.jobsRun)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "jobs-pause", Method: http.MethodPost, Path: "/v1/jobs/{name}/pause",
+		Summary: "Pause or resume a job",
+		Description: "Admin only. Pausing stops a job running on its schedule (§18.1); it stays listed, keeps its cron, and reports no next run. " +
+			"Run now still works on a paused job — pause stops the schedule, not the task. " +
+			"A job this backend cannot run at all (a non-empty disabledReason) returns 409: that is an environment fact, not an operator preference.",
+		Tags: []string{"jobs"},
+	}, RoleAdmin), s.jobsPause)
+}
+
+type jobsPauseInput struct {
+	Name string `path:"name" doc:"Job name (the stable id from GET /v1/jobs)"`
+	Body struct {
+		Paused bool `json:"paused" doc:"true to pause the schedule, false to resume"`
+	}
+}
+
+func (s *Server) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.jobs == nil {
+		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
+	}
+	if err := s.jobs.SetPaused(ctx, in.Name, in.Body.Paused); err != nil {
+		if err == ErrJobNotFound {
+			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
+		}
+		if err == ErrJobDisabled {
+			return nil, huma.Error409Conflict("This job can't run on this backend, so it can't be paused or resumed.")
+		}
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't change the job",
+			"Loomarr couldn't update that job. Try again in a moment.", err)
+	}
+	return &struct{}{}, nil
 }
 
 type jobsListOutput struct {
