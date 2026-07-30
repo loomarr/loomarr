@@ -7,6 +7,9 @@ allowBuilds:
   # @scarf/scarf is analytics/telemetry pulled in transitively — deny its build.
   "@scarf/scarf": false
 
+minimumReleaseAgeExclude:
+  - brace-expansion@1.1.18
+
 # esbuild (used by tsx + vitest + vite) ships a platform binary via a postinstall
 # build script; pnpm blocks build scripts by default. Approve exactly this one.
 onlyBuiltDependencies:
@@ -35,9 +38,21 @@ overrides:
   # SPA; verified by grepping internal/web/dist/assets for it. Scoped to the 5.x line
   # because that is what minimatch@10 asks for (`^5.0.5`).
   #
-  # ⚠ The 1.1.16 copy (minimatch@3 ← spectral-core) is technically inside the advisory's
-  # unqualified "<= 5.0.7" range but has no fix on its own major — 1.1.12 is the patch for
-  # the OTHER brace-expansion advisory, not this one. Overriding it to ^5 would break
-  # minimatch@3's `^1.1.7`. Left alone deliberately: build-time only, and a broken codegen
-  # chain is a worse outcome than a dev-only DoS nobody can reach.
   "brace-expansion@>=5.0.0 <=5.0.7": "5.0.8"
+  # ⚠ **The 1.x copy DOES have a fix on its own major, and this comment used to say it did
+  # not.** The old text read "1.1.16 … has no fix on its own major — 1.1.12 is the patch for
+  # the OTHER advisory", and concluded the only options were leaving it vulnerable or
+  # breaking minimatch@3's `^1.1.7` by forcing ^5. Both halves were wrong: **1.1.18 carries
+  # CVE-2026-14257's actual fix** (`EXPANSION_MAX_LENGTH` / the `maxLength` option, bounding
+  # total output characters) and is a same-major bump that `^1.1.7` accepts.
+  #
+  # Verified by extracting the published tarballs rather than trusting a version range:
+  # 1.1.16 has ZERO `maxLength` guards, 1.1.18 has 21, 5.0.8 has 17. The advisory's own
+  # remediation text names that guard, which is what makes the check unambiguous — the
+  # 1.1.15 → 1.1.16 diff is a recursion-to-loop change for a DIFFERENT (stack-exhaustion)
+  # issue, and mistaking it for this one is the trap this note exists to close.
+  #
+  # Arrives via minimatch@3 ← @stoplight/spectral-core ← orval, so build-time only and
+  # absent from the shipped SPA — but "unreachable" is a reason to fix it calmly, not a
+  # reason to leave a known-vulnerable version pinned when the patch is free.
+  "brace-expansion@>=1.0.0 <1.1.18": "1.1.18"

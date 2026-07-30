@@ -127,9 +127,15 @@ Before splitting, check the candidates against each other:
 | One backend phase + one pure-frontend phase on a different surface | Two phases touching one DTO (`ChannelDTO`, `ProposalDTO`) |
 | A docs-only pass + a code phase | Two phases that both regenerate baselines |
 
-⚠ **The current remaining phases are NOT disjoint.** V25b (edit-before-approve UI) and V16
-(Dashboard, "live per-stream telemetry") both add API surface, so both edit
-`api/openapi.yaml` and both regenerate the orval client. Run them sequentially.
+⚠ **Do not name specific phases here.** This warning used to say *"V25b and V16 are NOT
+disjoint — run them sequentially"*; both shipped, and the sentence stayed, telling anyone
+reading the session-start ritual to plan around work that was already done. `PROGRESS.md`
+is the phase record — read its **Next up** line, which carries the same lesson about itself.
+
+The durable version of the warning is the test above, not a roster: **two phases are unsafe
+together when they touch the same generated output.** In practice that means anything adding
+an endpoint (both edit `api/openapi.yaml` and regenerate the orval client), sharing a DTO, or
+regenerating the same visual baselines.
 
 A single session working through phases in order needs no worktree at all — there is no
 concurrency to isolate, and the branch is doing the same job.
