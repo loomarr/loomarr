@@ -14,7 +14,11 @@ const ACK_MS = 2000;
 // that raced the first, clearing the acknowledgement early.
 const useCopied = <K = true>() => {
   const [copied, setCopied] = useState<K>();
-  const timer = useRef<number>();
+  // ⚠ React 19's types require an explicit initial value — `useRef<number>()` no longer
+  // infers one. `undefined` is what it always held before the first copy, and the cleanup
+  // below already treats undefined as "no timer pending", so this is the same behaviour
+  // stated out loud rather than a change.
+  const timer = useRef<number | undefined>(undefined);
 
   // Cleared on unmount so a pending acknowledgement can't fire into a dead component.
   useEffect(
