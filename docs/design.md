@@ -1003,6 +1003,36 @@ the *"what the provider told us"* claims dump is worth building: when a login is
 operator needs to see which claim arrived so they can tell a misconfigured provider from a
 missing row.
 
+**The callback is bound to the browser that started the login.** State and nonce are minted
+per login and held server-side, but a server-side map answers *"did some login start here?"*,
+not *"did **this** browser start it?"* — those are different questions, and only the second
+one is CSRF protection. So `start` also writes the state to a **short-lived cookie**, and
+`callback` refuses unless that cookie matches the `state` it was handed.
+
+- ⚠ **`SameSite=Lax`, not `Strict`, and this one is load-bearing.** The callback arrives as a
+  cross-site top-level navigation *from the provider*, and a `Strict` cookie is not sent on
+  it — so `Strict` here does not harden the flow, it breaks every SSO login. `Secure` follows
+  the same `cookie.secure=auto|always|never` the session cookie uses (§11), because a homelab
+  install on plain HTTP must still be able to sign in.
+- ⚠ **`SameSite` on the *session* cookie does not cover this.** SameSite governs when a cookie
+  is **sent**, not whether a `Set-Cookie` is **stored** — and the callback's job is to store
+  one. Nor does the `X-Loomarr-Csrf` header: that guards mutating Huma routes, and this is a
+  plain-mux `GET` mounted outside that middleware.
+- Without the cookie, someone the provider authenticates could capture their own
+  `?state=&code=` redirect and get another person's browser to follow it, landing that person
+  in the app signed in **as them** — every subsequent action attributed to the wrong account,
+  including anything the approval gate (§7) records.
+- **PKCE** (S256) is sent alongside. It does not close the above on its own — an attacker
+  holds their own verifier — but it binds the authorization code to the flow that requested
+  it, and OAuth 2.1 requires it.
+
+**The post-login redirect is validated where it is emitted, not only where it is accepted.**
+`next` is a same-app path, and *path* means parsed rather than prefix-matched: a backslash is
+the case that prefix-matching misses, because browsers resolving a special-scheme URL treat
+`\` as `/`, so a `Location: /\evil.test` navigates off-site while looking like a path. The
+value crosses a package boundary and a persisted map between the two routes, so `callback`
+re-validates rather than trusting a gate three hops upstream.
+
 ### Device authentication for playout (§9.1) — the one path that isn't a person
 
 Internal playout (§9.1) serves segments to a **television**, which cannot hold a session cookie. Those routes therefore authenticate a **device** by token rather than a **person** by session — the only route family that does not resolve to a `users` row. Stated explicitly rather than left implicit, because §11's whole model is "identity is the DB":
