@@ -7,10 +7,13 @@ import (
 // backupHandler serves GET /v1/backup as a plain mux handler (not Huma) because
 // it streams a binary DB snapshot rather than returning a typed body (§16). It
 // is mounted on the mux and documented in the OpenAPI spec via a webhook-free
-// note; auth is checked inline. SQLite streams VACUUM INTO; Postgres → 501.
+// note. SQLite streams VACUUM INTO; Postgres → 501.
+//
+// Authorization goes through the SHARED requireRole (routeauth.go) rather than an inline
+// check: Huma's middleware never sees this handler, and the previous inline guard had
+// already drifted from the one in events.go on what a nil authorizer means (§11).
 func (s *Server) backupHandler(w http.ResponseWriter, r *http.Request) {
-	if s.auth == nil || s.auth.Authorize(r) != RoleAdmin {
-		s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
+	if !s.requireRole(w, r, RoleAdmin) {
 		return
 	}
 	if s.backupSQLite == nil {

@@ -58,7 +58,7 @@ func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {
 	fp := &fakePods{}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Pods:  fp,
 	}))
@@ -142,7 +142,7 @@ func TestPreviewPods_EmptyCatalogIsEmptyArray(t *testing.T) {
 // it exposes nothing an authenticated user cannot already see via /v1/filler.
 func TestPreviewPods_VisibleToAnyAuthenticatedUser(t *testing.T) {
 	srv, _, _ := newPodsServer(t)
-	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", "", ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/pods", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member preview → %d, want 200 (preview is read-only)", resp.StatusCode)
 	}
 }
@@ -186,8 +186,8 @@ func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 func TestPreviewDraftPods_RequiresAdmin(t *testing.T) {
 	srv, _, fp := newPodsServer(t)
 	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", "", `{"filler":{}}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("member draft preview → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("member draft preview → %d, want 401", resp.StatusCode)
 	}
 	if len(fp.draftAsked) != 0 {
 		t.Error("a forbidden draft preview still reached the assembler")

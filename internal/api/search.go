@@ -12,10 +12,10 @@ import (
 // search adds no new privilege surface (§7.2). This is the SAME catalog impl as
 // the LLM grounding tool — humans and the model see identical results.
 func (s *Server) registerSearch(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "search", Method: http.MethodGet, Path: "/v1/search",
 		Summary: "Federated search (library + TMDB)", Tags: []string{"search"},
-	}, s.doSearch)
+	}, RoleMember), s.doSearch)
 }
 
 type searchInput struct {

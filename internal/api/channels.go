@@ -20,88 +20,88 @@ import (
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
 // summarized (counts) rather than dumped slot-by-slot on the channel resource;
 func (s *Server) registerChannels(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-channels", Method: http.MethodGet, Path: "/v1/channels",
 		Summary: "List channels", Tags: []string{"channels"},
-	}, s.listChannels)
+	}, RoleMember), s.listChannels)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channels-now-next", Method: http.MethodGet, Path: "/v1/channels/now-next",
 		Summary: "What is airing now and next", Description: "Per channel, the program currently airing and the one after it, read from Tunarr's generated guide (§6: Tunarr owns playout, so airtimes are its truth, never recomputed here). ONE upstream call serves every channel.",
 		Tags: []string{"channels"},
-	}, s.channelsNowNext)
+	}, RoleMember), s.channelsNowNext)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-channel", Method: http.MethodGet, Path: "/v1/channels/{id}",
 		Summary: "Get a channel definition + status", Tags: []string{"channels"},
-	}, s.getChannel)
+	}, RoleMember), s.getChannel)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-upcoming", Method: http.MethodGet, Path: "/v1/channels/{id}/upcoming",
 		Summary:     "What's on this channel now and next",
 		Description: "The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).",
 		Tags:        []string{"channels"},
-	}, s.channelUpcoming)
+	}, RoleMember), s.channelUpcoming)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
 		Summary:     "Suggest channel icons from the lineup",
 		Description: "Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.",
 		Tags:        []string{"channels"},
-	}, s.channelIconSuggestions)
+	}, RoleMember), s.channelIconSuggestions)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
 		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",
 		Tags:        []string{"channels", "filler"},
-	}, s.previewChannelPods)
+	}, RoleMember), s.previewChannelPods)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-cycle", Method: http.MethodGet, Path: "/v1/channels/{id}/cycle",
 		Summary:     "Preview what airs at a chosen time (curation rules)",
 		Description: "The time-travel cycle preview (§8.1): what this channel would air at `at` (default now), and WHICH curation rule is active then. Runs the SAME pure lineup builder as reconcile — preview and reality cannot disagree — WITHOUT touching Tunarr or the store beyond a read. Makes first-match-by-priority rule resolution legible (\"at Saturday 9am, the Weekend TNG marathon rule is active\"). Read-only, so any authenticated user may call it; `at` may be past or future.",
 		Tags:        []string{"channels"},
-	}, s.previewChannelCycle)
+	}, RoleMember), s.previewChannelCycle)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-draft-channel-pods", Method: http.MethodPost, Path: "/v1/channels/{id}/pods/preview",
 		Summary:     "Preview a draft filler selection without saving it",
 		Description: "Assembles the pool a DRAFT filler selection would produce, without persisting it (§10, §12) — the live sandbox on the channel's Filler section. Same assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what will air once applied. Admin-only (an authoring tool); applying is a normal PATCH of policy.filler.",
 		Tags:        []string{"channels", "filler"},
-	}, s.previewDraftChannelPods)
+	}, RoleAdmin), s.previewDraftChannelPods)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "create-channel", Method: http.MethodPost, Path: "/v1/channels",
 		Summary: "Create a channel", Description: "Admin only. From an approved proposal or hand-made.",
 		Tags: []string{"channels"},
-	}, s.createChannel)
+	}, RoleAdmin), s.createChannel)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "update-channel", Method: http.MethodPatch, Path: "/v1/channels/{id}",
 		Summary:     "Edit a channel",
 		Description: "Admin only. Partial update of operator-owned fields (name/number/group/strategy), the per-channel programming policy, and pause/resume via status. Renumber is unique-checked (409). Every edit auto-reconciles — there is no manual rebuild.",
 		Tags:        []string{"channels"},
-	}, s.updateChannel)
+	}, RoleAdmin), s.updateChannel)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "refine-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/refine",
 		Summary:     "Refine a channel with the LLM",
 		Description: "Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).",
 		Tags:        []string{"channels", "suggestions"},
-	}, s.refineChannel)
+	}, RoleAdmin), s.refineChannel)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
 		Summary: "Force desired→Tunarr reconciliation", Description: "Admin only. Idempotent (§9).",
 		Tags: []string{"channels"},
-	}, s.reconcileChannel)
+	}, RoleAdmin), s.reconcileChannel)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "delete-channel", Method: http.MethodDelete, Path: "/v1/channels/{id}",
 		Summary: "Remove a channel", Description: "Admin only. Detaches by default (§7).",
 		Tags: []string{"channels"}, DefaultStatus: http.StatusNoContent,
-	}, s.deleteChannel)
+	}, RoleAdmin), s.deleteChannel)
 }
 
 type channelIDInput struct {

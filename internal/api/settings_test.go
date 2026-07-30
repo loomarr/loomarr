@@ -113,7 +113,7 @@ func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
 	fs := &fakeSettings{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:    st,
-		Auth:     api.NewTokenAuthorizer(adminToken),
+		Auth:     testAuthorizer{},
 		Log:      slog.New(slog.DiscardHandler),
 		Settings: fs,
 	})
@@ -139,8 +139,8 @@ func TestSettings_RequireAdmin(t *testing.T) {
 		{http.MethodPut, "/v1/settings/seerr.url/env-override", `{"enabled":true}`},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // empty token → not admin
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without admin → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
 	}
 }

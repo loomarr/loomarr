@@ -36,6 +36,25 @@ func (s *Server) registerMiddleware(api huma.API) {
 			return
 		}
 
+		// ⚠ **AUTHORIZATION, from the route's own declaration** (§11, routeauth.go). The
+		// role a route needs rides on its operation, so this enforces it for every route at
+		// once — rather than depending on each handler body remembering to ask. An
+		// operation that declared nothing requires admin, so forgetting fails CLOSED.
+		//
+		// Runs after CSRF: a cookie-authenticated request missing the header is refused as
+		// CSRF regardless of role, which keeps that refusal from reading as "wrong role".
+		if want := roleForOperation(ctx.Operation()); !authorizeRole(want, role) {
+			// Goes through WriteErr so the request-id stamping and cause logging in
+			// installUserFacingErrors applies here too — a refusal an operator cannot
+			// correlate to a request is a refusal they cannot debug.
+			if role == RoleAnonymous {
+				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "You need to sign in to do this.")
+			} else {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden, "This action needs an admin account.")
+			}
+			return
+		}
+
 		c := huma.WithValue(ctx, roleCtxKey{}, role)
 		c = huma.WithValue(c, reqCtxKey{}, r) // raw request for handlers (login IP, cookies)
 		if user != nil {
@@ -78,27 +97,27 @@ func toDTO(r provision.Record) TitleDTO {
 // user; POST/DELETE require admin (§7: enqueuing an acquisition is the approval
 // gate's concern).
 func (s *Server) registerTitles(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "enqueue-title", Method: http.MethodPost, Path: "/v1/titles",
 		Summary: "Enqueue/ensure a title", Description: "Idempotent by external id (§4). Admin only.",
 		Tags: []string{"titles"},
-	}, s.enqueueTitle)
+	}, RoleAdmin), s.enqueueTitle)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-title", Method: http.MethodGet, Path: "/v1/titles/{key}",
 		Summary: "Get a title's provisioning state", Tags: []string{"titles"},
-	}, s.getTitle)
+	}, RoleMember), s.getTitle)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-titles", Method: http.MethodGet, Path: "/v1/titles",
 		Summary: "List titles, optionally filtered by state", Tags: []string{"titles"},
-	}, s.listTitles)
+	}, RoleMember), s.listTitles)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "delete-title", Method: http.MethodDelete, Path: "/v1/titles/{key}",
 		Summary: "Give up / cancel a title", Description: "Admin only.", Tags: []string{"titles"},
 		DefaultStatus: http.StatusNoContent,
-	}, s.deleteTitle)
+	}, RoleAdmin), s.deleteTitle)
 }
 
 // --- handlers ---
