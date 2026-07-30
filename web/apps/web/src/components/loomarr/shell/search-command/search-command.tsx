@@ -42,6 +42,8 @@ const SearchCommand = ({
   results,
   onSelect,
   loading = false,
+  placeholder = "Search titles, channels, help…",
+  onEscape,
   className,
 }: SearchCommandProps) => {
   const listboxId = useId();
@@ -85,6 +87,16 @@ const SearchCommand = ({
   });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // ⚠ Escape is handled BEFORE the empty-list guard below. A picker with no matches is
+    // exactly when a user wants out, and returning early there would make the key work only
+    // when it was least needed. Opt-in per consumer (see onEscape) so the ⌘K palette, which
+    // binds Escape at the window level, still closes once.
+    if (e.key === "Escape" && onEscape) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
+      return;
+    }
     if (flat.length === 0) return;
     switch (e.key) {
       case "ArrowDown":
@@ -129,7 +141,7 @@ const SearchCommand = ({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Search titles, channels, help…"
+          placeholder={placeholder}
           aria-label="Search"
           role="combobox"
           aria-expanded={flat.length > 0}
