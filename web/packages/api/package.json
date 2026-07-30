@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.17",
-    "orval": "^7.3.0",
+    "orval": "^8.23.0",
     "react": "^19.2.8",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
