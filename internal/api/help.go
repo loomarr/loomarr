@@ -17,26 +17,26 @@ import (
 // any authenticated user: Help is documentation, and the version is what a member quotes
 // in a bug report.
 func (s *Server) registerHelp(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-docs", Method: http.MethodGet, Path: "/v1/docs",
 		Summary:     "List the embedded help pages",
 		Description: "The Help section's table of contents (§13). Pages ship inside the binary, so Help works air-gapped.",
 		Tags:        []string{"help"},
-	}, s.listDocs)
+	}, RoleMember), s.listDocs)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-doc", Method: http.MethodGet, Path: "/v1/docs/{slug}",
 		Summary:     "Read one help page as markdown",
 		Description: "Returns raw markdown, not HTML: the frontend renders it and searches it client-side (§7.2), which needs the source rather than a rendered blob.",
 		Tags:        []string{"help"},
-	}, s.getDoc)
+	}, RoleMember), s.getDoc)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-version", Method: http.MethodGet, Path: "/v1/system/version",
 		Summary:     "Version and readiness of this instance",
 		Description: "What the operator quotes in a bug report, plus the readiness /readyz reports. /healthz and /readyz stay unauthenticated for orchestrators; this is their typed, authenticated twin for the UI.",
 		Tags:        []string{"system"},
-	}, s.systemVersion)
+	}, RolePublic), s.systemVersion)
 }
 
 // DocSummary is one entry in the Help table of contents.

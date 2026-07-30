@@ -100,48 +100,48 @@ type DatabaseStatus struct {
 // registerSystemDatabase mounts /v1/system/database* (§18). Admin-only throughout: this
 // moves every row the instance owns, and the backup it writes carries every secret.
 func (s *Server) registerSystemDatabase(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-database-status", Method: http.MethodGet, Path: "/v1/system/database",
 		Summary: "Active backend + migration progress",
 		Description: "Admin only. Which backend is live, whether a migration is offered, and " +
 			"how far one has got — including per-table row counts and the parity verdict.",
 		Tags: []string{"system"},
-	}, s.databaseStatus)
+	}, RoleAdmin), s.databaseStatus)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-database-preflight", Method: http.MethodPost, Path: "/v1/system/database/preflight",
 		Summary: "Probe a candidate PostgreSQL target",
 		Description: "Admin only. Runs every check against the target and returns them all — a check " +
 			"that ran and failed comes back with ok:false rather than as an error, so the operator " +
 			"sees which one. Nothing is written to either database.",
 		Tags: []string{"system"},
-	}, s.databasePreflight)
+	}, RoleAdmin), s.databasePreflight)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-database-backup", Method: http.MethodPost, Path: "/v1/system/database/backup",
 		Summary: "Write the pre-migration backup",
 		Description: "Admin only. Writes a server-side snapshot into the configured backup directory. " +
 			"This is the gate the migrate call enforces — a backup is required, not suggested, because " +
 			"it is the only thing that makes the move reversible.",
 		Tags: []string{"system"},
-	}, s.databaseBackup)
+	}, RoleAdmin), s.databaseBackup)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-database-migrate", Method: http.MethodPost, Path: "/v1/system/database/migrate",
 		Summary: "Copy every table into the target and verify parity",
 		Description: "Admin only. Refuses without a passing preflight and a backup. The source is only " +
 			"ever read: on any failure the install is still running on SQLite and nothing was lost. " +
 			"Progress streams over /v1/events as `database` frames.",
 		Tags: []string{"system"},
-	}, s.databaseMigrate)
+	}, RoleAdmin), s.databaseMigrate)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-database-switchover", Method: http.MethodPost, Path: "/v1/system/database/switchover",
 		Summary: "Point the next boot at the migrated database",
 		Description: "Admin only. Persists the new DATABASE_URL to the bootstrap file. Takes effect on " +
 			"restart; the SQLite file is left in place untouched, so reverting is a one-line change.",
 		Tags: []string{"system"},
-	}, s.databaseSwitchover)
+	}, RoleAdmin), s.databaseSwitchover)
 }
 
 type databaseStatusOutput struct {

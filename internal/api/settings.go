@@ -11,50 +11,50 @@ import (
 // surface the Settings UI and the wizard both drive. All admin-only; secrets are
 // masked by the service before they cross this boundary (§4).
 func (s *Server) registerSettings(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-list", Method: http.MethodGet, Path: "/v1/settings",
 		Summary: "List settings", Description: "Admin only. Every registry setting with resolved value (secrets masked), provenance, and audit (config-design §8).",
 		Tags: []string{"settings"},
-	}, s.settingsList)
+	}, RoleAdmin), s.settingsList)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-patch", Method: http.MethodPatch, Path: "/v1/settings",
 		Summary: "Update settings", Description: "Admin only. Per-key results (saved | invalid | pinned); hot-applies on success (config-design §8).",
 		Tags: []string{"settings"},
-	}, s.settingsPatch)
+	}, RoleAdmin), s.settingsPatch)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-clear", Method: http.MethodDelete, Path: "/v1/settings/{key}",
 		Summary: "Clear a setting", Description: "Admin only. Drops the stored override so the key reverts to env/default — the explicit clear, and the only way to unset a secret (config-design §8/§9).",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
-	}, s.settingsClear)
+	}, RoleAdmin), s.settingsClear)
 
 	// The unlock (config-design §3.1). A separate operation rather than a field on PATCH:
 	// taking a key from the deploy config is a deliberate act, not something that should
 	// ride along with an ordinary save of its value.
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "settings-env-override", Method: http.MethodPut, Path: "/v1/settings/{key}/env-override",
 		Summary: "Take a setting back from the environment", Description: "Admin only. Sets or clears the durable claim that this key is app-managed even though its environment variable is set (config-design §3.1). Unlocking seeds the stored value from the env value it takes over, so nothing changes until the operator saves; a secret never seeds. 404 unknown key (bootstrap keys are not in the registry), 409 when the environment does not pin the key.",
 		Tags: []string{"settings"}, DefaultStatus: http.StatusNoContent,
-	}, s.settingsEnvOverride)
+	}, RoleAdmin), s.settingsEnvOverride)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "setup-test", Method: http.MethodPost, Path: "/v1/setup/test",
 		Summary: "Run one connection check", Description: "Admin only. Powers the per-block Test buttons (config-design §8).",
 		Tags: []string{"settings"},
-	}, s.settingsTest)
+	}, RoleAdmin), s.settingsTest)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-reveal", Method: http.MethodGet, Path: "/v1/settings/secrets/{name}",
 		Summary: "Reveal a generated secret", Description: "Admin only. Returns a displayable generated secret's current value (API_TOKEN — config-design §4's eye toggle). SESSION_SECRET reports displayable:false and withholds the value. Reading never rotates.",
 		Tags: []string{"settings"},
-	}, s.secretReveal)
+	}, RoleAdmin), s.secretReveal)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "secret-regenerate", Method: http.MethodPost, Path: "/v1/settings/secrets/{name}/regenerate",
 		Summary: "Regenerate a generated secret", Description: "Admin only. Rotates SESSION_SECRET | API_TOKEN with the §4 side-effects; the new value is returned only if displayable.",
 		Tags: []string{"settings"},
-	}, s.secretRegenerate)
+	}, RoleAdmin), s.secretRegenerate)
 }
 
 type settingsListOutput struct {

@@ -14,32 +14,32 @@ import (
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
 func (s *Server) registerUsers(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-users", Method: http.MethodGet, Path: "/v1/users",
 		Summary: "List users (admin)", Tags: []string{"users"},
-	}, s.listUsers)
+	}, RoleAdmin), s.listUsers)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "patch-user", Method: http.MethodPatch, Path: "/v1/users/{id}",
 		Summary: "Update a user's role/quota/disabled (admin)", Tags: []string{"users"},
-	}, s.patchUser)
+	}, RoleAdmin), s.patchUser)
 
 	if s.userSync != nil || s.schemaOnly {
-		huma.Register(api, huma.Operation{
+		huma.Register(api, withRole(huma.Operation{
 			OperationID: "sync-users", Method: http.MethodPost, Path: "/v1/users/sync",
 			Summary: "Import/sync users from the media server (admin)", Tags: []string{"users"},
-		}, s.syncUsers)
+		}, RoleAdmin), s.syncUsers)
 	}
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-user-sessions", Method: http.MethodGet, Path: "/v1/users/{id}/sessions",
 		Summary: "List a user's live sessions (admin)", Tags: []string{"users"},
-	}, s.listUserSessions)
+	}, RoleAdmin), s.listUserSessions)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "revoke-session", Method: http.MethodDelete, Path: "/v1/sessions/{hash}",
 		Summary: "Revoke one session (admin)", Tags: []string{"users"},
-	}, s.revokeSession)
+	}, RoleAdmin), s.revokeSession)
 }
 
 type syncOutput struct {
