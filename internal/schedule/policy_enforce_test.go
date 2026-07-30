@@ -173,18 +173,6 @@ func TestEnforce_Deterministic(t *testing.T) {
 	}
 }
 
-// ⚠ **`scope.collections` does NOT bind, and this pins that it is honest about it.**
-//
-// The field exists on ScopePolicy and round-trips through PATCH → policy_json → the engine,
-// but no filter reads it: the scope pass above checks Series, Era, Genres and RuntimeMax and
-// skips Collections entirely. There is no library-adapter support for listing collections or
-// resolving membership either (§12 records it as ORPHANED, pending `scripts/capture-collections.sh`).
-//
-// So this asserts the CURRENT truth rather than the desired one: setting a collection scope
-// filters nothing. It is deliberately not skipped or commented out — a test that documents an
-// inert field is what stops the next reader assuming it works, and it will fail the moment
-// collections starts binding, which is exactly when someone should come back and rewrite it
-// into the positive assertion.
 // boxSetEntry builds a movie entry with media-server collection membership STAMPED, as the
 // reconcile heal leaves it (programming-design §2.2).
 func boxSetEntry(key, title string, boxSets ...string) schedule.LineupEntry {

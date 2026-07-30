@@ -23,9 +23,15 @@ import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 // (the user is mid-type) while the *active option* moves. Moving focus onto each option
 // would break typing.
 //
-// Escape is deliberately NOT handled here. The ⌘K palette already binds it at the window
-// level (`useCommandShortcut`), so handling it again would close twice; the other three
-// consumers (lineup editor, series scope, filler clips) each own a Cancel affordance.
+// Escape is not bound by DEFAULT: the ⌘K palette already binds it at the window level
+// (`useCommandShortcut`), so an unconditional handler here would close twice. Every other
+// consumer opts in via `onEscape`, which is handled before the empty-list guard in onKeyDown.
+//
+// ⚠ This comment used to end "the other three consumers each own a Cancel affordance", as
+// though that settled it. It did not, and the gap shipped in all four (there are four, not
+// three — proposal-edit was missing from the list too): a Cancel BUTTON is a pointer
+// affordance. A keyboard user presses Escape, nothing happened, and no test noticed because
+// every test clicked Cancel. Found by a maintainer pressing the key.
 const SCOPE_LABEL: Record<PaletteScope, string> = {
   channels: "Channels",
   library: "In your library",
@@ -42,6 +48,8 @@ const SearchCommand = ({
   results,
   onSelect,
   loading = false,
+  placeholder = "Search titles, channels, help…",
+  onEscape,
   className,
 }: SearchCommandProps) => {
   const listboxId = useId();
@@ -85,6 +93,16 @@ const SearchCommand = ({
   });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // ⚠ Escape is handled BEFORE the empty-list guard below. A picker with no matches is
+    // exactly when a user wants out, and returning early there would make the key work only
+    // when it was least needed. Opt-in per consumer (see onEscape) so the ⌘K palette, which
+    // binds Escape at the window level, still closes once.
+    if (e.key === "Escape" && onEscape) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
+      return;
+    }
     if (flat.length === 0) return;
     switch (e.key) {
       case "ArrowDown":
@@ -129,7 +147,7 @@ const SearchCommand = ({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Search titles, channels, help…"
+          placeholder={placeholder}
           aria-label="Search"
           role="combobox"
           aria-expanded={flat.length > 0}
