@@ -973,6 +973,28 @@ carries its own proof (a signed token verified against the issuer's published ke
 is no network-topology assumption to get wrong. Forward-auth stays open work (§20); if it is
 ever added, the trusted-CIDR check is load-bearing in the way the allowlist is.
 
+**Verified against two real providers, and each found a bug the other could not.** `make
+test-sso` stands up **Authelia** and **Authentik** in containers and drives the whole flow.
+This is not belt-and-braces: a hand-written stub IdP is one reading of the spec on *both*
+sides of the wire, so a misunderstanding agrees with itself and stays invisible.
+
+- **Authelia** found that profile claims live at the **userinfo endpoint**, not in the
+  id_token — it follows the spec strictly. Loomarr read only the id_token, so `MatchName()`
+  fell through to an opaque `sub` UUID and **every login against a default Authelia was
+  refused**. Claims are now fetched from userinfo, with the response's `sub` cross-checked
+  against the token's (a substituted response could otherwise name a different person).
+- **Authentik** found that its issuer is path-based **with a trailing slash**
+  (`…/application/o/loomarr/`). OIDC requires an exact issuer match, and Loomarr was
+  trimming it — discovery failed outright, so an operator pasting the value Authentik
+  *displays* could never connect. Only whitespace is trimmed now.
+- They also **disagree** about something easy to mistake for a rule: Authelia refuses plain
+  HTTP (it derives its issuer from the request); Authentik serves discovery over it happily.
+  So "a provider requires HTTPS" is per-provider, and Loomarr assumes neither.
+- Two operator-facing setup requirements worth knowing, both harness findings rather than
+  Loomarr bugs: **Authentik needs a signing key assigned to the provider**, or it signs with
+  HS256 and a compliant client rejects the token; and **Authelia's session cookie domain must
+  match the URL Loomarr is reached at**, or discovery 400s.
+
 **Matching an identity to a row.** The provider's subject (`sub`) is stable but opaque and
 means nothing to an operator reading the People list, so an SSO login matches on the
 **preferred username** claim (falling back to `email`) against the same `users.name` the other

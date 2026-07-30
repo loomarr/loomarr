@@ -217,7 +217,40 @@ func akAPIReady(base string) bool {
 		return false
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	// ⚠ An answering API is NOT a ready one. The worker seeds the default property mappings
+	// (the openid/profile/email scopes) asynchronously, and provisioning needs them — so wait
+	// for the thing the next step consumes rather than for a 200 on an unrelated endpoint.
+	return akScopeCount(base) >= 3
+}
+
+// akScopeCount reports how many of the three required scope mappings exist yet.
+func akScopeCount(base string) int {
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/v3/propertymappings/provider/scope/", nil)
+	req.Header.Set("Authorization", "Bearer "+akBootstrapTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		Results []struct {
+			ScopeName string `json:"scope_name"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return 0
+	}
+	want := map[string]bool{"openid": true, "profile": true, "email": true}
+	n := 0
+	for _, r := range body.Results {
+		if want[r.ScopeName] {
+			n++
+		}
+	}
+	return n
 }
 
 // provisionAuthentik creates the OAuth2 provider, its application, and two users — one
@@ -236,6 +269,17 @@ func provisionAuthentik(t *testing.T, base string) {
 	})
 	scopes := akScopeMappings(t, base)
 
+	// ⚠ **A signing key is REQUIRED, and its absence is a harness gap rather than a Loomarr
+	// bug.** Without one Authentik falls back to HS256 — symmetric, signed with the client
+	// secret — and go-oidc rejects it: `unexpected signature algorithm "HS256"; expected
+	// ["RS256"]`. Authentik's own documented setup assigns a certificate-keypair to the
+	// provider, which is what makes it sign asymmetrically. Recorded because the error reads
+	// like a verification bug in our code and is not.
+	signingKey := akPick(t, base, "/api/v3/crypto/certificatekeypairs/", func(r map[string]any) bool {
+		name, _ := r["name"].(string)
+		return strings.Contains(strings.ToLower(name), "authentik")
+	})
+
 	akPost(t, base, "/api/v3/providers/oauth2/", map[string]any{
 		"name": "loomarr", "authorization_flow": flow, "invalidation_flow": flow,
 		"client_type": "confidential", "client_id": ssoClientID, "client_secret": ssoClientSecret,
@@ -243,6 +287,7 @@ func provisionAuthentik(t *testing.T, base string) {
 			{"matching_mode": "strict", "url": "http://loomarr.test/v1/auth/sso/callback"},
 		},
 		"property_mappings": scopes,
+		"signing_key":       signingKey,
 		// The subject is the username, so `sub` is legible in a log — but Loomarr still
 		// matches on preferred_username, which is what the claim-precedence rule specifies.
 		"sub_mode": "user_username",
@@ -344,13 +389,24 @@ func akPost(t *testing.T, base, path string, body map[string]any) map[string]any
 
 // signInAndGetCode plays the browser through Authentik's flow executor and returns the `code`.
 //
-// Authentik drives login as a sequence of flow "challenges" over its API rather than a form
-// post, so this walks that sequence instead of posting credentials once.
+// ⚠ **Authentik does not accept credentials in one post.** Login is a sequence of flow
+// "challenges", and the shape only became clear by tracing it:
+//
+//  1. GET the executor → `ak-stage-identification` (which user?)
+//  2. POST the username → 200, and the NEXT GET yields `ak-stage-password`
+//  3. POST the password → a `xak-flow-redirect` challenge carrying `to`
+//  4. Follow `to` (back to /authorize, now with a session) → 302 to the redirect URI + code
+//
+// The mistake worth recording: an earlier version re-GETted the executor after the password
+// stage instead of following `to`, which looped back to identification and looked like a
+// rejected password rather than a misread protocol.
 func (a authentikIDP) signInAndGetCode(t *testing.T, authURL, username string) string {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{
 		Jar: jar,
+		// Stop at the redirect carrying the code; following it would chase a host that does
+		// not exist.
 		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
 			if strings.HasPrefix(r.URL.String(), "http://loomarr.test/") {
 				return http.ErrUseLastResponse
@@ -359,57 +415,71 @@ func (a authentikIDP) signInAndGetCode(t *testing.T, authURL, username string) s
 		},
 	}
 
-	// 1. Hitting authorize starts a flow and lands on the executor.
-	resp, err := client.Get(authURL)
-	if err != nil {
-		t.Fatalf("authorize: %v", err)
-	}
-	_ = resp.Body.Close()
+	// The executor needs the authorize request as its `query`, in the same `next=<encoded>`
+	// form Authentik itself uses when it bounces the browser to the login screen.
+	inner := strings.TrimPrefix(authURL, a.baseURL)
+	executorURL := fmt.Sprintf("%s/api/v3/flows/executor/default-authentication-flow/?query=%s",
+		a.baseURL, url.QueryEscape("next="+url.QueryEscape(inner)))
 
-	// 2. Walk the challenge sequence: identification, then password.
-	executorURL := a.baseURL + "/api/v3/flows/executor/default-authentication-flow/?query=" + url.QueryEscape(strings.TrimPrefix(authURL, a.baseURL))
-	post := func(body map[string]any) map[string]any {
-		payload, _ := json.Marshal(body)
-		r, err := client.Post(executorURL, "application/json", strings.NewReader(string(payload)))
+	challenge := func(body map[string]any) map[string]any {
+		var (
+			resp *http.Response
+			err  error
+		)
+		if body == nil {
+			resp, err = client.Get(executorURL)
+		} else {
+			payload, _ := json.Marshal(body)
+			resp, err = client.Post(executorURL, "application/json", strings.NewReader(string(payload)))
+		}
 		if err != nil {
 			t.Fatalf("flow executor: %v", err)
 		}
-		defer func() { _ = r.Body.Close() }()
-		raw, _ := io.ReadAll(r.Body)
+		defer func() { _ = resp.Body.Close() }()
+		raw, _ := io.ReadAll(resp.Body)
 		out := map[string]any{}
-		_ = json.Unmarshal(raw, &out)
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatalf("flow executor returned non-JSON (%d): %s", resp.StatusCode, raw)
+		}
 		return out
 	}
-	post(map[string]any{"component": "ak-stage-identification", "uid_field": username})
-	final := post(map[string]any{"component": "ak-stage-password", "password": ssoPassword})
 
-	// 3. The flow ends by telling the browser where to go — carrying the code.
+	if got := challenge(nil)["component"]; got != "ak-stage-identification" {
+		t.Fatalf("first challenge = %v, want ak-stage-identification", got)
+	}
+	challenge(map[string]any{"component": "ak-stage-identification", "uid_field": username})
+	if got := challenge(nil)["component"]; got != "ak-stage-password" {
+		t.Fatalf("second challenge = %v, want ak-stage-password", got)
+	}
+	final := challenge(map[string]any{"component": "ak-stage-password", "password": ssoPassword})
+
 	to, _ := final["to"].(string)
 	if to == "" {
-		t.Fatalf("flow did not finish with a redirect: %v", final)
+		t.Fatalf("password stage did not finish with a redirect: %v", final)
 	}
-	u, err := url.Parse(to)
+	if !strings.HasPrefix(to, "http") {
+		to = a.baseURL + to
+	}
+
+	// Following `to` re-runs /authorize with the session now established, and THAT is what
+	// issues the code.
+	resp, err := client.Get(to)
 	if err != nil {
-		t.Fatalf("parse %q: %v", to, err)
+		t.Fatalf("follow the flow redirect: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		t.Fatalf("authorize did not redirect after sign-in (status %d)", resp.StatusCode)
+	}
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("parse %q: %v", loc, err)
 	}
 	code := u.Query().Get("code")
 	if code == "" {
-		// Authentik may hand back a relative continuation; follow it once.
-		if !strings.HasPrefix(to, "http") {
-			to = a.baseURL + to
-		}
-		r, ferr := client.Get(to)
-		if ferr != nil {
-			t.Fatalf("follow %q: %v", to, ferr)
-		}
-		_ = r.Body.Close()
-		loc, lerr := url.Parse(r.Header.Get("Location"))
-		if lerr == nil {
-			code = loc.Query().Get("code")
-		}
-	}
-	if code == "" {
-		t.Fatalf("no code in %q", to)
+		t.Fatalf("no code in %q (error=%q)", loc, u.Query().Get("error"))
 	}
 	return code
 }
