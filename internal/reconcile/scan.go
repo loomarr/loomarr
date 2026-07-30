@@ -95,7 +95,7 @@ func (s *LibraryScan) confirm(ctx context.Context, items []library.SearchResult)
 		// one namespace (e.g. a TMDB-only series, `series:tmdb:<id>`) then still matches the
 		// same show the library indexed under the other (`series:tvdb:<id>`) — without this,
 		// a TMDB-keyed series never confirms `available` even once its episodes are present.
-		for _, key := range scanItemKeys(it) {
+		for _, key := range ScanItemKeys(it) {
 			rec, awaiting := inflight[key]
 			if !awaiting || seen[key] {
 				continue
@@ -162,7 +162,7 @@ func titleLabel(rec provision.Record) string {
 	return string(rec.Key)
 }
 
-// scanItemKeys builds EVERY provision.Key a scanned library item can be identified by, via the
+// ScanItemKeys builds EVERY provision.Key a scanned library item can be identified by, via the
 // same Title.Key() path the store used to key the record — so the match is byte-for-byte in each
 // namespace. A library item often carries more than one provider id (Emby exposes both Tvdb and
 // Tmdb for a series), and a title record is keyed by whichever id it was born with — TMDB for a
@@ -170,7 +170,11 @@ func titleLabel(rec provision.Record) string {
 // probing the in-flight set under each closes that gap: a `series:tmdb:<id>` record still matches
 // the same show the library indexed as `series:tvdb:<id>`. Order is TVDB-first (the library's
 // preferred series identity), then TMDB; deduped. Empty when the item carries no usable id.
-func scanItemKeys(it library.SearchResult) []provision.Key {
+// Exported because the BoxSet membership index (app.libraryBoxSets, programming-design §2.2)
+// faces the identical problem: a collection member carrying both provider ids must be findable
+// under whichever key form the lineup entry was born with. A second derivation would be a
+// fifth copy of this logic that drifts by one namespace and silently matches nothing.
+func ScanItemKeys(it library.SearchResult) []provision.Key {
 	mt := provision.Movie
 	if it.MediaType == library.Series {
 		mt = provision.Series

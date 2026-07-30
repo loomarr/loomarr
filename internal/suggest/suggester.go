@@ -578,21 +578,16 @@ func capitalizeASCII(s string) string {
 // all-empty scope (e.g. left after a phantom series intersection dropped its only series)
 // narrows nothing, so the caller nils it — a rule's What should be nil ("inherit channel
 // scope"), never a non-nil no-op that reads as an active-but-empty narrower.
-// ⚠ **`Collections` is deliberately NOT counted, because nothing filters on it.** The
-// scheduler's scope filter (schedule/slotting.go) checks Series, Era, Genres and RuntimeMax
-// and skips Collections entirely — verified by a test that sets a collection scope and
-// watches every entry schedule anyway (§14.2, `TestEnforce_CollectionsDoesNotBindYet`).
-//
-// Counting an inert field here would make a collections-only scope survive the nil-out below
-// as a "narrower" that narrows nothing — precisely the active-but-empty scope this function
-// exists to prevent. The field stays on the type (it is the extension point for the Kometa
-// collections feature, §12 "ORPHANED"), but until the library adapter and the filter exist it
-// must not vote on whether a scope constrains anything.
+// `Collections` IS counted. It was excluded while inert — nothing filtered on it, so a
+// collections-only scope would have survived the nil-out below as a "narrower" that narrows
+// nothing. It now binds in the scheduler's scope filter (schedule/slotting.go, via the
+// membership stamped at reconcile — programming-design §2.2), so it constrains a rule's What
+// exactly as Series or Era does and must vote accordingly.
 func scopeNarrows(s *schedule.ScopePolicy) bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Series) > 0 || s.Seasons != nil || s.Era != nil ||
+	return len(s.Series) > 0 || len(s.Collections) > 0 || s.Seasons != nil || s.Era != nil ||
 		len(s.Genres.Include) > 0 || len(s.Genres.Exclude) > 0 || s.RuntimeMax > 0
 }
 

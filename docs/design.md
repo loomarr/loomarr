@@ -377,6 +377,13 @@ Flavor via `LIBRARY_FLAVOR`. **Season precision default:** `SEASON_PRECISION=ser
 
 Both return `[]SearchResult` (the existing shape carrying `LibraryItemID` + `TMDBID`/`TVDBID`), one code path for both flavors (auth-only divergence, as with every `/Items` call). The scan job builds a `provision.Key` from each returned item and confirms any in-flight (`requested`/`downloading`) title whose key matches — applying `LibraryConfirmed` → `available`. Key parity (same key from a `Title`, a webhook, or a scan item) is what makes this correlation exact.
 
+**Collections / BoxSets (for `scope.collections`, programming-design §2.2).** The same `/Items` surface, two reads:
+
+- `Collections()` — `GET /Items?IncludeItemTypes=BoxSet&Recursive=true&Fields=ChildCount&SortBy=SortName`. Lists the operator's curated collections (id + name) so the channel editor can offer a picker. Emby and Jellyfin both model a collection as an item of `Type: "BoxSet"`.
+- `CollectionMembers(id)` — `GET /Items?ParentId=<id>&Recursive=true&Fields=ProviderIds`. Returns the members as ordinary `Movie`/`Series` items, so membership maps onto a `provision.Key` with no second lookup — the same `[]SearchResult` shape and the same key-parity property the bulk scan relies on.
+
+⚠ **`ParentId` as the membership query is the one part written from the endpoint's documented behaviour rather than a pinned live capture** — a `BoxSet` is not a folder in the library tree the way a season sits under a series. It is verified against the maintainer's real Emby before the feature ships; a `capture-collections.sh` run would pin it earlier. If it turns out empty against a collection with a non-zero `ChildCount`, the membership query is wrong and nothing else in the design changes — the failure is loud (an empty picker result), never silent.
+
 **User auth & listing (for §11):** `POST /Users/AuthenticateByName` (body `{Username, Pw}`) validates a user's credentials — Jellyfin requires the `Authorization: MediaBrowser Client="…", Device="…", DeviceId="…", Version="…"` header on this request even without a token; Emby accepts the equivalent `X-Emby-Authorization`. `GET /Users` with the admin `LIBRARY_TOKEN` lists users (id, name, `Policy.IsAdministrator`, `Policy.IsDisabled`) for import/sync. Both live in the same flavored adapter as `Lookup`.
 
 ### Requester — Seerr (default) or direct Sonarr/Radarr

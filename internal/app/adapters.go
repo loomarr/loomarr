@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/catalog"
 	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/reconcile"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/scheduler"
 	"github.com/mantonx/loomarr/internal/setup"
@@ -167,6 +170,69 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 		return "", false, err
 	}
 	return d.OfficialRating, true, nil
+}
+
+// libraryBoxSets adapts library.Client to channels.BoxSetResolver: it answers "which
+// media-server collections is this title in?" for the reconcile-time stamp backing
+// scope.collections (programming-design §2.2).
+//
+// ⚠ It builds a REVERSE INDEX once and caches it, rather than querying per key. The obvious
+// per-key implementation does not exist on the wire — the media server answers "what is in
+// collection X", never "what collections is item Y in" — so a per-entry resolve would mean
+// re-listing every collection's members for every entry, which is the N+1 the whole stamping
+// design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
+//
+// Membership is indexed under EVERY key form via reconcile.ScanItemKeys, because a member
+// carrying both provider ids must be findable under whichever key the lineup entry was born
+// with — the same parity problem the availability scan solves, and the same solution.
+//
+// The cache is refreshed on a TTL: a collection edited in Emby takes effect within it, which
+// is consistent with the stamp only being read at reconcile anyway.
+type libraryBoxSets struct {
+	lib *library.Client
+	ttl time.Duration
+
+	mu      sync.Mutex
+	index   map[provision.Key][]string
+	fetched time.Time
+}
+
+func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
+	idx, err := a.ensureIndex(ctx)
+	if err != nil {
+		return nil, false, err // unresolved this pass; the entry stays unstamped and airs (§2.2 fail-open)
+	}
+	// A key absent from the index is a REAL answer — "in no collection" — not a failure. It
+	// must return ok=true so the stamp settles, or every non-member re-resolves forever.
+	return idx[key], true, nil
+}
+
+func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.index != nil && time.Since(a.fetched) < a.ttl {
+		return a.index, nil
+	}
+	colls, err := a.lib.Collections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idx := make(map[provision.Key][]string)
+	for _, c := range colls {
+		members, err := a.lib.CollectionMembers(ctx, c.ID)
+		if err != nil {
+			// One unreadable collection must not discard the whole index — the rest is still
+			// true, and a missing membership only ever admits a title (§2.2 fail-open).
+			continue
+		}
+		for _, m := range members {
+			for _, k := range reconcile.ScanItemKeys(m) {
+				idx[k] = append(idx[k], c.ID)
+			}
+		}
+	}
+	a.index, a.fetched = idx, time.Now()
+	return idx, nil
 }
 
 // tmdbFranchises adapts the tmdb.Client to channels.FranchiseResolver: it resolves a MOVIE

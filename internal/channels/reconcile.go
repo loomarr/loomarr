@@ -246,6 +246,8 @@ func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []s
 //     fail-closed audience gate would otherwise drop a now-in-library title to dead air.
 //   - settle a MOVIE's TMDB CollectionID tri-state (§5 franchise ordering): >0 a real
 //     collection, -1 a resolved standalone (never re-fetched); series are skipped.
+//   - stamp media-server collection membership for scope.collections (§2.2), settled by the
+//     BoxSetsResolved flag so "in no collection" is answered once, not re-asked each pass.
 //
 // Bounded + best-effort by design (§9 resilience): only empty/unresolved fields are looked up
 // (a stamped channel makes ZERO calls), a not-yet-present result leaves the field to retry next
@@ -260,6 +262,20 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 				}
 			} else if ok {
 				en.OfficialRating = schedule.NormalizeRating(raw)
+			}
+		}
+		// Stamp media-server collection membership (§2.2) so scope.collections enforces with
+		// no library I/O. ⚠ Guarded on BoxSetsResolved, NOT on len(BoxSetIDs) == 0: a title in
+		// no collection resolves to an empty slice, so an emptiness check would re-fetch the
+		// most common case on every pass forever — the N+1 the stamping exists to prevent.
+		if e.boxSets != nil && !en.BoxSetsResolved {
+			if ids, ok, err := e.boxSets.BoxSets(ctx, en.Key); err != nil {
+				if e.log != nil {
+					e.log.Warn("heal boxsets (entry unresolved this pass)", "key", en.Key, "err", err)
+				}
+			} else if ok {
+				en.BoxSetIDs = ids
+				en.BoxSetsResolved = true
 			}
 		}
 		if e.franchises != nil && en.CollectionID == 0 && !en.Key.IsSeries() {

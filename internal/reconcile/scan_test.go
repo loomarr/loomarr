@@ -97,7 +97,7 @@ func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 // The Bluey scenario: a series was added TMDB-only (keyed series:tmdb:<id>, no TVDB id yet —
 // the suggester/channel-add path), and its episodes land in the library, which indexes the show
 // with BOTH a TVDB and a TMDB id. The scan must still confirm it available by matching on the
-// item's TMDB id, even though Title.Key() prefers the item's TVDB id. Without scanItemKeys
+// item's TMDB id, even though Title.Key() prefers the item's TVDB id. Without ScanItemKeys
 // probing every id, a TMDB-keyed series is stuck `requested`/`downloading` forever despite being
 // present (the live bug this fixes).
 func TestLibraryScan_ConfirmsTMDBSeriesWhenItemHasBothIDs(t *testing.T) {

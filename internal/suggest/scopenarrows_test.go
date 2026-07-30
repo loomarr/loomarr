@@ -24,20 +24,12 @@ func TestScopeNarrows(t *testing.T) {
 		{"genres exclude", &schedule.ScopePolicy{Genres: schedule.GenreFilter{Exclude: []string{"Horror"}}}, true},
 		{"runtime cap", &schedule.ScopePolicy{RuntimeMax: 3600}, true},
 
-		// ⚠ **The one that is deliberately false.** `Collections` round-trips through PATCH and
-		// the policy blob, but NO filter reads it — the scheduler's scope pass checks Series,
-		// Era, Genres and RuntimeMax and skips it entirely (pinned by
-		// schedule.TestEnforce_CollectionsDoesNotBindYet).
-		//
-		// Counting it here would make a collections-only scope survive the nil-out in
-		// groundRules as a "narrower" that narrows nothing — exactly the active-but-empty scope
-		// this function exists to prevent. When collections starts binding, flip this to `true`
-		// in the same change that adds the filter.
-		{"collections alone — INERT, must not count", &schedule.ScopePolicy{Collections: []string{"star-trek"}}, false},
+		// `Collections` now BINDS (programming-design §2.2): the scheduler's scope pass filters
+		// on the membership stamped at reconcile, so a collections-only scope is a real narrower
+		// and must count. This case was deliberately `false` while the field was inert, and was
+		// flipped in the change that added the filter — as its own note instructed.
+		{"collections alone — binds since §2.2", &schedule.ScopePolicy{Collections: []string{"star-trek"}}, true},
 
-		// …but a collections scope that ALSO carries a real narrower still counts, on the
-		// strength of the real one. The exclusion is about Collections voting alone, not about
-		// poisoning a scope that happens to mention it.
 		{"collections + era", &schedule.ScopePolicy{
 			Collections: []string{"star-trek"},
 			Era:         &schedule.Range{From: 1990, To: 1999},
