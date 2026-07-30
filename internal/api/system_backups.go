@@ -67,7 +67,7 @@ type BackupContent struct {
 // is a plain mux handler (it streams a file) and is mounted in Router alongside
 // /v1/backup. Admin-only: a backup carries every secret the instance holds.
 func (s *Server) registerSystemBackups(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-backups-list", Method: http.MethodGet, Path: "/v1/system/backups",
 		Summary: "Backups on disk, newest first",
 		Description: "Admin only. What the scheduled backup job has written into the configured " +
@@ -75,15 +75,15 @@ func (s *Server) registerSystemBackups(api huma.API) {
 			"yet is an empty list, not an error — nothing written yet is the normal state of a " +
 			"fresh install.",
 		Tags: []string{"system"},
-	}, s.systemBackupsList)
+	}, RoleAdmin), s.systemBackupsList)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-backups-run", Method: http.MethodPost, Path: "/v1/system/backups",
 		Summary: "Write a backup now",
 		Description: "Admin only. Writes one snapshot into the configured directory and prunes to " +
 			"the retention policy — the same work the scheduled job does, without waiting for it.",
 		Tags: []string{"system"},
-	}, s.systemBackupsRun)
+	}, RoleAdmin), s.systemBackupsRun)
 }
 
 type systemBackupsListOutput struct {
@@ -131,8 +131,7 @@ func (s *Server) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBack
 // as opposed to /v1/backup which makes a new one. A plain mux handler because it streams
 // bytes rather than returning a typed body (§16).
 func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
-	if s.auth == nil || s.auth.Authorize(r) != RoleAdmin {
-		s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
+	if !s.requireRole(w, r, RoleAdmin) {
 		return
 	}
 	if s.backups == nil {

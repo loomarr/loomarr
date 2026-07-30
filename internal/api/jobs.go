@@ -45,20 +45,20 @@ type JobView struct {
 }
 
 func (s *Server) registerJobs(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "jobs-list", Method: http.MethodGet, Path: "/v1/jobs",
 		Summary:     "List background jobs",
 		Description: "Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.",
 		Tags:        []string{"jobs"},
-	}, s.jobsList)
+	}, RoleAdmin), s.jobsList)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "jobs-run", Method: http.MethodPost, Path: "/v1/jobs/{name}/run",
 		Summary:       "Run a job now",
 		Description:   "Admin only. Triggers a scheduled job off-cycle (§18.1). Idempotent-ish: a job already due/running is not double-run (the scheduler lease guards it). A job this backend cannot run (a non-empty disabledReason) returns 409.",
 		Tags:          []string{"jobs"},
 		DefaultStatus: http.StatusAccepted,
-	}, s.jobsRun)
+	}, RoleAdmin), s.jobsRun)
 }
 
 type jobsListOutput struct {

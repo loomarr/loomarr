@@ -130,41 +130,41 @@ type LLMModelView struct {
 // registerSystemLLM mounts /v1/system/llm* (§8.1). Admin-only — model selection
 // changes what runs on the box and can trigger a multi-GB download.
 func (s *Server) registerSystemLLM(api huma.API) {
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-status", Method: http.MethodGet, Path: "/v1/system/llm",
 		Summary: "LLM host probe + model catalog",
 		Description: "Admin only. Active provider + model; the local-model catalog (for Ollama: " +
 			"detected VRAM/version, fit verdicts, recommended default, pulled flags); and the hosted-" +
 			"provider catalog (base URLs, live model lists, keyConfigured). API keys are never returned (§8.1).",
 		Tags: []string{"system"},
-	}, s.systemLLMStatus)
+	}, RoleAdmin), s.systemLLMStatus)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-select", Method: http.MethodPost, Path: "/v1/system/llm/select",
 		Summary: "Select the active provider + model",
 		Description: "Admin only. Persists the choice and hot-swaps the running suggester with no restart (§8.1). " +
 			"Local model must be pulled (409 else). Hosted: an optional apiKey is validated live before committing " +
 			"(401 on a bad key) and stored as a secret, never echoed.",
 		Tags: []string{"system"},
-	}, s.systemLLMSelect)
+	}, RoleAdmin), s.systemLLMSelect)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-test", Method: http.MethodPost, Path: "/v1/system/llm/test",
 		Summary: "Test a hosted provider + key",
 		Description: "Admin only. Validates a hosted provider + API key WITHOUT swapping (§8.1). " +
 			"Returns ok + an error hint; a bad key is ok=false (not a 5xx).",
 		Tags: []string{"system"},
-	}, s.systemLLMTest)
+	}, RoleAdmin), s.systemLLMTest)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-pull", Method: http.MethodPost, Path: "/v1/system/llm/pull",
 		Summary: "Download a local model",
 		Description: "Admin only. Local Ollama only (409 on a hosted provider). Starts a pull as a " +
 			"background job; percent-complete streams over /v1/events (§8.1). Idempotent.",
 		Tags: []string{"system"},
-	}, s.systemLLMPull)
+	}, RoleAdmin), s.systemLLMPull)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-llm-discover", Method: http.MethodGet, Path: "/v1/system/llm/discover",
 		Summary: "Compatible downloadable local models",
 		Description: "Admin only. Returns the most-popular downloadable GGUF models (Hugging Face) that " +
@@ -173,7 +173,7 @@ func (s *Server) registerSystemLLM(api huma.API) {
 			"pullRef to hand to POST /pull. Tool-capability is confirmed only AFTER the model is pulled and " +
 			"probed. Best-effort: if the source is unreachable the list is empty (browse on huggingface.co).",
 		Tags: []string{"system"},
-	}, s.systemLLMDiscover)
+	}, RoleAdmin), s.systemLLMDiscover)
 }
 
 func (s *Server) systemLLMDiscover(ctx context.Context, _ *struct{}) (*struct {

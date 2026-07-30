@@ -30,22 +30,22 @@ func (s *Server) registerPasswords(api huma.API) {
 	if s.passwords == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "change-password", Method: http.MethodPost, Path: "/v1/auth/password",
 		Summary: "Change your own password", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, s.changePassword)
+	}, RoleMember), s.changePassword)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "create-local-user", Method: http.MethodPost, Path: "/v1/users",
 		Summary: "Create a local account (admin)", Tags: []string{"users"},
-	}, s.createLocalUser)
+	}, RoleAdmin), s.createLocalUser)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "reset-user-password", Method: http.MethodPost, Path: "/v1/users/{id}/password",
 		Summary: "Reset a local user's password (admin)", Tags: []string{"users"},
 		DefaultStatus: http.StatusNoContent,
-	}, s.resetUserPassword)
+	}, RoleAdmin), s.resetUserPassword)
 }
 
 type changePasswordInput struct {

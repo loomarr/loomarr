@@ -20,21 +20,21 @@ func (s *Server) registerAuth(api huma.API) {
 	if s.login == nil && !s.schemaOnly {
 		return
 	}
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "login", Method: http.MethodPost, Path: "/v1/auth/login",
 		Summary: "Sign in with media-server credentials", Tags: []string{"auth"},
-	}, s.handleLogin)
+	}, RolePublic), s.handleLogin)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "logout", Method: http.MethodPost, Path: "/v1/auth/logout",
 		Summary: "End the current session", Tags: []string{"auth"},
 		DefaultStatus: http.StatusNoContent,
-	}, s.handleLogout)
+	}, RolePublic), s.handleLogout)
 
-	huma.Register(api, huma.Operation{
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "me", Method: http.MethodGet, Path: "/v1/auth/me",
 		Summary: "Current user, role, and quotas", Tags: []string{"auth"},
-	}, s.handleMe)
+	}, RoleMember), s.handleMe)
 
 	// Dev login (§11) — mounted ONLY when the server was started with
 	// LOOMARR_DEV_LOGIN=1. Not registering is the gate: an install without the flag
@@ -46,10 +46,13 @@ func (s *Server) registerAuth(api huma.API) {
 	// part of it. That also keeps orval from generating a client for an endpoint
 	// that is absent in every shipped install.
 	if s.devLogin && !s.schemaOnly {
-		huma.Register(api, huma.Operation{
+		// RolePublic because it IS the credential — requiring a session to reach the route
+		// that issues one would make it useless. The gate is that it is not registered at
+		// all unless LOOMARR_DEV_LOGIN=1 (§11), which is a stronger guarantee than a role.
+		huma.Register(api, withRole(huma.Operation{
 			OperationID: "dev-login", Method: http.MethodPost, Path: "/v1/auth/dev-login",
 			Summary: "Sign in as an admin without a credential (development only)", Tags: []string{"auth"},
-		}, s.handleDevLogin)
+		}, RolePublic), s.handleDevLogin)
 	}
 }
 

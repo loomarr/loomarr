@@ -106,8 +106,8 @@ func TestPatchClip_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/u1", "", `{"era":1994,"audience":"kids","category":"cereal"}`)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member patch → %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member patch → %d, want 401", resp.StatusCode)
 	}
 }
 
@@ -141,8 +141,8 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 func TestSyncFiller_AdminOnly(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 	// Member → 403.
-	if resp := do(t, srv, http.MethodPost, "/v1/filler/sync", "", ""); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member sync → %d, want 403", resp.StatusCode)
+	if resp := do(t, srv, http.MethodPost, "/v1/filler/sync", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member sync → %d, want 401", resp.StatusCode)
 	}
 	// Admin → runs.
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sync", adminToken, "")
@@ -161,8 +161,8 @@ func TestSyncFiller_AdminOnly(t *testing.T) {
 
 func TestTagFiller_AdminOnly(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	if resp := do(t, srv, http.MethodPost, "/v1/filler/tag", "", ""); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member tag → %d, want 403", resp.StatusCode)
+	if resp := do(t, srv, http.MethodPost, "/v1/filler/tag", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member tag → %d, want 401", resp.StatusCode)
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/tag", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -236,8 +236,8 @@ func TestFiller_Ingest(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 
 	// §19 negative: downloading arbitrary URLs onto the host is admin-only.
-	if resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", "", `{"urls":["https://archive.org/details/x"]}`); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("member ingest → %d, want 403", resp.StatusCode)
+	if resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", "", `{"urls":["https://archive.org/details/x"]}`); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member ingest → %d, want 401", resp.StatusCode)
 	}
 
 	resp := do(t, srv, http.MethodPost, "/v1/filler/ingest", adminToken, `{"urls":["https://archive.org/details/x"]}`)

@@ -20,10 +20,11 @@ type EventSource interface {
 // a client that misses events re-reads the GET endpoints (source of truth), so
 // the handler makes no delivery guarantees.
 func (s *Server) eventsHandler(w http.ResponseWriter, r *http.Request) {
-	// Authenticate like any /v1 route (the Huma middleware doesn't wrap this plain
-	// handler, so check here). Anonymous → 401.
-	if s.auth != nil && s.auth.Authorize(r) == RoleAnonymous {
-		s.writeProblem(w, r, http.StatusUnauthorized, "Not signed in", "You need to sign in to receive live updates.")
+	// ⚠ Authorization via the SHARED guard (routeauth.go). This handler previously did its
+	// own check and FAILED OPEN on a nil authorizer, while backup.go's equivalent failed
+	// closed — same package, same concern, opposite defaults. That divergence is what a rule
+	// re-derived per handler decays into; requireRole has one answer.
+	if !s.requireRole(w, r, RoleMember) {
 		return
 	}
 	if s.events == nil {

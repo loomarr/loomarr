@@ -41,7 +41,7 @@ func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *fakeIconSvc) 
 	fi := &fakeIconSvc{}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Icons: fi,
 	}))
@@ -101,7 +101,7 @@ func TestChannelIconSuggestions_EmptyIsEmptyArray(t *testing.T) {
 // Read-only: any authenticated user may fetch icon suggestions, matching get-channel.
 func TestChannelIconSuggestions_VisibleToAnyAuthenticatedUser(t *testing.T) {
 	srv, _, _ := newIconsServer(t)
-	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", "", ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodGet, "/v1/channels/ch-1/icon-suggestions", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member request → %d, want 200 (read-only)", resp.StatusCode)
 	}
 }
@@ -129,7 +129,7 @@ func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		// Icons intentionally omitted (nil).
 	}))

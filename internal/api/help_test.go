@@ -24,7 +24,7 @@ func newHelpServer(t *testing.T, ready api.ReadyFunc) *httptest.Server {
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
-		Auth:  api.NewTokenAuthorizer(adminToken),
+		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
 		Ready: ready,
 	}))
@@ -93,7 +93,7 @@ func TestHelp_UnknownPageIs404(t *testing.T) {
 // it at least as much as an admin does.
 func TestHelp_VisibleToMembers(t *testing.T) {
 	srv := newHelpServer(t, nil)
-	if resp := do(t, srv, http.MethodGet, "/v1/docs", "", ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodGet, "/v1/docs", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member list docs → %d, want 200", resp.StatusCode)
 	}
 }
@@ -220,7 +220,7 @@ func TestSystemVersion_StartedAtIsPerGeneration(t *testing.T) {
 // call failing.
 func TestSystemVersion_WithoutStoreOmitsSchemaRows(t *testing.T) {
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: api.NewTokenAuthorizer(adminToken),
+		Auth: testAuthorizer{},
 		Log:  slog.New(slog.DiscardHandler),
 	}))
 	t.Cleanup(srv.Close)

@@ -34,8 +34,8 @@ func TestDashboardPanels_RequireAdmin(t *testing.T) {
 	srv, _ := serverWithPanels(t, api.Options{})
 	for _, path := range []string{"/v1/system/services", "/v1/activity"} {
 		resp := do(t, srv, http.MethodGet, path, "", "") // no token
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("GET %s without admin → %d, want 403", path, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("GET %s without admin → %d, want 401", path, resp.StatusCode)
 		}
 	}
 }

@@ -45,8 +45,7 @@ var allowedIconTypes = map[string]bool{
 // an explicit reconcile) pushes it to Tunarr. Best-effort content-type sniff falls back to the
 // declared form type; both are checked against the allowlist.
 func (s *Server) uploadChannelIcon(w http.ResponseWriter, r *http.Request) {
-	if s.auth == nil || s.auth.Authorize(r) != RoleAdmin {
-		s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
+	if !s.requireRole(w, r, RoleAdmin) {
 		return
 	}
 	// CSRF (§11): this is a raw mux handler, so the Huma CSRF middleware doesn't cover it —

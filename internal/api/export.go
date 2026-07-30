@@ -1,9 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
@@ -11,6 +14,16 @@ import (
 // 3.1 spec as YAML (§7.1). It needs no live store — only the registered
 // operation schemas — so `make openapi` runs offline and deterministically.
 func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
+	_, humaAPI := schemaOnlyAPI(log)
+	return humaAPI.OpenAPI().YAML()
+}
+
+// schemaOnlyAPI registers every typed operation against a store-less Server and returns it.
+//
+// Shared by ExportOpenAPI and the authorization gate so the two cannot disagree about what
+// "every operation" means: a route added to one list and not the other is exactly the drift
+// this centralises away. Adding a register* call here reaches both.
+func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, humaConfig())
 	// schemaOnly makes the nil-guarded register* funcs (auth, provisioning, users
@@ -45,5 +58,38 @@ func ExportOpenAPI(log *slog.Logger) ([]byte, error) {
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
 	// spec, matching how /v1/auth/* is handled. Documented via §11.
 	srv.registerProvisioning(humaAPI)
-	return humaAPI.OpenAPI().YAML()
+	return srv, humaAPI
+}
+
+// OperationsMissingARole reports every registered operation that declares no required role
+// (§11). Exported so the test in api_test can call it without reaching into the package.
+//
+// ⚠ Walks the REAL registry rather than grepping source: a regex over `huma.Register` calls
+// would miss the conditionally-registered ones (dev-login, users sync) and would keep
+// passing if a registration moved somewhere the pattern no longer matched. What is mounted
+// is the only thing worth asserting on.
+//
+// Returns "METHOD /path (operation-id)" so a failure names the route rather than an index.
+func OperationsMissingARole() ([]string, error) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	spec := humaAPI.OpenAPI()
+	if spec == nil || spec.Paths == nil {
+		return nil, fmt.Errorf("api: no operations registered")
+	}
+	var missing []string
+	for path, item := range spec.Paths {
+		for method, op := range map[string]*huma.Operation{
+			http.MethodGet: item.Get, http.MethodPost: item.Post, http.MethodPut: item.Put,
+			http.MethodPatch: item.Patch, http.MethodDelete: item.Delete,
+		} {
+			if op == nil {
+				continue
+			}
+			if _, ok := op.Metadata[roleMetaKey]; !ok {
+				missing = append(missing, fmt.Sprintf("%s %s (%s)", method, path, op.OperationID))
+			}
+		}
+	}
+	sort.Strings(missing) // deterministic: map iteration order must not reorder a failure
+	return missing, nil
 }
