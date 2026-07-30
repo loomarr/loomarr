@@ -21,10 +21,18 @@ const entries = (p: string) => readdirSync(p);
 const dirsIn = (p: string) => entries(p).filter((e) => isDir(join(p, e)));
 
 // Files that are never a module implementation: barrels, types, tests, stories.
+//
+// ⚠ `.d.ts` is in this list as a RULE, not an exception. An ambient declaration exports
+// nothing and runs nothing — it describes modules that live outside the source tree
+// (`declare module "@fontsource-variable/geist"`), so there is no unit for it to be a
+// folder of, and a barrel re-exporting it would re-export nothing. Adding the filename to
+// ROOT_FILES instead would be exactly the hand-maintained allowlist this test's own
+// comment says it exists to replace.
 const isImplementation = (file: string) =>
   /\.tsx?$/.test(file) &&
   file !== "index.ts" &&
   !file.endsWith(".type.ts") &&
+  !file.endsWith(".d.ts") &&
   !/\.(test|stories)\./.test(file);
 
 // Directories a source tree may hold that are not module containers:
