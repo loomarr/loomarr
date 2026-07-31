@@ -136,14 +136,44 @@ func (a *PodAdapter) Preview(ctx context.Context, channelID string, seed int64, 
 	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
-	w := Window{
+	w := a.windowFor(channelID, seed, sel, podMax)
+	return Assemble(clips, w, a.policy, map[string]bool{}), nil
+}
+
+// windowFor builds the Window a channel's selection describes.
+//
+// Extracted so Preview and Coverage cannot disagree about what a channel's selection MEANS.
+// They already share the ladder (both end up in `candidatePools`); this is the step before it,
+// and duplicating it is how a meter ends up reporting on a slightly different window than the
+// pod it claims to describe — an off-by-one-field bug that no ladder test would catch.
+func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int) Window {
+	return Window{
 		ChannelID: channelID, Seed: seed,
 		Era: sel.Era, Audience: sel.Audience,
 		GapMs: poolGapMs, PodMax: podMax,
 		Categories: sel.Categories, Kinds: sel.Kinds,
 		Pinned: sel.Pinned, Excluded: sel.Excluded,
 	}
-	return Assemble(clips, w, a.policy, map[string]bool{}), nil
+}
+
+// CoverageFor reports which ladder rung this channel's breaks would draw from (V29a/V29b-api).
+//
+// The same catalog load, the same Window, the same policy as Preview — only the question
+// differs: Preview draws a pod, this counts what is available to draw from. A seed is
+// deliberately NOT taken: coverage is a property of the catalog and the selection, not of any
+// one break, so passing a seed would imply an answer that varies per pod when it does not.
+func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Selection) (CoverageReport, error) {
+	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return CoverageReport{}, err
+	}
+	podMax := a.policy.PodMax
+	if podMax <= 0 {
+		podMax = 4
+	}
+	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
+	// so nobody threads a real seed through expecting it to matter.
+	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy), nil
 }
 
 var _ interface {
