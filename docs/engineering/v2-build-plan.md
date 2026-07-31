@@ -151,15 +151,20 @@ Wizard → V20/V21/V22; Mobile → V18.
 
 ### Filler
 
+⚠ **This table was CORRECTED against the code at `662e181` (2026-07-31)** before the remaining
+phases were started. Four dependency declarations were wrong and one gate was unbuildable as
+written; §6.2 records each correction and the evidence. The rows below are the corrected ones.
+
 | # | Phase | Deps | Gate |
 | --- | --- | --- | --- |
-| **V17b** | `F2` — clip previews on `ClipCard` | V17a | Preview renders; visual baseline; **inline `data:` URIs only, never remote URLs** |
-| **V17c** | `F3` — a quality dimension beyond `INGEST_PREFER_ORIGINAL` | V4, V17a | Quality is first-class on a clip, surfaced, and usable in selection **via an opt-in minimum-quality floor (default off)** — see §6.1: `00014` requires the era-accuracy default be preserved |
-| **V17d** | Starter pack + coverage/"Find clips" (**F4**) | V17b | Seeded clips reviewable with keep/exclude; a thin channel surfaces the gap |
+| **V17b** | `F2` — clip previews on `ClipCard` | V17a, **V30** | Preview renders; visual baseline; **stories use inline `data:` URIs, production fetches the V30 route** |
+| **V17c** | `F3` — a quality dimension beyond `INGEST_PREFER_ORIGINAL` | V4, V17a | An **opt-in minimum-quality floor, default off**; with the floor off, selection is byte-identical to today (a test pins this). ⚠ **Amends a published contract** — see §6.2 |
+| **V17d** | Starter pack + "Find clips" (**F4**) | V17b, **V29b** | Seeded clips reviewable with keep/exclude; a thin channel surfaces the gap. ⚠ Coverage is **V29b's**, not this phase's |
 | **V28** | Sources **read-model** + clip metadata columns | V4, V17a | Migration `00017`; `GET /v1/filler/sources` derives the rows and `Fetch now` triggers the existing sync; `thumbnail` populated at scan; a play is recorded **from playout**, not from assembly |
-| **V29** | Coverage meter (F2 banner) | V28 | **Consumes `internal/filler/ladder.go`** — a test asserts the meter and pod assembly agree. See §6. |
-| **V30** | Filler preview serving | V6, V28 | Previews stream; inline `data:` URIs in stories only |
-| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V17c, V28, V30 | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
+| **V29a** | **Export a coverage entry point from `internal/filler`** | V28 | `ladder.go`'s pools become reachable without duplicating them; unit-tested against the same fixtures as pod assembly. **Go only — no endpoint, no UI** |
+| **V29b** | Coverage meter (F2 banner) | V29a | **Consumes V29a's export** — a test asserts the meter and pod assembly agree, in the shape of `preview_test.go:28`. See §6 |
+| **V30** | Filler preview serving | V6, V28 | Thumbnail bytes are reachable over HTTP; **the route is NOT named `preview`** — see §6.2 |
+| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`** | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
 
 ### Dashboard & wizard
 
@@ -263,6 +268,11 @@ inline, and the prototype contains five mutually inconsistent era/audience predi
 catalog-composition shares as *"Breaks resolve exactly N% of the time"*. Building it as drawn ships a
 meter that disagrees with reality — the exact bug §10's shared assembler exists to prevent.
 
+⚠ This is why V29 is **two** phases (§6.2). `ladder.go` exports nothing today, so "consume the real
+ladder" had no API behind it — and a phase whose gate cannot be satisfied is a phase that gets
+satisfied some other way. V29a exports the entry point; V29b is the only thing allowed to draw the
+meter, and only through that export.
+
 **V25 — one approval chokepoint.** `suggest.Approve` is the single shared implementation *"so the two
 can never disagree about what approving means"*. Edit-before-approve passes it an edited proposal; it
 does **not** get a second path. The edit is a provenance change, not an authorization change.
@@ -299,10 +309,95 @@ here rather than silently edited, because each correction is a claim about what 
 | **V17b vs V30** | V17b is "clip previews on `ClipCard`" (frontend); V30 is "filler preview serving" (backend). You cannot render a preview without something serving it, so either V17b is blocked on V30 and the deps are wrong, or V17b is thumbnails-only. V28's `thumbnail` column is the thing that makes the thumbnails-only reading buildable. |
 | **V17d vs V29** | V17d is "coverage / Find clips"; V29 is "the coverage meter". §6 makes V29 non-negotiable — the meter MUST consume `internal/filler/ladder.go`. If V17d ships a coverage UI first it either duplicates that or ships the mock's lying version. |
 
+→ **Both are now decided. See §6.2.**
+
 **V17c's gate is amended** (maintainer decision): quality becomes selectable via an **opt-in
 minimum-quality floor**, default off. That preserves `00014`'s era-accuracy default — an install
 that sets nothing behaves exactly as today — while letting an operator exclude 240p rips. The knob
 is a §15 conversation when V17c is built, not a V28 deliverable.
+
+## 6.2 The remaining Filler phases, corrected against the code (2026-07-31)
+
+Before starting the six unbuilt Filler phases, each was verified against `662e181` rather than
+trusted. §6.1 exists because V28's row was stale in three ways; this is the same check applied to
+what is left, and it found four wrong dependency declarations and one unbuildable gate.
+
+**V29 is unbuildable as written, and is now two phases.** Its gate says the meter "**consumes
+`internal/filler/ladder.go`**" — but every symbol in that file is unexported (`pool`,
+`candidatePools`, `fillCommercials`, `filterEra`, `filterDecade`, `filterAudience`, `filterKinds`,
+`filterCategories`, `durationEligible`, …). There is no API to consume. The only exported
+ladder-derived artifact is `Pod.MatchLevel` (`pod.go:40`), which is a per-pod outcome, not a
+catalog-wide coverage answer. So **V29a** exports a coverage entry point over the same pools and
+**V29b** builds the banner on it. This also corrects the label: V29 is not the frontend-only phase
+"(F2 banner)" implies.
+
+⚠ The export must be *over the same pools*, not a reimplementation. A second copy of the ladder
+that agrees today and drifts next quarter is precisely the "lying meter" §6 forbids — the
+agreement test is the gate, and `preview_test.go:28` (`TestPreviewMatchesWhatReconcileAttaches`,
+which pins preview against reconcile *by construction*) is the shape to copy.
+
+**V17b depends on V30.** §6.1 left this open as "either the deps are wrong, or V17b is
+thumbnails-only". The code answers it: `Clip.Thumbnail` is populated (`thumbnail.go`,
+`store/clips.go:58`) and crosses the wire (`api/filler.go:99`), but the value is a path relative to
+`.loomarr-thumbs` inside `FILLER_DIR` and **no route turns it into bytes**. Thumbnails-only is
+buildable in every respect except the one that matters. V17b's `V17a`-only dep was wrong.
+
+⚠ The gate's "inline `data:` URIs only, never remote URLs" was read as a production constraint and
+is not one — it is about **stories**, which must stay offline and deterministic (§5.2). Production
+fetches the V30 route. The gate now says which is which, because as written it forbade the only
+implementation that works.
+
+**V17d depends on V29b, and loses its coverage half.** V17d's declared dep was `V17b` alone while
+its scope included "coverage", which would let a coverage UI ship with no ladder-backed source —
+the exact failure §6 exists to prevent. Coverage is V29b's; V17d keeps the starter pack and "Find
+clips".
+
+**V30 must not be called `preview`.** "Preview" already means something else here and is shipped
+twice over: `PodAdapter.Preview` (`adapter.go:123`) and two channel-scoped pod-preview routes
+(`openapi.yaml:4189`, `:4222`) assemble *the pool a channel would get* — a JSON listing, not media.
+A third meaning on a route name is how an endpoint gets called by the wrong handler a year later.
+
+**V33 loses two deps and gains one that was never recorded.** Its declared `V17c` and `V30` deps
+are unjustified: discovery returns candidate remote sources and shares no code with a quality floor
+or with byte serving. What it actually builds on is `internal/clipfetch`, which already implements
+the full Archive walk with HTTP+FS injected (`archive.go:32`) against a pinned fixture captured
+live (`internal/testkit/fixtures/archive/`, 2026-07-13). **The gate's hardest clause — "the
+Archive.org contract is a pinned testkit fixture; discovery never runs in unit tests" — is already
+satisfied** by V17a-era work. V33's real remaining scope is the route, the registry table, and
+license badges (no `license` field exists on `ClipDTO` or `clips` today).
+
+**V17c amends a published contract, and that is the phase's first commit.** Three places make two
+different promises about the same field:
+
+| Where | Says |
+| --- | --- |
+| `00014_clips_quality.sql:2` | quality "**NEVER** affects pod selection" |
+| `api/openapi.yaml:526` → generated TS | "display-only, **never** affects pod selection" |
+| `internal/filler/clip.go:83` | "display-only **by default** … V17c adds an OPT-IN floor" |
+
+The migration and the API description are unconditional; the domain model already anticipates the
+floor. Since the openapi string ships to clients, this is a **contract change, not a comment
+edit** — `design.md`, the migration comment, and the description are amended in the same PR, before
+the floor is built (CLAUDE.md doc-first). ⚠ The warning being overridden stays true and stays
+written down: *"a well-meaning 'prefer HD' would quietly starve the era-accurate 4:3 commercials
+the whole feature exists to play."* That is why the floor is **opt-in with the default off**, and
+why the gate requires a test proving selection is byte-identical when it is unset.
+
+### Lane assignment
+
+The phases do not parallelize freely: V30, V17b and V33 each add an endpoint, so all three edit
+`api/openapi.yaml` and regenerate the orval client — the conflict CLAUDE.md's worktree rule names.
+Two lanes, and the split is by *generated output*, not by size:
+
+| Lane | Phases | Owns |
+| --- | --- | --- |
+| **API** (sequential) | V30 → V17b → V17c → V33 | `api/openapi.yaml`, the orval client, filler migrations |
+| **Coverage** | V29a → V29b → V17d | `internal/filler` exports, the meter, the starter pack |
+
+⚠ The lanes are not fully disjoint: V29a exports from `internal/filler`, which V17c also edits for
+the floor. They touch different functions (a coverage read vs. a selection filter) and no shared
+generated file, so they merge cleanly — but if either lane changes `ladder.go`'s *pool
+construction*, the other rebases rather than resolving by hand.
 
 ---
 
