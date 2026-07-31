@@ -236,6 +236,19 @@ func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, brea
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeedAt(ch.ID, breakStartMs), channels.SelectionForChannel(ch))
 }
 
+// Coverage reports which ladder rung this channel's breaks would draw from (V29b-api).
+//
+// Resolved through `SelectionForChannel`, exactly like the previews above — coverage that
+// derived a channel's selection its own way could report on a different window than the pods
+// it claims to describe, which is the "lying meter" the whole phase exists to prevent.
+func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.CoverageReport{}, err
+	}
+	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
+}
+
 // PreviewDraft assembles the pool for a DRAFT selection (the POST …/pods/preview
 // sandbox) — the same seed as the saved preview (so only the selection differs), but the
 // caller's unsaved selection in place of the persisted one. The era still defaults from

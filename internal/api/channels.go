@@ -58,6 +58,13 @@ func (s *Server) registerChannels(api huma.API) {
 	}, RoleMember), s.previewChannelPods)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "channel-filler-coverage", Method: http.MethodGet, Path: "/v1/channels/{id}/filler/coverage",
+		Summary:     "How well the catalog covers this channel's breaks",
+		Description: "Which rung of the §10 fallback ladder this channel's breaks would draw from, and how much material each rung holds. Computed from the SAME ladder reconcile uses (internal/filler), through the same per-channel selection as the pod preview — so the meter and the pods cannot disagree. Read-only, so any authenticated user may call it. A rung the channel's policy skips is ABSENT rather than zero, and `total` is the widest rung rather than a sum (the rungs nest).",
+		Tags:        []string{"channels", "filler"},
+	}, RoleMember), s.channelFillerCoverage)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-cycle", Method: http.MethodGet, Path: "/v1/channels/{id}/cycle",
 		Summary:     "Preview what airs at a chosen time (curation rules)",
 		Description: "The time-travel cycle preview (§8.1): what this channel would air at `at` (default now), and WHICH curation rule is active then. Runs the SAME pure lineup builder as reconcile — preview and reality cannot disagree — WITHOUT touching Tunarr or the store beyond a read. Makes first-match-by-priority rule resolution legible (\"at Saturday 9am, the Weekend TNG marathon rule is active\"). Read-only, so any authenticated user may call it; `at` may be past or future.",
