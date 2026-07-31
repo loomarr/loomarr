@@ -150,6 +150,11 @@ const stubFetch = () => {
     }
     if (u.includes("/v1/docs"))
       return Promise.resolve(json({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }));
+    // Before the /v1/filler catalog match below: this path contains "/filler" but is the
+    // per-CHANNEL coverage route, and a clips payload would not satisfy the meter.
+    if (u.includes("/filler/coverage")) {
+      return Promise.resolve(json({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }));
+    }
     if (u.includes("/v1/filler")) return Promise.resolve(json({ clips: [] }));
     if (u.includes("/v1/channels/now-next")) return Promise.resolve(json({ channels: [] }));
     if (u.includes("/pods")) return Promise.resolve(json({ entries: [], totalMs: 0, matchLevel: "exact" }));
@@ -310,6 +315,19 @@ describe("feature-gated panels mount when their flag is on", () => {
     await userEvent.click(fillerTab);
     const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
+  });
+
+  // V29b's meter, in the same tab. Guarded here rather than trusted because this suite exists
+  // for exactly this shape of miss: the component has stories, six unit tests and a Go test
+  // proving it agrees with pod assembly, and every one of those passes whether or not anything
+  // renders it. Only a route test answers "can an operator see it".
+  it("/channels/ch-1 reaches the filler coverage meter", async () => {
+    stubFetch();
+    renderAt("/channels/ch-1");
+    await userEvent.click(await screen.findByRole("button", { name: "Filler" }));
+    expect(await screen.findByText(/catalog coverage/i, undefined, { timeout: 3000 })).toBeInTheDocument();
+    // And the meter itself rendered, not just its heading.
+    expect(await screen.findByText("Exact match")).toBeInTheDocument();
   });
 
   // The eighth instance of this file's founding bug: ChannelIconField shipped complete —
