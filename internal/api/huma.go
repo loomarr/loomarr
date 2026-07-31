@@ -252,6 +252,34 @@ type FillerService interface {
 	// same shape the model pull uses (§8.1). ErrIngestUnavailable when the running image
 	// lacks the tooling.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
+	// Discover searches archive.org for candidate clips WITHOUT downloading anything (§10,
+	// V33). One search request whatever the result count — the operator is deciding what to
+	// fetch, and making them download gigabytes to find out would defeat the point.
+	//
+	// ⚠ Unlike Ingest this is SYNCHRONOUS: it is one HTTP call to a public JSON API, fast
+	// enough to answer in the request, so there is no job to report on. That asymmetry is
+	// deliberate — a job id for a sub-second read would be ceremony the caller has to poll.
+	Discover(ctx context.Context, query string, limit int) ([]DiscoveredClip, int, error)
+}
+
+// DiscoveredClip is one candidate the operator could add (§10, V33).
+//
+// ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no duration, no path, no tags —
+// only what the source's search index knows. Reusing ClipDTO would advertise fields that are
+// structurally unavailable at this stage.
+type DiscoveredClip struct {
+	// ID is the source's identifier — what Ingest would be given to fetch it.
+	ID string `json:"id"`
+	// Title as the source has it; may be empty, in which case a client shows the id.
+	Title string `json:"title,omitempty"`
+	// Year the source catalogued it under; 0 when it declares none, which is common.
+	//
+	// ⚠ A WEAK hint, never a clip's era. It is when the ITEM was catalogued — for a
+	// compilation upload that is often the upload year, not the broadcast year — which is the
+	// same trap §10 records for yt-dlp's `upload_date`.
+	Year int `json:"year,omitempty"`
+	// URL is the item's page, so an operator can look at it before adding it.
+	URL string `json:"url"`
 }
 
 // ErrIngestUnavailable reports that the running image carries no ingest tooling — the

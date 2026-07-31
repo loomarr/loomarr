@@ -1,5 +1,6 @@
+import { formatRelative } from "@loomarr/core";
 import { FolderOpen, Globe, Library } from "lucide-react";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
@@ -67,6 +68,25 @@ const FillerSources = ({ sources, total, onFetch, fetching, error, className }: 
               >
                 {fetching === s.kind ? "Fetching…" : "Fetch now"}
               </Button>
+            )}
+
+            {/* The specific remotes an operator added, NESTED under this row rather than
+                promoted to peers (V33, build plan §6.1). The rows above describe
+                CONFIGURATION — including "you could set this up but have not" — and a flat
+                list of things that EXIST cannot express that; merging the two models would
+                show the drop-folder twice. */}
+            {s.remotes && s.remotes.length > 0 && (
+              <ul className="mt-1 flex w-full flex-col gap-1 border-border border-t pt-2 pl-7">
+                {s.remotes.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm">{r.label}</span>
+                    <Caption className="shrink-0">
+                      {/* "never" rather than an epoch date nobody meant. */}
+                      {r.lastFetchedAt ? `fetched ${formatRelative(r.lastFetchedAt)}` : "never fetched"}
+                    </Caption>
+                  </li>
+                ))}
+              </ul>
             )}
           </li>
         );

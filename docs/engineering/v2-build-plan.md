@@ -165,7 +165,8 @@ written; §6.2 records each correction and the evidence. The rows below are the 
 | **V29b-api** | `GET /v1/channels/{id}/filler/coverage` over V29a's export | V29a | The route returns the rungs V29a computes for a channel's own selection; **API lane**, because it edits `api/openapi.yaml` |
 | **V29b** | Coverage meter (F2 banner) | V29b-api | **Consumes V29a's export through the V29b-api route** — a test asserts the meter and pod assembly agree, in the shape of `preview_test.go:28`. See §6 |
 | **V30** | Filler preview serving | V6, V28 | Thumbnail bytes are reachable over HTTP; **the route is NOT named `preview`** — see §6.2 |
-| **V33** ⛔ | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`**, ⛔ **a supervised fixture capture** | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render. ⛔ **BLOCKED: the pinned fixture has no `licenseurl` and no collection-search response — see §6.2** |
+| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` (archive.org **and** YouTube) + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`** | The Archive.org **and yt-dlp** contracts are **pinned testkit fixtures**; discovery never runs in unit tests. ⚠ **No licence badges — gate amended, see §6.3** |
+| **V34** | **Compilation splitting + per-clip metadata** — one downloaded compilation becomes many tagged clips | V33 | See §6.4. Measured on 6 real compilations before being written; **not** a V33 deliverable |
 
 ### Dashboard & wizard
 
@@ -453,7 +454,136 @@ construction*, the other rebases rather than resolving by hand.
 
 ---
 
-## 7. Sequencing notes
+## 6.3 V33's licence-badge gate, amended by measurement (2026-07-31)
+
+V33's gate said **"license badges render"**. It no longer does, and the reason is a number rather
+than a preference.
+
+**What was measured, live, during the fixture capture:**
+
+| Source | Licence available? | Evidence |
+| --- | --- | --- |
+| archive.org | ~8% of items declare `licenseurl` | 667 of 8362 in `classic_tv_commercials` |
+| YouTube (yt-dlp) | **never** | `license: null` on all 5 search rows **and** on a full non-flat extraction of one of them |
+
+The YouTube result is the decisive one, and it was checked twice on purpose: `--flat-playlist`
+returning null could have been an artefact of the cheap listing mode, so a full
+`--dump-json --skip-download` was run against a single video. Still null. yt-dlp cannot report a
+YouTube licence at all.
+
+**So a badge could never say anything useful on the surface where the decision happens.** Every
+YouTube row would read "unknown", and on archive.org 92% would too. A chip that is empty almost
+always does not inform a choice — it *implies a per-item check that never happened*, which is a
+worse claim than silence. Removed from Find clips entirely (maintainer decision).
+
+⚠ **This does not mean the clips are unlicensed.** It means Loomarr cannot tell, and must not
+imply it knows. The operator decides what they may reuse; the app's job is to not fabricate
+reassurance.
+
+⚠ **The licence is still CAPTURED and STORED** — `clips.license`, `filler_sources.license`, and
+both sidecar readers all landed in #152 and stay. It is a record of what a source declared, and
+it costs nothing to keep. What changed is that nothing RENDERS it: `ClipDTO` was never given the
+field, so this is a decision not to add one rather than a removal.
+
+---
+
+## 6.4 V34 — compilation splitting and per-clip metadata (proposed 2026-07-31)
+
+**The problem V33 leaves open.** Discovery finds sources; ingest downloads them. But a large share
+of what it finds is a **compilation** — one file holding twenty or more commercials back to back.
+Ingested whole it is a single 15-minute "clip" the pod assembler can never place: breaks are
+30-90 seconds, and `durationEligible` rejects it. The catalog gains a row and no usable filler.
+
+Splitting it produces the opposite problem: twenty clips named `compilation_seg07`, with no era,
+audience or category, which the ladder also cannot place. **Splitting and metadata are one phase
+because either alone produces unplaceable clips.**
+
+### What was measured before this was written
+
+Six chapterless compilations (~1h45m) from YouTube, scored on "segments of plausible ad length":
+
+| Detector | Result | Notes |
+| --- | --- | --- |
+| `blackdetect` @ `pix_th=0.20` | **81–100%** per video | The tuning matters: at `0.10` two videos scored 60-67%, because they fade to dark grey rather than black |
+| `blackdetect` + `silencedetect` union | 69–95% | Better on some, worse on others — not a uniform win |
+| `scdet` / PySceneDetect `ContentDetector` | **unusable** | 454 and 318 boundaries on one video: they detect camera cuts INSIDE an advert. Wrong granularity, not wrong tuning |
+| PySceneDetect `ThresholdDetector` | 82% | Same fade-to-black signal as ffmpeg, no better |
+| Comskip | rejected without testing | Its strongest signals — logo, closed captions, aspect-ratio change — are all absent from a YouTube compilation, and `punish_no_logo=1` scores no-logo content *toward* "commercial", so it misfires on all-advert content |
+
+⚠ **Detection quality is a property of the SOURCE, not of the threshold.** Two videos produced
+clean `30 30 30 30` runs; two produced 129s and 188s blocks with boundaries genuinely absent. No
+setting fixes the second kind, which is why the phase cannot be "split everything automatically".
+
+### ⚠ The ceiling, and the only thing that breaks through it
+
+One 149-second block defeated every A/V detector. Transcribing it showed **three complete
+adverts** — a Swiffer spot ending and an Aqua Globes spot beginning, cutting straight into each
+other with no black frame and no silence. **Those boundaries exist only in language.**
+
+Given the transcript, a local LLM found the cut at 27.4s exactly. That is the case for the
+transcript step: it is not a nicety for metadata, it is the only signal that sees this class of
+boundary at all.
+
+Two failure modes were hit and diagnosed, and both belong in the gate:
+
+- **A poor transcript produces confident nonsense.** Whisper `tiny` dropped ~60s of audio (4 gaps
+  over 5s, worst 28s) and the LLM then returned phone-number digits as product names. Whisper
+  `small` had **zero gaps** on the same audio. The transcript is the bottleneck; the model size is
+  not a tuning preference.
+- **The LLM invents boundaries in a single long advert.** A 121s infomercial for one product was
+  split into three at suspiciously round 30/61/92s marks. Adding *"if the whole transcript is ONE
+  advert, return exactly one entry"* fixed it — and on a genuine multi-advert block the model then
+  labelled an uncertain boundary `"unknown"` rather than naming it. **A test must cover the
+  single-advert case**, or this ships a splitter that manufactures clips.
+
+### Shape
+
+1. **Triage.** `yt-dlp --dump-json` exposes chapters without downloading; a pre-chaptered source
+   splits for free. ⚠ Rare in practice — 6 of 8 sampled had none — so this is an optimisation, not
+   the mechanism. ⚠ `--write-auto-subs` was tested as a free-metadata shortcut and **does not
+   work**: zero of three test videos had captions of any kind.
+2. **Coarse split.** `blackdetect` + `silencedetect`, parsed in Go. Segments under ~3s dropped.
+3. **Rescue.** Any segment far longer than a plausible advert goes to transcript + LLM for
+   boundaries the A/V pass could not see.
+4. **Metadata.** The transcript feeds the EXISTING `filler.Classify` unchanged — it already takes
+   `(name, sourceText)` and already knows `cereal`, `toys`, `cars`. Verified on real transcripts:
+   *"Rice Krispie's treats are so easy to make"* classifies correctly today.
+
+   ⚠ **A §8 GROUNDING HOLE, measured: 2 of 10 clips got an INVENTED era.** Running the real
+   `tagSystemPrompt` over real transcripts, two clips came back `1980` and `1970` with **no year
+   anywhere in the transcript** — the model inferred a decade from tone. `validateTags` accepts
+   any year in 1930-2035, so both would be persisted as fact.
+
+   This is pre-existing (V17a's sidecar path can hit it too) but transcripts make it far more
+   likely, because ad copy is full of period-sounding language and contains a literal year only
+   rarely. §8 forbids exactly this: a tag nothing grounds. The phase must either require the year
+   to appear in the source text before accepting `era`, or record era as a *suggestion* the
+   operator confirms — not silently trust it. Encouragingly, the model answered `era: 0` honestly
+   on the other 8, so the prompt is mostly working; it is the validator that has no way to tell an
+   inferred year from a read one.
+5. **Dedup.** The same advert recurs across compilations. **Measured, and the margin is wide:** a
+   dHash over frames sampled at 1/3fps gives a mean per-frame Hamming distance of **1.1 for a
+   re-encoded, downscaled duplicate vs 27.6-32.2 for different adverts** — a 25x separation, so
+   any threshold in the teens works. It is ~30 lines of pure Go over `ffmpeg -pix_fmt gray`
+   output: no library, no cgo, nothing vendored. ffmpeg's `signature` filter also works (verified:
+   "whole video matching" on a duplicate, silent on a different clip) but needs a custom coarse
+   index to avoid O(n²) and reports only at `-loglevel verbose`, which is an easy trap.
+6. **Review.** ⚠ **Not optional.** Detection is 69-100% depending on the source, so the operator
+   confirms the proposed cuts before they enter the catalog. Auto-accepting a 69% result puts
+   3-minute "commercials" into ad breaks.
+
+### Dependencies
+
+Steps 1-3, 5 need **nothing new** — ffmpeg and yt-dlp are already bundled and already exec'd.
+Step 4 uses the LLM provider that already exists. **Whisper is the one genuine addition**, and it
+is a §14 conversation: `whisper.cpp` ships a self-contained `whisper-cli` binary matching the
+existing vendored-binary pattern exactly (no cgo, no service), with `base.en-q5_1` at 60MB. The
+Python package was what these measurements used; the binary is the shippable form.
+
+⚠ **Not attempted, and why:** TransNetV2 via ONNX would need cgo plus a ~20MB native library plus
+validating a third-party export nobody has certified — and it is a *shot* boundary model, which
+§6.4's `scdet` result shows is the wrong granularity for this problem. The expensive option is
+also the wrong one.
 
 - **Pre-users premise:** the app has no external users, so defect-first ordering does not apply.
   Structural change is cheap now and expensive after more surfaces build on the old IA. The maintainer

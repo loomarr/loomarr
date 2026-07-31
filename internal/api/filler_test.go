@@ -1,8 +1,11 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +23,11 @@ type fakeFiller struct {
 	ingested    []string
 	// unavailable simulates loomarr:latest — the image with no ingest tooling.
 	unavailable bool
+	// discovered records the queries Discover was asked for; discoverErr forces the
+	// upstream-failure path.
+	discovered    []string
+	discoverLimit int
+	discoverErr   error
 }
 
 func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
@@ -29,6 +37,21 @@ func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
 func (f *fakeFiller) Tag(context.Context) (int, int, int, int, error) {
 	f.tags++
 	return 3, 2, 1, 0, nil
+}
+
+// Discover records the query so a test can prove the handler passes it through, and returns a
+// total LARGER than the item count — the real API pages, and a fake that returned len(items)
+// would let a handler reporting the page length pass.
+func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
+	f.discovered = append(f.discovered, query)
+	f.discoverLimit = limit
+	if f.discoverErr != nil {
+		return nil, 0, f.discoverErr
+	}
+	return []api.DiscoveredClip{
+		{ID: "cm-1993-4", Title: "Commercials 1993", Year: 1993, URL: "https://archive.org/details/cm-1993-4"},
+		{ID: "no-year-item", Title: "Untitled reel", URL: "https://archive.org/details/no-year-item"},
+	}, 54, nil
 }
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
@@ -278,5 +301,129 @@ func TestFiller_IngestUnavailableOnDefaultImage(t *testing.T) {
 	// The remedy is a different IMAGE. Naming it is the whole point of this branch.
 	if !strings.Contains(problem.Detail, "loomarr:filler") {
 		t.Errorf("detail = %q, want it to name the loomarr:filler image", problem.Detail)
+	}
+}
+
+// --- discovery (§10, V33) ---
+
+func decodeDiscover(t *testing.T, resp *http.Response) struct {
+	Items []struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		URL   string `json:"url"`
+	} `json:"items"`
+	Total       int    `json:"total"`
+	LicenceNote string `json:"licenceNote"`
+} {
+	t.Helper()
+	var body struct {
+		Items []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Year  int    `json:"year"`
+			URL   string `json:"url"`
+		} `json:"items"`
+		Total       int    `json:"total"`
+		LicenceNote string `json:"licenceNote"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return body
+}
+
+func TestDiscoverFiller_ReturnsCandidatesWithTheSourcesTotal(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=1980s+cereal+commercial", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := decodeDiscover(t, resp)
+
+	if len(body.Items) != 2 {
+		t.Fatalf("got %d items, want 2", len(body.Items))
+	}
+	// ⚠ Total is the SOURCE's match count, not the page length. An operator judging "is this
+	// search any good" needs the real number — 54 hits shown 2 at a time is a different
+	// situation from 2 hits total.
+	if body.Total != 54 {
+		t.Errorf("total = %d, want 54 (the source's count, not len(items))", body.Total)
+	}
+	if body.Total == len(body.Items) {
+		t.Error("total equals the page length — it is reporting the page, not the search")
+	}
+	// The query reaches the service rather than being dropped.
+	if len(ff.discovered) != 1 || ff.discovered[0] != "1980s cereal commercial" {
+		t.Errorf("service saw %v, want the typed query", ff.discovered)
+	}
+}
+
+// ⚠ The licence note is sent ONCE, about the search, not per row. archive.org declares a
+// licence on ~8% of items and yt-dlp on none, so a per-result chip would read "unknown" on
+// nearly every row — implying a per-item check that never happened (build plan §6.3).
+func TestDiscoverFiller_StatesTheLicenceCaveatOnceNotPerItem(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	body := decodeDiscover(t, do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, ""))
+	if body.LicenceNote == "" {
+		t.Error("no licence note — an operator has no signal that licences are unknown")
+	}
+	// If a per-item licence field is ever added, this test should be revisited deliberately
+	// rather than silently: assert the DTO has no such field today.
+	raw, _ := json.Marshal(body.Items)
+	if bytes.Contains(raw, []byte("licence")) || bytes.Contains(raw, []byte("license")) {
+		t.Error("an item carries a licence field — §6.3 says it would read 'unknown' on nearly every row")
+	}
+}
+
+// An item with no year is the common case (Solr omits the field), and it must round-trip as
+// absent rather than as the year 0.
+func TestDiscoverFiller_OmitsAnUnknownYear(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"year":0`)) {
+		t.Error(`an unknown year serialised as "year":0 — it should be omitted`)
+	}
+}
+
+// Upstream failures are archive.org's, not the caller's: a 502-shaped problem that names which
+// side broke rather than blaming the query.
+func TestDiscoverFiller_UpstreamFailureIsABadGateway(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.discoverErr = errors.New("dial tcp: connection refused")
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+// Admin-only: it names an outbound integration and feeds the ingest path.
+func TestDiscoverFiller_IsAdminOnly(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", memberToken, ""); resp.StatusCode == http.StatusOK {
+		t.Error("a member could search for clips to add")
+	}
+}
+
+// An empty query would return archive.org's whole movies corpus ranked by nothing — refused at
+// the schema, so the request never reaches the service.
+func TestDiscoverFiller_RequiresAQuery(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover", adminToken, "")
+	if resp.StatusCode == http.StatusOK {
+		t.Error("an empty query was accepted")
+	}
+	if len(ff.discovered) != 0 {
+		t.Errorf("the service was called with %v despite an invalid request", ff.discovered)
 	}
 }

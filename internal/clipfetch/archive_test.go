@@ -66,9 +66,8 @@ func mockArchive(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, r *http.Request) {
 		// The collection has one member item: test-ad.
 		var sr searchResp
-		sr.Response.Docs = []struct {
-			Identifier string `json:"identifier"`
-		}{{Identifier: "test-ad"}}
+		sr.Response.NumFound = 1
+		sr.Response.Docs = []searchDoc{{Identifier: "test-ad"}}
 		_ = json.NewEncoder(w).Encode(sr)
 	})
 	// The download endpoint: /0/items/test-ad/<file> → some bytes.
