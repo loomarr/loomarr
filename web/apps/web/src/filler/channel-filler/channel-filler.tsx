@@ -1,6 +1,7 @@
+import { channelsApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { Link } from "@tanstack/react-router";
-import { CollapsibleSection, PodTimeline } from "@/components/loomarr";
+import { CollapsibleSection, CoverageMeter, PodTimeline } from "@/components/loomarr";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
@@ -23,6 +24,15 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
   // A small shared catalog so pinned/excluded ids can render as names, and so pin can't
   // offer a clip already excluded (and vice-versa). Cheap: a single filler list read.
   const { resolve } = useFillerCatalog();
+
+  // Coverage for the channel's SAVED selection (V29b). `enabled: open` because the section
+  // starts collapsed and this is one more request per channel page otherwise; retry: false
+  // because a filler-less install answers 501 and retrying that three times is noise in the
+  // console for a state the meter simply does not render.
+  const coverageQuery = channelsApi.useChannelFillerCoverage(channelId, {
+    query: { enabled: open, retry: false },
+  });
+  const coverage = unwrap(coverageQuery.data);
 
   const entries = preview?.entries ?? [];
   const pinned = draft.pinned ?? [];
@@ -78,6 +88,21 @@ const ChannelFiller = ({ channelId, policy, open, onOpenChange, className }: Cha
             excludeIds={pinned}
           />
         </div>
+
+        {/* Why the break looks the way it does (V29b). Sits ABOVE the preview deliberately:
+            the preview shows WHAT plays, this shows what the catalog could offer — and when a
+            break falls back to the bumper card, the answer to "why" is here, not in the empty
+            timeline below.
+            ⚠ It reflects the SAVED selection, not the unsaved draft. The route resolves the
+            channel's persisted policy, so during an edit this describes what is currently
+            airing rather than what Apply would produce — which is the honest reading, since
+            nothing has changed yet. */}
+        {coverage && (
+          <div className="flex flex-col gap-2 border-border border-t pt-5">
+            <p className="font-medium text-sm">Catalog coverage</p>
+            <CoverageMeter coverage={coverage} />
+          </div>
+        )}
 
         {/* The live break — the ground-truth preview of the current draft. */}
         <div className="flex flex-col gap-2 border-border border-t pt-5">

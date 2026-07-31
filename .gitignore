@@ -20,7 +20,12 @@
 # Go
 *.test
 *.out
-coverage.*
+# ⚠ NOT `coverage.*` — that pattern also swallows SOURCE files. `internal/filler/coverage.go`
+# (V29a) was written, tested green locally, and committed as a test file with no implementation
+# behind it, because `git add -A` silently skipped it and `git status` reported a clean tree. The
+# profile artifact is already covered by `*.out` above; name the rest explicitly.
+coverage.html
+coverage.txt
 
 # Node / FE (web/ added in Phase 13)
 node_modules/
