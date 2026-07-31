@@ -295,6 +295,17 @@ here rather than silently edited, because each correction is a claim about what 
   truth needing a precedence rule against the setting. `GET /v1/filler/sources` derives the mock's
   three rows from the config that already exists plus live per-source clip counts. **V33 owns the
   persisted registry**, when remote sources genuinely need rows.
+
+  ⚠ **V33 RESOLVED THAT PRECEDENCE RULE (maintainer decision, 2026-07-31): the TABLE WINS, and
+  `filler.dir` SEEDS it.** On first boot the setting inserts a `local` row; from then on the table
+  is authoritative for every source, local included.
+
+  The cost is exactly the one V28 named, so it is stated here rather than discovered later: **after
+  seeding, editing `filler.dir` no longer moves the drop-folder on its own.** A setting that
+  silently does nothing is worse than one that does not exist, so V33 must make that visible rather
+  than leave it implicit — the seeded row records the value it came from, and when the live setting
+  diverges the Sources UI says so and offers to adopt the new path. The alternative (table holds
+  remote sources only, no overlap, no rule) was considered and not taken.
 - **`usage` had no honest write point.** Pod assembly takes a `used` map but `adapter.go` passes a
   fresh empty one per call — it is per-pod de-duplication with no memory — and pods re-assemble on
   every 10m reconcile sweep, so counting at assembly would inflate without bound and count

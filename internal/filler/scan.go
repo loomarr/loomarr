@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -146,6 +147,14 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 			// unreadable one) simply has none, and the guide omits the badge rather
 			// than claiming a resolution nothing measured.
 			Quality: QualityFromHeight(pr.Height),
+			// The licence the source declared, from the info-JSON beside the file (V33).
+			//
+			// ⚠ Read by EXACT PATH here, unlike the tagger's `sidecarText`, which walks the
+			// drop-folder matching normalized basenames. That indirection exists because
+			// Tunarr supplies a display NAME that may not match the file; the scan is
+			// walking the filesystem itself and already holds the real path, so guessing
+			// would be strictly worse. Same sidecar, different amount of information.
+			License: licenseBeside(path),
 		})
 		return nil
 	})
@@ -368,4 +377,25 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 		}
 	}
 	return clips, nil
+}
+
+// licenseBeside reads the licence URL from the info-JSON sitting next to a clip file.
+//
+// A direct os.ReadFile rather than SidecarLicense's fs.FS: ScanDir walks real paths and already
+// holds this clip's, so there is nothing to resolve. The fs.FS variant exists for the tagger,
+// which is handed a drop-folder FS and a possibly-renamed display name.
+//
+// Every failure is "" — no sidecar (the normal case for a hand-copied clip), unreadable, or
+// malformed. A licence we cannot read is UNKNOWN, and unknown is the honest default; a scan must
+// never fail over a missing optional file.
+func licenseBeside(mediaPath string) string {
+	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	if err != nil {
+		return ""
+	}
+	var info sidecarInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(info.License)
 }

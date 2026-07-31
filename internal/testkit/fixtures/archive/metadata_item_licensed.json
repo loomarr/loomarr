@@ -1,0 +1,31 @@
+{
+  "server": "dn600305.us.archive.org",
+  "dir": "/0/items/cm-1993-4",
+  "metadata": {
+    "mediatype": "movies",
+    "title": "ちょっとだけ懐かしいCM 1993年 その４ 年末",
+    "description": "Source:<a href=\"https://www.youtube.com/watch?v=T01HcBEt5iE\" rel=\"ugc nofollow\">https://www.youtube.com/watch?v=T01HcBEt5iE</a>",
+    "licenseurl": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "identifier": "cm-1993-4"
+  },
+  "files": [
+    {
+      "name": "ちょっとだけ懐かしいCM 1993年 その４ 年末.ia.mp4",
+      "format": "h.264 IA",
+      "size": "75822371",
+      "source": "derivative"
+    },
+    {
+      "name": "ちょっとだけ懐かしいCM 1993年 その４ 年末.mp4",
+      "format": "MPEG4",
+      "size": "75822371",
+      "source": "original"
+    },
+    {
+      "name": "cm-1993-4.thumbs/ちょっとだけ懐かしいCM 1993年 その４ 年末_000001.jpg",
+      "format": "Thumbnail",
+      "size": "78428",
+      "source": "derivative"
+    }
+  ]
+}

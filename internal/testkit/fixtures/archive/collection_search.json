@@ -1,0 +1,23 @@
+{
+  "response": {
+    "numFound": 8362,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "CLE-B31_84812-85082"
+      },
+      {
+        "identifier": "TVLicensingCampaignAdvert2000"
+      },
+      {
+        "identifier": "EagleStarDirectxWackyRacersAdvert1996"
+      },
+      {
+        "identifier": "mubd1234ama-Dmac9PAznJM"
+      },
+      {
+        "identifier": "TetleysBitterAdvert1997"
+      }
+    ]
+  }
+}
