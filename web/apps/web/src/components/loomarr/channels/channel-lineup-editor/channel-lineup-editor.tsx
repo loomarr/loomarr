@@ -18,7 +18,7 @@ import { searchApi, unwrap } from "@loomarr/api";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useChannelLineup } from "@/channels";
-import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { Badge, Button, Caption, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib";
 import { SearchCommand } from "../../shell";
 import type { ChannelLineupEditorProps } from "./channel-lineup-editor.type";
@@ -248,7 +248,11 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           everything added since. */}
       {entries.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.75">
-          <span className="font-mono text-2xs text-static-400 uppercase tracking-[0.06em]">Show</span>
+          {/* tracking-[0.06em] overrides `shout`'s tracking-wide (0.025em) — the same toolbar
+              label voice as the guide's "Start". */}
+          <Caption shout className="tracking-[0.06em]">
+            Show
+          </Caption>
           {(
             [
               ["order", "Play order"],

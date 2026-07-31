@@ -1,5 +1,5 @@
 import { channelNumber } from "@loomarr/core";
-import { Card } from "@/components/ui";
+import { Caption, Card } from "@/components/ui";
 import { cn } from "@/lib";
 import { NowNextStrip } from "../now-next-strip";
 import { OnAirIndicator } from "../on-air-indicator";
@@ -37,7 +37,9 @@ const ChannelCard = ({
           <div>
             <p className="font-medium leading-tight">{name}</p>
             {managed && (
-              <p className="font-mono text-2xs text-static-400 uppercase tracking-wide">Managed by Loomarr</p>
+              <Caption as="p" shout>
+                Managed by Loomarr
+              </Caption>
             )}
           </div>
         </div>
