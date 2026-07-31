@@ -1,4 +1,4 @@
-import { settingsApi, usersApi } from "@loomarr/api";
+import { settingsApi, unwrap, usersApi } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr";
@@ -47,7 +47,7 @@ const ImportPanel = ({ onImported, className }: ImportPanelProps) => {
     );
   }
 
-  const rows = candidates.data?.status === 200 ? (candidates.data.data.candidates ?? []) : [];
+  const rows = unwrap(candidates.data, (b) => b.candidates) ?? [];
   const importable = rows.filter((c) => !c.imported);
 
   const toggle = (id: string) =>

@@ -1,5 +1,5 @@
 import type { DatabaseCheck } from "@loomarr/api";
-import { systemApi } from "@loomarr/api";
+import { systemApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -65,7 +65,7 @@ const DatabasePage = () => {
   });
 
   if (status.error) return <ErrorState error={status.error} onRetry={() => status.refetch()} />;
-  const view = status.data?.status === 200 ? status.data.data : undefined;
+  const view = unwrap(status.data);
   if (view == null) return null;
 
   // A pinned DATABASE_URL is reported by the switchover refusing, but the stepper should

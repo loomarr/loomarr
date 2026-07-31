@@ -1,4 +1,4 @@
-import { settingsApi, setupApi, systemApi } from "@loomarr/api";
+import { settingsApi, setupApi, systemApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +27,7 @@ const WizardAiBlock = () => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries();
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
-  const status = llm.data?.status === 200 ? llm.data.data : undefined;
+  const status = unwrap(llm.data);
 
   // Local edits for the provider fields, saved as a group like every other checklist block.
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -43,7 +43,7 @@ const WizardAiBlock = () => {
       },
     },
   });
-  const patchResults = patch.data?.status === 200 ? (patch.data.data.results ?? undefined) : undefined;
+  const patchResults = unwrap(patch.data, (b) => b.results) ?? undefined;
 
   // Essentials only (§6): advanced keys live in Settings. This is the provider dropdown +
   // the URL/key fields whose ShowWhen reveals them when provider = openai.

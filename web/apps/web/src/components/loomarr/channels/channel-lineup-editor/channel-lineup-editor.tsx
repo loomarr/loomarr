@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { LineupEntryDTO, LineupEntryDTOState, SearchCandidate } from "@loomarr/api";
-import { searchApi } from "@loomarr/api";
+import { searchApi, unwrap } from "@loomarr/api";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useChannelLineup } from "@/channels";
@@ -190,7 +190,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
     { q: query, scope: "all", limit: 8 },
     { query: { enabled: adding && query.trim().length > 1 } },
   );
-  const candidates = search.data?.status === 200 ? (search.data.data.candidates ?? []) : [];
+  const candidates = unwrap(search.data, (b) => b.candidates) ?? [];
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

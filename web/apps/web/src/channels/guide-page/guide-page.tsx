@@ -1,4 +1,4 @@
-import { channelsApi, type GuideAiring } from "@loomarr/api";
+import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -182,7 +182,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
     },
   });
 
-  const body = guide.data?.status === 200 ? guide.data.data : undefined;
+  const body = unwrap(guide.data);
   const channels = useMemo(() => body?.channels ?? [], [body]);
   // "Known empty", not "nothing loaded yet": during the first fetch `channels` is also [],
   // and treating that as empty would flash the empty state (and hide the header button)

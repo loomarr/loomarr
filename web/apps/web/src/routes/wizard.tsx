@@ -1,4 +1,4 @@
-import { SettingEntryProvenance, setupApi } from "@loomarr/api";
+import { SettingEntryProvenance, setupApi, unwrap } from "@loomarr/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -89,7 +89,7 @@ const WizardScreen = () => {
   useDocumentTitle("Setup");
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const status = setupApi.useSetupStatus({ query: { enabled: isAuthenticated, retry: false } });
-  const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+  const checks = unwrap(status.data, (b) => b.checks) ?? [];
 
   // Who plays the channels (§9.1). Read from the registry rather than held in component
   // state, because it is a SETTING the operator may already have pinned via env or chosen on

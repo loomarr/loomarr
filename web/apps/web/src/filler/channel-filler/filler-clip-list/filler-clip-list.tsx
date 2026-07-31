@@ -1,4 +1,4 @@
-import { type ClipDTO, fillerApi } from "@loomarr/api";
+import { type ClipDTO, fillerApi, unwrap } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
@@ -43,7 +43,7 @@ const FillerClipList = ({
     { q: query },
     { query: { enabled: adding && query.trim().length > 1 } },
   );
-  const clips = search.data?.status === 200 ? (search.data.data.clips ?? []) : [];
+  const clips = unwrap(search.data, (b) => b.clips) ?? [];
 
   const chosen = new Set(ids);
   const blocked = new Set(excludeIds);

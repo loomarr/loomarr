@@ -1,4 +1,4 @@
-import { type ChannelPolicy, channelsApi, type FillerSelection, toProblem } from "@loomarr/api";
+import { type ChannelPolicy, channelsApi, type FillerSelection, toProblem, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -93,7 +93,7 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
     },
   });
 
-  const body = preview.data?.status === 200 ? preview.data.data : undefined;
+  const body = unwrap(preview.data);
 
   return {
     draft,

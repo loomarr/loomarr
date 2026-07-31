@@ -1,4 +1,4 @@
-import { usersApi } from "@loomarr/api";
+import { unwrap, usersApi } from "@loomarr/api";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { EmptyState, ErrorState } from "@/components/loomarr";
@@ -16,7 +16,7 @@ const UsersStep = () => {
     mutation: { onSuccess: () => candidates.refetch() },
   });
 
-  const rows = candidates.data?.status === 200 ? (candidates.data.data.candidates ?? []) : [];
+  const rows = unwrap(candidates.data, (b) => b.candidates) ?? [];
   const importable = rows.filter((c) => !c.imported);
 
   const toggle = (id: string) =>

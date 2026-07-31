@@ -20,3 +20,4 @@ export * as titlesApi from "../generated/endpoints/titles/titles";
 export * as usersApi from "../generated/endpoints/users/users";
 export * from "../generated/model";
 export * from "./mutator";
+export * from "./unwrap";

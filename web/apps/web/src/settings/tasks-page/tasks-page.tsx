@@ -1,4 +1,4 @@
-import { type JobView, jobsApi, toProblem } from "@loomarr/api";
+import { type JobView, jobsApi, toProblem, unwrap } from "@loomarr/api";
 import { formatRelative, formatUntil } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pause, Pencil, Play } from "lucide-react";
@@ -96,7 +96,7 @@ const TasksPage = () => {
       </div>
     );
   }
-  const list = jobs.data?.status === 200 ? (jobs.data.data.jobs ?? []) : [];
+  const list = unwrap(jobs.data, (b) => b.jobs) ?? [];
 
   return (
     // ⚠ `min-h-0` on a flex COLUMN is what makes the table below able to scroll. A flex item's

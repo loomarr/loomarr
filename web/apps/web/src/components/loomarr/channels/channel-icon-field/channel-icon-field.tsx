@@ -1,4 +1,4 @@
-import { ApiError, channelsApi, toProblem } from "@loomarr/api";
+import { ApiError, channelsApi, toProblem, unwrap } from "@loomarr/api";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr";
@@ -68,7 +68,7 @@ const ChannelIconField = ({
   const suggestions = channelsApi.useChannelIconSuggestions(channelId, {
     query: { enabled: isAdmin && suggestionsOpen },
   });
-  const suggestionList = suggestions.data?.status === 200 ? (suggestions.data.data.suggestions ?? []) : [];
+  const suggestionList = unwrap(suggestions.data, (b) => b.suggestions) ?? [];
   // A 501 means TMDB isn't configured on this install — that's a normal, expected shape
   // (not every deployment grounds against TMDB), so it renders as guidance, not an error.
   const tmdbUnconfigured = suggestions.error instanceof ApiError && suggestions.error.status === 501;

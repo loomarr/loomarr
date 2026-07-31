@@ -1,4 +1,4 @@
-import { fillerApi, settingsApi } from "@loomarr/api";
+import { fillerApi, settingsApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
@@ -48,7 +48,7 @@ const FillerPage = () => {
   const [pinning, setPinning] = useState<string>();
 
   const settings = settingsApi.useSettingsList();
-  const features = settings.data?.status === 200 ? settings.data.data.features : undefined;
+  const features = unwrap(settings.data, (b) => b.features);
   const fillerConfigured = Boolean(features?.filler);
 
   const clips = fillerApi.useListFiller({
@@ -102,7 +102,7 @@ const FillerPage = () => {
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
-  const sourceRows = sourcesQuery.data?.status === 200 ? (sourcesQuery.data.data.sources ?? []) : [];
+  const sourceRows = unwrap(sourcesQuery.data, (b) => b.sources) ?? [];
 
   const filtered = Boolean(q || kind || audience || untagged);
 
@@ -156,7 +156,7 @@ const FillerPage = () => {
         <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources">
           <FillerSources
             sources={sourceRows}
-            total={sourcesQuery.data?.status === 200 ? (sourcesQuery.data.data.total ?? 0) : 0}
+            total={unwrap(sourcesQuery.data, (b) => b.total) ?? 0}
             onFetch={() => fetchSource.mutate()}
             fetching={fetchSource.isPending ? "folder" : null}
             error={fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null}

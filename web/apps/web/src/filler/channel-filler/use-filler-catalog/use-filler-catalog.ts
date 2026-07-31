@@ -1,4 +1,4 @@
-import { type ClipDTO, fillerApi } from "@loomarr/api";
+import { type ClipDTO, fillerApi, unwrap } from "@loomarr/api";
 import { useMemo } from "react";
 
 // useFillerCatalog — a small id→clip lookup over the whole filler catalog, so the pin/
@@ -9,7 +9,7 @@ import { useMemo } from "react";
 // is the resolve-what's-already-chosen read, always on; that one is query-gated.
 const useFillerCatalog = (): { resolve: (id: string) => ClipDTO | undefined; isLoading: boolean } => {
   const list = fillerApi.useListFiller();
-  const clips = list.data?.status === 200 ? (list.data.data.clips ?? []) : [];
+  const clips = unwrap(list.data, (b) => b.clips) ?? [];
 
   // Re-derive when the catalog changes; `clips` is a fresh array each render but its
   // contents only change on a refetch, and a stale label until then is harmless. Keyed on

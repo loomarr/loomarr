@@ -1,4 +1,4 @@
-import { helpApi } from "@loomarr/api";
+import { helpApi, unwrap } from "@loomarr/api";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr";
@@ -21,14 +21,14 @@ const HelpPage = () => {
   const [q, setQ] = useState("");
 
   const list = helpApi.useListDocs();
-  const docs = list.data?.status === 200 ? (list.data.data.docs ?? []) : [];
+  const docs = unwrap(list.data, (b) => b.docs) ?? [];
 
   // Default to the first page rather than an empty pane: Help with nothing open reads
   // as broken, and troubleshooting sorts first by slug in practice.
   const active = page ?? docs[0]?.slug;
 
   const doc = helpApi.useGetDoc(active ?? "", { query: { enabled: Boolean(active) } });
-  const markdown = doc.data?.status === 200 ? doc.data.data.markdown : "";
+  const markdown = unwrap(doc.data, (b) => b.markdown) ?? "";
 
   // Scroll to the deep-linked section once its page has rendered (§13: a red check lands
   // on the exact heading, not just the page). Runs when the section OR the rendered

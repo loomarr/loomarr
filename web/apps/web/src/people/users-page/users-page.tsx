@@ -1,4 +1,4 @@
-import { toProblem, type UserBody, usersApi } from "@loomarr/api";
+import { toProblem, type UserBody, unwrap, usersApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { useAuth } from "@/auth";
@@ -176,7 +176,7 @@ const UsersPage = () => {
             // `?? []` narrows the contract's nullable list (huma infers nullability from
             // Go's slice type); the handler always initializes it, so null never
             // actually arrives.
-            sessions={sessions.data?.status === 200 ? (sessions.data.data.sessions ?? []) : []}
+            sessions={unwrap(sessions.data, (b) => b.sessions) ?? []}
             revoking={revoking}
             onRevoke={(id) => {
               setRevoking(id);

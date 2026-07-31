@@ -1,4 +1,4 @@
-import { suggestionsApi } from "@loomarr/api";
+import { suggestionsApi, unwrap } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { ApprovalHistoryRow, EmptyState, ErrorState } from "@/components/loomarr";
 
@@ -21,7 +21,7 @@ const ApprovalHistory = () => {
 
   const error = queries.find((q) => q.error)?.error;
   const rows = queries
-    .flatMap((q) => (q.data?.status === 200 ? (q.data.data.proposals ?? []) : []))
+    .flatMap((q) => unwrap(q.data, (b) => b.proposals) ?? [])
     // Newest decision first. A denial carries no `approvedAt`, so it sorts by empty string and
     // lands at the end — acceptable while nothing records a decided-at for denials, and better
     // than inventing a timestamp for it.

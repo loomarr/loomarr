@@ -1,4 +1,4 @@
-import { type ChannelPolicy, channelsApi, type LineupEntryDTO } from "@loomarr/api";
+import { type ChannelPolicy, channelsApi, type LineupEntryDTO, unwrap } from "@loomarr/api";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import {
   ChannelAutoCurate,
@@ -87,7 +87,7 @@ const ChannelProgramming = ({
   const vocabQuery = channelsApi.useGetProgrammingVocabulary({
     query: { staleTime: Number.POSITIVE_INFINITY },
   });
-  const vocabulary = vocabQuery.data?.status === 200 ? vocabQuery.data.data : undefined;
+  const vocabulary = unwrap(vocabQuery.data);
 
   return (
     <div className="flex flex-col gap-6">
