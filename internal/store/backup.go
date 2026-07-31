@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"os"
@@ -238,4 +239,25 @@ func DialectOf(st Store) Dialect {
 		return s.dialect
 	}
 	return ""
+}
+
+// PoolOf returns the underlying *sql.DB, or nil for a non-SQL store. Same shape as DialectOf
+// above, and used for the same kind of reason: the background-job engine (§18.1) is built on
+// River, which takes a database/sql pool directly.
+//
+// ⚠ **Deliberately NOT on the Store interface.** Store is the port every consumer depends on,
+// and handing out the raw pool there would let any of them bypass the store's own methods and
+// write SQL against the catalog — the boundary §2 exists to keep. The composition root is the
+// one place that legitimately needs it, and a type assertion keeps that visible: a caller
+// reaching for this is doing something unusual and should look like it.
+//
+// ⚠ River SHARES this pool rather than opening its own. On SQLite that is load-bearing, not a
+// convenience: the store sets MaxOpenConns(1) because modernc's driver serializes writes, and a
+// second pool against the same file would reintroduce exactly the WAL write contention that
+// setting exists to avoid.
+func PoolOf(st Store) *sql.DB {
+	if s, ok := st.(*sqlStore); ok {
+		return s.db
+	}
+	return nil
 }

@@ -9,11 +9,13 @@ package scheduler
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/adhocore/gronx"
+	"github.com/riverqueue/river"
 
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -114,6 +116,10 @@ type Scheduler struct {
 	now      func() time.Time
 	log      *slog.Logger
 	notifier Notifier
+	// river is the execution engine once StartRiver has run (§14, §18.1). Nil until then —
+	// and nil in unit tests, which drive tick()/execute() directly rather than standing up a
+	// queue, so the scheduler's own behaviour stays testable without a database.
+	river *river.Client[*sql.Tx]
 
 	wake chan struct{} // buffered signal to run a tick now (Trigger, startup)
 
@@ -195,6 +201,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 	}
 }
+
+// SeedRegistry ensures every code-defined job has a state row, so the Tasks page can list it
+// before it has ever run. Rows for jobs no longer in code are ignored, not deleted — a renamed
+// job's history is not something to silently destroy on boot.
+//
+// ⚠ Under River the seeded `next_run` is NOT what schedules the job (River's periodic jobs do
+// that); it is the value the page renders. The two agree because both derive from the same
+// effective cron.
+func (s *Scheduler) SeedRegistry(ctx context.Context) { s.reconcileRegistry(ctx) }
 
 // reconcileRegistry ensures every code-defined job has a state row (created due-now on first
 // sight), so the loop will run it. Rows for jobs no longer in code are ignored, not deleted.
@@ -303,6 +318,13 @@ func (s *Scheduler) Trigger(ctx context.Context, name string) error {
 	if err != nil {
 		cur = store.ScheduledJob{Name: name}
 	}
+	// ⚠ Run-now goes through RIVER, so the manual path and the scheduled path execute via the
+	// same worker. A separate "just call Run" shortcut is how the two come to differ — one
+	// records state, the other forgets to; one honours pause, the other does not.
+	if s.river != nil {
+		return s.TriggerRiver(ctx, name)
+	}
+	// No queue (unit tests drive tick() directly): fall back to marking it due.
 	cur.Name, cur.NextRun, cur.UpdatedAt = name, now, now
 	if err := s.store.UpsertScheduledJob(ctx, cur); err != nil {
 		return err
