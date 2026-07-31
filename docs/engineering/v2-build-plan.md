@@ -295,6 +295,19 @@ here rather than silently edited, because each correction is a claim about what 
   truth needing a precedence rule against the setting. `GET /v1/filler/sources` derives the mock's
   three rows from the config that already exists plus live per-source clip counts. **V33 owns the
   persisted registry**, when remote sources genuinely need rows.
+
+  ⚠ **V33 DOES NOT NEED THAT PRECEDENCE RULE (maintainer decision, 2026-07-31): its table holds
+  REMOTE SOURCES ONLY, and they nest under the read-model's `remote` row.** The folder and library
+  rows stay derived from config, so `filler.dir` remains the only thing that says where the folder
+  is, and a row and a setting never describe the same source.
+
+  ⚠ **An earlier version of this note said the opposite** — "the TABLE WINS, and `filler.dir` SEEDS
+  it" — and the migration carried a `seeded_from` column to make the resulting inertness visible.
+  That was decided before reading `fillersources.go`, which turned out to return **three FIXED rows
+  describing CONFIGURATION** rather than a list of things that exist. The two models do not merge:
+  a table of rows cannot express *"you could set up a library but have not"*, which is exactly what
+  `configured:false` is for, and forcing them together would have shown one source twice. The
+  seeding model and its column were dropped before either shipped.
 - **`usage` had no honest write point.** Pod assembly takes a `used` map but `adapter.go` passes a
   fresh empty one per call — it is per-pod de-duplication with no memory — and pods re-assemble on
   every 10m reconcile sweep, so counting at assembly would inflate without bound and count

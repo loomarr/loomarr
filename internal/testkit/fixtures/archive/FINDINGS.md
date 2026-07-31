@@ -37,6 +37,27 @@ Ran the real walk against `warning-cic-logo-paramount-logo-nickelodeon-logo`:
   BOTH the derivative and the original, to exercise smallest-derivative selection). Public metadata,
   no secrets.
 
+### V33 capture (2026-07-31) — discovery + licences
+
+Captured live against the same public JSON APIs, no auth, read-only. **V33 was blocked on this**:
+the 2026-07-13 capture above was taken for the DOWNLOAD walk and pins only `mediatype`/`title`/
+`description`, so it could satisfy neither the "license badges render" gate nor a discovery listing.
+
+- `metadata_item_licensed.json` — `GET /metadata/cm-1993-4`, HTTP 200. Trimmed the same way as
+  `metadata_item.json` (3 of 28 files kept). Two things it carries that the older fixture does not:
+  - **`metadata.licenseurl`** = `https://creativecommons.org/licenses/by-nc-sa/4.0/`. ⚠ The field is
+    `licenseurl`, one word — NOT `license` and NOT `rights`; both were checked and are absent.
+  - a **non-ASCII title** (Japanese) and a 75 MB original, which the earlier fixture's ASCII title
+    and small files never exercised.
+- `collection_search.json` — `GET /advancedsearch.php?q=collection:classic_tv_commercials&fl[]=identifier&rows=8&output=json`,
+  HTTP 200, trimmed to 5 of 8362 docs. The shape discovery lists from.
+
+⚠ **`licenseurl` is OFTEN ABSENT, and that is the normal case rather than an edge one.** The item
+the older fixture uses (`warning-cic-logo-…`) has no licence at all — re-checked live during this
+capture. In `classic_tv_commercials`, **667 of 8362 items declare one**, so roughly 92% do not. A UI
+that renders a licence badge unconditionally would show an empty chip on most clips; a missing
+licence means *unknown*, never *public domain*.
+
 ## Not in the core gate
 
 The walk's HTTP + filesystem are injected, so it's unit-tested against a mock Archive server with NO

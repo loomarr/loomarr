@@ -86,6 +86,15 @@ type Clip struct {
 	// floor (default off) so an operator can exclude 240p rips without changing that default;
 	// until then nothing reads this during selection.
 	Quality string
+	// License is the licence URL the SOURCE declared, carried from the clip's info-JSON sidecar
+	// at scan time (SidecarLicense, V33) — e.g. "https://creativecommons.org/licenses/by-nc-sa/4.0/".
+	//
+	// ⚠ **"" means UNKNOWN, never "public domain".** About 92% of archive.org items declare no
+	// licence at all (667 of 8362 measured in `classic_tv_commercials`, 2026-07-31), so an empty
+	// value is the COMMON case and carries no permission. Nothing may treat it as one: this field
+	// is a record of what a source claimed, not a rights determination, and it never gates
+	// selection or playback.
+	License string
 	Source  string // provenance: filler-dir | tunarr-local | manual | …
 	// Thumbnail is a path RELATIVE to the thumbnail cache dir; "" = not generated yet, which
 	// renders as no image rather than a broken one. The bytes live on disk, not in the row —

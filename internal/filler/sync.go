@@ -36,6 +36,10 @@ type RawClip struct {
 	// the guide's pod hover card shows it so a grainy 240p advert is explicable rather
 	// than surprising. It never affects selection (V17c adds an opt-in floor).
 	Quality string
+	// License is the licence URL the source declared, read from the clip's info-JSON sidecar
+	// at scan time (V33). "" means UNKNOWN — the common case, ~92% of archive.org items — and
+	// never "public domain".
+	License string
 	// Thumbnail is the extracted frame's path relative to the thumbnail cache dir; "" when
 	// extraction failed or has not run. Filled by a SEPARATE pass (GenerateThumbnails), not
 	// by the probe — see thumbnail.go for why it cannot ride along with ffprobe.
@@ -150,6 +154,16 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// generator adopts an existing image rather than re-extracting, so this is already
 		// the previous value whenever one exists.
 		merged.Thumbnail = rc.Thumbnail
+		// Licence is scan-owned (it comes from the source's sidecar, never from a human), but
+		// ⚠ a BLANK scan value must not erase a known one. The sidecar can go missing for
+		// reasons that say nothing about the licence — an operator tidying `.info.json` files
+		// out of the drop-folder, or a clip moved in by hand beside one that has one — and
+		// "we stopped being able to see it" is not "it became unknown". Losing the record
+		// silently is the failure worth preventing; a re-fetch restores it either way.
+		merged.License = rc.License
+		if merged.License == "" {
+			merged.License = existing.License
+		}
 		// Carry the Tunarr uuid when the scan found one. Taken fresh rather than preserved:
 		// a re-registered Tunarr local source mints new program ids, and a stale uuid would
 		// build a filler-list referencing programs Tunarr no longer has.

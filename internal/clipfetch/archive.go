@@ -84,6 +84,16 @@ type archiveMetadata struct {
 	MediaType   string `json:"mediatype"` // "movies" (item) | "collection"
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	// LicenseURL is Archive's declared licence, e.g.
+	// "https://creativecommons.org/licenses/by-nc-sa/4.0/" (V33).
+	//
+	// ⚠ The field is `licenseurl`, ONE WORD — not `license`, not `rights`. Both of those were
+	// checked against the live API during the 2026-07-31 capture and neither exists.
+	//
+	// ⚠ **Usually absent, and that is the normal case.** In `classic_tv_commercials`, 667 of
+	// 8362 items declare one — about 8%. Empty therefore means UNKNOWN, never "public domain",
+	// and nothing downstream may treat it as permission.
+	LicenseURL string `json:"licenseurl"`
 }
 
 type archiveFile struct {
@@ -168,13 +178,21 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 		return 0, 0, fmt.Errorf("archive download %s: %w", id, err)
 	}
 	// Write the info-JSON sidecar (title/description → AI-tagging text signals, §10).
-	sidecar, _ := json.MarshalIndent(map[string]any{
+	fields := map[string]any{
 		"id":          id,
 		"title":       meta.Metadata.Title,
 		"description": meta.Metadata.Description,
 		"source":      "archive.org",
 		"webpage_url": c.base + "/details/" + id,
-	}, "", "  ")
+	}
+	// ⚠ OMITTED when Archive declares none, rather than written as "". About 92% of items
+	// carry no licence, and an empty string in a sidecar reads as "we looked and it is
+	// unlicensed" — the absent key reads as "unknown", which is the true claim. The sidecar
+	// parser treats a missing key and an empty value the same way, so this costs nothing.
+	if meta.Metadata.LicenseURL != "" {
+		fields["license"] = meta.Metadata.LicenseURL
+	}
+	sidecar, _ := json.MarshalIndent(fields, "", "  ")
 	if err := c.fs.WriteFile(sidecarPath, sidecar); err != nil {
 		return 1, 0, fmt.Errorf("archive sidecar %s: %w", id, err)
 	}
