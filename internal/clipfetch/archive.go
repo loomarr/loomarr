@@ -105,10 +105,36 @@ type archiveFile struct {
 
 type searchResp struct {
 	Response struct {
-		Docs []struct {
-			Identifier string `json:"identifier"`
-		} `json:"docs"`
+		// NumFound is the collection's TOTAL size, not len(Docs) — the search is paged, so a
+		// listing that reported len(Docs) would tell an operator a 8362-item collection has 5.
+		NumFound int         `json:"numFound"`
+		Docs     []searchDoc `json:"docs"`
 	} `json:"response"`
+}
+
+// searchDoc is one item in a collection listing.
+//
+// ⚠ **Every field except Identifier is OPTIONAL, and that is the live API's behaviour rather
+// than defensive coding.** Solr omits an absent field entirely instead of sending an empty
+// value, so of five real docs captured from `classic_tv_commercials`: two carry a licence,
+// three do not, and two have no `year`. A parser assuming any of these is present passes on a
+// tidy fixture and fails on the first real collection — which is why the pinned fixture keeps
+// all four shapes.
+type searchDoc struct {
+	Identifier string `json:"identifier"`
+	Title      string `json:"title"`
+	// LicenseURL is absent on ~92% of items. Empty means UNKNOWN, never "public domain".
+	LicenseURL string `json:"licenseurl"`
+	// Year is Archive's own metadata, and it is a WEAK era hint at best: it is when the item
+	// was catalogued as being from, which for a compilation upload is often the upload year
+	// rather than the broadcast year. Carried so a human can read it; never used to set Era,
+	// for the same reason `upload_date` is not (see filler/sidecar.go).
+	//
+	// ⚠ An INTEGER on the wire, not a string — I typed it `string` from memory and the pinned
+	// fixture rejected it ("cannot unmarshal number into … .year of type string"). Absent
+	// entirely on items with no year, which `omitempty`-style zero handling covers: 0 renders
+	// as "no year" rather than as the year 0.
+	Year int `json:"year"`
 }
 
 // walk resolves an Archive URL/id and downloads its video content. Returns
