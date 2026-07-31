@@ -1450,6 +1450,33 @@ three complete adverts (so the LLM step is the only signal that sees that bounda
 running the real `tagSystemPrompt` over real transcripts **invented an era on 2 of 10 clips** —
 a §8 grounding hole `validateTags` cannot currently detect.
 
+### ⛔ V34 cannot start until two things are decided — both are maintainer calls
+
+1. **The whisper dependency is an unresolved §14 conversation.** Everything else V34 needs is
+   already bundled (ffmpeg, yt-dlp) or already exists (the LLM provider, `filler.Classify`).
+   Whisper is the single genuine addition. The shippable form is `whisper.cpp`'s self-contained
+   `whisper-cli` binary — same vendored-binary-invoked-via-exec pattern as yt-dlp, no cgo, no
+   service, `base.en-q5_1` at 60MB. ⚠ The §6.4 measurements used the PYTHON package, which is
+   not what would ship; the binary is equivalent but unverified here. ⚠ Also measured: whisper
+   `tiny` drops audio (4 gaps >5s on one clip, worst 28s) and the LLM then returns phone-number
+   digits as product names. `small` had zero gaps. **Model size is a correctness property, not a
+   tuning preference.**
+2. **What to do about the invented era.** Either require the year to appear in the source text
+   before accepting it, or make era a suggestion the operator confirms. Doing neither ships
+   §8-violating tags at roughly a 20% rate.
+
+### Where the exploration lives
+
+The V34 measurements came from a scratchpad that is NOT in the repo (compilations downloaded from
+YouTube, a Python venv with whisper/PySceneDetect, split clips). It is reproducible from §6.4 —
+every number there names its method — but the artefacts are gone. ⚠ Do not treat §6.4's figures
+as re-runnable without redoing the captures; treat them as a recorded experiment.
+
+⚠ **Worktrees and merged branches were cleaned up when V33 landed** — one tree on `main`, no
+leftovers. Worth checking with `git worktree list` before starting V34 anyway: three dead trees
+had accumulated across the Filler track, because a merged PR does not remove the tree that built
+it and nothing in the gates notices.
+
 | Phase | Status | Gate evidence | Notes |
 | --- | --- | --- | --- |
 | V29a · export coverage over the real ladder | **done** | `make check`; agreement test sabotage-verified (reimplementing the rung choice fails 3 of 7 cases) | `filler.Coverage` calls the same `candidatePools` `Assemble` calls. V29's original gate — "consumes `ladder.go`" — was **unbuildable**: every symbol there is unexported. Split into V29a (export) + V29b (meter). ⚠ **This commit shipped BROKEN first:** `coverage.go` was swallowed by a `coverage.*` line in `.gitignore` (meant for Go profile output), so it committed a test with no implementation — green locally, unbuildable from a clean clone. Found only when cherry-picking to the other lane. Ignore rule now names artifacts instead of globbing; fix verified by cloning fresh. |
