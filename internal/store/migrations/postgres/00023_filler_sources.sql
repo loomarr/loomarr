@@ -1,8 +1,8 @@
 -- +goose Up
--- V33: the persisted filler-sources registry + a clip's declared licence. Postgres twin of the
--- SQLite migration — see that file for why this reverses V28's read-model decision, why the TABLE
--- WINS with `filler.dir` seeding it, and why `seeded_from` exists (it stops a changed setting
--- going silently inert).
+-- V33: the persisted REMOTE filler-sources registry + a clip's declared licence. Postgres twin of
+-- the SQLite migration — see that file for why this sits BESIDE V28's read-model rather than
+-- replacing it (the folder and library rows stay derived from config; only remote sources get
+-- rows, so there is no precedence rule to write).
 --
 -- ⚠ `license` empty means UNKNOWN, never "public domain": ~92% of archive.org items declare none.
 
@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS filler_sources (
   uri             TEXT NOT NULL,
   label           TEXT NOT NULL DEFAULT '',
   license         TEXT NOT NULL DEFAULT '',
-  seeded_from     TEXT NOT NULL DEFAULT '',
   last_fetched_at BIGINT NOT NULL DEFAULT 0,
   created_at      BIGINT NOT NULL
 );

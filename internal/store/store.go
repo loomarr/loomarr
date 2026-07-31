@@ -161,6 +161,26 @@ type ClipStore interface {
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
 }
 
+// FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
+//
+// ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
+// (see `GET /v1/filler/sources`, V28) — they answer "you could set one up but have not", which
+// rows cannot express. These describe the specific archive.org collections an operator added, and
+// they nest under that read-model's `remote` row rather than replacing any of it.
+type FillerSourceStore interface {
+	// ListFillerSources returns every registered remote source, oldest first, so the UI order
+	// is stable across reloads.
+	ListFillerSources(ctx context.Context) ([]FillerSource, error)
+	// UpsertFillerSource adds or updates one source by id.
+	UpsertFillerSource(ctx context.Context, src FillerSource) error
+	// DeleteFillerSource removes a source. Clips it already brought in are NOT deleted:
+	// they are files in the drop-folder, and forgetting where something came from is not a
+	// reason to throw it away.
+	DeleteFillerSource(ctx context.Context, id string) error
+	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
+	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+}
+
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED (V28). Written from playout only;
@@ -248,6 +268,7 @@ type Store interface {
 	ScheduledJobStore
 	UserStore
 	ClipStore
+	FillerSourceStore
 	AiringStore
 	ActivityStore
 	SettingStore

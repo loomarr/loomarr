@@ -55,6 +55,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
 	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
+	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
+	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 }
 
 // testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
@@ -1566,5 +1568,145 @@ func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got, err = s.GetScheduledJob(ctx, "never-ran"); err != nil || !got.Paused {
 		t.Errorf("pausing an unseen job = (%+v, %v), want a created paused row", got, err)
+	}
+}
+
+// testFillerSources covers the persisted REMOTE source registry (§10, V33) on BOTH backends.
+//
+// The interesting assertions are the two that protect against silent data loss: a re-register
+// must not reset "last fetched", and deleting a source must not take its clips with it.
+func testFillerSources(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+
+	created := time.Now().UTC().Truncate(time.Second)
+	src := FillerSource{
+		ID: "src-1", Kind: "archive", URI: "classic_tv_commercials",
+		Label:   "Classic TV commercials",
+		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
+		// common one — both are covered.
+		CreatedAt: created,
+	}
+	if err := s.UpsertFillerSource(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	unlicensed := FillerSource{ID: "src-2", Kind: "archive", URI: "vintage_ads", CreatedAt: created.Add(time.Second)}
+	if err := s.UpsertFillerSource(ctx, unlicensed); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("listed %d sources, want 2", len(got))
+	}
+	// Oldest first, explicitly ordered — an unordered list reshuffles between reads on
+	// Postgres and the Sources tab's rows would move under the pointer.
+	if got[0].ID != "src-1" || got[1].ID != "src-2" {
+		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", got[0].ID, got[1].ID)
+	}
+	if got[0].License != src.License {
+		t.Errorf("licence = %q, want %q", got[0].License, src.License)
+	}
+	if got[1].License != "" {
+		t.Errorf("unlicensed source has licence %q, want empty (= unknown)", got[1].License)
+	}
+	if !got[0].LastFetchedAt.IsZero() {
+		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", got[0].LastFetchedAt)
+	}
+
+	// Fetch stamps.
+	fetched := created.Add(time.Hour)
+	if err := s.MarkFillerSourceFetched(ctx, "src-1", fetched); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListFillerSources(ctx)
+	if !got[0].LastFetchedAt.Equal(fetched) {
+		t.Errorf("LastFetchedAt = %v, want %v", got[0].LastFetchedAt, fetched)
+	}
+
+	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source
+	// (an operator fixing its label) knows nothing about fetches; if last_fetched_at joined
+	// the DO UPDATE list, a working source would silently look like it had never run.
+	relabelled := src
+	relabelled.Label = "Renamed"
+	if err := s.UpsertFillerSource(ctx, relabelled); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListFillerSources(ctx)
+	if got[0].Label != "Renamed" {
+		t.Errorf("label = %q, want Renamed", got[0].Label)
+	}
+	if !got[0].LastFetchedAt.Equal(fetched) {
+		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", got[0].LastFetchedAt)
+	}
+
+	// ⚠ Deleting a source must NOT delete its clips: they are real files already tagged and
+	// possibly pinned into a channel, and forgetting where something came from is not a
+	// reason to throw it away.
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Path: "from-src-1.mp4", Name: "From src 1", Kind: filler.Commercial, DurationMs: 30000,
+		Source: "archive", License: src.License,
+	}, UpdatedAt: created}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFillerSource(ctx, "src-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, "from-src-1.mp4"); err != nil {
+		t.Errorf("deleting a source removed its clip: %v", err)
+	}
+	if got, _ = s.ListFillerSources(ctx); len(got) != 1 {
+		t.Errorf("after delete, %d sources remain, want 1", len(got))
+	}
+
+	// An unknown id is ErrNotFound on both write paths, so a caller cannot believe it
+	// recorded something.
+	if err := s.DeleteFillerSource(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("delete unknown = %v, want ErrNotFound", err)
+	}
+	if err := s.MarkFillerSourceFetched(ctx, "nope", fetched); !errors.Is(err, ErrNotFound) {
+		t.Errorf("mark unknown fetched = %v, want ErrNotFound", err)
+	}
+}
+
+// testClipLicense pins that a clip's declared licence round-trips on BOTH backends, and that an
+// absent one stays absent. ⚠ Empty means UNKNOWN, never "public domain" — ~92% of archive.org
+// items declare none, so the empty case is the common one and must not acquire a default.
+func testClipLicense(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	licensed := Clip{Clip: filler.Clip{
+		Path: "licensed.mp4", Name: "Licensed", Kind: filler.Commercial, DurationMs: 30000,
+		License: "https://creativecommons.org/publicdomain/zero/1.0/",
+	}, UpdatedAt: now}
+	unknown := Clip{Clip: filler.Clip{
+		Path: "unknown.mp4", Name: "Unknown", Kind: filler.Commercial, DurationMs: 30000,
+	}, UpdatedAt: now}
+	for _, c := range []Clip{licensed, unknown} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.GetClip(ctx, "licensed.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.License != licensed.License {
+		t.Errorf("licence = %q, want %q", got.License, licensed.License)
+	}
+	if got, err = s.GetClip(ctx, "unknown.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	if got.License != "" {
+		t.Errorf("a clip with no declared licence has %q, want empty", got.License)
 	}
 }
