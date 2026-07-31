@@ -1203,6 +1203,12 @@ components:
             - library
             - remote
           type: string
+        remotes:
+          items:
+            $ref: "#/components/schemas/RemoteSourceDTO"
+          type:
+            - array
+            - "null"
         target:
           type: string
       required:
@@ -2604,6 +2610,23 @@ components:
           type: string
       required:
         - jobId
+      type: object
+    RemoteSourceDTO:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        lastFetchedAt:
+          description: RFC3339; absent if never fetched
+          type: string
+        uri:
+          type: string
+      required:
+        - id
+        - label
+        - uri
       type: object
     ResetPasswordInputBody:
       additionalProperties: false

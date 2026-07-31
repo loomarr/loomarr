@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mantonx/loomarr/internal/store"
@@ -39,6 +40,25 @@ type FillerSourceDTO struct {
 	Configured bool `json:"configured"`
 	// Fetchable marks a source that `POST /v1/filler/sources/fetch` can refresh on demand.
 	Fetchable bool `json:"fetchable"`
+	// Remotes are the specific archive.org items an operator ADDED, nested under the
+	// `remote` row (V33). Empty on every other row.
+	//
+	// ⚠ Nested rather than promoted to peers, deliberately. The three rows above describe
+	// CONFIGURATION — including "you could set up a library but have not", which is what
+	// `configured:false` is for — and a flat list of things that EXIST cannot express that.
+	// Merging the two models would show the drop-folder twice; see the build plan §6.1.
+	Remotes []RemoteSourceDTO `json:"remotes,omitempty"`
+}
+
+// RemoteSourceDTO is one registered remote source (§10, V33).
+type RemoteSourceDTO struct {
+	ID string `json:"id"`
+	// Label falls back to the URI when a source has none, so a row is never blank.
+	Label string `json:"label"`
+	URI   string `json:"uri"`
+	// LastFetchedAt is absent when never fetched — rendered as "never" rather than as an
+	// epoch date nobody meant.
+	LastFetchedAt string `json:"lastFetchedAt,omitempty" doc:"RFC3339; absent if never fetched"`
 }
 
 type fillerSourcesOutput struct {
@@ -99,6 +119,25 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 		dir = s.liveConfig("filler.dir")
 	}
 
+	// The registered remotes, nested under the `remote` row below. A read failure is NOT
+	// fatal: the three config rows are the answer to "why is my catalog empty", and losing
+	// that whole page because a secondary list did not load would be a poor trade.
+	var remotes []RemoteSourceDTO
+	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
+		s.log.Warn("list filler sources", "err", srcErr)
+	} else {
+		for _, src := range srcs {
+			r := RemoteSourceDTO{ID: src.ID, Label: src.Label, URI: src.URI}
+			if r.Label == "" {
+				r.Label = src.URI
+			}
+			if !src.LastFetchedAt.IsZero() {
+				r.LastFetchedAt = src.LastFetchedAt.UTC().Format(time.RFC3339)
+			}
+			remotes = append(remotes, r)
+		}
+	}
+
 	out := &fillerSourcesOutput{}
 	out.Body.Total = len(clips)
 	out.Body.Sources = []FillerSourceDTO{
@@ -134,6 +173,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// Not fetchable from here: a remote fetch needs URLs, which is POST /v1/filler/ingest.
 			// A "Fetch now" that silently did nothing would be worse than no button.
 			Fetchable: false,
+			Remotes:   remotes,
 		},
 	}
 	return out, nil

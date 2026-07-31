@@ -133,6 +133,11 @@ type fillerServiceAdapter struct {
 	bus     *events.Bus
 	newID   func() string
 	timeout time.Duration
+	// sources registers what an operator added, so the Sources tab can show where clips
+	// came from. Narrow interface, not the whole store: this adapter has no other reason
+	// to reach persistence.
+	sources store.FillerSourceStore
+	now     func() time.Time
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -152,10 +157,11 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // HTTP request open would guarantee a gateway timeout on exactly the useful cases.
 // Progress rides the SSE bus as `filler_ingest` frames — the same shape the §8.1 model
 // pull uses, because it is the same problem (long external process, no request to hold).
-func (a fillerServiceAdapter) Ingest(_ context.Context, urls []string) (string, error) {
+func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
 	}
+	a.rememberSources(ctx, urls)
 	sources := make([]clipfetch.Source, 0, len(urls))
 	for _, u := range urls {
 		sources = append(sources, clipfetch.Source{Kind: clipfetch.KindForURL(u), URL: u})
@@ -292,4 +298,58 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 		})
 	}
 	return out, res.Total, nil
+}
+
+// rememberSources records the archive.org items an operator asked for, so the Sources tab can
+// show where the catalog came from (§10, V33).
+//
+// ⚠ BEST-EFFORT by contract, and the ordering says so: it runs before the download starts and
+// a failure only logs. Registering where a clip came from must never be able to stop the clip
+// being fetched — that would trade the feature for its own bookkeeping. The same reasoning
+// RecordActivity carries.
+//
+// ⚠ Only archive.org items get a row. A YouTube URL is a video, not a source with state to
+// remember: nothing about it needs a licence, a fetch cursor or a name an operator chose, and a
+// row per video would turn the registry into a second, worse clip list.
+func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string) {
+	if a.sources == nil {
+		return
+	}
+	for _, u := range urls {
+		if clipfetch.KindForURL(u) != clipfetch.Archive {
+			continue
+		}
+		id := archiveIDFrom(u)
+		if id == "" {
+			continue
+		}
+		now := time.Now
+		if a.now != nil {
+			now = a.now
+		}
+		// Upsert by id: re-adding a source an operator already has is not an error, and
+		// UpsertFillerSource deliberately leaves last_fetched_at alone (see the store).
+		// ⚠ The error is deliberately DROPPED, not logged: this adapter has no logger (it
+		// reports through the event bus, which is for the download itself), and inventing a
+		// second channel for bookkeeping noise would be worse than the silence. The download
+		// proceeds either way, which is the property that matters.
+		_ = a.sources.UpsertFillerSource(ctx, store.FillerSource{
+			ID: id, Kind: "archive", URI: u, Label: id, CreatedAt: now(),
+		})
+	}
+}
+
+// archiveIDFrom pulls the identifier out of an archive.org URL. Returns "" for anything that
+// is not one, which the caller skips.
+func archiveIDFrom(raw string) string {
+	const marker = "archive.org/details/"
+	i := strings.Index(raw, marker)
+	if i < 0 {
+		return ""
+	}
+	id := raw[i+len(marker):]
+	if j := strings.IndexAny(id, "/?#"); j >= 0 {
+		id = id[:j]
+	}
+	return id
 }
