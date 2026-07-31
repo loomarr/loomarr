@@ -85,9 +85,15 @@ func (c *archiveClient) discover(ctx context.Context, ref string, limit int) (Di
 		return DiscoveryResult{}, fmt.Errorf("archive discover %s: %w", id, err)
 	}
 
+	return toResult(out), nil
+}
+
+// toResult maps a Solr response to the result both discovery paths return. Shared so a
+// collection listing and a keyword search cannot drift in how they read the same wire shape.
+func toResult(out searchResp) DiscoveryResult {
 	res := DiscoveryResult{
 		// Non-nil even when empty: a JSON `null` would make every consumer guard before
-		// iterating, and "this collection is empty" is a real answer, not a missing one.
+		// iterating, and "nothing found" is a real answer, not a missing one.
 		Items: make([]DiscoveredItem, 0, len(out.Response.Docs)),
 		Total: out.Response.NumFound,
 	}
@@ -102,5 +108,63 @@ func (c *archiveClient) discover(ctx context.Context, ref string, limit int) (Di
 			Year:    doc.Year,
 		})
 	}
-	return res, nil
+	return res
+}
+
+// Search finds candidate clips across ALL of archive.org by keyword, rather than listing one
+// named collection (V33, maintainer decision 2026-07-31).
+//
+// ⚠ The distinction from DiscoverCollection matters at the API layer: this returns ITEMS an
+// operator might want, from anywhere, so each result is a candidate clip rather than a source to
+// register. `collection:` is what you browse; this is what you go looking for.
+//
+// Scoped to `mediatype:movies` because filler is video. Without it the same query returns texts,
+// audio and software — real results for the words, useless for a clip catalog.
+func (d *ArchiveDownloader) Search(ctx context.Context, query string, limit int) (DiscoveryResult, error) {
+	return d.client.search(ctx, query, limit)
+}
+
+func (c *archiveClient) search(ctx context.Context, query string, limit int) (DiscoveryResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return DiscoveryResult{}, fmt.Errorf("archive search: empty query")
+	}
+	if limit <= 0 || limit > maxDiscoverRows {
+		limit = maxDiscoverRows
+	}
+
+	q := url.Values{}
+	// ⚠ The user's words are PARENTHESISED, not quoted. Quoting would force an exact-phrase
+	// match, so "80s cereal commercial" would find only items containing that literal string —
+	// almost nothing. Parentheses keep Solr's default OR-ish scoring while stopping the
+	// mediatype clause from binding to only the last word.
+	//
+	// Solr's own operators are stripped rather than escaped: a stray `:` or `[` from a person
+	// typing a URL would otherwise become a field query or a range, turning a search into a
+	// syntax error they cannot see the cause of.
+	q.Set("q", "("+sanitizeQuery(query)+") AND mediatype:movies")
+	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year"}
+	q.Set("rows", strconv.Itoa(limit))
+	q.Set("output", "json")
+
+	var out searchResp
+	if err := c.getJSON(ctx, c.base+"/advancedsearch.php?"+q.Encode(), &out); err != nil {
+		return DiscoveryResult{}, fmt.Errorf("archive search %q: %w", query, err)
+	}
+	return toResult(out), nil
+}
+
+// sanitizeQuery strips the Solr syntax a person's search words must not carry. Kept permissive:
+// letters, digits, spaces and the punctuation that appears inside real titles.
+func sanitizeQuery(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case ':', '"', '[', ']', '(', ')', '{', '}', '^', '~', '\\', '/':
+			b.WriteRune(' ')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }

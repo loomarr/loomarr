@@ -263,3 +263,33 @@ func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, s
 	}
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), sel)
 }
+
+// Discover searches archive.org for clips the operator could add (§10, V33).
+//
+// ⚠ SYNCHRONOUS, unlike Ingest above — and the asymmetry is the point. Ingest starts a
+// download that runs for minutes to hours, so it returns a job id and reports on the SSE bus.
+// This is one HTTP GET to a public JSON API that answers in well under a second, so a job id
+// would be ceremony the caller has to poll for a result it could already have had.
+//
+// ⚠ Available WITHOUT the ingest tooling. Searching is plain net/http (§10 chose it precisely
+// because Archive needs no key or binary), so an operator on the default image can browse and
+// see what exists — they simply cannot fetch it. Refusing the search too would hide the reason
+// the fetch is unavailable behind a second, unrelated-looking wall.
+func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
+	res, err := clipfetch.NewArchiveDownloader(false).Search(ctx, query, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]api.DiscoveredClip, 0, len(res.Items))
+	for _, it := range res.Items {
+		out = append(out, api.DiscoveredClip{
+			ID:    it.ID,
+			Title: it.Title,
+			Year:  it.Year,
+			// The item's own page, so an operator can look before adding. Built here
+			// rather than in clipfetch because it is a presentation concern.
+			URL: "https://archive.org/details/" + it.ID,
+		})
+	}
+	return out, res.Total, nil
+}

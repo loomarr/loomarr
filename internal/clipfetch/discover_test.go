@@ -166,3 +166,103 @@ func TestDiscoverCollection_CapsRows(t *testing.T) {
 		t.Errorf("rows = %s, want the 25 cap", gotRows)
 	}
 }
+
+// --- keyword search across archive.org (V33) ---
+
+func searchServer(t *testing.T, onQuery func(url.Values)) *httptest.Server {
+	t.Helper()
+	raw, err := os.ReadFile("../testkit/fixtures/archive/keyword_search.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, r *http.Request) {
+		if onQuery != nil {
+			onQuery(r.URL.Query())
+		}
+		_, _ = w.Write(raw)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSearch_ReturnsItemsWithTheirTotal(t *testing.T) {
+	srv := searchServer(t, nil)
+
+	res, err := discoverer(t, srv.URL).Search(context.Background(), "1980s cereal commercial", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) == 0 {
+		t.Fatal("no items")
+	}
+	// numFound from the real capture — the count an operator judges the search by, not the
+	// page length.
+	if res.Total != 54 {
+		t.Errorf("Total = %d, want 54", res.Total)
+	}
+	for _, it := range res.Items {
+		if it.ID == "" {
+			t.Error("an item has no identifier — nothing could download it")
+		}
+	}
+}
+
+// ⚠ Scoped to mediatype:movies. Without it the same words return texts, audio and software —
+// real results for the query, useless for a clip catalog.
+func TestSearch_ScopesToVideo(t *testing.T) {
+	var got string
+	srv := searchServer(t, func(q url.Values) { got = q.Get("q") })
+
+	if _, err := discoverer(t, srv.URL).Search(context.Background(), "cereal advert", 0); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "mediatype:movies") {
+		t.Errorf("query = %q, want it scoped to mediatype:movies", got)
+	}
+}
+
+// ⚠ PARENTHESISED, not quoted. Quoting forces an exact-phrase match, so a three-word search
+// would find only items containing that literal string — almost nothing. The parentheses also
+// stop `AND mediatype:movies` binding to just the last word.
+func TestSearch_DoesNotForceAnExactPhrase(t *testing.T) {
+	var got string
+	srv := searchServer(t, func(q url.Values) { got = q.Get("q") })
+
+	if _, err := discoverer(t, srv.URL).Search(context.Background(), "1980s cereal commercial", 0); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, `"1980s cereal commercial"`) {
+		t.Errorf("query = %q — quoting forces an exact phrase and finds nothing", got)
+	}
+	if !strings.Contains(got, "(1980s cereal commercial)") {
+		t.Errorf("query = %q, want the words parenthesised", got)
+	}
+}
+
+// A person pasting a URL or typing a colon must not accidentally write a Solr field query or a
+// range — they would get a syntax error with no visible cause.
+func TestSearch_StripsSolrSyntaxFromUserWords(t *testing.T) {
+	var got string
+	srv := searchServer(t, func(q url.Values) { got = q.Get("q") })
+
+	if _, err := discoverer(t, srv.URL).Search(context.Background(), `collection:foo [a TO z] "x"`, 0); err != nil {
+		t.Fatal(err)
+	}
+	// The only colon left is the one WE added for mediatype.
+	if strings.Count(got, ":") != 1 {
+		t.Errorf("query = %q, want the user's colons stripped", got)
+	}
+	if strings.ContainsAny(strings.TrimSuffix(got, ") AND mediatype:movies"), `[]"`) {
+		t.Errorf("query = %q, want brackets and quotes stripped", got)
+	}
+}
+
+func TestSearch_RejectsAnEmptyQuery(t *testing.T) {
+	srv := searchServer(t, nil)
+
+	if _, err := discoverer(t, srv.URL).Search(context.Background(), "   ", 0); err == nil {
+		t.Error("an all-whitespace query was accepted")
+	}
+}
