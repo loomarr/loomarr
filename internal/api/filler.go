@@ -55,6 +55,38 @@ func (s *Server) registerFiller(api huma.API) {
 			"/v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.discoverFiller)
+
+	// Compilation splitting (§10, V34). Propose is a job (detection runs minutes
+	// per file); the proposal read and the confirm are synchronous. All admin:
+	// these routes write the catalog, which is the same trust level as ingest.
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "split-filler", Method: http.MethodPost, Path: "/v1/filler/{id}/split",
+		Summary: "Propose splits for a compilation clip",
+		Description: "Admin only (§10, V34). Runs detection — chapters → blackdetect/silencedetect → " +
+			"transcript rescue for over-long segments — as a background job (progress on /v1/events as " +
+			"filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: " +
+			"review is not optional, because detection quality is a property of the source.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.splitFiller)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
+		Summary: "Read a split proposal",
+		Description: "Admin only (§10, V34). The review surface's source of truth on SSE reconnect — " +
+			"the same pattern as /v1/suggestions/{id}.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.getFillerSplit)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "confirm-filler-split", Method: http.MethodPost, Path: "/v1/filler/splits/{proposalId}/confirm",
+		Summary: "Commit a reviewed split",
+		Description: "Admin only (§10, V34). The body is the operator's confirmed cut list — the " +
+			"proposal as returned, possibly edited (cuts moved/merged/dropped; era suggestions accepted " +
+			"or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog " +
+			"clips: cut with ffmpeg stream copy, and the original compilation row removed — its identity " +
+			"is a path that now means twenty clips, not one.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.confirmFillerSplit)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the clip's PATH relative to
@@ -357,5 +389,112 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	}
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
+	return out, nil
+}
+
+// --- compilation splitting (§10, V34) ---
+
+type splitFillerInput struct {
+	ID string `path:"id" doc:"The compilation clip's path (its identity, §10)"`
+}
+type splitFillerOutput struct {
+	Body struct {
+		JobID string `json:"jobId" doc:"Detection job — progress streams on /v1/events as filler_split frames; the proposal id arrives in the terminal frame"`
+	}
+}
+
+// splitFiller starts detection on a compilation clip. It answers immediately:
+// a full-decode detection pass takes minutes, so the job id's progress rides
+// the SSE bus and the proposal is read back when the terminal frame lands.
+func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitFillerOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up",
+			"Enable filler in Settings before splitting a compilation.")
+	}
+	jobID, err := s.filler.Split(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+	}
+	if errors.Is(err, ErrSplitUnavailable) {
+		return nil, errConflict("Splitting isn't set up",
+			"Splitting needs the filler drop-folder (filler.dir). Set it in Settings → Filler.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := &splitFillerOutput{}
+	out.Body.JobID = jobID
+	return out, nil
+}
+
+type getFillerSplitInput struct {
+	ProposalID string `path:"proposalId"`
+}
+type getFillerSplitOutput struct {
+	Body filler.SplitProposal
+}
+
+// getFillerSplit reads one proposal — the review surface's source of truth.
+// Read straight from the store, like list/patch: no service indirection needed.
+func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*getFillerSplitOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	p, err := s.store.GetSplitProposal(ctx, in.ProposalID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Split proposal not found",
+			"That proposal doesn't exist — it may have been confirmed, rejected, or replaced by a re-run of detection.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &getFillerSplitOutput{Body: p}, nil
+}
+
+type confirmFillerSplitInput struct {
+	ProposalID string `path:"proposalId"`
+	Body       struct {
+		// Segments is the operator's REVIEWED cut list: the proposal as returned,
+		// possibly edited. It is re-validated server-side (§10 — the review gate's
+		// teeth live on the write path, not in the UI).
+		Segments []filler.SplitSegment `json:"segments" minItems:"1"`
+	}
+}
+type confirmFillerSplitOutput struct {
+	Body struct {
+		// Clips is how many catalog clips the confirm created — the confirmation
+		// the UI toasts before the catalog list refreshes.
+		Clips int `json:"clips"`
+	}
+}
+
+// confirmFillerSplit commits the reviewed cut list. Synchronous: stream-copy
+// cuts seek rather than decode, so even twenty segments are seconds — the
+// minutes belong to detection, which already ran.
+func (s *Server) confirmFillerSplit(ctx context.Context, in *confirmFillerSplitInput) (*confirmFillerSplitOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up",
+			"Enable filler in Settings before confirming a split.")
+	}
+	if err := s.filler.ConfirmSplit(ctx, in.ProposalID, in.Body.Segments); err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			return nil, errNotFound("Split proposal not found",
+				"That proposal doesn't exist — it may have been confirmed already, or replaced by a re-run of detection.")
+		case errors.Is(err, filler.ErrSplitValidation):
+			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid cut list",
+				"The edited segments are outside the clip, overlap, or too short — fix the cuts and try again.", err)
+		default:
+			return nil, err
+		}
+	}
+	out := &confirmFillerSplitOutput{}
+	out.Body.Clips = len(in.Body.Segments)
 	return out, nil
 }

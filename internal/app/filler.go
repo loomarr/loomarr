@@ -123,6 +123,41 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 	return out, nil
 }
 
+// fillerSplitStoreAdapter bridges the store → filler.SplitStore (V34). The
+// proposal methods pass filler.SplitProposal straight through — the store
+// persists exactly that type, so there is nothing to translate.
+type fillerSplitStoreAdapter struct{ st store.Store }
+
+func (a fillerSplitStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+	return fillerStoreAdapter(a).GetClip(ctx, id)
+}
+func (a fillerSplitStoreAdapter) ListClips(ctx context.Context) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
+func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
+	return a.st.DeleteClip(ctx, id)
+}
+func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
+	return a.st.UpsertSplitProposal(ctx, p)
+}
+func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error) {
+	return a.st.GetSplitProposal(ctx, id)
+}
+func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+
 // fillerServiceAdapter bridges filler.Syncer/Tagger → api.FillerService.
 type fillerServiceAdapter struct {
 	syncer *filler.Syncer
@@ -138,6 +173,10 @@ type fillerServiceAdapter struct {
 	// to reach persistence.
 	sources store.FillerSourceStore
 	now     func() time.Time
+	// splitter / splitClips back compilation splitting (§10, V34). nil splitter ⇒
+	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
+	splitter   *filler.Splitter
+	splitClips fillerSplitStoreAdapter
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -205,6 +244,68 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.
 			"jobId": jobID, "status": status,
 			"fetched": res.Fetched, "skipped": res.Skipped,
 			"failed": res.Failed, "empty": res.Empty, "error": errMsg,
+		},
+	})
+}
+
+// Split starts compilation detection on one clip (§10, V34). It returns a job id
+// immediately — a full-decode detection pass runs minutes per file — and reports
+// over the SSE bus as `filler_split` frames, the same shape as Ingest above. The
+// terminal frame carries the proposal id the review UI then reads back.
+//
+// The clip's existence is checked SYNCHRONOUSLY: "that clip is gone" is an
+// answer the caller should get as a 404, not as an SSE error frame seconds later.
+func (a fillerServiceAdapter) Split(ctx context.Context, clipID string) (string, error) {
+	if a.splitter == nil {
+		return "", api.ErrSplitUnavailable
+	}
+	if _, found, err := a.splitClips.GetClip(ctx, clipID); err != nil {
+		return "", err
+	} else if !found {
+		return "", store.ErrNotFound
+	}
+	jobID := a.newID()
+	go func() {
+		// Deliberately NOT the request context, for the same reason as Ingest: the
+		// response is already written, and detection must not die with the tab.
+		bg := context.Background()
+		if a.timeout > 0 {
+			var cancel context.CancelFunc
+			bg, cancel = context.WithTimeout(bg, a.timeout)
+			defer cancel()
+		}
+		a.publishSplit(jobID, clipID, "running", "", 0, "")
+		p, err := a.splitter.Propose(bg, clipID)
+		if err != nil {
+			a.publishSplit(jobID, clipID, "error", "", 0, err.Error())
+			return
+		}
+		a.publishSplit(jobID, clipID, "success", p.ID, len(p.Segments), "")
+	}()
+	return jobID, nil
+}
+
+// ConfirmSplit commits the operator's reviewed cut list (§10, V34) — straight
+// through to the splitter, whose validation errors (filler.ErrSplitValidation)
+// and missing-proposal (store.ErrNotFound) the API maps to 422/404.
+func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error {
+	if a.splitter == nil {
+		return api.ErrSplitUnavailable
+	}
+	return a.splitter.Confirm(ctx, proposalID, segments)
+}
+
+// publishSplit emits one split-detection frame (§7, type=filler_split). The
+// terminal "success" frame is what hands the review UI its proposal id.
+func (a fillerServiceAdapter) publishSplit(jobID, clipPath, status, proposalID string, segments int, errMsg string) {
+	if a.bus == nil {
+		return
+	}
+	a.bus.Publish(events.Event{
+		Type: "filler_split",
+		Payload: map[string]any{
+			"jobId": jobID, "clipPath": clipPath, "status": status,
+			"proposalId": proposalID, "segments": segments, "error": errMsg,
 		},
 	})
 }

@@ -654,10 +654,31 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				set.str("filler.dir"), log)
 			log.Info("filler ingest available", "ytdlp", yt, "ffmpeg", ff)
 		}
+		// Compilation splitting (§10, V34). Needs the drop-folder (clip paths are
+		// relative to it, so without one there is nothing to cut). ffmpeg/ffprobe
+		// come from playout.ffmpeg_path — a core runtime dep on the single image —
+		// NOT the ingest pair, because splitting works on files already on disk and
+		// must not die just because yt-dlp is absent. whisper is optional: without
+		// it, over-long segments come back Unsplittable rather than guessed (§15).
+		// The LLM provider wires whenever one is configured — splitting's rescue and
+		// classification are operator-invoked, not the batch job filler.ai_tagging
+		// gates.
+		var splitter *filler.Splitter
+		if dir := set.str("filler.dir"); dir != "" {
+			var splitProvider llm.Provider
+			if set.str("llm.url") != "" {
+				splitProvider = llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
+			}
+			ffmpegPath := set.str("playout.ffmpeg_path")
+			tools := filler.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+				set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+			splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
+		}
 		fillerSvc = fillerServiceAdapter{
 			syncer: syncer, tagger: tagger, fetcher: fetcher,
 			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
 			sources: st, now: time.Now,
+			splitter: splitter, splitClips: fillerSplitStoreAdapter{st},
 		}
 
 		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to

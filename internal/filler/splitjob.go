@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/mantonx/loomarr/internal/llm"
 )
+
+// ErrSplitValidation marks a rejected confirm edit (out-of-clip bounds,
+// overlaps, zero segments, slivers) so the API can render 422 rather than 500 —
+// the operator's edit was wrong, not the server.
+var ErrSplitValidation = errors.New("invalid split segments")
 
 // The splitter (§10, V34): turns a compilation clip into a REVIEWED set of
 // clips. Propose runs detection and persists a SplitProposal; Confirm writes
@@ -266,7 +272,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipPath)
 	}
 	if len(segments) == 0 {
-		return fmt.Errorf("confirm with zero segments: reject the proposal instead of gutting the compilation")
+		return fmt.Errorf("%w: zero segments — reject the proposal instead of gutting the compilation", ErrSplitValidation)
 	}
 	if err := validateConfirmedSegments(segments, clip.DurationMs); err != nil {
 		return err
@@ -338,10 +344,10 @@ func validateConfirmedSegments(segs []SplitSegment, durationMs int64) error {
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartMs < sorted[j].StartMs })
 	for i, s := range sorted {
 		if s.StartMs < 0 || s.EndMs > durationMs || s.EndMs-s.StartMs < MinSegmentMs {
-			return fmt.Errorf("segment %d [%d,%d) outside the clip or under %dms", i, s.StartMs, s.EndMs, MinSegmentMs)
+			return fmt.Errorf("%w: segment %d [%d,%d) outside the clip or under %dms", ErrSplitValidation, i, s.StartMs, s.EndMs, MinSegmentMs)
 		}
 		if i > 0 && s.StartMs < sorted[i-1].EndMs {
-			return fmt.Errorf("segments %d and %d overlap — two clips cannot share seconds", i-1, i)
+			return fmt.Errorf("%w: segments %d and %d overlap — two clips cannot share seconds", ErrSplitValidation, i-1, i)
 		}
 	}
 	return nil

@@ -579,6 +579,42 @@ components:
       required:
         - collections
       type: object
+    ConfirmFillerSplitInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ConfirmFillerSplitInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        segments:
+          items:
+            $ref: "#/components/schemas/SplitSegment"
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - segments
+      type: object
+    ConfirmFillerSplitOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ConfirmFillerSplitOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        clips:
+          format: int64
+          type: integer
+      required:
+        - clips
+      type: object
     CoverageDTO:
       additionalProperties: false
       properties:
@@ -3304,6 +3340,87 @@ components:
       required:
         - checks
       type: object
+    SplitFillerOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SplitFillerOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: Detection job — progress streams on /v1/events as filler_split frames; the proposal id arrives in the terminal frame
+          type: string
+      required:
+        - jobId
+      type: object
+    SplitProposal:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SplitProposal.json
+          format: uri
+          readOnly: true
+          type: string
+        clipPath:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        segments:
+          items:
+            $ref: "#/components/schemas/SplitSegment"
+          type:
+            - array
+            - "null"
+      required:
+        - id
+        - clipPath
+        - createdAt
+        - segments
+      type: object
+    SplitSegment:
+      additionalProperties: false
+      properties:
+        audience:
+          type: string
+        category:
+          type: string
+        dupOf:
+          type: string
+        endMs:
+          format: int64
+          type: integer
+        era:
+          format: int64
+          type: integer
+        index:
+          format: int64
+          type: integer
+        name:
+          type: string
+        startMs:
+          format: int64
+          type: integer
+        suggestedEra:
+          format: int64
+          type: integer
+        transcript:
+          type: string
+        unsplittable:
+          type: boolean
+      required:
+        - index
+        - startMs
+        - endMs
+        - name
+      type: object
     SubmitOutputBody:
       additionalProperties: false
       properties:
@@ -4726,6 +4843,64 @@ paths:
       summary: Re-scan the catalog now
       tags:
         - filler
+  /v1/filler/splits/{proposalId}:
+    get:
+      description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/suggestions/{id}.
+      operationId: get-filler-split
+      parameters:
+        - in: path
+          name: proposalId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitProposal"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read a split proposal
+      tags:
+        - filler
+  /v1/filler/splits/{proposalId}/confirm:
+    post:
+      description: "Admin only (§10, V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved/merged/dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy, and the original compilation row removed — its identity is a path that now means twenty clips, not one."
+      operationId: confirm-filler-split
+      parameters:
+        - in: path
+          name: proposalId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmFillerSplitInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmFillerSplitOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Commit a reviewed split
+      tags:
+        - filler
   /v1/filler/sync:
     post:
       description: Admin only (§10).
@@ -4796,6 +4971,34 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Edit a clip's tags
+      tags:
+        - filler
+  /v1/filler/{id}/split:
+    post:
+      description: "Admin only (§10, V34). Runs detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: review is not optional, because detection quality is a property of the source."
+      operationId: split-filler
+      parameters:
+        - description: The compilation clip's path (its identity, §10)
+          in: path
+          name: id
+          required: true
+          schema:
+            description: The compilation clip's path (its identity, §10)
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Propose splits for a compilation clip
       tags:
         - filler
   /v1/guide:
