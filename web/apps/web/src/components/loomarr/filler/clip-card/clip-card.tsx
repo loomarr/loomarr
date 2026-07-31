@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
-import { formatClipDuration } from "@loomarr/core";
+import { clipThumbURL, formatClipDuration } from "@loomarr/core";
 import { Pin, Sparkles, Tag } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
@@ -28,6 +28,27 @@ const AUDIENCE_LABEL: Record<string, string> = {
 
 const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProps) => (
   <Card className={cn("flex flex-col gap-2.5 p-3", className)}>
+    {/* The extracted frame (V17b), served by V30. Rendered ONLY when one exists.
+        ⚠ A placeholder box for every clip without a thumbnail would be the wrong default: on a
+        Tunarr-backed install, or one where ffmpeg never ran, that is the ENTIRE catalog, and a
+        grid of identical grey rectangles reads as a broken page rather than an absent nicety.
+        Absence is the honest rendering — the card without a frame is exactly what shipped
+        before this phase, which is a design that already works. */}
+    {clip.thumbnail && (
+      <div className="-mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800">
+        <img
+          src={clipThumbURL(clip.path)}
+          // Empty alt, deliberately: the clip's name is the very next element, so a
+          // description here would have a screen reader announce the same clip twice. The
+          // frame is decoration for a label that is already present.
+          alt=""
+          className="size-full object-cover"
+          // A catalog is hundreds of cards; without this every frame is fetched on mount.
+          loading="lazy"
+        />
+      </div>
+    )}
+
     <div className="flex items-start justify-between gap-2">
       <p className="min-w-0 truncate font-medium text-sm">{clip.name}</p>
       <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">

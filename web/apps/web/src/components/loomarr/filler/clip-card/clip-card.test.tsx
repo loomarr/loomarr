@@ -49,4 +49,34 @@ describe("ClipCard", () => {
     render(<ClipCard clip={{ ...base, tagged: true }} onTag={() => {}} />);
     expect(screen.getByRole("button", { name: /edit tags/i })).toBeInTheDocument();
   });
+
+  // ⚠ The important half of V17b. A placeholder for every frameless clip would be the wrong
+  // default: on a Tunarr-backed install, or one where ffmpeg never ran, that is the ENTIRE
+  // catalog, and a grid of identical grey rectangles reads as a broken page rather than an
+  // absent nicety. Absence is what shipped before this phase, and it already works.
+  it("renders no image when the clip has no extracted frame", () => {
+    const { container } = render(<ClipCard clip={{ ...base, thumbnail: undefined }} />);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders the extracted frame when the clip has one", () => {
+    const { container } = render(
+      <ClipCard clip={{ ...base, path: "80s/toys/intro.mp4", thumbnail: "80s/toys/intro.jpg" }} />,
+    );
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    // Built from the clip's PATH, not from `thumbnail` — the route derives the .jpg itself,
+    // so passing the thumbnail path would request `intro.jpg.jpg`.
+    expect(img).toHaveAttribute("src", "/v1/filler/thumb/80s/toys/intro.mp4");
+    // A catalog is hundreds of cards; without this every frame is fetched on mount.
+    expect(img).toHaveAttribute("loading", "lazy");
+  });
+
+  // Empty alt, deliberately: the clip's name is the very next element, so a description here
+  // would have a screen reader announce the same clip twice.
+  it("leaves the frame's alt empty because the name is already announced", () => {
+    const { container } = render(<ClipCard clip={{ ...base, name: "Frosted Flakes", thumbnail: "a.jpg" }} />);
+    expect(container.querySelector("img")).toHaveAttribute("alt", "");
+    expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
+  });
 });
