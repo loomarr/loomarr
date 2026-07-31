@@ -539,6 +539,10 @@ components:
           type: string
         source:
           type: string
+        suggestedEra:
+          description: AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion.
+          format: int64
+          type: integer
         tagged:
           description: Whether the clip has all match tags (era+audience+category)
           type: boolean

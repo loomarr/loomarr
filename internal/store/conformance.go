@@ -862,7 +862,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
 
 	// Tag the untagged clip (the AI-tagging job path).
-	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", true, now); err != nil {
+	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", 0, true, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
@@ -873,8 +873,44 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", false, now); err != ErrNotFound {
+	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", 0, false, now); err != ErrNotFound {
 		t.Errorf("UpdateClipTags(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Era suggestions (§10 V34) — the conditional suggested_era write:
+	//  **record** an ungrounded suggestion on an era-less clip,
+	//  **keep** it across a tag edit that carries neither era nor suggestion,
+	//  **clear** it in the same write that sets era (the operator confirming).
+	if err := s.UpdateClipTags(ctx, "keep", 0, "family", "", 1985, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 || got.Era != 0 {
+		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 0, "general", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 {
+		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 1985, "", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.Era != 1985 || got.SuggestedEra != 0 {
+		t.Errorf("confirming era did not clear the suggestion: era=%d suggestedEra=%d, want 1985/0", got.Era, got.SuggestedEra)
+	}
+	// A suggestion survives a sync upsert (sync.go merges it like the other tags).
+	keep, _ := s.GetClip(ctx, "keep")
+	keep.SuggestedEra = 1990
+	if err := s.UpsertClip(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1990 {
+		t.Errorf("suggested_era did not round-trip through UpsertClip: %d, want 1990", got.SuggestedEra)
 	}
 
 	// Prune: keep only "keep" — u1 is removed (it left the media server's library).

@@ -104,8 +104,8 @@ func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]f
 	}
 	return out, nil
 }
-func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error {
-	return a.st.UpdateClipTags(ctx, id, era, audience, category, aiTagged, updatedAt)
+func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
 }
 
 // clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).

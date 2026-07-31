@@ -146,8 +146,11 @@ type ClipStore interface {
 	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
-	// editor (§10) and the AI-tagging job. Returns ErrNotFound if absent.
-	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
+	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
+	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
+	// it in the same write, and a write with neither leaves it alone. Returns
+	// ErrNotFound if absent.
+	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer

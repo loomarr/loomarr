@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -158,6 +159,42 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/nope", adminToken, `{"era":1990}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
+	}
+}
+
+// Era suggestions (§10, V34): the list surfaces an unconfirmed suggestion, and
+// PATCHing era CONFIRMS it — the suggestion clears in the same write.
+func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	if err := st.UpdateClipTags(context.Background(), "u1", 0, "kids", "cereal", 1985, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The suggestion rides the DTO so the UI can ask the question.
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	var list struct {
+		Clips []struct {
+			Path         string
+			Era          int
+			SuggestedEra int `json:"suggestedEra"`
+		}
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&list)
+	if len(list.Clips) != 1 || list.Clips[0].SuggestedEra != 1985 || list.Clips[0].Era != 0 {
+		t.Fatalf("suggestion not surfaced: %+v", list.Clips)
+	}
+	// Confirm: era lands, suggestion clears.
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/u1", adminToken, `{"era":1985}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirm patch → %d", resp.StatusCode)
+	}
+	var body struct {
+		Era          int
+		SuggestedEra int `json:"suggestedEra"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Era != 1985 || body.SuggestedEra != 0 {
+		t.Errorf("confirm did not clear the suggestion: %+v", body)
 	}
 }
 

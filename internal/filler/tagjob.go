@@ -83,7 +83,7 @@ func normalizeForMatch(s string) string {
 type TagStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags (the work list).
 	ListUntaggedCommercials(ctx context.Context) ([]StoreClip, error)
-	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
+	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
 }
 
 // Tagger runs AI classification over untagged clips.
@@ -159,11 +159,19 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		if category == "" {
 			category = sug.Category
 		}
-		if era == 0 && audience == "" && category == "" {
+		// An UNGROUNDED era (§10, V34) is never written to era — it rides along as
+		// a suggestion for the operator, and only while the clip has no era at all
+		// (a known era needs no suggestion). A suggestion alone is still worth the
+		// write: it is the difference between "the model guessed" and silence.
+		suggestedEra := 0
+		if era == 0 {
+			suggestedEra = sug.SuggestedEra
+		}
+		if era == 0 && audience == "" && category == "" && suggestedEra == 0 {
 			res.Skipped++
 			continue // nothing usable
 		}
-		if err := t.store.UpdateClipTags(ctx, clip.Path, era, audience, category, true, t.now()); err != nil {
+		if err := t.store.UpdateClipTags(ctx, clip.Path, era, audience, category, suggestedEra, true, t.now()); err != nil {
 			return res, err
 		}
 		if era > 0 && audience != "" && category != "" {

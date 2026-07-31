@@ -95,6 +95,11 @@ type ClipDTO struct {
 	PlaysCounted bool   `json:"playsCounted" doc:"False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0"`
 	AITagged     bool   `json:"aiTagged"`
 	Tagged       bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
+	// SuggestedEra is an AI-proposed era the validator refused to persist (§10 era
+	// grounding, V34): the year appears nowhere in the clip's text signals, so it is a
+	// question for the operator, not a tag. Confirming = PATCHing era (clears this);
+	// 0/absent = no suggestion. Nothing in pod matching ever reads it.
+	SuggestedEra int `json:"suggestedEra,omitempty" doc:"AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion."`
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -113,7 +118,7 @@ func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality, Thumbnail: c.Thumbnail,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
-		AITagged: c.AITagged, Tagged: c.Tagged(),
+		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
 	}
 	if !c.LastPlayedAt.IsZero() {
 		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)
@@ -179,8 +184,11 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	now := time.Now()
-	// A manual edit clears the AI flag (a human tagged it).
-	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, false, now); err != nil {
+	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
+	// only the tagger writes suggestions — and the store's rule applies: setting era
+	// CONFIRMS and clears any suggestion in the same write, while an era-less edit
+	// leaves the operator's unanswered question alone (§10, V34).
+	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, 0, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
