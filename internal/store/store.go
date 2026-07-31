@@ -10,6 +10,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
@@ -159,9 +160,23 @@ type ClipStore interface {
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
+	// DeleteClip removes ONE clip by identity — the split-confirm path drops the
+	// compilation row it just cut into segments (§10 V34). ErrNotFound if absent.
+	DeleteClip(ctx context.Context, libraryItemID string) error
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+}
+
+// SplitProposalStore is the persisted split-proposal surface (§10, V34) —
+// detector-authored, reviewer-edited cut lists that are NOT clips until
+// confirmed. One proposal per compilation clip (re-detection replaces).
+type SplitProposalStore interface {
+	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
+	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
+	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	// DeleteSplitProposal removes a proposal after confirm or on reject.
+	DeleteSplitProposal(ctx context.Context, id string) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
@@ -272,6 +287,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	FillerSourceStore
+	SplitProposalStore
 	AiringStore
 	ActivityStore
 	SettingStore
