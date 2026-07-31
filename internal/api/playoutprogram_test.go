@@ -473,7 +473,21 @@ func TestProgramEncoder_ReportsProgressToTheSession(t *testing.T) {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	got := sessions.reports()
+	// ⚠ POLLED, not read once. `sh` writes to fd 3 on its own schedule, and draining the
+	// response body does not wait for it — so a single read asserts that a subprocess won a
+	// race. It usually does, which is worse than never: this test passed locally and on the
+	// PR, then failed on main's post-merge run with "no progress reached the session", which
+	// reads as the wiring bug V16 fixed rather than as the scheduling artefact it was.
+	//
+	// A deadline rather than a sleep: the fast path stays fast (it typically lands on the
+	// first pass) and a real regression still fails, just a second later.
+	var got []reportedProgram
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if got = sessions.reports(); len(got) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if len(got) == 0 {
 		t.Fatal("no progress reached the session — the callback is nil somewhere in the chain")
 	}
