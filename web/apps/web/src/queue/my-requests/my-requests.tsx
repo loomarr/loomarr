@@ -1,4 +1,4 @@
-import { suggestionsApi } from "@loomarr/api";
+import { suggestionsApi, unwrap } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { ErrorState, MyRequestCard } from "@/components/loomarr";
 
@@ -24,7 +24,7 @@ const MyRequests = () => {
   });
 
   const error = queries.find((q) => q.error)?.error;
-  const proposals = queries.flatMap((q) => (q.data?.status === 200 ? (q.data.data.proposals ?? []) : []));
+  const proposals = queries.flatMap((q) => unwrap(q.data, (b) => b.proposals) ?? []);
 
   // A member with no requests sees nothing here rather than an empty-state card: the tracked
   // titles below are the page's real content, and an "attention, you have asked for nothing"

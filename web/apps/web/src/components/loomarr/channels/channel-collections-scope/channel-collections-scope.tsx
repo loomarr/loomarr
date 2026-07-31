@@ -1,4 +1,4 @@
-import { ApiError, type LibraryCollection, libraryApi } from "@loomarr/api";
+import { ApiError, type LibraryCollection, libraryApi, unwrap } from "@loomarr/api";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button, Label } from "@/components/ui";
@@ -56,7 +56,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   // "make a collection in your media server". Caught by a test, not by review; the same
   // detection ChannelIconField already uses for an unconfigured TMDB.
   const unavailable = q.error instanceof ApiError && q.error.status === 501;
-  const collections: LibraryCollection[] = q.data?.status === 200 ? (q.data.data.collections ?? []) : [];
+  const collections: LibraryCollection[] = unwrap(q.data, (b) => b.collections) ?? [];
 
   const byId = new Map(collections.map((c) => [c.id, c]));
   // A chip falls back to the raw id: the policy stores ids, so a collection deleted in Emby

@@ -1,7 +1,7 @@
 import type { GuideAiring, GuideAiringKind, GuideChannelTimeline } from "@loomarr/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useRef, useState } from "react";
-import { StatusDot } from "@/components/ui";
+import { Caption, StatusDot } from "@/components/ui";
 import { cn } from "@/lib";
 import { ChannelIdent } from "../../channels";
 import type { GuideGridProps } from "./guide-grid.type";
@@ -397,9 +397,7 @@ const GuideGrid = ({
                   new Date(t).getMinutes() === 0 ? "border-border" : "border-border/40",
                 )}
               >
-                <span className="whitespace-nowrap font-mono text-2xs text-static-400">
-                  {timeFmt.format(new Date(t))}
-                </span>
+                <Caption className="whitespace-nowrap">{timeFmt.format(new Date(t))}</Caption>
               </div>
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { type ProposalItem, type SearchCandidate, searchApi } from "@loomarr/api";
+import { type ProposalItem, type SearchCandidate, searchApi, unwrap } from "@loomarr/api";
 import { provisionKey } from "@loomarr/core";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
@@ -43,7 +43,7 @@ const ProposalEdit = ({ lineup, acquisitions, onChange, disabled, className }: P
     { q: query, scope: "all", limit: 8 },
     { query: { enabled: adding && query.trim().length > 1 } },
   );
-  const candidates = search.data?.status === 200 ? (search.data.data.candidates ?? []) : [];
+  const candidates = unwrap(search.data, (b) => b.candidates) ?? [];
 
   // Emit the edit in the API's shape, or `undefined` when nothing has been modified.
   //

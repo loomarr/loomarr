@@ -1,4 +1,4 @@
-import { authApi, toProblem, usersApi } from "@loomarr/api";
+import { authApi, toProblem, unwrap, usersApi } from "@loomarr/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -44,7 +44,7 @@ const AccountScreen = () => {
   const sessions = usersApi.useListUserSessions(user?.id ?? "", {
     query: { enabled: Boolean(user?.id) },
   });
-  const sessionRows = sessions.data?.status === 200 ? (sessions.data.data.sessions ?? []) : [];
+  const sessionRows = unwrap(sessions.data, (b) => b.sessions) ?? [];
 
   const changePassword = authApi.useChangePassword({
     mutation: {

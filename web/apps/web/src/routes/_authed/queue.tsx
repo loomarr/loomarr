@@ -1,4 +1,4 @@
-import { suggestionsApi, type TitleDTO, TitleDTOState, titlesApi } from "@loomarr/api";
+import { suggestionsApi, type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -52,17 +52,14 @@ const QueueScreen = () => {
     { status: "submitted" },
     { query: { enabled: isAdmin, retry: false } },
   );
-  const pendingCount = pending.data?.status === 200 ? (pending.data.data.proposals?.length ?? 0) : 0;
+  const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
 
   const decided = useQueries({
     queries: (["approved", "denied"] as const).map((status) =>
       suggestionsApi.getListProposalsQueryOptions({ status }),
     ),
   });
-  const historyCount = decided.reduce(
-    (n, q) => n + (q.data?.status === 200 ? (q.data.data.proposals?.length ?? 0) : 0),
-    0,
-  );
+  const historyCount = decided.reduce((n, q) => n + (unwrap(q.data, (b) => b.proposals?.length) ?? 0), 0);
   const stateQueries = useQueries({
     queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),
   });
@@ -98,9 +95,7 @@ const QueueScreen = () => {
   }
 
   const isLoading = stateQueries.some((q) => q.isLoading);
-  const rows: TitleDTO[] = stateQueries.flatMap((q) =>
-    q.data?.status === 200 ? (q.data.data.titles ?? []) : [],
-  );
+  const rows: TitleDTO[] = stateQueries.flatMap((q) => unwrap(q.data, (b) => b.titles) ?? []);
   const progress = journeyProgress(rows);
 
   // Members get ONE tab: approving is admin-only (§11), and a history of other people's

@@ -1,4 +1,4 @@
-import { type SearchCandidate, searchApi } from "@loomarr/api";
+import { type SearchCandidate, searchApi, unwrap } from "@loomarr/api";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button, Label } from "@/components/ui";
@@ -46,7 +46,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
     { q: query, scope: "all", limit: 8 },
     { query: { enabled: adding && query.trim().length > 1 } },
   );
-  const candidates = search.data?.status === 200 ? (search.data.data.candidates ?? []) : [];
+  const candidates = unwrap(search.data, (b) => b.candidates) ?? [];
 
   const commit = (next: string[]) => {
     // An emptied list must send [] (not undefined): `series` is omitempty, so dropping the key

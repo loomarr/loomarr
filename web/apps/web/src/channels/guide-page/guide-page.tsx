@@ -1,4 +1,4 @@
-import { channelsApi, type GuideAiring } from "@loomarr/api";
+import { channelsApi, type GuideAiring, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
@@ -12,7 +12,15 @@ import {
   GuideGrid,
   TvStatic,
 } from "@/components/loomarr";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
+import {
+  Button,
+  Caption,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
 import { cn } from "@/lib";
 import { ChannelSuggestPanel } from "@/suggest";
@@ -182,7 +190,7 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
     },
   });
 
-  const body = guide.data?.status === 200 ? guide.data.data : undefined;
+  const body = unwrap(guide.data);
   const channels = useMemo(() => body?.channels ?? [], [body]);
   // "Known empty", not "nothing loaded yet": during the first fetch `channels` is also [],
   // and treating that as empty would flash the empty state (and hide the header button)
@@ -327,7 +335,11 @@ const GuidePage = ({ initialIntent }: GuidePageProps) => {
           {/* Start hour — plan against a specific part of the day ("what airs at 7am?")
               without stepping there an hour at a time. */}
           <div className="flex items-center gap-1.75">
-            <span className="font-mono text-2xs text-static-400 uppercase tracking-[0.06em]">Start</span>
+            {/* tracking-[0.06em] overrides `shout`'s tracking-wide (0.025em): these toolbar
+                labels sit tighter to their controls and were tuned wider than the default. */}
+            <Caption shout className="tracking-[0.06em]">
+              Start
+            </Caption>
             <Select
               value={startHour === null ? "auto" : String(startHour)}
               onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}

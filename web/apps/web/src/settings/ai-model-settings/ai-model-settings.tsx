@@ -1,4 +1,4 @@
-import { systemApi } from "@loomarr/api";
+import { systemApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState, HostedModelPicker, ModelDiscover, ModelPicker } from "@/components/loomarr";
@@ -80,7 +80,7 @@ const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onMod
   };
 
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
-  const status = llm.data?.status === 200 ? llm.data.data : undefined;
+  const status = unwrap(llm.data);
   if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
   // Hosted (OpenAI-compatible): render the live model picker over the provider's /models.
@@ -109,7 +109,7 @@ const AiModelSettings = ({ provider, onModelChange }: { provider?: string; onMod
   }
 
   const catalog = status.catalog ?? [];
-  const discoverBody = discover.data?.status === 200 ? discover.data.data : undefined;
+  const discoverBody = unwrap(discover.data);
   const discovered = discoverBody?.models ?? undefined;
   // "source down" (HF unreachable / rate-limited) is NOT the same as "0 compatible" —
   // the BE flags it so the UI shows a browse link instead of a misleading empty state.

@@ -1,4 +1,4 @@
-import { type Intent, suggestionsApi } from "@loomarr/api";
+import { type Intent, suggestionsApi, unwrap } from "@loomarr/api";
 import type { SuggestionPhase } from "@loomarr/core";
 import { useState } from "react";
 import { useLoomarrEventListener } from "@/events";
@@ -42,7 +42,7 @@ const useSuggestionRun = (): SuggestionRun => {
     },
   });
 
-  const rows = proposals.data?.status === 200 ? (proposals.data.data.proposals ?? []) : [];
+  const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
   const proposal = jobId ? rows.find((p) => p.jobId === jobId) : undefined;
 
   return {

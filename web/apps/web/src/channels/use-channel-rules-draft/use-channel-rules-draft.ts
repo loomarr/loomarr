@@ -1,4 +1,4 @@
-import { type ChannelPolicy, channelsApi, toProblem } from "@loomarr/api";
+import { type ChannelPolicy, channelsApi, toProblem, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -97,7 +97,7 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
     // ⚠ The transport mutator THROWS on non-2xx for mutations (unlike a query, which carries
     // the status in `data`), so a failed preview lands in `.error` — surfaced so a broken draft
     // reads as an error rather than an empty schedule.
-    preview: preview.data?.status === 200 ? preview.data.data : undefined,
+    preview: unwrap(preview.data),
     isPreviewing: preview.isPending,
     previewError: preview.error,
     at,

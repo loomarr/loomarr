@@ -14,6 +14,17 @@ import type { RunButtonProps } from "./run-button.type";
 //
 // The caller owns `busy`; `useRunFeedback` is the hook that computes it correctly.
 //
+// ⚠ **"Over a queued backend" is the whole test, and it is narrower than it sounds.** Exactly
+// three operations in the API answer 202: jobs-run (this), system-restart and its cost probe.
+// Everything else — filler sync, AI tagging, every settings PATCH — answers 200 when the work
+// is DONE, so the mutation's own `isPending` is already true for exactly as long as the work
+// takes. Wrapping one of those in RunButton would add this component's 600ms visibility floor
+// to an operation that was reporting its duration honestly, which is a regression, not an
+// adoption. A spinner is not evidence that this component is missing.
+//
+// (system-restart has its own richer answer in `useRestartWatch` — it polls /healthz because
+// the server actually goes away, and gives up after 30s. Do not replace it with this.)
+//
 // ⚠ Progress is INDETERMINATE by design (§18.1). A job's Run returns only at the end, so any
 // percentage would be invented — and a bar that reaches 90% and stops is a worse claim than a
 // spinner that says only "running".
