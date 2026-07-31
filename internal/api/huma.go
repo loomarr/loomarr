@@ -281,6 +281,14 @@ type PodPreviewer interface {
 	// channel draw from", while this answers "what plays in THIS break". Consecutive breaks
 	// must not replay the same adverts, which is only expressible with the start time.
 	PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error)
+	// Coverage reports which ladder rung this channel's breaks would draw from, and how much
+	// material each rung holds (V29a/V29b). Same catalog, same Window, same policy as Preview —
+	// it counts what is available instead of drawing from it, which is why it takes no seed.
+	//
+	// On the SAME interface as the previews deliberately: the meter's whole reason to exist is
+	// that it agrees with what airs, and splitting it onto its own service is the first step
+	// toward two implementations of "what would this channel get".
+	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
 }
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr

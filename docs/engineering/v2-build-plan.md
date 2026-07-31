@@ -162,7 +162,8 @@ written; §6.2 records each correction and the evidence. The rows below are the 
 | **V17d** | Starter pack + "Find clips" (**F4**) | V17b, **V29b** | Seeded clips reviewable with keep/exclude; a thin channel surfaces the gap. ⚠ Coverage is **V29b's**, not this phase's |
 | **V28** | Sources **read-model** + clip metadata columns | V4, V17a | Migration `00017`; `GET /v1/filler/sources` derives the rows and `Fetch now` triggers the existing sync; `thumbnail` populated at scan; a play is recorded **from playout**, not from assembly |
 | **V29a** | **Export a coverage entry point from `internal/filler`** | V28 | `ladder.go`'s pools become reachable without duplicating them; unit-tested against the same fixtures as pod assembly. **Go only — no endpoint, no UI** |
-| **V29b** | Coverage meter (F2 banner) | V29a | **Consumes V29a's export** — a test asserts the meter and pod assembly agree, in the shape of `preview_test.go:28`. See §6 |
+| **V29b-api** | `GET /v1/channels/{id}/filler/coverage` over V29a's export | V29a | The route returns the rungs V29a computes for a channel's own selection; **API lane**, because it edits `api/openapi.yaml` |
+| **V29b** | Coverage meter (F2 banner) | V29b-api | **Consumes V29a's export through the V29b-api route** — a test asserts the meter and pod assembly agree, in the shape of `preview_test.go:28`. See §6 |
 | **V30** | Filler preview serving | V6, V28 | Thumbnail bytes are reachable over HTTP; **the route is NOT named `preview`** — see §6.2 |
 | **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`** | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
 
@@ -391,8 +392,26 @@ Two lanes, and the split is by *generated output*, not by size:
 
 | Lane | Phases | Owns |
 | --- | --- | --- |
-| **API** (sequential) | V30 → V17b → V17c → V33 | `api/openapi.yaml`, the orval client, filler migrations |
+| **API** (sequential) | V30 → **V29b-api** → V17b → V17c → V33 | `api/openapi.yaml`, the orval client, filler migrations |
 | **Coverage** | V29a → V29b → V17d | `internal/filler` exports, the meter, the starter pack |
+
+⚠ **V29b was split across the lanes, and the reason is worth keeping.** The meter needs coverage
+over HTTP, so V29b as one phase would have put the Coverage lane into `api/openapi.yaml` — the
+exact conflict the split exists to prevent. The route half (**V29b-api**) therefore belongs to the
+API lane and the meter stays in Coverage, which means **the Coverage lane is BLOCKED on V29b-api
+merging**. That ordering is why V29b-api is built before V17b even though V17b comes first in the
+phase list: the sequential lane should unblock the parallel one before doing its own work.
+
+The alternative considered and rejected: folding coverage into `GET /v1/filler`'s response, which
+needs no new route at all. Rejected because it grows the catalog listing's DTO for a different
+question — "what is in my catalog" and "what would a break resolve to" are separate reads, and one
+of them is per-channel.
+
+⚠ **V29a is cherry-picked into the API lane**, not re-implemented: V29b-api compiles against
+`filler.Coverage`, which the Coverage lane owns. Both branches therefore carry the same commit and
+git resolves it on merge. This is the one place the lanes are not disjoint, and it is a read
+dependency in one direction only — if the API lane ever needs to CHANGE that export, it belongs in
+the Coverage lane instead.
 
 ⚠ The lanes are not fully disjoint: V29a exports from `internal/filler`, which V17c also edits for
 the floor. They touch different functions (a coverage read vs. a selection filter) and no shared

@@ -21,6 +21,7 @@ type fakePods struct {
 	draftAsked []filler.Selection // the draft selections PreviewDraft received
 	atAsked    []int64            // the break starts PreviewAt received
 	pod        filler.Pod
+	coverage   filler.CoverageReport
 	err        error
 }
 
@@ -41,6 +42,13 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs i
 	f.asked = append(f.asked, channelID)
 	f.atAsked = append(f.atAsked, breakStartMs)
 	return f.pod, f.err
+}
+
+// Coverage records the channel so a test can prove the route resolves the id it was given
+// rather than reporting on some other channel's catalog.
+func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.CoverageReport, error) {
+	f.asked = append(f.asked, channelID)
+	return f.coverage, f.err
 }
 
 func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {

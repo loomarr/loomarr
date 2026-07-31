@@ -82,6 +82,69 @@ func (s *Server) previewChannelPods(ctx context.Context, in *previewPodsInput) (
 	return podToPreviewOutput(pod), nil
 }
 
+// CoverageRungDTO is one rung of the §10 fallback ladder and how much material it holds.
+type CoverageRungDTO struct {
+	// Same enum as PodPoolDTO.MatchLevel, deliberately: a coverage answer and a pod outcome
+	// describe the same ladder, and the meter's whole claim is that they agree. Two
+	// vocabularies for one concept is how they start disagreeing.
+	Level string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The ladder rung (§10)"`
+	Clips int    `json:"clips" doc:"Eligible clips this rung holds, after the channel's kind/category/exclusion narrowing"`
+}
+
+// CoverageDTO answers "what would this channel's breaks resolve to", from the same ladder
+// reconcile uses (V29a/V29b).
+type CoverageDTO struct {
+	// ⚠ A skipped rung is ABSENT, not present-at-zero. Under the strict-era setting there is
+	// no widened rung to be empty, and rendering one at 0 reads as a catalog gap to go fix
+	// rather than a setting the operator chose.
+	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. A rung the channel's policy skips is absent, not zero."`
+	Level string            `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
+	Total int               `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
+}
+
+type channelCoverageOutput struct {
+	Body CoverageDTO
+}
+
+// channelFillerCoverage reports which ladder rung this channel's breaks draw from.
+//
+// ⚠ **The whole point is that this cannot disagree with what airs.** The v2 mock's meter
+// claims to come "from the same ladder reconcile uses" and does not — it recomputes its
+// buckets inline, with five mutually inconsistent era/audience predicates. Here the answer
+// comes from `filler.Coverage`, which calls the same `candidatePools` that `Assemble` calls,
+// through the same `SelectionForChannel` derivation the previews use. A meter that says
+// "exact" while breaks resolve at "audience" is a confident wrong answer about why a channel
+// sounds the way it does, which is worse than no meter.
+//
+// Read-only, so any authenticated user may call it — same as the pod preview it describes.
+func (s *Server) channelFillerCoverage(ctx context.Context, in *previewPodsInput) (*channelCoverageOutput, error) {
+	if s.pods == nil {
+		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before checking a channel's coverage.")
+	}
+	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+
+	report, err := s.pods.Coverage(ctx, in.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Non-nil even when empty: a JSON `null` here would make every consumer guard before
+	// iterating, and "no rungs" is a real answer (an unconfigured catalog), not a missing one.
+	rungs := make([]CoverageRungDTO, 0, len(report.Rungs))
+	for _, r := range report.Rungs {
+		rungs = append(rungs, CoverageRungDTO{Level: string(r.Level), Clips: r.Clips})
+	}
+	return &channelCoverageOutput{Body: CoverageDTO{
+		Rungs: rungs,
+		Level: string(report.Level),
+		Total: report.Total,
+	}}, nil
+}
+
 // CycleSlotDTO is one slot of the previewed cycle (§8.1): what airs, in play order. A
 // program carries its title + provisioning key + series identity + multi-part index; a break
 // gap is `kind:"break"` (Tunarr owns the clip that fills it — the preview shows the gap).

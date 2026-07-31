@@ -34,6 +34,10 @@ func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) 
 	return s.pod, s.err
 }
 
+func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, error) {
+	return filler.CoverageReport{}, s.err
+}
+
 func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	t.Helper()
 	return &playoutResolver{
