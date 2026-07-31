@@ -23,7 +23,7 @@ const AUDIENCES = ["kids", "family", "general", "late_night"];
 // server enforces that regardless (§11, §19).
 const FillerScreen = () => <FillerPage />;
 
-const Route = createFileRoute("/_authed/filler")({
+const Route = createFileRoute("/_authed/filler/")({
   validateSearch: (search: Record<string, unknown>): FillerSearch => {
     const q = typeof search.q === "string" && search.q ? search.q : undefined;
     const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;

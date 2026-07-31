@@ -1,4 +1,4 @@
-import { aiTaggedClip, taggedClip, thumbnailedClip, untaggedClip } from "@loomarr/fixtures";
+import { aiTaggedClip, suggestedEraClip, taggedClip, thumbnailedClip, untaggedClip } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ClipCard } from "./clip-card";
@@ -33,5 +33,25 @@ const AdminActions: Story = { args: { clip: taggedClip, onTag: noop, onPin: noop
 // ffmpeg never ran) that is the whole catalog, and it must not look broken.
 const WithThumbnail: Story = { args: { clip: thumbnailedClip, onTag: noop, onPin: noop } };
 
+// An ungrounded AI era guess (§10 V34): the "?" badge is a question, not a tag — a member
+// sees only the badge, an admin gets the one-click confirm beside it.
+const SuggestedEra: Story = { args: { clip: suggestedEraClip } };
+const SuggestedEraAdmin: Story = { args: { clip: suggestedEraClip, onConfirmEra: noop, onTag: noop } };
+
+// The compilation-split entry point (§10 V34), and its in-flight state while detection runs.
+const SplitAction: Story = { args: { clip: taggedClip, onTag: noop, onSplit: noop } };
+const SplitPending: Story = { args: { clip: taggedClip, onSplit: noop, splitPending: true } };
+
 export default meta;
-export { AdminActions, AiSuggestedTags, Tagged, TaggedEditable, Untagged, WithThumbnail };
+export {
+  AdminActions,
+  AiSuggestedTags,
+  SplitAction,
+  SplitPending,
+  SuggestedEra,
+  SuggestedEraAdmin,
+  Tagged,
+  TaggedEditable,
+  Untagged,
+  WithThumbnail,
+};

@@ -1,9 +1,10 @@
-import { fillerApi, settingsApi, unwrap } from "@loomarr/api";
+import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import {
   ClipCard,
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui";
+import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
@@ -48,7 +50,7 @@ const FillerPage = () => {
     kind = "",
     audience = "",
     untagged = false,
-  } = useSearch({ from: "/_authed/filler" });
+  } = useSearch({ from: "/_authed/filler/" });
   const setFilters = (next: Partial<FillerSearch>) =>
     navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
   const [tagging, setTagging] = useState<string>();
@@ -106,6 +108,48 @@ const FillerPage = () => {
 
   const sync = fillerApi.useSyncFiller({ mutation: { onSuccess: invalidate } });
   const aiTag = fillerApi.useTagFiller({ mutation: { onSuccess: invalidate } });
+
+  // Era-suggestion confirm (§10 V34). ⚠ The PATCH body must carry the clip's CURRENT
+  // audience/category: UpdateClipTags writes all three columns unconditionally, so a
+  // bare `{era}` would wipe the other two. Setting era confirms and clears the
+  // suggestion in the same write (the BE's rule).
+  const confirmEra = fillerApi.useTagFillerClip({
+    mutation: {
+      onSuccess: invalidate,
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the era"),
+    },
+  });
+
+  // Compilation splitting (§10 V34): POST starts a detection JOB, the terminal
+  // `filler_split` SSE frame hands over the proposal id, and we navigate to the review
+  // gate. Same shape as the ingest job below — request returns immediately, progress
+  // arrives on the bus.
+  const [splitJob, setSplitJob] = useState<{
+    clipPath: string;
+    jobId: string;
+    status: string;
+    error?: string;
+  }>();
+  const split = fillerApi.useSplitFiller({
+    mutation: {
+      onSuccess: (res, vars) => {
+        if (isOk(res)) setSplitJob({ clipPath: vars.id, jobId: res.data.jobId, status: "running" });
+      },
+    },
+  });
+
+  useLoomarrEventListener({
+    onFillerSplit: (e) => {
+      // Frames for OTHER split jobs (another tab, another admin) are not ours to act on.
+      if (!e.jobId || e.jobId !== splitJob?.jobId) return;
+      if (e.status === "success" && e.proposalId) {
+        setSplitJob(undefined);
+        void navigate({ to: "/filler/splits/$proposalId", params: { proposalId: e.proposalId } });
+      } else if (e.status === "error") {
+        setSplitJob((prev) => (prev ? { ...prev, status: "error", error: e.error } : prev));
+      }
+    },
+  });
 
   if (!fillerConfigured) {
     return (
@@ -193,7 +237,24 @@ const FillerPage = () => {
         <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
           {sync.error != null && <ErrorState error={sync.error} />}
           {aiTag.error != null && <ErrorState error={aiTag.error} />}
+          {split.error != null && <ErrorState error={split.error} />}
           {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
+
+          {/* Split detection progress (§10 V34) — a job, not a request, so it gets a live
+              status line the way ingest does. Success NAVIGATES to the review route; only
+              running/error render here. */}
+          {splitJob && (
+            <p
+              role="status"
+              className={
+                splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"
+              }
+            >
+              {splitJob.status === "error"
+                ? (splitJob.error ?? "Split detection failed.")
+                : `Detecting cuts in ${splitJob.clipPath}… this can take a few minutes for a long compilation.`}
+            </p>
+          )}
 
           {sync.data?.status === 200 && (
             <p className="text-muted-foreground text-sm">
@@ -305,6 +366,21 @@ const FillerPage = () => {
                     {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
                     {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
                     {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+                    {...(isAdmin && clip.suggestedEra
+                      ? {
+                          onConfirmEra: () =>
+                            confirmEra.mutate({
+                              id: clip.path,
+                              data: {
+                                era: clip.suggestedEra ?? 0,
+                                audience: clip.audience ?? "",
+                                category: clip.category ?? "",
+                              },
+                            }),
+                        }
+                      : {})}
+                    {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
+                    splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
                   />
                 ))}
               </div>

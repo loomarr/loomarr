@@ -44,6 +44,22 @@ const formatClipDuration = (ms: number): string => {
 // Channel number as displayed — mono, never localized.
 const channelNumber = (n: number): string => String(n);
 
+// "01:23" — a millisecond offset INSIDE a clip as mm:ss, the same rendering the BE's
+// transcript text uses (internal/filler formatMS) and the split review edits cuts in.
+const formatMmSs = (ms: number): string => {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(totalSec / 60)).padStart(2, "0")}:${String(totalSec % 60).padStart(2, "0")}`;
+};
+
+// The inverse of formatMmSs for the cut editor's text inputs. Accepts "m:ss" or "mm:ss"
+// (seconds may exceed 59 — "90" is 90s); returns undefined for anything else rather than
+// guessing, because a wrong cut point is exactly what the review gate exists to catch.
+const parseMmSs = (text: string): number | undefined => {
+  const m = /^\s*(\d{1,4}):(\d{1,2})\s*$/.exec(text);
+  if (!m) return undefined;
+  return (Number(m[1]) * 60 + Number(m[2])) * 1000;
+};
+
 // "8:00 PM" for the EPG. Fixed 12-hour, zero-padded minutes, locale-independent.
 const formatEpgTime = (t: Instant): string => {
   const d = new Date(msOf(t));
@@ -192,6 +208,7 @@ export {
   formatDuration,
   formatEpgTime,
   formatGiB,
+  formatMmSs,
   formatPercent,
   formatPercentPoints,
   formatRelative,
@@ -200,5 +217,6 @@ export {
   formatUptime,
   humanizeRelaxation,
   humanizeSettingKey,
+  parseMmSs,
   pluralize,
 };

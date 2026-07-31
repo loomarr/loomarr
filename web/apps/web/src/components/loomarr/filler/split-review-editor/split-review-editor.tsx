@@ -1,0 +1,291 @@
+import type { SplitSegment } from "@loomarr/api";
+import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core";
+import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Badge, Button, Card, Input, Label } from "@/components/ui";
+import { cn } from "@/lib";
+import type { SplitReviewEditorProps } from "./split-review-editor.type";
+
+// SplitReviewEditor — the §10 V34 review gate. Detection quality is a property of the
+// SOURCE (measured 69–100%), so nothing enters the catalog unconfirmed: this is where the
+// operator reads each proposed segment, fixes names and cut points, drops the junk, merges
+// what detection over-split, and answers the era questions the grounding validator asked.
+//
+// The draft holds start/end as TEXT (mm:ss) so an in-progress edit can't corrupt a number;
+// parsing happens at confirm time, and an unparseable or inverted span disables Confirm —
+// a wrong cut is exactly what this gate exists to catch.
+
+// The smallest span the BE will cut (internal/filler MinSegmentMs); mirrored here so the
+// editor disables Confirm rather than round-tripping a 422 the operator could see coming.
+const MIN_SEGMENT_MS = 3000;
+
+// A draft segment is the wire segment plus its editable mm:ss text. Everything else rides
+// along untouched so the confirm body is the operator's list verbatim (renumbered). The
+// `key` is a STABLE identity for React: keying on position or on the edited times would
+// remount the row mid-keystroke and steal focus from the very inputs being edited.
+interface DraftSegment extends SplitSegment {
+  key: string;
+  startText: string;
+  endText: string;
+}
+
+const toDraft = (seg: SplitSegment): DraftSegment => ({
+  ...seg,
+  key: `seg-${seg.index}-${seg.startMs}`,
+  startText: formatMmSs(seg.startMs),
+  endText: formatMmSs(seg.endMs),
+});
+
+// toWire renumbers: drops and merges change the ORDER, and the body the operator commits
+// is indexed by the draft they see, not by the detector's original numbering.
+const toWire = (draft: DraftSegment[]): SplitSegment[] =>
+  draft.map((d, i) => {
+    const { key: _k, startText: _s, endText: _e, ...seg } = d;
+    return { ...seg, index: i, startMs: parseMmSs(d.startText) ?? 0, endMs: parseMmSs(d.endText) ?? 0 };
+  });
+
+const spanMs = (d: DraftSegment): number | undefined => {
+  const start = parseMmSs(d.startText);
+  const end = parseMmSs(d.endText);
+  if (start === undefined || end === undefined) return undefined;
+  return end - start;
+};
+
+const isValid = (d: DraftSegment): boolean => {
+  const span = spanMs(d);
+  return span !== undefined && span >= MIN_SEGMENT_MS && d.name.trim() !== "";
+};
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  kids: "Kids",
+  family: "Family",
+  general: "General",
+  late_night: "Late night",
+};
+
+const SplitReviewEditor = ({
+  proposal,
+  confirming,
+  onConfirm,
+  onBack,
+  className,
+}: SplitReviewEditorProps) => {
+  const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
+
+  const setSegment = (i: number, patch: Partial<DraftSegment>) =>
+    setDraft((prev) => prev.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+
+  const drop = (i: number) => setDraft((prev) => prev.filter((_, j) => j !== i));
+
+  // Merge with next CONCATENATES THE SPANS (end becomes the next segment's end). Tags keep
+  // the first segment's, inheriting from the next only what the first lacks; transcripts
+  // join so the reviewer keeps the evidence for the new, longer span.
+  const mergeWithNext = (i: number) =>
+    setDraft((prev) => {
+      if (i + 1 >= prev.length) return prev;
+      const a = prev[i];
+      const b = prev[i + 1];
+      if (!a || !b) return prev;
+      const merged: DraftSegment = {
+        ...a,
+        key: `${a.key}+${b.key}`,
+        endText: b.endText,
+        era: a.era || b.era || undefined,
+        suggestedEra: a.suggestedEra || b.suggestedEra || undefined,
+        audience: a.audience || b.audience || undefined,
+        category: a.category || b.category || undefined,
+        dupOf: a.dupOf || b.dupOf || undefined,
+        unsplittable: a.unsplittable || b.unsplittable || undefined,
+        transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
+      };
+      return [...prev.slice(0, i), merged, ...prev.slice(i + 2)];
+    });
+
+  const confirmable = draft.length > 0 && draft.every(isValid);
+
+  return (
+    <div className={cn("flex flex-col gap-4", className)}>
+      {draft.map((seg, i) => (
+        <SegmentRow
+          key={seg.key}
+          segment={seg}
+          position={i}
+          last={i === draft.length - 1}
+          onChange={(patch) => setSegment(i, patch)}
+          onDrop={() => drop(i)}
+          onMergeWithNext={() => mergeWithNext(i)}
+        />
+      ))}
+
+      {draft.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          Every segment has been dropped. Go back to keep the compilation whole. Confirming an empty cut list
+          is not a thing Loomarr will do.
+        </p>
+      )}
+
+      <div className="flex items-center justify-between gap-3 border-border border-t pt-4">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          Back
+        </Button>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-muted-foreground text-sm tabular-nums">
+            {pluralize(draft.length, "clip")}
+          </span>
+          <Button size="sm" disabled={!confirmable || confirming} onClick={() => onConfirm(toWire(draft))}>
+            {confirming ? "Cutting…" : "Confirm cuts"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface SegmentRowProps {
+  segment: DraftSegment;
+  position: number;
+  last: boolean;
+  onChange: (patch: Partial<DraftSegment>) => void;
+  onDrop: () => void;
+  onMergeWithNext: () => void;
+}
+
+const SegmentRow = ({ segment, position, last, onChange, onDrop, onMergeWithNext }: SegmentRowProps) => {
+  const [showTranscript, setShowTranscript] = useState(false);
+  const n = position + 1;
+  const span = spanMs(segment);
+  const valid = isValid(segment);
+
+  return (
+    <Card>
+      <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <span className="font-mono text-muted-foreground text-sm tabular-nums">#{n}</span>
+          <div className="min-w-48 flex-1">
+            <Label htmlFor={`seg-name-${position}`}>Name</Label>
+            <Input
+              id={`seg-name-${position}`}
+              value={segment.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`seg-start-${position}`}>Start (mm:ss)</Label>
+            <Input
+              id={`seg-start-${position}`}
+              className="w-24 font-mono tabular-nums"
+              value={segment.startText}
+              onChange={(e) => onChange({ startText: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`seg-end-${position}`}>End (mm:ss)</Label>
+            <Input
+              id={`seg-end-${position}`}
+              className="w-24 font-mono tabular-nums"
+              value={segment.endText}
+              onChange={(e) => onChange({ endText: e.target.value })}
+            />
+          </div>
+          <span
+            className={cn(
+              "font-mono text-sm tabular-nums",
+              valid ? "text-muted-foreground" : "text-onair-300",
+            )}
+            // An inverted or unparseable span is a certainty to say out loud, not a 422 to
+            // discover after the fact — the operator is editing CUT POINTS, the one thing
+            // this screen exists to get right.
+            title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
+          >
+            {span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}
+          </span>
+          <div className="ml-auto flex gap-2">
+            {!last && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onMergeWithNext}
+                title="Join this segment and the next into one span"
+              >
+                <Merge aria-hidden />
+                Merge with next
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onDrop} title="Remove this segment from the cut list">
+              <Trash2 aria-hidden />
+              Drop
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
+          {segment.audience ? (
+            <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
+          ) : null}
+          {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+
+          {/* An unconfirmed era (§10 grounding): the classifier guessed a year that appears
+              in NO text signal. Accept grounds it as the operator's tag; reject drops the
+              guess. Neither is default — the question stays open until a human answers. */}
+          {segment.suggestedEra ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Badge variant="suggest" title="AI guess. The year isn't in the transcript or source text">
+                {`${segment.suggestedEra}s?`}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
+              >
+                {`Accept ${segment.suggestedEra}`}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
+                Reject
+              </Button>
+            </span>
+          ) : null}
+
+          {/* dHash duplicate (§10 step 5): a FLAG, never a silent drop. The operator decides —
+              usually by dropping this segment. */}
+          {segment.dupOf ? (
+            <Badge variant="caution" title="This looks like a clip already in your catalog">
+              {`Already in the catalog: ${segment.dupOf}`}
+            </Badge>
+          ) : null}
+        </div>
+
+        {/* Unsplittable: over-long AND the rescue could not see boundaries (no whisper, or
+            none detectable in the text). Said unmistakably, because the alternative is
+            guessing — exactly what the era rule forbids in tag form. */}
+        {segment.unsplittable ? (
+          <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+            Loomarr couldn't see boundaries in this span, either because there's no transcript or because
+            there are no detectable breaks. Cut it by hand with the times above, or drop it.
+          </p>
+        ) : null}
+
+        {segment.transcript ? (
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={showTranscript}
+              onClick={() => setShowTranscript((v) => !v)}
+            >
+              {showTranscript ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+              Transcript
+            </Button>
+            {showTranscript && (
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-muted-foreground text-xs">
+                {segment.transcript}
+              </pre>
+            )}
+          </div>
+        ) : null}
+      </section>
+    </Card>
+  );
+};
+
+export { SplitReviewEditor };

@@ -1,4 +1,11 @@
-import type { ClipDTO, GuideChannelTimeline, PodEntryDTO, PodPoolDTO, Proposal } from "@loomarr/api";
+import type {
+  ClipDTO,
+  GuideChannelTimeline,
+  PodEntryDTO,
+  PodPoolDTO,
+  Proposal,
+  SplitProposal,
+} from "@loomarr/api";
 import type { SearchResult } from "@loomarr/core";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
@@ -169,6 +176,71 @@ const aiTaggedClip: ClipDTO = {
   playsCounted: true,
   path: "clip-ai.mp4",
   tunarrProgramId: "clip-ai",
+};
+
+// A clip whose AI era guess was REFUSED by the grounding validator (§10, V34): the year
+// appears nowhere in the clip's text signals, so it arrives as `suggestedEra` — a question
+// for the operator, not a tag.
+const suggestedEraClip: ClipDTO = {
+  ...untaggedClip,
+  name: "Rotoscoped spot, year unknown",
+  audience: "general",
+  category: "tech",
+  suggestedEra: 1985,
+  path: "clip-suggested-era.mp4",
+  tunarrProgramId: "clip-suggested-era",
+};
+
+// A persisted split proposal (§10 V34) mid-review, covering every segment state the
+// editor must render honestly: a clean classified segment, one with an unconfirmed era
+// suggestion, a dHash duplicate flag, an unsplittable over-long span, and a transcript.
+const splitProposal: SplitProposal = {
+  id: "split-testcard",
+  clipPath: "compilations/80s-tv-commercials.mp4",
+  createdAt: "2026-07-25T20:00:00Z",
+  segments: [
+    {
+      index: 0,
+      startMs: 0,
+      endMs: 30500,
+      name: "Sunny D — Dude!",
+      era: 1990,
+      audience: "kids",
+      category: "food & drink",
+      transcript: "[00:01] Sunny D, dude!\n[00:12] Packed with sunshine.",
+    },
+    {
+      index: 1,
+      startMs: 30500,
+      endMs: 61000,
+      name: "Rotoscoped tech spot",
+      audience: "general",
+      category: "tech",
+      // The classifier guessed 1985 from tone; the year is in no text signal, so the
+      // validator refused to persist it (§10 era grounding). The operator confirms.
+      suggestedEra: 1985,
+    },
+    {
+      index: 2,
+      startMs: 61000,
+      endMs: 91500,
+      name: "Gushers — Fruit by the Foot",
+      era: 1990,
+      audience: "kids",
+      category: "food & drink",
+      // dHash match against an existing catalog row — a FLAG, never a silent drop.
+      dupOf: "clip-gushers.mp4",
+    },
+    {
+      index: 3,
+      startMs: 91500,
+      endMs: 240000,
+      name: "80s-tv-commercials part 4",
+      // Over-long AND the rescue found nothing (no whisper, or no breaks in the text).
+      // The operator cuts it by hand or drops it — Loomarr does not guess.
+      unsplittable: true,
+    },
+  ],
 };
 
 const proposal: Proposal = {
@@ -390,6 +462,8 @@ export {
   proposal,
   sampleIntent,
   searchResults,
+  splitProposal,
+  suggestedEraClip,
   taggedClip,
   thumbnailedClip,
   untaggedClip,
