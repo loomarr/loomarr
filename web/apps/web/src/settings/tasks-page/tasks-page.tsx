@@ -5,7 +5,7 @@ import { Pause, Pencil, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorDetails, ErrorState, RunButton, useRunFeedback } from "@/components/loomarr";
-import { Button } from "@/components/ui";
+import { Button, StatusDot, type StatusTone } from "@/components/ui";
 import { cn } from "@/lib";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
@@ -16,8 +16,12 @@ import { JobEditModal } from "./job-edit-modal/job-edit-modal";
 // All timing is server-authored — the page renders `lastRun`/`nextRun`/`running` verbatim and
 // refetches on the `job` SSE frame (wired in core), never computing countdowns client-side.
 
-// statusDot colors a job by its state: disabled (muted, first) > paused (muted) > running
-// (amber) > error (red) > ok (green) > never-run (muted).
+// statusDot picks a StatusDot tone for a job: disabled (off, first) > paused (off) > running
+// (pending) > error > ok > never-run (off).
+//
+// ⚠ A failed run is `error`, NOT `live`. The two render the same red and differ only in the
+// pulse, and a job that failed hours ago has nothing happening — this row is why the primitive
+// grew an `error` tone rather than the page borrowing `live` to get the colour.
 //
 // ⚠ Disabled is checked FIRST and has its own label. Falling through to "Not run yet" would
 // reproduce, one cell over, exactly the ambiguity a disabled row exists to remove: a job
@@ -26,13 +30,13 @@ import { JobEditModal } from "./job-edit-modal/job-edit-modal";
 // ⚠ Paused is checked SECOND, before `running`. The two are not exclusive — Run now still
 // works on a paused job — and a row whose schedule is stopped should say so rather than report
 // the state of a one-off the operator triggered themselves.
-const statusDot = (job: JobView): { cls: string; label: string } => {
-  if (job.disabledReason) return { cls: "bg-static-500", label: "Not available on this backend" };
-  if (job.paused) return { cls: "bg-static-500", label: "Paused" };
-  if (job.running) return { cls: "bg-signal", label: "Running" };
-  if (job.lastResult === "error") return { cls: "bg-onair", label: "Failed last run" };
-  if (job.lastResult === "ok") return { cls: "bg-lock", label: "OK" };
-  return { cls: "bg-static-500", label: "Not run yet" };
+const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
+  if (job.disabledReason) return { tone: "off", label: "Not available on this backend" };
+  if (job.paused) return { tone: "off", label: "Paused" };
+  if (job.running) return { tone: "pending", label: "Running" };
+  if (job.lastResult === "error") return { tone: "error", label: "Failed last run" };
+  if (job.lastResult === "ok") return { tone: "ok", label: "OK" };
+  return { tone: "off", label: "Not run yet" };
 };
 
 // The columns, declared ONCE and rendered into both tables' <colgroup>.
@@ -177,15 +181,12 @@ const TasksPage = () => {
                   >
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-2">
-                        {/* ⚠ The dot is aria-HIDDEN when a visible badge already states the same
-                          thing, or a screen reader announces "Paused" twice for one row. It
-                          keeps its `title` either way, so a sighted user can still hover it. */}
-                        <span
-                          role="img"
-                          className={cn("size-2 shrink-0 rounded-full", dot.cls)}
-                          title={dot.label}
-                          {...(job.paused ? { "aria-hidden": true } : { "aria-label": dot.label })}
-                        />
+                        {/* ⚠ label="" when a visible badge already states the same thing, or a
+                          screen reader announces "Paused" twice for one row. The empty string is
+                          StatusDot's documented opt-out: it drops role="img" and marks the dot
+                          aria-hidden. `title` survives either way, so a sighted user can still
+                          hover it. */}
+                        <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} title={dot.label} />
                         <span className="font-medium">{job.title}</span>
                         {job.paused && (
                           <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
