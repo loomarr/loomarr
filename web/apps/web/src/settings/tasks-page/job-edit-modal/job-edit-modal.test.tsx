@@ -23,6 +23,8 @@ const jsonResponse = (status: number, body: unknown) =>
 const job: JobView = {
   name: "reconcile",
   title: "Reconcile acquisitions",
+  description: "Checks in-flight downloads.",
+  paused: false,
   schedule: "0 */5 * * * *",
   scheduleKey: "job.reconcile.schedule",
   lastResult: "ok",
