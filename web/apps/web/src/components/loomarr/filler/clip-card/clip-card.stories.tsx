@@ -1,4 +1,4 @@
-import { aiTaggedClip, taggedClip, untaggedClip } from "@loomarr/fixtures";
+import { aiTaggedClip, taggedClip, thumbnailedClip, untaggedClip } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ClipCard } from "./clip-card";
@@ -28,5 +28,10 @@ const AiSuggestedTags: Story = { args: { clip: aiTaggedClip, onConfirmTags: noop
 // channel's filler (P3 cohesion) — the two actions sit together in the card's action row.
 const AdminActions: Story = { args: { clip: taggedClip, onTag: noop, onPin: noop } };
 
+// The extracted frame (V17b), served by V30. ⚠ Only clips that HAVE one render it — the
+// stories above are deliberately frameless, because on a Tunarr-backed install (or one where
+// ffmpeg never ran) that is the whole catalog, and it must not look broken.
+const WithThumbnail: Story = { args: { clip: thumbnailedClip, onTag: noop, onPin: noop } };
+
 export default meta;
-export { AdminActions, AiSuggestedTags, Tagged, TaggedEditable, Untagged };
+export { AdminActions, AiSuggestedTags, Tagged, TaggedEditable, Untagged, WithThumbnail };
