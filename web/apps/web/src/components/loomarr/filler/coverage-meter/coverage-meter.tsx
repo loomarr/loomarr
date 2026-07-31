@@ -1,4 +1,5 @@
 import type { CoverageDTOLevel } from "@loomarr/api";
+import { Link } from "@tanstack/react-router";
 import { Caption, StatusDot, type StatusTone } from "@/components/ui";
 import { cn } from "@/lib";
 import type { CoverageMeterProps } from "./coverage-meter.type";
@@ -75,6 +76,18 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   // it makes every rung 0.
   const widest = coverage.total || 0;
 
+  // "Thin" is defined by the ladder's own answer, not by a number someone picked (F4).
+  //
+  // A channel is thin when its breaks CANNOT be filled from era- and audience-matched
+  // commercials — i.e. the ladder had to widen, or gave up entirely. That is exactly the
+  // condition an operator can fix by acquiring clips, and it is the condition the ladder
+  // already computes, so the CTA appears for the same reason the level does.
+  //
+  // ⚠ Not "fewer than N clips". A channel with three perfectly-matched commercials is not
+  // asking for help; one with two hundred clips that all miss its era is. A count threshold
+  // gets both cases backwards.
+  const isThin = coverage.level !== "exact";
+
   return (
     <section className={cn("flex flex-col gap-3 rounded-lg border border-border p-4", className)}>
       <div className="flex items-start gap-2">
@@ -114,11 +127,30 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rung, and a 0 there reads as a catalog gap to go fix rather than a setting the
           operator chose — so the list simply omits it, and this line says why the total is
           what it is. */}
-      <Caption>
-        {widest === 0
-          ? "No eligible commercials for this channel."
-          : `${widest} eligible ${widest === 1 ? "commercial" : "commercials"}`}
-      </Caption>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Caption>
+          {widest === 0
+            ? "No eligible commercials for this channel."
+            : `${widest} eligible ${widest === 1 ? "commercial" : "commercials"}`}
+        </Caption>
+
+        {/* "Find clips" (F4 gap flagging, V17d) — shown only when the catalog is actually thin
+            for THIS channel, because a CTA on a healthy channel is noise that teaches an
+            operator to stop reading the banner.
+            ⚠ It routes to the existing Filler catalog rather than starting an acquisition of
+            its own. The page already has the ingest panel and the tagging tools; a second
+            entry point that downloaded clips directly would be a parallel path to the same
+            job, and the useful thing here is noticing the gap, not re-implementing the fix. */}
+        {isThin && (
+          <Link
+            to="/filler"
+            className="text-signal text-xs underline-offset-2 hover:underline"
+            data-testid="find-clips"
+          >
+            Find clips →
+          </Link>
+        )}
+      </div>
     </section>
   );
 };

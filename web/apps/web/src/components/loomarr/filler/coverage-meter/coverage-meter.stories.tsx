@@ -1,14 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { widthFrame } from "@/test/story-utils";
+import { widthFrame, withRouter } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 
 // How well the catalog covers a channel's breaks (§10 fallback ladder, V29b). Every number
 // comes from `filler.Coverage`, which calls the same pools `Assemble` calls — the meter cannot
 // disagree with what airs, and a Go test pins that.
+// withRouter because the "Find clips" CTA is a TanStack Link, which needs a RouterProvider
+// even in isolation.
 const meta = {
   title: "Filler/CoverageMeter",
   component: CoverageMeter,
-  decorators: [widthFrame(420)],
+  decorators: [widthFrame(420), withRouter("/guide")],
 } satisfies Meta<typeof CoverageMeter>;
 
 type Story = StoryObj<typeof meta>;
@@ -29,7 +31,8 @@ const Exact: Story = {
 };
 
 // Nothing in the exact year, so breaks fall to the decade. The tightest NON-EMPTY rung is the
-// one highlighted — the ladder never widens further than it must.
+// one highlighted — the ladder never widens further than it must. This is also where the
+// "Find clips" CTA appears (F4): a widened ladder is the condition an operator can fix.
 const Widened: Story = {
   args: {
     coverage: {
