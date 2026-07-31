@@ -548,9 +548,26 @@ Two failure modes were hit and diagnosed, and both belong in the gate:
 4. **Metadata.** The transcript feeds the EXISTING `filler.Classify` unchanged — it already takes
    `(name, sourceText)` and already knows `cereal`, `toys`, `cars`. Verified on real transcripts:
    *"Rice Krispie's treats are so easy to make"* classifies correctly today.
-5. **Dedup.** The same advert recurs across compilations. ffmpeg's `signature` filter works
-   (verified: "whole video matching" on a duplicate, silent on a different clip) and needs nothing
-   new; keyframe pHash is the alternative.
+
+   ⚠ **A §8 GROUNDING HOLE, measured: 2 of 10 clips got an INVENTED era.** Running the real
+   `tagSystemPrompt` over real transcripts, two clips came back `1980` and `1970` with **no year
+   anywhere in the transcript** — the model inferred a decade from tone. `validateTags` accepts
+   any year in 1930-2035, so both would be persisted as fact.
+
+   This is pre-existing (V17a's sidecar path can hit it too) but transcripts make it far more
+   likely, because ad copy is full of period-sounding language and contains a literal year only
+   rarely. §8 forbids exactly this: a tag nothing grounds. The phase must either require the year
+   to appear in the source text before accepting `era`, or record era as a *suggestion* the
+   operator confirms — not silently trust it. Encouragingly, the model answered `era: 0` honestly
+   on the other 8, so the prompt is mostly working; it is the validator that has no way to tell an
+   inferred year from a read one.
+5. **Dedup.** The same advert recurs across compilations. **Measured, and the margin is wide:** a
+   dHash over frames sampled at 1/3fps gives a mean per-frame Hamming distance of **1.1 for a
+   re-encoded, downscaled duplicate vs 27.6-32.2 for different adverts** — a 25x separation, so
+   any threshold in the teens works. It is ~30 lines of pure Go over `ffmpeg -pix_fmt gray`
+   output: no library, no cgo, nothing vendored. ffmpeg's `signature` filter also works (verified:
+   "whole video matching" on a duplicate, silent on a different clip) but needs a custom coarse
+   index to avoid O(n²) and reports only at `-loglevel verbose`, which is an easy trap.
 6. **Review.** ⚠ **Not optional.** Detection is 69-100% depending on the source, so the operator
    confirms the proposed cuts before they enter the catalog. Auto-accepting a 69% result puts
    3-minute "commercials" into ad breaks.
