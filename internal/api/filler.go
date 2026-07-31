@@ -65,7 +65,11 @@ type ClipDTO struct {
 	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
 	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
 	// it existed in the store for two phases with no way to see it.
-	Quality string `json:"quality,omitempty" doc:"Resolution label; display-only, never affects pod selection"`
+	// ⚠ The `doc` string is a CLIENT-VISIBLE contract (it ships in api/openapi.yaml and the
+	// generated TS). It used to say "never affects pod selection"; V17c made that false by
+	// adding an opt-in floor, so it was amended in the same PR rather than left as a lie the
+	// generated client repeats.
+	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on."`
 	// Thumbnail is the extracted frame's path relative to the thumbnail cache; "" when
 	// extraction failed or has not run, which renders as no image rather than a broken one.
 	Thumbnail string `json:"thumbnail,omitempty"`

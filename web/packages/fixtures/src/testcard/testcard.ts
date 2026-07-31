@@ -134,6 +134,21 @@ const taggedClip: ClipDTO = {
   tunarrProgramId: "clip-sunnyd-tagged",
 };
 
+// A clip whose frame was extracted (V17b/V30). The `path` carries an inline data URI rather
+// than a real clip path because `clipThumbURL` passes those through unchanged — stories render
+// offline against storybook-static with no server behind them, so a `/v1/filler/thumb/…` src
+// would be a broken image in the gallery and a flaky pixel in the visual suite.
+//
+// A 2×1 amber PNG: large enough that `object-cover` on a 16:9 box produces a solid fill, small
+// enough to read as a fixture rather than as artwork.
+const thumbnailedClip: ClipDTO = {
+  ...taggedClip,
+  name: "Frosted Flakes — They're Grrreat!",
+  path: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+  thumbnail: "clip-frosted.jpg",
+  tunarrProgramId: "clip-frosted",
+};
+
 const untaggedClip: ClipDTO = {
   name: "Unlabeled 30s spot",
   kind: "commercial",
@@ -376,5 +391,6 @@ export {
   sampleIntent,
   searchResults,
   taggedClip,
+  thumbnailedClip,
   untaggedClip,
 };

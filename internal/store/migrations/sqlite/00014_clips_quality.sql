@@ -1,8 +1,22 @@
 -- +goose Up
 -- §12 guide hover card: a clip's resolution, so a viewer looking at a break can see that the
--- grainy advert is a 240p capture rather than a playback fault. Display-only — quality NEVER
--- affects pod selection, or a well-meaning "prefer HD" would quietly starve the era-accurate
--- 4:3 commercials the whole feature exists to play.
+-- grainy advert is a 240p capture rather than a playback fault.
+--
+-- ⚠ **AMENDED BY V17c (2026-07-31). This comment used to read "Display-only — quality NEVER
+-- affects pod selection".** It is now display-only BY DEFAULT: `filler.min_quality` is an
+-- opt-in floor, unset by default, and with it unset selection is byte-identical to what this
+-- migration described (there is a test that pins exactly that).
+--
+-- The warning behind the original wording still stands and is why the default is off: a
+-- well-meaning "prefer HD" would quietly starve the era-accurate 4:3 commercials the whole
+-- feature exists to play. The floor exists for the narrower case an operator actually hits —
+-- excluding a 240p rip that is unwatchable rather than nostalgic — and it costs them the era
+-- accuracy they are choosing to trade away, knowingly, in their own settings.
+--
+-- ⚠ Editing an APPLIED migration's comment is not editing the migration (§16 forward-only):
+-- no DDL changed, and the file is not re-run. It is corrected in place because a comment that
+-- states the opposite of the shipped behaviour is worse than no comment — this one is the
+-- first thing anyone reads when asking "may quality affect selection?".
 --
 -- Derived from the video stream's height at scan time (filler.QualityFromHeight): "1080p",
 -- "480p", "" when the file has no video stream. Nullable-by-default rather than backfilled:

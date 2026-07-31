@@ -29,7 +29,11 @@ type pool struct {
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	commercials := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
-		if c.Kind == Commercial && durationEligible(c, policy) {
+		// ⚠ The quality floor applies to COMMERCIALS only, alongside the duration bounds —
+		// deliberately not catalog-wide. Bumpers are the ladder's floor and the station's own
+		// bookends; excluding them on resolution could leave a break with nothing to open or
+		// close on, trading a cosmetic complaint for a structural one.
+		if c.Kind == Commercial && durationEligible(c, policy) && qualityEligible(c, policy) {
 			commercials = append(commercials, c)
 		}
 	}
@@ -241,6 +245,55 @@ func filterCategories(clips []Clip, cats []string) []Clip {
 		}
 	}
 	return out
+}
+
+// qualityEligible reports whether a clip clears the opt-in minimum-quality floor (V17c).
+//
+// ⚠ Two things are deliberately permissive here, and both are the difference between a floor
+// and a catalog-emptier:
+//
+//   - A floor of 0 (the default) admits everything, so an install that sets nothing behaves
+//     exactly as it did before this existed. `TestFloorOffIsByteIdentical` pins that.
+//   - A clip whose quality is UNKNOWN is admitted. Audio-only clips have no height, and every
+//     clip scanned before `00014_clips_quality` has an empty label until the next sync
+//     re-probes it. Excluding unknowns would make setting a floor look like the catalog
+//     vanished, which is the opposite of the diagnosis an operator needs.
+func qualityEligible(c Clip, policy Policy) bool {
+	if policy.MinQualityHeight <= 0 {
+		return true
+	}
+	h := heightFromQuality(c.Quality)
+	if h == 0 {
+		return true // unknown quality is not evidence of LOW quality
+	}
+	return h >= policy.MinQualityHeight
+}
+
+// heightFromQuality maps a stored quality LABEL back to the pixel height it represents.
+//
+// ⚠ The label is what `clips.quality` holds — `QualityFromHeight` bucketed the probed height
+// at scan time and the original number was never stored. So this is the inverse of that
+// bucketing, and it returns each bucket's LOWER bound: "480p" covers heights 460-699, and
+// treating it as 460 means a floor of 480 admits it. Rounding to the nominal 480 instead would
+// exclude a 470-line clip that the label already called 480p, which is not a distinction an
+// operator setting "480" is trying to draw.
+func heightFromQuality(label string) int {
+	switch label {
+	case "4K":
+		return 2000
+	case "1080p":
+		return 1000
+	case "720p":
+		return 700
+	case "480p":
+		return 460
+	case "360p":
+		return 340
+	case "240p":
+		return 1 // a real, known-low height: any floor above 0 excludes it
+	default:
+		return 0 // "" and anything unrecognised — treated as unknown, see qualityEligible
+	}
 }
 
 func durationEligible(c Clip, policy Policy) bool {

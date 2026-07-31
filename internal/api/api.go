@@ -141,6 +141,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
 	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
 
+	// Clip thumbnails (V30) — image bytes, so a plain handler like the icon above. The
+	// `{path...}` wildcard is required, not stylistic: a clip's id is its path relative to
+	// FILLER_DIR and therefore contains slashes, which a plain {path} would not match.
+	// ⚠ Called `thumb`, not `preview` — /channels/{id}/filler/preview is a different thing
+	// entirely (the pod pool a channel would get, as JSON).
+	mux.HandleFunc("GET /v1/filler/thumb/{path...}", srv.serveFillerThumb)
+
 	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
 	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
 	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a
