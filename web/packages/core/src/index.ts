@@ -2,6 +2,7 @@
 // invalidation bus, zod schemas, and formatters. No DOM/web-only surface beyond
 // the swappable EventSource construction, so the Expo app reuses it verbatim.
 export * from "./anchor";
+export * from "./clip-thumb";
 export * from "./contracts";
 export * from "./events";
 export * from "./format";

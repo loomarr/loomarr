@@ -389,6 +389,19 @@ func declared() []Setting {
 			Kind: KindInt, Default: 30, Advanced: true,
 			Doc: "Seconds before the same commercial can play again.",
 		},
+		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
+		// `00014_clips_quality` shipped with quality as display-only and warned that a
+		// well-meaning "prefer HD" would quietly starve the era-accurate 4:3 commercials the
+		// feature exists to play. That warning still holds — which is why an install that sets
+		// nothing behaves exactly as it did before this key existed, pinned by a test.
+		//
+		// Advanced: an operator who does not know what 240p looks like in a break should never
+		// meet this, and one who does will go looking.
+		{
+			Key: "filler.min_quality", EnvVar: "FILLER_MIN_QUALITY", Group: GroupFiller,
+			Kind: KindInt, Default: 0, Advanced: true,
+			Doc: "Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution.",
+		},
 		{
 			Key: "filler.weight", EnvVar: "FILLER_WEIGHT", Group: GroupFiller,
 			Kind: KindInt, Default: 1, Advanced: true,

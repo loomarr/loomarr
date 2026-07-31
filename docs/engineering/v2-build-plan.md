@@ -165,7 +165,7 @@ written; §6.2 records each correction and the evidence. The rows below are the 
 | **V29b-api** | `GET /v1/channels/{id}/filler/coverage` over V29a's export | V29a | The route returns the rungs V29a computes for a channel's own selection; **API lane**, because it edits `api/openapi.yaml` |
 | **V29b** | Coverage meter (F2 banner) | V29b-api | **Consumes V29a's export through the V29b-api route** — a test asserts the meter and pod assembly agree, in the shape of `preview_test.go:28`. See §6 |
 | **V30** | Filler preview serving | V6, V28 | Thumbnail bytes are reachable over HTTP; **the route is NOT named `preview`** — see §6.2 |
-| **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`** | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render |
+| **V33** ⛔ | `#8` — F3b discovery: `GET /v1/filler/discover` + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`**, ⛔ **a supervised fixture capture** | The Archive.org contract is a **pinned testkit fixture**; discovery never runs in unit tests; license badges render. ⛔ **BLOCKED: the pinned fixture has no `licenseurl` and no collection-search response — see §6.2** |
 
 ### Dashboard & wizard
 
@@ -362,10 +362,30 @@ A third meaning on a route name is how an endpoint gets called by the wrong hand
 are unjustified: discovery returns candidate remote sources and shares no code with a quality floor
 or with byte serving. What it actually builds on is `internal/clipfetch`, which already implements
 the full Archive walk with HTTP+FS injected (`archive.go:32`) against a pinned fixture captured
-live (`internal/testkit/fixtures/archive/`, 2026-07-13). **The gate's hardest clause — "the
-Archive.org contract is a pinned testkit fixture; discovery never runs in unit tests" — is already
-satisfied** by V17a-era work. V33's real remaining scope is the route, the registry table, and
-license badges (no `license` field exists on `ClipDTO` or `clips` today).
+live (`internal/testkit/fixtures/archive/`, 2026-07-13).
+
+⚠ **V33 IS BLOCKED, and the blocker is fixture coverage — found 2026-07-31 while building it.**
+An earlier pass at this section recorded the gate's hardest clause ("the Archive.org contract is a
+pinned testkit fixture; discovery never runs in unit tests") as *already satisfied* by that
+V17a-era work. It is not. That capture was taken for the DOWNLOAD walk and pins only what the walk
+consumes:
+
+| V33 needs | Pinned today |
+| --- | --- |
+| `licenseurl` — the gate's "license badges render" | ✗ `metadata_item.json` holds only `mediatype`, `title`, `description` |
+| the collection search response (`advancedsearch.php`) | ✗ stubbed INLINE at `archive_test.go:66`, not a fixture |
+
+Archive's metadata endpoint does return `licenseurl` in reality, but our capture does not contain
+it — and a fixture is **pinned truth from a live capture** (CLAUDE.md). Inventing the field would
+make every downstream test agree with a shape nobody verified, which is precisely the failure
+fixtures exist to prevent. Live contact is maintainer-supervised, so this is a **stop point, not a
+workaround**.
+
+**To unblock:** one supervised capture pass against the live Archive JSON API — `GET /metadata/<id>`
+for an item that carries a license, and `GET /advancedsearch.php?q=collection:<id>&fl[]=identifier&output=json`
+for a real collection — saved beside the existing fixture with a source-version comment, exactly as
+Phase 0 did. V33's scope after that is unchanged: the route, the persisted registry table, and the
+badges (no `license` field exists on `ClipDTO` or `clips` today).
 
 **V17c amends a published contract, and that is the phase's first commit.** Three places make two
 different promises about the same field:

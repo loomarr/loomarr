@@ -134,6 +134,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
+| `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
 | `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Where the yt-dlp program lives. The loomarr:filler image sets this; empty means clip downloading is off. _(advanced)_ |
 | `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |

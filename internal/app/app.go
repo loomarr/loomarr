@@ -663,7 +663,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// build a matched filler-list per channel (attached to Tunarr on reconcile).
 		// The SAME adapter instance backs the §12 preview endpoint, so preview and
 		// reconcile share one assembler and one policy — they cannot drift.
-		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{PodMax: set.intv("filler.pod_max")}, log)
+		podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, filler.Policy{
+			PodMax: set.intv("filler.pod_max"),
+			// V17c: 0 (the default) leaves selection exactly as it was before the floor
+			// existed — see the warning on Policy.MinQualityHeight.
+			MinQualityHeight: set.intv("filler.min_quality"),
+		}, log)
 		podPreview = podPreviewAdapter{store: st, pods: podAdapter}
 		// Commercial breaks for internal playout (§10): the SAME pod assembler the API preview
 		// and the reconciler use, so the ad that plays is the one the channel page promised.
