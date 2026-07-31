@@ -1458,12 +1458,25 @@ suggestions on every tagging path, sabotage-verified, migration `00024`), and th
 pipeline** (`012d6d4` — whisper settings keys, split-proposal store `00025` conformant on both
 backends, chapter triage → blackdetect/silencedetect → whisper+LLM rescue → classify → dHash
 dedup → Confirm, with Unsplittable as a first-class never-guess outcome). `make check` +
-`make test-pg` green. **Remaining, in order:** (1) app wiring + the three §7 endpoints + a
-`filler_split` job/SSE frame + openapi/orval regen; (2) the review UI (cut-list editor, era
-suggestion confirm, dedup flags, unsplittable rendering) + the era-suggestion badge on clips;
-(3) Dockerfile whisper-cli + model vendoring, with the **model verified gap-free against the
-real binary** (the §6.4 numbers came from the Python package — that verification is gate, not
-preference); (4) the full FE gates (`make fe`, `fe-visual`, `e2e`) and live verification.
+`make test-pg` green. The **endpoints** (`e6f3abf` — the three §7 split routes wired through the
+real composition root, `filler_split` SSE frame, openapi/orval regen) and the **review UI**
+(`016fa51` — cut-list editor, era-suggestion confirm, dedup flags, unsplittable rendering, plus
+the era badge on clip cards) followed. All FE gates green at `016fa51`: `make fe` (959 app / 49
+core), **624 visual (12 new baselines, 0 modified)**, `make e2e` (7), no openapi/config-docs/
+retired drift.
+
+⚠ **The review route is a SIBLING of `/filler`, not a child** — the catalog page renders no
+`<Outlet/>`, so nesting would have made the whole surface unreachable while every unit test
+still passed. That is the V1/V17a/V23 failure mode exactly, so the reachability suite now
+derives `/filler/splits/$proposalId` from the router AND requires a clip card to offer the
+entry point. A component test could not have caught it.
+
+**Remaining, in order:** (3) Dockerfile whisper-cli + model vendoring, with the **model verified
+gap-free against the real binary** (the §6.4 numbers came from the Python package — that
+verification is gate, not preference); (4) live verification on the maintainer's stack. ⚠ Until
+(3) lands, the split pipeline is **green in tests but inert in the shipped image** — the
+transcript rescue path shells out to a binary the Dockerfile does not install, and the §6.4
+finding says that path is the only signal that sees the hardest boundary class.
 
 1. **whisper-cli approved as the fifth vendored binary** (the §14 conversation is resolved):
    whisper.cpp's self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the
