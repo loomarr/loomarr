@@ -4,6 +4,7 @@ import {
   channelsApi,
   toProblem,
   type UpdateChannelInputBodyStrategy,
+  unwrap,
 } from "@loomarr/api";
 import { channelNumber, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
@@ -86,7 +87,7 @@ const ChannelDetailScreen = () => {
   const queryClient = useQueryClient();
 
   const channel = channelsApi.useGetChannel(id);
-  useDocumentTitle(channel.data?.status === 200 ? channel.data.data.name : undefined);
+  useDocumentTitle(unwrap(channel.data, (b) => b.name));
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) });
@@ -148,7 +149,7 @@ const ChannelDetailScreen = () => {
       </div>
     );
   }
-  const ch = channel.data?.status === 200 ? channel.data.data : undefined;
+  const ch = unwrap(channel.data);
   if (!ch) return <p className="p-6 text-muted-foreground text-sm">Loading channel…</p>;
 
   const air = airStateOf(ch);

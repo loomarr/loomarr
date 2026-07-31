@@ -1,4 +1,4 @@
-import { channelsApi, toProblem } from "@loomarr/api";
+import { channelsApi, toProblem, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useState } from "react";
@@ -38,7 +38,7 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
 
   if (!clip) return null;
 
-  const rows = channels.data?.status === 200 ? (channels.data.data.channels ?? []) : [];
+  const rows = unwrap(channels.data, (b) => b.channels) ?? [];
 
   // Pin `clip` into `channelId`: fetch that channel's live policy, append the id to
   // filler.pinned (dedup), and PATCH the WHOLE merged policy. Reading the channel here

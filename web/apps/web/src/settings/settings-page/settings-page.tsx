@@ -1,4 +1,4 @@
-import { settingsApi, setupApi } from "@loomarr/api";
+import { settingsApi, setupApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
@@ -65,7 +65,7 @@ const SettingsPage = ({ title, description, blocks, entries, children, footer }:
   // with no checks doesn't probe). The page reports each block's status without a click.
   const hasChecks = blocks.some((b) => b.check);
   const status = setupApi.useSetupStatus({ query: { enabled: hasChecks } });
-  const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+  const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standingFor = (check?: string) => (check ? checks.find((c) => c.name === check) : undefined);
 
   const results = patch.data?.status === 200 ? (patch.data.data.results ?? []) : undefined;

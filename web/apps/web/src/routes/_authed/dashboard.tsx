@@ -6,6 +6,7 @@ import {
   systemApi,
   TitleDTOState,
   titlesApi,
+  unwrap,
 } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -47,7 +48,7 @@ const DashboardScreen = () => {
   // The approval queue's depth — the mock's `pendingCount`, the same number Queue's nav badge
   // and its "Needs approval" tab show. One source, so they cannot disagree.
   const pending = suggestionsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
-  const pendingCount = pending.data?.status === 200 ? (pending.data.data.proposals?.length ?? 0) : 0;
+  const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
 
   // "Acquiring" spans every non-available state, and GET /v1/titles filters by ONE state, so
   // this fans out and sums — the same aggregation the Queue page does.
@@ -56,10 +57,7 @@ const DashboardScreen = () => {
       .filter((s) => s !== TitleDTOState.available)
       .map((state) => ({ ...titlesApi.getListTitlesQueryOptions({ state }), enabled })),
   });
-  const acquiringCount = acquiring.reduce(
-    (n, q) => n + (q.data?.status === 200 ? (q.data.data.titles?.length ?? 0) : 0),
-    0,
-  );
+  const acquiringCount = acquiring.reduce((n, q) => n + (unwrap(q.data, (b) => b.titles?.length) ?? 0), 0);
 
   const clips = fillerApi.useListFiller(undefined, { query: { enabled } });
 
@@ -100,11 +98,11 @@ const DashboardScreen = () => {
     );
   }
 
-  const rows = channels.data?.status === 200 ? (channels.data.data.channels ?? []) : [];
+  const rows = unwrap(channels.data, (b) => b.channels) ?? [];
   const onAir = rows.filter((c) => c.status === "live").length;
-  const telemetry = playout.data?.status === 200 ? playout.data.data : undefined;
-  const clipCount = clips.data?.status === 200 ? (clips.data.data.clips?.length ?? 0) : 0;
-  const cost = restartCost.data?.status === 200 ? restartCost.data.data : undefined;
+  const telemetry = unwrap(playout.data);
+  const clipCount = unwrap(clips.data, (b) => b.clips?.length) ?? 0;
+  const cost = unwrap(restartCost.data);
 
   return (
     <div className="flex h-full flex-col">

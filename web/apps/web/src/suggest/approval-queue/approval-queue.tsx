@@ -1,4 +1,4 @@
-import { type ApprovalEditDTO, suggestionsApi } from "@loomarr/api";
+import { type ApprovalEditDTO, suggestionsApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -67,7 +67,7 @@ const ApprovalQueue = () => {
     return <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />;
   }
 
-  const rows = proposals.data?.status === 200 ? (proposals.data.data.proposals ?? []) : [];
+  const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
 
   if (rows.length === 0) {
     return (

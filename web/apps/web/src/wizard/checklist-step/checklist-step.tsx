@@ -1,4 +1,4 @@
-import { type SettingEntry, settingsApi, setupApi } from "@loomarr/api";
+import { type SettingEntry, settingsApi, setupApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ConnectionBlock, ErrorState, SettingsFields } from "@/components/loomarr";
@@ -89,10 +89,10 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
   });
   const runTest = settingsApi.useSetupTest();
 
-  const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+  const checks = unwrap(status.data, (b) => b.checks) ?? [];
   // Essentials only in the wizard (§6): advanced keys live in Settings.
   const byGroup = (group: string) => entries.filter((e) => e.group === group && !e.advanced);
-  const patchResults = patch.data?.status === 200 ? (patch.data.data.results ?? undefined) : undefined;
+  const patchResults = unwrap(patch.data, (b) => b.results) ?? undefined;
 
   // When the open block changes (e.g. clicked in the rail), bring it into view. Guarded
   // because scrollIntoView isn't universally available (jsdom, older engines) — a missing

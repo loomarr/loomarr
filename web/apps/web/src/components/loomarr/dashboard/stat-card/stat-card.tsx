@@ -1,4 +1,4 @@
-import { Card } from "@/components/ui";
+import { Caption, Card } from "@/components/ui";
 import { cn } from "@/lib";
 import type { StatCardProps } from "./stat-card.type";
 
@@ -18,7 +18,9 @@ const TONE: Record<NonNullable<StatCardProps["tone"]>, string> = {
 
 const StatCard = ({ label, value, note, tone = "neutral", className }: StatCardProps) => (
   <Card className={cn("flex flex-col gap-1.5 p-4", className)}>
-    <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">{label}</p>
+    <Caption as="p" shout>
+      {label}
+    </Caption>
     <p className={cn("font-mono font-semibold text-2xl leading-none", TONE[tone])}>{value}</p>
     <p className="text-muted-foreground text-xs">{note}</p>
   </Card>

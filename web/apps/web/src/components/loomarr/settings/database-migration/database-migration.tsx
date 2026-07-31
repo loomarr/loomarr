@@ -1,6 +1,6 @@
 import { formatBytes } from "@loomarr/core";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
-import { Badge, Button, Input, Label } from "@/components/ui";
+import { Badge, Button, Caption, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -256,9 +256,7 @@ const DatabaseMigration = ({
                             style={{ width: `${pct}%` }}
                           />
                         </span>
-                        <span className="w-24 shrink-0 text-right font-mono text-2xs text-muted-foreground">
-                          {`${t.copied}/${t.source}`}
-                        </span>
+                        <Caption className="w-24 shrink-0 text-right">{`${t.copied}/${t.source}`}</Caption>
                       </li>
                     );
                   })}

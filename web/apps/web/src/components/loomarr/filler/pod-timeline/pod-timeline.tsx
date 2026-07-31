@@ -1,6 +1,6 @@
 import type { PodEntryDTO, PodPoolDTOMatchLevel } from "@loomarr/api";
 import { formatClipDuration } from "@loomarr/core";
-import { Badge } from "@/components/ui";
+import { Badge, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -89,9 +89,9 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
               SEGMENT_FILL[entry.kind],
             )}
           >
-            <span className="truncate font-mono text-2xs text-static-100 uppercase tracking-wide">
+            <Caption tone="strong" shout className="truncate">
               {SEGMENT_ABBR[entry.kind]}
-            </span>
+            </Caption>
           </li>
         ))}
       </ul>

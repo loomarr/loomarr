@@ -1,4 +1,4 @@
-import { type ChannelPolicy, type CycleSlotDTO, channelsApi } from "@loomarr/api";
+import { type ChannelPolicy, type CycleSlotDTO, channelsApi, unwrap } from "@loomarr/api";
 import { Clapperboard, Clock, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge, Button, Input, Label } from "@/components/ui";
@@ -173,7 +173,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
   // One source, chosen once: every consumer below reads `body`, `isLoading` and `error` and
   // never asks which endpoint produced them.
   const active = draftPolicy ? draft : saved;
-  const body = active.data?.status === 200 ? active.data.data : undefined;
+  const body = unwrap(active.data);
 
   // key → show title, from the channel's lineup, so each episode slot names its show.
   const showByKey = new Map((lineupKeys ?? []).map((e) => [e.key, e.title]));

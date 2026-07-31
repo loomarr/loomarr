@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Badge } from "@/components/ui";
+import { Badge, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 
@@ -185,12 +185,9 @@ const SearchCommand = ({
         {groups.map((group) => (
           // biome-ignore lint/a11y/useSemanticElements: the rule suggests <fieldset>, which is for form controls and is not a valid listbox child; role="group" is the ARIA-correct way to section options.
           <div key={group.scope} role="group" aria-labelledby={`${listboxId}-${group.scope}`}>
-            <p
-              id={`${listboxId}-${group.scope}`}
-              className="px-2 pt-2 pb-1 font-mono text-2xs text-static-400 uppercase tracking-wide"
-            >
+            <Caption as="p" shout id={`${listboxId}-${group.scope}`} className="px-2 pt-2 pb-1">
               {SCOPE_LABEL[group.scope]}
-            </p>
+            </Caption>
             {group.items.map((item) => {
               // The option's position in the FLAT sequence, which is what the keyboard walks.
               // Looked up by id rather than tracked with a running counter, so the visual

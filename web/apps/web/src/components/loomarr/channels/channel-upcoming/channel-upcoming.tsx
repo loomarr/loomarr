@@ -1,4 +1,4 @@
-import { channelsApi } from "@loomarr/api";
+import { channelsApi, unwrap } from "@loomarr/api";
 import { formatEpgTime } from "@loomarr/core";
 import { cn } from "@/lib";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
@@ -12,7 +12,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   const upcoming = channelsApi.useChannelUpcoming(channelId, undefined, {
     query: { retry: false },
   });
-  const entries = upcoming.data?.status === 200 ? (upcoming.data.data.upcoming ?? []) : [];
+  const entries = unwrap(upcoming.data, (b) => b.upcoming) ?? [];
 
   return (
     <section className={cn("flex flex-col gap-2", className)}>

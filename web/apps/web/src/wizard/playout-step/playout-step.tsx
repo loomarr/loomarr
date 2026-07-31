@@ -1,4 +1,4 @@
-import { settingsApi, setupApi } from "@loomarr/api";
+import { settingsApi, setupApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
@@ -72,7 +72,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   // Essentials only, exactly as the checklist does it (§6): advanced keys live in Settings.
   const tunarrEntries = entries.filter((e) => e.group === "connections.tunarr" && !e.advanced);
   const status = setupApi.useSetupStatus();
-  const checks = status.data?.status === 200 ? (status.data.data.checks ?? []) : [];
+  const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standing = checks.find((c) => c.name === "tunarr");
 
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -81,7 +81,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const [tested, setTested] = useState<{ ok: boolean; hint?: string } | undefined>();
   const runTest = settingsApi.useSetupTest();
 
-  const patchResults = patch.data?.status === 200 ? (patch.data.data.results ?? undefined) : undefined;
+  const patchResults = unwrap(patch.data, (b) => b.results) ?? undefined;
   const dirty = Object.keys(edits).length > 0;
   // A just-run Test wins over the standing verdict, same precedence the checklist uses.
   const verdict = tested ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
