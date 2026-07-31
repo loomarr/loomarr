@@ -92,11 +92,13 @@ func (s *Service) Jobs() []scheduler.Job {
 	return []scheduler.Job{
 		{
 			Name: "retention-purge", Title: "Clean up old jobs and proposals",
+			Description: "Deletes finished job records and denied requests once they are older than your retention settings. Approved requests and anything still running are kept.",
 			DefaultCron: "0 30 4 * * *", ScheduleKey: "job.retention_purge.schedule",
 			Run: s.PurgeRecords,
 		},
 		{
 			Name: "activity-purge", Title: "Clean up old activity",
+			Description: "Trims the dashboard activity feed to the age you configured, so it stays quick to read.",
 			DefaultCron: "0 15 4 * * *", ScheduleKey: "job.activity_purge.schedule",
 			Run: s.PurgeActivity,
 		},

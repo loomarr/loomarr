@@ -57,9 +57,9 @@ RETURNING id, kind, status, intent_json, intent_hash, created_by, last_error,
 const sqliteScheduledJobClaimSQL = `
 UPDATE scheduled_jobs SET next_run = ?1
 WHERE name IN (
-    SELECT name FROM scheduled_jobs WHERE next_run <= ?2
+    SELECT name FROM scheduled_jobs WHERE next_run <= ?2 AND paused = 0
 )
-RETURNING name, last_run, last_result, last_error, next_run, updated_at`
+RETURNING name, last_run, last_result, last_error, next_run, updated_at, paused`
 
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.

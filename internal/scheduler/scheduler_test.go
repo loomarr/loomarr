@@ -22,10 +22,23 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]store.ScheduledJob{}} }
 
+// ⚠ Upsert PRESERVES `paused`, exactly as the SQL does by omitting it from ON CONFLICT DO
+// UPDATE. A fake that let the flag through would pass tests the database fails: this call runs
+// after every execution, so carrying paused would clear it on the next run of a paused job.
 func (f *fakeStore) UpsertScheduledJob(_ context.Context, j store.ScheduledJob) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	j.Paused = f.rows[j.Name].Paused
 	f.rows[j.Name] = j
+	return nil
+}
+
+func (f *fakeStore) SetScheduledJobPaused(_ context.Context, name string, paused bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row := f.rows[name]
+	row.Name, row.Paused = name, paused
+	f.rows[name] = row
 	return nil
 }
 func (f *fakeStore) GetScheduledJob(_ context.Context, name string) (store.ScheduledJob, error) {
@@ -54,6 +67,10 @@ func (f *fakeStore) ClaimDueScheduledJobs(_ context.Context, now time.Time, leas
 	defer f.mu.Unlock()
 	var due []store.ScheduledJob
 	for name, j := range f.rows {
+		// Paused rows are skipped, as the claim SQL does with `AND paused = 0/FALSE`.
+		if j.Paused {
+			continue
+		}
 		if !j.NextRun.After(now) {
 			leased := j
 			leased.NextRun = now.Add(lease)
@@ -87,7 +104,7 @@ func TestReconcileSeedsAndRuns(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
 	reg := NewRegistry().Add(Job{
-		Name: "a", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil },
+		Name: "a", Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil },
 	})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
@@ -125,7 +142,7 @@ func TestNotDueDoesNotRun(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
-	reg := NewRegistry().Add(Job{Name: "a", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
+	reg := NewRegistry().Add(Job{Name: "a", Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	// Seed it due in the future.
 	_ = st.UpsertScheduledJob(context.Background(), store.ScheduledJob{Name: "a", NextRun: clk.now().Add(time.Hour)})
@@ -144,7 +161,7 @@ func TestLeasePreventsDoubleRun(t *testing.T) {
 	release := make(chan struct{})
 	var starts int
 	var mu sync.Mutex
-	reg := NewRegistry().Add(Job{Name: "slow", DefaultCron: everyMinute, Run: func(context.Context) error {
+	reg := NewRegistry().Add(Job{Name: "slow", Title: "Slow", Description: "test job slow.", DefaultCron: everyMinute, Run: func(context.Context) error {
 		mu.Lock()
 		starts++
 		mu.Unlock()
@@ -173,7 +190,7 @@ func TestTriggerRunsOffCycle(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
-	reg := NewRegistry().Add(Job{Name: "a", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
+	reg := NewRegistry().Add(Job{Name: "a", Title: "A", Description: "test job a.", DefaultCron: everyMinute, Run: func(context.Context) error { ran.Add(1); return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 	// Not due for an hour.
@@ -196,8 +213,8 @@ func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var okRan atomic.Int64
 	reg := NewRegistry().
-		Add(Job{Name: "bad", DefaultCron: everyMinute, Run: func(context.Context) error { return errors.New("boom") }}).
-		Add(Job{Name: "good", DefaultCron: everyMinute, Run: func(context.Context) error { okRan.Add(1); return nil }})
+		Add(Job{Name: "bad", Title: "Bad", Description: "test job bad.", DefaultCron: everyMinute, Run: func(context.Context) error { return errors.New("boom") }}).
+		Add(Job{Name: "good", Title: "Good", Description: "test job good.", DefaultCron: everyMinute, Run: func(context.Context) error { okRan.Add(1); return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 	s.reconcileRegistry(ctx)
@@ -217,7 +234,7 @@ func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 func TestPanicIsContained(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
-	reg := NewRegistry().Add(Job{Name: "panics", DefaultCron: everyMinute, Run: func(context.Context) error { panic("kaboom") }})
+	reg := NewRegistry().Add(Job{Name: "panics", Title: "Panics", Description: "test job panics.", DefaultCron: everyMinute, Run: func(context.Context) error { panic("kaboom") }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 	s.reconcileRegistry(ctx)
@@ -245,9 +262,9 @@ func TestEffectiveCronUsesResolverThenDefault(t *testing.T) {
 		}
 	}
 	reg := NewRegistry().
-		Add(Job{Name: "a", DefaultCron: everyMinute, ScheduleKey: "job.a.schedule", Run: func(context.Context) error { return nil }}).
-		Add(Job{Name: "b", DefaultCron: "0 0 3 * * *", ScheduleKey: "job.b.schedule", Run: func(context.Context) error { return nil }}).
-		Add(Job{Name: "c", DefaultCron: everyMinute, ScheduleKey: "job.c.schedule", Run: func(context.Context) error { return nil }})
+		Add(Job{Name: "a", Title: "A", Description: "test job a.", DefaultCron: everyMinute, ScheduleKey: "job.a.schedule", Run: func(context.Context) error { return nil }}).
+		Add(Job{Name: "b", Title: "B", Description: "test job b.", DefaultCron: "0 0 3 * * *", ScheduleKey: "job.b.schedule", Run: func(context.Context) error { return nil }}).
+		Add(Job{Name: "c", Title: "C", Description: "test job c.", DefaultCron: everyMinute, ScheduleKey: "job.c.schedule", Run: func(context.Context) error { return nil }})
 	s := New(st, reg, resolver, clk.now, testLog())
 
 	if got := s.effectiveCron(s.jobs["a"]); got != "0 */15 * * * *" {
@@ -266,8 +283,8 @@ func TestListJoinsRegistryAndState(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	reg := NewRegistry().
-		Add(Job{Name: "first", Title: "First", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
-		Add(Job{Name: "second", Title: "Second", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }})
+		Add(Job{Name: "first", Description: "test job first.", Title: "First", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
+		Add(Job{Name: "second", Description: "test job second.", Title: "Second", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }})
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "first", LastResult: "ok", NextRun: clk.now().Add(time.Hour)})

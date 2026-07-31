@@ -66,12 +66,12 @@ RETURNING j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.
 const postgresScheduledJobClaimSQL = `
 WITH due AS (
     SELECT name FROM scheduled_jobs
-    WHERE next_run <= $2
+    WHERE next_run <= $2 AND paused = FALSE
     FOR UPDATE SKIP LOCKED
 )
 UPDATE scheduled_jobs sj SET next_run = $1
 FROM due WHERE sj.name = due.name
-RETURNING sj.name, sj.last_run, sj.last_result, sj.last_error, sj.next_run, sj.updated_at`
+RETURNING sj.name, sj.last_run, sj.last_result, sj.last_error, sj.next_run, sj.updated_at, sj.paused`
 
 // openPostgres opens a Postgres connection via pgx's stdlib shim and returns a
 // store wired with the SKIP-LOCKED claim SQL and $N placeholder rebinding.

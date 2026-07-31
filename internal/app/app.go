@@ -246,10 +246,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// their distinct job names never collide in the registry.
 		if arr := set.arrRequester(); arr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, arr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads"))
+			jobReg.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr/Radarr downloads",
+				"Asks Sonarr and Radarr how your in-progress downloads are doing, so the queue shows real progress and stalled grabs are visible."))
 		} else if seerr := set.seerrRequester(); seerr != nil {
 			queuePoll := reconcile.NewQueuePoll(st, seerr, emitter, set.dur("downloading.ttl"), time.Now, log)
-			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status"))
+			jobReg.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisition status",
+				"Asks Seerr which requested titles are still being fetched. Seerr reports a coarse status rather than a percentage."))
 		}
 	}
 
@@ -883,7 +885,43 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}
 			return def
 		}, time.Now, log).WithNotifier(emitter)
-		go sched.Run(rootCtx)
+		// Seed the state rows the Tasks page reads, then hand execution to River (§14, §18.1).
+		sched.SeedRegistry(rootCtx)
+		if pool := store.PoolOf(st); pool != nil {
+			stop, err := sched.StartRiver(rootCtx, st, pool, log)
+			if err != nil {
+				// ⚠ A failure here is fatal to the FEATURE, not to the process: without the
+				// queue nothing runs on a schedule, and the Tasks page must say so rather
+				// than list jobs whose next-run time is fiction. Logged loudly; the page
+				// still renders the rows with their real (stale) state.
+				log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
+			} else {
+				// ⚠ BuildHandler returns only a handler — there is no teardown seam to hang a
+				// Stop on — so River is stopped when rootCtx ends. This matters for the §9.2
+				// restart loop, which rebuilds the app IN-PROCESS: without an explicit stop,
+				// each generation leaves its client's goroutines running. The goleak test
+				// caught exactly that on the first attempt here.
+				//
+				// ⚠ StartRiver already stops the client when rootCtx is cancelled; this waits
+				// for that to FINISH before letting the store close. River's shutdown issues
+				// queries, so a pool closed underneath it strands its goroutines — measured at
+				// 4 leaked per generation, which the §9.2 restart loop's goleak test caught.
+				//
+				// Hung off the store's own teardown rather than returned from BuildHandler:
+				// the ordering constraint is precisely "not before the pool closes", so the
+				// wait belongs with the thing being protected, and every caller
+				// (main, tests, the integration harness) gets it without changing signature.
+				store.OnClose(st, func() {
+					waitCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer cancel()
+					if err := stop(waitCtx); err != nil {
+						log.Warn("scheduler: timed out waiting for River to stop", "err", err)
+					}
+				})
+			}
+		} else {
+			log.Error("scheduler: store exposes no pool — no job will run on its schedule")
+		}
 		jobsSvc = jobsAdapter{s: sched}
 	}
 

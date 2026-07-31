@@ -16,6 +16,7 @@ import (
 func (r *Runner) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "channel-sweep", Title: "Reconcile channels with Tunarr",
+		Description: "Rebuilds each live channel's upcoming schedule and pushes it to Tunarr, so the guide stays filled and newly available titles start airing.",
 		DefaultCron: "0 */10 * * * *", ScheduleKey: "job.channel_sweep.schedule",
 		Run: func(ctx context.Context) error { r.Sweep(ctx); return nil },
 	}

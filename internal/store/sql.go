@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/provision"
@@ -29,6 +30,9 @@ const (
 type sqlStore struct {
 	db      *sql.DB
 	dialect Dialect
+	// mu guards onClose only — the pool itself is already goroutine-safe.
+	mu      sync.Mutex
+	onClose []func() // pre-close hooks, run in order before the pool closes (see OnClose)
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path                 string
@@ -222,7 +226,42 @@ func (s *sqlStore) DeleteSetting(ctx context.Context, key string) error {
 	return err
 }
 
-func (s *sqlStore) Close() error { return s.db.Close() }
+// Close runs any registered pre-close hooks, then closes the pool.
+//
+// ⚠ The hooks run BEFORE the pool closes, and that ordering is the whole point. A subsystem
+// holding the pool (the background-job engine, §18.1) issues queries while shutting down; if
+// the pool goes first, its shutdown fails silently and its goroutines strand. Measured at 4
+// leaked goroutines per generation before this existed — a real cost under the §9.2 restart
+// loop, which rebuilds in-process.
+func (s *sqlStore) Close() error {
+	s.mu.Lock()
+	hooks := s.onClose
+	s.onClose = nil
+	s.mu.Unlock()
+	for _, h := range hooks {
+		h()
+	}
+	return s.db.Close()
+}
+
+// OnClose registers fn to run just BEFORE st's pool is closed. A no-op for a store that is not
+// a SQL store, and for a nil fn.
+//
+// Deliberately a free function taking Store (like DialectOf and PoolOf) rather than an
+// interface method: teardown ordering is a composition-root concern, and putting it on the
+// port would invite every consumer to register cleanup on a shared object.
+func OnClose(st Store, fn func()) {
+	if fn == nil {
+		return
+	}
+	s, ok := st.(*sqlStore)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onClose = append(s.onClose, fn)
+}
 
 // --- scanning helpers ---
 
