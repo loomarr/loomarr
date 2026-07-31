@@ -535,7 +535,7 @@ components:
           description: False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0
           type: boolean
         quality:
-          description: Resolution label; display-only, never affects pod selection
+          description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
         source:
           type: string

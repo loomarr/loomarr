@@ -87,6 +87,21 @@ type Policy struct {
 	// falls back to 4). Wired from the setting so preview and reconcile agree — previously
 	// the adapter hardcoded 32, ignoring the knob.
 	PodMax int
+	// MinQualityHeight is the opt-in minimum clip height in pixels (FILLER_MIN_QUALITY, §15;
+	// V17c). 0 ⇒ OFF, which is the default and the only value that preserves what
+	// `00014_clips_quality` originally promised.
+	//
+	// ⚠ **Off by default is the safety property, not a convenience.** That migration shipped
+	// with quality as display-only and warned that a well-meaning "prefer HD" would quietly
+	// starve the era-accurate 4:3 commercials the whole feature exists to play. That is still
+	// true; the floor exists for the narrower case an operator actually hits — a 240p rip that
+	// is unwatchable rather than nostalgic — and it costs them era accuracy they are choosing
+	// to trade away in their own settings.
+	//
+	// ⚠ A clip with NO known quality (audio-only, or scanned before 00014) is always eligible.
+	// Excluding unknowns would silently empty the catalog of every clip predating that
+	// migration the moment someone set a floor, which reads as "my commercials vanished".
+	MinQualityHeight int
 }
 
 // FallbackCard is the embedded default bumper-card asset (§10): Loomarr ships one
