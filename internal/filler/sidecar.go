@@ -35,6 +35,10 @@ type sidecarInfo struct {
 	// commercial uploaded in 2024 would be tagged 2024, which is exactly the kind of
 	// confidently-wrong metadata §10's grounding pass exists to keep out.
 	UploadDate string `json:"upload_date"`
+	// License is the source's declared licence URL (V33). ⚠ NOT a text signal — it never
+	// reaches the tagger's prompt, because "CC BY-NC-SA 4.0" says nothing about whether a
+	// clip is a cereal advert. It is a catalog fact, read by SidecarLicense instead.
+	License string `json:"license"`
 }
 
 // sidecarPathFor returns the info-JSON path for a media file: "clip.mp4" →
@@ -138,4 +142,28 @@ func isBoilerplate(line string) bool {
 		return true
 	}
 	return false
+}
+
+// SidecarLicense reads the licence URL a source declared for a clip (V33). Returns "" when
+// there is no sidecar, it does not parse, or the source declared none.
+//
+// ⚠ **Empty means UNKNOWN, never "public domain".** About 92% of Archive items carry no
+// licence at all (667 of 8362 in `classic_tv_commercials` — measured during the 2026-07-31
+// fixture capture), so absence is the common case and says nothing about permission. Callers
+// render "unknown", never a reassuring default.
+//
+// ⚠ Separate from SidecarText, deliberately. That function builds PROSE for the tagger, and a
+// licence is a catalog fact — "CC BY-NC-SA 4.0" tells a model nothing about whether a clip is a
+// cereal advert, and it would burn prompt tokens. Worse, it would not survive the trip:
+// `isBoilerplate` drops any line starting with http(s)://, which is every licence URL.
+func SidecarLicense(fsys fs.FS, mediaPath string) string {
+	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
+	if err != nil {
+		return "" // no sidecar is normal — drop-folder clips never had one
+	}
+	var info sidecarInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(info.License)
 }
