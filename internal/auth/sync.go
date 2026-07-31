@@ -21,12 +21,12 @@ type UserLister interface {
 // Local role/quota/auto_approve are preserved (admin-managed).
 type UserSync struct {
 	lib   UserLister
-	store store.Store
+	store store.UserStore
 	now   func() time.Time
 }
 
 // NewUserSync builds the user-sync service.
-func NewUserSync(lib UserLister, st store.Store, now func() time.Time) *UserSync {
+func NewUserSync(lib UserLister, st store.UserStore, now func() time.Time) *UserSync {
 	if now == nil {
 		now = time.Now
 	}

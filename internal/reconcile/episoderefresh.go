@@ -27,8 +27,19 @@ import (
 // acquisition, which already triggers a reconcile and a `channel` SSE frame. This job covers
 // what nothing else does: episodes added to the media server directly, with no Loomarr
 // acquisition behind them.
+// EpisodeStore is the slice of the store this job needs. It spans three domains —
+// series-episode rows, the channels that reference them, and the titles they resolve to —
+// which is why it is declared HERE rather than reached for as one of store's per-domain
+// groups: the shape belongs to this job, not to a table.
+type EpisodeStore interface {
+	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]store.SeriesEpisodes, error)
+	UpsertSeriesEpisodes(ctx context.Context, se store.SeriesEpisodes) error
+	ListChannels(ctx context.Context) ([]store.Channel, error)
+	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
+}
+
 type EpisodeRefresh struct {
-	store store.Store
+	store EpisodeStore
 	// episodes enumerates a show from the library. Injected (the same resolver the scheduler
 	// uses) so this package needs no library client and tests need no live server.
 	episodes func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error)
@@ -42,7 +53,7 @@ type EpisodeRefresh struct {
 // case Run is a no-op rather than an error: an install without a media server has nothing to
 // refresh, and a job that fails every tick would fill the Tasks page with red for no reason.
 func NewEpisodeRefresh(
-	st store.Store,
+	st EpisodeStore,
 	episodes func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error),
 	maxAge func() time.Duration,
 	now func() time.Time,

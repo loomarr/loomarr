@@ -19,7 +19,7 @@ import (
 // but continuous and not deadline-gated, so availability lands promptly without the inbound
 // webhook (which is retired once this is proven).
 type LibraryScan struct {
-	store   store.Store
+	store   store.TitleStore
 	scanner library.LibraryScanner
 	emit    Emitter
 	now     func() time.Time
@@ -36,7 +36,7 @@ type LibraryScan struct {
 
 // NewLibraryScan builds a scan. now defaults to time.Now; lookback defaults to 1h (comfortably
 // wider than the default 5-minute scan cadence).
-func NewLibraryScan(st store.Store, scanner library.LibraryScanner, emit Emitter, lookback time.Duration, now func() time.Time, log *slog.Logger) *LibraryScan {
+func NewLibraryScan(st store.TitleStore, scanner library.LibraryScanner, emit Emitter, lookback time.Duration, now func() time.Time, log *slog.Logger) *LibraryScan {
 	if now == nil {
 		now = time.Now
 	}
