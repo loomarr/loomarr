@@ -44,6 +44,17 @@ func (s *Server) registerFiller(api huma.API) {
 		Summary: "Download clips into the drop-folder (admin; loomarr:filler image only)",
 		Tags:    []string{"filler"},
 	}, RoleAdmin), s.ingestFiller)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "discover-filler", Method: http.MethodGet, Path: "/v1/filler/discover",
+		Summary: "Search archive.org for clips to add",
+		Description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates " +
+			"WITHOUT downloading anything — the operator is deciding what to fetch, and making them " +
+			"download to find out would defeat the point. Results carry only what the source's search " +
+			"index knows: no duration, no tags, and no licence (see below). Feed an id to POST " +
+			"/v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.discoverFiller)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the clip's PATH relative to
@@ -282,5 +293,61 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	}
 	out := &ingestFillerOutput{}
 	out.Body.JobID = jobID
+	return out, nil
+}
+
+// --- discovery (§10, V33) ---
+
+type discoverFillerInput struct {
+	// Query is what the operator typed. Required: an empty search would return archive.org's
+	// entire movies corpus ranked by nothing, which is not an answer to any question.
+	Query string `query:"q" required:"true" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\""`
+	// Limit caps the page. A listing is for DECIDING — an operator judges a source from a
+	// handful of titles — so the ceiling is low on purpose.
+	Limit int `query:"limit" minimum:"1" maximum:"25" doc:"Max results (default 25)"`
+}
+
+type discoverFillerOutput struct {
+	Body struct {
+		Items []DiscoveredClip `json:"items"`
+		// Total is how many the SOURCE matched, not how many were returned. An operator
+		// judging "is this search any good" needs the real number: 54 hits shown 5 at a
+		// time is a different situation from 5 hits total.
+		Total int `json:"total"`
+		// ⚠ Stated ONCE here rather than as a per-item field, and that is deliberate.
+		// archive.org declares a licence on only ~8% of items, and yt-dlp reports none at
+		// all, so a per-result licence chip would read "unknown" on nearly every row —
+		// implying a check that never happened. See the build plan §6.3.
+		LicenceNote string `json:"licenceNote"`
+	}
+}
+
+// discoverFiller searches for clips the operator could add, downloading nothing.
+func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*discoverFillerOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up",
+			"Enable filler in Settings before searching for clips to add.")
+	}
+
+	items, total, err := s.filler.Discover(ctx, in.Query, in.Limit)
+	if err != nil {
+		// A search failure is upstream (archive.org unreachable or refusing), not the
+		// caller's fault — so it is a 502-shaped problem, and the message says which side
+		// broke rather than blaming the query.
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't search for clips",
+			"archive.org didn't answer. Try again in a moment.", err)
+	}
+
+	out := &discoverFillerOutput{}
+	// Non-nil so a client can iterate without guarding; "nothing matched" is a real answer.
+	out.Body.Items = items
+	if out.Body.Items == nil {
+		out.Body.Items = []DiscoveredClip{}
+	}
+	out.Body.Total = total
+	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
 	return out, nil
 }

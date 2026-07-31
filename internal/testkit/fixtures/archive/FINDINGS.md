@@ -49,8 +49,20 @@ the 2026-07-13 capture above was taken for the DOWNLOAD walk and pins only `medi
     `licenseurl`, one word — NOT `license` and NOT `rights`; both were checked and are absent.
   - a **non-ASCII title** (Japanese) and a 75 MB original, which the earlier fixture's ASCII title
     and small files never exercised.
-- `collection_search.json` — `GET /advancedsearch.php?q=collection:classic_tv_commercials&fl[]=identifier&rows=8&output=json`,
-  HTTP 200, trimmed to 5 of 8362 docs. The shape discovery lists from.
+- `collection_search.json` — `GET /advancedsearch.php?q=collection:classic_tv_commercials&…&output=json`,
+  HTTP 200, 5 of 8362 docs. The shape discovery lists from.
+
+  ⚠ **Re-captured with more fields (same day) once discovery was being built.** The first
+  version requested `fl[]=identifier` only — enough for the download walk, which fetches each
+  item's metadata anyway, and useless for a listing that has to show titles and licences without
+  downloading anything. Asking for `title`/`licenseurl`/`year` is one request either way.
+
+  ⚠ **The docs are DELIBERATELY MIXED, because the live API is.** Solr omits an absent field
+  entirely rather than sending an empty value, so the five docs cover all four real shapes:
+  licence+year, licence only, year only, and neither. Two of the five carry a licence — the
+  other three do not, which is the 92%-absent rate showing up in miniature. A fixture where
+  every doc looked the same would let a parser that assumes `title`, `year` or `licenseurl` is
+  always present pass here and fail on any real collection.
 
 ⚠ **`licenseurl` is OFTEN ABSENT, and that is the normal case rather than an edge one.** The item
 the older fixture uses (`warning-cic-logo-…`) has no licence at all — re-checked live during this

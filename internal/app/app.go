@@ -657,6 +657,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		fillerSvc = fillerServiceAdapter{
 			syncer: syncer, tagger: tagger, fetcher: fetcher,
 			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
+			sources: st, now: time.Now,
 		}
 
 		// Pod assembler → scheduler (§10). If the channel engine is up, teach it to

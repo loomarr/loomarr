@@ -152,6 +152,11 @@ const stubFetch = () => {
       return Promise.resolve(json({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }));
     // Before the /v1/filler catalog match below: this path contains "/filler" but is the
     // per-CHANNEL coverage route, and a clips payload would not satisfy the meter.
+    if (u.includes("/filler/discover")) {
+      return Promise.resolve(
+        json({ items: [], total: 0, licenceNote: "Licence information isn't available." }),
+      );
+    }
     if (u.includes("/filler/coverage")) {
       return Promise.resolve(json({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }));
     }
@@ -293,6 +298,10 @@ describe("feature-gated panels mount when their flag is on", () => {
     ["/settings/security", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from your media server/i, "the §11 import panel"],
     ["/filler", /download clips/i, "the ingest panel"],
+    // V33: searching is how an operator decides what to download, so the panel that does it
+    // must be on the page — not merely built. This suite exists because eight things were
+    // built, unit-tested and imported by nothing.
+    ["/filler", /find clips/i, "the discover panel"],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
     renderAt(path);

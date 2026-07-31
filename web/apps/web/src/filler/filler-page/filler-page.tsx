@@ -5,7 +5,14 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/auth";
-import { ClipCard, CountTabs, EmptyState, ErrorState, FillerSources } from "@/components/loomarr";
+import {
+  ClipCard,
+  CountTabs,
+  DiscoverPanel,
+  EmptyState,
+  ErrorState,
+  FillerSources,
+} from "@/components/loomarr";
 import {
   Button,
   Card,
@@ -59,6 +66,26 @@ const FillerPage = () => {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
+
+  // Find clips (V33). ⚠ Two pieces of query state, not one: `discoverQuery` is what the
+  // operator is TYPING and `discoverSubmitted` is what they SEARCHED for. Firing on every
+  // keystroke would send a request per character to a public API we do not own.
+  const [discoverQuery, setDiscoverQuery] = useState("");
+  const [discoverSubmitted, setDiscoverSubmitted] = useState("");
+  const discover = fillerApi.useDiscoverFiller(
+    { q: discoverSubmitted },
+    // enabled: only after a real search. retry: false because a 502 here means archive.org
+    // is not answering, and retrying three times just delays telling the operator that.
+    { query: { enabled: discoverSubmitted !== "", retry: false } },
+  );
+  const discovered = unwrap(discover.data, (b) => b.items) ?? [];
+  const discoverTotal = unwrap(discover.data, (b) => b.total) ?? 0;
+  const discoverNote = unwrap(discover.data, (b) => b.licenceNote);
+
+  // Adding a discovered clip is an INGEST, not a new mechanism: the id becomes the archive.org
+  // URL the existing downloader already accepts. Reusing that path means one place understands
+  // how a download is started, reported and retried.
+  const ingestIds = fillerApi.useIngestFiller({ mutation: { onSuccess: invalidate } });
 
   // ⚠ Every hook stays ABOVE the `fillerConfigured` early return below. Placing these two
   // after it skipped them on the unconfigured path and crashed the page with "rendered more
@@ -302,12 +329,38 @@ const FillerPage = () => {
             />
           )}
 
+          {/* Find clips sits ABOVE Download: searching is how an operator decides WHAT to
+              download, so the order follows the task. Discovery works on any image — it is
+              plain HTTP to a public API — while Download needs the filler tooling, which is
+              why only the latter is gated. */}
+          {isAdmin && (
+            <DiscoverPanel
+              items={discovered}
+              total={discoverTotal}
+              licenceNote={discoverNote}
+              query={discoverQuery}
+              onQueryChange={setDiscoverQuery}
+              onSearch={() => setDiscoverSubmitted(discoverQuery.trim())}
+              searching={discover.isFetching}
+              searched={discoverSubmitted !== ""}
+              {...(features?.ingest
+                ? { onAdd: (ids: string[]) => ingestIds.mutate({ data: { urls: ids.map(archiveURL) } }) }
+                : {})}
+            />
+          )}
+
           {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}
         </div>
       )}
     </div>
   );
 };
+
+// archiveURL turns a discovered id into the URL ingest takes. ⚠ Built here rather than trusted
+// from the API's `url` field: that one is the item's human-facing details page, and while the
+// two happen to coincide today, ingest resolving a display URL would be a coincidence rather
+// than a contract.
+const archiveURL = (id: string) => `https://archive.org/details/${encodeURIComponent(id)}`;
 
 // PageHeading — orients the two-surface model the per-channel filler feature introduced:
 // this page is the CATALOG (every clip, its tags), while each channel CHOOSES from it on
