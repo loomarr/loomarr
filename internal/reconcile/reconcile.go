@@ -25,7 +25,7 @@ type Emitter interface {
 
 // Reconciler drives the provisioning backstop loop.
 type Reconciler struct {
-	store store.Store
+	store store.TitleStore
 	req   requester.Requester
 	lib   library.Library
 	emit  Emitter
@@ -47,7 +47,7 @@ type Config struct {
 }
 
 // New builds a Reconciler. now defaults to time.Now.
-func New(st store.Store, req requester.Requester, lib library.Library, emit Emitter, cfg Config, now func() time.Time, log *slog.Logger) *Reconciler {
+func New(st store.TitleStore, req requester.Requester, lib library.Library, emit Emitter, cfg Config, now func() time.Time, log *slog.Logger) *Reconciler {
 	if now == nil {
 		now = time.Now
 	}
