@@ -22,7 +22,7 @@ type QueueStatuser interface {
 // persists its progress on the title record. It does NOT flip anything to `available` — that
 // stays the library scan's job (a file in the download client isn't yet in the media library).
 type QueuePoll struct {
-	store store.Store
+	store store.TitleStore
 	queue QueueStatuser
 	emit  Emitter
 	now   func() time.Time
@@ -32,7 +32,7 @@ type QueuePoll struct {
 
 // NewQueuePoll builds the poller. now defaults to time.Now; downloadingTTL defaults to 12h (the
 // same shorter deadline the reconciler uses once a title is genuinely downloading).
-func NewQueuePoll(st store.Store, queue QueueStatuser, emit Emitter, downloadingTTL time.Duration, now func() time.Time, log *slog.Logger) *QueuePoll {
+func NewQueuePoll(st store.TitleStore, queue QueueStatuser, emit Emitter, downloadingTTL time.Duration, now func() time.Time, log *slog.Logger) *QueuePoll {
 	if now == nil {
 		now = time.Now
 	}

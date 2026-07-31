@@ -52,7 +52,7 @@ type Reconciler interface {
 // Binder materializes approved proposals onto channels (§7). Holds the store + an
 // optional Reconciler + a logger.
 type Binder struct {
-	store store.Store
+	store Store
 	rec   Reconciler
 	log   *slog.Logger
 }

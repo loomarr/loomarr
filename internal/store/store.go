@@ -16,13 +16,8 @@ import (
 // ErrNotFound is returned by Get* methods when no row matches.
 var ErrNotFound = errors.New("store: not found")
 
-// Store is the full persistence surface (§5). Methods are grouped by domain;
-// each group is implemented by the phase that owns it. The provisioning group
-// and settings KV are exercised in Phase 3; scheduler/filler/user/job/proposal
-// behavior is filled by Phases 9–12, but the interface is defined here so those
-// phases add behavior without reshaping callers.
-type Store interface {
-	// --- provisioning (§3–§4) ---
+// TitleStore is the provisioning surface (§3–§4).
+type TitleStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	UpsertTitle(ctx context.Context, rec provision.Record) error
 	// UpdateTitleProgress writes only the poll-updated download fields (§18.1 arr-queue-poll),
@@ -38,8 +33,10 @@ type Store interface {
 	// this is what prevents two replicas both firing a give-up/retry. SQLite: a
 	// guarded UPDATE (single instance, §5). Postgres: FOR UPDATE SKIP LOCKED.
 	ClaimDueTitles(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]provision.Record, error)
+}
 
-	// --- scheduler / channels (§9) ---
+// ChannelStore is the scheduler/channel surface (§9), including channel icons.
+type ChannelStore interface {
 	GetChannel(ctx context.Context, id string) (Channel, error)
 	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
 	UpsertChannel(ctx context.Context, ch Channel) error
@@ -58,13 +55,14 @@ type Store interface {
 	// (§18: single-leader / per-channel row claiming). SQLite: guarded UPDATE.
 	// Postgres: FOR UPDATE SKIP LOCKED. Detached channels are never claimed.
 	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Channel, error)
+}
 
-	// --- cached series episode lists (§5, §9 series expansion) ---
-	//
-	// A materialized answer, not a second source of truth: the media server still owns what
-	// episodes exist. It exists because enumerating a show is one library call, and doing it
-	// per series on every guide request was ~90% of that endpoint's latency.
-	//
+// SeriesEpisodeStore is the cached series episode lists (§5, §9 series expansion).
+//
+// A materialized answer, not a second source of truth: the media server still owns what
+// episodes exist. It exists because enumerating a show is one library call, and doing it
+// per series on every guide request was ~90% of that endpoint's latency.
+type SeriesEpisodeStore interface {
 	// GetSeriesEpisodes returns ErrNotFound for a show never enumerated — deliberately
 	// distinct from a cached EMPTY list, which is a real answer ("no episodes present yet").
 	GetSeriesEpisodes(ctx context.Context, libraryID string) (SeriesEpisodes, error)
@@ -72,8 +70,10 @@ type Store interface {
 	// ListStaleSeriesEpisodes returns shows fetched before `before`, oldest first, for the
 	// series-episode-refresh job (§18.1).
 	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
+}
 
-	// --- suggester jobs & proposals (§8) ---
+// JobStore is the suggester job queue (§8).
+type JobStore interface {
 	CreateJob(ctx context.Context, j Job) error
 	GetJob(ctx context.Context, id string) (Job, error)
 	UpdateJob(ctx context.Context, j Job) error
@@ -85,18 +85,29 @@ type Store interface {
 	// FindJobByIntentHash returns a recent job with the same intent hash (§8
 	// proposal cache), or ErrNotFound. `since` bounds the cache TTL.
 	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error)
+	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
+	// In-flight jobs (queued/running) are never removed by age.
+	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
+}
 
+// ProposalStore is the suggester proposal surface (§8).
+type ProposalStore interface {
 	CreateProposal(ctx context.Context, p Proposal) error
 	GetProposal(ctx context.Context, id string) (Proposal, error)
 	UpdateProposal(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	// PurgeDeniedProposals removes denied proposals older than `before` (§5
+	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
+	// indefinitely; submitted ones are still awaiting an answer.
+	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+}
 
-	// --- scheduled jobs (the background-job scheduler, §18.1) ---
+// ScheduledJobStore is the background-job scheduler's state (§18.1).
+type ScheduledJobStore interface {
 	// UpsertScheduledJob writes a job's runtime state (last-run/result + next-run lease).
 	// ⚠ Never writes `paused` — see SetScheduledJobPaused.
 	UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
-
 	// SetScheduledJobPaused pauses or resumes a job (§18.1). A paused job is never claimed by
 	// ClaimDueScheduledJobs, so it simply does not run until resumed. Creates the row if the
 	// job has not run yet, so a task can be paused before its first execution.
@@ -108,8 +119,10 @@ type Store interface {
 	// ClaimDueScheduledJobs leases every job whose next_run is due (advancing next_run to
 	// now+lease) so only one replica runs it per tick — same SKIP LOCKED idiom as titles.
 	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]ScheduledJob, error)
+}
 
-	// --- users & sessions (§11) ---
+// UserStore is the users & sessions surface (§11).
+type UserStore interface {
 	GetUser(ctx context.Context, id string) (User, error)
 	// GetUserByName resolves a username to its allowlist row (§11 local login).
 	GetUserByName(ctx context.Context, name string) (User, error)
@@ -123,16 +136,10 @@ type Store interface {
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
+}
 
-	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
-	// In-flight jobs (queued/running) are never removed by age.
-	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
-	// PurgeDeniedProposals removes denied proposals older than `before` (§5
-	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
-	// indefinitely; submitted ones are still awaiting an answer.
-	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
-
-	// --- filler clips (§10) ---
+// ClipStore is the filler clip catalog (§10).
+type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// ListClips returns clips matching the filter (any zero-value field is a
@@ -141,29 +148,6 @@ type Store interface {
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. Returns ErrNotFound if absent.
 	UpdateClipTags(ctx context.Context, libraryItemID string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error
-	// RecordClipPlay counts a filler clip having AIRED (V28). Written from playout only;
-	// a missing clip is not an error (the catalog may have pruned it mid-schedule).
-	RecordClipPlay(ctx context.Context, libraryItemID string, at time.Time) error
-
-	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
-	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
-	// actually resolved for streaming; upserts one row per (channel, key) holding the LAST
-	// airing, because the only question asked of it is "when did this last air here?".
-	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
-	// LastAiredByChannel returns the most recent airing per key on one channel, for
-	// recency-aware placement (programming-design §3.1). A key that has never aired is simply
-	// absent — callers treat absence as "least recently aired", which sorts it first.
-	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
-
-	// RecordActivity appends one Dashboard feed row (§5, §12, V32). Best-effort by
-	// contract: callers log the error and carry on — recording that something happened must
-	// never be able to stop it happening.
-	RecordActivity(ctx context.Context, a Activity) error
-	// ListActivity returns the newest feed rows first, capped at limit.
-	ListActivity(ctx context.Context, limit int) ([]Activity, error)
-	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
-	// is the one append-only table here, so it is the one that needs a purge.
-	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipTags because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
@@ -175,8 +159,39 @@ type Store interface {
 	// ListUntaggedCommercials returns commercials missing match tags — the AI
 	// tagging job's work list (§10). Sugar over ListClips(UntaggedOnly).
 	ListUntaggedCommercials(ctx context.Context) ([]Clip, error)
+}
 
-	// --- settings KV (§5): instance id, per-app webhook last-received, etc. ---
+// AiringStore records what actually went to air — written from playout only.
+type AiringStore interface {
+	// RecordClipPlay counts a filler clip having AIRED (V28). Written from playout only;
+	// a missing clip is not an error (the catalog may have pruned it mid-schedule).
+	RecordClipPlay(ctx context.Context, libraryItemID string, at time.Time) error
+	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
+	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
+	// actually resolved for streaming; upserts one row per (channel, key) holding the LAST
+	// airing, because the only question asked of it is "when did this last air here?".
+	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
+	// LastAiredByChannel returns the most recent airing per key on one channel, for
+	// recency-aware placement (programming-design §3.1). A key that has never aired is simply
+	// absent — callers treat absence as "least recently aired", which sorts it first.
+	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+}
+
+// ActivityStore is the Dashboard feed (§5, §12, V32).
+type ActivityStore interface {
+	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log
+	// the error and carry on — recording that something happened must never be able to
+	// stop it happening.
+	RecordActivity(ctx context.Context, a Activity) error
+	// ListActivity returns the newest feed rows first, capped at limit.
+	ListActivity(ctx context.Context, limit int) ([]Activity, error)
+	// PurgeActivity deletes feed rows older than `before` (§18.1 activity-purge). The feed
+	// is the one append-only table here, so it is the one that needs a purge.
+	PurgeActivity(ctx context.Context, before time.Time) (int, error)
+}
+
+// SettingStore is the settings KV (§5): instance id, per-app webhook last-received, etc.
+type SettingStore interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
 	// ListSettings returns every persisted override with its audit metadata
@@ -198,9 +213,11 @@ type Store interface {
 	// being taken over, so unlocking does not blank the setting; empty for secrets,
 	// which never seed). Existing rows keep their stored value.
 	SetSettingEnvOverride(ctx context.Context, key string, on bool, seed, by string) error
+}
 
-	// --- observability counts (§17 /metrics state gauges) ---
-	// Read on scrape by the metrics collector, never on the write path.
+// CountStore is the §17 /metrics state gauges. Read on scrape by the metrics
+// collector, never on the write path.
+type CountStore interface {
 	// CountTitlesByState returns the record count per provisioning state; a
 	// state with no rows is omitted (the collector zero-fills the known set).
 	CountTitlesByState(ctx context.Context) (map[provision.State]int, error)
@@ -209,6 +226,32 @@ type Store interface {
 	CountJobsByStatus(ctx context.Context) (map[string]int, error)
 	// CountActiveSessions returns the number of unexpired sessions as of now.
 	CountActiveSessions(ctx context.Context, now time.Time) (int, error)
+}
+
+// Store is the full persistence surface (§5) — the union of the per-domain
+// interfaces above, which is what the composition root and the conformance suite
+// hold. Callers that need one domain should depend on that domain's interface
+// instead: the narrow role interfaces domain packages already declare for
+// themselves (binder.Store, filler.Store, scheduler.ScheduleStore, …) are the
+// pattern, and these groups exist so a consumer has something to name without
+// re-declaring one.
+//
+// ⚠ The grouping is by DOMAIN, not by caller. A new method belongs in the group
+// that owns its table; a group existing to serve one consumer would drift back
+// into the 68-method union this replaced the moment a second consumer appeared.
+type Store interface {
+	TitleStore
+	ChannelStore
+	SeriesEpisodeStore
+	JobStore
+	ProposalStore
+	ScheduledJobStore
+	UserStore
+	ClipStore
+	AiringStore
+	ActivityStore
+	SettingStore
+	CountStore
 
 	// Close releases the underlying database handle.
 	Close() error
