@@ -42,6 +42,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
 	t.Run("ScheduledJobRoundTrip", func(t *testing.T) { testScheduledJobRoundTrip(t, newStore) })
 	t.Run("ClaimDueScheduledJobs", func(t *testing.T) { testClaimDueScheduledJobs(t, newStore) })
+	t.Run("ScheduledJobPaused", func(t *testing.T) { testScheduledJobPaused(t, newStore) })
 	t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
 	t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
 	t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
@@ -1491,5 +1492,79 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 	}
 	if _, err := st.GetProposal(ctx, "p-denied"); err == nil {
 		t.Error("the old denied proposal survived a purge that should have removed it")
+	}
+}
+
+// testScheduledJobPaused: the pause flag persists, survives an ordinary state write, and keeps
+// the job out of the due-claim (§18.1). One suite, both dialects — the claim SQL differs
+// (guarded UPDATE vs FOR UPDATE SKIP LOCKED) and both must skip paused rows.
+func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Unix(1_700_000_000, 0).UTC()
+
+	// Due NOW, not paused: the control case — without it, "did not run" proves nothing.
+	if err := s.UpsertScheduledJob(ctx, ScheduledJob{Name: "reconcile", NextRun: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetScheduledJobPaused(ctx, "reconcile", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetScheduledJob(ctx, "reconcile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Paused {
+		t.Fatal("pause did not persist")
+	}
+
+	// ⚠ An ordinary state write must NOT clear it. This runs after every execution, so if
+	// `paused` rode in UpsertScheduledJob's DO UPDATE list, the next run would silently resume
+	// a job the operator paused.
+	if err := s.UpsertScheduledJob(ctx, ScheduledJob{
+		Name: "reconcile", LastResult: "ok", LastRun: now, NextRun: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.GetScheduledJob(ctx, "reconcile"); !got.Paused {
+		t.Error("a routine state write cleared paused — it must be absent from ON CONFLICT DO UPDATE")
+	}
+
+	// ⚠ The behaviour: a paused row is never claimed, even though it is due.
+	due, err := s.ClaimDueScheduledJobs(ctx, now.Add(time.Minute), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range due {
+		if j.Name == "reconcile" {
+			t.Error("a paused job was claimed; it would then run on its schedule")
+		}
+	}
+
+	// Resuming makes it claimable again, or pause is a one-way door.
+	if err := s.SetScheduledJobPaused(ctx, "reconcile", false); err != nil {
+		t.Fatal(err)
+	}
+	due, err = s.ClaimDueScheduledJobs(ctx, now.Add(2*time.Minute), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, j := range due {
+		if j.Name == "reconcile" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a resumed job was still not claimed")
+	}
+
+	// Pausing a job that has never run creates the row, so a task can be paused before its
+	// first execution rather than only after it has already gone off once.
+	if err := s.SetScheduledJobPaused(ctx, "never-ran", true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = s.GetScheduledJob(ctx, "never-ran"); err != nil || !got.Paused {
+		t.Errorf("pausing an unseen job = (%+v, %v), want a created paused row", got, err)
 	}
 }

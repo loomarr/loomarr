@@ -113,8 +113,11 @@ func (b *backupsService) Run(ctx context.Context) (api.BackupEntry, error) {
 const (
 	backupJobName  = "backup"
 	backupJobTitle = "Back up the database"
-	backupJobCron  = "0 30 3 * * *"
-	backupJobKey   = "backup.schedule"
+	// One description for both the runnable and the disabled listing: the job DOES the same
+	// thing either way, and the reason it cannot run here is its DisabledReason, not its blurb.
+	backupJobDesc = "Writes a snapshot of the database to your backup folder, then deletes the oldest ones past the number you keep."
+	backupJobCron = "0 30 3 * * *"
+	backupJobKey  = "backup.schedule"
 )
 
 // Job returns the scheduled backup.
@@ -124,7 +127,7 @@ const (
 // the manual path come to disagree about which files are safe to delete.
 func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
 	return scheduler.Job{
-		Name: backupJobName, Title: backupJobTitle,
+		Name: backupJobName, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
 		Run: func(ctx context.Context) error {
 			entry, err := s.Run(ctx)
@@ -151,7 +154,7 @@ func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
 // no-op that looks like a successful backup.
 func unavailableBackupJob(reason string) scheduler.Job {
 	return scheduler.Job{
-		Name: backupJobName, Title: backupJobTitle,
+		Name: backupJobName, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
 		DisabledReason: reason,
 	}

@@ -20,6 +20,7 @@ import (
 func fillerSyncJob(s *filler.Syncer) scheduler.Job {
 	return scheduler.Job{
 		Name: "filler-sync", Title: "Sync filler catalog",
+		Description: "Re-reads your filler folder so new commercials and bumpers become available to the ad breaks between programmes.",
 		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
 	}

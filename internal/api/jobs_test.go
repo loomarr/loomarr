@@ -16,11 +16,26 @@ import (
 type fakeJobs struct {
 	list      []api.JobView
 	triggered []string
-	unknown   string // a name that Trigger reports as not-found
-	disabled  string // a name that Trigger reports as disabled on this backend
+	paused    map[string]bool // name -> last requested pause state
+	unknown   string          // a name that Trigger reports as not-found
+	disabled  string          // a name that Trigger reports as disabled on this backend
 }
 
 func (f *fakeJobs) List(context.Context) ([]api.JobView, error) { return f.list, nil }
+
+func (f *fakeJobs) SetPaused(_ context.Context, name string, paused bool) error {
+	if name == f.unknown {
+		return api.ErrJobNotFound
+	}
+	if name == f.disabled {
+		return api.ErrJobDisabled
+	}
+	if f.paused == nil {
+		f.paused = map[string]bool{}
+	}
+	f.paused[name] = paused
+	return nil
+}
 func (f *fakeJobs) Trigger(_ context.Context, name string) error {
 	if name == f.unknown {
 		return api.ErrJobNotFound
@@ -160,5 +175,67 @@ func TestJobs_UnavailableWhenNoScheduler(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/jobs", adminToken, "")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("list with no scheduler → %d, want 501", resp.StatusCode)
+	}
+}
+
+// Pausing reaches the scheduler with the requested state, and resuming reaches it with false —
+// the endpoint takes a body rather than being two routes, so "which way" is a real assertion.
+func TestJobs_PauseAndResume(t *testing.T) {
+	svc := &fakeJobs{}
+	srv := serverWithJobs(t, svc)
+
+	resp := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/pause", adminToken, `{"paused":true}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		t.Fatalf("pause → %d, want 2xx", resp.StatusCode)
+	}
+	if !svc.paused["reconcile"] {
+		t.Error("pause did not reach the scheduler as true")
+	}
+
+	r2 := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/pause", adminToken, `{"paused":false}`)
+	defer func() { _ = r2.Body.Close() }()
+	if svc.paused["reconcile"] {
+		t.Error("resume did not reach the scheduler as false")
+	}
+}
+
+// ⚠ §19: a member cannot pause a job. Pausing stops acquisitions and channel rebuilds from
+// happening at all, so it is squarely an admin action.
+func TestJobs_PauseIsAdminOnly(t *testing.T) {
+	svc := &fakeJobs{}
+	srv := serverWithJobs(t, svc)
+
+	resp := do(t, srv, http.MethodPost, "/v1/jobs/reconcile/pause", memberToken, `{"paused":true}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("member pause → %d, want 403", resp.StatusCode)
+	}
+	if _, ok := svc.paused["reconcile"]; ok {
+		t.Error("a member's pause reached the scheduler — the refusal must be server-side")
+	}
+}
+
+// A job this backend cannot run at all is a 409, not a 404: it exists and is on the admin's
+// screen. Pausing it is refused because that is an environment fact, not a preference.
+func TestJobs_PauseDisabledIs409(t *testing.T) {
+	srv := serverWithJobs(t, &fakeJobs{disabled: "backup"})
+
+	resp := do(t, srv, http.MethodPost, "/v1/jobs/backup/pause", adminToken, `{"paused":true}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("pause of a disabled job → %d, want 409", resp.StatusCode)
+	}
+}
+
+// An unregistered name is a 404 — distinct from the 409 above, so an admin is not sent hunting
+// for a job that is on their screen.
+func TestJobs_PauseUnknownIs404(t *testing.T) {
+	srv := serverWithJobs(t, &fakeJobs{unknown: "nope"})
+
+	resp := do(t, srv, http.MethodPost, "/v1/jobs/nope/pause", adminToken, `{"paused":true}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("pause of an unknown job → %d, want 404", resp.StatusCode)
 	}
 }

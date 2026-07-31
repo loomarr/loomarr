@@ -12,6 +12,7 @@ import (
 func (r *Runner) Job() scheduler.Job {
 	return scheduler.Job{
 		Name: "channel-recurate", Title: "Re-curate self-updating channels",
+		Description: "Re-runs the intent behind each channel you opted in, so its lineup evolves as your library grows. Anything new still goes through approval.",
 		DefaultCron: "0 0 4 * * 0", ScheduleKey: "job.recurate.schedule",
 		Run: func(ctx context.Context) error { _, err := r.Run(ctx); return err },
 	}

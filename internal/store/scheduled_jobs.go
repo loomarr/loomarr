@@ -18,9 +18,17 @@ type ScheduledJob struct {
 	LastError  string
 	NextRun    time.Time
 	UpdatedAt  time.Time
+	// Paused stops the job running on its schedule (§18.1). Operator-set and durable, so it
+	// survives restarts — distinct from DisabledReason, which states an environment fact the
+	// operator cannot change and which offers no Resume.
+	//
+	// ⚠ Written ONLY by SetScheduledJobPaused, never by UpsertScheduledJob: that upsert runs
+	// after every execution, so carrying `paused` in its DO UPDATE list would clear the flag
+	// on the next run of any job someone paused.
+	Paused bool
 }
 
-const scheduledJobSelect = `SELECT name, last_run, last_result, last_error, next_run, updated_at FROM scheduled_jobs`
+const scheduledJobSelect = `SELECT name, last_run, last_result, last_error, next_run, updated_at, paused FROM scheduled_jobs`
 
 // UpsertScheduledJob writes a job's state, creating the row on first sight (boot registry
 // reconcile) and updating it after each run. Identity is `name`.
@@ -34,6 +42,26 @@ func (s *sqlStore) UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
 		j.Name, epoch(j.LastRun), j.LastResult, j.LastError, epoch(j.NextRun), epoch(j.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert scheduled job %s: %w", j.Name, err)
+	}
+	return nil
+}
+
+// SetScheduledJobPaused sets (or clears) a job's pause flag, creating the row if the job has
+// not run yet — an operator can pause a task before its first execution.
+//
+// ⚠ Deliberately its OWN statement rather than a field on UpsertScheduledJob. That upsert runs
+// after every execution, so carrying `paused` through it would clear the flag on the next run
+// of any paused job — silently, and worst at exactly the moment someone had just paused
+// something. Keeping the write here means the only thing that can change pause is an operator
+// asking for it.
+func (s *sqlStore) SetScheduledJobPaused(ctx context.Context, name string, paused bool) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO scheduled_jobs (name, last_run, last_result, last_error, next_run, updated_at, paused)
+		 VALUES (?, 0, '', '', 0, ?, ?)
+		 ON CONFLICT (name) DO UPDATE SET paused=excluded.paused, updated_at=excluded.updated_at`),
+		name, epoch(time.Now()), paused)
+	if err != nil {
+		return fmt.Errorf("set scheduled job %s paused: %w", name, err)
 	}
 	return nil
 }
@@ -70,7 +98,7 @@ func scanScheduledJob(sc scannable) (ScheduledJob, error) {
 		j                           ScheduledJob
 		lastRun, nextRun, updatedAt int64
 	)
-	err := sc.Scan(&j.Name, &lastRun, &j.LastResult, &j.LastError, &nextRun, &updatedAt)
+	err := sc.Scan(&j.Name, &lastRun, &j.LastResult, &j.LastError, &nextRun, &updatedAt, &j.Paused)
 	if err == sql.ErrNoRows {
 		return ScheduledJob{}, ErrNotFound
 	}

@@ -9,11 +9,13 @@ package scheduler
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/adhocore/gronx"
+	"github.com/riverqueue/river"
 
 	"github.com/mantonx/loomarr/internal/store"
 )
@@ -22,8 +24,16 @@ import (
 // expression (6-field, seconds-leading) resolved from ScheduleKey (a settings key) falling
 // back to DefaultCron — matching how Sonarr/Overseerr expose per-task schedules.
 type Job struct {
-	Name        string // stable id, e.g. "reconcile" — the API/UI key
-	Title       string // human label for the Tasks page
+	Name  string // stable id, e.g. "reconcile" — the API/UI key
+	Title string // human label for the Tasks page, e.g. "Reconcile acquisitions"
+	// Description is one plain sentence saying what running this job actually DOES, in the
+	// operator's terms rather than the code's ("Checks in-flight downloads and moves finished
+	// ones into your library"). Rendered under the title on the Tasks page.
+	//
+	// ⚠ REQUIRED — the registry panics without it. Someone deciding whether to run or pause a
+	// task needs to know what it does, and an optional field is one where the next job ships
+	// without one and its row reads as a bare identifier.
+	Description string
 	DefaultCron string // built-in cron schedule, e.g. "0 */5 * * * *"
 	ScheduleKey string // settings key, e.g. "job.reconcile.schedule"; "" ⇒ always DefaultCron
 	Run         func(ctx context.Context) error
@@ -50,6 +60,7 @@ func (j Job) Disabled() bool { return j.DisabledReason != "" }
 type JobStatus struct {
 	Name        string    `json:"name"`
 	Title       string    `json:"title"`
+	Description string    `json:"description"`
 	Schedule    string    `json:"schedule"`    // effective cron expression (settings override or default)
 	ScheduleKey string    `json:"scheduleKey"` // settings key the modal PATCHes to change it
 	LastRun     time.Time `json:"lastRun"`
@@ -57,6 +68,10 @@ type JobStatus struct {
 	LastError   string    `json:"lastError"`
 	NextRun     time.Time `json:"nextRun"`
 	Running     bool      `json:"running"`
+	// Paused is the operator's own stop switch (§18.1): the job stays listed and keeps its
+	// schedule, but is never claimed when due. ⚠ Distinct from DisabledReason below — paused
+	// is a choice with a Resume control, disabled is a fact about the environment.
+	Paused bool `json:"paused"`
 	// DisabledReason is non-empty when this job cannot run in this environment. The UI
 	// renders it in place of the schedule and offers neither Run-now nor Modify.
 	DisabledReason string `json:"disabledReason,omitempty"`
@@ -68,6 +83,7 @@ type JobStatus struct {
 // internal/reconcile importing store).
 type ScheduleStore interface {
 	UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error
+	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	GetScheduledJob(ctx context.Context, name string) (store.ScheduledJob, error)
 	ListScheduledJobs(ctx context.Context) ([]store.ScheduledJob, error)
 	ClaimDueScheduledJobs(ctx context.Context, now time.Time, lease time.Duration) ([]store.ScheduledJob, error)
@@ -100,6 +116,10 @@ type Scheduler struct {
 	now      func() time.Time
 	log      *slog.Logger
 	notifier Notifier
+	// river is the execution engine once StartRiver has run (§14, §18.1). Nil until then —
+	// and nil in unit tests, which drive tick()/execute() directly rather than standing up a
+	// queue, so the scheduler's own behaviour stays testable without a database.
+	river *river.Client[*sql.Tx]
 
 	wake chan struct{} // buffered signal to run a tick now (Trigger, startup)
 
@@ -181,6 +201,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 	}
 }
+
+// SeedRegistry ensures every code-defined job has a state row, so the Tasks page can list it
+// before it has ever run. Rows for jobs no longer in code are ignored, not deleted — a renamed
+// job's history is not something to silently destroy on boot.
+//
+// ⚠ Under River the seeded `next_run` is NOT what schedules the job (River's periodic jobs do
+// that); it is the value the page renders. The two agree because both derive from the same
+// effective cron.
+func (s *Scheduler) SeedRegistry(ctx context.Context) { s.reconcileRegistry(ctx) }
 
 // reconcileRegistry ensures every code-defined job has a state row (created due-now on first
 // sight), so the loop will run it. Rows for jobs no longer in code are ignored, not deleted.
@@ -289,11 +318,48 @@ func (s *Scheduler) Trigger(ctx context.Context, name string) error {
 	if err != nil {
 		cur = store.ScheduledJob{Name: name}
 	}
+	// ⚠ Run-now goes through RIVER, so the manual path and the scheduled path execute via the
+	// same worker. A separate "just call Run" shortcut is how the two come to differ — one
+	// records state, the other forgets to; one honours pause, the other does not.
+	if s.river != nil {
+		return s.TriggerRiver(ctx, name)
+	}
+	// No queue (unit tests drive tick() directly): fall back to marking it due.
 	cur.Name, cur.NextRun, cur.UpdatedAt = name, now, now
 	if err := s.store.UpsertScheduledJob(ctx, cur); err != nil {
 		return err
 	}
 	s.signal()
+	return nil
+}
+
+// SetPaused pauses or resumes a job (§18.1). A paused job keeps its schedule and stays listed,
+// but is never claimed when due. Returns ErrUnknownJob for an unregistered name.
+//
+// ⚠ A DISABLED job cannot be paused: pausing states an operator preference about a job that
+// would otherwise run, and this one cannot run at all. Accepting the call would put the row in
+// two contradictory states and imply Resume would make it work.
+//
+// ⚠ **Run-now still works on a paused job, deliberately.** Pause stops the SCHEDULE, not the
+// task; an admin clicking Run now on a row that visibly says "Paused" is making a specific
+// one-off request, and refusing it would mean unpause → run → repause to do something the
+// operator already asked for unambiguously.
+func (s *Scheduler) SetPaused(ctx context.Context, name string, paused bool) error {
+	j, ok := s.jobs[name]
+	if !ok {
+		return ErrUnknownJob
+	}
+	if j.Disabled() {
+		return ErrJobDisabled
+	}
+	if err := s.store.SetScheduledJobPaused(ctx, name, paused); err != nil {
+		return err
+	}
+	// Resuming wakes the loop so a job already past its next_run runs promptly rather than
+	// waiting out a heartbeat it spent paused.
+	if !paused {
+		s.signal()
+	}
 	return nil
 }
 
@@ -313,11 +379,19 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		j := s.jobs[name]
 		st := state[name]
 		status := JobStatus{
-			Name: j.Name, Title: j.Title,
+			Name: j.Name, Title: j.Title, Description: j.Description,
 			Schedule: s.effectiveCron(j), ScheduleKey: j.ScheduleKey,
 			LastRun: st.LastRun, LastResult: st.LastResult, LastError: st.LastError,
 			NextRun: st.NextRun, Running: s.isRunning(name),
+			Paused:         st.Paused,
 			DisabledReason: j.DisabledReason,
+		}
+		// ⚠ A PAUSED job has no next run either, for the same reason a disabled one does not:
+		// the claim query skips it, so any next_run in the row is a time that will not fire.
+		// Rendering it would have the page promise a run that never comes — the more
+		// misleading half of the two, since a paused job looks otherwise healthy.
+		if st.Paused {
+			status.NextRun = time.Time{}
 		}
 		// A disabled job has no next run — it is never claimed. Any NextRun in the state
 		// row is a leftover from a boot where it WAS enabled (the SQLite → Postgres case),

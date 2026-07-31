@@ -18,7 +18,7 @@ const pgReason = "Loomarr does not back up PostgreSQL itself — use pg_dump on 
 // ordinary job error.
 func disabledJob(ran *atomic.Int64) Job {
 	return Job{
-		Name: "backup", Title: "Back up the database", DefaultCron: everyMinute,
+		Name: "backup", Title: "Back up the database", Description: "test job backup.", DefaultCron: everyMinute,
 		DisabledReason: pgReason,
 		Run:            func(context.Context) error { ran.Add(1); return nil },
 	}
@@ -32,7 +32,7 @@ func TestDisabledJob_IsListedWithItsReason(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1000, 0)}
 	var ran atomic.Int64
 	reg := NewRegistry().
-		Add(Job{Name: "reconcile", Title: "Reconcile", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
+		Add(Job{Name: "reconcile", Description: "test job reconcile.", Title: "Reconcile", DefaultCron: everyMinute, Run: func(context.Context) error { return nil }}).
 		Add(disabledJob(&ran))
 	s := New(st, reg, nil, clk.now, testLog())
 
@@ -166,7 +166,7 @@ func TestDisabledJob_DoesNotAffectEnabledJobs(t *testing.T) {
 	reg := NewRegistry().
 		Add(disabledJob(&disabledRan)).
 		Add(Job{
-			Name: "reconcile", DefaultCron: everyMinute,
+			Name: "reconcile", Title: "Reconcile", Description: "test job reconcile.", DefaultCron: everyMinute,
 			Run: func(context.Context) error { enabledRan.Add(1); return nil },
 		})
 	s := New(st, reg, nil, clk.now, testLog())

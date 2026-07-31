@@ -94,7 +94,13 @@ type Store interface {
 
 	// --- scheduled jobs (the background-job scheduler, §18.1) ---
 	// UpsertScheduledJob writes a job's runtime state (last-run/result + next-run lease).
+	// ⚠ Never writes `paused` — see SetScheduledJobPaused.
 	UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
+
+	// SetScheduledJobPaused pauses or resumes a job (§18.1). A paused job is never claimed by
+	// ClaimDueScheduledJobs, so it simply does not run until resumed. Creates the row if the
+	// job has not run yet, so a task can be paused before its first execution.
+	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	// GetScheduledJob returns one job's state, or ErrNotFound.
 	GetScheduledJob(ctx context.Context, name string) (ScheduledJob, error)
 	// ListScheduledJobs returns all job state rows for the Tasks page.

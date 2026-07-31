@@ -45,6 +45,18 @@ func (r *Registry) Add(j Job) *Registry {
 	if j.Name == "" {
 		panic("scheduler: job with empty name")
 	}
+	// ⚠ Title and Description are REQUIRED, enforced here rather than left to review.
+	// An operator on the Tasks page deciding whether to run or pause a task needs to know
+	// what it does; a nullable field is one where the next job ships without one and the row
+	// reads as a bare identifier. Boot-time panic naming the job is the honest failure —
+	// the same posture as a duplicate name.
+	if j.Title == "" {
+		panic(fmt.Sprintf("scheduler: job %q has no Title — the Tasks page would show a bare id", j.Name))
+	}
+	if j.Description == "" {
+		panic(fmt.Sprintf("scheduler: job %q has no Description — an operator cannot judge "+
+			"whether to run or pause a task they cannot read", j.Name))
+	}
 	for _, existing := range r.jobs {
 		if existing.Name == j.Name {
 			panic(fmt.Sprintf("scheduler: duplicate job name %q", j.Name))
