@@ -1452,6 +1452,19 @@ a §8 grounding hole `validateTags` cannot currently detect.
 
 ### ✅ V34 unblocked — both maintainer calls made (2026-07-31), phase active
 
+**Where it stands (2026-07-31, branch `feat/v34-compilation-splitting`):** doc-first pass
+(`21b5d1b`), the **era grounding rule** (`8642506` — ungrounded AI eras are operator-confirmable
+suggestions on every tagging path, sabotage-verified, migration `00024`), and the **backend
+pipeline** (`012d6d4` — whisper settings keys, split-proposal store `00025` conformant on both
+backends, chapter triage → blackdetect/silencedetect → whisper+LLM rescue → classify → dHash
+dedup → Confirm, with Unsplittable as a first-class never-guess outcome). `make check` +
+`make test-pg` green. **Remaining, in order:** (1) app wiring + the three §7 endpoints + a
+`filler_split` job/SSE frame + openapi/orval regen; (2) the review UI (cut-list editor, era
+suggestion confirm, dedup flags, unsplittable rendering) + the era-suggestion badge on clips;
+(3) Dockerfile whisper-cli + model vendoring, with the **model verified gap-free against the
+real binary** (the §6.4 numbers came from the Python package — that verification is gate, not
+preference); (4) the full FE gates (`make fe`, `fe-visual`, `e2e`) and live verification.
+
 1. **whisper-cli approved as the fifth vendored binary** (the §14 conversation is resolved):
    whisper.cpp's self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the
    single image with its model file. ⚠ The shipped model is the smallest verified gap-free against
