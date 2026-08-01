@@ -71,8 +71,15 @@ CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a comm
 **CI runs jobs only when their inputs changed.** A `changes` job diffs against the merge base
 and each job gates on it: Go/Postgres on `**/*.go`, `go.mod|sum`, `internal/store/migrations/`,
 **`docs/help/`** (embedded in the binary — `retired-verify` reads it), `Makefile`, and the
-workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow. `Makefile` and the
-workflow deliberately gate BOTH — they define how every job runs.
+workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow; **Image on
+`Dockerfile`, `.dockerignore`, `Makefile`, and the workflow**. `Makefile` and the workflow
+deliberately gate ALL THREE — they define how every job runs.
+
+⚠ **The Image job builds BOTH release platforms (`linux/amd64,linux/arm64`) under QEMU, and
+exists because a Dockerfile that could never build for arm64 sat undetected.** `apt` exited 100
+on `intel-media-va-driver`, which has no arm64 candidate — and since the image was previously
+built only by `release.yml` on a `v*` tag, the first symptom would have been a failed release.
+Build both or the job cannot catch the arch-specific class it was added for.
 
 Two rules if you touch this:
 
