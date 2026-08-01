@@ -78,6 +78,11 @@ jobs:
           # because the image was built ONLY at release time, on a v* tag, which is the
           # worst moment to discover the build is broken.
           #
+          # ⚠ On a PR this diffs against the MERGE BASE, not the previous push, so the
+          # question is "did this PR touch the Dockerfile", not "did the last commit".
+          # A PR that changed it in commit 1 keeps building the image for every later
+          # push, which is correct — skipping would leave the PR's own change unproven.
+          #
           # ⚠ DELIBERATELY NARROWER THAN THE go/web FILTERS ABOVE — the only one that does
           # NOT gate on `Makefile` or `.github/workflows/`. Those two are edited often and
           # neither changes what `docker build` produces, while this job costs ~30 min of
@@ -177,10 +182,22 @@ jobs:
         run: make fe-tokens-verify
 
   playwright:
-    name: Playwright — visual + a11y + e2e
+    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/2)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    # Sharded purely for WALL-CLOCK. 624 browser screenshots on a 4-core runner took ~6
+    # minutes of a ~7 minute build — this job alone WAS the critical path; every other job
+    # finished by 4.2 min. Two shards put it at ~3.8 min, which lands just under the Go
+    # job, and that is the point to stop: a third shard would only make Go the bottleneck.
+    #
+    # ⚠ Free on a public repo, where standard-runner minutes are not billed — two runners
+    # cost the same as one and finish sooner. Do NOT copy this pattern into a private repo
+    # without re-checking that trade, where it doubles billed minutes to halve the wait.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the other's
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -202,8 +219,11 @@ jobs:
       # Both drive the pinned Playwright Docker image (the reference rasterizer,
       # §5.2), so CI and local snapshots are byte-identical.
       - name: Visual + a11y over storybook-static
-        run: make fe-visual
+        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/2
+      # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
+      # config and no sharding, so running it per-shard would duplicate it for nothing.
       - name: Wizard e2e smoke vs a mocked backend
+        if: matrix.shard == 1
         run: make e2e
 
   # The single required check. ALWAYS runs, so branch protection has one status that is

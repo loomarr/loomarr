@@ -60,6 +60,7 @@ make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs 
 make storybook      # Storybook dev workshop (the component gallery/contract)
 make storybook-build # offline storybook-static build (what fe-visual snapshots)
 make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
+                    # runs ALL 624 locally; CI splits it with PW_SHARD=--shard=N/2 (wall-clock only, never locally)
 make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
 make e2e            # wizard flow smoke + page snapshots vs a mocked backend (Docker)
 make e2e-update     # sanctioned e2e page-snapshot baseline update (reviewed in PR)

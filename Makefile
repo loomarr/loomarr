@@ -161,10 +161,18 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 # — so a stray `test.only` would have silently narrowed the suite in CI while passing.
 PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
+# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/2`). Empty by
+# default, so a local `make fe-visual` still runs the WHOLE suite — sharding must never
+# be the default, or someone runs half the gate and reads it as green. CI splits the
+# suite across runners purely for wall-clock: 624 browser screenshots on a 4-core runner
+# are the critical path (~6 min of a ~7 min build), and public-repo standard runners are
+# free, so N runners cost the same as one and finish sooner.
+PW_SHARD ?=
+
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
 	docker run --rm --ipc=host -e CI -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
-		node_modules/.bin/playwright test
+		node_modules/.bin/playwright test $(PW_SHARD)
 
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
