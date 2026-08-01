@@ -100,6 +100,21 @@ The filter fails SAFE: no usable merge base (first push, force-push, new branch)
 everything. Adding a new build input means adding it to the filter in the same PR — the same
 class of hand-maintained list as `scripts/check-retired.sh`.
 
+**Caching.** Every job that compiles or installs caches its work; the two rules that are easy
+to get wrong:
+
+- ⚠ **`actions/cache` never overwrites an existing key** — it skips the save when the key
+  already hit. So any cache whose CONTENTS track something the KEY does not (`~/.cache/go-build`
+  tracks `.go` source; a `go.sum` key does not) is written once and then frozen forever. Found
+  in the wild here: one 473MB entry served every run for days while the source moved under it.
+  Use the rolling pattern — `${{ github.run_id }}` in the key so the save always happens, plus
+  `restore-keys` prefixes so it still restores the newest prior cache.
+- ⚠ **The 10GB repo cap evicts LRU across ALL refs**, so caches from closed PRs do not merely
+  sit there — they push out live ones. `cache-cleanup.yml` deletes a PR's caches when it closes
+  (GitHub's own 7-day expiry is far too slow when one Go cache is ~470MB). Measured 2026-08-01:
+  the repo was at **9.94GB of 10GB with ~6GB owned by already-closed PRs**; clearing them and
+  adding the workflow took it to **3.9GB**.
+
 ## Environment prerequisites
 
 Go 1.22+, Node 20+. **Docker is required from phase 4 onward** (testcontainers) — verify with `docker info` during phase 1 and record in PROGRESS.md. Playwright browsers install in phase 13. If Docker is unavailable in the current environment, stop and tell the maintainer; do not fake the Postgres conformance suite.
