@@ -4,12 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FillerSources } from "./filler-sources";
 
+// Defaults describe a normal, switched-ON source. `enabled` defaulting to false would make
+// every test that does not mention it exercise the disabled path by accident.
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
+  id: over.kind,
   target: "/data/filler",
   detail: "watched directly",
   count: 0,
   configured: true,
   fetchable: true,
+  enabled: true,
+  switchable: true,
+  removable: false,
   ...over,
 });
 
@@ -83,8 +89,12 @@ describe("FillerSources", () => {
 // --- registered remotes, nested under the `remote` row (V33) ---
 
 describe("FillerSources remotes", () => {
-  const withRemotes = [
+  const withRemotes: FillerSourceDTO[] = [
     {
+      id: "remote",
+      enabled: true,
+      switchable: false,
+      removable: false,
       kind: "remote" as const,
       target: "downloads",
       detail: "fetches into the watched folder",
@@ -97,8 +107,14 @@ describe("FillerSources remotes", () => {
           label: "Classic TV commercials",
           uri: "https://archive.org/details/classic_tv",
           lastFetchedAt: "2026-07-30T12:00:00Z",
+          enabled: true,
         },
-        { id: "vintage_ads", label: "vintage_ads", uri: "https://archive.org/details/vintage_ads" },
+        {
+          id: "vintage_ads",
+          label: "vintage_ads",
+          uri: "https://archive.org/details/vintage_ads",
+          enabled: true,
+        },
       ],
     },
   ];
@@ -129,12 +145,16 @@ describe("FillerSources remotes", () => {
     // every field to optional and stops matching the generated DTO.
     const bare = [
       {
+        id: "remote",
         kind: "remote" as const,
         target: "downloads",
         detail: "fetches into the watched folder",
         count: 12,
         configured: true,
         fetchable: false,
+        enabled: true,
+        switchable: false,
+        removable: false,
       },
     ];
     render(<FillerSources sources={bare} total={12} onFetch={() => {}} />);
