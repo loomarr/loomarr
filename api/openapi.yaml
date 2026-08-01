@@ -1233,6 +1233,37 @@ components:
         - updated
         - pruned
       type: object
+    FillerIncomingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FillerIncomingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        asks:
+          items:
+            $ref: "#/components/schemas/IncomingAskDTO"
+          type:
+            - array
+            - "null"
+        reels:
+          items:
+            $ref: "#/components/schemas/IncomingReelDTO"
+          type:
+            - array
+            - "null"
+        total:
+          description: Everything waiting on a human — asks plus reels
+          format: int64
+          type: integer
+      required:
+        - asks
+        - reels
+        - total
+      type: object
     FillerSelection:
       additionalProperties: false
       properties:
@@ -1699,6 +1730,66 @@ components:
           type: integer
       required:
         - imported
+      type: object
+    IncomingAskDTO:
+      additionalProperties: false
+      properties:
+        audience:
+          type: string
+        category:
+          type: string
+        durationMs:
+          format: int64
+          type: integer
+        era:
+          format: int64
+          type: integer
+        from:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        path:
+          description: Clip identity — the path relative to FILLER_DIR
+          type: string
+        reason:
+          type: string
+        suggestedEra:
+          format: int64
+          type: integer
+        thumbnail:
+          type: string
+      required:
+        - path
+        - name
+        - durationMs
+        - kind
+        - reason
+      type: object
+    IncomingReelDTO:
+      additionalProperties: false
+      properties:
+        clipPath:
+          type: string
+        createdAt:
+          description: RFC3339
+          type: string
+        needsAttention:
+          format: int64
+          type: integer
+        proposalId:
+          type: string
+        segments:
+          description: How many clips the detector found
+          format: int64
+          type: integer
+      required:
+        - proposalId
+        - clipPath
+        - segments
+        - needsAttention
+        - createdAt
       type: object
     IngestFillerInputBody:
       additionalProperties: false
@@ -5073,6 +5164,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Search archive.org for clips to add
+      tags:
+        - filler
+  /v1/filler/incoming:
+    get:
+      description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
+      operationId: filler-incoming
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerIncomingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What has been downloaded but isn't filed yet
       tags:
         - filler
   /v1/filler/ingest:

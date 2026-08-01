@@ -175,6 +175,9 @@ type SplitProposalStore interface {
 	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
 	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
+	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
+	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
 }
