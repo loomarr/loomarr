@@ -244,15 +244,30 @@ RUN set -eux; \
     /usr/local/bin/ffmpeg -version | head -1; \
     /usr/local/bin/ffprobe -version | head -1; \
     /usr/local/bin/deno --version | head -1; \
-    # ⚠ whisper is proved by TRANSCRIBING, never by `--help`. `--help` returns 0 without
-    # ever initialising a compute backend, so it passed on arm64 in a layout where the
-    # first real transcription aborted with "GGML_ASSERT(device) failed". This generates
-    # a second of silence and runs the model over it through the /usr/local/bin symlink
-    # — the same path the app execs — so a broken lib layout, a missing backend, a bad
-    # model download or an arch mismatch all fail the BUILD rather than the first split.
-    ffmpeg -v error -f lavfi -i anullsrc=r=16000:cl=mono -t 1 -y /tmp/probe.wav; \
-    whisper-cli -m /usr/local/share/whisper/ggml-small.en.bin -f /tmp/probe.wav -np >/dev/null; \
-    rm -f /tmp/probe.wav
+    # ⚠ whisper is NOT proved by `--help`: it returns 0 without ever initialising a compute
+    # backend, and did so on arm64 in a layout where the first real transcription aborted
+    # with "GGML_ASSERT(device) failed". What actually has to be proved is that ggml can
+    # LOAD ITS BACKEND through the /usr/local/bin symlink — the same path the app execs —
+    # which is what catches a wrong lib layout, a pruned libggml set, or an arch mismatch.
+    #
+    # This probe does exactly that and nothing more. It is invoked with no usable model or
+    # input on purpose: the backend line is printed during init, BEFORE any inference, so
+    # the check is instant and the nonzero exit that follows is expected (hence `|| true`,
+    # and the grep is the real assertion).
+    #
+    # ⚠ IT DELIBERATELY DOES NOT TRANSCRIBE. Running the model here cost ~3s natively and
+    # ~341s under QEMU on CI's arm64 leg — whisper is dense matrix math, the worst case for
+    # instruction-level emulation, and it made the image job by far the slowest thing in
+    # CI. The full transcription proof still runs, on the NATIVE amd64 leg below, where it
+    # is cheap. Do not "restore" the transcription to this shared step.
+    { whisper-cli -m /dev/null -f /dev/null 2>&1 || true; } | grep -q 'load_backend: loaded'; \
+    # The FULL proof — real audio through the real model — but only where it is native.
+    # This is what a bad model download or a broken model file fails on.
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      ffmpeg -v error -f lavfi -i anullsrc=r=16000:cl=mono -t 1 -y /tmp/probe.wav; \
+      whisper-cli -m /usr/local/share/whisper/ggml-small.en.bin -f /tmp/probe.wav -np >/dev/null; \
+      rm -f /tmp/probe.wav; \
+    fi
 COPY --from=build /out/loomarr /loomarr
 # Pre-create /data owned by nonroot. Docker seeds a fresh NAMED volume from the image's
 # directory at that path — including its ownership — so this is what makes the documented
