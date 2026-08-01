@@ -34,6 +34,7 @@ jobs:
     outputs:
       go: ${{ steps.filter.outputs.go }}
       web: ${{ steps.filter.outputs.web }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,8 +54,7 @@ jobs:
           if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
-            echo "go=true"  >> "$GITHUB_OUTPUT"
-            echo "web=true" >> "$GITHUB_OUTPUT"
+            { echo "go=true"; echo "web=true"; echo "image=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$BASE" HEAD)
@@ -71,6 +71,29 @@ jobs:
             echo "web=true" >> "$GITHUB_OUTPUT"
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The IMAGE. Added after a Dockerfile change that could never have built for
+          # arm64 sat undetected: `intel-media-va-driver` has no arm64 candidate, so apt
+          # exited 100 — and release.yml builds linux/amd64,linux/arm64. Nothing caught it
+          # because the image was built ONLY at release time, on a v* tag, which is the
+          # worst moment to discover the build is broken.
+          #
+          # ⚠ On a PR this diffs against the MERGE BASE, not the previous push, so the
+          # question is "did this PR touch the Dockerfile", not "did the last commit".
+          # A PR that changed it in commit 1 keeps building the image for every later
+          # push, which is correct — skipping would leave the PR's own change unproven.
+          #
+          # ⚠ DELIBERATELY NARROWER THAN THE go/web FILTERS ABOVE — the only one that does
+          # NOT gate on `Makefile` or `.github/workflows/`. Those two are edited often and
+          # neither changes what `docker build` produces, while this job costs ~30 min of
+          # billed CI because the arm64 half is QEMU-emulated. Gating it on them would
+          # spend that on every workflow tweak. The rule for the others ("they define how
+          # every job runs, so prove them against everything") does not apply to a job
+          # whose only input is the Dockerfile itself.
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$'; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=false" >> "$GITHUB_OUTPUT"
           fi
 
   go:
@@ -90,8 +113,19 @@ jobs:
       # `go: downloading lipgloss / fatih-color / gofrs-flock`).
       #
       # Cached here as a SEPARATE entry keyed on the pinned version: the module source, the
-      # compiled objects, and golangci's own analysis cache. Keyed on the version alone, so
-      # it survives every go.sum change and only re-warms on a linter bump.
+      # compiled objects, and golangci's own analysis cache.
+      #
+      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
+      # NEVER overwrites an existing key — it skips the save when the key already hit. This
+      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
+      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
+      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
+      # being restored days and many source changes later, so `go test -race` recompiled
+      # nearly everything on every run (~224s of the job).
+      #
+      # `github.run_id` guarantees a miss on the exact key, so the save always happens, while
+      # `restore-keys` still restores the most recent prior cache to compile against. That is
+      # the documented rolling-cache pattern: unique key + prefix restore.
       - name: Cache golangci-lint (module + build + analysis)
         uses: actions/cache@v6
         with:
@@ -99,8 +133,9 @@ jobs:
             ~/go/pkg/mod/github.com/golangci
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}
+          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-
             golangci-${{ runner.os }}-v2.12.2-
       - run: make check
       - name: OpenAPI spec is committed and current
@@ -112,6 +147,12 @@ jobs:
       # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
       # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
       # cannot see. Verified this target catches exactly that.
+      #
+      # ⚠ `make ci-lint` IS WEAKER ON A DEV MACHINE THAN IT IS HERE. actionlint shells out to
+      # shellcheck for every `run:` block and SILENTLY SKIPS that half when shellcheck is not
+      # installed — so the target exits 0 locally and fails here, which is exactly what
+      # happened when the image filter was added (SC2129 on the grouped redirects). If this
+      # step is red and your local run was green, install shellcheck before doubting CI.
       - name: Workflows are valid
         run: make ci-lint
 
@@ -126,6 +167,19 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # setup-go's own cache covers the module DOWNLOADS but not `~/.cache/go-build`, so
+      # this job was compiling the store test binary from source every run. Separate key
+      # from the `go` job above: this one builds without -race, and mixing the two would
+      # have each evict the other's objects. Same rolling pattern — unique key so the save
+      # always happens, prefix restore so it compiles against the newest prior cache.
+      - name: Cache Go build (store conformance)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            gobuild-pg-${{ runner.os }}-
       # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
       - run: make test-pg
 
@@ -153,10 +207,22 @@ jobs:
         run: make fe-tokens-verify
 
   playwright:
-    name: Playwright — visual + a11y + e2e
+    name: Playwright — visual + a11y + e2e (${{ matrix.shard }}/2)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    # Sharded purely for WALL-CLOCK. 624 browser screenshots on a 4-core runner took ~6
+    # minutes of a ~7 minute build — this job alone WAS the critical path; every other job
+    # finished by 4.2 min. Two shards put it at ~3.8 min, which lands just under the Go
+    # job, and that is the point to stop: a third shard would only make Go the bottleneck.
+    #
+    # ⚠ Free on a public repo, where standard-runner minutes are not billed — two runners
+    # cost the same as one and finish sooner. Do NOT copy this pattern into a private repo
+    # without re-checking that trade, where it doubles billed minutes to halve the wait.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the other's
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -178,8 +244,11 @@ jobs:
       # Both drive the pinned Playwright Docker image (the reference rasterizer,
       # §5.2), so CI and local snapshots are byte-identical.
       - name: Visual + a11y over storybook-static
-        run: make fe-visual
+        run: make fe-visual PW_SHARD=--shard=${{ matrix.shard }}/2
+      # ⚠ ONE shard runs e2e, not every shard. It is a 7-test 15s suite with its own
+      # config and no sharding, so running it per-shard would duplicate it for nothing.
       - name: Wizard e2e smoke vs a mocked backend
+        if: matrix.shard == 1
         run: make e2e
 
   # The single required check. ALWAYS runs, so branch protection has one status that is
@@ -189,10 +258,53 @@ jobs:
   # default, but neither does a FAILED one when `if: always()` is set — so a naive aggregate
   # would report success while a real job was red. Only `skipped` and `success` are accepted;
   # anything else (failure, cancelled) fails the gate.
+  image:
+    name: Image — builds on both release platforms
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
+    runs-on: ubuntu-latest
+    # ⚠ The only capped job here, because it is the only one that can run away: the arm64
+    # half is QEMU-emulated and a first (uncached) build takes ~30 min. GitHub's default is
+    # SIX HOURS, so a hang would burn a day of billed minutes before anyone noticed. 45
+    # leaves headroom over the measured cold build without being an afternoon.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      # QEMU is what makes the arm64 half real on an amd64 runner. Without it this job
+      # would build amd64 twice and report green on exactly the failure it exists to catch.
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      # BOTH platforms, because the bug this job exists for was arch-specific and
+      # release.yml publishes both. Load/push nothing — the build IS the assertion, and
+      # the Dockerfile's own build-time proofs (yt-dlp --version, ffmpeg -version, and a
+      # real whisper transcription) run inside it.
+      #
+      # ⚠ Cache scoped per platform. A shared key lets one arch's layers answer for the
+      # other's, which is how an arch-specific break hides.
+      - name: Build (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
+          # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
+          # layer it was caching takes to build, because `mode=max` ships every
+          # intermediate layer including the 466MB whisper model. It also spends the 10GB
+          # repo cache quota on ~2GB per run, evicting the Go and pnpm caches that do pay
+          # for themselves.
+          #
+          # It still READS anything release.yml populates, so this is not "no caching" —
+          # it is declining to pay export cost for a job whose expensive layer is invalidated
+          # by the only file that triggers it. This job runs ONLY when the Dockerfile
+          # changes, which busts that layer by definition, so a written cache would be
+          # stale essentially every time it was read.
+          cache-from: type=gha,scope=image-ci
+
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, go, store-postgres, frontend, playwright]
+    needs: [changes, go, store-postgres, frontend, playwright, image]
     runs-on: ubuntu-latest
     steps:
       - name: Every job that ran must have passed

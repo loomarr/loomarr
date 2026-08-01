@@ -54,11 +54,13 @@ make config-docs    # generate docs/configuration.md from the settings registry 
 make openapi-verify # regenerated spec must match committed (CI red on drift)
 make retired-verify # retired identifiers must not appear as live instructions (CI red on drift)
 make ci-lint        # actionlint over .github/workflows (a workflow can be valid YAML and still be rejected)
+                    # ⚠ needs shellcheck on PATH — without it actionlint SKIPS the shell half and exits 0 locally while CI fails
 make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
 make storybook      # Storybook dev workshop (the component gallery/contract)
 make storybook-build # offline storybook-static build (what fe-visual snapshots)
 make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
+                    # runs ALL 624 locally; CI splits it with PW_SHARD=--shard=N/2 (wall-clock only, never locally)
 make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
 make e2e            # wizard flow smoke + page snapshots vs a mocked backend (Docker)
 make e2e-update     # sanctioned e2e page-snapshot baseline update (reviewed in PR)
@@ -71,8 +73,20 @@ CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a comm
 **CI runs jobs only when their inputs changed.** A `changes` job diffs against the merge base
 and each job gates on it: Go/Postgres on `**/*.go`, `go.mod|sum`, `internal/store/migrations/`,
 **`docs/help/`** (embedded in the binary — `retired-verify` reads it), `Makefile`, and the
-workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow. `Makefile` and the
-workflow deliberately gate BOTH — they define how every job runs.
+workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow; **Image on
+`Dockerfile` and `.dockerignore` ONLY**. `Makefile` and the workflow deliberately gate Go and
+Frontend — they define how those jobs run.
+
+⚠ **The Image job is the deliberate exception to the `Makefile`/workflow rule.** It builds BOTH
+release platforms (`linux/amd64,linux/arm64`) under QEMU, so a cold build costs ~30 min of billed
+CI; gating it on two frequently-edited files that cannot change what `docker build` produces would
+spend that on every workflow tweak. It is also the only job with a `timeout-minutes` — GitHub's
+default is six hours, which is a lot of money for a hung emulated build.
+
+It exists because a Dockerfile that could never build for arm64 sat undetected: `apt` exited 100
+on `intel-media-va-driver`, which has no arm64 candidate, and since the image was previously built
+only by `release.yml` on a `v*` tag, the first symptom would have been a failed release. **Build
+both platforms or the job cannot catch the arch-specific class it was added for.**
 
 Two rules if you touch this:
 
@@ -85,6 +99,21 @@ Two rules if you touch this:
 The filter fails SAFE: no usable merge base (first push, force-push, new branch) runs
 everything. Adding a new build input means adding it to the filter in the same PR — the same
 class of hand-maintained list as `scripts/check-retired.sh`.
+
+**Caching.** Every job that compiles or installs caches its work; the two rules that are easy
+to get wrong:
+
+- ⚠ **`actions/cache` never overwrites an existing key** — it skips the save when the key
+  already hit. So any cache whose CONTENTS track something the KEY does not (`~/.cache/go-build`
+  tracks `.go` source; a `go.sum` key does not) is written once and then frozen forever. Found
+  in the wild here: one 473MB entry served every run for days while the source moved under it.
+  Use the rolling pattern — `${{ github.run_id }}` in the key so the save always happens, plus
+  `restore-keys` prefixes so it still restores the newest prior cache.
+- ⚠ **The 10GB repo cap evicts LRU across ALL refs**, so caches from closed PRs do not merely
+  sit there — they push out live ones. `cache-cleanup.yml` deletes a PR's caches when it closes
+  (GitHub's own 7-day expiry is far too slow when one Go cache is ~470MB). Measured 2026-08-01:
+  the repo was at **9.94GB of 10GB with ~6GB owned by already-closed PRs**; clearing them and
+  adding the workflow took it to **3.9GB**.
 
 ## Environment prerequisites
 
