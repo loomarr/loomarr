@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatEpgTime,
   formatGiB,
+  formatMmSs,
   formatPercent,
   formatPercentPoints,
   formatRelative,
@@ -14,6 +15,7 @@ import {
   formatUptime,
   humanizeRelaxation,
   humanizeSettingKey,
+  parseMmSs,
   pluralize,
 } from "./format";
 
@@ -30,6 +32,20 @@ describe("formatters", () => {
     expect(formatClipDuration(30000)).toBe("30s");
     expect(formatClipDuration(60000)).toBe("1m");
     expect(formatClipDuration(90000)).toBe("1m 30s");
+  });
+
+  it("formats clip offsets as mm:ss and parses them back", () => {
+    expect(formatMmSs(0)).toBe("00:00");
+    expect(formatMmSs(83000)).toBe("01:23");
+    expect(formatMmSs(600000)).toBe("10:00");
+    // Round-trips the two shapes an operator types; undefined rather than a guess on
+    // anything else, because a wrong cut is what the review gate exists to catch.
+    expect(parseMmSs("01:23")).toBe(83000);
+    expect(parseMmSs("1:23")).toBe(83000);
+    expect(parseMmSs("0:90")).toBe(90000);
+    expect(parseMmSs("83")).toBeUndefined();
+    expect(parseMmSs("1:2:3")).toBeUndefined();
+    expect(parseMmSs("")).toBeUndefined();
   });
 
   it("channel numbers are bare", () => {

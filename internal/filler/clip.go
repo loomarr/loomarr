@@ -109,6 +109,14 @@ type Clip struct {
 	PlayCount    int64
 	LastPlayedAt time.Time
 	AITagged     bool // whether the era/audience/category came from AI classification
+	// SuggestedEra is an AI-proposed era whose year did NOT appear in the clip's
+	// text signals (§10 era grounding, V34) — demoted from Era by validateTags so
+	// an inferred-from-tone year is never persisted as fact.
+	//
+	// ⚠ MATCHING NEVER READS THIS. It is not a tag: it is a question for the
+	// operator, rendered on the clip and confirmed by PATCHing Era (which clears
+	// it). 0 = no suggestion. Only the tagger writes it.
+	SuggestedEra int
 }
 
 // ID returns the clip's identity. A method rather than direct field access at call sites so

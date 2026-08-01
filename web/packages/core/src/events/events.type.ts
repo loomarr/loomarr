@@ -60,6 +60,21 @@ interface FillerIngestEvent {
   [k: string]: unknown;
 }
 
+// Mirrors the BE's filler_split frame (internal/app/filler.go publishSplit, §10 V34).
+// Compilation-split detection runs minutes per file, so the POST returns a job id and the
+// terminal frame hands the review UI its proposal id. Every field declared, for the same
+// reason as FillerIngestEvent above.
+interface FillerSplitEvent {
+  jobId?: string;
+  clipPath?: string;
+  // "running" | "success" | "error" — running fires first; success carries proposalId.
+  status?: string;
+  proposalId?: string;
+  segments?: number;
+  error?: string;
+  [k: string]: unknown;
+}
+
 // Mirrors the BE's `job` frame (internal/app/emitter.go JobChanged): a scheduled job's
 // state changed (started, finished ok/error, or Run-now'd). Carries only the job name — the
 // Tasks page refetches GET /v1/jobs on this, keeping the BE the single source of timing truth
@@ -113,6 +128,7 @@ interface EventHandlers {
   onSuggestion?: (e: SuggestionEvent) => void;
   onLlmPull?: (e: LlmPullEvent) => void;
   onFillerIngest?: (e: FillerIngestEvent) => void;
+  onFillerSplit?: (e: FillerSplitEvent) => void;
   onJob?: (e: JobEvent) => void;
   onPlayout?: (e: PlayoutEvent) => void;
   onDatabase?: (e: DatabaseEvent) => void;
@@ -125,6 +141,7 @@ export type {
   DatabaseEvent,
   EventHandlers,
   FillerIngestEvent,
+  FillerSplitEvent,
   JobEvent,
   LlmPullEvent,
   PlayoutEvent,

@@ -191,16 +191,25 @@ func FFprobe(ctx context.Context, path string) (Probed, error) {
 // design, the catalog came back silently empty with no error anywhere. The name now says which
 // binary it wants.
 func FFprobeNextTo(ffmpegPath string) Prober {
-	bin := "ffprobe"
+	bin := FFprobePathNextTo(ffmpegPath)
+	return func(ctx context.Context, path string) (Probed, error) {
+		return ffprobeWith(ctx, bin, path)
+	}
+}
+
+// FFprobePathNextTo derives the ffprobe BINARY PATH from the ffmpeg path (the
+// setting operators actually have — `playout.ffmpeg_path`): the two ship
+// together, so an operator who moved one moved both. Splitting (V34) execs
+// ffprobe directly, which is why the derivation is exported rather than buried
+// in the prober above.
+func FFprobePathNextTo(ffmpegPath string) string {
 	if ffmpegPath != "" && ffmpegPath != "ffmpeg" {
 		// Same directory, ffmpeg → ffprobe. Handles /opt/ffmpeg/bin/ffmpeg and a
 		// ffmpeg-with-suffix build alike, since only the basename's leading token changes.
 		dir, base := filepath.Split(ffmpegPath)
-		bin = filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
+		return filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
 	}
-	return func(ctx context.Context, path string) (Probed, error) {
-		return ffprobeWith(ctx, bin, path)
-	}
+	return "ffprobe"
 }
 
 func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {

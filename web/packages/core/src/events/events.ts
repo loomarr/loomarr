@@ -14,6 +14,7 @@ import type {
   DatabaseEvent,
   EventHandlers,
   FillerIngestEvent,
+  FillerSplitEvent,
   JobEvent,
   LlmPullEvent,
   PlayoutEvent,
@@ -43,6 +44,7 @@ const openEventStream = (handlers: EventHandlers, url: string = EVENTS_URL): (()
   on<SuggestionEvent>("suggestion", handlers.onSuggestion);
   on<LlmPullEvent>("llm_pull", handlers.onLlmPull);
   on<FillerIngestEvent>("filler_ingest", handlers.onFillerIngest);
+  on<FillerSplitEvent>("filler_split", handlers.onFillerSplit);
   on<JobEvent>("job", handlers.onJob);
   on<PlayoutEvent>("playout", handlers.onPlayout);
   on<DatabaseEvent>("database", handlers.onDatabase);
@@ -100,6 +102,13 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         // which is what actually changes /v1/filler. Invalidating here would refetch an
         // unchanged list and imply the clips had arrived.
         extraRef.current?.onFillerIngest?.(e);
+      },
+      onFillerSplit: (e) => {
+        // A split PROPOSAL is not a catalog change: segments become clips only when the
+        // operator confirms, and that confirm's own mutation invalidates /v1/filler. The
+        // frame's job here is the handoff — the terminal success carries the proposal id
+        // the review route navigates to — so it passes straight through to listeners.
+        extraRef.current?.onFillerSplit?.(e);
       },
       onJob: (e) => {
         // A scheduled job changed state (§18.1) — refetch /v1/jobs so the Tasks page

@@ -57,6 +57,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
 	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
+	t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 }
 
 // testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
@@ -862,7 +863,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
 
 	// Tag the untagged clip (the AI-tagging job path).
-	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", true, now); err != nil {
+	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", 0, true, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
@@ -873,8 +874,44 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", false, now); err != ErrNotFound {
+	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", 0, false, now); err != ErrNotFound {
 		t.Errorf("UpdateClipTags(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Era suggestions (§10 V34) — the conditional suggested_era write:
+	//  **record** an ungrounded suggestion on an era-less clip,
+	//  **keep** it across a tag edit that carries neither era nor suggestion,
+	//  **clear** it in the same write that sets era (the operator confirming).
+	if err := s.UpdateClipTags(ctx, "keep", 0, "family", "", 1985, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 || got.Era != 0 {
+		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 0, "general", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 {
+		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 1985, "", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.Era != 1985 || got.SuggestedEra != 0 {
+		t.Errorf("confirming era did not clear the suggestion: era=%d suggestedEra=%d, want 1985/0", got.Era, got.SuggestedEra)
+	}
+	// A suggestion survives a sync upsert (sync.go merges it like the other tags).
+	keep, _ := s.GetClip(ctx, "keep")
+	keep.SuggestedEra = 1990
+	if err := s.UpsertClip(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1990 {
+		t.Errorf("suggested_era did not round-trip through UpsertClip: %d, want 1990", got.SuggestedEra)
 	}
 
 	// Prune: keep only "keep" — u1 is removed (it left the media server's library).
@@ -1671,6 +1708,80 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.MarkFillerSourceFetched(ctx, "nope", fetched); !errors.Is(err, ErrNotFound) {
 		t.Errorf("mark unknown fetched = %v, want ErrNotFound", err)
+	}
+}
+
+// testSplitProposals covers the persisted split proposal (§10, V34) on BOTH backends: the
+// segments JSON round-trip, ONE proposal per clip (re-detection replaces, and the new id
+// wins), delete, and DeleteClip (the confirm path's drop of the compilation row).
+func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	p := filler.SplitProposal{
+		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: now,
+		Segments: []filler.SplitSegment{
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
+			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4"},
+			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
+		},
+	}
+	if err := s.UpsertSplitProposal(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetSplitProposal(ctx, "sp_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClipPath != p.ClipPath || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+		t.Fatalf("proposal round-trip = %+v", got)
+	}
+	// Every segment field survives the JSON round-trip — including the V34-specific
+	// suggestion, dedup flag, and unsplittable marker the review renders.
+	s1 := got.Segments[1]
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || s1.Era != 0 {
+		t.Errorf("segment suggestion/dedup fields lost: %+v", s1)
+	}
+	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
+		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
+	}
+
+	// ⚠ Re-detection REPLACES the pending proposal for the same clip — two competing
+	// cut-lists for one file is a review bug, not a choice. The NEW id answers the old
+	// one's GET with ErrNotFound.
+	p2 := filler.SplitProposal{ID: "sp_2", ClipPath: p.ClipPath, CreatedAt: now.Add(time.Hour),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
+	if err := s.UpsertSplitProposal(ctx, p2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("stale proposal after re-detection = %v, want ErrNotFound", err)
+	}
+	got2, err := s.GetSplitProposal(ctx, "sp_2")
+	if err != nil || len(got2.Segments) != 1 {
+		t.Fatalf("replacement proposal = (%+v, %v)", got2, err)
+	}
+
+	// DeleteClip (confirm drops the compilation row) + proposal cleanup.
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{Path: "comps/1987.mp4", Name: "1987", Kind: filler.Commercial, DurationMs: 149000}, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteClip(ctx, "comps/1987.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, "comps/1987.mp4"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("compilation row survived DeleteClip: %v", err)
+	}
+	if err := s.DeleteClip(ctx, "comps/1987.mp4"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteClip twice = %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteSplitProposal(ctx, "sp_2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSplitProposal(ctx, "sp_2"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
 }
 

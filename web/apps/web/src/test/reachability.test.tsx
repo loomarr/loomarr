@@ -160,7 +160,38 @@ const stubFetch = () => {
     if (u.includes("/filler/coverage")) {
       return Promise.resolve(json({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }));
     }
-    if (u.includes("/v1/filler")) return Promise.resolve(json({ clips: [] }));
+    // Before the /v1/filler catalog match: a persisted split proposal (V34) for the
+    // /filler/splits/$proposalId review route this suite derives from the router.
+    if (u.includes("/v1/filler/splits/")) {
+      return Promise.resolve(
+        json({
+          id: "sp-1",
+          clipPath: "comp.mp4",
+          createdAt: "2026-07-25T20:00:00Z",
+          segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
+        }),
+      );
+    }
+    // One clip, not an empty catalog: the per-clip actions (split, tag, pin) only render
+    // when there is a card to hang them on, and this suite exists to prove they mount.
+    if (u.includes("/v1/filler")) {
+      return Promise.resolve(
+        json({
+          clips: [
+            {
+              path: "comp.mp4",
+              name: "80s compilation",
+              kind: "commercial",
+              durationMs: 900000,
+              tagged: false,
+              aiTagged: false,
+              playCount: 0,
+              playsCounted: true,
+            },
+          ],
+        }),
+      );
+    }
     if (u.includes("/v1/channels/now-next")) return Promise.resolve(json({ channels: [] }));
     if (u.includes("/pods")) return Promise.resolve(json({ entries: [], totalMs: 0, matchLevel: "exact" }));
     if (u.includes("/v1/channels/")) {
@@ -302,6 +333,9 @@ describe("feature-gated panels mount when their flag is on", () => {
     // must be on the page — not merely built. This suite exists because eight things were
     // built, unit-tested and imported by nothing.
     ["/filler", /find clips/i, "the discover panel"],
+    // V34: the split review route exists, but if no card offers the entry point the
+    // operator can never reach it. The action lives on each clip card (admin).
+    ["/filler", /split into clips/i, "the compilation-split entry point"],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
     renderAt(path);

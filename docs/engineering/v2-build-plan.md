@@ -489,6 +489,19 @@ field, so this is a decision not to add one rather than a removal.
 
 ## 6.4 V34 — compilation splitting and per-clip metadata (proposed 2026-07-31)
 
+**Decisions (maintainer, 2026-07-31) — the two blockers recorded in PROGRESS.md are resolved, and
+the design doc was amended first (same PR):**
+
+1. **whisper-cli is approved** as the fifth vendored binary (design §14): whisper.cpp's
+   self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the single image with
+   its model file. ⚠ The shipped model is the smallest one **verified gap-free against the vendored
+   binary** — the measurements below used the Python package, which is not what ships, so that
+   verification is part of the gate, not a tuning preference (`tiny` drops audio; `small` didn't).
+2. **The invented-era hole closes with BOTH halves** (design §10): the validator accepts an era only
+   when the year appears literally in the source text, AND an ungrounded era is recorded as a
+   suggestion the operator confirms (`PATCH /v1/filler/{id}`). Applied to **every** tagging path —
+   the sidecar path has always been able to hit it; transcripts merely made it measurable.
+
 **The problem V33 leaves open.** Discovery finds sources; ingest downloads them. But a large share
 of what it finds is a **compilation** — one file holding twenty or more commercials back to back.
 Ingested whole it is a single 15-minute "clip" the pod assembler can never place: breaks are

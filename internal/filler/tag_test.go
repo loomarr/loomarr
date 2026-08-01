@@ -28,12 +28,17 @@ func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.Store
 	}
 	return out, nil
 }
-func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audience, category string, aiTagged bool, _ time.Time) error {
+func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, _ time.Time) error {
 	c := m.clips[id]
 	c.Era = era
 	c.Audience = filler.Audience(audience)
 	c.Category = category
 	c.AITagged = aiTagged
+	if era > 0 {
+		c.SuggestedEra = 0 // confirming clears (the store's conditional write)
+	} else if suggestedEra > 0 {
+		c.SuggestedEra = suggestedEra
+	}
 	m.updates[id] = c
 	return nil
 }
@@ -46,10 +51,11 @@ func untaggedClip(id, name string) filler.StoreClip {
 	return c
 }
 
-// A well-formed classification is written with all three tags.
+// A well-formed classification is written with all three tags. The era year
+// appears in the filename, so it is GROUNDED (§10 V34) and lands as a tag.
 func TestTagger_WritesValidClassification(t *testing.T) {
 	st := newTagMemStore()
-	st.clips["c1"] = untaggedClip("c1", "Frosted Flakes ad")
+	st.clips["c1"] = untaggedClip("c1", "Frosted Flakes ad 1992")
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"era":1992,"audience":"kids","category":"cereal"}`),
 	)
@@ -70,10 +76,10 @@ func TestTagger_WritesValidClassification(t *testing.T) {
 
 // GROUNDING (§10): the model returns a HALLUCINATED audience + category (not in
 // the enum sets). Those fields are DROPPED — never persisted as garbage. The valid
-// field (era) still lands.
+// field (era, its year in the filename) still lands.
 func TestTagger_DropsHallucinatedEnums(t *testing.T) {
 	st := newTagMemStore()
-	st.clips["c1"] = untaggedClip("c1", "some ad")
+	st.clips["c1"] = untaggedClip("c1", "some ad 1993")
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"era":1993,"audience":"cyberpunk","category":"nonsense_widgets"}`),
 	)
@@ -113,17 +119,113 @@ func TestTagger_RejectsBadYear(t *testing.T) {
 	}
 }
 
-// Classify directly: enum validation.
+// Classify directly: enum validation, with the era year present in the text.
 func TestClassify_ValidatesEnums(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"era":1994,"audience":"late_night","category":"cars"}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "car ad", "")
+	sug, err := filler.Classify(context.Background(), llmMock, "car ad 1994", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !sug.Complete() || sug.Era != 1994 || sug.Audience != filler.LateNight || sug.Category != "cars" {
 		t.Errorf("valid classification mis-parsed: %+v", sug)
+	}
+	if sug.SuggestedEra != 0 {
+		t.Errorf("grounded era leaked into SuggestedEra: %+v", sug)
+	}
+}
+
+// --- Era grounding (§10, V34) ----------------------------------------------------
+//
+// Measured on real transcripts (plan §6.4): the model inferred a decade from TONE
+// on 2 of 10 clips (era 1980, no year anywhere in the text), and the old
+// validator persisted both as fact. The rule: an era is a tag only when the year
+// appears LITERALLY in the text signals; otherwise it is a SUGGESTION.
+
+// The measured defect, end to end: a plausible era with no year anywhere in the
+// text is NOT persisted as a tag — it comes back as a suggestion, and the clip
+// keeps era 0 so matching never sees it.
+func TestClassify_UngroundedEraBecomesSuggestion(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":1980,"audience":"general","category":"tech"}`),
+	)
+	// Ad copy full of period-sounding language, but no year — the §6.4 failure shape.
+	sug, err := filler.Classify(context.Background(), llmMock, "aqua-globes", "Transcript: the amazing new Aqua Globes water your plants for weeks...")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Era != 0 {
+		t.Errorf("ungrounded era persisted as a tag — §8 breach: %+v", sug)
+	}
+	if sug.SuggestedEra != 1980 {
+		t.Errorf("ungrounded era lost instead of suggested: %+v", sug)
+	}
+	// The other fields still land — the suggestion demotes era ONLY.
+	if sug.Audience != filler.General || sug.Category != "tech" {
+		t.Errorf("valid fields dropped with the era: %+v", sug)
+	}
+}
+
+// The year appearing in the SIDECAR/TRANSCRIPT text grounds the era just as the
+// filename does.
+func TestClassify_EraGroundedBySourceText(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":1978,"audience":"family","category":"cereal"}`),
+	)
+	sug, err := filler.Classify(context.Background(), llmMock, "rice-krispies-treats", "Transcript: making treats since 1978, so easy...")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Era != 1978 || sug.SuggestedEra != 0 {
+		t.Errorf("era grounded in source text mis-handled: %+v", sug)
+	}
+}
+
+// The tag job WRITES the suggestion (not the era) — and still counts the clip:
+// "the model guessed" is information the operator should see, not silence.
+func TestTagger_PersistsSuggestionNotEra(t *testing.T) {
+	st := newTagMemStore()
+	st.clips["c1"] = untaggedClip("c1", "swiffer")
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":1999,"audience":"general","category":"tech"}`),
+	)
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	res, err := tagger.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := st.updates["c1"]
+	if got.Era != 0 {
+		t.Errorf("ungrounded era written to the clip: %+v", got.Clip)
+	}
+	if got.SuggestedEra != 1999 {
+		t.Errorf("suggestion not recorded: %+v", got.Clip)
+	}
+	if res.Skipped != 0 {
+		t.Errorf("a clip carrying a suggestion is not 'nothing usable': %+v", res)
+	}
+}
+
+// A clip that already HAS an era gets no suggestion — a known year needs no
+// second guess riding beside it.
+func TestTagger_NoSuggestionWhenEraKnown(t *testing.T) {
+	st := newTagMemStore()
+	clip := untaggedClip("c1", "known")
+	clip.Era = 1985
+	st.clips["c1"] = clip
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":1999,"audience":"kids","category":"toys"}`),
+	)
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := st.updates["c1"]
+	if got.Era != 1985 || got.SuggestedEra != 0 {
+		t.Errorf("known era disturbed by an ungrounded guess: era=%d suggestedEra=%d", got.Era, got.SuggestedEra)
 	}
 }
 
@@ -178,7 +280,7 @@ func TestTagger_SendsSidecarTextNotProvenance(t *testing.T) {
 
 func TestTagger_FallsBackToFilenameWhenNoSidecar(t *testing.T) {
 	st := newTagMemStore()
-	clip := untaggedClip("c1", "mystery-clip")
+	clip := untaggedClip("c1", "mystery-clip-1990")
 	clip.Source = "tunarr-local"
 	st.clips["c1"] = clip
 
@@ -195,7 +297,7 @@ func TestTagger_FallsBackToFilenameWhenNoSidecar(t *testing.T) {
 		t.Errorf("Tagged = %d, want 1 (a missing sidecar must not fail the tag)", res.Tagged)
 	}
 	prompt := llmMock.Prompt()
-	if !strings.Contains(prompt, "mystery-clip") {
+	if !strings.Contains(prompt, "mystery-clip-1990") {
 		t.Errorf("prompt lost the filename:\n%s", prompt)
 	}
 	// With no sidecar there is no description line at all — better than a misleading one.
@@ -228,14 +330,17 @@ func TestTagger_MalformedSidecarDegradesToFilename(t *testing.T) {
 	st.clips["c1"] = untaggedClip("c1", "broken")
 
 	drop := sidecarFS(map[string]string{"broken.info.json": `{not json at all`})
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","category":"tech"}`))
+	// era 0: with no readable sidecar the year is nowhere in the text, so a nonzero
+	// era would now be demoted to a suggestion (§10 V34) — 0 keeps this test about
+	// the malformed-sidecar degradation, not the era rule covered above.
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	res, err := tagger.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Tagged != 1 {
-		t.Errorf("Tagged = %d, want 1 (a malformed sidecar must not fail the tag)", res.Tagged)
+	if res.Partial != 1 {
+		t.Errorf("Partial = %d, want 1 (a malformed sidecar must not fail the tag): %+v", res.Partial, res)
 	}
 }

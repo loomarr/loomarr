@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import { clipThumbURL, formatClipDuration } from "@loomarr/core";
-import { Pin, Sparkles, Tag } from "lucide-react";
+import { Pin, Scissors, Sparkles, Tag } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ClipCardProps } from "./clip-card.type";
@@ -26,7 +26,16 @@ const AUDIENCE_LABEL: Record<string, string> = {
   late_night: "Late night",
 };
 
-const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProps) => (
+const ClipCard = ({
+  clip,
+  onConfirmTags,
+  onConfirmEra,
+  onTag,
+  onPin,
+  onSplit,
+  splitPending,
+  className,
+}: ClipCardProps) => (
   <Card className={cn("flex flex-col gap-2.5 p-3", className)}>
     {/* The extracted frame (V17b), served by V30. Rendered ONLY when one exists.
         ⚠ A placeholder box for every clip without a thumbnail would be the wrong default: on a
@@ -59,6 +68,18 @@ const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProp
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge>
       {clip.era ? <Badge variant="neutral">{`${clip.era}s`}</Badge> : null}
+      {/* An UNCONFIRMED era (§10 V34): the year is in none of the clip's text signals, so
+          the grounding validator refused to persist it. It renders as a question — suggest
+          magenta, with a "?" — never as a tag, and pod matching never reads it. */}
+      {clip.suggestedEra ? (
+        <Badge
+          variant="suggest"
+          title="AI guess. The year isn't in the source text, so confirm it only if you know it's right."
+          aria-label={`Suggested era ${clip.suggestedEra}, unconfirmed AI guess`}
+        >
+          {`${clip.suggestedEra}s?`}
+        </Badge>
+      ) : null}
       {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
       {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
       {clip.aiTagged && (
@@ -70,11 +91,23 @@ const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProp
       {!clip.tagged && !clip.aiTagged && <Badge variant="caution">Untagged</Badge>}
     </div>
 
-    {(onConfirmTags || onTag || onPin) && (
+    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit) && (
       <div className="flex flex-wrap gap-2">
         {clip.aiTagged && onConfirmTags && (
           <Button variant="outline" size="sm" onClick={onConfirmTags}>
             Confirm tags
+          </Button>
+        )}
+        {/* The era suggestion's confirm door. One click, PATCHes the year as fact — the
+            human, not the model, grounds the tag (§10). */}
+        {clip.suggestedEra != null && clip.suggestedEra > 0 && onConfirmEra && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onConfirmEra}
+            title={`Save ${clip.suggestedEra} as this clip's era`}
+          >
+            {`Confirm ${clip.suggestedEra}`}
           </Button>
         )}
         {/* Offered for EVERY clip, not just untagged ones. A fully-tagged clip can still be
@@ -93,6 +126,20 @@ const ClipCard = ({ clip, onConfirmTags, onTag, onPin, className }: ClipCardProp
           <Button variant="ghost" size="sm" onClick={onPin}>
             <Pin aria-hidden />
             Use in a channel
+          </Button>
+        )}
+        {/* Compilation splitting (§10 V34): detection runs as a job, then the operator
+            REVIEWS the proposed cuts before anything enters the catalog. */}
+        {onSplit && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={splitPending}
+            onClick={onSplit}
+            title="Detect commercials inside this compilation and review the cuts"
+          >
+            <Scissors aria-hidden />
+            {splitPending ? "Splitting…" : "Split into clips"}
           </Button>
         )}
       </div>

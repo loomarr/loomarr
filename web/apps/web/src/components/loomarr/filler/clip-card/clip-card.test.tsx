@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ClipCard } from "./clip-card";
 
 const base: ClipDTO = {
@@ -78,5 +78,33 @@ describe("ClipCard", () => {
     const { container } = render(<ClipCard clip={{ ...base, name: "Frosted Flakes", thumbnail: "a.jpg" }} />);
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
     expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
+  });
+
+  // §10 era grounding (V34): an ungrounded AI year renders as a QUESTION, never as a tag —
+  // and the confirm affordance appears only when the call site offers it (admin).
+  it("renders an ungrounded AI era as a suggestion, not a tag", () => {
+    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} />);
+    expect(screen.getByText("1985s?")).toBeInTheDocument();
+    // No confirm without the handler — a member sees the question but cannot answer it.
+    expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
+  });
+
+  it("offers the admin a one-click era confirm", () => {
+    const onConfirmEra = vi.fn();
+    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} onConfirmEra={onConfirmEra} />);
+    fireEvent.click(screen.getByRole("button", { name: /confirm 1985/i }));
+    expect(onConfirmEra).toHaveBeenCalledOnce();
+  });
+
+  // The split entry point (§10 V34): present only when offered (admin), and disabled while
+  // detection runs so a minutes-long decode can't be queued twice.
+  it("offers split detection and shows its pending state", () => {
+    const onSplit = vi.fn();
+    render(<ClipCard clip={base} onSplit={onSplit} />);
+    fireEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+    expect(onSplit).toHaveBeenCalledOnce();
+
+    render(<ClipCard clip={base} onSplit={onSplit} splitPending />);
+    expect(screen.getByRole("button", { name: /splitting/i })).toBeDisabled();
   });
 });
