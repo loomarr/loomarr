@@ -45,6 +45,26 @@ components:
         - level
         - text
       type: object
+    AddFillerSourceInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AddFillerSourceInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        label:
+          description: Operator-facing name; falls back to the identifier
+          type: string
+        uri:
+          description: archive.org collection identifier, /details/<id> path, or full URL
+          minLength: 1
+          type: string
+      required:
+        - uri
+      type: object
     AdjacentContext:
       additionalProperties: false
       properties:
@@ -1235,8 +1255,12 @@ components:
           type: integer
         detail:
           type: string
+        enabled:
+          type: boolean
         fetchable:
           type: boolean
+        id:
+          type: string
         kind:
           enum:
             - folder
@@ -1249,9 +1273,17 @@ components:
           type:
             - array
             - "null"
+        removable:
+          type: boolean
+        switchable:
+          type: boolean
         target:
           type: string
       required:
+        - id
+        - enabled
+        - switchable
+        - removable
         - kind
         - target
         - detail
@@ -2365,6 +2397,78 @@ components:
         - totalMs
         - matchLevel
       type: object
+    PoolChannelDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          description: Channel id
+          type: string
+        level:
+          description: Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays.
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
+          type: string
+        name:
+          description: Channel name
+          type: string
+        number:
+          description: Channel number
+          format: int64
+          type: integer
+        total:
+          description: Eligible clips available to this channel at its widest rung
+          format: int64
+          type: integer
+      required:
+        - channelId
+        - name
+        - number
+        - level
+        - total
+      type: object
+    PoolDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PoolDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
+          items:
+            $ref: "#/components/schemas/PoolChannelDTO"
+          type:
+            - array
+            - "null"
+        clips:
+          description: Every clip in the catalog, of every kind
+          format: int64
+          type: integer
+        commercials:
+          description: Clips that can fill a break BODY. Bumpers and station IDs bookend a pod; they cannot make one.
+          format: int64
+          type: integer
+        eligible:
+          description: Commercials that are ALSO duration-eligible under the active policy — the ones that can actually go in a break. Same gate pod assembly applies.
+          format: int64
+          type: integer
+        untagged:
+          description: Commercials missing a match tag. They still play, but only match broadly, so a themed channel falls back to bumpers.
+          format: int64
+          type: integer
+      required:
+        - clips
+        - commercials
+        - eligible
+        - untagged
+        - channels
+      type: object
     PreviewCycleOutputBody:
       additionalProperties: false
       properties:
@@ -2654,6 +2758,15 @@ components:
     RemoteSourceDTO:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RemoteSourceDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
         id:
           type: string
         label:
@@ -2665,6 +2778,7 @@ components:
           type: string
       required:
         - id
+        - enabled
         - label
         - uri
       type: object
@@ -3049,6 +3163,39 @@ components:
         - speed
         - bufferedMs
         - uptimeMs
+      type: object
+    SetFillerSourceEnabledInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetFillerSourceEnabledInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+      required:
+        - enabled
+      type: object
+    SetFillerSourceEnabledOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetFillerSourceEnabledOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+        id:
+          type: string
+      required:
+        - id
+        - enabled
       type: object
     SettingEntry:
       additionalProperties: false
@@ -4809,6 +4956,26 @@ paths:
       summary: Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)
       tags:
         - filler
+  /v1/filler/pool:
+    get:
+      description: How well the catalog can fill breaks across the whole install (§10 V35) — the Filler page's pool strip. Counts what exists (clips, commercials, duration-eligible, untagged) and lists every live channel's coverage, WORST FIRST. The per-channel answers are the SAME `Coverage` computation `/v1/channels/{id}/filler/coverage` returns, called once per channel, so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. Read-only, so any authenticated user may call it.
+      operationId: filler-pool
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Catalog-wide filler health
+      tags:
+        - filler
   /v1/filler/sources:
     get:
       description: Admin only. Derived from the configured drop-folder and library scan plus live per-source clip counts — there is no sources table (§10). A source the install could use but has not configured is returned with configured:false rather than omitted.
@@ -4829,6 +4996,31 @@ paths:
       summary: Where the clip catalog comes from
       tags:
         - filler
+    post:
+      description: Admin only (§10 V35). Registers an archive.org collection so pulls and searches can use it. Registering DOWNLOADS NOTHING — it records that this source exists and is allowed; fetching is the ingest path, and a composed multi-source pull goes through the approval gate.
+      operationId: add-filler-source
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddFillerSourceInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteSourceDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Register a remote collection to pull filler from
+      tags:
+        - filler
   /v1/filler/sources/fetch:
     post:
       description: Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.
@@ -4847,6 +5039,59 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Re-scan the catalog now
+      tags:
+        - filler
+  /v1/filler/sources/{id}:
+    delete:
+      description: Admin only (§10 V35). ⚠ Clips it already brought in are NOT deleted — they are real files, already tagged and possibly pinned into a channel, and forgetting where something came from is not a reason to throw it away. Only the registered remotes can be deleted; the derived folder and library rows describe configuration, which is changed in Settings.
+      operationId: delete-filler-source
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Forget a registered remote collection
+      tags:
+        - filler
+    patch:
+      description: "Admin only (§10 V35). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `folder` writes the drop-folder setting; any other id writes that collection's own row. The `library` row is not switchable — nothing scans a media-server library for clips (§10)."
+      operationId: set-filler-source-enabled
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFillerSourceEnabledInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetFillerSourceEnabledOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Switch a source on or off
       tags:
         - filler
   /v1/filler/splits/{proposalId}:

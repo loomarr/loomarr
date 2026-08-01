@@ -54,6 +54,24 @@ func (r resolved) intv(key string) int {
 	}
 	return 0
 }
+
+// boolOn reads a bool setting whose SAFE value is true.
+//
+// ⚠ `boolv` answers false for a nil service or a non-bool value, which is right for a knob that
+// is off by default and wrong for one that is on by default: inheriting it means a degraded boot
+// silently DISABLES the feature. `filler.source.folder.enabled` is the first of those — a false
+// there stops the catalog scan, so an install whose settings service could not answer would quietly
+// stop finding clips. This fails OPEN instead, matching the declared default.
+func (r resolved) boolOn(key string) bool {
+	if r.svc == nil {
+		return true
+	}
+	if b, ok := r.svc.Resolve(key).Value.(bool); ok {
+		return b
+	}
+	return true
+}
+
 func (r resolved) boolv(key string) bool {
 	if r.svc == nil {
 		return false

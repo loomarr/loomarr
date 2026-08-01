@@ -130,6 +130,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | --- | --- | --- | --- |
 | `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. |
+| `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |

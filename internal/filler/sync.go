@@ -2,6 +2,7 @@ package filler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -75,6 +76,14 @@ type StoreClip struct {
 	UpdatedAt time.Time
 }
 
+// ErrSourceDisabled reports that the drop-folder is switched off on the Sources tab (§10 V35).
+//
+// ⚠ A distinct error rather than a silent zero result, and that is the difference between the
+// switch working and the switch lying. A no-op success makes "Fetch now" a button that appears
+// to run and changes nothing, which reads as a broken sync rather than a disabled source; the
+// caller turns this into an answer that names the switch to flip.
+var ErrSourceDisabled = errors.New("filler: the drop-folder source is switched off")
+
 // Syncer reconciles the clip catalog against the Tunarr `local` filler source.
 type Syncer struct {
 	source FillerSource
@@ -82,6 +91,11 @@ type Syncer struct {
 	dir    string // FILLER_DIR (§15) — the drop-folder registered as a Tunarr local source
 	log    *slog.Logger
 	now    func() time.Time
+	// enabled reports whether the drop-folder source is switched on (§10 V35). Read on every
+	// sync rather than captured, because the setting hot-applies (config-design §3) — an
+	// operator switching the folder off expects the NEXT scheduled pass to stop, not a restart
+	// to be required. nil means always on, which keeps every existing construction unchanged.
+	enabled func() bool
 }
 
 // NewSyncer builds a catalog syncer. dir is the drop-folder path (FILLER_DIR, §15)
@@ -91,6 +105,16 @@ func NewSyncer(source FillerSource, store Store, dir string, now func() time.Tim
 		now = time.Now
 	}
 	return &Syncer{source: source, store: store, dir: dir, log: log, now: now}
+}
+
+// WithEnabled gates the syncer on the drop-folder's on/off switch.
+//
+// ⚠ The gate lives HERE rather than at each caller, because there are three (the manual sync
+// route, the Sources tab's "Fetch now", and the scheduled job) and a switch that only some of
+// them honour is not a switch. A test asserts the disabled sync neither scans nor writes.
+func (s *Syncer) WithEnabled(enabled func() bool) *Syncer {
+	s.enabled = enabled
+	return s
 }
 
 // SyncResult reports what a sync did (for the API + logs).
@@ -110,6 +134,11 @@ type SyncResult struct {
 // Duration always comes from Tunarr's scan. Idempotent: a no-change re-sync makes
 // no tag edits.
 func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
+	// Checked BEFORE the FILLER_DIR check and before any filesystem work: a switched-off
+	// source must not scan, and must not report a configuration problem it does not have.
+	if s.enabled != nil && !s.enabled() {
+		return SyncResult{}, ErrSourceDisabled
+	}
 	if s.dir == "" {
 		return SyncResult{}, fmt.Errorf("filler sync: no FILLER_DIR configured")
 	}

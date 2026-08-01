@@ -381,6 +381,24 @@ func declared() []Setting {
 			Doc: "How often to re-sync the filler catalog from Tunarr's local source.",
 		},
 		{
+			// The drop-folder's on/off switch on the Sources tab (§10 V35). A setting rather
+			// than a row because the folder is DERIVED from `filler.dir` — a remote
+			// collection's switch is a column on its own row, so a row and a setting never
+			// describe the same source.
+			//
+			// ⚠ Default TRUE, and it must stay that way: an install that has never seen this
+			// key has a working drop-folder, and defaulting to false would silently stop the
+			// scan on upgrade.
+			//
+			// ⚠ There is deliberately no `filler.source.library.enabled`. Nothing scans a
+			// media-server library for clips (§10 took the media server out of the filler
+			// path), so that key would gate no work — a control that dims a row and changes
+			// nothing. The Sources tab renders that row as provenance, without a switch.
+			Key: "filler.source.folder.enabled", EnvVar: "FILLER_SOURCE_FOLDER_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
+		},
+		{
 			Key: "filler.ai_tagging", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
 			Kind: KindBool, Default: false,
 			Doc: "Enable AI tagging of untagged commercials (era/audience/category).",

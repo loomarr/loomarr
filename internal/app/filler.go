@@ -520,9 +520,9 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		// reports through the event bus, which is for the download itself), and inventing a
 		// second channel for bookkeeping noise would be worse than the silence. The download
 		// proceeds either way, which is the property that matters.
-		_ = a.sources.UpsertFillerSource(ctx, store.FillerSource{
-			ID: id, Kind: "archive", URI: u, Label: id, CreatedAt: now(),
-		})
+		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
+		// it registers the source SWITCHED OFF (see the store).
+		_ = a.sources.UpsertFillerSource(ctx, store.NewFillerSource(id, "archive", u, id, now()))
 	}
 }
 

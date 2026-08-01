@@ -273,6 +273,12 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
+	// ⚠ A switched-off drop-folder is not a failure, and must not be reported as one. Left as a
+	// 502 it reads "your media server is broken" — sending the operator to check a connection
+	// that is fine — when the true answer is a switch they flipped themselves, on this page.
+	if errors.Is(err, filler.ErrSourceDisabled) {
+		return nil, errSourceDisabled()
+	}
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't sync filler",
 			"Loomarr couldn't sync the filler catalog from your media server. Check its connection in Settings and try again.", err)

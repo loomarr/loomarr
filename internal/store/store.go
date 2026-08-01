@@ -197,6 +197,10 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
+	// the row keeps its licence and fetch history, and clips it already brought in stay in the
+	// catalog. It only withdraws the source from future searching and downloading.
+	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
 }
 
 // AiringStore records what actually went to air — written from playout only.

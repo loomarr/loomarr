@@ -642,7 +642,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if set.str("tunarr.url") != "" {
 			fillerSource.Tunarr = fillerSourceAdapter{fillerProg}
 		}
-		syncer := filler.NewSyncer(fillerSource, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log)
+		// ⚠ The switch is read on every sync, not captured here: `filler.source.folder.enabled`
+		// hot-applies (config-design §3), so an operator who switches the drop-folder off
+		// expects the next scheduled pass to stop rather than a restart to be required.
+		syncer := filler.NewSyncer(fillerSource, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
+			WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") })
 
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
