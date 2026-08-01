@@ -39,8 +39,7 @@ const ERAS = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 0] as const;
 // to type anything else, which is why the chip renders a value it cannot cycle to.
 const CATEGORIES = ["food", "toys", "auto", "retail", "media", "service", ""] as const;
 
-const next = <T,>(list: readonly T[], current: T): T =>
-  list[(list.indexOf(current) + 1) % list.length] as T;
+const next = <T,>(list: readonly T[], current: T): T => list[(list.indexOf(current) + 1) % list.length] as T;
 
 // A tag chip you can click to advance. Styled to match Badge (mono/uppercase, §2.2) rather
 // than composing it, because a <button> inside a <span>-shaped Badge would nest interactive
@@ -69,7 +68,12 @@ const CycleChip = ({
       // "AUDIENCE?" beside a "Untagged" badge says the same thing four times and makes an
       // untagged clip look broken rather than merely unfinished — the badge is the signal,
       // these are the controls.
-      unset && "border-dashed text-static-500",
+      //
+      // ⚠ static-400, NOT static-500. The token file marks 500 "DISABLED-only + decorative
+      // glyphs (2.94:1 — fails for info text)", and the a11y gate caught exactly that: this
+      // is interactive TEXT, so it needs AA. The dashed border carries the "unset" signal
+      // instead, which colour alone should not have been doing anyway.
+      unset && "border-dashed text-static-400",
     )}
   >
     {label}

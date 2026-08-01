@@ -29,13 +29,13 @@ import {
 import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
+import { ClipTagDialog } from "../clip-tag-dialog";
+import { IngestPanel } from "../ingest-panel";
+import { PinClipDialog } from "../pin-clip-dialog";
 
 // One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
 // page cannot drift on what a retag carries.
 type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
-import { ClipTagDialog } from "../clip-tag-dialog";
-import { IngestPanel } from "../ingest-panel";
-import { PinClipDialog } from "../pin-clip-dialog";
 
 // FillerPage — the §10 clip catalog: browse, search, tag, sync, and (on the filler image)
 // download. Filtering is client-driven but server-executed: the store already indexes
@@ -125,15 +125,15 @@ const FillerPage = () => {
     },
   });
 
+  // Curried so the JSX spread stays a plain value — a typed inline arrow inside
+  // `{...(cond ? {...} : {})}` trips the TSX parser on the generic-looking annotation.
+  const cycleFor = (clip: ClipDTO) => (change: TagChange) => retag(clip, change);
+
   // ⚠ THE ONLY WAY THIS PAGE WRITES ONE TAG. `UpdateClipTags` overwrites era, audience AND
   // category on every call, so a PATCH carrying just the field being changed silently wipes
   // the other two. Cycling a chip makes that a per-click hazard rather than a once-per-dialog
   // one, so the whole tag row is assembled HERE from the clip and the single change — no
   // call site gets to remember or forget the siblings.
-  // Curried so the JSX spread stays a plain value — a typed inline arrow inside `{...(cond ?
-  // {...} : {})}` trips the TSX parser on the generic-looking annotation.
-  const cycleFor = (clip: ClipDTO) => (change: TagChange) => retag(clip, change);
-
   const retag = (clip: ClipDTO, change: TagChange) =>
     confirmEra.mutate({
       id: clip.path,

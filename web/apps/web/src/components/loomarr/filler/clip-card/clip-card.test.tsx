@@ -106,7 +106,9 @@ describe("ClipCard", () => {
 
   it("shows the play count and when it last aired", () => {
     render(
-      <ClipCard clip={{ ...base, playCount: 12, playsCounted: true, lastPlayedAt: new Date().toISOString() }} />,
+      <ClipCard
+        clip={{ ...base, playCount: 12, playsCounted: true, lastPlayedAt: new Date().toISOString() }}
+      />,
     );
     expect(screen.getByText(/12 plays/)).toBeInTheDocument();
     expect(screen.getByText(/just now/i)).toBeInTheDocument();
