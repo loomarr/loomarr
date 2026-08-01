@@ -52,7 +52,9 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
   if (!p) return <p className="text-muted-foreground text-sm">Loading the proposal…</p>;
 
   return (
-    <div className="flex flex-col gap-4">
+    // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
+    // without one renders flush against the sidebar.
+    <div className="flex flex-col gap-4 p-6">
       <div>
         <h1 className="font-semibold text-xl">Review split</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground text-sm">

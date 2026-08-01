@@ -260,6 +260,15 @@ type FillerService interface {
 	// enough to answer in the request, so there is no job to report on. That asymmetry is
 	// deliberate — a job id for a sub-second read would be ceremony the caller has to poll.
 	Discover(ctx context.Context, query string, limit int) ([]DiscoveredClip, int, error)
+	// DiscoverCollection lists ONE named collection, downloading nothing (§10, V17d). Same
+	// contract as Discover — synchronous, listing-only — with the collection as the argument
+	// instead of a keyword. This is the starter pack: a curated collection an operator keeps
+	// or excludes from before anything is fetched, so a suggested pack and a search result
+	// travel the same path rather than the pack growing its own acquisition route.
+	//
+	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
+	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
+	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
 	// Split proposes cuts for a compilation clip (§10, V34). Fire-and-report like
 	// Ingest — detection runs minutes per file, so progress arrives on the SSE bus
 	// as `filler_split` frames and the finished proposal is read back via

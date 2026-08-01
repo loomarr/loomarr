@@ -153,7 +153,7 @@ const FillerPage = () => {
 
   if (!fillerConfigured) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 p-6">
         <PageHeading />
         <EmptyState
           title="No filler folder configured"
@@ -178,7 +178,11 @@ const FillerPage = () => {
   const filtered = Boolean(q || kind || audience || untagged);
 
   return (
-    <div className="flex flex-col gap-6">
+    // ⚠ p-6 — the page owns its own gutter. Without it this page rendered flush against the
+    // sidebar and the right edge (heading at x=224 where every other page sits at 248), so
+    // the tab rule and every card ran edge to edge. The shell deliberately adds no padding
+    // (a full-bleed page like the Guide needs none), which makes it each page's job.
+    <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeading />
         {isAdmin && (
@@ -213,17 +217,39 @@ const FillerPage = () => {
         )}
       </div>
 
+      {/* Three tabs, matching the v2 mock: Catalog · Discover · Sources. Discover was a
+          CARD stacked under the catalog, which put finding clips, the clip list and an
+          image caveat on the page as three equal slabs with no hierarchy. The mock makes
+          it a peer of Catalog because it is a different task, not more of the same one. */}
       <CountTabs
         label="Filler sections"
         tabs={[
           { id: "catalog", label: "Catalog", count: clipList.length },
+          ...(isAdmin ? [{ id: "discover", label: "Discover", count: discovered.length }] : []),
           { id: "sources", label: "Sources", count: sourceRows.length },
         ]}
         activeId={tab}
         onSelect={(id) => setFilters({ tab: id === "catalog" ? undefined : id })}
       />
 
-      {tab === "sources" ? (
+      {tab === "discover" && isAdmin ? (
+        <div id="panel-discover" role="tabpanel" aria-labelledby="tab-discover" className="flex flex-col gap-4">
+          <DiscoverPanel
+            items={discovered}
+            total={discoverTotal}
+            licenceNote={discoverNote}
+            query={discoverQuery}
+            onQueryChange={setDiscoverQuery}
+            onSearch={() => setDiscoverSubmitted(discoverQuery.trim())}
+            searching={discover.isFetching}
+            searched={discoverSubmitted !== ""}
+            {...(features?.ingest
+              ? { onAdd: (ids: string[]) => ingestIds.mutate({ data: { urls: ids.map(archiveURL) } }) }
+              : {})}
+          />
+          <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />
+        </div>
+      ) : tab === "sources" ? (
         <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources">
           <FillerSources
             sources={sourceRows}
@@ -270,7 +296,11 @@ const FillerPage = () => {
           )}
 
           <Card className="flex flex-wrap items-end gap-3 p-4">
-            <div className="min-w-48 flex-1">
+            {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
+                viewport — a text field far wider than anything typed into it, which reads
+                as a layout bug rather than a generous input. It still grows on narrow
+                screens (min-w-48) and stops being silly on wide ones. */}
+            <div className="min-w-48 max-w-md flex-1">
               <Label htmlFor="clip-search">Search</Label>
               <Input
                 id="clip-search"
@@ -338,7 +368,7 @@ const FillerPage = () => {
               description={
                 filtered
                   ? "Try a wider filter, or clear the search."
-                  : "Drop files into the filler folder, then Sync. Loomarr picks them up and reads each clip's duration from Tunarr's scan of the same folder."
+                  : "Anything that lands in the filler folder shows up here on its own. Drop files in, or let Discover fetch them."
               }
               {...(filtered
                 ? {
@@ -353,7 +383,12 @@ const FillerPage = () => {
                         }),
                     },
                   }
-                : {})}
+                : // The mock's empty state offers "Find clips" rather than only describing
+                  // the folder — an empty catalog is exactly when an operator needs the way
+                  // OUT of it, and the tab is otherwise a thing they have to notice.
+                  isAdmin
+                  ? { action: { label: "Find clips", onClick: () => setFilters({ tab: "discover" }) } }
+                  : {})}
             />
           ) : (
             <>
@@ -405,27 +440,6 @@ const FillerPage = () => {
             />
           )}
 
-          {/* Find clips sits ABOVE Download: searching is how an operator decides WHAT to
-              download, so the order follows the task. Discovery works on any image — it is
-              plain HTTP to a public API — while Download needs the filler tooling, which is
-              why only the latter is gated. */}
-          {isAdmin && (
-            <DiscoverPanel
-              items={discovered}
-              total={discoverTotal}
-              licenceNote={discoverNote}
-              query={discoverQuery}
-              onQueryChange={setDiscoverQuery}
-              onSearch={() => setDiscoverSubmitted(discoverQuery.trim())}
-              searching={discover.isFetching}
-              searched={discoverSubmitted !== ""}
-              {...(features?.ingest
-                ? { onAdd: (ids: string[]) => ingestIds.mutate({ data: { urls: ids.map(archiveURL) } }) }
-                : {})}
-            />
-          )}
-
-          {isAdmin && <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />}
         </div>
       )}
     </div>

@@ -4743,14 +4743,20 @@ paths:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no duration, no tags, and no licence (see below). Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
       operationId: discover-filler
       parameters:
-        - description: Words to search for, e.g. "1980s cereal commercial"
+        - description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
           explode: false
           in: query
           name: q
-          required: true
           schema:
-            description: Words to search for, e.g. "1980s cereal commercial"
+            description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
             minLength: 2
+            type: string
+        - description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
+          explode: false
+          in: query
+          name: collection
+          schema:
+            description: "An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."
             type: string
         - description: Max results (default 25)
           explode: false

@@ -280,7 +280,11 @@ COPY --from=build /out/loomarr /loomarr
 # first thing that happens. compose works around it with a one-shot chown init container;
 # that stays for BIND mounts (host-owned paths the image cannot pre-seed), but a named
 # volume no longer needs it.
-RUN install -d -o 65532 -g 65532 /data
+# /data/filler alongside it: FILLER_DIR defaults there (§15), and seeding it here means a
+# fresh named volume arrives with the drop-folder already present and nonroot-owned. The app
+# also MkdirAll's it at boot — belt and braces, because a BIND mount ignores what the image
+# seeded and only the runtime create covers that case.
+RUN install -d -o 65532 -g 65532 /data /data/filler
 VOLUME /data
 # These paths are what the `ingest` feature gate probes for. Set here rather than
 # discovered, so the gate is a config question with an operator override (§10).

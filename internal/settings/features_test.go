@@ -17,11 +17,18 @@ func featureService(t *testing.T, db map[string]string) *Service {
 	return s
 }
 
-// Nothing configured → no gated feature is available (config-design §7).
+// Nothing configured → no feature whose inputs an operator must SUPPLY is available
+// (config-design §7).
+//
+// ⚠ Filler is deliberately excluded: §7's rule is that gating derives from settings
+// COMPLETENESS, and a setting carrying a default is complete. `filler.dir` defaults to
+// /data/filler (the volume the image already ships), so nothing is missing on a zero-env
+// install. Acquisition and Suggestions stay off because their inputs — a Seerr URL, a TMDB
+// key — are facts about the operator's world that no default can invent.
 func TestFeatures_EmptyIsAllOff(t *testing.T) {
 	f := featureService(t, nil).Features()
-	if f.Acquisition || f.Suggestions || f.Filler {
-		t.Errorf("empty config should gate everything off, got %+v", f)
+	if f.Acquisition || f.Suggestions {
+		t.Errorf("empty config should gate operator-supplied features off, got %+v", f)
 	}
 }
 
@@ -68,12 +75,24 @@ func TestFeatures_AcquisitionOrGate(t *testing.T) {
 }
 
 // Filler needs the drop-folder (config-design §7).
+// ⚠ Filler is ON by default and off only when an operator EMPTIES the dir — the inverse of
+// what this test asserted before `filler.dir` gained its /data/filler default.
+//
+// The old shape ("off without a dir") was true and load-bearing in the wrong direction: a
+// zero-env install opened the Filler page on a single "no folder configured" empty state,
+// so every shipped filler capability — catalog, discovery, tagging, splitting — was hidden
+// behind a config step nobody was told to take. `database.url` and `backup.dir` both default
+// inside /data for exactly this reason; filler was the odd one out for no recorded reason.
 func TestFeatures_Filler(t *testing.T) {
-	if featureService(t, nil).Features().Filler {
-		t.Error("filler off without a dir")
+	if !featureService(t, nil).Features().Filler {
+		t.Error("filler off on a zero-env install — the default drop-folder should turn it on")
 	}
-	if !featureService(t, map[string]string{"filler.dir": "/data/filler"}).Features().Filler {
-		t.Error("filler on with a dir")
+	if !featureService(t, map[string]string{"filler.dir": "/srv/clips"}).Features().Filler {
+		t.Error("filler off with an explicit dir")
+	}
+	// Emptying it is how an operator turns filler OFF, so the gate must still honour "".
+	if featureService(t, map[string]string{"filler.dir": ""}).Features().Filler {
+		t.Error("an explicitly empty dir did not turn filler off")
 	}
 }
 
