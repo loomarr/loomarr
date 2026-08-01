@@ -24,6 +24,17 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.listFiller)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "filler-pool", Method: http.MethodGet, Path: "/v1/filler/pool",
+		Summary: "Catalog-wide filler health",
+		Description: "How well the catalog can fill breaks across the whole install (§10 V35) — the Filler page's pool strip. " +
+			"Counts what exists (clips, commercials, duration-eligible, untagged) and lists every live channel's coverage, WORST FIRST. " +
+			"The per-channel answers are the SAME `Coverage` computation `/v1/channels/{id}/filler/coverage` returns, called once per channel, " +
+			"so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. " +
+			"Read-only, so any authenticated user may call it.",
+		Tags: []string{"filler"},
+	}, RoleMember), s.fillerPool)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/{id}",
 		Summary: "Edit a clip's tags", Description: "Admin only.", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)

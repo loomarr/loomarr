@@ -345,6 +345,14 @@ type PodPreviewer interface {
 	// that it agrees with what airs, and splitting it onto its own service is the first step
 	// toward two implementations of "what would this channel get".
 	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
+	// Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35):
+	// how much material exists, and what every live channel's breaks currently resolve to.
+	//
+	// On this interface for the same reason Coverage is: its per-channel numbers ARE Coverage,
+	// called once per channel. An aggregate that computed its own would be a second opinion
+	// about the ladder, and the two would disagree on exactly the pages an operator compares
+	// when a channel looks wrong.
+	Pool(ctx context.Context) (filler.PoolReport, error)
 }
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr

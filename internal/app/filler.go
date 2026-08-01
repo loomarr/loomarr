@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/programmer"
+	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -354,6 +356,65 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (fill
 		return filler.CoverageReport{}, err
 	}
 	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
+}
+
+// Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35).
+//
+// ⚠ **Every per-channel number here comes from the SAME `Coverage` call the channel page makes**,
+// once per live channel. That is the whole design: an aggregate that computed its own answer
+// would be a second opinion about the ladder, and the two would eventually contradict each other
+// on the two pages an operator compares when something looks wrong. Aggregating the real answer
+// costs one catalog load per channel and cannot drift.
+//
+// Paused and detached channels are excluded: their breaks are not airing, so counting them as
+// "uncovered" would report a problem the operator deliberately created.
+func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) {
+	report, err := a.pods.PoolCounts(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+
+	// Counted in SQL rather than recomputed here — "untagged" is the AI-tagging job's own
+	// predicate (store/clips.go), and a second Go definition of the word would be free to
+	// disagree with the job that acts on it.
+	untagged, err := a.store.ListUntaggedCommercials(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+	report.Untagged = len(untagged)
+
+	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+	for _, ch := range chans {
+		// The same two-state DENY-LIST `recurate.eligible` uses, for the same reason: every
+		// managed state qualifies (live, building, and drifted), because drifted is a transient
+		// "the guide is catching up" state, not a channel that stopped airing. Only paused
+		// (deliberately off the sweep) and detached (soft-deleted) are excluded.
+		if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
+			continue
+		}
+		cov, err := a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
+		if err != nil {
+			return filler.PoolReport{}, err
+		}
+		report.Channels = append(report.Channels, filler.ChannelCoverage{
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Report: cov,
+		})
+	}
+
+	// Worst first, so a caller naming "the channel to fix" needs no sort of its own. Ties
+	// break on channel number for a stable order — an unstable list would make the strip's
+	// diagnosis line flicker between equally-bad channels on every poll.
+	sort.SliceStable(report.Channels, func(i, j int) bool {
+		li, lj := report.Channels[i].Report.Level, report.Channels[j].Report.Level
+		if li != lj {
+			return filler.LevelWorseThan(li, lj)
+		}
+		return report.Channels[i].Number < report.Channels[j].Number
+	})
+	return report, nil
 }
 
 // PreviewDraft assembles the pool for a DRAFT selection (the POST …/pods/preview
