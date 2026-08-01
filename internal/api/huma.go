@@ -260,6 +260,16 @@ type FillerService interface {
 	// enough to answer in the request, so there is no job to report on. That asymmetry is
 	// deliberate — a job id for a sub-second read would be ceremony the caller has to poll.
 	Discover(ctx context.Context, query string, limit int) ([]DiscoveredClip, int, error)
+	// Split proposes cuts for a compilation clip (§10, V34). Fire-and-report like
+	// Ingest — detection runs minutes per file, so progress arrives on the SSE bus
+	// as `filler_split` frames and the finished proposal is read back via
+	// GET /v1/filler/splits/{id}. The clip must exist (ErrNotFound otherwise).
+	Split(ctx context.Context, clipID string) (jobID string, err error)
+	// ConfirmSplit commits the operator's reviewed cut list (§10, V34): the ONLY
+	// path by which proposal segments become catalog clips. Synchronous — stream
+	// copy cuts seek rather than decode, so this is seconds, not the detection's
+	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
+	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
 }
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).
@@ -287,6 +297,12 @@ type DiscoveredClip struct {
 // running loomarr:filler can (§10, §16), which is why the API renders it as a distinct
 // problem type rather than the usual feature_not_configured.
 var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
+
+// ErrSplitUnavailable reports that compilation splitting cannot run because the
+// filler drop-folder (filler.dir) is unset — clip paths are relative to it, so
+// without it there is nothing to cut. Unlike ErrIngestUnavailable this IS a
+// configuration remedy: Settings → Filler opens it (§10, V34).
+var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
 
 // PodPreviewer answers "what commercials would this channel get" without touching
 // Tunarr (§12). Implemented by filler.PodAdapter, which serves preview and the

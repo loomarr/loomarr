@@ -1439,7 +1439,7 @@ next person — including to a future me reading "next up" as authoritative.
 
 | V8 · SSO as a credential path (`D-F`) | **done** | `f10667f` (§11 doc) + `7bd4f1e` (OIDC service) + `5ee6492` (routes) + `862d772` (login UI) + `8084a24` (Security block) + `d817fb1` (3 more sabotage checks) + `8da3d55` (Authelia userinfo fix) + `22e8205` (Authentik issuer fix) + `664c1bd` (Authentik flow walk) + `24f25fb`/`83d4007`/`00f37aa` (security-review fixes) — `make check` GREEN + `make test-pg` + **`make test-sso` GREEN (Authelia 4.39 + Authentik 2025.10, 33s)** + `make fe` (**824 app / 43 core**) + **574 visual** (4 new baselines, 0 modified) + `make e2e` (7) + openapi/config-docs/retired no drift. | ⚠ **Touches §11, which CLAUDE.md lists as non-negotiable — so the amendment landed first and is an ADDITION, not a change:** every invariant holds verbatim. An SSO identity with **no allowlist row is REJECTED** even with a valid provider token (the direct analogue of the un-imported media-server case), there is **no `auth.sso.auto_create`** and no code path that creates a row, and **no `auth.sso.admin_group`** — a provider claiming `loomarr-admins` is describing its own world. All three sabotage-verified, including by adding the classic auto-provision-on-first-sign-in the mock draws. ⚠ **OIDC only, not the mock's forward-auth mode** (maintainer's call): header trust is only as strong as the operator's network wiring, and a Loomarr reachable beside its proxy would accept `Remote-User: anyone` as identity — a total auth bypass with no signal. Forward-auth recorded as §20 open work. ⚠ **SABOTAGE FOUND A SECURITY CHECK NOTHING COVERED:** removing the nonce replay check broke NONE of eight passing tests, because each carried the correct nonce. A token minted for one login could be replayed into another's callback; now pinned by a test that starts two logins and completes the second with the first's token. ⚠ **And it corrected a claim I had written.** My no-session-on-refusal test asserted only the cookie's NAME, and passed against a sabotage removing the early return (the cookie is emitted with an empty token either way). Tightened to require no cookie with a VALUE — which STILL passed against a forged token, and that was informative rather than a gap: `http.Redirect` writes headers immediately, so a later `SetCookie` is discarded by net/http. **The guarantee is structural, not the `return`** — recorded above `redirectToLogin` with a warning not to tidy the refusals into a single exit that redirects last. ⚠ **Refusals carry a reason CODE, never a message**, and the vocabulary lives in the frontend: sabotaging the fallback to echo the code renders *"Your session expired, call 555-0100"* on our own login page. ⚠ `next` is validated as a same-app path — the naive `HasPrefix("/")` lets `//evil.test` through, since browsers treat protocol-relative URLs as off-site. ⚠ The test IdP **really signs** (discovery + JWKS + RSA), so `go-oidc` does production verification; stubbing the verifier would let a test pass while the real path accepted an unsigned token. §14 gained three modules (`go-oidc/v3` + `x/oauth2` + `go-jose/v4`), none previously present even indirectly. Also corrected two stale §11 claims: it opened with "two credential paths" (now three), and dev-login called itself "the only sanctioned third credential path" — it is a bypass of the credential CHECK. ⚠ **THREE MORE UNGUARDED CHECKS, same systematic sabotage** (`d817fb1`): **audience** (`SkipClientIDCheck` changed nothing — a token minted for a DIFFERENT client on the same homelab IdP was accepted here), **expiry** (`SkipExpiryCheck` changed nothing — one captured id_token was a permanent credential), and **state single-use** (removing the `delete` changed nothing — a callback URL sits in browser history and every proxy log between). **Four of the five holes in this file came from sabotage, not foresight** — worth recording, because it is the argument for enumerating branches rather than testing what occurs to you. ⚠ **TWO REAL PROVIDERS FOUND TWO REAL BUGS, NEITHER VISIBLE TO THE OTHER.** `make test-sso` stands up **Authelia** and **Authentik** and drives the whole flow; a hand-written stub is one reading of the spec on BOTH sides of the wire, so a misunderstanding agrees with itself. **Authelia** (`8da3d55`): profile claims live at **userinfo**, not the id_token, so `MatchName()` fell to an opaque `sub` UUID and **every login against a default Authelia was refused**; the userinfo `sub` is now cross-checked against the token's, and the severity is ESCALATION — the guarding test signs in as someone whose id_token has no name while userinfo describes a different subject it calls `admin`, and with the check removed the login succeeds AS THE ADMIN. **Authentik** (`22e8205`): its issuer is path-based WITH a trailing slash and OIDC requires an exact match, so our `TrimRight` broke discovery outright — an operator pasting the value Authentik displays could never connect. They also **DISAGREE about HTTPS** (Authelia refuses plain HTTP, Authentik serves it), so neither assumption is baked in. Two operator-facing harness findings kept: Authentik needs a **signing key assigned** or it signs HS256 (an error that reads like OUR verification bug), and Authelia's **cookie domain must match the dialed URL**. ⚠ **`/security-review` FOUND TWO MORE** (`24f25fb`+`83d4007`+`00f37aa`). **Login CSRF:** `/start` minted a state and threw it away (`authURL, _, err :=`), so nothing was written to the browser — **a server-side state map answers "did SOME login start here?", never "did THIS browser start it?"**, and only the second is CSRF protection (two code comments claimed otherwise). Someone the provider authenticates could capture their own `?state=&code=` redirect and get a victim to follow it, landing the victim in the app **signed in as the attacker**, with every subsequent action attributed to the attacker's account. Now a state cookie set at `/start` and required at `/callback` before the exchange; sabotage mints a session for an unbound callback, i.e. the attack reproduced. ⚠ **`SameSite=Lax`, and `Strict` is the trap:** the callback is a cross-site TOP-LEVEL NAVIGATION from the provider, so Strict would not harden it — it would break every SSO login, and **no stub IdP performs a real cross-site redirect, so only a real provider can catch it**. **Open redirect:** `safeReturnPath` read as thorough and let `/\evil.test` straight through (starts with `/`, not `//`, no `://`) — browsers treat `\` as `/` per WHATWG, and Go emits it verbatim since `path.Clean` treats `\` as ordinary. Now PARSED with the backslash rejected before parsing (`url.Parse` reports an empty Host for it), and **re-validated at the callback** rather than trusting a gate three hops upstream. **PKCE** (S256) added alongside, with the honest scope recorded on `pendingLogin.verifier`: ⚠ **it does NOT close the CSRF hole** — an attacker holds their own verifier — it binds the CODE to a flow while the cookie binds the FLOW to a browser. ⚠ Note for the threshold-watchers: the CSRF finding scored **7/10 and was filtered out of the review report** (the bar is 8); fixing it was the more valuable half. |
 
-**Next up: V34 — compilation splitting + per-clip metadata** (proposed, not started; plan §6.4).
+**Next up: V34 — compilation splitting + per-clip metadata** (**ACTIVE**; plan §6.4).
 The whole `### Filler` table has now shipped, and V33's discovery surfaced what V34 exists for:
 much of what an operator finds is a COMPILATION — one file holding twenty adverts — which
 ingests as a single 15-minute "clip" the pod assembler can never place.
@@ -1450,20 +1450,47 @@ three complete adverts (so the LLM step is the only signal that sees that bounda
 running the real `tagSystemPrompt` over real transcripts **invented an era on 2 of 10 clips** —
 a §8 grounding hole `validateTags` cannot currently detect.
 
-### ⛔ V34 cannot start until two things are decided — both are maintainer calls
+### ✅ V34 unblocked — both maintainer calls made (2026-07-31), phase active
 
-1. **The whisper dependency is an unresolved §14 conversation.** Everything else V34 needs is
-   already bundled (ffmpeg, yt-dlp) or already exists (the LLM provider, `filler.Classify`).
-   Whisper is the single genuine addition. The shippable form is `whisper.cpp`'s self-contained
-   `whisper-cli` binary — same vendored-binary-invoked-via-exec pattern as yt-dlp, no cgo, no
-   service, `base.en-q5_1` at 60MB. ⚠ The §6.4 measurements used the PYTHON package, which is
-   not what would ship; the binary is equivalent but unverified here. ⚠ Also measured: whisper
-   `tiny` drops audio (4 gaps >5s on one clip, worst 28s) and the LLM then returns phone-number
-   digits as product names. `small` had zero gaps. **Model size is a correctness property, not a
-   tuning preference.**
-2. **What to do about the invented era.** Either require the year to appear in the source text
-   before accepting it, or make era a suggestion the operator confirms. Doing neither ships
-   §8-violating tags at roughly a 20% rate.
+**Where it stands (2026-07-31, branch `feat/v34-compilation-splitting`):** doc-first pass
+(`21b5d1b`), the **era grounding rule** (`8642506` — ungrounded AI eras are operator-confirmable
+suggestions on every tagging path, sabotage-verified, migration `00024`), and the **backend
+pipeline** (`012d6d4` — whisper settings keys, split-proposal store `00025` conformant on both
+backends, chapter triage → blackdetect/silencedetect → whisper+LLM rescue → classify → dHash
+dedup → Confirm, with Unsplittable as a first-class never-guess outcome). `make check` +
+`make test-pg` green. The **endpoints** (`e6f3abf` — the three §7 split routes wired through the
+real composition root, `filler_split` SSE frame, openapi/orval regen) and the **review UI**
+(`016fa51` — cut-list editor, era-suggestion confirm, dedup flags, unsplittable rendering, plus
+the era badge on clip cards) followed. All FE gates green at `016fa51`: `make fe` (959 app / 49
+core), **624 visual (12 new baselines, 0 modified)**, `make e2e` (7), no openapi/config-docs/
+retired drift.
+
+⚠ **The review route is a SIBLING of `/filler`, not a child** — the catalog page renders no
+`<Outlet/>`, so nesting would have made the whole surface unreachable while every unit test
+still passed. That is the V1/V17a/V23 failure mode exactly, so the reachability suite now
+derives `/filler/splits/$proposalId` from the router AND requires a clip card to offer the
+entry point. A component test could not have caught it.
+
+**Remaining, in order:** (3) Dockerfile whisper-cli + model vendoring, with the **model verified
+gap-free against the real binary** (the §6.4 numbers came from the Python package — that
+verification is gate, not preference); (4) live verification on the maintainer's stack. ⚠ Until
+(3) lands, the split pipeline is **green in tests but inert in the shipped image** — the
+transcript rescue path shells out to a binary the Dockerfile does not install, and the §6.4
+finding says that path is the only signal that sees the hardest boundary class.
+
+1. **whisper-cli approved as the fifth vendored binary** (the §14 conversation is resolved):
+   whisper.cpp's self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the
+   single image with its model file. ⚠ The shipped model is the smallest verified gap-free against
+   the *vendored binary* — §6.4's measurements used the Python package, which is not what ships, so
+   model verification against the real binary is part of the gate, not a tuning preference.
+2. **The invented-era hole closes with BOTH halves:** the validator accepts an era only when the
+   year appears literally in the source text, AND an ungrounded era is recorded as a suggestion the
+   operator confirms. Applied to every tagging path — the sidecar path has always been able to hit
+   it; transcripts merely made it frequent enough to measure.
+
+Doc-first, same PR: design §14 (the binary), §16 (image contents), §10 (splitting pipeline + era
+rule), §7 (the split-proposal routes + era-confirm on `PATCH /v1/filler/{id}`), §5 (persisted split
+proposals), §15 (`INGEST_WHISPER_PATH`/`INGEST_WHISPER_MODEL`), §20 (transcript bullet), plan §6.4.
 
 ### Where the exploration lives
 

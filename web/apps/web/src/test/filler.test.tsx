@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 
 const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
+const MEMBER = { ...ADMIN, role: "member" };
 
 const clip = (over: Record<string, unknown> = {}) => ({
   path: "c1.mp4",
@@ -27,17 +28,55 @@ const json = (body: unknown, status = 200) =>
 type Opts = {
   features?: Record<string, boolean>;
   clips?: Array<Record<string, unknown>>;
+  me?: Record<string, unknown>;
 };
 
-const stubFetch = ({ features = { filler: true, suggestions: true }, clips = [clip()] }: Opts = {}) => {
+// The SSE stream, captured so a test can fire frames at the app: the split job's terminal
+// `filler_split` frame is what hands the review route its proposal id (V34), and a no-op
+// EventSource would leave that handoff untestable.
+class CaptureEventSource {
+  static listeners = new Map<string, Array<(ev: MessageEvent) => void>>();
+  addEventListener(type: string, cb: (ev: MessageEvent) => void) {
+    const list = CaptureEventSource.listeners.get(type) ?? [];
+    list.push(cb);
+    CaptureEventSource.listeners.set(type, list);
+  }
+  close() {}
+}
+
+const fireFrame = (type: string, payload: unknown) => {
+  const data = JSON.stringify(payload);
+  for (const cb of CaptureEventSource.listeners.get(type) ?? []) {
+    cb({ data } as MessageEvent);
+  }
+};
+
+const stubFetch = ({
+  features = { filler: true, suggestions: true },
+  clips = [clip()],
+  me = ADMIN,
+}: Opts = {}) => {
+  CaptureEventSource.listeners = new Map();
   const mock = vi.fn((url: string, init?: RequestInit) => {
     const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
+    if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
     if (u.includes("/v1/filler/sync"))
       return Promise.resolve(json({ total: 3, added: 2, updated: 1, pruned: 0 }));
     if (u.includes("/v1/filler/tag"))
       return Promise.resolve(json({ considered: 2, tagged: 2, partial: 0, skipped: 0 }));
     if (u.includes("/v1/filler/ingest")) return Promise.resolve(json({ jobId: "job-1" }));
+    // Split (V34): detection starts as a job; the review route reads the proposal back.
+    if (u.endsWith("/split")) return Promise.resolve(json({ jobId: "job-split-1" }));
+    if (u.includes("/v1/filler/splits/")) {
+      return Promise.resolve(
+        json({
+          id: "sp-1",
+          clipPath: "c1.mp4",
+          createdAt: "2026-07-25T20:00:00Z",
+          segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
+        }),
+      );
+    }
     if (u.includes("/v1/filler/") && String(init?.method) === "PATCH") {
       return Promise.resolve(json(clips[0]));
     }
@@ -55,13 +94,7 @@ const stubFetch = ({ features = { filler: true, suggestions: true }, clips = [cl
     return Promise.resolve(json({}));
   });
   vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
-  );
+  vi.stubGlobal("EventSource", CaptureEventSource);
   return mock;
 };
 
@@ -77,6 +110,7 @@ const renderAt = (path: string) => {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return router;
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -176,5 +210,85 @@ describe("Filler page", () => {
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "saving tags should PATCH the clip").toBeDefined();
     expect(JSON.parse(String(patch?.[1]?.body)).kind).toBe("trailer");
+  });
+
+  // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the
+  // admin's one-click confirm PATCHes it — carrying the clip's existing audience/category,
+  // because the BE's UpdateClipTags writes all three columns unconditionally and a bare
+  // {era} would wipe the other two.
+  it("confirms an era suggestion, keeping the clip's other tags", async () => {
+    const fetchMock = stubFetch({
+      clips: [clip({ era: 0, suggestedEra: 1985, audience: "kids", category: "cereal", tagged: false })],
+    });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    expect(screen.getByText("1985s?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /confirm 1985/i }));
+
+    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
+    expect(patch, "the confirm should PATCH the clip").toBeDefined();
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ era: 1985, audience: "kids", category: "cereal" });
+  });
+
+  // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
+  // (§19), and the UI gate is the courtesy that keeps the console clean.
+  it("shows a member the era question without the confirm action", async () => {
+    stubFetch({ me: MEMBER, clips: [clip({ era: 0, suggestedEra: 1985, tagged: false })] });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    expect(screen.getByText("1985s?")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /confirm 1985/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /split into clips/i })).not.toBeInTheDocument();
+  });
+
+  // The V34 handoff: POST returns a job id, the terminal filler_split frame carries the
+  // proposal id, and the app navigates to the review gate, which reads the proposal back.
+  it("starts split detection and navigates to the review on the success frame", async () => {
+    const fetchMock = stubFetch();
+    const router = renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+    const posted = fetchMock.mock.calls.find(
+      ([u, i]) => String(u).endsWith("/split") && String(i?.method) === "POST",
+    );
+    expect(posted, "the action should POST the split job").toBeDefined();
+    expect(await screen.findByText(/detecting cuts in c1\.mp4/i)).toBeInTheDocument();
+
+    act(() => {
+      fireFrame("filler_split", { jobId: "job-split-1", clipPath: "c1.mp4", status: "running" });
+    });
+    act(() => {
+      fireFrame("filler_split", {
+        jobId: "job-split-1",
+        clipPath: "c1.mp4",
+        status: "success",
+        proposalId: "sp-1",
+        segments: 1,
+      });
+    });
+
+    expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/filler/splits/sp-1");
+  });
+
+  it("surfaces the split job's terminal error instead of navigating", async () => {
+    stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
+
+    act(() => {
+      fireFrame("filler_split", {
+        jobId: "job-split-1",
+        clipPath: "c1.mp4",
+        status: "error",
+        error: "ffprobe found no streams",
+      });
+    });
+
+    expect(await screen.findByText("ffprobe found no streams")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /review split/i })).not.toBeInTheDocument();
   });
 });

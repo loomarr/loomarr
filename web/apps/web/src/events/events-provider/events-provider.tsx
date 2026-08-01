@@ -49,6 +49,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onFillerIngest: (e) => {
         for (const l of listeners.current) l.onFillerIngest?.(e);
       },
+      onFillerSplit: (e) => {
+        for (const l of listeners.current) l.onFillerSplit?.(e);
+      },
       onPlayout: (e) => {
         for (const l of listeners.current) l.onPlayout?.(e);
       },
@@ -81,6 +84,8 @@ const useLoomarrEventListener = (handlers: EventHandlers): void => {
       onChannel: (e) => ref.current.onChannel?.(e),
       onSuggestion: (e) => ref.current.onSuggestion?.(e),
       onLlmPull: (e) => ref.current.onLlmPull?.(e),
+      onFillerIngest: (e) => ref.current.onFillerIngest?.(e),
+      onFillerSplit: (e) => ref.current.onFillerSplit?.(e),
       onJob: (e) => ref.current.onJob?.(e),
       onActivity: (e) => ref.current.onActivity?.(e),
     });

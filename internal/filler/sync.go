@@ -177,6 +177,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
 			merged.Source = existing.Source
+			// The era suggestion (V34) is loomarr-owned too — a scan knows nothing
+			// about it, so it survives like the tags above.
+			merged.SuggestedEra = existing.SuggestedEra
 			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
 			// aired. Belt and braces with UpsertClip's ON CONFLICT list, which also omits them
 			// — either one alone would be enough, but a future edit to either that forgot the

@@ -140,6 +140,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |
 | `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |
 | `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | How long one download may run before it's stopped, so a stuck fetch can't block others. _(advanced)_ |
+| `ingest.whisper_path` (`INGEST_WHISPER_PATH`) | string | — | Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks. _(advanced)_ |
+| `ingest.whisper_model` (`INGEST_WHISPER_MODEL`) | string | — | The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks. _(advanced)_ |
 
 ## Users & security
 

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
@@ -28,6 +29,12 @@ type fakeFiller struct {
 	discovered    []string
 	discoverLimit int
 	discoverErr   error
+	// V34 split knobs.
+	splits           []fakeSplitCall
+	splitUnavailable bool
+	splitNotFound    bool
+	confirmNotFound  bool
+	confirmInvalid   bool
 }
 
 func (f *fakeFiller) Sync(context.Context) (int, int, int, int, error) {
@@ -60,6 +67,36 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	}
 	f.ingested = append(f.ingested, urls...)
 	return "job-1", nil
+}
+
+// Split/ConfirmSplit (V34): record calls; the error knobs force the handler's
+// 404/409/422 branches.
+type fakeSplitCall struct {
+	clipID     string
+	proposalID string
+	segments   int
+}
+
+func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
+	if f.splitUnavailable {
+		return "", api.ErrSplitUnavailable
+	}
+	if f.splitNotFound {
+		return "", store.ErrNotFound
+	}
+	f.splits = append(f.splits, fakeSplitCall{clipID: clipID})
+	return "split-job-1", nil
+}
+
+func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments []filler.SplitSegment) error {
+	if f.confirmNotFound {
+		return store.ErrNotFound
+	}
+	if f.confirmInvalid {
+		return filler.ErrSplitValidation
+	}
+	f.splits = append(f.splits, fakeSplitCall{proposalID: proposalID, segments: len(segments)})
+	return nil
 }
 
 func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
@@ -158,6 +195,42 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/nope", adminToken, `{"era":1990}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
+	}
+}
+
+// Era suggestions (§10, V34): the list surfaces an unconfirmed suggestion, and
+// PATCHing era CONFIRMS it — the suggestion clears in the same write.
+func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
+	if err := st.UpdateClipTags(context.Background(), "u1", 0, "kids", "cereal", 1985, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The suggestion rides the DTO so the UI can ask the question.
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	var list struct {
+		Clips []struct {
+			Path         string
+			Era          int
+			SuggestedEra int `json:"suggestedEra"`
+		}
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&list)
+	if len(list.Clips) != 1 || list.Clips[0].SuggestedEra != 1985 || list.Clips[0].Era != 0 {
+		t.Fatalf("suggestion not surfaced: %+v", list.Clips)
+	}
+	// Confirm: era lands, suggestion clears.
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/u1", adminToken, `{"era":1985}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirm patch → %d", resp.StatusCode)
+	}
+	var body struct {
+		Era          int
+		SuggestedEra int `json:"suggestedEra"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Era != 1985 || body.SuggestedEra != 0 {
+		t.Errorf("confirm did not clear the suggestion: %+v", body)
 	}
 }
 
@@ -425,5 +498,129 @@ func TestDiscoverFiller_RequiresAQuery(t *testing.T) {
 	}
 	if len(ff.discovered) != 0 {
 		t.Errorf("the service was called with %v despite an invalid request", ff.discovered)
+	}
+}
+
+// --- compilation splitting (§10, V34) ---
+
+// The propose route is admin-only (it writes a job against the catalog), 404s a
+// missing clip synchronously, and 409s when there is no drop-folder to cut into.
+func TestSplitFiller_Route(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	// Member negative (§19): a member must not start detection.
+	resp := do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", "", "")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member split → %d, want 401", resp.StatusCode)
+	}
+
+	resp = do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin split → %d", resp.StatusCode)
+	}
+	var body struct {
+		JobID string `json:"jobId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.JobID != "split-job-1" {
+		t.Errorf("job id = %q, want split-job-1", body.JobID)
+	}
+	if len(ff.splits) != 1 || ff.splits[0].clipID == "" {
+		t.Errorf("service not called with the clip id: %+v", ff.splits)
+	}
+
+	// Missing clip → 404, not an SSE error seconds later.
+	ff.splitNotFound = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/gone.mp4/split", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("split of a missing clip → %d, want 404", resp.StatusCode)
+	}
+	ff.splitNotFound = false
+
+	// No drop-folder → 409 with the remedy named (Settings, not a different image).
+	ff.splitUnavailable = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", adminToken, "")
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("split with no drop-folder → %d, want 409", resp.StatusCode)
+	}
+}
+
+// The proposal read comes straight from the store — the review's reconnect truth.
+func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	p := filler.SplitProposal{
+		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: time.Now().UTC(),
+		Segments: []filler.SplitSegment{
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
+			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true},
+		},
+	}
+	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/splits/sp_1", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get split → %d", resp.StatusCode)
+	}
+	var got filler.SplitProposal
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got.ID != "sp_1" || len(got.Segments) != 2 {
+		t.Fatalf("proposal = %+v", got)
+	}
+	// The V34 review fields must cross the wire — the UI renders from exactly these.
+	s1 := got.Segments[1]
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable {
+		t.Errorf("review fields lost: %+v", s1)
+	}
+
+	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/nope", adminToken, "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown proposal → %d, want 404", resp.StatusCode)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_1", "", "")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member read → %d, want 401 (§19)", resp.StatusCode)
+	}
+}
+
+// Confirm maps the splitter's sentinels: 422 for a rejected edit, 404 for a
+// missing proposal — and reports how many clips it wrote.
+func TestConfirmFillerSplit_Route(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodPost, "/v1/filler/splits/sp_1/confirm", adminToken,
+		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"},{"index":1,"startMs":30000,"endMs":60000,"name":"b"}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirm → %d", resp.StatusCode)
+	}
+	var body struct {
+		Clips int `json:"clips"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Clips != 2 || ff.splits[0].proposalID != "sp_1" {
+		t.Errorf("confirm result = %+v, calls = %+v", body, ff.splits)
+	}
+
+	// Member negative (§19): confirm is the catalog write — never a member's call.
+	resp = do(t, srv, http.MethodPost, "/v1/filler/splits/sp_1/confirm", "",
+		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("member confirm → %d, want 401", resp.StatusCode)
+	}
+
+	ff.confirmInvalid = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/splits/sp_1/confirm", adminToken,
+		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("rejected edit → %d, want 422", resp.StatusCode)
+	}
+	ff.confirmInvalid = false
+
+	ff.confirmNotFound = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/splits/gone/confirm", adminToken,
+		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("missing proposal → %d, want 404", resp.StatusCode)
 	}
 }

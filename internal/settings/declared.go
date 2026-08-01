@@ -433,6 +433,19 @@ func declared() []Setting {
 			Kind: KindDuration, Default: "30m", Advanced: true,
 			Doc: "How long one download may run before it's stopped, so a stuck fetch can't block others.",
 		},
+		// Compilation splitting (§10, V34). Empty/unrunnable ⇒ the transcript-rescue
+		// step is unavailable and over-long segments surface as UNSPLITTABLE in the
+		// review rather than being guessed at — coarse splitting needs only ffmpeg.
+		{
+			Key: "ingest.whisper_path", EnvVar: "INGEST_WHISPER_PATH", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks.",
+		},
+		{
+			Key: "ingest.whisper_model", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
+		},
 
 		// --- Users & security (§15, Phase 9) ---
 		{

@@ -45,8 +45,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// silently, and only noticeable as "usage never goes up". Tags survive re-sync because
 		// sync.go merges them before calling this; the counters survive because the SQL simply
 		// never touches them after insert. RecordClipPlay is their only writer.
-		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind, era=excluded.era, audience=excluded.audience,
@@ -54,10 +54,11 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
+		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
 		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), c.Quality, c.License, c.Thumbnail,
-		c.PlayCount, epoch(c.LastPlayedAt), epoch(c.UpdatedAt))
+		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Path, err)
 	}
@@ -65,7 +66,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, updated_at FROM clips`
+	rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), id))
@@ -128,10 +129,17 @@ func (s *sqlStore) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) 
 	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
 }
 
-func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, aiTagged bool, updatedAt time.Time) error {
+func (s *sqlStore) UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE clips SET era = ?, audience = ?, category = ?, ai_tagged = ?, updated_at = ? WHERE path = ?`),
-		era, audience, category, boolToInt(aiTagged), epoch(updatedAt), id)
+		// ⚠ suggested_era is CONDITIONAL (§10 era grounding, V34): writing an era confirms
+		// the suggestion, so it clears in the same write; a NEW suggestion overwrites; and a
+		// write carrying NEITHER (an era-less tag edit) leaves the existing suggestion alone —
+		// the tag job re-classifies untagged clips every run, so wiping on a no-era result
+		// would make the suggestion flap run to run.
+		`UPDATE clips SET era = ?, audience = ?, category = ?,
+		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 THEN ? ELSE suggested_era END,
+		   ai_tagged = ?, updated_at = ? WHERE path = ?`),
+		era, audience, category, era, suggestedEra, suggestedEra, boolToInt(aiTagged), epoch(updatedAt), id)
 	if err != nil {
 		return fmt.Errorf("update clip tags %s: %w", id, err)
 	}
@@ -223,7 +231,7 @@ func scanClip(sc scannable) (Clip, error) {
 	)
 	err := sc.Scan(&c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail,
-		&c.PlayCount, &lastPlayedAt, &updatedAt)
+		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}

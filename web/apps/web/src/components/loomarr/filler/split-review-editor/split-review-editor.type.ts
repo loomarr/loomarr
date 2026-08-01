@@ -1,0 +1,20 @@
+import type { SplitProposal, SplitSegment } from "@loomarr/api";
+
+// The proposal is the orval-generated SplitProposal (§10 V34) — no hand-written mirror.
+// The editor owns the draft state; the page owns the query, the confirm mutation and the
+// navigation, so the editor stays storyable and testable without a router or a backend.
+interface SplitReviewEditorProps {
+  proposal: SplitProposal;
+  // The confirm mutation is in flight — disables the footer so a double-click can't
+  // commit the same cut list twice.
+  confirming?: boolean;
+  // The operator's EDITED cut list, indices renumbered to the draft order. This is the
+  // exact body the page POSTs to /confirm.
+  onConfirm: (segments: SplitSegment[]) => void;
+  // Leave WITHOUT confirming — the proposal stays persisted server-side (there is
+  // deliberately no reject endpoint; review can happen later).
+  onBack: () => void;
+  className?: string;
+}
+
+export type { SplitReviewEditorProps };
