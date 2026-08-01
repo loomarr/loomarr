@@ -106,10 +106,16 @@ ARG TARGETARCH
 ARG YTDLP_VERSION=2026.07.04
 ARG DENO_VERSION=v2.9.2
 ARG FFMPEG_TAG=n7.1-latest
+ARG WHISPER_VERSION=v1.9.1
+# The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
+# that silently changes content changes transcription, and transcription decides where
+# clips get cut. Same reasoning as the version pins above, higher stakes.
+ARG WHISPER_MODEL_REV=5359861c739e955e79d9a303bcbc70fb988958b1
+ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) YTDLP_ASSET=yt-dlp_linux;         DENO_ARCH=x86_64;  FFMPEG_ARCH=linux64 ;; \
-      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; DENO_ARCH=aarch64; FFMPEG_ARCH=linuxarm64 ;; \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         DENO_ARCH=x86_64;  FFMPEG_ARCH=linux64;    WHISPER_ARCH=x64 ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; DENO_ARCH=aarch64; FFMPEG_ARCH=linuxarm64; WHISPER_ARCH=arm64 ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_TAG}-${FFMPEG_ARCH}-gpl-7.1"; \
@@ -125,7 +131,7 @@ RUN set -eux; \
     # Deliberately VENDOR-NEUTRAL — one package set, every GPU:
     #   libva2 / libva-drm2   VAAPI  → Intel AND AMD on Linux
     #   mesa-va-drivers       the open VAAPI drivers (AMD radeonsi, Intel i965/iHD era)
-    #   intel-media-va-driver Intel iHD — QSV and modern Intel VAAPI
+    #   intel-media-va-driver Intel iHD — QSV and modern Intel VAAPI (amd64 only; see below)
     #   libvulkan1 + mesa-vulkan-drivers  Vulkan → cross-vendor
     #   libx11-6 / libxext6   VAAPI's X11 display backend (h264_vaapi dlopens it even
     #                         headless; its absence is what broke vaapi above)
@@ -138,9 +144,22 @@ RUN set -eux; \
     #
     # Cost is ~120MB. Accepted: §9.1 makes playout a core capability, and an image that
     # can only ever encode in software is not a smaller Loomarr but a slower one.
+    #
+    # ⚠ intel-media-va-driver is amd64-ONLY and must stay out of the arm64 install list.
+    # It is the Intel iHD/QSV driver, so there is nothing for it to drive on ARM, and
+    # Debian ships no arm64 candidate: including it unconditionally made `apt-get`
+    # exit 100 with "Package 'intel-media-va-driver' has no installation candidate",
+    # which broke the arm64 half of the release build (release.yml builds
+    # linux/amd64,linux/arm64) AND every local build on an Apple-Silicon Mac. Everything
+    # else in this list is arch-neutral and stays shared — the VAAPI/Vulkan stack is
+    # what an ARM SBC with a Mali/V3D GPU actually uses.
     apt-get install -y --no-install-recommends \
       libva2 libva-drm2 libvulkan1 libdrm2 libx11-6 libxext6 \
-      mesa-va-drivers mesa-vulkan-drivers intel-media-va-driver; \
+      mesa-va-drivers mesa-vulkan-drivers \
+      libgomp1; \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      apt-get install -y --no-install-recommends intel-media-va-driver; \
+    fi; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
     curl -fsSL -o /usr/local/bin/yt-dlp \
       "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"; \
@@ -161,6 +180,61 @@ RUN set -eux; \
     cp "/tmp/${FFMPEG_BUILD}/bin/ffmpeg" "/tmp/${FFMPEG_BUILD}/bin/ffprobe" /usr/local/bin/; \
     chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe; \
     rm -rf /tmp/ffmpeg.tar.xz "/tmp/${FFMPEG_BUILD}"; \
+    # whisper-cli (§14, V34) — the fifth vendored binary, for compilation splitting.
+    #
+    # ⚠ UNLIKE yt-dlp, THIS ONE IS NOT SELF-CONTAINED. It links libwhisper + libggml,
+    # so the shared objects ship beside it in /usr/local/lib/whisper. Copying only the
+    # executable produces the failure this file already warns about in another form: a
+    # build that succeeds and a binary that dies at run time with "error while loading
+    # shared libraries". There are TWO distinct lookups here and they resolve
+    # differently — the linked libs via ldconfig, the compute BACKEND via a directory
+    # scan (see the layout warning further down); satisfying only the first is what
+    # makes `--help` work and transcription abort.
+    #
+    # ⚠ COPY THE WHOLE libggml SET, never a chosen subset. On amd64 upstream ships 15
+    # libggml-cpu-*.so microarchitecture variants (alderlake, zen4, sse42, …) and picks
+    # one AT RUN TIME from the host CPU; arm64 ships a single libggml-cpu.so. Pruning to
+    # "the one that works here" is the same class of bug as the hardcoded x86_64 URLs —
+    # it builds fine and then fails only on the hosts you did not test.
+    #
+    # libgomp1 is an apt dependency, NOT bundled: whisper-cli is OpenMP-threaded and
+    # debian:stable-slim does not ship libgomp. Measured — without it the binary aborts
+    # at load with "libgomp.so.1: cannot open shared object file".
+    curl -fsSL -o /tmp/whisper.tar.gz \
+      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
+    tar -xzf /tmp/whisper.tar.gz -C /tmp; \
+    install -d /usr/local/lib/whisper; \
+    cp "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"/libwhisper.so* \
+       "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"/libggml*.so* /usr/local/lib/whisper/; \
+    # ⚠ whisper-cli LIVES BESIDE ITS LIBRARIES, and /usr/local/bin gets a symlink.
+    # ggml's compute backends are dlopen()ed at run time, and it searches the
+    # EXECUTABLE'S OWN DIRECTORY — not ld.so.conf, and not a directory in an env var.
+    # So the obvious layout (binary in /usr/local/bin, libs in /usr/local/lib/whisper +
+    # ldconfig) links fine and then aborts on first real use with
+    # "GGML_ASSERT(device) failed" — no backend found. Measured on arm64: `--help`
+    # SUCCEEDS in that layout because it never initialises a backend, which is exactly
+    # why the build-time proof below transcribes real audio instead.
+    # (GGML_BACKEND_PATH is not an escape hatch — it wants a FILE, not a directory.)
+    cp "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}/whisper-cli" /usr/local/lib/whisper/whisper-cli; \
+    chmod +x /usr/local/lib/whisper/whisper-cli; \
+    ln -s /usr/local/lib/whisper/whisper-cli /usr/local/bin/whisper-cli; \
+    echo /usr/local/lib/whisper > /etc/ld.so.conf.d/whisper.conf; \
+    ldconfig; \
+    rm -rf /tmp/whisper.tar.gz "/tmp/whisper-bin-ubuntu-${WHISPER_ARCH}"; \
+    # The model. ⚠ `small.en` is a CORRECTNESS floor, not a quality preference, and at
+    # 466MB it is the single largest thing in this image (rootfs ~821MB → ~1.3GB, of
+    # which the binary + libs are only ~20MB). Measured against THIS binary on a real 244s
+    # 1990 commercial break (archive.org witi-6-commercial-breaks-10-24-1990): `tiny.en`
+    # silently dropped a whole 20s advert whose audio sits at the file's average
+    # loudness, and `base.en` dropped 7s of equally audible speech; `small.en` was the
+    # smallest with NO gap over audible content (its one 5s gap is true near-silence at
+    # -54dB, i.e. correctly transcribing nothing). §6.4's finding, reproduced against the
+    # vendored binary rather than the Python package — which is what the gate demanded,
+    # and it also rules out `base.en`, a size the plan never measured.
+    install -d /usr/local/share/whisper; \
+    curl -fsSL -o /usr/local/share/whisper/ggml-small.en.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-small.en.bin"; \
+    echo "${WHISPER_MODEL_SHA256}  /usr/local/share/whisper/ggml-small.en.bin" | sha256sum -c -; \
     apt-get purge -y curl xz-utils unzip; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
@@ -169,7 +243,16 @@ RUN set -eux; \
     /usr/local/bin/yt-dlp --version; \
     /usr/local/bin/ffmpeg -version | head -1; \
     /usr/local/bin/ffprobe -version | head -1; \
-    /usr/local/bin/deno --version | head -1
+    /usr/local/bin/deno --version | head -1; \
+    # ⚠ whisper is proved by TRANSCRIBING, never by `--help`. `--help` returns 0 without
+    # ever initialising a compute backend, so it passed on arm64 in a layout where the
+    # first real transcription aborted with "GGML_ASSERT(device) failed". This generates
+    # a second of silence and runs the model over it through the /usr/local/bin symlink
+    # — the same path the app execs — so a broken lib layout, a missing backend, a bad
+    # model download or an arch mismatch all fail the BUILD rather than the first split.
+    ffmpeg -v error -f lavfi -i anullsrc=r=16000:cl=mono -t 1 -y /tmp/probe.wav; \
+    whisper-cli -m /usr/local/share/whisper/ggml-small.en.bin -f /tmp/probe.wav -np >/dev/null; \
+    rm -f /tmp/probe.wav
 COPY --from=build /out/loomarr /loomarr
 # Pre-create /data owned by nonroot. Docker seeds a fresh NAMED volume from the image's
 # directory at that path — including its ownership — so this is what makes the documented
@@ -187,7 +270,9 @@ VOLUME /data
 # These paths are what the `ingest` feature gate probes for. Set here rather than
 # discovered, so the gate is a config question with an operator override (§10).
 ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
-    INGEST_FFMPEG_PATH=/usr/local/bin/ffmpeg
+    INGEST_FFMPEG_PATH=/usr/local/bin/ffmpeg \
+    INGEST_WHISPER_PATH=/usr/local/bin/whisper-cli \
+    INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin
 ARG VERSION=""
 ARG COMMIT=""
 # licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the

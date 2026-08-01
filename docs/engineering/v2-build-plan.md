@@ -492,11 +492,38 @@ field, so this is a decision not to add one rather than a removal.
 **Decisions (maintainer, 2026-07-31) — the two blockers recorded in PROGRESS.md are resolved, and
 the design doc was amended first (same PR):**
 
-1. **whisper-cli is approved** as the fifth vendored binary (design §14): whisper.cpp's
-   self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the single image with
-   its model file. ⚠ The shipped model is the smallest one **verified gap-free against the vendored
-   binary** — the measurements below used the Python package, which is not what ships, so that
-   verification is part of the gate, not a tuning preference (`tiny` drops audio; `small` didn't).
+1. **whisper-cli is approved** as the fifth vendored binary (design §14): whisper.cpp's upstream
+   binary, exec'd like yt-dlp, no cgo, no service, shipping in the single image with its model file.
+   ⚠ The shipped model is the smallest one **verified gap-free against the vendored binary** — the
+   measurements below used the Python package, which is not what ships, so that verification is part
+   of the gate, not a tuning preference (`tiny` drops audio; `small` didn't).
+
+   **✅ VERIFIED (2026-07-31), and it changed two things.** Method: whisper.cpp **v1.9.1** upstream
+   `whisper-bin-ubuntu-{x64,arm64}` binaries, run in the real image over a real 244s 1990 commercial
+   break (archive.org `witi-6-commercial-breaks-10-24-1990`), extracted to 16kHz mono wav by the
+   same ffmpeg call `internal/filler/mediatools.go` makes. Gaps measured as stretches >5s with no
+   utterance, then each gap's loudness compared against the file average — **the refinement that
+   matters**, because a gap over silence is whisper being correct, not whisper dropping audio:
+
+   | model | coverage | gaps >5s | over audible content | verdict |
+   | --- | --- | --- | --- | --- |
+   | `tiny.en` | 89.5% | 1 (20s) | **1** — dropped a whole advert at file-average loudness (-38dB) | ✗ |
+   | `base.en` | 92.1% | 1 (7s) | **1** — 7s of equally audible speech (-38dB) | ✗ |
+   | `small.en` | 97.5% | 1 (5s) | **0** — its one gap is true near-silence (-54dB) | ✅ **ships** |
+
+   ⚠ **`base.en` is newly ruled out** — a size §6.4 never measured, and the intuitive "one step up
+   from tiny" compromise. ⚠ **The dropped 20s was a complete hot-and-spicy-chicken advert** that
+   `small.en` transcribed in full: §6.4's finding reproduced against the real binary, on different
+   audio.
+
+   ⚠ **Two vendoring facts the "self-contained like yt-dlp" framing got wrong**, both found by
+   running it rather than reading about it: (a) whisper-cli **links libwhisper + libggml**, so the
+   shared objects must ship beside it (amd64 carries 15 CPU-microarch variants chosen at run time —
+   never prune them); and (b) **ggml dlopen()s its compute backend from the EXECUTABLE'S OWN
+   directory**, not `ld.so.conf`, so the binary lives in `/usr/local/lib/whisper` with a symlink in
+   `/usr/local/bin`. ⚠ **`--help` cannot prove any of this** — it returns 0 without initialising a
+   backend, and did so on arm64 in a layout where the first real transcription aborted with
+   `GGML_ASSERT(device) failed`. The build-time proof therefore **transcribes** a generated wav.
 2. **The invented-era hole closes with BOTH halves** (design §10): the validator accepts an era only
    when the year appears literally in the source text, AND an ungrounded era is recorded as a
    suggestion the operator confirms (`PATCH /v1/filler/{id}`). Applied to **every** tagging path —
