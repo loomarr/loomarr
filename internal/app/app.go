@@ -657,7 +657,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}
 			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log)
 		}
-		// Ingest tooling ships only in the loomarr:filler image (§16). Absent paths are
+		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no longer
+		// exists. Absent paths are
 		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
 		// — the `ingest` feature gate reports it and the UI explains the image variant.
 		var fetcher *clipfetch.Ingestor

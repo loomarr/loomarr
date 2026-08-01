@@ -389,9 +389,17 @@ func TestFiller_IngestUnavailableOnDefaultImage(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
 		t.Fatal(err)
 	}
-	// The remedy is a different IMAGE. Naming it is the whole point of this branch.
-	if !strings.Contains(problem.Detail, "loomarr:filler") {
-		t.Errorf("detail = %q, want it to name the loomarr:filler image", problem.Detail)
+	// ⚠ This assertion is INVERTED from what it used to be. It required the detail to name
+	// `loomarr:filler` (retired-ok) — a remedy that died when the two-tag split collapsed
+	// into the single image (§16), so the test was actively holding a dead instruction in
+	// place. The branch must still say something ACTIONABLE, hence both checks.
+	// The dead image name (retired-ok), asserted ABSENT.
+	if strings.Contains(problem.Detail, "loomarr:filler") { // retired-ok
+
+		t.Errorf("detail = %q, but that image variant no longer exists", problem.Detail)
+	}
+	if !strings.Contains(problem.Detail, "INGEST_YTDLP_PATH") {
+		t.Errorf("detail = %q, want it to name something the operator can actually check", problem.Detail)
 	}
 }
 

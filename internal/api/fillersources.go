@@ -163,12 +163,16 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			Fetchable:  s.filler != nil,
 		},
 		{
-			Kind:   "remote",
-			Target: "ingest sidecar",
-			Detail: "fetches into the watched folder — needs the loomarr:filler image",
+			Kind: "remote",
+			// ⚠ Was "ingest sidecar" / "needs the loomarr:filler image" (retired-ok), and neither of those
+			// things exists any more. The sidecar was folded into the core and the two-tag split
+			// was replaced by the single image (§10 records both reversals), so this label was
+			// telling operators to go and find a deployment they cannot get.
+			Target: "downloads",
+			Detail: "fetches clips into the watched folder from a URL you give it",
 			Count:  bySource["ingest"] + bySource["youtube"] + bySource["archive"],
-			// The sidecar's availability is only knowable by trying (ErrIngestUnavailable), so
-			// this reports whether the ROUTE exists rather than claiming the tooling is present.
+			// Availability is only knowable by trying (ErrIngestUnavailable), so this reports
+			// whether the ROUTE exists rather than claiming the tooling is present.
 			Configured: s.filler != nil,
 			// Not fetchable from here: a remote fetch needs URLs, which is POST /v1/filler/ingest.
 			// A "Fetch now" that silently did nothing would be worse than no button.

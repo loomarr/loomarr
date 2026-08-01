@@ -99,10 +99,11 @@ This check appears only once a drop-folder is configured.
   adding files.
 - **Clips exist but channels play no commercials** — check a channel's pod preview. If it
   shows only bumpers, your commercials likely lack the tags used for matching.
-- **"Ingest unavailable"** — downloading clips in-app requires the `loomarr:filler` image,
-  which carries the yt-dlp and ffmpeg tooling. No setting can enable it on `loomarr:latest`;
-  switch the image tag. Clips placed in the drop-folder by hand or by another tool work on
-  either image.
+- **"Ingest unavailable"** — the yt-dlp and ffmpeg tooling ships in the Loomarr image, so
+  this means the running install cannot execute it: usually a custom image built without the
+  vendored binaries, or `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` pointing at a path that
+  is missing or not executable. Clips placed in the drop-folder by hand or by another tool
+  are unaffected.
 
 ## LiveTV
 

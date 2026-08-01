@@ -301,10 +301,13 @@ type DiscoveredClip struct {
 	URL string `json:"url"`
 }
 
-// ErrIngestUnavailable reports that the running image carries no ingest tooling — the
-// default loomarr:latest. It is NOT a configuration error: no setting can fix it, only
-// running loomarr:filler can (§10, §16), which is why the API renders it as a distinct
-// problem type rather than the usual feature_not_configured.
+// ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
+// a configuration error — no setting can assert that a binary executes — which is why the
+// API renders it as a distinct problem type rather than feature_not_configured.
+//
+// ⚠ This used to mean "you are on loomarr:latest, run loomarr:filler instead". The single
+// image always ships the tooling (§16), so it now means a DEGRADED install: a custom build
+// without the vendored binaries, or a path that is missing or not executable.
 var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
 // ErrSplitUnavailable reports that compilation splitting cannot run because the

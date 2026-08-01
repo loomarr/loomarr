@@ -86,7 +86,7 @@ describe("FillerSources remotes", () => {
   const withRemotes = [
     {
       kind: "remote" as const,
-      target: "ingest sidecar",
+      target: "downloads",
       detail: "fetches into the watched folder",
       count: 12,
       configured: true,
@@ -121,7 +121,7 @@ describe("FillerSources remotes", () => {
   // things that exist cannot (build plan §6.1).
   it("keeps the configuration row it nests under", () => {
     render(<FillerSources sources={withRemotes} total={12} onFetch={() => {}} />);
-    expect(screen.getByText("ingest sidecar")).toBeInTheDocument();
+    expect(screen.getByText("downloads")).toBeInTheDocument();
   });
 
   it("renders nothing extra when no remotes are registered", () => {
@@ -130,7 +130,7 @@ describe("FillerSources remotes", () => {
     const bare = [
       {
         kind: "remote" as const,
-        target: "ingest sidecar",
+        target: "downloads",
         detail: "fetches into the watched folder",
         count: 12,
         configured: true,
@@ -138,7 +138,7 @@ describe("FillerSources remotes", () => {
       },
     ];
     render(<FillerSources sources={bare} total={12} onFetch={() => {}} />);
-    expect(screen.getByText("ingest sidecar")).toBeInTheDocument();
+    expect(screen.getByText("downloads")).toBeInTheDocument();
     expect(screen.queryByText(/never fetched/)).not.toBeInTheDocument();
   });
 });

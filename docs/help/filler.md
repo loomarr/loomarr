@@ -20,9 +20,13 @@ from Tunarr.
 Loomarr can pull clips straight into the folder from a YouTube playlist or video URL, as a
 background job.
 
-This needs the `loomarr:filler` image (it carries `yt-dlp` + `ffmpeg`). On the default
-`loomarr:latest` image the ingest button is disabled — switch the image tag to enable it.
-Clips you add by hand work on either image.
+The tooling this needs (`yt-dlp` + `ffmpeg`) ships in the Loomarr image, so downloading
+works out of the box — there is no tag to switch or profile to enable.
+
+If the download button is disabled, this install cannot run that tooling: usually a custom
+or hand-built image without the vendored binaries, or a `INGEST_YTDLP_PATH` /
+`INGEST_FFMPEG_PATH` pointing somewhere wrong. Clips you drop into the folder by hand
+always work, whatever the image.
 
 ## Tagging
 

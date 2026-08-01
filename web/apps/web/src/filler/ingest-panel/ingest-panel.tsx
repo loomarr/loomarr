@@ -31,15 +31,21 @@ const IngestPanel = ({ ingestAvailable, onIngested, className }: IngestPanelProp
   // weight as the features around it — three equal slabs where one was an apology. It is a
   // footnote to Find clips, so it reads as one.
   //
-  // No setting can open this gate — it depends on which IMAGE is running (config-design
-  // §7's one environment-derived feature). Pointing the operator at Settings would be a
-  // dead end, so the copy names the image instead.
+  // ⚠ This gate changed MEANING and the copy had not caught up. It used to say "switch to
+  // the loomarr:filler image" — a tag that no longer exists. That was right when the
+  // tooling was an opt-in variant, but the
+  // single image (§16) ships yt-dlp and ffmpeg always, so an operator sent looking for that
+  // tag finds nothing. Unavailable now means the binaries are missing or unrunnable in THIS
+  // install: a degraded deployment, not a choice not yet made.
+  //
+  // Still not a Settings pointer: the paths are configurable (§15) but a wrong path is the
+  // rare cause here, and the common one — a hand-built image without the vendored binaries —
+  // no setting can fix. The copy says what is true and offers the manual route that works.
   if (!ingestAvailable) {
     return (
       <p className={cn("text-muted-foreground text-sm", className)}>
-        This image doesn't include the downloader, so add clips by dropping them into the filler folder. The{" "}
-        <code className="font-mono text-static-200">loomarr:filler</code> image fetches them in-app instead —
-        same setup, just a different tag.
+        Downloading isn't available in this install, so add clips by dropping them into the filler folder. The
+        official image ships the downloader; a custom build may be missing it.
       </p>
     );
   }
