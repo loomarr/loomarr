@@ -123,6 +123,26 @@ components:
           description: A message to the requester, stored with the approval
           type: string
       type: object
+    ApproveFillerPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ApproveFillerPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        dropSourceIds:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        note:
+          description: Narrowing instruction, e.g. 'no local dealers, no PSAs'
+          type: string
+      type: object
     ApproveOutputBody:
       additionalProperties: false
       properties:
@@ -2041,6 +2061,29 @@ components:
       required:
         - clips
       type: object
+    ListFillerPullsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListFillerPullsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        pulls:
+          items:
+            $ref: "#/components/schemas/PullDTO"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - pulls
+        - total
+      type: object
     ListOutputBody:
       additionalProperties: false
       properties:
@@ -2709,6 +2752,107 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    ProposeFillerPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ProposeFillerPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: Optional; the gap this pull closes
+          type: string
+        title:
+          description: Optional operator-supplied summary; Loomarr composes one when omitted
+          type: string
+      type: object
+    PullDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PullDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        createdAt:
+          description: RFC3339
+          type: string
+        decidedAt:
+          description: RFC3339; absent while pending
+          type: string
+        decidedBy:
+          type: string
+        estimateClips:
+          format: int64
+          type: integer
+        id:
+          type: string
+        note:
+          description: The operator's narrowing instruction, captured at approval
+          type: string
+        plan:
+          items:
+            $ref: "#/components/schemas/PullPlanRowDTO"
+          type:
+            - array
+            - "null"
+        proposedBy:
+          type: string
+        reason:
+          description: The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision.
+          type: string
+        status:
+          enum:
+            - pending
+            - approved
+            - dismissed
+          type: string
+        title:
+          type: string
+      required:
+        - id
+        - title
+        - reason
+        - proposedBy
+        - status
+        - plan
+        - estimateClips
+        - createdAt
+      type: object
+    PullPlanRowDTO:
+      additionalProperties: false
+      properties:
+        dropped:
+          description: The operator excluded this row before approving. Retained rather than removed, so the record shows what was proposed as well as what was agreed to.
+          type: boolean
+        estimateClips:
+          description: Expected clips from this row. An ESTIMATE — render it as one.
+          format: int64
+          type: integer
+        name:
+          type: string
+        sourceId:
+          description: The registered collection this row fetches from
+          type: string
+        tag:
+          description: Short label for the row's chip (an era, an audience)
+          type: string
+        why:
+          description: Why THIS source is in the plan
+          type: string
+      required:
+        - sourceId
+        - tag
+        - name
+        - why
+        - estimateClips
+        - dropped
       type: object
     Range:
       additionalProperties: false
@@ -4974,6 +5118,122 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Catalog-wide filler health
+      tags:
+        - filler
+  /v1/filler/pulls:
+    get:
+      description: Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. Decided pulls are KEPT — the queue's History answers what was agreed to and who said so.
+      operationId: list-filler-pulls
+      parameters:
+        - description: Omit for all
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Omit for all
+            enum:
+              - pending
+              - approved
+              - dismissed
+              - ""
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFillerPullsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List pulls awaiting a decision
+      tags:
+        - filler
+    post:
+      description: "Admin only (§10 V35). Composes a plan across the ENABLED filler sources and writes it to the approval queue. ⚠ **Downloads nothing** — that is the whole point: the machine proposes, a human commits. Refused with 409 when every source the plan would need is switched off, naming the switch to flip rather than writing a pull that could never run."
+      operationId: propose-filler-pull
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposeFillerPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Propose a pull
+      tags:
+        - filler
+  /v1/filler/pulls/{id}/approve:
+    post:
+      description: "Admin only (§10 V35). THE gate: this is the only path on which a pull downloads anything, and it enqueues through the EXISTING ingest job rather than a route of its own. The body carries the operator's edits — rows dropped, and a note narrowing what to fetch. Dropped rows are recorded, not erased. Approving an already-decided pull is a 409, so a double-click cannot enqueue twice."
+      operationId: approve-filler-pull
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveFillerPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a pull — the commit point
+      tags:
+        - filler
+  /v1/filler/pulls/{id}/dismiss:
+    post:
+      description: Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.
+      operationId: dismiss-filler-pull
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Decline a pull
       tags:
         - filler
   /v1/filler/sources:

@@ -179,6 +179,22 @@ type SplitProposalStore interface {
 	DeleteSplitProposal(ctx context.Context, id string) error
 }
 
+// FillerPullStore is the filler approval gate (§10 V35).
+//
+// Separate from FillerSourceStore on purpose: a pull is an APPROVAL object that happens to
+// reference sources, and folding it in would make "the thing that lists where clips come from"
+// also the thing that records what a human agreed to download.
+//
+// ⚠ There is no Delete. A decided pull is KEPT — the queue's History answers "what did we agree
+// to download, and when, and who said so", which a delete erases. Same reason §7 keeps deny
+// reasons on title proposals.
+type FillerPullStore interface {
+	GetPull(ctx context.Context, id string) (filler.Pull, error)
+	// ListPulls returns pulls with the given status, newest first; an empty status means all.
+	ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error)
+	UpsertPull(ctx context.Context, p filler.Pull) error
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -291,6 +307,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	FillerSourceStore
+	FillerPullStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

@@ -56,6 +56,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
+	t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 	t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 }
@@ -1872,5 +1873,97 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.License != "" {
 		t.Errorf("a clip with no declared licence has %q, want empty", got.License)
+	}
+}
+
+// testFillerPulls covers the filler approval gate (§10 V35) on BOTH backends.
+//
+// The assertions that matter are the ones protecting the AUDIT: a decided pull is kept, and a
+// dropped plan row is retained with its flag rather than removed. "We approved this" is only
+// meaningful next to what was proposed.
+func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	created := time.Now().UTC().Truncate(time.Second)
+
+	p := filler.Pull{
+		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
+		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
+		Plan: []filler.PullPlanRow{
+			{SourceID: "classic", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 40},
+			{SourceID: "psa", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 12},
+		},
+	}
+	if err := s.UpsertPull(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Plan) != 2 || got.Plan[0].SourceID != "classic" || got.Plan[0].EstimateClips != 40 {
+		t.Errorf("plan did not round-trip: %+v", got.Plan)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, created)
+	}
+	// Pending means undecided, and that must be legible as a ZERO time rather than an epoch
+	// date nobody meant.
+	if !got.DecidedAt.IsZero() {
+		t.Errorf("a pending pull has DecidedAt %v, want zero", got.DecidedAt)
+	}
+	if got.EstimatedClips() != 52 {
+		t.Errorf("EstimatedClips = %d, want 52", got.EstimatedClips())
+	}
+
+	// Approve with one row dropped.
+	decided := created.Add(time.Hour)
+	got.Plan[1].Dropped = true
+	got.Status = filler.PullApproved
+	got.Note = "no local dealers"
+	got.DecidedAt = decided
+	got.DecidedBy = "admin-2"
+	if err := s.UpsertPull(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ The dropped row is STILL THERE, flagged. Removing it would leave a record of what was
+	// fetched with no record of what was declined, which is the half a reviewer needs.
+	if len(after.Plan) != 2 {
+		t.Fatalf("plan has %d rows after approval, want 2 — a dropped row must be retained", len(after.Plan))
+	}
+	if !after.Plan[1].Dropped {
+		t.Error("the dropped flag did not persist")
+	}
+	if n := len(after.Committed()); n != 1 {
+		t.Errorf("Committed() = %d rows, want 1", n)
+	}
+	if after.EstimatedClips() != 40 {
+		t.Errorf("EstimatedClips after drop = %d, want 40", after.EstimatedClips())
+	}
+	if !after.DecidedAt.Equal(decided) || after.DecidedBy != "admin-2" || after.Note != "no local dealers" {
+		t.Errorf("decision not recorded: %+v", after)
+	}
+
+	// Status filtering, and the fact that a decided pull is KEPT rather than deleted.
+	if pending, err := s.ListPulls(ctx, filler.PullPending); err != nil || len(pending) != 0 {
+		t.Errorf("pending = %d (%v), want 0", len(pending), err)
+	}
+	approved, err := s.ListPulls(ctx, filler.PullApproved)
+	if err != nil || len(approved) != 1 {
+		t.Fatalf("approved = %d (%v), want 1 — the history must survive the decision", len(approved), err)
+	}
+	if all, err := s.ListPulls(ctx, ""); err != nil || len(all) != 1 {
+		t.Errorf("all = %d (%v), want 1", len(all), err)
+	}
+
+	if _, err := s.GetPull(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPull unknown = %v, want ErrNotFound", err)
 	}
 }

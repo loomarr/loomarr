@@ -46,6 +46,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerCollections(humaAPI)
 	srv.registerFiller(humaAPI)
 	srv.registerFillerSources(humaAPI)
+	srv.registerFillerPulls(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
