@@ -1454,31 +1454,71 @@ shows none of them. V30 shipped `GET /v1/filler/thumb/{path...}`. So most of the
 **Tier 1 — data already sent, nothing rendering it**
 - Play count / last played on the clip card (the mock's `usedLine`)
 - Quality badge on the clip card
-- An `AI-TAGGED` marker distinct from the V34 era-suggestion badge
+- ~~An `AI-TAGGED` marker distinct from the V34 era-suggestion badge~~ — **retired, see below**
 - Header status line (`N sources · N clips · last scan …`)
 
 **Tier 2 — UI only, no new backend**
-- Inline tag cycling (click era/audience/category to retag); today it is a dialog
-- Block-per-channel on the card (pin exists, block does not)
-- Discover filter chips (era/audience) over the existing query
-- Discover empty state: *"Widen the era, or browse a curated source"*
+- ~~Inline tag cycling (click era/audience/category to retag)~~ — **retired, see below**
+- Block-per-channel on the card (pin exists, block does not) — **reshaped, see below**
+- ~~Discover filter chips (era/audience) over the existing query~~ — **retired with the tab**
+- ~~Discover empty state: *"Widen the era, or browse a curated source"*~~ — **retired with the tab**
 
 **Tier 3 — needs backend, decide individually**
 - **Catalog-wide coverage panel.** Coverage is per-CHANNEL
   (`/v1/channels/{id}/filler/coverage`); the mock's Filler-page version is catalog-wide with
-  a diagnosis line. New endpoint.
+  a diagnosis line. New endpoint. — **reshaped into a Pool health strip, see below**
 - **Richer discover rows** (thumbnail, description, duration, quality, licence).
   `DiscoveredClip` is `{id,title,url,year}`. ⚠ **Spike archive.org first** — V33 already
   measured that ~92% of items declare no licence, so promising these fields before checking
-  would repeat the licence-badge mistake §6.3 records.
-- **Curated source registry** (the mock's "Pull era matches…"). This is the starter pack
-  generalised; the `collection` discovery mode landed as its first half.
+  would repeat the licence-badge mistake §6.3 records. — **the redesign already thinned these
+  rows to `date · dur · quality` with no licence; the spike's answer was applied for us**
+- ~~**Curated source registry** (the mock's "Pull era matches…")~~ — **retired; the registry
+  collapses into the toggleable Sources list**
 
 ⚠ **Two mock elements were never authored and cannot be "ported":** the 4-step pipeline
 explainer (`hint-placeholder-count="4"`, no data) and the starter pack's own rows
 (`hasSeedPack` is hardcoded false). Building them means INVENTING content — the same
 situation the plan already records for `tcOptions`/`poPresets`. Do not treat their markup
-as a specification.
+as a specification. **Both are absent from the redesigned screen** — the question resolved
+itself by deletion, which is the outcome "do not invent content" was protecting.
+
+### ⚠ …and the audit was overtaken the same day — the mock changed (2026-08-01)
+
+The list above was written against `design/loomarr-prototype-desktop-v2.dc.html`. Hours later the
+design project's copy was re-fetched and **the Filler screen had been rewritten**: 125 lines of
+markup became 302, and the tabs went `Coverage · Catalog · Sources · Discover` → **`Catalog ·
+Incoming · Sources`**. The strikethroughs above are that reconciliation — **five items are retired
+outright and three reshaped**, so working the list as first written would have built things the
+design has since dropped.
+
+Recording it rather than silently re-writing the list, because the failure mode is the interesting
+part: an audit is a claim about a moving reference, and this one had a shelf life of one day. Two
+of its items (`usedLine`, the quality badge) survive untouched, which is the honest measure of how
+much of it was durable.
+
+⚠ **The deleted interactions were SHIPPED, not merely planned.** Inline click-to-cycle retagging
+(`cycleFor`, `filler-page.tsx:130`) landed on this very branch two commits ago and the redesign
+replaces it with a select-based **Edit tags** editor; pin/block becomes a single include-set
+override with a per-channel fit note and a *Back to automatic* reset. Deleting working code on the
+strength of a mock deserves the scrutiny — the argument for it is that both were built *toward*
+this screen, and the screen changed.
+
+⚠ **The largest change is not on the Filler page at all:** filler acquisition gains an **approval
+gate**. "Find clips" is renamed *"Propose a pull"* in three places and Approvals grows a `FILLER
+PULL` card. §10 already stated the principle without an object to hang it on — *"the machine
+proposes, a human commits"* — so this is the gate arriving where the doc said it belonged.
+
+⚠ **The prototype file in `design/` could NOT be updated** and is stale for this screen. The
+`DesignSync.get_file` cap (262,144 bytes) truncates before the file's ~192 KB of JS, and a
+markup-only splice renders nothing — the committed JS defines `covBars`/`registry`/`dscFilters`
+while the new markup binds `poolStats`/`asks`/`reels`/`services`. The structure is recorded in
+`design/FILLER-DELTA-2026-08-01.md`; the file needs another maintainer export. `support.js` and
+`image-slot.js` were re-fetched in the same pass and are **byte-identical**, so no runtime change
+accompanies it.
+
+**Both new phases are specced in plan §6.5: V35** (the Filler page as redesigned) and **V36** (the
+Watch player, which arrived in the same import and is blocked on playout emitting raw MPEG-TS —
+nothing a `<video>` element can play).
 
 **Next up: V34 — compilation splitting + per-clip metadata** (**ACTIVE**; plan §6.4).
 The whole `### Filler` table has now shipped, and V33's discovery surfaced what V34 exists for:

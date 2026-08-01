@@ -155,6 +155,9 @@ Wizard → V20/V21/V22; Mobile → V18.
 phases were started. Four dependency declarations were wrong and one gate was unbuildable as
 written; §6.2 records each correction and the evidence. The rows below are the corrected ones.
 
+⚠ **V35 and V36 were added later (2026-08-01) and are NOT part of that correction pass** — they
+come from a re-fetch of the design project in which the Filler screen had been rewritten. See §6.5.
+
 | # | Phase | Deps | Gate |
 | --- | --- | --- | --- |
 | **V17b** | `F2` — clip previews on `ClipCard` | V17a, **V30** | Preview renders; visual baseline; **stories use inline `data:` URIs, production fetches the V30 route** |
@@ -167,6 +170,8 @@ written; §6.2 records each correction and the evidence. The rows below are the 
 | **V30** | Filler preview serving | V6, V28 | Thumbnail bytes are reachable over HTTP; **the route is NOT named `preview`** — see §6.2 |
 | **V33** | `#8` — F3b discovery: `GET /v1/filler/discover` (archive.org **and** YouTube) + **the persisted Sources registry** (V28 ships the read-model; V33 owns the table) | V28, **`internal/clipfetch`** | The Archive.org **and yt-dlp** contracts are **pinned testkit fixtures**; discovery never runs in unit tests. ⚠ **No licence badges — gate amended, see §6.3** |
 | **V34** | **Compilation splitting + per-clip metadata** — one downloaded compilation becomes many tagged clips | V33 | See §6.4. Measured on 6 real compilations before being written; **not** a V33 deliverable |
+| **V35** | **The Filler page as redesigned** — `Catalog · Incoming · Sources` + a pool-health strip, and filler acquisition behind the approval gate | V34 | See §6.5. ⚠ **The mock changed on 2026-08-01**; build from `design/FILLER-DELTA-2026-08-01.md`, not from the committed `.dc.html`, which is stale for this screen |
+| **V36** | **The Watch player** — a channel preview from the guide row menu | V6 | See §6.5. ⚠ **BLOCKED**: playout emits raw MPEG-TS, which no `<video>` element plays. Needs an HLS output mode (recommended) or a §14 dependency conversation — the phase cannot start on the markup alone |
 
 ### Dashboard & wizard
 
@@ -637,6 +642,99 @@ also the wrong one.
   API-ONLY BY DECISION, recorded in §12's surface map rather than left orphaned. See PROGRESS.md.
 - **V7 and V17a are fully independent** of the spine and good parallel work.
 - **Blocking counts** (transitive): V2b 28 · V3 27 · V4 26 · V5 12 · V9 11.
+
+---
+
+## 6.5 V35/V36 — the mock changed under the Filler track (2026-08-01)
+
+**The reference moved.** `Loomarr Prototype v2.dc.html` was re-fetched from the design project and
+the Filler screen has been rewritten: 125 lines of markup became 302 and the tabs went
+`Coverage · Catalog · Sources · Discover` → **`Catalog · Incoming · Sources`**. The full structure
+is recorded in `design/FILLER-DELTA-2026-08-01.md`; this section is what gets built from it.
+
+⚠ **This landed the same day as PROGRESS.md's "the Filler UI is behind its own backend" audit and
+invalidated five of its items.** That audit is now annotated rather than deleted, because the
+lesson is the durable part: an audit is a claim about a moving reference. Do not work the tier list
+without reading the reconciliation under it.
+
+### What could not be verified, and must not be invented
+
+The fetch returned `truncated: true` at exactly 262,144 bytes — enough for the whole Filler screen
+(byte 172k–260k) and **none of the file's ~192 KB of JS**. So `poolStats` values, the `asks` /
+`reels` / `services` sample rows, `autoConfChips` options and `planRows` copy are **unknown**. Same
+rule as §8's `tcOptions` / `poPresets`: a maintainer export supplies them, or the phase invents them
+*deliberately and says so*. `support.js` and `image-slot.js` were re-fetched and are byte-identical,
+so no runtime change accompanies this.
+
+### Ratified decisions (maintainer, 2026-08-01)
+
+1. **Bulk pulls are gated; a single hand-queued clip is not.** A *pull* is a plan Loomarr composed
+   across sources, so it mints a proposal and waits for approval. An admin searching one source and
+   clicking **Queue download** on one result stays direct — the §7 shape, where an admin may
+   `POST /v1/titles` because the admin *is* the gate. This preserves shipped V33 behaviour on the
+   manual path and puts the gate where §10 already said it belonged: *"the machine proposes, a
+   human commits"*.
+2. **V35 is ONE phase, not six.** ⚠ In tension with CLAUDE.md prime directive 1, raised and
+   reaffirmed. The mitigation is the step order below: each step is independently green-able, and
+   only steps 1–2 touch `api/openapi.yaml`.
+3. **V36 is planned alongside but runs as its own lane** — no shared DTO, no shared generated
+   output.
+
+### V35 — the Filler page as redesigned
+
+**Step 0 — doc-first.** §10 (the pull proposal, source on/off semantics, split review relocating
+into Incoming, the starter pack superseded by the pull), §7 (routes + which need admin), §5
+(`filler_pulls`, `filler_sources.enabled`, the clip review state), §12 (the surface IA), §15 (new
+keys). ⚠ **`docs/help/filler.md` is already stale and ships inside the binary as instructions** —
+it says *"Tunarr scans the folder and Loomarr reads the catalog from Tunarr"*, which §10 reversed.
+Same PR.
+
+**Step 1 — backend.**
+
+| # | Work | ⚠ |
+| --- | --- | --- |
+| 1.1 | **Pool health** — a catalog-wide entry over `filler.Coverage` (`coverage.go:51`) | §6 is non-negotiable: the **same pools** as assembly. Pin it by construction in `preview_test.go:28`'s shape, not by agreeing today |
+| 1.2 | **Clip media route** — `GET /v1/filler/media/{path...}` | Sibling of `api/fillerthumb.go`, same confinement rooted at `FILLER_DIR`, same `http.ServeContent`. Carry over the traversal negative (`fillerthumb_test.go:99`) |
+| 1.3 | **Sources on/off + add/remove** | `filler_sources` gains `enabled`; the derived folder/library rows are config, so they need settings-backed toggles. **Enforce at the scan/discover/ingest sites** — a UI-only toggle is a lie the mock's own copy would tell |
+| 1.4 | **Incoming read-model** | *asks* generalises `clips.suggested_era` (`00024`) into a review state carrying confidence + a `why`; *reels* is a LIST route over `filler_split_proposals` (`00025`) plus in-flight downloads; the auto-file policy is §15 keys |
+| 1.5 | **Pull proposals** | Propose / list / approve / dismiss / drop-a-row / note. **Approve enqueues through the EXISTING ingest path** — a second downloader is the shape §10 rejects by name. `pullEmpty` is a real precondition, not a UI state |
+| 1.6 | **Bulk catalog ops** | **Open question — decide before building.** `clips` is a *synced cache* (§10, migration `00013`), so deleting a row without the file means it returns on the next scan. Tombstone or delete-the-file |
+| 1.7 | **Per-channel override + `fitNote`** | Maps onto the existing `policy.filler.pinned`/`excluded`; `fitNote` derives from 1.1's ladder |
+
+**Step 2 — contract.** `make openapi` → commit → `openapi-verify` clean; orval regen. No
+hand-written DTOs.
+
+**Step 3 — frontend.** Three tabs + the pool strip; the card gains select/quality/source-line/
+Edit-tags/override-picker; new components for the toolbar, list row, bulk bar, pool health, incoming
+(asks + reels), auto-file policy, source row and add-source; the `FILLER PULL` card on the Queue.
+Retire `DiscoverPanel`, `pin-clip-dialog`, `clip-tag-dialog` and the `cycleFor` handlers.
+
+⚠ **Reachability.** Incoming absorbs the split review, but `/filler/splits/$proposalId` stays a
+**sibling** route — PROGRESS.md records that nesting it under a page with no `<Outlet/>` made the
+whole surface unreachable while every unit test stayed green. The tab is an additional door.
+
+**Step 4 — gates.** `make check` (-race) · `test-pg` · `openapi-verify` · `config-docs` ·
+`retired-verify` · `fe` · `fe-visual` · `e2e`, then **live**: the audit that started this was
+written by looking at the running page, and nothing less would have found it.
+
+### V36 — the Watch player
+
+The same import adds a **Watch** entry on the guide row menu opening a player: LIVE badge, channel
+number, encoder line, transport, mute + volume, elapsed/total/remaining, quality pickers, full
+frame, **Copy stream URL**, *Open in ‹media server›*, and a stats overlay.
+
+⚠ **Blocked on something the markup cannot show.** Playout emits **raw MPEG-TS**
+(`internal/playout/args.go:266`, `program.go:157` and `:261`). No browser plays MPEG-TS in a
+`<video>` element, there is **no HLS output anywhere in the tree**, and the frontend has no player
+dependency and no `<video>` tag at all. Three options:
+
+1. **An HLS output mode in playout** — *recommended*. Stays inside §14's Go-only language policy,
+   reuses the existing session machinery, costs no frontend dependency.
+2. `mpegts.js` on the frontend — a **§14 new-dependency conversation**, not a free choice.
+3. Hand-rolled MSE/WebCodecs — rejected; expensive and the wrong tool.
+
+⚠ **A Tunarr-backed channel has no Loomarr stream at all**, so Watch must degrade honestly rather
+than render a dead player — the same asymmetry §6.1 records for play counts on those channels.
 
 ---
 

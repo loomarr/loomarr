@@ -30,6 +30,16 @@ are Claude Design mockups in the `.dc.html` format — a self-contained prototyp
 | `loomarr-prototype-desktop-v2.dc.html` | 1280×800 | Login · Wizard (6 steps, **Database first**) · **Dashboard** · **Guide** (time-grid) · Channel detail · My requests · Suggest · Approvals · Filler (+ Coverage / Catalog / Discover / Sources) · **People** · Settings (Connections · AI · Defaults · **System** · **Security** · **All settings**) · **Account** · Help · Member intro · User drawer · Toast |
 | `loomarr-prototype-mobile-v2.dc.html` | 375×812 | Dashboard · Guide · Queue · People · Settings · Help · Account |
 
+> ⚠ **`loomarr-prototype-desktop-v2.dc.html` is STALE for the Filler screen (2026-08-01).** The
+> design project's copy was updated; the Filler screen was rewritten (4 tabs → 3, a new Incoming
+> tab, an approval-gated "pull") and Approvals gained a `FILLER PULL` card. **The new markup could
+> not be merged in** — the same 256 KiB cap truncates the fetch before the file's ~192 KB of JS, and
+> the committed JS defines `covBars`/`registry`/`dscFilters` while the new markup binds
+> `poolStats`/`asks`/`reels`/`services`, so a partial splice renders nothing. The delta is recorded
+> verbatim in **`FILLER-DELTA-2026-08-01.md`**; the file itself needs another maintainer export.
+> `support.js` and `image-slot.js` were re-fetched in the same pass and are **byte-identical**, so
+> the export will render as-is.
+
 Both v2 files are **complete** — the desktop is 502,509 bytes, obtained by maintainer export after
 the `DesignSync.get_file` 256 KiB cap silently truncated 48% of it. `Loomarr Prototype v2.dc.html`
 and `… v2 copy.dc.html` are byte-identical; the "copy" is a duplicate.
