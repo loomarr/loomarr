@@ -87,4 +87,41 @@ describe("ConnectionBlock", () => {
     );
     expect(await screen.findByText("optional")).toBeInTheDocument();
   });
+
+  // The v2 mock's `bk.summary`. It exists so a COLLAPSED block still says where it stands:
+  // the status dot cannot separate "failed" from "never tested" for anyone who does not read
+  // colour, and the full hint only renders in the open body.
+  it.each([
+    ["not tested yet", {}],
+    ["OK", { verdict: { ok: true } }],
+    ["needs attention", { verdict: { ok: false } }],
+    // testing wins over the standing verdict — a probe in flight is the newer truth.
+    ["testing…", { verdict: { ok: true }, testing: true }],
+  ])("summarises the connection as %s in the header", async (expected, props) => {
+    withRouter(
+      <ConnectionBlock title="Tunarr" open={false} onToggle={() => {}} {...props}>
+        <p>{bodyText}</p>
+      </ConnectionBlock>,
+    );
+    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent(expected);
+  });
+
+  // The summary is DERIVED, never sent: `SetupCheck` is {name, ok, hint, docHref} and gains
+  // no `summary` field. A hint is diagnosis and belongs in the body; the header line is the
+  // one-word standing. Asserting they differ is what stops the hint being hoisted up here.
+  it("keeps the header summary distinct from the body's hint", async () => {
+    withRouter(
+      <ConnectionBlock
+        title="Tunarr"
+        open
+        onToggle={() => {}}
+        verdict={{ ok: false, hint: "dial tcp 127.0.0.1:8000: connection refused" }}
+      >
+        <p>{bodyText}</p>
+      </ConnectionBlock>,
+    );
+
+    expect(await screen.findByRole("button", { name: /tunarr/i })).toHaveTextContent("needs attention");
+    expect(screen.getByRole("status")).toHaveTextContent(/connection refused/i);
+  });
 });

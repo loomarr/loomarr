@@ -21,6 +21,7 @@ const ConnectionBlock = ({
   title,
   optional = false,
   verdict,
+  testing = false,
   docHref,
   open,
   onToggle,
@@ -29,6 +30,18 @@ const ConnectionBlock = ({
 }: ConnectionBlockProps) => {
   const bodyId = useId();
   const failing = verdict !== undefined && !verdict.ok;
+  // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
+  // sent by the backend: it is display text assembled from state the client already holds,
+  // and a `summary` field on `SetupCheck` would put copy in the API for no new information.
+  // The mock's own vocabulary — pass/fail/running — with "not tested yet" standing in for
+  // its `c.target`, which we do not carry.
+  const summary = testing
+    ? "testing…"
+    : verdict === undefined
+      ? "not tested yet"
+      : verdict.ok
+        ? "OK"
+        : "needs attention";
 
   return (
     <section className="overflow-hidden rounded-lg border border-border">
@@ -41,7 +54,8 @@ const ConnectionBlock = ({
       >
         {/* Status dot: green + check when the probe passes; red-ringed when it fails;
             neutral (muted, empty) when untested. It carries the resting signal so the
-            header alone says "this one's fine" or "look here". */}
+            header alone says "this one's fine" or "look here" — paired with the text
+            summary below, because a dot is colour-only and shape-only. */}
         <span
           className={cn(
             "flex size-5 shrink-0 items-center justify-center rounded-full border",
@@ -55,8 +69,22 @@ const ConnectionBlock = ({
         </span>
         <span className="font-medium text-sm">{title}</span>
         {optional && <span className="text-static-400 text-xs">optional</span>}
+        {/* The resting summary, so a COLLAPSED block still says where it stands. The dot
+            alone cannot distinguish "failed" from "never tested" for anyone who does not
+            read colour, and the full hint lives in the body — this is the one-line version.
+            `ml-auto` here (and not on the chevron) right-aligns it as the mock does. */}
+        <span
+          className={cn(
+            "ml-auto truncate text-xs",
+            verdict?.ok && !testing && "text-lock",
+            failing && !testing && "text-onair-300",
+            (testing || verdict === undefined) && "text-static-400",
+          )}
+        >
+          {summary}
+        </span>
         <ChevronDown
-          className={cn("ml-auto size-4 text-muted-foreground transition-transform", open && "rotate-180")}
+          className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
           aria-hidden
         />
       </button>

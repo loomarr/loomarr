@@ -30,9 +30,29 @@ const testBtn = (
   </Button>
 );
 
-// Healthy + collapsed — the resting state of a passing connection: a green dot, nothing else.
+// Healthy + collapsed — the resting state of a passing connection: a green dot and the
+// header's one-line summary ("OK"), which is all a collapsed block shows.
 const HealthyCollapsed: Story = {
   args: { title: "Requester (Seerr)", optional: true, verdict: { ok: true }, open: false, children: fields },
+};
+
+// Broken + COLLAPSED — the case the header summary exists for. The dot alone cannot separate
+// "failed" from "never tested" without colour vision; "needs attention" can, and the hint
+// itself stays in the body where the fix is.
+const BrokenCollapsed: Story = {
+  args: {
+    title: "Media server",
+    verdict: { ok: false, hint: "could not reach the media server: GET /Users: status 401" },
+    docHref: "troubleshooting#media-server",
+    open: false,
+    children: fields,
+  },
+};
+
+// Probe in flight — "testing…" replaces the standing verdict, so a re-test reads as live
+// even on a block that was already green.
+const Testing: Story = {
+  args: { title: "Tunarr", verdict: { ok: true }, testing: true, open: false, children: fields },
 };
 
 // Broken + open — the state a Connections page opens in for a failing service.
@@ -65,4 +85,4 @@ const Untested: Story = {
 };
 
 export default meta;
-export { BrokenOpen, HealthyCollapsed, HealthyOpen, Untested };
+export { BrokenCollapsed, BrokenOpen, HealthyCollapsed, HealthyOpen, Testing, Untested };
