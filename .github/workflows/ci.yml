@@ -113,8 +113,19 @@ jobs:
       # `go: downloading lipgloss / fatih-color / gofrs-flock`).
       #
       # Cached here as a SEPARATE entry keyed on the pinned version: the module source, the
-      # compiled objects, and golangci's own analysis cache. Keyed on the version alone, so
-      # it survives every go.sum change and only re-warms on a linter bump.
+      # compiled objects, and golangci's own analysis cache.
+      #
+      # ⚠ THE KEY MUST BE UNIQUE PER RUN, and this is not a style choice. `actions/cache`
+      # NEVER overwrites an existing key — it skips the save when the key already hit. This
+      # path holds `~/.cache/go-build`, whose contents track `.go` SOURCE, but the key used
+      # to be `hashFiles('go.sum')`: so the entry was written once and then frozen while the
+      # source moved under it. Measured — one 473MB entry created 2026-07-31T01:06 was still
+      # being restored days and many source changes later, so `go test -race` recompiled
+      # nearly everything on every run (~224s of the job).
+      #
+      # `github.run_id` guarantees a miss on the exact key, so the save always happens, while
+      # `restore-keys` still restores the most recent prior cache to compile against. That is
+      # the documented rolling-cache pattern: unique key + prefix restore.
       - name: Cache golangci-lint (module + build + analysis)
         uses: actions/cache@v6
         with:
@@ -122,8 +133,9 @@ jobs:
             ~/go/pkg/mod/github.com/golangci
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}
+          key: golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-
             golangci-${{ runner.os }}-v2.12.2-
       - run: make check
       - name: OpenAPI spec is committed and current
@@ -155,6 +167,19 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # setup-go's own cache covers the module DOWNLOADS but not `~/.cache/go-build`, so
+      # this job was compiling the store test binary from source every run. Separate key
+      # from the `go` job above: this one builds without -race, and mixing the two would
+      # have each evict the other's objects. Same rolling pattern — unique key so the save
+      # always happens, prefix restore so it compiles against the newest prior cache.
+      - name: Cache Go build (store conformance)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build
+          key: gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            gobuild-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            gobuild-pg-${{ runner.os }}-
       # testcontainers uses the Docker daemon preinstalled on ubuntu-latest.
       - run: make test-pg
 
