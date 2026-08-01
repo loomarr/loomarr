@@ -4,6 +4,62 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V35 — the Filler page as redesigned: backend done, frontend NOT started (2026-08-01).**
+Branch `feat/filler-clip-card-detail`, 6 commits. The design project's prototype was re-fetched
+and the Filler screen had been **rewritten** — 4 tabs → 3, Discover deleted into Sources, a new
+Incoming tab, and filler acquisition behind an **approval gate**. Plan §6.5 specs it; the
+structure is in `design/FILLER-DELTA-2026-08-01.md`.
+
+⚠ **It invalidated an audit written the same day** (the "Filler UI is behind its own backend"
+block below): **five items retired, three reshaped, two survive**. That block is now annotated
+rather than deleted, because the lesson is the durable part — an audit is a claim about a moving
+reference, and this one had a shelf life of one day.
+
+⚠ **`design/loomarr-prototype-desktop-v2.dc.html` is STALE for this screen and could not be
+updated.** `DesignSync.get_file` caps at 262,144 bytes; the file is ~310 KB of markup before its
+~192 KB of JS, and a markup-only splice renders nothing (the committed JS defines
+`covBars`/`registry`/`dscFilters` while the new markup binds `poolStats`/`asks`/`reels`/
+`services`). **Needs a maintainer export.** `support.js` + `image-slot.js` were re-fetched in the
+same pass and are byte-identical, so no runtime change accompanies it.
+
+**Shipped (backend + contract):**
+
+| | |
+| --- | --- |
+| **1.1 Pool health** | `GET /v1/filler/pool`. ⚠ Per-channel numbers **ARE** `Coverage`, called once per live channel — no aggregate ladder. Sabotage: giving it its own opinion fails on all 3 channels |
+| **1.2 Clip media** | `GET /v1/filler/media/{path...}`. Two gates the mock cannot show: a **catalog** check (the drop-folder is not a public share) and an **extension allowlist** (serving `mime.TypeByExtension` from an operator-writable folder is stored XSS from our own origin) |
+| **1.3 Source switch** | Migration `00026` + `filler.source.folder.enabled`. Gate lives in the **Syncer**, not its three callers; `ErrSourceDisabled` → a 409 naming the switch |
+| **1.5 Pull proposals** | Migration `00027`. **The approval gate for filler acquisition** — §10 stated "the machine proposes, a human commits" with nothing to hang it on; a pull is that object |
+| **Step 2** | `make openapi` + orval regen; the typecheck caught every hand-built `FillerSourceDTO` fixture, which is the contract-1:1 principle paying out |
+
+⚠ **Three findings that changed the design rather than the code.** (1) §15 already specified
+`FILLER_SOURCE_LIBRARY_ENABLED`; implementing it found **there is no scan to gate** — §10 took the
+media server out of the filler path — so the key was removed doc-first rather than shipped as a
+control that dims a row and changes nothing. (2) The first draft of `00026` put `enabled` in the
+upsert's `DO UPDATE` list: a Go bool zero-values to **false**, so any existing caller re-registering
+a source would have silently switched it **off**. (3) `resolved.boolv` answers false when settings
+cannot answer, which would have stopped the catalog scan on a degraded boot — `boolOn` fails **open**
+for keys whose declared default is true.
+
+**Every safety property is sabotage-verified**, not assumed: proposing that downloads, a
+double-approve, an aggregate with its own ladder, a gate placed below the scan, an upsert that
+flips the switch, and an allowlist replaced by a mime lookup each fail a named test.
+
+**NOT DONE — the phase is incomplete and the mock is not yet reflected in the UI:**
+
+- **1.4 Incoming read-model** (asks + reels) — not started
+- **1.6 Bulk catalog ops** — ⚠ blocked on a design answer first: `clips` is a **synced cache**
+  (`00013`), so "Remove from catalog" without removing the file means the clip returns on the next
+  scan. Tombstone or delete-the-file is a decision, not a code choice
+- **1.7 Per-channel include-set override + `fitNote`** — not started
+- **Step 3, the entire frontend** — `/filler` still renders `Catalog · Discover · Sources`. None of
+  the three tabs, the pool strip, the card rework, or the Queue's `FILLER PULL` card exists yet
+- **Step 4 live verification** — not run
+
+Gate at `c5a273f`: `make check` GREEN · `test-pg` GREEN (`00026`+`00027` conformant on both
+backends) · `make fe` GREEN · `openapi-verify` / `config-docs` / `retired-verify` no drift.
+**`fe-visual` and `e2e` not re-run** — no frontend changed, so no baseline moved.
+
 **V12 — System → Backup + About (2026-07-29).** The two sub-tabs V9 deliberately left out,
 plus the scheduled backup job behind them. The phase could not start until a doc conflict was
 resolved: the gate said *"retention honored"* while `design.md:1397` deferred scheduled
@@ -1520,7 +1576,12 @@ accompanies it.
 Watch player, which arrived in the same import and is blocked on playout emitting raw MPEG-TS —
 nothing a `<video>` element can play).
 
-**Next up: V34 — compilation splitting + per-clip metadata** (**ACTIVE**; plan §6.4).
+**Next up: V35 — the Filler page as redesigned** (**ACTIVE, backend done / frontend not started**;
+plan §6.5). The V34 note below is history; its own row records completion. ⚠ Read the V35 block at
+the top of this file before picking the work up — three of its items are blocked or decided
+(`design/` needs a maintainer export, and 1.6 needs a remove-from-catalog answer before any code).
+
+*Historical, kept for its findings:* **V34 — compilation splitting + per-clip metadata** (plan §6.4).
 The whole `### Filler` table has now shipped, and V33's discovery surfaced what V34 exists for:
 much of what an operator finds is a COMPILATION — one file holding twenty adverts — which
 ingests as a single 15-minute "clip" the pod assembler can never place.
