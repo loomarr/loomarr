@@ -148,6 +148,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// entirely (the pod pool a channel would get, as JSON).
 	mux.HandleFunc("GET /v1/filler/thumb/{path...}", srv.serveFillerThumb)
 
+	// Clip media (V35) — the clip's own bytes, so the operator can watch one before deciding
+	// about it. Same wildcard reason as thumbnails, and the same naming rule: `media`, never
+	// `preview`. Range-capable, so a <video> element can seek.
+	mux.HandleFunc("GET /v1/filler/media/{path...}", srv.serveFillerMedia)
+
 	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
 	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
 	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a
