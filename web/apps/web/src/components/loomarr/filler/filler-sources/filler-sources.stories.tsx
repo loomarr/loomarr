@@ -24,8 +24,8 @@ const SOURCES: FillerSourceDTO[] = [
   },
   {
     kind: "remote",
-    target: "ingest sidecar",
-    detail: "fetches into the watched folder — needs the loomarr:filler image",
+    target: "downloads",
+    detail: "fetches clips into the watched folder from a URL you give it",
     count: 0,
     configured: false,
     fetchable: false,

@@ -31,8 +31,9 @@ services:
     volumes:
       - tunarr-dev-config:/config/tunarr
       # Filler drop-folder (§10): Loomarr registers this path as a Tunarr `local`
-      # media source and syncs the scanned clips. The ingest sidecar writes here;
-      # Tunarr scans it. Same path inside Loomarr's FILLER_DIR and here.
+      # media source and syncs the scanned clips. Loomarr's own ingest writes here
+      # (in-core since the sidecar was removed, §10); Tunarr scans it. Same path
+      # inside Loomarr's FILLER_DIR and here.
       - ${FILLER_DROP_DIR:-../.filler-drop}:/filler
     # Tunarr streams the underlying files, so it must reach the same Emby as loomarr (§6).
     # Emby is on a Tailscale host; extra_hosts maps a stable name → its IP so the media-source

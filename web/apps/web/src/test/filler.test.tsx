@@ -167,14 +167,19 @@ describe("Filler page", () => {
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
 
-  // The ingest gate is the one no setting can open: it depends on the running IMAGE.
-  // Pointing the operator at Settings would be a dead end, so the copy names the image.
   // ⚠ Both ingest tests render the DISCOVER tab: the panel moved there when Discover
   // became a peer of Catalog rather than a card stacked under it.
-  it("names the image, not a setting, when ingest tooling is absent", async () => {
+  //
+  // ⚠ This asserts the copy does NOT name `loomarr:filler` (retired-ok). That variant no longer
+  // exists — the single image always ships the downloader (§16) — so the old copy sent an
+  // operator hunting for a tag they cannot pull. An absence assertion, because the failure
+  // mode is a plausible-sounding instruction, not a missing one.
+  it("explains a degraded install without naming an image that no longer exists", async () => {
     stubFetch({ features: { filler: true, ingest: false } });
     renderAt("/filler?tab=discover");
-    expect(await screen.findByText(/loomarr:filler/)).toBeInTheDocument();
+    expect(await screen.findByText(/downloading isn't available in this install/i)).toBeInTheDocument();
+    // The dead image name (retired-ok), asserted ABSENT.
+    expect(screen.queryByText(/loomarr:filler/)).not.toBeInTheDocument(); // retired-ok
     expect(screen.queryByRole("button", { name: /^download$/i })).not.toBeInTheDocument();
   });
 
@@ -231,6 +236,29 @@ describe("Filler page", () => {
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "the confirm should PATCH the clip").toBeDefined();
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ era: 1985, audience: "kids", category: "cereal" });
+  });
+
+  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era, audience AND
+  // category on every call, so a cycle that PATCHed only the clicked field would silently
+  // wipe the other two — once per click, not once per dialog. This asserts the whole tag row
+  // travels with a single cycled chip.
+  it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
+    const fetchMock = stubFetch({
+      clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
+    });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
+
+    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
+    expect(patch, "cycling a chip should PATCH the clip").toBeDefined();
+    // era and category ride along UNCHANGED; only audience advances.
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      era: 1990,
+      audience: "family",
+      category: "cereal",
+    });
   });
 
   // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side

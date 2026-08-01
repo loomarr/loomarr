@@ -162,7 +162,7 @@ func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id str
 type fillerServiceAdapter struct {
 	syncer *filler.Syncer
 	tagger *filler.Tagger
-	// fetcher is nil unless the running image carries the ingest tooling (loomarr:filler
+	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
 	fetcher *clipfetch.Ingestor
 	bus     *events.Bus

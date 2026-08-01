@@ -4806,7 +4806,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Download clips into the drop-folder (admin; loomarr:filler image only)
+      summary: Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)
       tags:
         - filler
   /v1/filler/sources:

@@ -43,9 +43,20 @@ const SplitAction: Story = { args: { clip: taggedClip, onTag: noop, onSplit: noo
 const SplitPending: Story = { args: { clip: taggedClip, onSplit: noop, splitPending: true } };
 
 export default meta;
+// Retag from the card (the v2 mock's cycleEra/cycleAud/cycleCat). ⚠ These two are the ONLY
+// stories carrying `onCycle`, and they exist because the chips are invisible without it: the
+// gallery showed static badges for every admin story while the feature shipped, which is the
+// built-but-unseen shape one layer down from built-but-unimported.
+const Cycleable: Story = { args: { clip: taggedClip, onCycle: noop, onTag: noop } };
+// The UNSET rendering: dashed and dim, so three empty chips read as controls rather than as
+// three alarms beside the "Untagged" badge that already said it.
+const CycleableUnset: Story = { args: { clip: untaggedClip, onCycle: noop, onTag: noop } };
+
 export {
   AdminActions,
   AiSuggestedTags,
+  Cycleable,
+  CycleableUnset,
   SplitAction,
   SplitPending,
   SuggestedEra,

@@ -1,8 +1,11 @@
 // Package clipfetch downloads filler clips into the drop-folder (design §10, §16).
 //
-// It runs IN THE CORE (revised — the loomarr-ingest sidecar is removed): the tooling it
-// shells out to ships only in the `loomarr:filler` image variant, so availability is a
-// computed feature gate rather than a separate service. Named clipfetch, NOT ingest,
+// It runs IN THE CORE, and the tooling it shells out to ships in the single image (§16) —
+// so the `ingest` feature gate now reports a DEGRADED install (a binary that will not run)
+// rather than an opt-in an operator has to take. ⚠ This doc used to describe both a
+// `loomarr-ingest` sidecar and a `loomarr:filler` image variant (retired-ok);
+// §10 records why each was
+// reversed, and neither exists. Named clipfetch, NOT ingest,
 // because internal/ingest is the Sonarr/Radarr WEBHOOK handler (§6's Ingest port) — two
 // unrelated concepts that would otherwise share a name one autocomplete apart.
 //

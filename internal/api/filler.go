@@ -42,7 +42,7 @@ func (s *Server) registerFiller(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
-		Summary: "Download clips into the drop-folder (admin; loomarr:filler image only)",
+		Summary: "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
 		Tags:    []string{"filler"},
 	}, RoleAdmin), s.ingestFiller)
 
@@ -323,11 +323,13 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	}
 	jobID, err := s.filler.Ingest(ctx, in.Body.URLs)
 	if errors.Is(err, ErrIngestUnavailable) {
-		// NOT feature_not_configured: no setting can open this gate. The message names
-		// the actual remedy (a different image), because pointing an operator at
-		// Settings for something Settings cannot fix is the dead end §7 warns about.
+		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
+		// used to say "run the loomarr:filler image" — that variant no longer exists (the
+		// single image always ships the tooling, §16), so the remedy it named was a dead
+		// end of exactly the kind §7 warns about. Unavailable now means a degraded
+		// install, and the message says what an operator can actually check.
 		return nil, errConflict("Downloads aren't available here",
-			"This build has no download tooling. Run the loomarr:filler image to download clips in-app.")
+			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
 	if err != nil {
 		return nil, err

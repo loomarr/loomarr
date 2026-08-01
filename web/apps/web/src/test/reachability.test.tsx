@@ -332,7 +332,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // Catalog (the v2 mock's shape) rather than a card stacked under it. The path carries
     // `?tab=discover` for that reason, and keeping these assertions pointed at a real URL
     // is what stops a tab nobody can navigate to from passing as "reachable".
-    ["/filler?tab=discover", /download clips|doesn't include the downloader/i, "the ingest panel"],
+    ["/filler?tab=discover", /download clips|downloading isn't available/i, "the ingest panel"],
     // V33: searching is how an operator decides what to download, so the panel that does it
     // must be on the page — not merely built. This suite exists because eight things were
     // built, unit-tested and imported by nothing.

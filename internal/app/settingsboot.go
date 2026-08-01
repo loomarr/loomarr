@@ -12,7 +12,8 @@ import (
 )
 
 // envLookup is the process env accessor the secrets lifecycle uses to honor an
-// env-pinned SESSION_SECRET/API_TOKEN/WEBHOOK_SECRET (config-design §4).
+// env-pinned SESSION_SECRET/API_TOKEN (config-design §4). ⚠ Not WEBHOOK_SECRET (retired-ok) — that
+// never existed as a generated secret, and the arm webhook it named was deleted.
 var envLookup = os.LookupEnv
 
 // resolved wraps the settings service with typed getters so the composition root

@@ -13,6 +13,13 @@ interface ClipCardProps {
   // clip's text signals, so it sits on `suggestedEra` until a human says yes. Admin-only
   // at the call site; without it the suggestion renders as a badge with no action.
   onConfirmEra?: () => void;
+  // Retag ONE field by clicking its chip (the v2 mock's cycleEra/cycleAud/cycleCat).
+  // Admin-only at the call site; absent renders the chips as plain, non-interactive badges.
+  //
+  // ⚠ The caller is responsible for sending the clip's OTHER tags with the change: the BE's
+  // UpdateClipTags overwrites era, audience and category together, so a patch carrying only
+  // the cycled field wipes the rest. FillerPage's `retag` is the one place that assembles it.
+  onCycle?: (change: Partial<Pick<ClipDTO, "era" | "audience" | "category">>) => void;
   // Start compilation-split detection (§10 V34). Admin-only at the call site; absent
   // renders no split action.
   onSplit?: () => void;
