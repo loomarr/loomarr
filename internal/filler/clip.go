@@ -117,6 +117,16 @@ type Clip struct {
 	// operator, rendered on the clip and confirmed by PATCHing Era (which clears
 	// it). 0 = no suggestion. Only the tagger writes it.
 	SuggestedEra int
+	// RemovedAt tombstones a clip the operator removed from the catalog (V35). Zero = present.
+	//
+	// ⚠ A tombstone rather than a DELETE because `clips` is a synced CACHE of FILLER_DIR: the
+	// next scan finds the file still there and puts the row back, so a removed clip would
+	// reappear minutes later. The file itself is never touched — nothing in Loomarr deletes an
+	// operator's media, and the action says remove from the CATALOG.
+	//
+	// Removed clips are excluded from listings and from pod assembly by DEFAULT (opt-in to see
+	// them), which is the safe polarity: pod assembly loads the catalog with a zero filter.
+	RemovedAt time.Time
 }
 
 // ID returns the clip's identity. A method rather than direct field access at call sites so

@@ -108,6 +108,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerSources(humaAPI)
 	srv.registerFillerPulls(humaAPI)
 	srv.registerFillerIncoming(humaAPI)
+	srv.registerFillerBulk(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerSystemLLM(humaAPI)

@@ -145,7 +145,17 @@ type ClipStore interface {
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// ListClips returns clips matching the filter (any zero-value field is a
 	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
+	//
+	// ⚠ Clips the operator removed from the catalog (V35) are excluded unless the filter opts
+	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
+	// a ZERO filter, so an opt-out would keep a removed clip airing.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
+	//
+	// ⚠ The ONLY writer of that tombstone, like RecordClipPlay is the only writer of the play
+	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
+	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
+	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
