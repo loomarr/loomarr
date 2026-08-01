@@ -287,8 +287,19 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: false
+          # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
+          # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
+          # layer it was caching takes to build, because `mode=max` ships every
+          # intermediate layer including the 466MB whisper model. It also spends the 10GB
+          # repo cache quota on ~2GB per run, evicting the Go and pnpm caches that do pay
+          # for themselves.
+          #
+          # It still READS anything release.yml populates, so this is not "no caching" —
+          # it is declining to pay export cost for a job whose expensive layer is invalidated
+          # by the only file that triggers it. This job runs ONLY when the Dockerfile
+          # changes, which busts that layer by definition, so a written cache would be
+          # stale essentially every time it was read.
           cache-from: type=gha,scope=image-ci
-          cache-to: type=gha,scope=image-ci,mode=max
 
   ci-ok:
     name: CI
