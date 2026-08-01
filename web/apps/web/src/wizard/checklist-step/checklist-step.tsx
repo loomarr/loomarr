@@ -159,6 +159,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
               title={titleFor(block, entries)}
               optional={!required}
               verdict={verdict}
+              testing={testing === block.id}
               docHref={standing?.docHref}
               open={open}
               onToggle={() => onToggle?.(block.id)}

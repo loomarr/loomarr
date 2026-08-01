@@ -13,9 +13,13 @@ interface ConnectionBlockProps {
   // Marks the block "optional" in the header — connections the operator can wire up later
   // (Requester, TMDB) rather than the two that must pass. Purely a label.
   optional?: boolean;
-  // The standing/last verdict. Drives the header status dot (green when ok) and the inline
-  // verdict line under the fields. `undefined` renders a neutral, untested dot and no line.
+  // The standing/last verdict. Drives the header status dot (green when ok), the header's
+  // one-line summary, and the inline verdict line under the fields. `undefined` renders a
+  // neutral, untested dot and no line.
   verdict?: ConnectionVerdict;
+  // This block's probe is in flight — the header summary reads "testing…" instead of the
+  // standing verdict. Purely presentational; the caller owns which block is being tested.
+  testing?: boolean;
   // The BE's docHref for this check (e.g. "troubleshooting#tunarr"). When the verdict is
   // failing, a "Fix →" link routes into the Help center via parseDocHref — NOT a raw href
   // (which resolves relative to the current path and 404s; see ChecklistItem).
