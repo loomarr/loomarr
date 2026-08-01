@@ -54,9 +54,7 @@ jobs:
           if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
-            echo "go=true"    >> "$GITHUB_OUTPUT"
-            echo "web=true"   >> "$GITHUB_OUTPUT"
-            echo "image=true" >> "$GITHUB_OUTPUT"
+            { echo "go=true"; echo "web=true"; echo "image=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           changed=$(git diff --name-only "$BASE" HEAD)
@@ -124,6 +122,12 @@ jobs:
       # The workflow parsed as valid YAML and was still REJECTED by GitHub: expressions only
       # accept single quotes, and `join(needs.*.result, " ")` is a lex error the YAML parser
       # cannot see. Verified this target catches exactly that.
+      #
+      # ⚠ `make ci-lint` IS WEAKER ON A DEV MACHINE THAN IT IS HERE. actionlint shells out to
+      # shellcheck for every `run:` block and SILENTLY SKIPS that half when shellcheck is not
+      # installed — so the target exits 0 locally and fails here, which is exactly what
+      # happened when the image filter was added (SC2129 on the grouped redirects). If this
+      # step is red and your local run was green, install shellcheck before doubting CI.
       - name: Workflows are valid
         run: make ci-lint
 

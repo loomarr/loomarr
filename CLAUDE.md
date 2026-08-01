@@ -54,6 +54,7 @@ make config-docs    # generate docs/configuration.md from the settings registry 
 make openapi-verify # regenerated spec must match committed (CI red on drift)
 make retired-verify # retired identifiers must not appear as live instructions (CI red on drift)
 make ci-lint        # actionlint over .github/workflows (a workflow can be valid YAML and still be rejected)
+                    # ⚠ needs shellcheck on PATH — without it actionlint SKIPS the shell half and exits 0 locally while CI fails
 make fe             # orval typegen + Biome + tsc + vitest (jsdom units + Storybook browser tests)
 make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs must be empty)
 make storybook      # Storybook dev workshop (the component gallery/contract)
