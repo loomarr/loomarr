@@ -128,7 +128,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `filler.dir` (`FILLER_DIR`) | string | — | Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. _(required for filler)_ |
+| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
@@ -142,6 +142,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | How long one download may run before it's stopped, so a stuck fetch can't block others. _(advanced)_ |
 | `ingest.whisper_path` (`INGEST_WHISPER_PATH`) | string | — | Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks. _(advanced)_ |
 | `ingest.whisper_model` (`INGEST_WHISPER_MODEL`) | string | — | The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks. _(advanced)_ |
+| `filler.starter_collection` (`FILLER_STARTER_COLLECTION`) | string | `classic_tv_commercials` | The archive.org collection suggested as a starter pack when your clip catalog is empty. Nothing downloads until you pick from it. Leave empty to turn the suggestion off. |
 
 ## Users & security
 

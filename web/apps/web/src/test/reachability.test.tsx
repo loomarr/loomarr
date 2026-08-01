@@ -328,11 +328,18 @@ describe("feature-gated panels mount when their flag is on", () => {
     // oversight.
     ["/settings/security", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from your media server/i, "the §11 import panel"],
-    ["/filler", /download clips/i, "the ingest panel"],
+    // ⚠ Both now live on the DISCOVER tab, not the catalog — Discover became a peer of
+    // Catalog (the v2 mock's shape) rather than a card stacked under it. The path carries
+    // `?tab=discover` for that reason, and keeping these assertions pointed at a real URL
+    // is what stops a tab nobody can navigate to from passing as "reachable".
+    ["/filler?tab=discover", /download clips|doesn't include the downloader/i, "the ingest panel"],
     // V33: searching is how an operator decides what to download, so the panel that does it
     // must be on the page — not merely built. This suite exists because eight things were
     // built, unit-tested and imported by nothing.
-    ["/filler", /find clips/i, "the discover panel"],
+    ["/filler?tab=discover", /find clips/i, "the discover panel"],
+    // ⚠ And the tab itself must be reachable FROM the catalog, or the two assertions above
+    // only prove a deep link works. This is the V1/V17a/V23 failure in tab form.
+    ["/filler", /^discover$/i, "the Discover tab's own entry point"],
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
     ["/filler", /split into clips/i, "the compilation-split entry point"],

@@ -387,6 +387,31 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 	if err != nil {
 		return nil, 0, err
 	}
+	items, total := discoveredClips(res)
+	return items, total, nil
+}
+
+// DiscoverCollection lists one collection (§10, V17d — the starter pack). Same shape as
+// Discover: listing only, no ingest tooling needed, results mapped identically. The ONLY
+// difference is which archive.org query gets asked, which is why both live here rather than
+// the pack growing an acquisition path of its own.
+//
+// ⚠ This gives clipfetch.DiscoverCollection its first non-test caller. It shipped with V33
+// complete and conformant and reachable by nothing — the same built-but-unimported shape as
+// `filler_sources` (V33) and the eight instances before it. Worth naming, because the
+// function looking finished is exactly what made it easy to leave unwired.
+func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
+	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	items, total := discoveredClips(res)
+	return items, total, nil
+}
+
+// discoveredClips maps a clipfetch result to the DTO. Shared by both discovery modes so a
+// field added for one cannot silently go missing from the other.
+func discoveredClips(res clipfetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
 	out := make([]api.DiscoveredClip, 0, len(res.Items))
 	for _, it := range res.Items {
 		out = append(out, api.DiscoveredClip{
@@ -398,7 +423,7 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 			URL: "https://archive.org/details/" + it.ID,
 		})
 	}
-	return out, res.Total, nil
+	return out, res.Total
 }
 
 // rememberSources records the archive.org items an operator asked for, so the Sources tab can

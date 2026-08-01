@@ -46,8 +46,11 @@ const DiscoverPanel = ({
           </p>
         </div>
 
+        {/* ⚠ Capped like the catalog's filter box. Unbounded `flex-1` made a search field
+            stretch the full card width (~1050px at 1440), which reads as a layout accident
+            rather than a generous input. */}
         <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 max-w-md flex-1">
             <Label htmlFor="discover-q">Search archive.org</Label>
             <Input
               id="discover-q"

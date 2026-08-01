@@ -169,17 +169,19 @@ describe("Filler page", () => {
 
   // The ingest gate is the one no setting can open: it depends on the running IMAGE.
   // Pointing the operator at Settings would be a dead end, so the copy names the image.
+  // ⚠ Both ingest tests render the DISCOVER tab: the panel moved there when Discover
+  // became a peer of Catalog rather than a card stacked under it.
   it("names the image, not a setting, when ingest tooling is absent", async () => {
     stubFetch({ features: { filler: true, ingest: false } });
-    renderAt("/filler");
+    renderAt("/filler?tab=discover");
     expect(await screen.findByText(/loomarr:filler/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^download$/i })).not.toBeInTheDocument();
   });
 
   it("starts an ingest job when the tooling is present", async () => {
     const fetchMock = stubFetch({ features: { filler: true, ingest: true } });
-    renderAt("/filler");
-    await screen.findByText("Frosted Flakes");
+    renderAt("/filler?tab=discover");
+    await screen.findByLabelText("URLs");
 
     await userEvent.type(screen.getByLabelText("URLs"), "https://archive.org/details/classic-tv-commercials");
     await userEvent.click(screen.getByRole("button", { name: /^download$/i }));

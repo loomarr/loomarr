@@ -360,9 +360,15 @@ func declared() []Setting {
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
 		{
+			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
+			// volume carries it, so a zero-env `docker run` has a working drop-folder
+			// instead of a Filler page that is one empty state telling the operator to go
+			// and configure something. It was "" for no recorded reason while its two
+			// neighbours both defaulted; that asymmetry made the whole feature opt-in by
+			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", EnvVar: "FILLER_DIR", Group: GroupFiller,
-			Kind: KindString, Default: "", Required: FeatureFiller,
-			Doc: "Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers.",
+			Kind: KindString, Default: "/data/filler", Required: FeatureFiller,
+			Doc: "Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
 			Key: "filler.sync_every", EnvVar: "FILLER_SYNC_EVERY", Group: GroupFiller,
@@ -445,6 +451,14 @@ func declared() []Setting {
 			Key: "ingest.whisper_model", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
+		},
+		// The starter pack (§10, V17d). A DEFAULT, not a hardcoded truth: an operator can
+		// point it at their own collection, and emptying it turns the pack off. Listing
+		// only — nothing downloads until the operator keeps a row.
+		{
+			Key: "filler.starter_collection", EnvVar: "FILLER_STARTER_COLLECTION", Group: GroupFiller,
+			Kind: KindString, Default: "classic_tv_commercials",
+			Doc: "The archive.org collection suggested as a starter pack when your clip catalog is empty. Nothing downloads until you pick from it. Leave empty to turn the suggestion off.",
 		},
 
 		// --- Users & security (§15, Phase 9) ---

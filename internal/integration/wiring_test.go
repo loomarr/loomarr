@@ -36,13 +36,22 @@ func TestWiring_FreshInstall(t *testing.T) {
 		{http.MethodPost, "/v1/suggestions", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
-		{http.MethodPost, "/v1/filler/sync", ""},
 		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
 	}
 	for _, r := range unconfigured {
 		if code := h.status(r.method, r.path, r.body, admin); code != http.StatusNotImplemented {
 			t.Errorf("fresh install: %s %s → %d, want 501 (unconfigured)", r.method, r.path, code)
 		}
+	}
+
+	// ⚠ Filler is NOT in that list, and the distinction is the point. `filler.dir` defaults
+	// to /data/filler, so on a fresh install filler is CONFIGURED — sync therefore really
+	// runs and fails upstream (no Tunarr yet), which is a 502, not the 501 that means "you
+	// have not set this up". Asserting "not 501" rather than exactly 502 keeps this about
+	// the gate: the claim is that filler no longer reports itself unconfigured out of the
+	// box, which is what made the whole Filler page a single empty state.
+	if code := h.status(http.MethodPost, "/v1/filler/sync", "", admin); code == http.StatusNotImplemented {
+		t.Error("fresh install: POST /v1/filler/sync → 501; filler.dir has a default, so it is configured")
 	}
 
 	// A dep that's ABSENT (no library ⇒ no user-sync route registered) is NOT a 501:
