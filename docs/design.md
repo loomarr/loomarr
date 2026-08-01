@@ -187,6 +187,8 @@ Store interface:
   ListClips(filter: kind/era/audience/category)
   GetSplitProposal/UpsertSplitProposal/DeleteSplitProposal  # §10 V34: persisted until review
   ListSplitProposals(status)              # §10 V35: the Incoming tab's reels
+  SetClipsRemoved(paths, at)              # §10 V35: the ONLY writer of the removal tombstone
+                                          #   (the scan's upsert must never write it)
   ListFillerSources/UpsertFillerSource/DeleteFillerSource   # §10 V35: remote rows + enabled
   GetPull/UpsertPull/ListPulls(status)    # §10 V35: filler acquisition's approval gate
   # users & sessions (§11)
@@ -464,7 +466,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
 | GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35). The folder and library rows stay derived from configuration; a POST adds a **remote** collection. |
 | PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable or remove a source (admin, §10 V35). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. |
-| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips whose tags need a human, and compilations mid-split. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. |
+| GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips whose tags need a human, and compilations mid-split. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. ⚠ Reports **no confidence score** — nothing measures one; each item carries the reason it is waiting, derived from real state. |
+| POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
+| POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
 | POST | `/v1/filler/pulls` | Propose a **pull** — a plan across sources (admin, §10 V35). **Downloads nothing**: it writes a proposal for the approval queue. Refused when every source the plan needs is disabled, with the switch to flip named. |
 | GET | `/v1/filler/pulls` | List pulls awaiting a decision (admin, §10 V35). |
 | POST | `/v1/filler/pulls/{id}/approve` | Approve a pull (admin, §10 V35) — the commit point. Enqueues through the **existing** ingest path; a pull never downloads by its own route. The body carries the operator's edits: rows dropped, and a note narrowing what to fetch. |
@@ -937,6 +941,25 @@ Three rules, each of which is a safety property rather than a feature:
 - **Dropping a plan row before approval is part of the gate, not an edit afterwards.** The committed set is what the human agreed to.
 
 ⚠ **The gate binds bulk composition, not an admin's own hands.** An admin searching one source and queueing one clip stays direct — the §7 shape, where an admin may `POST /v1/titles` because the admin *is* the gate. Requiring a proposal for a single deliberate click would make the gate ceremony, and ceremony is what teaches people to click through it. What the gate exists for is what happens when *nobody is looking*: a composed multi-source plan, which is exactly what a pull is.
+
+### Removing a clip from the catalog is a tombstone (V35)
+
+The catalog's bulk actions include **Remove from catalog**. It marks the clip removed; it does **not** delete the row, and it does **not** touch the file.
+
+⚠ **A row delete cannot work here.** The catalog is a synced *cache* of `FILLER_DIR`, so the next scan finds the file still on disk and re-creates the row: the operator removes a clip and watches it come back minutes later. The tombstone is what survives a re-scan, and it survives because the scan's upsert is not allowed to write it — the same protection the play counters have.
+
+⚠ **Deleting the file is not the alternative.** Nothing in Loomarr deletes an operator's media: disabling a source keeps its clips, and deleting a source keeps its clips because they are real files that may already be tagged and pinned into a channel. The action names the catalog, and stops at the catalog.
+
+A removed clip is excluded from the catalog listing and from pod assembly **by default**. That polarity is load-bearing rather than cosmetic — assembly loads the catalog with an unfiltered read, so an opt-in exclusion would leave a removed clip airing until some caller remembered a flag. Restoring is the same write with the timestamp cleared.
+
+### What is waiting on a human: the Incoming queue (V35)
+
+Between "a file arrived" and "a clip the scheduler can place" there is work only a person can finish. `GET /v1/filler/incoming` is that queue, in one read:
+
+- **Clips whose tags need a human** — an era the tagger proposed but could not ground in the clip's text (the rule above), or a commercial with no match tags at all. These are **two different questions** and stay separate: the first has a proposed answer to confirm, the second has nothing to confirm. Bumpers and station IDs never appear — they do their bookend job untagged, so queueing them would be work that changes nothing.
+- **Compilations mid-split** — the persisted split proposals, with a count of the segments an operator cannot simply accept (unsplittable, or flagged as a duplicate).
+
+⚠ **No confidence score is reported, because nothing measures one.** The mock draws a per-item confidence bar; the tagger records neither a score nor a rationale. The queue therefore reports *why* an item is waiting, derived from its real state. An auto-file threshold (`filler.autofile.*`) is the feature that would need a real score, and it is not built — inventing one to fill a bar would put a number in front of an operator that no code produced.
 
 ### Sources can be switched off
 
