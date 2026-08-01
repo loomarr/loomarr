@@ -1,3 +1,4 @@
+import type { ClipDTO } from "@loomarr/api";
 import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,10 @@ import {
 import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
+
+// One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
+// page cannot drift on what a retag carries.
+type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { IngestPanel } from "../ingest-panel";
 import { PinClipDialog } from "../pin-clip-dialog";
@@ -120,6 +125,28 @@ const FillerPage = () => {
     },
   });
 
+  // ⚠ THE ONLY WAY THIS PAGE WRITES ONE TAG. `UpdateClipTags` overwrites era, audience AND
+  // category on every call, so a PATCH carrying just the field being changed silently wipes
+  // the other two. Cycling a chip makes that a per-click hazard rather than a once-per-dialog
+  // one, so the whole tag row is assembled HERE from the clip and the single change — no
+  // call site gets to remember or forget the siblings.
+  // Curried so the JSX spread stays a plain value — a typed inline arrow inside `{...(cond ?
+  // {...} : {})}` trips the TSX parser on the generic-looking annotation.
+  const cycleFor = (clip: ClipDTO) => (change: TagChange) => retag(clip, change);
+
+  const retag = (clip: ClipDTO, change: TagChange) =>
+    confirmEra.mutate({
+      id: clip.path,
+      data: {
+        // Kind is deliberately absent: the BE writes it separately (a shared code path with
+        // the AI tagger), and sending it here would be a second opinion on a field this
+        // interaction never edits.
+        era: change.era ?? clip.era,
+        audience: (change.audience ?? clip.audience) as never,
+        category: change.category ?? clip.category,
+      },
+    });
+
   // Compilation splitting (§10 V34): POST starts a detection JOB, the terminal
   // `filler_split` SSE frame hands over the proposal id, and we navigate to the review
   // gate. Same shape as the ingest job below — request returns immediately, progress
@@ -177,6 +204,16 @@ const FillerPage = () => {
 
   const filtered = Boolean(q || kind || audience || untagged);
 
+  // The header's at-a-glance line (the mock's `watchLine`). ⚠ Counts the UNFILTERED catalog
+  // where it can: `clipList` is the current query's result, so with a filter applied it
+  // would read "1 clip" on a catalog of 200 — a header that changes meaning when you type
+  // in the search box is worse than no header. Sources are admin-only, so a member sees the
+  // clip count alone rather than a "0 sources" that is really "you can't see them".
+  const statusLine = [
+    ...(isAdmin && sourceRows.length > 0 ? [pluralize(sourceRows.length, "source")] : []),
+    filtered ? `${pluralize(clipList.length, "clip")} shown` : pluralize(clipList.length, "clip"),
+  ].join(" · ");
+
   return (
     // ⚠ p-6 — the page owns its own gutter. Without it this page rendered flush against the
     // sidebar and the right edge (heading at x=224 where every other page sits at 248), so
@@ -184,7 +221,7 @@ const FillerPage = () => {
     // (a full-bleed page like the Guide needs none), which makes it each page's job.
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeading />
+        <PageHeading status={statusLine} />
         {isAdmin && (
           <div className="flex gap-2">
             <Button
@@ -407,18 +444,9 @@ const FillerPage = () => {
                     {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
                     {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
                     {...(isAdmin && clip.suggestedEra
-                      ? {
-                          onConfirmEra: () =>
-                            confirmEra.mutate({
-                              id: clip.path,
-                              data: {
-                                era: clip.suggestedEra ?? 0,
-                                audience: clip.audience ?? "",
-                                category: clip.category ?? "",
-                              },
-                            }),
-                        }
+                      ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
                       : {})}
+                    {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
                     {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
                     splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
                   />
@@ -461,9 +489,16 @@ const archiveURL = (id: string) => `https://archive.org/details/${encodeURICompo
 // its own Filler section (theme + pin/exclude, with a live preview). Tagging here is what
 // makes a clip matchable there; the link makes that relationship navigable rather than
 // implicit — the cohesion gap that made filler feel "disjointed".
-const PageHeading = () => (
+// ⚠ `status` is the mock's `watchLine` MINUS its "last scan 2m ago" clause. No DTO carries a
+// last-scan time (FillerSourceDTO is {configured,count,detail,fetchable,kind,remotes,target}),
+// and inventing one from the client's clock would assert a scan happened when the page
+// merely loaded. Two thirds of a true line beats three thirds of a plausible one.
+const PageHeading = ({ status }: { status?: string }) => (
   <div>
-    <h1 className="font-semibold text-xl">Filler</h1>
+    <div className="flex flex-wrap items-baseline gap-x-3">
+      <h1 className="font-semibold text-xl">Filler</h1>
+      {status && <span className="font-mono text-static-400 text-xs">{status}</span>}
+    </div>
     <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
       Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
       the scheduler match a clip to a channel. Each channel then{" "}

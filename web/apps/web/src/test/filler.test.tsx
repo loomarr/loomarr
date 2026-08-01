@@ -233,6 +233,29 @@ describe("Filler page", () => {
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ era: 1985, audience: "kids", category: "cereal" });
   });
 
+  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era, audience AND
+  // category on every call, so a cycle that PATCHed only the clicked field would silently
+  // wipe the other two — once per click, not once per dialog. This asserts the whole tag row
+  // travels with a single cycled chip.
+  it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
+    const fetchMock = stubFetch({
+      clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
+    });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
+
+    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
+    expect(patch, "cycling a chip should PATCH the clip").toBeDefined();
+    // era and category ride along UNCHANGED; only audience advances.
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      era: 1990,
+      audience: "family",
+      category: "cereal",
+    });
+  });
+
   // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
   // (§19), and the UI gate is the courtesy that keeps the console clean.
   it("shows a member the era question without the confirm action", async () => {

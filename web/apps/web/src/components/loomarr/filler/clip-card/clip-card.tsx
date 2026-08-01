@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api";
-import { clipThumbURL, formatClipDuration } from "@loomarr/core";
+import { clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
 import { Pin, Scissors, Sparkles, Tag } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
@@ -26,12 +26,63 @@ const AUDIENCE_LABEL: Record<string, string> = {
   late_night: "Late night",
 };
 
+// The cycle orders. Each ends at "" / 0 — UNSET is a reachable step, not a trap: a chip you
+// can only advance through would make a wrongly-tagged clip impossible to blank without
+// opening the dialog, and §10's likely error is exactly a mis-tagged clip.
+const AUDIENCES = ["kids", "family", "general", "late_night", ""] as const;
+// Decades, not years: `era` is rendered "1990s" and matched by decade, so cycling by 1 would
+// be 10 clicks per useful step. Bounded to the span of television advertising the catalog
+// actually holds, then back to unset.
+const ERAS = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 0] as const;
+// ⚠ NOT an enum on the wire — `category` is a free-string the AI tagger fills from the
+// clip's text, so this list is the common set for CYCLING only. The dialog remains the way
+// to type anything else, which is why the chip renders a value it cannot cycle to.
+const CATEGORIES = ["food", "toys", "auto", "retail", "media", "service", ""] as const;
+
+const next = <T,>(list: readonly T[], current: T): T =>
+  list[(list.indexOf(current) + 1) % list.length] as T;
+
+// A tag chip you can click to advance. Styled to match Badge (mono/uppercase, §2.2) rather
+// than composing it, because a <button> inside a <span>-shaped Badge would nest interactive
+// content in a label. The hover border is the affordance: a chip that looks identical to a
+// static badge would never invite the click.
+const CycleChip = ({
+  label,
+  title,
+  unset,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  unset?: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={title}
+    // The title doubles as the accessible name: "1990s" alone does not say it is editable.
+    aria-label={title}
+    className={cn(
+      "inline-flex w-fit items-center rounded-sm border border-border px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide transition-colors hover:border-static-400 hover:text-static-200",
+      // ⚠ An UNSET chip is a quiet invitation, not an alarm. Three chips shouting
+      // "AUDIENCE?" beside a "Untagged" badge says the same thing four times and makes an
+      // untagged clip look broken rather than merely unfinished — the badge is the signal,
+      // these are the controls.
+      unset && "border-dashed text-static-500",
+    )}
+  >
+    {label}
+  </button>
+);
+
 const ClipCard = ({
   clip,
   onConfirmTags,
   onConfirmEra,
   onTag,
   onPin,
+  onCycle,
   onSplit,
   splitPending,
   className,
@@ -67,7 +118,20 @@ const ClipCard = ({
 
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge>
-      {clip.era ? <Badge variant="neutral">{`${clip.era}s`}</Badge> : null}
+      {/* ⚠ Era, audience and category render as BUTTONS when the caller can retag and as
+          plain badges otherwise — a member sees the same tags without a control that would
+          403. Clicking advances to the next value (the mock's cycleEra/cycleAud/cycleCat);
+          the dialog stays for anything the cycle cannot reach, e.g. a typed category. */}
+      {onCycle ? (
+        <CycleChip
+          label={clip.era ? `${clip.era}s` : "era"}
+          unset={!clip.era}
+          title={`Click to change the era (now ${clip.era ? `${clip.era}s` : "unset"})`}
+          onClick={() => onCycle({ era: next(ERAS, (clip.era ?? 0) as (typeof ERAS)[number]) })}
+        />
+      ) : clip.era ? (
+        <Badge variant="neutral">{`${clip.era}s`}</Badge>
+      ) : null}
       {/* An UNCONFIRMED era (§10 V34): the year is in none of the clip's text signals, so
           the grounding validator refused to persist it. It renders as a question — suggest
           magenta, with a "?" — never as a tag, and pod matching never reads it. */}
@@ -80,8 +144,30 @@ const ClipCard = ({
           {`${clip.suggestedEra}s?`}
         </Badge>
       ) : null}
-      {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
-      {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
+      {onCycle ? (
+        <CycleChip
+          label={(clip.audience && AUDIENCE_LABEL[clip.audience]) || "audience"}
+          unset={!clip.audience}
+          title={`Click to change the audience (now ${clip.audience ? AUDIENCE_LABEL[clip.audience] : "unset"})`}
+          onClick={() =>
+            onCycle({ audience: next(AUDIENCES, (clip.audience ?? "") as (typeof AUDIENCES)[number]) })
+          }
+        />
+      ) : clip.audience ? (
+        <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge>
+      ) : null}
+      {onCycle ? (
+        <CycleChip
+          label={clip.category || "category"}
+          unset={!clip.category}
+          title={`Click to change the category (now ${clip.category || "unset"})`}
+          onClick={() =>
+            onCycle({ category: next(CATEGORIES, (clip.category ?? "") as (typeof CATEGORIES)[number]) })
+          }
+        />
+      ) : clip.category ? (
+        <Badge variant="neutral">{clip.category}</Badge>
+      ) : null}
       {clip.aiTagged && (
         <Badge variant="suggest">
           <Sparkles className="mr-1 size-3" aria-hidden />
@@ -89,7 +175,38 @@ const ClipCard = ({
         </Badge>
       )}
       {!clip.tagged && !clip.aiTagged && <Badge variant="caution">Untagged</Badge>}
+      {/* Resolution, from the probed video height. Display-only unless an operator sets the
+          filler.min_quality floor (off by default), so it is a neutral fact here — NOT a
+          warning. Colouring a 480p clip as a problem would invent a policy the install has
+          not opted into. */}
+      {clip.quality ? (
+        // aria-label per frontend-design §219: the badge renders mono/uppercase by house
+        // style, so a screen reader would otherwise announce letter-spaced shouting.
+        <Badge
+          variant="neutral"
+          title="Resolution, from the clip's video height"
+          aria-label={`Resolution ${clip.quality}`}
+        >
+          {clip.quality}
+        </Badge>
+      ) : null}
     </div>
+
+    {/* How much this clip has actually aired — the mock's `usedLine`. The API has sent
+        playCount/playsCounted/lastPlayedAt since the catalog shipped and nothing rendered
+        them, which is why a clip that never plays looked identical to one on every break.
+        ⚠ playsCounted:false is NOT zero plays. It means this install cannot OBSERVE
+        airings (Tunarr-backed playout owns the stream), so "0 plays" would be a lie the
+        DTO's own comment warns against. It reads as "plays aren't counted here" instead. */}
+    <p className="text-static-400 text-xs">
+      {!clip.playsCounted
+        ? "Plays aren't counted on this setup"
+        : clip.playCount === 0
+          ? "Never played"
+          : `${clip.playCount} ${clip.playCount === 1 ? "play" : "plays"}${
+              clip.lastPlayedAt ? ` · last ${formatRelative(clip.lastPlayedAt)}` : ""
+            }`}
+    </p>
 
     {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit) && (
       <div className="flex flex-wrap gap-2">
