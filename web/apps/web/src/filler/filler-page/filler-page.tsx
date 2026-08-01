@@ -233,7 +233,12 @@ const FillerPage = () => {
       />
 
       {tab === "discover" && isAdmin ? (
-        <div id="panel-discover" role="tabpanel" aria-labelledby="tab-discover" className="flex flex-col gap-4">
+        <div
+          id="panel-discover"
+          role="tabpanel"
+          aria-labelledby="tab-discover"
+          className="flex flex-col gap-4"
+        >
           <DiscoverPanel
             items={discovered}
             total={discoverTotal}
@@ -439,7 +444,6 @@ const FillerPage = () => {
               onClose={() => setPinning(undefined)}
             />
           )}
-
         </div>
       )}
     </div>
