@@ -77,7 +77,15 @@ jobs:
           # exited 100 — and release.yml builds linux/amd64,linux/arm64. Nothing caught it
           # because the image was built ONLY at release time, on a v* tag, which is the
           # worst moment to discover the build is broken.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^Makefile$|^\.github/workflows/'; then
+          #
+          # ⚠ DELIBERATELY NARROWER THAN THE go/web FILTERS ABOVE — the only one that does
+          # NOT gate on `Makefile` or `.github/workflows/`. Those two are edited often and
+          # neither changes what `docker build` produces, while this job costs ~30 min of
+          # billed CI because the arm64 half is QEMU-emulated. Gating it on them would
+          # spend that on every workflow tweak. The rule for the others ("they define how
+          # every job runs, so prove them against everything") does not apply to a job
+          # whose only input is the Dockerfile itself.
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
@@ -210,6 +218,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
+    # ⚠ The only capped job here, because it is the only one that can run away: the arm64
+    # half is QEMU-emulated and a first (uncached) build takes ~30 min. GitHub's default is
+    # SIX HOURS, so a hang would burn a day of billed minutes before anyone noticed. 45
+    # leaves headroom over the measured cold build without being an afternoon.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       # QEMU is what makes the arm64 half real on an amd64 runner. Without it this job
