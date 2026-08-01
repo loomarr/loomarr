@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ErrorState } from "@/components/loomarr";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { useLoomarrEventListener } from "@/events";
+import { cn } from "@/lib";
 import type { IngestPanelProps } from "./ingest-panel.type";
 
 // IngestPanel — download clips into the drop-folder (§10). Downloads run for minutes to
@@ -25,21 +26,21 @@ const IngestPanel = ({ ingestAvailable, onIngested, className }: IngestPanelProp
     },
   });
 
+  // ⚠ A NOTE, not a Card. This branch is an infrastructure caveat ("your image lacks the
+  // downloader"), and rendering it as a full card with an <h2> gave it the same visual
+  // weight as the features around it — three equal slabs where one was an apology. It is a
+  // footnote to Find clips, so it reads as one.
+  //
+  // No setting can open this gate — it depends on which IMAGE is running (config-design
+  // §7's one environment-derived feature). Pointing the operator at Settings would be a
+  // dead end, so the copy names the image instead.
   if (!ingestAvailable) {
     return (
-      <Card className={className}>
-        <div className="p-4">
-          <h2 className="font-semibold text-lg">Download clips</h2>
-          {/* No setting can open this gate — it depends on which IMAGE is running
-              (config-design §7's one environment-derived feature). Pointing the operator
-              at Settings would be a dead end, so the copy names the image instead. */}
-          <p className="mt-1 text-muted-foreground text-sm">
-            This image doesn't include the downloader. Switch to the{" "}
-            <code className="font-mono text-static-200">loomarr:filler</code> image to fetch clips in-app,
-            same setup, just a different tag. You can also drop clips into the folder by hand.
-          </p>
-        </div>
-      </Card>
+      <p className={cn("text-muted-foreground text-sm", className)}>
+        This image doesn't include the downloader, so add clips by dropping them into the filler folder. The{" "}
+        <code className="font-mono text-static-200">loomarr:filler</code> image fetches them in-app instead —
+        same setup, just a different tag.
+      </p>
     );
   }
 

@@ -621,6 +621,20 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		//
 		// Tunarr is attached only when configured — with no tunarr.url there is nothing to
 		// annotate with, and the scan alone is a complete catalog.
+		// ⚠ CREATE the drop-folder if it is missing. `filler.dir` defaults to /data/filler
+		// (like database.url and backup.dir), and the scanner treats a missing ROOT as a
+		// FATAL error on purpose — that check exists so a typo'd path cannot present as an
+		// empty catalog. Without this, shipping a default would swap an honest "not
+		// configured" for a scan error on every fresh install: configured, and broken.
+		//
+		// Best-effort: a read-only or unwritable /data is the operator's to fix, and it
+		// must not stop the rest of the app booting. The scan then reports the real problem.
+		if dir := set.str("filler.dir"); dir != "" {
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				log.Warn("could not create the filler drop-folder; the catalog scan will report it",
+					"dir", dir, "err", err)
+			}
+		}
 		fillerSource := filler.DirSource{
 			Dir:   func() string { return set.str("filler.dir") },
 			Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),

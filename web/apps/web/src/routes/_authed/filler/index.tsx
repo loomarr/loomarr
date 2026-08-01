@@ -29,9 +29,9 @@ const Route = createFileRoute("/_authed/filler/")({
     const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;
     const audience = AUDIENCES.includes(search.audience as string) ? (search.audience as string) : undefined;
     const untagged = search.untagged === true || search.untagged === "true" ? true : undefined;
-    // Only "sources" is a real alternative today; Discover is V33 and an unknown value falls
-    // back to the catalog rather than rendering an empty page.
-    const tab = search.tab === "sources" ? "sources" : undefined;
+    // "sources" and "discover" are the real alternatives; an unknown value falls back to the
+    // catalog rather than rendering an empty page.
+    const tab = search.tab === "sources" || search.tab === "discover" ? search.tab : undefined;
     return {
       ...(tab ? { tab } : {}),
       ...(q ? { q } : {}),

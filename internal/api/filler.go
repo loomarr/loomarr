@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -339,9 +340,16 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 // --- discovery (§10, V33) ---
 
 type discoverFillerInput struct {
-	// Query is what the operator typed. Required: an empty search would return archive.org's
-	// entire movies corpus ranked by nothing, which is not an answer to any question.
-	Query string `query:"q" required:"true" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\""`
+	// Query is what the operator typed. An empty search would return archive.org's entire
+	// movies corpus ranked by nothing, which is not an answer to any question — so a search
+	// needs at least two characters. No longer `required`, because `collection` is the other
+	// way to ask; exactly one of the two must be given (checked in the handler).
+	Query string `query:"q" minLength:"2" doc:"Words to search for, e.g. \"1980s cereal commercial\". Mutually exclusive with the collection parameter."`
+	// Collection lists ONE named archive.org collection instead of searching. This is what a
+	// starter pack is (§10, V17d): a curated collection an operator keeps or excludes from
+	// before anything is fetched. Deliberately the same endpoint as the keyword search — a
+	// separate route would be a second implementation of "list clips, download nothing".
+	Collection string `query:"collection" doc:"An archive.org collection to list: a URL, a /details/<id> path, or a bare identifier. Mutually exclusive with the q parameter."`
 	// Limit caps the page. A listing is for DECIDING — an operator judges a source from a
 	// handful of titles — so the ceiling is low on purpose.
 	Limit int `query:"limit" minimum:"1" maximum:"25" doc:"Max results (default 25)"`
@@ -372,9 +380,27 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 			"Enable filler in Settings before searching for clips to add.")
 	}
 
-	items, total, err := s.filler.Discover(ctx, in.Query, in.Limit)
+	// Exactly one mode. Both would be ambiguous (search WITHIN a collection is a different
+	// query archive.org would have to be asked differently), and neither is the empty search
+	// the minLength above exists to prevent.
+	query, collection := strings.TrimSpace(in.Query), strings.TrimSpace(in.Collection)
+	if (query == "") == (collection == "") {
+		return nil, apiErr(http.StatusUnprocessableEntity, "Ask for one thing",
+			"Send either q (to search) or collection (to list one collection), not both and not neither.")
+	}
+
+	var (
+		items []DiscoveredClip
+		total int
+		err   error
+	)
+	if collection != "" {
+		items, total, err = s.filler.DiscoverCollection(ctx, collection, in.Limit)
+	} else {
+		items, total, err = s.filler.Discover(ctx, query, in.Limit)
+	}
 	if err != nil {
-		// A search failure is upstream (archive.org unreachable or refusing), not the
+		// A listing failure is upstream (archive.org unreachable or refusing), not the
 		// caller's fault — so it is a 502-shaped problem, and the message says which side
 		// broke rather than blaming the query.
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't search for clips",

@@ -29,6 +29,11 @@ type fakeFiller struct {
 	discovered    []string
 	discoverLimit int
 	discoverErr   error
+	// collections records what DiscoverCollection was asked for, SEPARATELY from
+	// `discovered`. Two fields rather than one, so a test can prove a collection request
+	// never lands on the keyword search (and vice versa) — a single log would pass either
+	// way round.
+	collections []string
 	// V34 split knobs.
 	splits           []fakeSplitCall
 	splitUnavailable bool
@@ -59,6 +64,19 @@ func (f *fakeFiller) Discover(_ context.Context, query string, limit int) ([]api
 		{ID: "cm-1993-4", Title: "Commercials 1993", Year: 1993, URL: "https://archive.org/details/cm-1993-4"},
 		{ID: "no-year-item", Title: "Untitled reel", URL: "https://archive.org/details/no-year-item"},
 	}, 54, nil
+}
+
+// DiscoverCollection returns a DIFFERENT item set from Discover, deliberately: identical
+// fixtures would let a handler that called the wrong method pass every assertion.
+func (f *fakeFiller) DiscoverCollection(_ context.Context, ref string, limit int) ([]api.DiscoveredClip, int, error) {
+	f.collections = append(f.collections, ref)
+	f.discoverLimit = limit
+	if f.discoverErr != nil {
+		return nil, 0, f.discoverErr
+	}
+	return []api.DiscoveredClip{
+		{ID: "pack-1", Title: "Starter reel", Year: 1985, URL: "https://archive.org/details/pack-1"},
+	}, 667, nil
 }
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
@@ -498,6 +516,66 @@ func TestDiscoverFiller_RequiresAQuery(t *testing.T) {
 	}
 	if len(ff.discovered) != 0 {
 		t.Errorf("the service was called with %v despite an invalid request", ff.discovered)
+	}
+}
+
+// --- the starter pack: discovery by collection (§10, V17d) ---
+
+// A collection request lists that collection and NEVER reaches the keyword search. The two
+// modes are separately recorded on the fake, so a handler that routed a collection into
+// Search would fail here rather than pass on a shared call log.
+func TestDiscoverFiller_ListsACollectionWithoutSearching(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?collection=classic_tv_commercials", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := decodeDiscover(t, resp)
+
+	if len(ff.collections) != 1 || ff.collections[0] != "classic_tv_commercials" {
+		t.Errorf("service saw collections %v, want the requested collection", ff.collections)
+	}
+	if len(ff.discovered) != 0 {
+		t.Errorf("a collection request also ran the keyword search (%v)", ff.discovered)
+	}
+	// The collection's own items, not the search fixture — proof of which method answered.
+	if len(body.Items) != 1 || body.Items[0].ID != "pack-1" {
+		t.Errorf("items = %+v, want the collection's items", body.Items)
+	}
+	if body.Total != 667 {
+		t.Errorf("total = %d, want the collection's size", body.Total)
+	}
+	// ⚠ The caveat is about the SOURCE, not the mode. A starter pack is still archive.org
+	// content, so dropping the licence note here would imply a curation that never happened.
+	if body.LicenceNote == "" {
+		t.Error("a collection listing dropped the licence caveat")
+	}
+}
+
+// ⚠ A keyword search must NOT be answered by the collection lister. The mirror of the test
+// above — together they pin that each mode reaches exactly one method.
+func TestDiscoverFiller_SearchDoesNotListACollection(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
+	if len(ff.collections) != 0 {
+		t.Errorf("a keyword search listed collections %v", ff.collections)
+	}
+}
+
+// Exactly one mode. Both is ambiguous (searching WITHIN a collection is a different question
+// archive.org would be asked differently) and neither is the empty search the schema forbids
+// — so both spellings are refused BEFORE any upstream call.
+func TestDiscoverFiller_RefusesBothModesAtOnce(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal&collection=classic_tv_commercials", adminToken, "")
+	if resp.StatusCode == http.StatusOK {
+		t.Error("q and collection together were accepted; the request is ambiguous")
+	}
+	if len(ff.discovered) != 0 || len(ff.collections) != 0 {
+		t.Errorf("upstream was called despite an ambiguous request (q=%v, collection=%v)", ff.discovered, ff.collections)
 	}
 }
 
