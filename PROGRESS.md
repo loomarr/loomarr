@@ -1471,12 +1471,31 @@ still passed. That is the V1/V17a/V23 failure mode exactly, so the reachability 
 derives `/filler/splits/$proposalId` from the router AND requires a clip card to offer the
 entry point. A component test could not have caught it.
 
-**Remaining, in order:** (3) Dockerfile whisper-cli + model vendoring, with the **model verified
-gap-free against the real binary** (the §6.4 numbers came from the Python package — that
-verification is gate, not preference); (4) live verification on the maintainer's stack. ⚠ Until
-(3) lands, the split pipeline is **green in tests but inert in the shipped image** — the
-transcript rescue path shells out to a binary the Dockerfile does not install, and the §6.4
-finding says that path is the only signal that sees the hardest boundary class.
+The **vendoring** (`4836507`) closed item (3): whisper.cpp v1.9.1 + `ggml-small.en.bin` (pinned by
+revision AND sha256), both platforms building and transcribing.
+
+⚠ **The model verification was a real gate, not a formality — it changed the answer twice.**
+Measured against the *vendored* binary on a real 244s 1990 commercial break, scoring gaps against
+**loudness** rather than counting them (a gap over silence is whisper being correct): `tiny.en`
+dropped a complete 20s advert at the file's average loudness, **`base.en` dropped 7s of equally
+audible speech**, and only `small.en` had no gap over audible content. `base.en` is newly ruled
+out — the intuitive compromise, a size §6.4 never measured. Maintainer's call to bake the 466MB
+model in rather than fetch on first use, keeping §16's "no variant omits the tooling" promise.
+
+⚠ **`--help` cannot prove a vendored binary works.** whisper-cli is NOT self-contained like
+yt-dlp (§14 said it was; corrected): it links libwhisper+libggml, and ggml `dlopen()`s its compute
+backend from the **executable's own directory**, not `ld.so.conf`. The obvious layout passed
+`--help` on arm64 and aborted on the first real transcription with `GGML_ASSERT(device) failed`.
+The build-time proof now **transcribes** a generated wav through the same path the app execs.
+
+⚠ **It also surfaced a release-blocking arm64 bug that predates V34:** `intel-media-va-driver`
+has no arm64 candidate, so `apt` exited 100 and the arm64 half of `release.yml`'s
+`linux/amd64,linux/arm64` matrix could never have built — nor could any local build on an
+Apple-Silicon Mac. Now amd64-only. Nothing in the gates would have caught this: **CI never builds
+the image**, so `docker build` is only exercised at release time.
+
+**Remaining:** (4) live verification on the maintainer's stack — a real compilation ingested,
+split, reviewed, and its segments playing in a pod.
 
 1. **whisper-cli approved as the fifth vendored binary** (the §14 conversation is resolved):
    whisper.cpp's self-contained binary, exec'd like yt-dlp, no cgo, no service, shipping in the
