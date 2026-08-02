@@ -328,18 +328,20 @@ describe("feature-gated panels mount when their flag is on", () => {
     // oversight.
     ["/settings/security", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from your media server/i, "the §11 import panel"],
-    // ⚠ Both now live on the DISCOVER tab, not the catalog — Discover became a peer of
-    // Catalog (the v2 mock's shape) rather than a card stacked under it. The path carries
-    // `?tab=discover` for that reason, and keeping these assertions pointed at a real URL
-    // is what stops a tab nobody can navigate to from passing as "reachable".
-    ["/filler?tab=discover", /download clips|downloading isn't available/i, "the ingest panel"],
-    // V33: searching is how an operator decides what to download, so the panel that does it
-    // must be on the page — not merely built. This suite exists because eight things were
-    // built, unit-tested and imported by nothing.
-    ["/filler?tab=discover", /find clips/i, "the discover panel"],
-    // ⚠ And the tab itself must be reachable FROM the catalog, or the two assertions above
-    // only prove a deep link works. This is the V1/V17a/V23 failure in tab form.
-    ["/filler", /^discover$/i, "the Discover tab's own entry point"],
+    // ⚠ The ingest panel moved to INCOMING (V35). Discover was retired as a tab — finding
+    // clips is now something you do to a source — and the download tooling went with the tab
+    // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
+    // nobody can navigate to from passing as "reachable".
+    ["/filler?tab=incoming", /download clips|downloading isn't available/i, "the ingest panel"],
+    // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
+    // this suite exists because eight things were built, unit-tested and imported by nothing.
+    ["/filler?tab=incoming", /nothing needs you|needs? a decision/i, "the incoming queue"],
+    // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
+    // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
+    ["/filler", /^incoming$/i, "the Incoming tab's own entry point"],
+    // V35: catalog health is a strip above the tabs rather than a tab of its own, so it has
+    // no nav entry to assert — it must simply BE on the page, on every tab.
+    ["/filler", /fits a break/i, "the pool-health strip"],
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
     ["/filler", /split into clips/i, "the compilation-split entry point"],

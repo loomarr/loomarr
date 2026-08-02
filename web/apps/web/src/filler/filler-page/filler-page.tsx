@@ -10,10 +10,11 @@ import { useAuth } from "@/auth";
 import {
   ClipCard,
   CountTabs,
-  DiscoverPanel,
   EmptyState,
   ErrorState,
   FillerSources,
+  IncomingPanel,
+  PoolHealth,
 } from "@/components/loomarr";
 import {
   Button,
@@ -74,25 +75,11 @@ const FillerPage = () => {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
 
-  // Find clips (V33). ⚠ Two pieces of query state, not one: `discoverQuery` is what the
-  // operator is TYPING and `discoverSubmitted` is what they SEARCHED for. Firing on every
-  // keystroke would send a request per character to a public API we do not own.
-  const [discoverQuery, setDiscoverQuery] = useState("");
-  const [discoverSubmitted, setDiscoverSubmitted] = useState("");
-  const discover = fillerApi.useDiscoverFiller(
-    { q: discoverSubmitted },
-    // enabled: only after a real search. retry: false because a 502 here means archive.org
-    // is not answering, and retrying three times just delays telling the operator that.
-    { query: { enabled: discoverSubmitted !== "", retry: false } },
-  );
-  const discovered = unwrap(discover.data, (b) => b.items) ?? [];
-  const discoverTotal = unwrap(discover.data, (b) => b.total) ?? 0;
-  const discoverNote = unwrap(discover.data, (b) => b.licenceNote);
-
-  // Adding a discovered clip is an INGEST, not a new mechanism: the id becomes the archive.org
-  // URL the existing downloader already accepts. Reusing that path means one place understands
-  // how a download is started, reported and retried.
-  const ingestIds = fillerApi.useIngestFiller({ mutation: { onSuccess: invalidate } });
+  // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
+  // source is moving onto the Sources tab, where it belongs — a search is something you do to a
+  // source, not a destination of its own — and `GET /v1/filler/discover` is still the route
+  // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
+  // still fires is how a page keeps paying for a feature nobody can reach.
 
   // ⚠ Every hook stays ABOVE the `fillerConfigured` early return below. Placing these two
   // after it skipped them on the unconfigured path and crashed the page with "rendered more
@@ -101,6 +88,38 @@ const FillerPage = () => {
   // Sources are admin-only on the server, so a member's request would 403. Gating the QUERY
   // (not just the tab) keeps a member's console clean.
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: isAdmin } });
+
+  // Catalog health (V35). Member-readable, so no `enabled` gate: it explains why a channel plays
+  // what it plays, which is the same reason the catalog listing itself is member-visible.
+  const poolQuery = fillerApi.useFillerPool();
+  const pool = unwrap(poolQuery.data, (b) => b);
+
+  // The Incoming queue (V35) — what has been downloaded but is not yet filed. Admin-only on the
+  // server, so the QUERY is gated too, not just the tab: a member's request would 403 and fill
+  // their console with an error about a surface they cannot reach.
+  const incomingQuery = fillerApi.useFillerIncoming({ query: { enabled: isAdmin } });
+  const incomingAsks = unwrap(incomingQuery.data, (b) => b.asks) ?? [];
+  const incomingReels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
+  const incomingTotal = unwrap(incomingQuery.data, (b) => b.total) ?? 0;
+
+  // ⚠ Proposing a pull DOWNLOADS NOTHING — it writes a proposal for the approval queue (§10).
+  // The toast says so, because a button that appears to start a download and does not is worse
+  // than one that explains itself.
+  const proposePull = fillerApi.useProposeFillerPull({
+    mutation: {
+      onSuccess: () => {
+        toast.success("Pull proposed", {
+          description: "Nothing is downloading yet. Approve it in the queue to start.",
+        });
+      },
+      onError: (err) => {
+        const problem = toProblem(err);
+        toast.error(problem?.title ?? "Couldn't plan a pull", {
+          ...(problem?.detail ? { description: problem.detail } : {}),
+        });
+      },
+    },
+  });
   const fetchSource = fillerApi.useFetchFillerSource({
     mutation: {
       onSuccess: () => {
@@ -114,14 +133,47 @@ const FillerPage = () => {
   const sync = fillerApi.useSyncFiller({ mutation: { onSuccess: invalidate } });
   const aiTag = fillerApi.useTagFiller({ mutation: { onSuccess: invalidate } });
 
+  // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
+  // mutation's own isPending is global to the hook — using it alone greys out every button on
+  // the page while a single confirm lands, which reads as the page having frozen.
+  const [busyClip, setBusyClip] = useState<string>();
+
+  // Removing a clip from the catalog (V35). ⚠ A TOMBSTONE on the server: the clip leaves the
+  // catalog and stops being used in breaks, and the file is untouched. The copy here says
+  // "catalog" for that reason and must keep saying it.
+  const removeClips = fillerApi.useBulkRemoveFiller({
+    mutation: {
+      onSuccess: () => {
+        setBusyClip(undefined);
+        invalidate();
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
+      },
+      onError: (e) => {
+        setBusyClip(undefined);
+        toast.error(toProblem(e).title ?? "Couldn't remove those clips");
+      },
+    },
+  });
+
   // Era-suggestion confirm (§10 V34). ⚠ The PATCH body must carry the clip's CURRENT
   // audience/category: UpdateClipTags writes all three columns unconditionally, so a
   // bare `{era}` would wipe the other two. Setting era confirms and clears the
   // suggestion in the same write (the BE's rule).
   const confirmEra = fillerApi.useTagFillerClip({
     mutation: {
-      onSuccess: invalidate,
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the era"),
+      onSuccess: () => {
+        setBusyClip(undefined);
+        invalidate();
+        // The Incoming queue and the pool strip both change when a clip is filed, and neither
+        // is keyed on the clip list — without these the row stays in the queue until a reload.
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
+      },
+      onError: (e) => {
+        setBusyClip(undefined);
+        toast.error(toProblem(e).title ?? "Couldn't confirm the era");
+      },
     },
   });
 
@@ -254,41 +306,72 @@ const FillerPage = () => {
         )}
       </div>
 
-      {/* Three tabs, matching the v2 mock: Catalog · Discover · Sources. Discover was a
-          CARD stacked under the catalog, which put finding clips, the clip list and an
-          image caveat on the page as three equal slabs with no hierarchy. The mock makes
-          it a peer of Catalog because it is a different task, not more of the same one. */}
+      {/* Catalog health, above the tabs rather than inside one (V35).
+          ⚠ A strip, not a tab: what the catalog holds is the CONTEXT the other tabs are read
+          in, and as its own tab it was the thing nobody clicked — which is how an install ends
+          up with four hundred clips and channels still falling back to the bumper card. */}
+      {pool && (
+        <PoolHealth
+          pool={pool}
+          {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
+          proposing={proposePull.isPending}
+        />
+      )}
+
+      {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
+          ⚠ There is no Discover tab any more. Finding clips used to be its own destination; it
+          is now something you do TO a source, which is the only place the answer differs. An old
+          ?tab=discover bookmark falls back to Catalog rather than rendering a blank panel. */}
       <CountTabs
         label="Filler sections"
         tabs={[
           { id: "catalog", label: "Catalog", count: clipList.length },
-          ...(isAdmin ? [{ id: "discover", label: "Discover", count: discovered.length }] : []),
+          ...(isAdmin ? [{ id: "incoming", label: "Incoming", count: incomingTotal }] : []),
           { id: "sources", label: "Sources", count: sourceRows.length },
         ]}
         activeId={tab}
         onSelect={(id) => setFilters({ tab: id === "catalog" ? undefined : id })}
       />
 
-      {tab === "discover" && isAdmin ? (
+      {tab === "incoming" && isAdmin ? (
         <div
-          id="panel-discover"
+          id="panel-incoming"
           role="tabpanel"
-          aria-labelledby="tab-discover"
+          aria-labelledby="tab-incoming"
           className="flex flex-col gap-4"
         >
-          <DiscoverPanel
-            items={discovered}
-            total={discoverTotal}
-            licenceNote={discoverNote}
-            query={discoverQuery}
-            onQueryChange={setDiscoverQuery}
-            onSearch={() => setDiscoverSubmitted(discoverQuery.trim())}
-            searching={discover.isFetching}
-            searched={discoverSubmitted !== ""}
-            {...(features?.ingest
-              ? { onAdd: (ids: string[]) => ingestIds.mutate({ data: { urls: ids.map(archiveURL) } }) }
-              : {})}
+          {incomingQuery.error != null && (
+            <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
+          )}
+          <IncomingPanel
+            asks={incomingAsks}
+            reels={incomingReels}
+            // ⚠ Carries the clip's CURRENT audience and category, not just the era. The BE's
+            // UpdateClipTags writes all three columns unconditionally, so a bare `{era}` would
+            // silently wipe the other two — the hazard the comment above `confirmEra` records,
+            // and one this call site reproduced on its first draft.
+            onConfirmEra={(ask) => {
+              setBusyClip(ask.path);
+              confirmEra.mutate({
+                id: ask.path,
+                data: {
+                  era: ask.suggestedEra ?? 0,
+                  ...(ask.audience ? { audience: ask.audience as never } : {}),
+                  ...(ask.category ? { category: ask.category } : {}),
+                },
+              });
+            }}
+            onEditTags={(ask) => setTagging(ask.path)}
+            // "Don't use it" removes the clip from the CATALOG. The file stays where the
+            // operator put it — the server's action is a tombstone, never a delete.
+            onDismiss={(ask) => {
+              setBusyClip(ask.path);
+              removeClips.mutate({ data: { paths: [ask.path] } });
+            }}
+            {...(confirmEra.isPending || removeClips.isPending ? { busyPath: busyClip } : {})}
           />
+          {/* The download tooling still lives here — it is how clips ARRIVE, which is what this
+              tab is about. It moved off the retired Discover tab rather than being deleted. */}
           <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />
         </div>
       ) : tab === "sources" ? (
@@ -477,12 +560,6 @@ const FillerPage = () => {
     </div>
   );
 };
-
-// archiveURL turns a discovered id into the URL ingest takes. ⚠ Built here rather than trusted
-// from the API's `url` field: that one is the item's human-facing details page, and while the
-// two happen to coincide today, ingest resolving a display URL would be a coincidence rather
-// than a contract.
-const archiveURL = (id: string) => `https://archive.org/details/${encodeURIComponent(id)}`;
 
 // PageHeading — orients the two-surface model the per-channel filler feature introduced:
 // this page is the CATALOG (every clip, its tags), while each channel CHOOSES from it on

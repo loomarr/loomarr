@@ -167,8 +167,9 @@ describe("Filler page", () => {
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
 
-  // ⚠ Both ingest tests render the DISCOVER tab: the panel moved there when Discover
-  // became a peer of Catalog rather than a card stacked under it.
+  // ⚠ Both ingest tests render the INCOMING tab (V35). Discover was retired as a tab —
+  // finding clips is now something you do to a source — and the download tooling moved to
+  // the tab that is about how clips ARRIVE rather than being deleted with it.
   //
   // ⚠ This asserts the copy does NOT name `loomarr:filler` (retired-ok). That variant no longer
   // exists — the single image always ships the downloader (§16) — so the old copy sent an
@@ -176,7 +177,7 @@ describe("Filler page", () => {
   // mode is a plausible-sounding instruction, not a missing one.
   it("explains a degraded install without naming an image that no longer exists", async () => {
     stubFetch({ features: { filler: true, ingest: false } });
-    renderAt("/filler?tab=discover");
+    renderAt("/filler?tab=incoming");
     expect(await screen.findByText(/downloading isn't available in this install/i)).toBeInTheDocument();
     // The dead image name (retired-ok), asserted ABSENT.
     expect(screen.queryByText(/loomarr:filler/)).not.toBeInTheDocument(); // retired-ok
@@ -185,7 +186,7 @@ describe("Filler page", () => {
 
   it("starts an ingest job when the tooling is present", async () => {
     const fetchMock = stubFetch({ features: { filler: true, ingest: true } });
-    renderAt("/filler?tab=discover");
+    renderAt("/filler?tab=incoming");
     await screen.findByLabelText("URLs");
 
     await userEvent.type(screen.getByLabelText("URLs"), "https://archive.org/details/classic-tv-commercials");
