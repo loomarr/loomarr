@@ -193,6 +193,16 @@ describe("Filler page", () => {
   // exists — the single image always ships the downloader (§16) — so the old copy sent an
   // operator hunting for a tag they cannot pull. An absence assertion, because the failure
   // mode is a plausible-sounding instruction, not a missing one.
+  //
+  // ⚠ `main` still has the INVERTED assertion here — it requires `loomarr:filler` (retired-ok)
+  // to be PRESENT. That is the older truth, from before the sidecar's remains were removed, and
+  // taking it in this merge would have made `retired-verify` and this test contradict each
+  // other. The merge keeps this side deliberately.
+  //
+  // ⚠ And this comment needed the `retired-ok` marker to say so: `check-retired.sh` failed on
+  // the sentence explaining the retirement. That is the guard working, not over-reaching — it
+  // greps for the identifier and cannot read intent, which is exactly why it catches the
+  // instructions a prose rule would miss.
   it("explains a degraded install without naming an image that no longer exists", async () => {
     stubFetch({ features: { filler: true, ingest: false } });
     renderAt("/filler?tab=incoming");

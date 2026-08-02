@@ -332,6 +332,11 @@ describe("feature-gated panels mount when their flag is on", () => {
     // clips is now something you do to a source — and the download tooling went with the tab
     // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
     // nobody can navigate to from passing as "reachable".
+    //
+    // ⚠ The copy alternation here is the V35 wording, NOT main's. `main` still says "doesn't
+    // include the downloader" and names the `loomarr:filler` image; that tag was retired and
+    // `scripts/check-retired.sh` fails on it, so taking main's side of this merge would have
+    // been red twice over.
     ["/filler?tab=incoming", /download clips|downloading isn't available/i, "the ingest panel"],
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
