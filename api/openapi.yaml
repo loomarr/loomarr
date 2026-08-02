@@ -547,6 +547,46 @@ components:
         - policy
         - lineup
       type: object
+    ChannelFitDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        excluded:
+          type: boolean
+        level:
+          description: The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+        pinned:
+          type: boolean
+        reason:
+          description: Why the clip is not a candidate; absent when it is one
+          enum:
+            - kind
+            - duration
+            - quality
+            - category
+            - audience
+            - excluded
+          type: string
+      required:
+        - channelId
+        - name
+        - number
+        - level
+        - pinned
+        - excluded
+      type: object
     ChannelNowNext:
       additionalProperties: false
       properties:
@@ -679,6 +719,25 @@ components:
         - playsCounted
         - aiTagged
         - tagged
+      type: object
+    ClipFitOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ClipFitOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelFitDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - channels
       type: object
     CollectionsOutputBody:
       additionalProperties: false
@@ -5369,6 +5428,36 @@ paths:
       summary: Runtime and quality for specific search results
       tags:
         - filler
+  /v1/filler/fit:
+    get:
+      description: "The override picker's per-channel note (§10 V35). For every channel: which rung of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the same per-channel selection as the pod preview — a note that disagrees with what airs is a confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every channel is listed, including paused ones — pinning to a paused channel is a decision that takes effect when it resumes."
+      operationId: clip-channel-fit
+      parameters:
+        - description: The clip's path (its identity, §10)
+          explode: false
+          in: query
+          name: clip
+          required: true
+          schema:
+            description: The clip's path (its identity, §10)
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClipFitOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Where this clip lands on each channel's ladder
+      tags:
+        - filler
+        - channels
   /v1/filler/incoming:
     get:
       description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."

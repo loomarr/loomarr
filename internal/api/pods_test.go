@@ -23,7 +23,11 @@ type fakePods struct {
 	pod        filler.Pod
 	coverage   filler.CoverageReport
 	pool       filler.PoolReport
-	err        error
+	// fits is what ClipFit returns, keyed by channel id; fitAsked records the clip paths it
+	// was asked about, so a test can prove the route resolves the id it was given.
+	fits     map[string]filler.Fit
+	fitAsked []string
+	err      error
 }
 
 func (f *fakePods) Preview(_ context.Context, channelID string) (filler.Pod, error) {
@@ -50,6 +54,12 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs i
 func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.CoverageReport, error) {
 	f.asked = append(f.asked, channelID)
 	return f.coverage, f.err
+}
+
+// ClipFit records the clip path so a test can prove the route asks about the clip in the URL.
+func (f *fakePods) ClipFit(_ context.Context, clipPath string) (map[string]filler.Fit, error) {
+	f.fitAsked = append(f.fitAsked, clipPath)
+	return f.fits, f.err
 }
 
 func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
@@ -241,5 +251,143 @@ func TestPreviewPods_DoesNotShadowNowNext(t *testing.T) {
 	}
 	if len(fp.asked) != 0 {
 		t.Errorf("now-next was routed to the pod preview (asked %v)", fp.asked)
+	}
+}
+
+// --- per-clip channel fit (§10, V35 item 1.7) ---
+
+func decodeFit(t *testing.T, resp *http.Response) []api.ChannelFitDTO {
+	t.Helper()
+	var body struct {
+		Channels []api.ChannelFitDTO `json:"channels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body.Channels
+}
+
+// The route resolves the clip in the URL, and answers per channel.
+func TestClipFit_AnswersForEveryChannel(t *testing.T) {
+	srv, st, fp := newPodsServer(t)
+	if err := st.UpsertChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch-2", Name: "Late Night", Number: 7, Status: "live"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fp.fits = map[string]filler.Fit{
+		"ch-1": {Level: filler.MatchExact},
+		"ch-2": {Level: filler.MatchBumperCard, Reason: filler.FitAudience},
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=ads%2Fcereal.mp4", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	rows := decodeFit(t, resp)
+
+	if len(fp.fitAsked) != 1 || fp.fitAsked[0] != "ads/cereal.mp4" {
+		t.Errorf("service asked about %v, want the clip in the URL", fp.fitAsked)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want one per channel", len(rows))
+	}
+	byID := map[string]api.ChannelFitDTO{}
+	for _, r := range rows {
+		byID[r.ChannelID] = r
+	}
+	if byID["ch-1"].Level != "exact" || byID["ch-1"].Reason != "" {
+		t.Errorf("ch-1 = %+v, want an exact match with no reason", byID["ch-1"])
+	}
+	// ⚠ A rejected row must carry WHY. "Won't be picked" with no reason is what sends an
+	// operator hunting through channel settings for a rule they cannot see.
+	if byID["ch-2"].Reason != "audience" {
+		t.Errorf("ch-2 reason = %q, want the rejecting predicate", byID["ch-2"].Reason)
+	}
+	// The row carries enough to render without a second request.
+	if byID["ch-2"].Name != "Late Night" || byID["ch-2"].Number != 7 {
+		t.Errorf("ch-2 = %+v, want the channel's name and number", byID["ch-2"])
+	}
+}
+
+// ⚠ Rows come out in the STORE's order (number-sorted), never Go's randomised map order — a
+// picker whose rows shuffle on every render is unusable.
+func TestClipFit_RowsAreOrderedNotShuffled(t *testing.T) {
+	srv, st, fp := newPodsServer(t)
+	for _, ch := range []struct {
+		id  string
+		num int
+	}{{"ch-2", 2}, {"ch-3", 3}, {"ch-4", 4}, {"ch-5", 5}} {
+		if err := st.UpsertChannel(context.Background(), store.Channel{
+			Channel: schedule.Channel{ID: ch.id, Name: ch.id, Number: ch.num, Status: "live"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fp.fits = map[string]filler.Fit{}
+	for _, id := range []string{"ch-1", "ch-2", "ch-3", "ch-4", "ch-5"} {
+		fp.fits[id] = filler.Fit{Level: filler.MatchExact}
+	}
+
+	// Repeated, because map iteration order varies per RUN — one pass could agree by luck.
+	var first []string
+	for range 5 {
+		var got []string
+		for _, r := range decodeFit(t, do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", adminToken, "")) {
+			got = append(got, r.ChannelID)
+		}
+		if first == nil {
+			first = got
+			continue
+		}
+		if len(got) != len(first) {
+			t.Fatalf("row count changed between requests: %d then %d", len(first), len(got))
+		}
+		for i := range got {
+			if got[i] != first[i] {
+				t.Fatalf("row order changed between requests: %v then %v", first, got)
+			}
+		}
+	}
+}
+
+// ⚠ Both flags are reported AS STORED, including the contradictory both-true state — assembly
+// resolves it (excluded wins), and normalising here would show a state the database does not
+// hold, so an operator un-ticking "excluded" would see a pin they never made.
+func TestClipFit_ReportsPinAndExcludeAsStored(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	fp.fits = map[string]filler.Fit{
+		"ch-1": {Level: filler.MatchBumperCard, Reason: filler.FitExcluded, Pinned: true, Excluded: true},
+	}
+
+	rows := decodeFit(t, do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", adminToken, ""))
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows", len(rows))
+	}
+	if !rows[0].Pinned || !rows[0].Excluded {
+		t.Errorf("row = %+v, want both flags as stored", rows[0])
+	}
+	if rows[0].Reason != "excluded" {
+		t.Errorf("reason = %q, want excluded to win", rows[0].Reason)
+	}
+}
+
+func TestClipFit_UnknownClipIs404(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	fp.err = store.ErrNotFound
+
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=gone.mp4", adminToken, ""); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// Read-only, so a member may call it — the same posture as the coverage meter. A member sees
+// which channels a clip serves; they cannot change it (the write is admin-only).
+func TestClipFit_IsReadableByAMember(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	fp.fits = map[string]filler.Fit{"ch-1": {Level: filler.MatchExact}}
+
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/fit?clip=a.mp4", memberToken, ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200 — a read-only note is member-visible", resp.StatusCode)
 	}
 }

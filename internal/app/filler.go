@@ -358,6 +358,34 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (fill
 	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
 }
 
+// ClipFit reports how one clip relates to every channel's selection (§10 V35 item 1.7).
+//
+// ⚠ Resolved through `SelectionForChannel` per channel, exactly like Coverage above — the note
+// beside a checkbox is a claim about what will play, and deriving the selection any other way
+// is how a picker comes to disagree with the pods it is about to change.
+//
+// ⚠ EVERY channel, including paused and detached ones. Coverage and Pool exclude them because
+// they report on breaks that are currently airing; this is a picker, and an operator pinning a
+// clip to a paused channel is making a decision that takes effect when it resumes. Hiding the
+// row would look like the channel had been deleted.
+func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[string]filler.Fit, error) {
+	clip, err := a.store.GetClip(ctx, clipPath)
+	if err != nil {
+		return nil, err
+	}
+	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]filler.Fit, len(chans))
+	for _, ch := range chans {
+		// `store.Clip` embeds `filler.Clip`, so this is the same value the catalog load hands
+		// the assembler — not a re-derivation.
+		out[ch.ID] = a.pods.FitForChannel(ch.ID, channels.SelectionForChannel(ch), clip.Clip)
+	}
+	return out, nil
+}
+
 // Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35).
 //
 // ⚠ **Every per-channel number here comes from the SAME `Coverage` call the channel page makes**,

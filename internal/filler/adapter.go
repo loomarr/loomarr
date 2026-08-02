@@ -176,6 +176,22 @@ func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Sele
 	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy), nil
 }
 
+// FitForChannel reports how ONE clip relates to one channel's selection (§10 V35 item 1.7).
+//
+// The same `windowFor` derivation Preview and CoverageFor use, so the picker's per-channel note
+// cannot describe a different window than the pods it is talking about. Takes the clip rather
+// than loading the catalog: the caller (the picker) already has it, and re-reading the whole
+// catalog once per channel row would make an N-channel picker an N-catalog-load operation.
+func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit {
+	podMax := a.policy.PodMax
+	if podMax <= 0 {
+		podMax = 4
+	}
+	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
+	// of one break, so a real seed would imply an answer that varies per pod.
+	return FitFor(c, a.windowFor(channelID, 0, sel, podMax), a.policy)
+}
+
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material
 // exists at all, before any channel's selection narrows it.
 //

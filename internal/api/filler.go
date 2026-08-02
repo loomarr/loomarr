@@ -81,6 +81,26 @@ func (s *Server) registerFiller(api huma.API) {
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.discoverFillerStats)
 
+	huma.Register(api, withRole(huma.Operation{
+		// ⚠ The clip is a QUERY parameter, not a path segment, and that is forced rather than
+		// stylistic. Clip identity is a PATH (§9.1 — `ads/cereal.mp4`), so `/v1/filler/{id}/fit`
+		// collides with every literal segment under /v1/filler: Go's ServeMux refuses to register
+		// it beside `/v1/filler/splits/{proposalId}` ("both match some paths, like
+		// /v1/filler/splits/fit"), and it panics at ROUTE REGISTRATION, i.e. at boot. A query
+		// parameter also avoids double-encoding a path that legitimately contains slashes.
+		OperationID: "clip-channel-fit", Method: http.MethodGet, Path: "/v1/filler/fit",
+		Summary: "Where this clip lands on each channel's ladder",
+		Description: "The override picker's per-channel note (§10 V35). For every channel: which rung " +
+			"of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the " +
+			"operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the " +
+			"same per-channel selection as the pod preview — a note that disagrees with what airs is a " +
+			"confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip " +
+			"reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every " +
+			"channel is listed, including paused ones — pinning to a paused channel is a decision that " +
+			"takes effect when it resumes.",
+		Tags: []string{"filler", "channels"},
+	}, RoleMember), s.clipChannelFit)
+
 	// Compilation splitting (§10, V34). Propose is a job (detection runs minutes
 	// per file); the proposal read and the confirm are synchronous. All admin:
 	// these routes write the catalog, which is the same trust level as ingest.
@@ -503,6 +523,85 @@ func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput
 	out.Body.Stats = stats
 	if out.Body.Stats == nil {
 		out.Body.Stats = map[string]DiscoveredClipStats{}
+	}
+	return out, nil
+}
+
+// ChannelFitDTO is one channel's answer for one clip (§10, V35 item 1.7).
+type ChannelFitDTO struct {
+	ChannelID string `json:"channelId"`
+	Name      string `json:"name"`
+	Number    int    `json:"number"`
+	// Level is the ladder rung this clip would be drawn from on this channel.
+	//
+	// ⚠ `bumper_card` here means "this clip is not a candidate", NOT "this channel falls back to
+	// the card" — the same word carries both meanings because it is the bottom of one ladder.
+	// `reason` disambiguates: a rejected clip always carries one, a PINNED clip never does.
+	Level string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung this clip would be drawn from; bumper_card means it is not a candidate (see reason)"`
+	// Reason names the predicate that rejected the clip, absent when it was not rejected.
+	//
+	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
+	// precedent), because a server sentence cannot be translated and cannot link to the setting
+	// that caused it.
+	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,excluded" doc:"Why the clip is not a candidate; absent when it is one"`
+	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
+	//
+	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set
+	// before pins are placed. Reported as stored rather than normalised, or the picker would
+	// show a state the database does not hold.
+	Pinned   bool `json:"pinned"`
+	Excluded bool `json:"excluded"`
+}
+
+type clipFitInput struct {
+	// Clip is the clip's PATH (its identity, §10) — a query parameter because a path
+	// containing slashes cannot be a path segment; see the route registration.
+	Clip string `query:"clip" required:"true" doc:"The clip's path (its identity, §10)"`
+}
+
+type clipFitOutput struct {
+	Body struct {
+		// Channels is EVERY channel, paused ones included — see the route description.
+		Channels []ChannelFitDTO `json:"channels"`
+	}
+}
+
+// clipChannelFit answers "where does this clip land on each channel's ladder" (§10, V35 1.7).
+func (s *Server) clipChannelFit(ctx context.Context, in *clipFitInput) (*clipFitOutput, error) {
+	if s.pods == nil {
+		return nil, errNotImplemented("Filler isn't set up",
+			"Set up commercials and filler before choosing which channels use a clip.")
+	}
+
+	fits, err := s.pods.ClipFit(ctx, in.Clip)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, errNotFound("Clip not found", "That clip isn't in the catalog — it may have been removed.")
+	} else if err != nil {
+		return nil, err
+	}
+
+	chans, err := s.store.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &clipFitOutput{}
+	// ⚠ Built from the CHANNEL list, not by ranging the fit map: Go map order is randomised, so
+	// the picker's rows would shuffle on every render. The store's order is number-sorted, which
+	// is the order an operator reads their channels in.
+	out.Body.Channels = make([]ChannelFitDTO, 0, len(chans))
+	for _, ch := range chans {
+		fit, ok := fits[ch.ID]
+		if !ok {
+			continue // a channel created between the two reads; absent beats a fabricated answer
+		}
+		out.Body.Channels = append(out.Body.Channels, ChannelFitDTO{
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number,
+			Level:    string(fit.Level),
+			Reason:   string(fit.Reason),
+			Pinned:   fit.Pinned,
+			Excluded: fit.Excluded,
+		})
 	}
 	return out, nil
 }

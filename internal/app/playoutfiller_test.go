@@ -38,6 +38,10 @@ func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, erro
 	return filler.CoverageReport{}, s.err
 }
 
+func (s stubPods) ClipFit(context.Context, string) (map[string]filler.Fit, error) {
+	return nil, s.err
+}
+
 func (s stubPods) Pool(context.Context) (filler.PoolReport, error) {
 	return filler.PoolReport{}, s.err
 }
