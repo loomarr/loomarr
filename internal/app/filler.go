@@ -470,6 +470,37 @@ func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref string
 	return items, total, nil
 }
 
+// EnrichDiscovered fills in duration + quality for specific results (§10, V35).
+//
+// ⚠ Only ids archive.org actually answered for appear in the map. An item it never probed is
+// OMITTED rather than returned as zero — 0 renders as "0:00", which claims a clip is empty,
+// and absence is what lets a client render "—" instead.
+func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
+	items := make([]clipfetch.DiscoveredItem, len(ids))
+	for i, id := range ids {
+		items[i].ID = id
+	}
+	clipfetch.NewArchiveDownloader(false).Enrich(ctx, items)
+	return discoveredStats(items), nil
+}
+
+// discoveredStats maps enriched items to the DTO map.
+//
+// ⚠ Split out from EnrichDiscovered so the omit-vs-zero rule is TESTABLE: the caller builds its
+// own ArchiveDownloader (there is no seam to stub), so a test through the adapter would have to
+// reach archive.org. Without this the rule was covered only by the API's fake, which implements
+// the rule itself — a test that proves the fake works, not the code.
+func discoveredStats(items []clipfetch.DiscoveredItem) map[string]api.DiscoveredClipStats {
+	out := make(map[string]api.DiscoveredClipStats, len(items))
+	for _, it := range items {
+		if it.DurationMS == 0 && it.Height == 0 {
+			continue // learned nothing — absent, never zeroed (see DiscoveredClipStats)
+		}
+		out[it.ID] = api.DiscoveredClipStats{DurationMS: it.DurationMS, Height: it.Height}
+	}
+	return out
+}
+
 // discoveredClips maps a clipfetch result to the DTO. Shared by both discovery modes so a
 // field added for one cannot silently go missing from the other.
 func discoveredClips(res clipfetch.DiscoveryResult) ([]api.DiscoveredClip, int) {

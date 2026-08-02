@@ -96,9 +96,7 @@ func (c *archiveClient) discover(ctx context.Context, ref string, limit int) (Di
 		return DiscoveryResult{}, fmt.Errorf("archive discover %s: %w", id, err)
 	}
 
-	res := toResult(out)
-	c.enrich(ctx, res.Items)
-	return res, nil
+	return toResult(out), nil
 }
 
 // toResult maps a Solr response to the result both discovery paths return. Shared so a
@@ -125,28 +123,42 @@ func toResult(out searchResp) DiscoveryResult {
 	return res
 }
 
-// enrichConcurrency caps the per-item metadata fan-out.
+// Per-item enrichment: duration + quality, fetched ON DEMAND (§10, V35).
 //
-// ⚠ This is the cost the one-request design deliberately avoided (see the file header), taken
-// on knowingly: the mock's search row draws `date · duration · quality`, and Solr indexes none
-// of duration or quality at item level — measured, not assumed. So a listing that shows them
-// must ask archive.org once per row.
+// ⚠ **This is NOT part of a listing, and the measurement is why.** The mock's search row draws
+// `date · duration · quality`; Solr indexes only `date` at item level, so the other two need one
+// `/metadata/<id>` call per row. Enriching a full page inline was built, measured against the
+// live API, and abandoned:
 //
-// 6 is chosen against archive.org's shared infrastructure rather than our own capacity: the
-// rows are capped at 25 (maxDiscoverRows), so a search costs at most 25 requests in bursts of
-// 6, and a person clicking search repeatedly cannot open 25 sockets per keystroke.
+//	limit=5     0.4s
+//	limit=25   22.6s          ← a search box nobody would wait for
+//	per call   median 1.78s, max 7.75s
+//
+// ⚠ And it cannot be tuned away — the ceiling is archive.org's, not ours. Raising the fan-out
+// makes it WORSE, which is the signal that they throttle or queue us:
+//
+//	concurrency  6 → 15.6s
+//	concurrency 12 → 25.0s
+//	concurrency 25 → 25.0s
+//
+// So the listing stays one request (the property the file header guards) and a client asks for
+// the extra fields only for rows a person is actually looking at. 6 remains the cap because it
+// measured fastest, not because it is polite.
 const enrichConcurrency = 6
 
-// enrich fills DurationMS + Height by fetching each item's metadata.
+// Enrich fills DurationMS + Height for the given items by fetching each one's metadata.
 //
 // ⚠ **Every failure is non-fatal, per item.** A row whose metadata call fails keeps its search
-// fields and renders duration/quality as unknown — losing the whole listing because one item of
-// 25 timed out would be a far worse trade than an incomplete row. This mirrors the guide's
-// per-channel posture (`api/guide.go`), and it is why the function returns nothing: there is no
-// error a caller could act on that is not better handled by showing the rows.
+// fields and renders duration/quality as unknown — losing a whole batch because one item timed
+// out would be a far worse trade than an incomplete row. This mirrors the guide's per-channel
+// posture (`api/guide.go`), and it is why the function returns nothing: there is no error a
+// caller could act on that is not better handled by showing the rows.
 //
-// The context is honoured, so a cancelled request stops the fan-out rather than finishing 25
-// calls nobody is waiting for.
+// Mutates in place. The context is honoured, so a caller who navigates away stops the fan-out.
+func (d *ArchiveDownloader) Enrich(ctx context.Context, items []DiscoveredItem) {
+	d.client.enrich(ctx, items)
+}
+
 func (c *archiveClient) enrich(ctx context.Context, items []DiscoveredItem) {
 	// Write BY INDEX, never append: the listing's order is Solr's relevance/date ranking, and
 	// an append-as-you-finish would reorder results by whichever item's metadata returned first.
@@ -274,9 +286,7 @@ func (c *archiveClient) search(ctx context.Context, query string, limit int) (Di
 	if err := c.getJSON(ctx, c.base+"/advancedsearch.php?"+q.Encode(), &out); err != nil {
 		return DiscoveryResult{}, fmt.Errorf("archive search %q: %w", query, err)
 	}
-	res := toResult(out)
-	c.enrich(ctx, res.Items)
-	return res, nil
+	return toResult(out), nil
 }
 
 // sanitizeQuery strips the Solr syntax a person's search words must not carry. Kept permissive:

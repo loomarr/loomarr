@@ -1159,6 +1159,23 @@ components:
         - role
         - recommended
       type: object
+    DiscoverStatsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DiscoverStatsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        stats:
+          additionalProperties:
+            $ref: "#/components/schemas/DiscoveredClipStats"
+          type: object
+      required:
+        - stats
+      type: object
     DiscoveredClip:
       additionalProperties: false
       properties:
@@ -1184,6 +1201,16 @@ components:
       required:
         - id
         - url
+      type: object
+    DiscoveredClipStats:
+      additionalProperties: false
+      properties:
+        durationMs:
+          format: int64
+          type: integer
+        height:
+          format: int64
+          type: integer
       type: object
     DocSummary:
       additionalProperties: false
@@ -5264,7 +5291,7 @@ paths:
         - filler
   /v1/filler/discover:
     get:
-      description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no duration, no tags, and no licence (see below). Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
+      description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no tags, no licence (see below), and no duration or quality — those cost a metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
       operationId: discover-filler
       parameters:
         - description: Words to search for, e.g. "1980s cereal commercial". Mutually exclusive with the collection parameter.
@@ -5306,6 +5333,40 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Search archive.org for clips to add
+      tags:
+        - filler
+  /v1/filler/discover/stats:
+    get:
+      description: "Admin only (§10, V35). Fills in the duration and quality a search deliberately omits. ⚠ This is ONE UPSTREAM CALL PER ID and archive.org is slow (median 1.8s, and it gets slower if asked for more at once), so send only the ids currently on screen — a full page of 25 measured 22.6s. An id archive.org cannot answer for is ABSENT from the response rather than zero: 0 would be indistinguishable from a genuinely empty clip."
+      operationId: discover-filler-stats
+      parameters:
+        - description: Comma-separated result ids to describe
+          explode: false
+          in: query
+          name: id
+          required: true
+          schema:
+            description: Comma-separated result ids to describe
+            items:
+              type: string
+            maxItems: 25
+            type:
+              - array
+              - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverStatsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Runtime and quality for specific search results
       tags:
         - filler
   /v1/filler/incoming:

@@ -645,6 +645,11 @@ const fillerSourcesWithRemotes: FillerSourceDTO[] = fillerSources.map((s) =>
 
 // archive.org search results, in the shapes the live API really returns.
 //
+// ⚠ `thumbnailUrl` is an INLINE data: URI, never the real https://archive.org/services/img/<id>
+// these carry in production. A remote URL in a fixture bypasses the visual suite's stubbed
+// fetch and races the snapshot, which is a flaky baseline rather than a network policy
+// question — the same reason `thumbnailedClip` above is a 2×1 PNG.
+//
 // ⚠ The variety is deliberate and matches the pinned Go fixture: one row has everything, one
 // has NO date, and one has neither duration nor height. Absence is the common case — archive
 // has not probed every item — and a row that renders "0:00" for an unprobed clip claims it is
@@ -654,7 +659,8 @@ const discoveredClips: DiscoveredClip[] = [
     id: "kelloggs-bran-flakes",
     title: "Kellogg's Bran Flakes — 1989 television commercial",
     url: "https://archive.org/details/kelloggs-bran-flakes",
-    thumbnailUrl: "https://archive.org/services/img/kelloggs-bran-flakes",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     date: "1989-01-01T00:00:00Z",
     year: 1989,
     durationMs: 10_800,
@@ -664,7 +670,8 @@ const discoveredClips: DiscoveredClip[] = [
     id: "saturday-morning-cartoons-v-110",
     title: "Saturday Morning Cartoons Vol. 110 (full block)",
     url: "https://archive.org/details/saturday-morning-cartoons-v-110",
-    thumbnailUrl: "https://archive.org/services/img/saturday-morning-cartoons-v-110",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     // No date: 2 of the 5 pinned docs declare none.
     durationMs: 11_032_100,
     height: 360,
@@ -673,7 +680,8 @@ const discoveredClips: DiscoveredClip[] = [
     id: "youtube-IaEBrNaHfUs",
     title: "1980s cereal commercial compilation",
     url: "https://archive.org/details/youtube-IaEBrNaHfUs",
-    thumbnailUrl: "https://archive.org/services/img/youtube-IaEBrNaHfUs",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
     date: "2015-09-06T00:00:00Z",
     // ⚠ Neither duration nor height: archive never probed this item's files. The row must
     // render "—", never "0:00" or "0p".

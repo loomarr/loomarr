@@ -280,6 +280,17 @@ type FillerService interface {
 	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
 	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
 	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
+	// EnrichDiscovered fills in duration + quality for specific results, ON DEMAND.
+	//
+	// ⚠ Separate from Discover because it is a DIFFERENT cost, measured: a listing is one
+	// request, while these fields are one `/metadata/<id>` call per row — 22.6s for a page of
+	// 25 against the live API, and worse if the fan-out is widened, because archive.org
+	// throttles. So a client asks only for the rows a person is actually looking at.
+	//
+	// Returns what it learned, keyed by id; an id it could not answer for is simply absent
+	// rather than zero, because 0 means "unknown" to every caller and a map entry saying 0
+	// would be indistinguishable from a genuinely empty clip.
+	EnrichDiscovered(ctx context.Context, ids []string) (map[string]DiscoveredClipStats, error)
 	// Split proposes cuts for a compilation clip (§10, V34). Fire-and-report like
 	// Ingest — detection runs minutes per file, so progress arrives on the SSE bus
 	// as `filler_split` frames and the finished proposal is read back via
@@ -294,9 +305,13 @@ type FillerService interface {
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).
 //
-// ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no duration, no path, no tags —
-// only what the source's search index knows. Reusing ClipDTO would advertise fields that are
-// structurally unavailable at this stage.
+// ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no path and no tags — only what the
+// source knows about it. Reusing ClipDTO would advertise fields that are structurally
+// unavailable at this stage.
+//
+// ⚠ DurationMS and Height are absent from a SEARCH and filled by a follow-up enrich call (V35),
+// so a client must treat them as arriving late rather than as missing. They are on this struct
+// rather than a separate type because a row gains them in place.
 type DiscoveredClip struct {
 	// ID is the source's identifier — what Ingest would be given to fetch it.
 	ID string `json:"id"`
@@ -326,6 +341,22 @@ type DiscoveredClip struct {
 	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
 	// API call — which is why it is built here rather than fetched.
 	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+}
+
+// DiscoveredClipStats is what a per-item metadata call learns about one result (§10, V35) —
+// the two fields a search cannot afford to include.
+//
+// ⚠ A separate type rather than reusing DiscoveredClip, because the enrich response must not be
+// able to CONTRADICT the search: returning whole clips would let a second call disagree about a
+// title or a URL the client already rendered, and there is no rule for which one wins. This
+// carries only what the metadata call is authoritative for.
+type DiscoveredClipStats struct {
+	// DurationMS is the runtime. ⚠ Only ever present when known: an id archive.org has not
+	// probed is OMITTED from the map, never returned as 0, since 0 and "unknown" render
+	// differently and only one of them is true.
+	DurationMS int `json:"durationMs,omitempty"`
+	// Height is the best derivative's vertical resolution — the "480p" quality hint.
+	Height int `json:"height,omitempty"`
 }
 
 // ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT

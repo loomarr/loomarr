@@ -202,17 +202,13 @@ func enrichServer(t *testing.T, onMeta func(id string)) *httptest.Server {
 // The mock's search row draws `date · duration · quality`. Solr indexes only `date` at item
 // level — measured against the live API, not assumed — so duration and quality come from a
 // per-item metadata call, and this is the test that they actually arrive.
-func TestDiscover_EnrichesDurationAndQuality(t *testing.T) {
+func TestEnrich_FillsDurationAndQuality(t *testing.T) {
 	srv := enrichServer(t, nil)
 
-	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "classic_tv_commercials", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Items) == 0 {
-		t.Fatal("no items")
-	}
-	for _, it := range res.Items {
+	items := []DiscoveredItem{{ID: "a"}, {ID: "b"}}
+	newArchiveClient(srv.URL, nil, diskSink{}).enrich(context.Background(), items)
+
+	for _, it := range items {
 		// 91.09s in the pinned fixture, from the h.264 derivative.
 		if it.DurationMS != 91_090 {
 			t.Errorf("%s: DurationMS = %d, want 91090 from the fixture's length", it.ID, it.DurationMS)
@@ -221,6 +217,32 @@ func TestDiscover_EnrichesDurationAndQuality(t *testing.T) {
 		// first listed — the honest quality answer is what is available, not what came first.
 		if it.Height != 960 {
 			t.Errorf("%s: Height = %d, want 960 — the best derivative, not the first", it.ID, it.Height)
+		}
+	}
+}
+
+// ⚠ A LISTING must not enrich, and this is the assertion that keeps it that way. Enriching
+// inline was built and measured against the live API at 22.6s for a page of 25 (median 1.78s
+// per call, and WORSE with a wider fan-out because archive.org throttles). The one-request
+// property the file header describes is now load-bearing for latency, not just politeness.
+func TestDiscoverCollection_DoesNotEnrichInline(t *testing.T) {
+	var metaCalls int
+	srv := enrichServer(t, func(string) { metaCalls++ })
+
+	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "classic_tv_commercials", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metaCalls != 0 {
+		t.Errorf("a listing made %d metadata calls — that is 22.6s for a full page, measured", metaCalls)
+	}
+	// And the rows still arrive, with what the ONE search request knows.
+	if len(res.Items) == 0 {
+		t.Fatal("no items")
+	}
+	for _, it := range res.Items {
+		if it.DurationMS != 0 || it.Height != 0 {
+			t.Errorf("%s: a listing reported %dms/%dp without asking", it.ID, it.DurationMS, it.Height)
 		}
 	}
 }
@@ -252,45 +274,48 @@ func TestDiscover_CarriesTheCataloguedDateWithoutAnExtraRequest(t *testing.T) {
 	}
 }
 
-// ⚠ A metadata failure must cost that ROW its extra fields, never the listing. Losing 25 results
-// because one item timed out is a far worse trade than one row reading "—".
-func TestDiscover_AnItemWhoseMetadataFailsStillLists(t *testing.T) {
-	search, err := os.ReadFile("../testkit/fixtures/archive/collection_search.json")
+// ⚠ A metadata failure must cost that ITEM its extra fields and nothing more. One row reading
+// "—" is a far better outcome than a panel that fails because one of 25 items timed out —
+// which, at a max observed 7.75s per call, is a live possibility rather than a hypothetical.
+func TestEnrich_AnItemWhoseMetadataFailsKeepsItsSearchFields(t *testing.T) {
+	meta, err := os.ReadFile("../testkit/fixtures/archive/metadata_item.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(search)
-	})
-	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, r *http.Request) {
+		// Exactly one item fails, so the assertion distinguishes "isolated" from "all broken".
+		if strings.HasSuffix(r.URL.Path, "/broken") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(meta)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "c", 0)
-	if err != nil {
-		t.Fatalf("one failing item killed the whole listing: %v", err)
+	items := []DiscoveredItem{
+		{ID: "ok", Title: "A good one"},
+		{ID: "broken", Title: "The one that fails"},
 	}
-	if len(res.Items) != 5 {
-		t.Fatalf("got %d items, want all 5 — a metadata failure must not drop rows", len(res.Items))
+	newArchiveClient(srv.URL, nil, diskSink{}).enrich(context.Background(), items)
+
+	if items[0].DurationMS == 0 {
+		t.Error("the healthy item lost its stats because a SIBLING failed")
 	}
-	// ⚠ 0 is UNKNOWN here, and the UI renders it as "—". It must never be shown as "0:00",
-	// which claims the clip is empty.
-	for _, it := range res.Items {
-		if it.DurationMS != 0 || it.Height != 0 {
-			t.Errorf("%s: got %dms/%dp from a failing metadata call", it.ID, it.DurationMS, it.Height)
-		}
-		if it.ID == "" || it.Title == "" {
-			t.Errorf("%s: lost its search fields when enrichment failed", it.ID)
-		}
+	// ⚠ 0 is UNKNOWN here, and the UI renders it as "—". It must never be shown as "0:00".
+	if items[1].DurationMS != 0 || items[1].Height != 0 {
+		t.Errorf("broken: got %dms/%dp from a failing metadata call", items[1].DurationMS, items[1].Height)
+	}
+	if items[1].Title != "The one that fails" {
+		t.Error("the failing item lost its search fields")
 	}
 }
 
-// Enrichment asks once per row and no more — the cost this deliberately takes on is bounded by
-// the row cap, so a search is at most maxDiscoverRows metadata calls.
-func TestDiscover_AsksOncePerRow(t *testing.T) {
+// Enrichment asks once per item and no more. Each call is ~1.8s of someone else's
+// infrastructure, so a duplicate is not merely wasteful — it is the difference between a
+// usable panel and one that stalls.
+func TestEnrich_AsksOncePerItem(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]int{}
 	srv := enrichServer(t, func(id string) {
@@ -299,12 +324,11 @@ func TestDiscover_AsksOncePerRow(t *testing.T) {
 		seen[id]++
 	})
 
-	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "c", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(seen) != len(res.Items) {
-		t.Errorf("fetched metadata for %d ids, want %d — one per row", len(seen), len(res.Items))
+	items := []DiscoveredItem{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	newArchiveClient(srv.URL, nil, diskSink{}).enrich(context.Background(), items)
+
+	if len(seen) != len(items) {
+		t.Errorf("fetched metadata for %d ids, want %d — one per item", len(seen), len(items))
 	}
 	for id, n := range seen {
 		if n != 1 {
