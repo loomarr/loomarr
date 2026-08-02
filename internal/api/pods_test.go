@@ -22,6 +22,7 @@ type fakePods struct {
 	atAsked    []int64            // the break starts PreviewAt received
 	pod        filler.Pod
 	coverage   filler.CoverageReport
+	pool       filler.PoolReport
 	err        error
 }
 
@@ -49,6 +50,10 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs i
 func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.CoverageReport, error) {
 	f.asked = append(f.asked, channelID)
 	return f.coverage, f.err
+}
+
+func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
+	return f.pool, f.err
 }
 
 func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {

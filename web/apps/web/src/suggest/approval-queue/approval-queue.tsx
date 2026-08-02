@@ -1,8 +1,8 @@
-import { type ApprovalEditDTO, suggestionsApi, unwrap } from "@loomarr/api";
+import { type ApprovalEditDTO, fillerApi, suggestionsApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ApprovalQueueItem, EmptyState, ErrorState } from "@/components/loomarr";
+import { ApprovalQueueItem, EmptyState, ErrorState, PullCard } from "@/components/loomarr";
 import { Button, Checkbox } from "@/components/ui";
 
 // The admin approval queue (§7, §11) — the human gate every acquisition passes through.
@@ -33,6 +33,17 @@ const ApprovalQueue = () => {
     },
   });
   const deny = suggestionsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
+
+  // Filler pulls (V35). ⚠ `status: "pending"` and not a client-side filter: a decided pull is
+  // KEPT on the server for the History tab, so asking for everything would put approvals an
+  // operator already made back in front of them as if they still needed deciding.
+  const pullsQuery = fillerApi.useListFillerPulls({ status: "pending" }, { query: { retry: false } });
+  const pulls = unwrap(pullsQuery.data, (b) => b.pulls) ?? [];
+  const invalidatePulls = () =>
+    queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerPullsQueryKey() });
+  // ⚠ Approving is the COMMIT point — the only path on which a pull downloads anything.
+  const approvePull = fillerApi.useApproveFillerPull({ mutation: { onSuccess: invalidatePulls } });
+  const dismissPull = fillerApi.useDismissFillerPull({ mutation: { onSuccess: invalidatePulls } });
 
   // Pending edits, keyed by proposal id — several rows can be open at once and each carries its
   // own delta. A row with no entry (or an `undefined` entry) is unmodified.
@@ -97,6 +108,22 @@ const ApprovalQueue = () => {
       {(approve.error ?? deny.error ?? bulk.error) != null && (
         <ErrorState error={approve.error ?? deny.error ?? bulk.error} />
       )}
+
+      {/* Filler pulls (V35), above the title proposals. ⚠ They sit on THIS queue rather than
+          getting a surface of their own because they are the same kind of decision: something
+          is about to spend real resources and a human has to say yes. §10 said "the machine
+          proposes, a human commits" long before there was an object to commit; this is it.
+          Above rather than below because there are usually few of them and they are cheap to
+          decide, so burying them under a long title list would leave them unanswered. */}
+      {pulls.map((pull) => (
+        <PullCard
+          key={pull.id}
+          pull={pull}
+          deciding={approvePull.isPending || dismissPull.isPending}
+          onApprove={(edits) => approvePull.mutate({ id: pull.id, data: edits })}
+          onDismiss={() => dismissPull.mutate({ id: pull.id })}
+        />
+      ))}
 
       {/* Bulk approve (V27). Shown only when there is more than one approvable row — a "select
           all" above a single item is noise. */}

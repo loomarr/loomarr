@@ -29,9 +29,14 @@ const Route = createFileRoute("/_authed/filler/")({
     const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;
     const audience = AUDIENCES.includes(search.audience as string) ? (search.audience as string) : undefined;
     const untagged = search.untagged === true || search.untagged === "true" ? true : undefined;
-    // "sources" and "discover" are the real alternatives; an unknown value falls back to the
+    // "incoming" and "sources" are the real alternatives; an unknown value falls back to the
     // catalog rather than rendering an empty page.
-    const tab = search.tab === "sources" || search.tab === "discover" ? search.tab : undefined;
+    //
+    // ⚠ `discover` is deliberately NOT here any more (V35): finding clips is now something you
+    // do to a source, so the tab is gone. An old bookmark carrying ?tab=discover therefore lands
+    // on Catalog rather than on a blank panel — which is why the fallback is a fallback and not
+    // a redirect.
+    const tab = search.tab === "sources" || search.tab === "incoming" ? search.tab : undefined;
     return {
       ...(tab ? { tab } : {}),
       ...(q ? { q } : {}),

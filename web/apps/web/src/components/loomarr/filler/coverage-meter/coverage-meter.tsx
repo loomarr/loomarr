@@ -134,20 +134,22 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             : `${widest} eligible ${widest === 1 ? "commercial" : "commercials"}`}
         </Caption>
 
-        {/* "Find clips" (F4 gap flagging, V17d) — shown only when the catalog is actually thin
-            for THIS channel, because a CTA on a healthy channel is noise that teaches an
-            operator to stop reading the banner.
-            ⚠ It routes to the existing Filler catalog rather than starting an acquisition of
-            its own. The page already has the ingest panel and the tagging tools; a second
-            entry point that downloaded clips directly would be a parallel path to the same
-            job, and the useful thing here is noticing the gap, not re-implementing the fix. */}
+        {/* Gap flagging (F4, V17d) — shown only when the catalog is actually thin for THIS
+            channel, because a CTA on a healthy channel is noise that teaches an operator to
+            stop reading the banner.
+            ⚠ It routes to the Filler page rather than starting an acquisition of its own. That
+            page owns the pull, and a second entry point that downloaded clips directly would be
+            a parallel path to the same job — the useful thing here is noticing the gap.
+            ⚠ Labelled "Propose a pull" since V35, matching the button it leads to. It said
+            "Find clips" while the destination said something else, which is how an operator
+            learns to distrust a link. */}
         {isThin && (
           <Link
             to="/filler"
             className="text-signal text-xs underline-offset-2 hover:underline"
             data-testid="find-clips"
           >
-            Find clips →
+            Propose a pull →
           </Link>
         )}
       </div>

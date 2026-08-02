@@ -1,9 +1,13 @@
 import type {
   ClipDTO,
   GuideChannelTimeline,
+  IncomingAskDTO,
+  IncomingReelDTO,
   PodEntryDTO,
   PodPoolDTO,
+  PoolDTO,
   Proposal,
+  PullDTO,
   SplitProposal,
 } from "@loomarr/api";
 import type { SearchResult } from "@loomarr/core";
@@ -14,6 +18,116 @@ import type { SearchResult } from "@loomarr/core";
 // `Date.now` / random anywhere, so the visual suite's frozen clock stays honest.
 
 const sampleIntent = "90s action movies, high energy, keep it PG-13";
+
+// --- V35: catalog health, the Incoming queue, and filler pulls ---
+
+// A catalog in good shape: everything tagged, every channel matching its own era exactly.
+const healthyPool: PoolDTO = {
+  clips: 412,
+  commercials: 380,
+  eligible: 374,
+  untagged: 0,
+  channels: [
+    { channelId: "ch-42", name: "Saturday Mornings", number: 42, level: "exact", total: 88 },
+    { channelId: "ch-7", name: "Late Night Sci-Fi", number: 7, level: "exact", total: 61 },
+  ],
+};
+
+// The interesting shape: one channel whose breaks fall through to the built-in card. The server
+// sorts worst-first, so that channel leads — the strip reads `channels[0]` positionally.
+const thinPool: PoolDTO = {
+  clips: 120,
+  commercials: 90,
+  eligible: 61,
+  untagged: 14,
+  channels: [
+    { channelId: "ch-3", name: "Newsreel", number: 3, level: "bumper_card", total: 0 },
+    { channelId: "ch-42", name: "Saturday Mornings", number: 42, level: "exact", total: 44 },
+  ],
+};
+
+// ⚠ A catalog that reads as healthy by clip count and can fill nothing, because none of it is
+// short enough for a break. The case the "fits a break" stat exists to make visible.
+const unplaceablePool: PoolDTO = {
+  clips: 500,
+  commercials: 500,
+  eligible: 0,
+  untagged: 500,
+  channels: [{ channelId: "ch-3", name: "Newsreel", number: 3, level: "bumper_card", total: 0 }],
+};
+
+const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0, channels: [] };
+
+// An era the tagger proposed but could NOT ground in the clip's text — a decision with a
+// proposed answer the operator confirms or rejects.
+const guessedEraAsk: IncomingAskDTO = {
+  path: "1988/toys.mp4",
+  name: "Transformers holiday spot",
+  from: "archive",
+  durationMs: 30_000,
+  kind: "commercial",
+  audience: "kids",
+  category: "toys",
+  suggestedEra: 1988,
+  reason: "The year isn't written anywhere in this clip's name or description, so Loomarr guessed it.",
+};
+
+// ⚠ A DIFFERENT question from the one above: nothing to confirm, so no proposed answer.
+const untaggedAsk: IncomingAskDTO = {
+  path: "mystery.mp4",
+  name: "mystery.mp4",
+  durationMs: 25_000,
+  kind: "commercial",
+  reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
+};
+
+// A compilation mid-split, with the count of segments an operator cannot simply accept.
+const compilationReel: IncomingReelDTO = {
+  proposalId: "sp_1",
+  clipPath: "comps/1987-saturday.mp4",
+  segments: 12,
+  needsAttention: 3,
+  createdAt: "2026-08-01T12:00:00Z",
+};
+
+const cleanReel: IncomingReelDTO = {
+  proposalId: "sp_2",
+  clipPath: "comps/1993-toys.mp4",
+  segments: 8,
+  needsAttention: 0,
+  createdAt: "2026-08-01T13:00:00Z",
+};
+
+// A proposed acquisition awaiting a human. ⚠ `estimateClips` is an ESTIMATE and the composer
+// reports 0 where it has measured nothing — both cases matter to the card, so the fixture
+// carries real numbers and a caller zeroes them for the unmeasured story.
+const pendingPull: PullDTO = {
+  id: "pull_1",
+  title: "Top up the 1990s",
+  reason: "Saturday Mornings falls back to bumpers, because nothing in the catalog matches its era.",
+  proposedBy: "ada",
+  status: "pending",
+  estimateClips: 52,
+  createdAt: "2026-08-01T12:00:00Z",
+  plan: [
+    {
+      sourceId: "classic",
+      tag: "archive",
+      name: "Classic TV commercials",
+      why: "A source you added and left switched on.",
+      estimateClips: 40,
+      dropped: false,
+    },
+    {
+      sourceId: "psa",
+      tag: "archive",
+      name: "Public service announcements",
+      why: "A source you added and left switched on.",
+      estimateClips: 12,
+      dropped: false,
+    },
+  ],
+};
 
 const intentTemplates = [
   { label: "90s action", value: sampleIntent },
@@ -450,13 +564,19 @@ const guideChannels: GuideChannelTimeline[] = [
 export {
   aiTaggedClip,
   bumperClip,
+  cleanReel,
+  compilationReel,
+  emptyPool,
   fallbackCardEntry,
+  guessedEraAsk,
   guideChannels,
   guideFrom,
   guideNow,
   guidePod,
   guideTo,
+  healthyPool,
   intentTemplates,
+  pendingPull,
   podClips,
   podEntries,
   proposal,
@@ -465,6 +585,9 @@ export {
   splitProposal,
   suggestedEraClip,
   taggedClip,
+  thinPool,
   thumbnailedClip,
+  unplaceablePool,
+  untaggedAsk,
   untaggedClip,
 };

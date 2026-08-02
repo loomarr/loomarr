@@ -176,6 +176,19 @@ func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Sele
 	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy), nil
 }
 
+// PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material
+// exists at all, before any channel's selection narrows it.
+//
+// The channel-shaped half is assembled by the caller from CoverageFor, one call per live
+// channel, so this adds no second opinion about matching. It only counts.
+func (a *PodAdapter) PoolCounts(ctx context.Context) (PoolReport, error) {
+	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return PoolReport{}, err
+	}
+	return PoolCounts(clips, a.policy), nil
+}
+
 var _ interface {
 	BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool)
 } = (*PodAdapter)(nil)

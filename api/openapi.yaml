@@ -45,6 +45,26 @@ components:
         - level
         - text
       type: object
+    AddFillerSourceInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/AddFillerSourceInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        label:
+          description: Operator-facing name; falls back to the identifier
+          type: string
+        uri:
+          description: archive.org collection identifier, /details/<id> path, or full URL
+          minLength: 1
+          type: string
+      required:
+        - uri
+      type: object
     AdjacentContext:
       additionalProperties: false
       properties:
@@ -101,6 +121,26 @@ components:
             - "null"
         note:
           description: A message to the requester, stored with the approval
+          type: string
+      type: object
+    ApproveFillerPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ApproveFillerPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        dropSourceIds:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        note:
+          description: Narrowing instruction, e.g. 'no local dealers, no PSAs'
           type: string
       type: object
     ApproveOutputBody:
@@ -312,6 +352,86 @@ components:
       required:
         - id
         - ok
+      type: object
+    BulkRemoveFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BulkRemoveFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        paths:
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+        restore:
+          description: Put the clips back in the catalog instead of removing them
+          type: boolean
+      required:
+        - paths
+      type: object
+    BulkResultOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BulkResultOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        missing:
+          format: int64
+          type: integer
+        updated:
+          description: How many clips actually changed
+          format: int64
+          type: integer
+      required:
+        - updated
+        - missing
+      type: object
+    BulkTagFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/BulkTagFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audience:
+          description: Omit to leave it alone.
+          enum:
+            - kids
+            - family
+            - general
+            - late_night
+          type: string
+        category:
+          description: Omit to leave it alone.
+          type: string
+        era:
+          description: Set the era on every selected clip. Omit to leave it alone.
+          format: int64
+          type: integer
+        paths:
+          description: Clip identities (paths relative to FILLER_DIR)
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - paths
       type: object
     ChangePasswordInputBody:
       additionalProperties: false
@@ -1193,6 +1313,37 @@ components:
         - updated
         - pruned
       type: object
+    FillerIncomingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FillerIncomingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        asks:
+          items:
+            $ref: "#/components/schemas/IncomingAskDTO"
+          type:
+            - array
+            - "null"
+        reels:
+          items:
+            $ref: "#/components/schemas/IncomingReelDTO"
+          type:
+            - array
+            - "null"
+        total:
+          description: Everything waiting on a human — asks plus reels
+          format: int64
+          type: integer
+      required:
+        - asks
+        - reels
+        - total
+      type: object
     FillerSelection:
       additionalProperties: false
       properties:
@@ -1235,8 +1386,12 @@ components:
           type: integer
         detail:
           type: string
+        enabled:
+          type: boolean
         fetchable:
           type: boolean
+        id:
+          type: string
         kind:
           enum:
             - folder
@@ -1249,9 +1404,17 @@ components:
           type:
             - array
             - "null"
+        removable:
+          type: boolean
+        switchable:
+          type: boolean
         target:
           type: string
       required:
+        - id
+        - enabled
+        - switchable
+        - removable
         - kind
         - target
         - detail
@@ -1648,6 +1811,66 @@ components:
       required:
         - imported
       type: object
+    IncomingAskDTO:
+      additionalProperties: false
+      properties:
+        audience:
+          type: string
+        category:
+          type: string
+        durationMs:
+          format: int64
+          type: integer
+        era:
+          format: int64
+          type: integer
+        from:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        path:
+          description: Clip identity — the path relative to FILLER_DIR
+          type: string
+        reason:
+          type: string
+        suggestedEra:
+          format: int64
+          type: integer
+        thumbnail:
+          type: string
+      required:
+        - path
+        - name
+        - durationMs
+        - kind
+        - reason
+      type: object
+    IncomingReelDTO:
+      additionalProperties: false
+      properties:
+        clipPath:
+          type: string
+        createdAt:
+          description: RFC3339
+          type: string
+        needsAttention:
+          format: int64
+          type: integer
+        proposalId:
+          type: string
+        segments:
+          description: How many clips the detector found
+          format: int64
+          type: integer
+      required:
+        - proposalId
+        - clipPath
+        - segments
+        - needsAttention
+        - createdAt
+      type: object
     IngestFillerInputBody:
       additionalProperties: false
       properties:
@@ -2009,6 +2232,29 @@ components:
       required:
         - clips
       type: object
+    ListFillerPullsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListFillerPullsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        pulls:
+          items:
+            $ref: "#/components/schemas/PullDTO"
+          type:
+            - array
+            - "null"
+        total:
+          format: int64
+          type: integer
+      required:
+        - pulls
+        - total
+      type: object
     ListOutputBody:
       additionalProperties: false
       properties:
@@ -2365,6 +2611,78 @@ components:
         - totalMs
         - matchLevel
       type: object
+    PoolChannelDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          description: Channel id
+          type: string
+        level:
+          description: Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays.
+          enum:
+            - exact
+            - widened
+            - audience
+            - bumper_card
+          type: string
+        name:
+          description: Channel name
+          type: string
+        number:
+          description: Channel number
+          format: int64
+          type: integer
+        total:
+          description: Eligible clips available to this channel at its widest rung
+          format: int64
+          type: integer
+      required:
+        - channelId
+        - name
+        - number
+        - level
+        - total
+      type: object
+    PoolDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PoolDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
+          items:
+            $ref: "#/components/schemas/PoolChannelDTO"
+          type:
+            - array
+            - "null"
+        clips:
+          description: Every clip in the catalog, of every kind
+          format: int64
+          type: integer
+        commercials:
+          description: Clips that can fill a break BODY. Bumpers and station IDs bookend a pod; they cannot make one.
+          format: int64
+          type: integer
+        eligible:
+          description: Commercials that are ALSO duration-eligible under the active policy — the ones that can actually go in a break. Same gate pod assembly applies.
+          format: int64
+          type: integer
+        untagged:
+          description: Commercials missing a match tag. They still play, but only match broadly, so a themed channel falls back to bumpers.
+          format: int64
+          type: integer
+      required:
+        - clips
+        - commercials
+        - eligible
+        - untagged
+        - channels
+      type: object
     PreviewCycleOutputBody:
       additionalProperties: false
       properties:
@@ -2606,6 +2924,107 @@ components:
         - name
         - inLibrary
       type: object
+    ProposeFillerPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ProposeFillerPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: Optional; the gap this pull closes
+          type: string
+        title:
+          description: Optional operator-supplied summary; Loomarr composes one when omitted
+          type: string
+      type: object
+    PullDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PullDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        createdAt:
+          description: RFC3339
+          type: string
+        decidedAt:
+          description: RFC3339; absent while pending
+          type: string
+        decidedBy:
+          type: string
+        estimateClips:
+          format: int64
+          type: integer
+        id:
+          type: string
+        note:
+          description: The operator's narrowing instruction, captured at approval
+          type: string
+        plan:
+          items:
+            $ref: "#/components/schemas/PullPlanRowDTO"
+          type:
+            - array
+            - "null"
+        proposedBy:
+          type: string
+        reason:
+          description: The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision.
+          type: string
+        status:
+          enum:
+            - pending
+            - approved
+            - dismissed
+          type: string
+        title:
+          type: string
+      required:
+        - id
+        - title
+        - reason
+        - proposedBy
+        - status
+        - plan
+        - estimateClips
+        - createdAt
+      type: object
+    PullPlanRowDTO:
+      additionalProperties: false
+      properties:
+        dropped:
+          description: The operator excluded this row before approving. Retained rather than removed, so the record shows what was proposed as well as what was agreed to.
+          type: boolean
+        estimateClips:
+          description: Expected clips from this row. An ESTIMATE — render it as one.
+          format: int64
+          type: integer
+        name:
+          type: string
+        sourceId:
+          description: The registered collection this row fetches from
+          type: string
+        tag:
+          description: Short label for the row's chip (an era, an audience)
+          type: string
+        why:
+          description: Why THIS source is in the plan
+          type: string
+      required:
+        - sourceId
+        - tag
+        - name
+        - why
+        - estimateClips
+        - dropped
+      type: object
     Range:
       additionalProperties: false
       properties:
@@ -2654,6 +3073,15 @@ components:
     RemoteSourceDTO:
       additionalProperties: false
       properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RemoteSourceDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
         id:
           type: string
         label:
@@ -2665,6 +3093,7 @@ components:
           type: string
       required:
         - id
+        - enabled
         - label
         - uri
       type: object
@@ -3049,6 +3478,39 @@ components:
         - speed
         - bufferedMs
         - uptimeMs
+      type: object
+    SetFillerSourceEnabledInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetFillerSourceEnabledInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+      required:
+        - enabled
+      type: object
+    SetFillerSourceEnabledOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SetFillerSourceEnabledOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+        id:
+          type: string
+      required:
+        - id
+        - enabled
       type: object
     SettingEntry:
       additionalProperties: false
@@ -4738,6 +5200,58 @@ paths:
       summary: List filler clips
       tags:
         - filler
+  /v1/filler/bulk/remove:
+    post:
+      description: "Admin only (§10 V35). ⚠ A TOMBSTONE, not a delete: the clip stops appearing in the catalog and stops being used in commercial breaks, and **the file is left exactly where it is**. Nothing in Loomarr deletes an operator's media. It survives re-scans, which a row delete could not — the next scan would find the file and put it back. Pass `restore:true` to undo."
+      operationId: bulk-remove-filler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkRemoveFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a selection from the catalog
+      tags:
+        - filler
+  /v1/filler/bulk/tag:
+    post:
+      description: "Admin only (§10 V35) — the Catalog tab's bulk bar. Each tag field is INDEPENDENT: omitting one leaves it alone, so setting only the audience never blanks the era. Selected clips that no longer exist are counted as `missing` rather than failing the batch, because a selection races a re-scan."
+      operationId: bulk-tag-filler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkTagFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Retag a selection of clips
+      tags:
+        - filler
   /v1/filler/discover:
     get:
       description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates WITHOUT downloading anything — the operator is deciding what to fetch, and making them download to find out would defeat the point. Results carry only what the source's search index knows: no duration, no tags, and no licence (see below). Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll."
@@ -4784,6 +5298,26 @@ paths:
       summary: Search archive.org for clips to add
       tags:
         - filler
+  /v1/filler/incoming:
+    get:
+      description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
+      operationId: filler-incoming
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerIncomingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: What has been downloaded but isn't filed yet
+      tags:
+        - filler
   /v1/filler/ingest:
     post:
       operationId: ingest-filler
@@ -4806,7 +5340,143 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Download clips into the drop-folder (admin; loomarr:filler image only)
+      summary: Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)
+      tags:
+        - filler
+  /v1/filler/pool:
+    get:
+      description: How well the catalog can fill breaks across the whole install (§10 V35) — the Filler page's pool strip. Counts what exists (clips, commercials, duration-eligible, untagged) and lists every live channel's coverage, WORST FIRST. The per-channel answers are the SAME `Coverage` computation `/v1/channels/{id}/filler/coverage` returns, called once per channel, so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. Read-only, so any authenticated user may call it.
+      operationId: filler-pool
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Catalog-wide filler health
+      tags:
+        - filler
+  /v1/filler/pulls:
+    get:
+      description: Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. Decided pulls are KEPT — the queue's History answers what was agreed to and who said so.
+      operationId: list-filler-pulls
+      parameters:
+        - description: Omit for all
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Omit for all
+            enum:
+              - pending
+              - approved
+              - dismissed
+              - ""
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFillerPullsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List pulls awaiting a decision
+      tags:
+        - filler
+    post:
+      description: "Admin only (§10 V35). Composes a plan across the ENABLED filler sources and writes it to the approval queue. ⚠ **Downloads nothing** — that is the whole point: the machine proposes, a human commits. Refused with 409 when every source the plan would need is switched off, naming the switch to flip rather than writing a pull that could never run."
+      operationId: propose-filler-pull
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProposeFillerPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Propose a pull
+      tags:
+        - filler
+  /v1/filler/pulls/{id}/approve:
+    post:
+      description: "Admin only (§10 V35). THE gate: this is the only path on which a pull downloads anything, and it enqueues through the EXISTING ingest job rather than a route of its own. The body carries the operator's edits — rows dropped, and a note narrowing what to fetch. Dropped rows are recorded, not erased. Approving an already-decided pull is a 409, so a double-click cannot enqueue twice."
+      operationId: approve-filler-pull
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveFillerPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a pull — the commit point
+      tags:
+        - filler
+  /v1/filler/pulls/{id}/dismiss:
+    post:
+      description: Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.
+      operationId: dismiss-filler-pull
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Decline a pull
       tags:
         - filler
   /v1/filler/sources:
@@ -4829,6 +5499,31 @@ paths:
       summary: Where the clip catalog comes from
       tags:
         - filler
+    post:
+      description: Admin only (§10 V35). Registers an archive.org collection so pulls and searches can use it. Registering DOWNLOADS NOTHING — it records that this source exists and is allowed; fetching is the ingest path, and a composed multi-source pull goes through the approval gate.
+      operationId: add-filler-source
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddFillerSourceInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteSourceDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Register a remote collection to pull filler from
+      tags:
+        - filler
   /v1/filler/sources/fetch:
     post:
       description: Admin only. Runs the same sync as POST /v1/filler/sync — the Sources tab's per-row `Fetch now`. Separate operation id so the UI's affordance is nameable, same work.
@@ -4847,6 +5542,59 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Re-scan the catalog now
+      tags:
+        - filler
+  /v1/filler/sources/{id}:
+    delete:
+      description: Admin only (§10 V35). ⚠ Clips it already brought in are NOT deleted — they are real files, already tagged and possibly pinned into a channel, and forgetting where something came from is not a reason to throw it away. Only the registered remotes can be deleted; the derived folder and library rows describe configuration, which is changed in Settings.
+      operationId: delete-filler-source
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Forget a registered remote collection
+      tags:
+        - filler
+    patch:
+      description: "Admin only (§10 V35). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `folder` writes the drop-folder setting; any other id writes that collection's own row. The `library` row is not switchable — nothing scans a media-server library for clips (§10)."
+      operationId: set-filler-source-enabled
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFillerSourceEnabledInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetFillerSourceEnabledOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Switch a source on or off
       tags:
         - filler
   /v1/filler/splits/{proposalId}:

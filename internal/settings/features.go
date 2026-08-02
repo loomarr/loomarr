@@ -19,11 +19,14 @@ type FeatureSet struct {
 	// close to it, or the flag and the route drift apart again.
 	UserSync bool
 	// Ingest reports whether clips can be downloaded in-app. It is the ONE gate not
-	// derived from settings completeness (config-design §7): it depends on whether the
-	// running IMAGE carries yt-dlp + ffmpeg, which only loomarr:filler does. No amount
-	// of configuring opens it on loomarr:latest, so the UI copy for this gate must say
-	// "run the loomarr:filler image" — never "configure this", which would send an
-	// operator to a Settings page that cannot help them.
+	// derived from settings completeness (config-design §7): it depends on whether
+	// yt-dlp + ffmpeg are actually RUNNABLE, which no setting can assert.
+	//
+	// ⚠ This used to mean "you are on loomarr:latest, switch to loomarr:filler". That
+	// two-tag split no longer exists — the single image always ships the tooling (§16) —
+	// so OFF now means a DEGRADED install: a custom image without the vendored binaries,
+	// or a configured path that is missing or not executable. The UI copy must not send
+	// an operator hunting for an image tag that is not published.
 	Ingest bool
 }
 

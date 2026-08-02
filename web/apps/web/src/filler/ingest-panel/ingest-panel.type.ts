@@ -1,7 +1,8 @@
 interface IngestPanelProps {
-  // Whether the running IMAGE carries the yt-dlp + ffmpeg tooling (§10, §16). This is the
-  // one feature gate no setting can open — only running loomarr:filler can — so the copy
-  // must point at the image, never at Settings.
+  // Whether this install can RUN the yt-dlp + ffmpeg tooling (§10, §16). The one feature
+  // gate no setting can open, because no setting can assert that a binary executes.
+  // ⚠ False no longer means "you chose the wrong image tag" — the single image always
+  // ships the tooling — it means a degraded install, and the copy must say so.
   ingestAvailable: boolean;
   onIngested?: () => void;
   className?: string;
