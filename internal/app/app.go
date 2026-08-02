@@ -1020,6 +1020,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Binder:         chBinder,
 		LiveConfig:     liveConfig,
 		LiveConfigInt:  set.intv,
+		// boolOn (not boolv): the API reads bool keys that are ON by default, where an
+		// unanswerable read must fail open — see Options.LiveConfigBoolOn.
+		LiveConfigBoolOn: set.boolOn,
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutSessions: playoutSessions,

@@ -115,6 +115,17 @@ type Server struct {
 	ready ReadyFunc
 
 	liveConfigInt func(key string) int
+	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
+	//
+	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
+	// Kind, so `liveConfig("filler.source.folder.enabled")` killed the request rather than
+	// returning anything a comparison could inspect. A dedicated reader makes the Kind
+	// mismatch impossible to write instead of leaving the string accessor as the only tool.
+	//
+	// It is boolOn, not boolv, deliberately: nil ⇒ true, matching the syncer's own gate and
+	// the declared default. The keys read here answer "why is my catalog empty", so an
+	// unanswerable read must not render the drop-folder as switched off.
+	liveConfigBoolOn func(key string) bool
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
@@ -645,6 +656,17 @@ type Options struct {
 	// against a real settings service surfaced it (unit tests leave the seam nil, so the
 	// typed accessor was never reached).
 	LiveConfigInt func(key string) int
+	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
+	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
+	// for every Kind a route reads rather than only the two that have already broken.
+	// GET /v1/filler/sources panicked on `filler.source.folder.enabled` (a bool) exactly
+	// as /v1/users did on an int, and again only a real settings service reached it.
+	//
+	// ⚠ boolOn, not boolv: nil ⇒ TRUE. Callers here gate "is this source being scanned",
+	// where a false read renders a working drop-folder as switched off on the page whose
+	// job is explaining an empty catalog. A key that is off by default needs its own
+	// accessor rather than this one.
+	LiveConfigBoolOn func(key string) bool
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).
