@@ -106,6 +106,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerCollections(humaAPI)
 	srv.registerFiller(humaAPI)
 	srv.registerFillerSources(humaAPI)
+	srv.registerFillerPulls(humaAPI)
+	srv.registerFillerIncoming(humaAPI)
+	srv.registerFillerBulk(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerSystemLLM(humaAPI)
@@ -147,6 +150,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// ⚠ Called `thumb`, not `preview` — /channels/{id}/filler/preview is a different thing
 	// entirely (the pod pool a channel would get, as JSON).
 	mux.HandleFunc("GET /v1/filler/thumb/{path...}", srv.serveFillerThumb)
+
+	// Clip media (V35) — the clip's own bytes, so the operator can watch one before deciding
+	// about it. Same wildcard reason as thumbnails, and the same naming rule: `media`, never
+	// `preview`. Range-capable, so a <video> element can seek.
+	mux.HandleFunc("GET /v1/filler/media/{path...}", srv.serveFillerMedia)
 
 	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
 	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with

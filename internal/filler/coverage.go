@@ -42,6 +42,105 @@ type CoverageReport struct {
 	Total int
 }
 
+// ChannelCoverage is one channel's coverage answer, labelled for display (§10 V35).
+//
+// It carries the channel's identity as plain strings/ints rather than a channel type: this
+// package must not learn about channels, and a name is all the pool strip needs to say WHICH
+// channel is thin.
+type ChannelCoverage struct {
+	ChannelID string
+	Name      string
+	Number    int
+	Report    CoverageReport
+}
+
+// PoolReport is catalog-wide filler health (§10 V35) — the Filler page's pool strip.
+//
+// ⚠ **The per-channel half is not a new computation.** `Channels` is filled by calling the SAME
+// `CoverageFor` the per-channel meter calls, once per live channel, so the strip and the channel
+// page cannot disagree — there is no aggregate ladder to drift from the real one. The
+// catalog-wide counts below are the only thing computed here, and they are counts, not matching.
+type PoolReport struct {
+	// Clips is every row in the catalog, of every kind.
+	Clips int
+	// Commercials is the subset that fills a break BODY. Bumpers and station IDs bookend a
+	// pod; a catalog of nothing but bumpers cannot make one.
+	Commercials int
+	// Eligible is the commercials that are also DURATION-eligible under the active policy.
+	//
+	// ⚠ This is the number that surprises operators, which is why it is a headline rather than
+	// a footnote: a catalog of 500 fifteen-minute compilations reads as healthy by `Clips` and
+	// can fill nothing. It is the same `durationEligible` gate assembly applies.
+	Eligible int
+	// Untagged is commercials missing a match tag, counted by the STORE.
+	//
+	// ⚠ Counted there on purpose. "Untagged" is defined once, as SQL, in `store/clips.go` (the
+	// AI-tagging work list reads the same predicate); recomputing it in Go here would be a
+	// second definition of the word, free to drift from the job that acts on it.
+	Untagged int
+	// Channels is per-live-channel coverage, worst first, so the strip's diagnosis line can
+	// name a channel without the caller sorting. Empty on an install with no live channels —
+	// which is a real state (a fresh install), not a missing answer.
+	Channels []ChannelCoverage
+}
+
+// Weakest returns the channel in the worst shape, or nil when there are none.
+//
+// "Worst" is ladder order — a channel falling through to the bumper card is worse than one
+// widening its era — because that is the order in which an operator would fix them.
+func (p PoolReport) Weakest() *ChannelCoverage {
+	if len(p.Channels) == 0 {
+		return nil
+	}
+	return &p.Channels[0]
+}
+
+// LevelWorseThan reports whether `a` is a worse coverage outcome than `b`.
+//
+// ⚠ **This is an ordering for presentation, not a scale.** MatchLevel says which rung the ladder
+// stopped at; it is not a score, and nothing in assembly compares two levels. It lives here
+// rather than in a UI so that "worse" means the ladder's own order — a channel falling through
+// to the bumper card is worse than one that merely widened its era, because that is the order an
+// operator would fix them in.
+func LevelWorseThan(a, b MatchLevel) bool { return levelRank(a) < levelRank(b) }
+
+// levelRank orders match levels worst-first. Unexported: callers should ask the question
+// (LevelWorseThan) rather than read a number that would invite arithmetic on it.
+func levelRank(l MatchLevel) int {
+	switch l {
+	case MatchBumperCard:
+		return 0
+	case MatchAudience:
+		return 1
+	case MatchWidened:
+		return 2
+	case MatchExact:
+		return 3
+	default:
+		// An unknown level sorts BEST, so a future rung nobody taught this function about
+		// cannot silently become "the channel to fix" at the top of the operator's list.
+		return 4
+	}
+}
+
+// PoolCounts computes the catalog-wide half of a PoolReport (§10 V35).
+//
+// Pure and channel-free, so it is testable without a store and cannot accidentally depend on
+// which channels happen to exist. `Untagged` is deliberately NOT set here — see the field.
+func PoolCounts(catalog []Clip, policy Policy) PoolReport {
+	report := PoolReport{Clips: len(catalog)}
+	for _, c := range catalog {
+		if c.Kind != Commercial {
+			continue
+		}
+		report.Commercials++
+		if durationEligible(c, policy) {
+			report.Eligible++
+		}
+	}
+	return report
+}
+
 // Coverage reports which rung a break for `w` would draw from, given `catalog`.
 //
 // ⚠ The catalog is narrowed in the SAME ORDER Assemble narrows it — excluded ids, then kinds,

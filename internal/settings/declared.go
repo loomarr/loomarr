@@ -176,10 +176,15 @@ func declared() []Setting {
 			Doc:     "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
 		},
 		{
-			// Separate from ingest.ffmpeg_path on purpose: the filler sidecar bundles its own
-			// ffmpeg+yt-dlp in a DIFFERENT image (§10), so one shared key would tie two
-			// independent deployments together — and a sidecar-shaped path would break playout
-			// on the core image.
+			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
+			// used to give ("the filler sidecar bundles its own ffmpeg in a different image").
+			// There is one image now (§16), so that rationale died with the sidecar and the
+			// two-tag split.
+			//
+			// The live reason: these two callers fail differently. Playout's ffmpeg is a
+			// runtime dependency of a channel that is ON AIR, while ingest's is a build
+			// dependency of a download nobody is watching — so an operator pointing ingest at
+			// a newer yt-dlp-compatible ffmpeg must not be able to break playout by doing it.
 			Key: "playout.ffmpeg_path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Default: "ffmpeg", Advanced: true,
 			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
@@ -376,6 +381,24 @@ func declared() []Setting {
 			Doc: "How often to re-sync the filler catalog from Tunarr's local source.",
 		},
 		{
+			// The drop-folder's on/off switch on the Sources tab (§10 V35). A setting rather
+			// than a row because the folder is DERIVED from `filler.dir` — a remote
+			// collection's switch is a column on its own row, so a row and a setting never
+			// describe the same source.
+			//
+			// ⚠ Default TRUE, and it must stay that way: an install that has never seen this
+			// key has a working drop-folder, and defaulting to false would silently stop the
+			// scan on upgrade.
+			//
+			// ⚠ There is deliberately no `filler.source.library.enabled`. Nothing scans a
+			// media-server library for clips (§10 took the media server out of the filler
+			// path), so that key would gate no work — a control that dims a row and changes
+			// nothing. The Sources tab renders that row as provenance, without a switch.
+			Key: "filler.source.folder.enabled", EnvVar: "FILLER_SOURCE_FOLDER_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
+		},
+		{
 			Key: "filler.ai_tagging", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
 			Kind: KindBool, Default: false,
 			Doc: "Enable AI tagging of untagged commercials (era/audience/category).",
@@ -414,7 +437,10 @@ func declared() []Setting {
 			Doc: "How heavily this commercial set is drawn from, relative to others.",
 		},
 
-		// --- Filler ingest (§10, §15; loomarr:filler image variant only) ---
+		// --- Filler ingest (§10, §15) ---
+		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
+		// labelled "loomarr:filler image variant only" — that variant no longer exists, so
+		// these paths are overrides for an unusual layout, not an opt-in.
 		// The two tool paths are what the `ingest` feature gate probes. They are
 		// settings rather than hardcoded so an operator can point at a NEWER yt-dlp
 		// than the image ships — yt-dlp releases fixes far faster than we cut images,
@@ -422,7 +448,7 @@ func declared() []Setting {
 		{
 			Key: "ingest.ytdlp_path", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Where the yt-dlp program lives. The loomarr:filler image sets this; empty means clip downloading is off.",
+			Doc: "Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off.",
 		},
 		{
 			Key: "ingest.ffmpeg_path", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,

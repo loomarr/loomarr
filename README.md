@@ -65,8 +65,9 @@ docker compose -f docker/compose.yaml --profile postgres up -d   # Postgres back
 ```
 
 Add `--profile ai` to either to run a local Ollama (the default `LLM_PROVIDER`); omit it
-for a hosted or external LLM. Filler in-app clip download is the `loomarr:filler` image
-tag, not a profile (see `docs/design.md` §16).
+for a hosted or external LLM. Filler in-app clip download needs neither a profile nor a
+tag — the vendored yt-dlp + ffmpeg ship in the one published image (see `docs/design.md`
+§16).
 
 ## Layout
 
@@ -125,6 +126,6 @@ files never hand-edited). By participating you agree to the
 
 ## License
 
-[MIT](LICENSE). Bundled and vendored components (notably the GPL `ffmpeg` in the
-`loomarr:filler` image) are inventoried in
+[MIT](LICENSE). Bundled and vendored components (notably the GPL `ffmpeg`) are
+inventoried in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

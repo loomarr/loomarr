@@ -80,6 +80,24 @@ const stubFetch = ({
     if (u.includes("/v1/filler/") && String(init?.method) === "PATCH") {
       return Promise.resolve(json(clips[0]));
     }
+    // V35 reads. Stubbed BEFORE the catch-all `/v1/filler` branch below, which would otherwise
+    // answer these with a clip list — a wrong shape that renders as an empty strip rather than
+    // an error, i.e. exactly the kind of silence a test should not have to chase.
+    if (u.includes("/v1/filler/pool")) {
+      return Promise.resolve(
+        json({
+          clips: clips.length,
+          commercials: clips.length,
+          eligible: clips.length,
+          untagged: 0,
+          channels: [],
+        }),
+      );
+    }
+    if (u.includes("/v1/filler/incoming")) {
+      return Promise.resolve(json({ asks: [], reels: [], total: 0 }));
+    }
+    if (u.includes("/v1/filler/bulk/")) return Promise.resolve(json({ updated: 1, missing: 0 }));
     if (u.includes("/v1/filler")) {
       // Honor the query string so a filter test proves the SERVER did the filtering.
       const query = u.includes("?") ? u.slice(u.indexOf("?")) : "";
@@ -167,20 +185,36 @@ describe("Filler page", () => {
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
 
-  // The ingest gate is the one no setting can open: it depends on the running IMAGE.
-  // Pointing the operator at Settings would be a dead end, so the copy names the image.
-  // ⚠ Both ingest tests render the DISCOVER tab: the panel moved there when Discover
-  // became a peer of Catalog rather than a card stacked under it.
-  it("names the image, not a setting, when ingest tooling is absent", async () => {
+  // ⚠ Both ingest tests render the INCOMING tab (V35). Discover was retired as a tab —
+  // finding clips is now something you do to a source — and the download tooling moved to
+  // the tab that is about how clips ARRIVE rather than being deleted with it.
+  //
+  // ⚠ This asserts the copy does NOT name `loomarr:filler` (retired-ok). That variant no longer
+  // exists — the single image always ships the downloader (§16) — so the old copy sent an
+  // operator hunting for a tag they cannot pull. An absence assertion, because the failure
+  // mode is a plausible-sounding instruction, not a missing one.
+  //
+  // ⚠ `main` still has the INVERTED assertion here — it requires `loomarr:filler` (retired-ok)
+  // to be PRESENT. That is the older truth, from before the sidecar's remains were removed, and
+  // taking it in this merge would have made `retired-verify` and this test contradict each
+  // other. The merge keeps this side deliberately.
+  //
+  // ⚠ And this comment needed the `retired-ok` marker to say so: `check-retired.sh` failed on
+  // the sentence explaining the retirement. That is the guard working, not over-reaching — it
+  // greps for the identifier and cannot read intent, which is exactly why it catches the
+  // instructions a prose rule would miss.
+  it("explains a degraded install without naming an image that no longer exists", async () => {
     stubFetch({ features: { filler: true, ingest: false } });
-    renderAt("/filler?tab=discover");
-    expect(await screen.findByText(/loomarr:filler/)).toBeInTheDocument();
+    renderAt("/filler?tab=incoming");
+    expect(await screen.findByText(/downloading isn't available in this install/i)).toBeInTheDocument();
+    // The dead image name (retired-ok), asserted ABSENT.
+    expect(screen.queryByText(/loomarr:filler/)).not.toBeInTheDocument(); // retired-ok
     expect(screen.queryByRole("button", { name: /^download$/i })).not.toBeInTheDocument();
   });
 
   it("starts an ingest job when the tooling is present", async () => {
     const fetchMock = stubFetch({ features: { filler: true, ingest: true } });
-    renderAt("/filler?tab=discover");
+    renderAt("/filler?tab=incoming");
     await screen.findByLabelText("URLs");
 
     await userEvent.type(screen.getByLabelText("URLs"), "https://archive.org/details/classic-tv-commercials");
@@ -231,6 +265,29 @@ describe("Filler page", () => {
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "the confirm should PATCH the clip").toBeDefined();
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ era: 1985, audience: "kids", category: "cereal" });
+  });
+
+  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era, audience AND
+  // category on every call, so a cycle that PATCHed only the clicked field would silently
+  // wipe the other two — once per click, not once per dialog. This asserts the whole tag row
+  // travels with a single cycled chip.
+  it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
+    const fetchMock = stubFetch({
+      clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
+    });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
+
+    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
+    expect(patch, "cycling a chip should PATCH the clip").toBeDefined();
+    // era and category ride along UNCHANGED; only audience advances.
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      era: 1990,
+      audience: "family",
+      category: "cereal",
+    });
   });
 
   // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
@@ -292,5 +349,75 @@ describe("Filler page", () => {
 
     expect(await screen.findByText("ffprobe found no streams")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /review split/i })).not.toBeInTheDocument();
+  });
+
+  // --- bulk selection (V35) ---
+
+  it("shows the bulk bar only once something is selected", async () => {
+    stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    expect(screen.queryByText(/clip selected/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    expect(await screen.findByText("1 clip selected")).toBeInTheDocument();
+  });
+
+  // ⚠ The copy is a promise. The server's action is a TOMBSTONE — the clip leaves the catalog
+  // and stops being used in breaks, and the file stays where the operator put it. A label
+  // saying "Delete" would describe something Loomarr deliberately does not do.
+  it("offers removal in terms of the catalog, never the files", async () => {
+    stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    const remove = await screen.findByRole("button", { name: /remove from catalog/i });
+    expect(remove).toHaveAttribute("title", expect.stringMatching(/files stay/i));
+    expect(screen.queryByRole("button", { name: /^delete/i })).not.toBeInTheDocument();
+  });
+
+  it("bulk-removes the selection through the bulk route", async () => {
+    const mock = stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /remove from catalog/i }));
+
+    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/remove"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"] });
+  });
+
+  // ⚠ Each dropdown sends ONLY its own field. A bar that posted all three would blank whatever
+  // the operator had not touched — the failure the server's per-field optionality prevents, and
+  // which only holds if the client sends a partial body.
+  it("sends only the tag field the operator picked", async () => {
+    const mock = stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    // ⚠ "Set audience", not "Audience": the catalog's filter bar already owns that name, and
+    // the first draft of this test found two comboboxes. The distinct label is the fix, and
+    // this assertion is what keeps them distinct.
+    await userEvent.click(await screen.findByRole("combobox", { name: "Set audience" }));
+    await userEvent.click(await screen.findByRole("option", { name: "family" }));
+
+    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/tag"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"], audience: "family" });
+  });
+
+  // A member cannot bulk-edit, so the control that would 403 is simply absent rather than
+  // present-and-failing.
+  it("gives a member no way to select clips", async () => {
+    stubFetch({ me: MEMBER });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    expect(screen.queryByRole("checkbox", { name: /select frosted flakes/i })).not.toBeInTheDocument();
   });
 });

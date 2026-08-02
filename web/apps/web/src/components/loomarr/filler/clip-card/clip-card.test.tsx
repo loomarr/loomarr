@@ -96,6 +96,81 @@ describe("ClipCard", () => {
     expect(onConfirmEra).toHaveBeenCalledOnce();
   });
 
+  // ⚠ These four pin fields the API has always sent and the card never rendered — a clip
+  // that never airs looked identical to one on every break. The last case is the one that
+  // matters most: `playsCounted:false` is NOT zero plays.
+  it("reads as never played when the count is zero", () => {
+    render(<ClipCard clip={{ ...base, playCount: 0, playsCounted: true }} />);
+    expect(screen.getByText(/never played/i)).toBeInTheDocument();
+  });
+
+  it("shows the play count and when it last aired", () => {
+    render(
+      <ClipCard
+        clip={{ ...base, playCount: 12, playsCounted: true, lastPlayedAt: new Date().toISOString() }}
+      />,
+    );
+    expect(screen.getByText(/12 plays/)).toBeInTheDocument();
+    expect(screen.getByText(/just now/i)).toBeInTheDocument();
+  });
+
+  it("singularises a single play", () => {
+    render(<ClipCard clip={{ ...base, playCount: 1, playsCounted: true }} />);
+    expect(screen.getByText(/1 play\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/1 plays/)).not.toBeInTheDocument();
+  });
+
+  // ⚠ The distinction the DTO's own comment warns about: an install whose playout is
+  // Tunarr-backed cannot observe airings, so rendering "0 plays" would assert something
+  // Loomarr does not know. Sabotaging the branch to fall through to the zero case makes
+  // this fail — which is the point of asserting the absence too.
+  it("says plays are not counted rather than claiming zero", () => {
+    render(<ClipCard clip={{ ...base, playCount: 0, playsCounted: false }} />);
+    expect(screen.getByText(/plays aren't counted/i)).toBeInTheDocument();
+    expect(screen.queryByText(/never played/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 plays/)).not.toBeInTheDocument();
+  });
+
+  // Quality is display-only unless filler.min_quality is set (off by default), so it is a
+  // neutral fact — a test pins that it renders at all, since nothing did before.
+  it("shows the clip's resolution when the probe found one", () => {
+    render(<ClipCard clip={{ ...base, quality: "480p" }} />);
+    expect(screen.getByText("480p")).toBeInTheDocument();
+  });
+
+  // Inline retag (the v2 mock's cycleEra/cycleAud/cycleCat).
+  it("cycles a tag to the next value on click", () => {
+    const onCycle = vi.fn();
+    render(<ClipCard clip={{ ...base, era: 1990 }} onCycle={onCycle} />);
+    fireEvent.click(screen.getByRole("button", { name: /change the era/i }));
+    expect(onCycle).toHaveBeenCalledWith({ era: 2000 });
+  });
+
+  // ⚠ UNSET must be reachable. Cycling that only advances through values leaves a wrongly
+  // tagged clip un-blankable without opening the dialog — and §10 says the likely error IS
+  // a mis-tagged clip (a trailer scanned as a commercial).
+  it("cycles through unset rather than trapping a wrong tag", () => {
+    const onCycle = vi.fn();
+    render(<ClipCard clip={{ ...base, era: 2020 }} onCycle={onCycle} />);
+    fireEvent.click(screen.getByRole("button", { name: /change the era/i }));
+    expect(onCycle).toHaveBeenCalledWith({ era: 0 });
+  });
+
+  it("emits only the field that changed, so the caller supplies the siblings", () => {
+    const onCycle = vi.fn();
+    render(<ClipCard clip={{ ...base, audience: "kids", category: "food" }} onCycle={onCycle} />);
+    fireEvent.click(screen.getByRole("button", { name: /change the audience/i }));
+    expect(onCycle).toHaveBeenCalledWith({ audience: "family" });
+  });
+
+  // ⚠ A member gets the tags as plain badges, never as controls: every retag route 403s
+  // server-side (§11, §19), and a button that always fails is worse than no button.
+  it("renders tags as static badges when retagging is not offered", () => {
+    render(<ClipCard clip={{ ...base, era: 1990 }} />);
+    expect(screen.getByText("1990s")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /change the era/i })).not.toBeInTheDocument();
+  });
+
   // The split entry point (§10 V34): present only when offered (admin), and disabled while
   // detection runs so a minutes-long decode can't be queued twice.
   it("offers split detection and shows its pending state", () => {

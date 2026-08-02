@@ -94,3 +94,37 @@ func (s *sqlStore) DeleteClip(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// ListSplitProposals returns every pending proposal, OLDEST FIRST — the Filler page's Incoming
+// tab (V35), where the compilation that has been waiting longest is the one to review next.
+//
+// Ordering is explicit rather than left to the engine: an unordered list reshuffles between
+// reads on Postgres, and a review queue whose rows move under the pointer is its own bug.
+func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
+	if err != nil {
+		return nil, fmt.Errorf("list split proposals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []filler.SplitProposal
+	for rows.Next() {
+		var (
+			p         filler.SplitProposal
+			raw       string
+			createdAt int64
+		)
+		if err := rows.Scan(&p.ID, &p.ClipPath, &raw, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan split proposal: %w", err)
+		}
+		// Reported rather than silently skipped: a proposal whose segments will not decode is
+		// a compilation the operator can never review, and dropping it from the list makes it
+		// invisible instead of fixable.
+		if err := json.Unmarshal([]byte(raw), &p.Segments); err != nil {
+			return nil, fmt.Errorf("split proposal %s segments corrupt: %w", p.ID, err)
+		}
+		p.CreatedAt = fromEpoch(createdAt)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

@@ -301,10 +301,13 @@ type DiscoveredClip struct {
 	URL string `json:"url"`
 }
 
-// ErrIngestUnavailable reports that the running image carries no ingest tooling — the
-// default loomarr:latest. It is NOT a configuration error: no setting can fix it, only
-// running loomarr:filler can (§10, §16), which is why the API renders it as a distinct
-// problem type rather than the usual feature_not_configured.
+// ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
+// a configuration error — no setting can assert that a binary executes — which is why the
+// API renders it as a distinct problem type rather than feature_not_configured.
+//
+// ⚠ This used to mean "you are on loomarr:latest, run loomarr:filler instead". The single
+// image always ships the tooling (§16), so it now means a DEGRADED install: a custom build
+// without the vendored binaries, or a path that is missing or not executable.
 var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
 // ErrSplitUnavailable reports that compilation splitting cannot run because the
@@ -342,6 +345,14 @@ type PodPreviewer interface {
 	// that it agrees with what airs, and splitting it onto its own service is the first step
 	// toward two implementations of "what would this channel get".
 	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
+	// Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35):
+	// how much material exists, and what every live channel's breaks currently resolve to.
+	//
+	// On this interface for the same reason Coverage is: its per-channel numbers ARE Coverage,
+	// called once per channel. An aggregate that computed its own would be a second opinion
+	// about the ladder, and the two would disagree on exactly the pages an operator compares
+	// when a channel looks wrong.
+	Pool(ctx context.Context) (filler.PoolReport, error)
 }
 
 // GuideReader answers "what is airing now" from Tunarr's generated guide (§6: Tunarr

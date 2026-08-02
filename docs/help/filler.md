@@ -7,22 +7,30 @@ without it, channels just leave the gaps empty and play fine.
 
 Everything starts with a folder of clips.
 
-- `FILLER_DIR` — the folder Loomarr registers as a Tunarr source (usually `/filler`).
+- `FILLER_DIR` — the folder Loomarr watches (usually `/filler`).
 - Add clips any way you like: copy them in, use a tool like MeTube, or use Loomarr's
   built-in ingest (below).
 - After adding files, run a sync on the **Filler** page.
 
-Your media server isn't involved — Tunarr scans the folder and Loomarr reads the catalog
-from Tunarr.
+Loomarr reads the folder itself, so clips are available whether or not you run Tunarr. Your
+media server is not involved either: filler never lives in an Emby or Jellyfin library, which
+is why a commercial can never turn up in a channel's programming.
+
+If you do use Tunarr, Loomarr also registers the folder with it so Tunarr can play the same
+clips into its breaks. That happens on its own and needs no setup from you.
 
 ## Downloading clips in-app (optional)
 
 Loomarr can pull clips straight into the folder from a YouTube playlist or video URL, as a
 background job.
 
-This needs the `loomarr:filler` image (it carries `yt-dlp` + `ffmpeg`). On the default
-`loomarr:latest` image the ingest button is disabled — switch the image tag to enable it.
-Clips you add by hand work on either image.
+The tooling this needs (`yt-dlp` + `ffmpeg`) ships in the Loomarr image, so downloading
+works out of the box — there is no tag to switch or profile to enable.
+
+If the download button is disabled, this install cannot run that tooling: usually a custom
+or hand-built image without the vendored binaries, or a `INGEST_YTDLP_PATH` /
+`INGEST_FFMPEG_PATH` pointing somewhere wrong. Clips you drop into the folder by hand
+always work, whatever the image.
 
 ## Tagging
 

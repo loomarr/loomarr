@@ -4,12 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FillerSources } from "./filler-sources";
 
+// Defaults describe a normal, switched-ON source. `enabled` defaulting to false would make
+// every test that does not mention it exercise the disabled path by accident.
 const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">): FillerSourceDTO => ({
+  id: over.kind,
   target: "/data/filler",
   detail: "watched directly",
   count: 0,
   configured: true,
   fetchable: true,
+  enabled: true,
+  switchable: true,
+  removable: false,
   ...over,
 });
 
@@ -83,10 +89,14 @@ describe("FillerSources", () => {
 // --- registered remotes, nested under the `remote` row (V33) ---
 
 describe("FillerSources remotes", () => {
-  const withRemotes = [
+  const withRemotes: FillerSourceDTO[] = [
     {
+      id: "remote",
+      enabled: true,
+      switchable: false,
+      removable: false,
       kind: "remote" as const,
-      target: "ingest sidecar",
+      target: "downloads",
       detail: "fetches into the watched folder",
       count: 12,
       configured: true,
@@ -97,8 +107,14 @@ describe("FillerSources remotes", () => {
           label: "Classic TV commercials",
           uri: "https://archive.org/details/classic_tv",
           lastFetchedAt: "2026-07-30T12:00:00Z",
+          enabled: true,
         },
-        { id: "vintage_ads", label: "vintage_ads", uri: "https://archive.org/details/vintage_ads" },
+        {
+          id: "vintage_ads",
+          label: "vintage_ads",
+          uri: "https://archive.org/details/vintage_ads",
+          enabled: true,
+        },
       ],
     },
   ];
@@ -121,7 +137,7 @@ describe("FillerSources remotes", () => {
   // things that exist cannot (build plan §6.1).
   it("keeps the configuration row it nests under", () => {
     render(<FillerSources sources={withRemotes} total={12} onFetch={() => {}} />);
-    expect(screen.getByText("ingest sidecar")).toBeInTheDocument();
+    expect(screen.getByText("downloads")).toBeInTheDocument();
   });
 
   it("renders nothing extra when no remotes are registered", () => {
@@ -129,16 +145,86 @@ describe("FillerSources remotes", () => {
     // every field to optional and stops matching the generated DTO.
     const bare = [
       {
+        id: "remote",
         kind: "remote" as const,
-        target: "ingest sidecar",
+        target: "downloads",
         detail: "fetches into the watched folder",
         count: 12,
         configured: true,
         fetchable: false,
+        enabled: true,
+        switchable: false,
+        removable: false,
       },
     ];
     render(<FillerSources sources={bare} total={12} onFetch={() => {}} />);
-    expect(screen.getByText("ingest sidecar")).toBeInTheDocument();
+    expect(screen.getByText("downloads")).toBeInTheDocument();
     expect(screen.queryByText(/never fetched/)).not.toBeInTheDocument();
+  });
+});
+
+// --- the on/off switch (V35) ---
+
+describe("FillerSources switches", () => {
+  it("switches a source off through the handler", async () => {
+    const onToggleEnabled = vi.fn();
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler" })]}
+        total={1}
+        onFetch={() => {}}
+        onToggleEnabled={onToggleEnabled}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("switch", { name: "Use /data/filler" }));
+
+    expect(onToggleEnabled).toHaveBeenCalledWith("folder", false);
+  });
+
+  // ⚠ THE promise. A switched-off source keeps its clips, and the row has to say so — an
+  // operator who reads "disabled" as "my clips are gone" will switch it back on and re-download
+  // everything they already have.
+  it("says a switched-off source keeps its clips", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler", enabled: false })]}
+        total={1}
+        onFetch={() => {}}
+        onToggleEnabled={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("switched off")).toBeInTheDocument();
+    expect(screen.getByText(/still in your catalog/i)).toBeInTheDocument();
+  });
+
+  // ⚠ Nothing scans a media-server library for clips since §10 took the media server out of the
+  // filler path, so a switch there would change nothing — and the server refuses it with a 409.
+  // A control that cannot work is worse than no control.
+  it("gives no switch to a row with nothing running behind it", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "library", target: "media server filler library", switchable: false })]}
+        total={0}
+        onFetch={() => {}}
+        onToggleEnabled={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  // A caller that cannot mutate shows the same rows without a dead control.
+  it("renders no switches at all without a handler", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler" })]}
+        total={1}
+        onFetch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 });

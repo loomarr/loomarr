@@ -30,6 +30,12 @@ type ClipFilter struct {
 	// UntaggedOnly restricts to clips missing era/audience/category — the AI
 	// tagging job's work list (§10).
 	UntaggedOnly bool
+	// IncludeRemoved lifts the default exclusion of tombstoned clips (V35).
+	//
+	// ⚠ The DEFAULT is to exclude, and it has to be: pod assembly loads the catalog through
+	// this same call with a zero filter, so an opt-OUT would mean a clip the operator removed
+	// keeps airing until somebody remembers to pass a flag. Opt-in is the safe polarity.
+	IncludeRemoved bool
 	// Query is a case-insensitive substring match on the clip name — the `name LIKE`
 	// filter §7.2 prescribes for the clip corpus. Clip search lives here rather than in
 	// /v1/search because a clip is not a provisionable title (§10), so it cannot be a
@@ -41,12 +47,18 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		// ⚠ play_count / last_played_at are INSERTed (so a new row starts at 0) but deliberately
 		// NOT in the DO UPDATE list. A re-sync knows nothing about plays, so writing
+		// ⚠ `removed_at` is omitted from DO UPDATE for the same reason, and it is the thing that
+		// makes "Remove from catalog" survive a re-scan. `clips` is a synced CACHE, so the next
+		// pass finds the file still on disk and upserts it; if the tombstone rode along it would
+		// be reset to the scan's zero and the clip would silently reappear. SetClipsRemoved is
+		// its only writer, exactly like RecordClipPlay is the counters'.
+		//
 		// excluded.play_count would reset every counter to the scan's zero on each pass —
 		// silently, and only noticeable as "usage never goes up". Tags survive re-sync because
 		// sync.go merges them before calling this; the counters survive because the SQL simply
 		// never touches them after insert. RecordClipPlay is their only writer.
-		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, removed_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   name=excluded.name, kind=excluded.kind, era=excluded.era, audience=excluded.audience,
@@ -58,7 +70,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   updated_at=excluded.updated_at`),
 		c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
 		c.DurationMs, c.Rating, c.Source, boolToInt(c.AITagged), c.Quality, c.License, c.Thumbnail,
-		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.UpdatedAt))
+		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt), epoch(c.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Path, err)
 	}
@@ -66,7 +78,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, updated_at FROM clips`
+	rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era,
+	removed_at, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), id))
@@ -101,6 +114,9 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		// typing "%" searches for a percent sign rather than matching everything.
 		where = append(where, "LOWER(name) LIKE LOWER(?) ESCAPE '\\'")
 		args = append(args, "%"+escapeLike(f.Query)+"%")
+	}
+	if !f.IncludeRemoved {
+		where = append(where, "removed_at = 0")
 	}
 	if f.UntaggedOnly {
 		// "Untagged" = a COMMERCIAL missing any match tag. Bumpers/station-ids/PSAs
@@ -227,11 +243,12 @@ func scanClip(sc scannable) (Clip, error) {
 		tunarrID     sql.NullString
 		aiTagged     int
 		lastPlayedAt int64
+		removedAt    int64
 		updatedAt    int64
 	)
 	err := sc.Scan(&c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail,
-		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &updatedAt)
+		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}
@@ -243,6 +260,9 @@ func scanClip(sc scannable) (Clip, error) {
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged != 0
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
+	if removedAt != 0 {
+		c.RemovedAt = fromEpoch(removedAt)
+	}
 	c.UpdatedAt = fromEpoch(updatedAt)
 	return c, nil
 }
@@ -286,4 +306,41 @@ func nullIfEmpty(s string) any {
 func escapeLike(term string) string {
 	r := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
 	return r.Replace(term)
+}
+
+// SetClipsRemoved tombstones (or restores) clips by path — the Catalog tab's "Remove from
+// catalog" (V35).
+//
+// ⚠ **This is the ONLY writer of `removed_at`**, exactly as RecordClipPlay is the only writer of
+// the play counters, and for the same reason: `UpsertClip` deliberately omits the column from its
+// DO UPDATE list, so the next scan cannot resurrect a removed clip by finding its file still on
+// disk. Route the write anywhere else and that guarantee is gone.
+//
+// ⚠ It does NOT touch the file. Nothing in Loomarr deletes an operator's media — the button says
+// remove from the CATALOG, and the file stays where they put it.
+//
+// Returns the number of rows affected; unknown paths are silently skipped, because a bulk action
+// over a list the operator selected minutes ago races a re-scan and failing the whole batch for
+// one stale row would be worse than removing the rest.
+func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
+	if len(paths) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(paths))
+	args := make([]any, 0, len(paths)+1)
+	args = append(args, epoch(at))
+	for i, p := range paths {
+		placeholders[i] = "?"
+		args = append(args, p)
+	}
+	q := `UPDATE clips SET removed_at = ? WHERE path IN (` + strings.Join(placeholders, ",") + `)`
+	res, err := s.db.ExecContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return 0, fmt.Errorf("set clips removed: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("set clips removed: %w", err)
+	}
+	return int(n), nil
 }

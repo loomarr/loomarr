@@ -22,7 +22,16 @@ const ICONS: Record<string, typeof FolderOpen> = {
   remote: Globe,
 };
 
-const FillerSources = ({ sources, total, onFetch, fetching, error, className }: FillerSourcesProps) => (
+const FillerSources = ({
+  sources,
+  total,
+  onFetch,
+  fetching,
+  onToggleEnabled,
+  toggling,
+  error,
+  className,
+}: FillerSourcesProps) => (
   <div className={cn("flex flex-col gap-3", className)}>
     <p className="text-muted-foreground text-sm">
       {`${sources.length} ${sources.length === 1 ? "source" : "sources"} · ${total} ${
@@ -45,13 +54,44 @@ const FillerSources = ({ sources, total, onFetch, fetching, error, className }: 
             // configured` badge already carries that meaning, legibly.
             className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-4 py-3"
           >
+            {/* ⚠ The switch renders only on a SWITCHABLE row. The media-server library row has
+                nothing running behind it — §10 took the media server out of the filler path —
+                so a toggle there would dim a row and change nothing, and the server refuses it
+                with a 409. A control that cannot work is worse than no control. */}
+            {onToggleEnabled && s.switchable && (
+              <input
+                type="checkbox"
+                // `switch` rather than the implicit checkbox role: this takes effect
+                // immediately rather than being part of a form the operator submits, which is
+                // exactly the distinction the two roles carry.
+                role="switch"
+                checked={s.enabled}
+                // ⚠ Explicit, even though the native `checked` above already conveys it.
+                // Declaring role="switch" REPLACES the implicit checkbox semantics, so the
+                // state has to be re-declared in ARIA terms or the control announces no state
+                // at all. Caught by the a11y lint rather than by looking at it.
+                aria-checked={s.enabled}
+                disabled={toggling != null}
+                onChange={() => onToggleEnabled(s.id, !s.enabled)}
+                className="size-4 shrink-0 accent-signal"
+                aria-label={`Use ${s.target}`}
+              />
+            )}
             <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate font-mono text-sm">{s.target}</span>
                 {!s.configured && <Badge variant="caution">not configured</Badge>}
+                {/* ⚠ "Switched off", not "disabled" or a greyed row: the clips this source
+                    already brought in are STILL in the catalog and still play. The badge has to
+                    read as "stopped fetching", not as "gone". */}
+                {s.switchable && !s.enabled && <Badge variant="neutral">switched off</Badge>}
               </div>
-              <p className="mt-0.5 text-muted-foreground text-xs">{s.detail}</p>
+              <p className="mt-0.5 text-muted-foreground text-xs">
+                {s.switchable && !s.enabled
+                  ? "Loomarr isn't scanning this source. Clips it already found are still in your catalog."
+                  : s.detail}
+              </p>
             </div>
             {/* The count is the honest signal that a source is doing anything. A configured
                 source contributing 0 clips is a real and reportable state — usually an empty

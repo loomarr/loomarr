@@ -56,6 +56,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
+	t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 	t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 }
@@ -1619,7 +1620,11 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 
 	created := time.Now().UTC().Truncate(time.Second)
 	src := FillerSource{
-		ID: "src-1", Kind: "archive", URI: "classic_tv_commercials",
+		// Enabled explicitly: a Go bool zero-values to false, so a literal that omits it
+		// describes a source that is switched OFF. Real add paths go through
+		// NewFillerSource for exactly that reason.
+		Enabled: true,
+		ID:      "src-1", Kind: "archive", URI: "classic_tv_commercials",
 		Label:   "Classic TV commercials",
 		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
@@ -1682,6 +1687,52 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", got[0].LastFetchedAt)
 	}
 
+	// The Sources tab's on/off switch (V35). Two properties, each a claim the switch's own
+	// copy makes to the operator.
+	if !got[0].Enabled {
+		t.Error("source is not enabled — a registered source must be on until switched off")
+	}
+	if err := s.SetFillerSourceEnabled(ctx, "src-1", false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListFillerSources(ctx)
+	if got[0].Enabled {
+		t.Error("source still enabled after being switched off")
+	}
+
+	// 1. ⚠ Disabling is NOT deleting. The row keeps its licence and its fetch history, which
+	//    is what makes switching it back on restore what was there instead of starting over.
+	if got[0].License != src.License {
+		t.Errorf("licence lost on disable: %q", got[0].License)
+	}
+	if !got[0].LastFetchedAt.Equal(fetched) {
+		t.Error("fetch history lost on disable — the row was rewritten rather than updated")
+	}
+
+	// 2. ⚠ A re-register must not flip the switch back. `UpsertFillerSource` deliberately omits
+	//    `enabled` from its DO UPDATE list, for the same reason last_fetched_at is omitted: a
+	//    caller fixing a label knows nothing about the switch, and a Go bool zero-values to
+	//    FALSE, so writing it would silently disable a source behind the operator's back. The
+	//    first draft of V35 had exactly that bug.
+	reRegistered := src
+	reRegistered.Label = "Renamed again"
+	reRegistered.Enabled = true // what a caller who does not know about the switch would send
+	if err := s.UpsertFillerSource(ctx, reRegistered); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListFillerSources(ctx)
+	if got[0].Enabled {
+		t.Error("re-registering re-enabled a disabled source — the switch is not the upsert's business")
+	}
+	if got[0].Label != "Renamed again" {
+		t.Errorf("label = %q, want the re-registered one", got[0].Label)
+	}
+
+	// Put it back on, so the delete assertions below run against the normal state.
+	if err := s.SetFillerSourceEnabled(ctx, "src-1", true); err != nil {
+		t.Fatal(err)
+	}
+
 	// ⚠ Deleting a source must NOT delete its clips: they are real files already tagged and
 	// possibly pinned into a channel, and forgetting where something came from is not a
 	// reason to throw it away.
@@ -1708,6 +1759,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	}
 	if err := s.MarkFillerSourceFetched(ctx, "nope", fetched); !errors.Is(err, ErrNotFound) {
 		t.Errorf("mark unknown fetched = %v, want ErrNotFound", err)
+	}
+	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
 	}
 }
 
@@ -1819,5 +1873,97 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.License != "" {
 		t.Errorf("a clip with no declared licence has %q, want empty", got.License)
+	}
+}
+
+// testFillerPulls covers the filler approval gate (§10 V35) on BOTH backends.
+//
+// The assertions that matter are the ones protecting the AUDIT: a decided pull is kept, and a
+// dropped plan row is retained with its flag rather than removed. "We approved this" is only
+// meaningful next to what was proposed.
+func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	created := time.Now().UTC().Truncate(time.Second)
+
+	p := filler.Pull{
+		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
+		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
+		Plan: []filler.PullPlanRow{
+			{SourceID: "classic", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 40},
+			{SourceID: "psa", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 12},
+		},
+	}
+	if err := s.UpsertPull(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Plan) != 2 || got.Plan[0].SourceID != "classic" || got.Plan[0].EstimateClips != 40 {
+		t.Errorf("plan did not round-trip: %+v", got.Plan)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, created)
+	}
+	// Pending means undecided, and that must be legible as a ZERO time rather than an epoch
+	// date nobody meant.
+	if !got.DecidedAt.IsZero() {
+		t.Errorf("a pending pull has DecidedAt %v, want zero", got.DecidedAt)
+	}
+	if got.EstimatedClips() != 52 {
+		t.Errorf("EstimatedClips = %d, want 52", got.EstimatedClips())
+	}
+
+	// Approve with one row dropped.
+	decided := created.Add(time.Hour)
+	got.Plan[1].Dropped = true
+	got.Status = filler.PullApproved
+	got.Note = "no local dealers"
+	got.DecidedAt = decided
+	got.DecidedBy = "admin-2"
+	if err := s.UpsertPull(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ The dropped row is STILL THERE, flagged. Removing it would leave a record of what was
+	// fetched with no record of what was declined, which is the half a reviewer needs.
+	if len(after.Plan) != 2 {
+		t.Fatalf("plan has %d rows after approval, want 2 — a dropped row must be retained", len(after.Plan))
+	}
+	if !after.Plan[1].Dropped {
+		t.Error("the dropped flag did not persist")
+	}
+	if n := len(after.Committed()); n != 1 {
+		t.Errorf("Committed() = %d rows, want 1", n)
+	}
+	if after.EstimatedClips() != 40 {
+		t.Errorf("EstimatedClips after drop = %d, want 40", after.EstimatedClips())
+	}
+	if !after.DecidedAt.Equal(decided) || after.DecidedBy != "admin-2" || after.Note != "no local dealers" {
+		t.Errorf("decision not recorded: %+v", after)
+	}
+
+	// Status filtering, and the fact that a decided pull is KEPT rather than deleted.
+	if pending, err := s.ListPulls(ctx, filler.PullPending); err != nil || len(pending) != 0 {
+		t.Errorf("pending = %d (%v), want 0", len(pending), err)
+	}
+	approved, err := s.ListPulls(ctx, filler.PullApproved)
+	if err != nil || len(approved) != 1 {
+		t.Fatalf("approved = %d (%v), want 1 — the history must survive the decision", len(approved), err)
+	}
+	if all, err := s.ListPulls(ctx, ""); err != nil || len(all) != 1 {
+		t.Errorf("all = %d (%v), want 1", len(all), err)
+	}
+
+	if _, err := s.GetPull(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPull unknown = %v, want ErrNotFound", err)
 	}
 }

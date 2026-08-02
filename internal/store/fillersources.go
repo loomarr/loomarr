@@ -38,9 +38,29 @@ type FillerSource struct {
 	// epoch date nobody meant.
 	LastFetchedAt time.Time
 	CreatedAt     time.Time
+	// Enabled is the Sources tab's on/off switch (V35). A disabled source is not scanned, not
+	// searched and not downloaded from.
+	//
+	// ⚠ **Disabling is not deleting, and nothing here may blur that.** The row keeps its
+	// licence and its fetch history, so switching it back on restores what was there. Clips it
+	// already brought in are untouched either way — they are real files an operator may have
+	// tagged and pinned.
+	Enabled bool
 }
 
-const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at
+// NewFillerSource builds a source that is ON.
+//
+// ⚠ **A constructor rather than a struct literal, because the safe value here is not the zero
+// value.** `Enabled` is a bool, so `store.FillerSource{ID: …}` means *disabled* — a source that
+// an operator just added and that silently never fetches, with a switch in the UI already
+// showing "off" and no explanation. Every add path goes through here so that cannot happen; the
+// only way to create a disabled source is to switch one off afterwards, which is what the
+// operator would expect to have to do.
+func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSource {
+	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
+}
+
+const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled
 	FROM filler_sources`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
@@ -61,7 +81,7 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			createdAt int64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt); err != nil {
+			&fetchedAt, &createdAt, &src.Enabled); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
@@ -78,14 +98,22 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 // label) knows nothing about fetches, so writing excluded.last_fetched_at would silently reset
 // "last fetched" to zero and make a working source look like it had never run.
 // MarkFillerSourceFetched is its only writer.
+//
+// ⚠ **`enabled` is the same shape, and V35 nearly got it wrong.** The first version of this
+// change added `enabled=excluded.enabled` to the DO UPDATE list, which is worse than the reset
+// above: Go's zero value for a bool is `false`, so ANY existing caller that re-registered a
+// source without knowing about the new field would have silently switched it OFF — a source
+// that stops fetching with nothing in the UI to explain why. It is INSERTed (so a new row
+// carries the caller's choice, and `NewFillerSource` makes that choice `true`) and thereafter
+// only `SetFillerSourceEnabled` writes it.
 func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.CreatedAt))
+		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled)
 	if err != nil {
 		return fmt.Errorf("upsert filler source %s: %w", src.ID, err)
 	}
@@ -123,6 +151,28 @@ func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at ti
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("mark filler source fetched %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetFillerSourceEnabled switches a source on or off. Returns ErrNotFound for an unknown id
+// rather than silently doing nothing, so a caller cannot believe it recorded something.
+//
+// A targeted UPDATE rather than a read-modify-Upsert: the switch is the one field the Sources
+// tab toggles, and round-tripping the whole row to change a boolean would let a concurrent
+// re-registration lose its label to a stale copy.
+func (s *sqlStore) SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE filler_sources SET enabled = ? WHERE id = ?`), enabled, id)
+	if err != nil {
+		return fmt.Errorf("set filler source enabled %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler source enabled %s: %w", id, err)
 	}
 	if n == 0 {
 		return ErrNotFound

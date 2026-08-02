@@ -145,7 +145,17 @@ type ClipStore interface {
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// ListClips returns clips matching the filter (any zero-value field is a
 	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
+	//
+	// ⚠ Clips the operator removed from the catalog (V35) are excluded unless the filter opts
+	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
+	// a ZERO filter, so an opt-out would keep a removed clip airing.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
+	//
+	// ⚠ The ONLY writer of that tombstone, like RecordClipPlay is the only writer of the play
+	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
+	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
+	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
@@ -175,8 +185,27 @@ type SplitProposalStore interface {
 	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
 	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
 	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
+	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
+	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
+}
+
+// FillerPullStore is the filler approval gate (§10 V35).
+//
+// Separate from FillerSourceStore on purpose: a pull is an APPROVAL object that happens to
+// reference sources, and folding it in would make "the thing that lists where clips come from"
+// also the thing that records what a human agreed to download.
+//
+// ⚠ There is no Delete. A decided pull is KEPT — the queue's History answers "what did we agree
+// to download, and when, and who said so", which a delete erases. Same reason §7 keeps deny
+// reasons on title proposals.
+type FillerPullStore interface {
+	GetPull(ctx context.Context, id string) (filler.Pull, error)
+	// ListPulls returns pulls with the given status, newest first; an empty status means all.
+	ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error)
+	UpsertPull(ctx context.Context, p filler.Pull) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
@@ -197,6 +226,10 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
+	// the row keeps its licence and fetch history, and clips it already brought in stay in the
+	// catalog. It only withdraws the source from future searching and downloading.
+	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -287,6 +320,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	FillerSourceStore
+	FillerPullStore
 	SplitProposalStore
 	AiringStore
 	ActivityStore

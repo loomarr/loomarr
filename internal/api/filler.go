@@ -24,6 +24,17 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.listFiller)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "filler-pool", Method: http.MethodGet, Path: "/v1/filler/pool",
+		Summary: "Catalog-wide filler health",
+		Description: "How well the catalog can fill breaks across the whole install (§10 V35) — the Filler page's pool strip. " +
+			"Counts what exists (clips, commercials, duration-eligible, untagged) and lists every live channel's coverage, WORST FIRST. " +
+			"The per-channel answers are the SAME `Coverage` computation `/v1/channels/{id}/filler/coverage` returns, called once per channel, " +
+			"so this page and the channel page cannot disagree — there is no aggregate ladder to drift from the real one. " +
+			"Read-only, so any authenticated user may call it.",
+		Tags: []string{"filler"},
+	}, RoleMember), s.fillerPool)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/{id}",
 		Summary: "Edit a clip's tags", Description: "Admin only.", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)
@@ -42,7 +53,7 @@ func (s *Server) registerFiller(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
-		Summary: "Download clips into the drop-folder (admin; loomarr:filler image only)",
+		Summary: "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
 		Tags:    []string{"filler"},
 	}, RoleAdmin), s.ingestFiller)
 
@@ -262,6 +273,12 @@ func (s *Server) syncFiller(ctx context.Context, _ *struct{}) (*syncFillerOutput
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
 	total, added, updated, pruned, err := s.filler.Sync(ctx)
+	// ⚠ A switched-off drop-folder is not a failure, and must not be reported as one. Left as a
+	// 502 it reads "your media server is broken" — sending the operator to check a connection
+	// that is fine — when the true answer is a switch they flipped themselves, on this page.
+	if errors.Is(err, filler.ErrSourceDisabled) {
+		return nil, errSourceDisabled()
+	}
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't sync filler",
 			"Loomarr couldn't sync the filler catalog from your media server. Check its connection in Settings and try again.", err)
@@ -323,11 +340,13 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	}
 	jobID, err := s.filler.Ingest(ctx, in.Body.URLs)
 	if errors.Is(err, ErrIngestUnavailable) {
-		// NOT feature_not_configured: no setting can open this gate. The message names
-		// the actual remedy (a different image), because pointing an operator at
-		// Settings for something Settings cannot fix is the dead end §7 warns about.
+		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
+		// used to say "run the loomarr:filler image" — that variant no longer exists (the
+		// single image always ships the tooling, §16), so the remedy it named was a dead
+		// end of exactly the kind §7 warns about. Unavailable now means a degraded
+		// install, and the message says what an operator can actually check.
 		return nil, errConflict("Downloads aren't available here",
-			"This build has no download tooling. Run the loomarr:filler image to download clips in-app.")
+			"This install can't run the download tooling. The official image ships it; a custom build may be missing it, or INGEST_YTDLP_PATH may point somewhere wrong.")
 	}
 	if err != nil {
 		return nil, err

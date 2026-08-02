@@ -159,8 +159,8 @@ func TestFeatures_IngestNeedsBothToolsPresent(t *testing.T) {
 	if svc(paths, "/bin/ffmpeg").Features().Ingest {
 		t.Error("ffmpeg without yt-dlp → ingest must be off")
 	}
-	// Both present — the loomarr:filler image.
+	// Both present — the normal case on the shipped image.
 	if !svc(paths, "/bin/yt-dlp", "/bin/ffmpeg").Features().Ingest {
-		t.Error("both tools present → ingest must be on (this is loomarr:filler)")
+		t.Error("both tools present → ingest must be on")
 	}
 }
