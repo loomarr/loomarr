@@ -618,7 +618,7 @@ const FillerPage = () => {
               description={
                 filtered
                   ? "Try a wider filter, or clear the search."
-                  : "Anything that lands in the filler folder shows up here on its own. Drop files in, or let Discover fetch them."
+                  : "Anything that lands in the filler folder shows up here on its own. Drop files in, or ask Loomarr to pull some."
               }
               {...(filtered
                 ? {
@@ -633,11 +633,22 @@ const FillerPage = () => {
                         }),
                     },
                   }
-                : // The mock's empty state offers "Find clips" rather than only describing
-                  // the folder — an empty catalog is exactly when an operator needs the way
-                  // OUT of it, and the tab is otherwise a thing they have to notice.
+                : // An empty catalog is exactly when an operator needs the way OUT of it, so the
+                  // empty state carries the same action the health strip does.
+                  //
+                  // ⚠ It used to read "Find clips" and navigate to `tab: "discover"` — a tab this
+                  // phase RETIRED. `validateSearch` drops the unknown value, so the button landed
+                  // back on the empty catalog it was offered from: a control that looked like the
+                  // way out and did nothing. Two independent reviewers found it, which is the
+                  // useful lesson — deleting a destination is not done until every route TO it is
+                  // gone, and a nav target is not type-checked.
                   isAdmin
-                  ? { action: { label: "Find clips", onClick: () => setFilters({ tab: "discover" }) } }
+                  ? {
+                      action: {
+                        label: "Propose a pull",
+                        onClick: () => proposePull.mutate({ data: {} }),
+                      },
+                    }
                   : {})}
             />
           ) : (

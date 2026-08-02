@@ -81,6 +81,16 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ⚠ Guarded even though a nil store is currently unreachable here: `liveConfig` is nil
+	// exactly when the store is (both are built only inside `if st != nil`), so the check above
+	// already 404s a store-less boot. That coupling is true by construction today and stated
+	// nowhere — every sibling handler guards the store directly, and relying on a second
+	// variable's nilness is how the next refactor turns a 404 into a panic.
+	if s.store == nil {
+		http.NotFound(w, r)
+		return
+	}
+
 	// ⚠ The catalog is consulted BEFORE the filesystem, and it is a second gate rather than a
 	// convenience. Without it this route serves any allowlisted file anywhere under a folder
 	// the operator also uses for their own media; with it, the only reachable files are rows

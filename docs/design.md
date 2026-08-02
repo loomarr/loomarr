@@ -963,7 +963,9 @@ Between "a file arrived" and "a clip the scheduler can place" there is work only
 
 ### Sources can be switched off
 
-The **drop-folder** and each **remote collection** can be **disabled**. A disabled source is not scanned, not searched, and not downloaded from.
+The **drop-folder** and each **remote collection** can be **disabled**. A disabled source is **not scanned**, and **cannot enter a pull** — neither when one is composed nor when one is approved, which is re-checked at the commit point because a source can be switched off while a pull sits in the queue.
+
+⚠ **What the switch does NOT bind, deliberately: an admin's own hands.** Keyword discovery searches the Archive globally rather than per-source, and `POST /v1/filler/ingest` takes a URL the operator typed. Both are the *single-item direct* path this section already carves out — an admin acting deliberately, one item at a time, is the person the gate exists to defer to (§7). *(An earlier draft of this paragraph claimed a disabled source was "not searched, and not downloaded from" full stop. That was never true of those two routes and was not going to become true, because neither is scoped to a source; the claim is narrowed rather than the routes gated.)*
 
 ⚠ **Clips already in the catalog stay.** Disabling a source withdraws it from *future* work; it is not a delete, and it must never look like one. This is enforced at the scan and fetch sites rather than by hiding the source in the UI — a toggle that only dims a row is a claim the system does not honour.
 
@@ -1652,8 +1654,6 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
 | `FILLER_STARTER_COLLECTION` | the archive.org collection the **starter pack** lists on a fresh install (§10). A curated default, not a hardcoded truth: point it at your own collection, or **set it empty to turn the pack off entirely**. Listing only — nothing downloads without the operator keeping a row. ⚠ **From V35 this seeds a pull** rather than driving its own flow, so the "nothing downloads" property is now enforced by the approval gate instead of by a UI convention |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
-| `FILLER_AUTOFILE_MIN_CONFIDENCE` | `0.8` — a downloaded clip whose tags score at or above this is **filed automatically**; below it, the clip waits in Filler → Incoming with its guess, the score, and the reason (§10 V35). ⚠ **Raising this does not improve tagging, it enlarges the review queue** — it trades the operator's attention for the chance of a wrong tag, so the honest framing on the Settings row is "how much do you want to check?" |
-| `FILLER_AUTOFILE_DROP_BELOW` | `0.25` — a clip Loomarr cannot identify at all is dropped rather than queued (§10 V35). A queue full of things nobody can identify is a queue nobody reads. `0` keeps everything |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (CLAUDE.md do-nots). Full mechanics: `config-design.md`.

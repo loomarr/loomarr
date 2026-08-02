@@ -87,9 +87,55 @@ alone leaves the control announcing no state; `aria-checked` is explicit.
   general rule: **a mock is authoritative for what a screen SHOWS, not for deleting a working
   interaction it happens not to draw.**
 - **Sources: per-source inline search and "Add a source" UI.** The routes exist
-  (`POST /v1/filler/sources`, `GET /v1/filler/discover`); nothing on the tab calls them yet, so
-  discovery is currently reachable by API only.
+  (`POST` / `DELETE /v1/filler/sources`, `GET /v1/filler/discover`); nothing on the tab calls
+  them, so all three are **API-only** for now. ⚠ `DiscoverPanel` was **deleted** rather than
+  left orphaned — the redesigned per-source search is a different shape (a result row carries
+  `date · duration · quality` and a *Queue download*), so it was not reusable.
+- **The pull composer is a stub, and says so.** One plan row per enabled source, a constant
+  `why`, `estimateClips: 0`, and the operator's `note` is **stored but never reaches `Ingest`**.
+  A real forecast needs an upstream search per row at propose time. The gate around it is
+  complete; what it proposes is not yet clever.
+- **`filler.starter_collection` is declared and read by nothing** — the declared-but-unconsumed
+  defect V12's row says blocked that phase. It predates V35 (`03116f0`) but is now §10's
+  business, since §10 says it seeds a pull.
 - **Live verification** on the maintainer's stack.
+
+### Review findings, fixed (2026-08-01)
+
+`/code-review` over the branch, two axes in parallel. **Every safety property verified good** —
+no second ladder, a pending pull writes only, the tombstone holds end to end, no test neutered.
+Six real defects, all fixed here:
+
+1. ⚠ **A dead control, found INDEPENDENTLY BY BOTH AXES** — the empty catalog's "Find clips"
+   navigated to `tab: "discover"`, a tab this phase retired. `validateSearch` drops the unknown
+   value, so the button landed back on the empty catalog it was offered from. **Deleting a
+   destination is not done until every route TO it is gone, and a nav target is not
+   type-checked.** It is now *Propose a pull*, calling the same mutation the strip does.
+2. **§15 declared `FILLER_AUTOFILE_MIN_CONFIDENCE` / `_DROP_BELOW`; neither is in the registry** —
+   against §15's own rule that a setting not in the registry does not exist, and against §10 four
+   paragraphs earlier saying autofile is not built. Removed from the doc.
+3. **§10 over-claimed the source switch** ("not scanned, not searched, and not downloaded from").
+   Only the scan and the pull path are gated, and the other two routes are *not source-scoped* —
+   keyword discovery searches the Archive globally, and ingest takes a URL the operator typed.
+   Both are the ratified single-item-direct path. The claim is narrowed rather than the routes
+   gated.
+4. **Migration `00026`'s comment named `filler.source.library.enabled`**, a key dropped later in
+   the same phase once implementing it found no scan to gate — a permanent contradiction in a
+   forward-only file. Corrected in both dialects (comment only; no schema change).
+5. **`DiscoverPanel` was orphaned** — barrel-exported, storied, baselined, rendered nowhere: the
+   exact "built and imported by nothing" state the reachability suite exists to catch. Deleted
+   with its 10 baselines.
+6. **Three stories hand-rolled DTOs**, against `frontend-design.md` §5.1b. Moved to
+   `@loomarr/fixtures`; the migration was content-preserving, which the visual suite proved by
+   moving **zero** of their baselines.
+
+Plus a defensive nil-store guard in `fillermedia.go`. ⚠ Not a live panic — `liveConfig` is nil
+exactly when the store is, so the handler already 404s — but that coupling was true by
+construction and stated nowhere, and every sibling guards the store directly.
+
+⚠ **One reviewer finding was MISATTRIBUTED and is recorded as such**: the "scope creep" of the
+starter pack and the `filler.dir` default flip both come from `03116f0`, which predates V35. The
+Spec axis reviewed `main...HEAD`, which includes six earlier commits on this branch.
 
 Gate at `8b87703`: `make check` GREEN (`-race`) · `test-pg` GREEN (`00026`–`00028` conformant on
 both backends) · `make fe` GREEN (1018 tests) · **`fe-visual` 658 passed, 26 NEW baselines and
