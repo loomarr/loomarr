@@ -82,11 +82,24 @@ audience · duration · `usedLine`.
 
 | Shipped today | New |
 | --- | --- |
-| Click-to-cycle era/audience/category on the chips | Read-only chips + the **Edit tags** select editor |
+| Click-to-cycle era/audience/category on the chips | Read-only chips + the **Edit tags** select editor — ⚠ **NOT ADOPTED**, see below |
 | **Pin** and **block** as two per-channel buttons | One checkbox set per channel + `fitNote` + **Back to automatic** — an include-set override, not two flags |
 | `AI-TAGGED` badge | **absent** |
 | `NO SIDECAR` | `NO METADATA` |
 | `THUMBNAIL · SIDECAR` | `THUMBNAIL` |
+
+⚠ **The tag-editing swap is a ratified divergence from the mock** (maintainer, 2026-08-01).
+Click-to-cycle **stays**; the select editor is not being built.
+
+The reasoning, recorded because a future reader will otherwise see the mock and "fix" the code
+back: cycling is faster for the common case, which is one wrong tag on one clip. The select
+editor's real advantage is setting several fields at once across several clips — and V35's **bulk
+bar** now does exactly that, from a selection, which the mock's per-card editor never could. So
+the redesign's own new affordance is what makes its per-card one unnecessary.
+
+The general rule this is an instance of: **a mock is authoritative for what a screen SHOWS, not
+for deleting a working interaction it happens not to draw.** `design/README.md` already says
+`docs/design.md` wins on behaviour; this is the same precedence applied to an interaction.
 
 ## Incoming tab — new
 

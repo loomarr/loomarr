@@ -79,9 +79,13 @@ alone leaves the control announcing no state; `aria-checked` is explicit.
 
 - **1.7 per-channel include-set override + `fitNote`** — the card's pin/block still uses the
   shipped dialog rather than the mock's checkbox-set override.
-- **The card's cycle → "Edit tags" swap.** ⚠ This one is a *deletion of working code* on the
-  strength of a mock: inline retagging shipped two commits before the redesign arrived. Deferred
-  for a maintainer's read rather than done quietly.
+- ~~**The card's cycle → "Edit tags" swap.**~~ **DECIDED: not doing it** (maintainer,
+  2026-08-01). Click-to-cycle stays. It is faster for the common case (one wrong tag on one
+  clip), and the select editor's real advantage — several fields across several clips — is what
+  V35's **bulk bar** now covers from a selection, which a per-card editor never could. Recorded
+  in `design/FILLER-DELTA-2026-08-01.md` so nobody "fixes" the code back to the drawing. ⚠ The
+  general rule: **a mock is authoritative for what a screen SHOWS, not for deleting a working
+  interaction it happens not to draw.**
 - **Sources: per-source inline search and "Add a source" UI.** The routes exist
   (`POST /v1/filler/sources`, `GET /v1/filler/discover`); nothing on the tab calls them yet, so
   discovery is currently reachable by API only.
