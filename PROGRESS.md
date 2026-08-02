@@ -4,8 +4,8 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V35 — the Filler page as redesigned: backend done, frontend NOT started (2026-08-01).**
-Branch `feat/filler-clip-card-detail`, 6 commits. The design project's prototype was re-fetched
+**V35 — the Filler page as redesigned (2026-08-01).**
+Branch `feat/filler-clip-card-detail`, 14 commits. The design project's prototype was re-fetched
 and the Filler screen had been **rewritten** — 4 tabs → 3, Discover deleted into Sources, a new
 Incoming tab, and filler acquisition behind an **approval gate**. Plan §6.5 specs it; the
 structure is in `design/FILLER-DELTA-2026-08-01.md`.
@@ -45,20 +45,57 @@ for keys whose declared default is true.
 double-approve, an aggregate with its own ladder, a gate placed below the scan, an upsert that
 flips the switch, and an allowlist replaced by a mime lookup each fail a named test.
 
-**NOT DONE — the phase is incomplete and the mock is not yet reflected in the UI:**
+**Also shipped (frontend + the two remaining backend items):**
 
-- **1.4 Incoming read-model** (asks + reels) — not started
-- **1.6 Bulk catalog ops** — ⚠ blocked on a design answer first: `clips` is a **synced cache**
-  (`00013`), so "Remove from catalog" without removing the file means the clip returns on the next
-  scan. Tombstone or delete-the-file is a decision, not a code choice
-- **1.7 Per-channel include-set override + `fitNote`** — not started
-- **Step 3, the entire frontend** — `/filler` still renders `Catalog · Discover · Sources`. None of
-  the three tabs, the pool strip, the card rework, or the Queue's `FILLER PULL` card exists yet
-- **Step 4 live verification** — not run
+| | |
+| --- | --- |
+| **1.4 Incoming** | `GET /v1/filler/incoming` + the tab. ⚠ **No confidence score** — the mock draws a bar per row; the tagger records neither a score nor a rationale, so each row carries the REASON it is waiting, derived from real state. `filler.autofile.*` is the knob that would need one and is not built |
+| **1.6 Bulk ops** | The blocked decision, answered: **a tombstone**. Migration `00028`. Not a row delete (`clips` is a synced cache, so the next scan puts it back) and not a file delete (nothing here deletes an operator's media). The UI says "Remove from catalog" and the files stay |
+| **Step 3** | Three tabs under the pool strip; Discover **retired**; bulk selection; the `FILLER PULL` card on the Queue; source switches |
 
-Gate at `c5a273f`: `make check` GREEN · `test-pg` GREEN (`00026`+`00027` conformant on both
-backends) · `make fe` GREEN · `openapi-verify` / `config-docs` / `retired-verify` no drift.
-**`fe-visual` and `e2e` not re-run** — no frontend changed, so no baseline moved.
+⚠ **Discover is gone as a tab**, and its query state was deleted rather than left wired to
+nothing. The ingest panel moved to Incoming, the tab about how clips *arrive*. An old
+`?tab=discover` bookmark falls back to Catalog.
+
+⚠ **The reachability suite earned its keep again**: retiring a tab broke four assertions pointing
+at `?tab=discover` — exactly the "a tab nobody can navigate to passes as reachable" failure it
+exists for. It now also asserts the health strip is present, since a strip has no nav entry.
+
+**Three defects the tooling caught, each worth the note:**
+
+1. `pluralize()` already emits the count, so the first draft printed numbers twice ("of 90 90
+   commercials") — and I repeated it in a second spot before noticing.
+2. `onConfirmEra` sent a bare `{era}`. The comment **directly above the mutation** warns that
+   `UpdateClipTags` writes all three tag columns unconditionally, so that wipes audience and
+   category.
+3. Two comboboxes named "Audience" on one page (the filter bar already owned the name) — a real
+   ambiguity for anyone on a keyboard, surfaced as "found multiple elements". They are "Set
+   era/audience/category" now, which also separates the two jobs.
+
+Plus an a11y finding: `role="switch"` **replaces** the native checkbox semantics, so `checked`
+alone leaves the control announcing no state; `aria-checked` is explicit.
+
+**NOT DONE, and deliberately so:**
+
+- **1.7 per-channel include-set override + `fitNote`** — the card's pin/block still uses the
+  shipped dialog rather than the mock's checkbox-set override.
+- **The card's cycle → "Edit tags" swap.** ⚠ This one is a *deletion of working code* on the
+  strength of a mock: inline retagging shipped two commits before the redesign arrived. Deferred
+  for a maintainer's read rather than done quietly.
+- **Sources: per-source inline search and "Add a source" UI.** The routes exist
+  (`POST /v1/filler/sources`, `GET /v1/filler/discover`); nothing on the tab calls them yet, so
+  discovery is currently reachable by API only.
+- **Live verification** on the maintainer's stack.
+
+Gate at `8b87703`: `make check` GREEN (`-race`) · `test-pg` GREEN (`00026`–`00028` conformant on
+both backends) · `make fe` GREEN (1018 tests) · **`fe-visual` 658 passed, 26 NEW baselines and
+zero modified**, verified by re-running *without* `--update-snapshots` · `make e2e` 7/7 ·
+`openapi-verify` / `config-docs` / `retired-verify` no drift.
+
+⚠ **A pre-existing flake, seen once:** `TestGuide_GapsArePreservedNotFiltered` failed with a 1ms
+timeline hole (`block 1 starts at …240 but 0 stopped at …239`) and passed on five consecutive
+re-runs. Unrelated to this phase — no guide code changed — but recorded so the next person to see
+it knows it is not new.
 
 **V12 — System → Backup + About (2026-07-29).** The two sub-tabs V9 deliberately left out,
 plus the scheduled backup job behind them. The phase could not start until a doc conflict was
@@ -1576,10 +1613,11 @@ accompanies it.
 Watch player, which arrived in the same import and is blocked on playout emitting raw MPEG-TS —
 nothing a `<video>` element can play).
 
-**Next up: V35 — the Filler page as redesigned** (**ACTIVE, backend done / frontend not started**;
-plan §6.5). The V34 note below is history; its own row records completion. ⚠ Read the V35 block at
-the top of this file before picking the work up — three of its items are blocked or decided
-(`design/` needs a maintainer export, and 1.6 needs a remove-from-catalog answer before any code).
+**Next up: V35's remainder, then V36** (plan §6.5). V35 shipped its backend and the page; what is
+left is listed by name in the block at the top of this file — **1.7**, the card's cycle→Edit-tags
+swap (⚠ a deletion of working code, held for a maintainer's read), and the Sources tab's search /
+add-a-source UI. `design/` still needs a maintainer export before the mock renders this screen.
+The V34 note below is history; its own row records completion.
 
 *Historical, kept for its findings:* **V34 — compilation splitting + per-clip metadata** (plan §6.4).
 The whole `### Filler` table has now shipped, and V33's discovery surfaced what V34 exists for:
