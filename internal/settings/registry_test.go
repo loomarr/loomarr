@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,60 @@ func TestRegistry_BuildsCleanly(t *testing.T) {
 		}
 		if _, err := s.parse(raw); err != nil {
 			t.Errorf("%s: declared default %q does not parse: %v", s.Key, raw, err)
+		}
+	}
+}
+
+// Every declared default must RESOLVE to the Go type its Kind promises, so a typed
+// accessor gets a real value on a fresh install with nothing stored and nothing in env.
+//
+// ⚠ This asserts the resolved type, NOT the declared one. A string default is a
+// supported declaration style — defaultResolved() parses it, which is why 19 keys
+// declare `Default: "24h"` and still resolve to a time.Duration. Asserting the
+// declaration instead would flag all of them and prove nothing about what callers get.
+//
+// ⚠ And it is the assertion TestRegistry_BuildsCleanly structurally cannot make: that
+// test routes every default through defaultRaw(), converting to string BEFORE parsing,
+// so it can only catch a default malformed as text (`Default: "yes"` on a bool) — never
+// one whose parsed type disagrees with its Kind. The failure it misses is silent: a
+// typed accessor's assertion fails and it answers its fallback, so the setting reads as
+// its zero value no matter what is declared. That is the rolling-window horizon bug
+// recorded on defaultResolved, one layer up.
+func TestRegistry_DefaultsResolveToTheirKind(t *testing.T) {
+	svc, err := New(context.Background(), NewRegistry(), fakeLoader{m: map[string]string{}}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// A fresh install: nothing stored, nothing pinned, so every key lands on its default.
+	svc.env = func(string) (string, bool) { return "", false }
+
+	for _, s := range NewRegistry().All() {
+		if s.Default == nil {
+			continue
+		}
+		v := svc.Resolve(s.Key).Value
+		if v == nil {
+			continue // an optional with no default value to type-check
+		}
+		var ok bool
+		switch s.Kind {
+		case KindBool:
+			_, ok = v.(bool)
+		case KindInt:
+			_, ok = v.(int)
+		case KindDuration:
+			_, ok = v.(time.Duration)
+		case KindString, KindEnum, KindSecret, KindURL, KindCron:
+			_, ok = v.(string)
+		case KindStringList:
+			_, ok = v.([]string)
+		default:
+			t.Errorf("%s: unknown kind %q", s.Key, s.Kind)
+			continue
+		}
+		if !ok {
+			t.Errorf("%s: Kind %q resolves to %#v (%T) — a typed read asserts and falls back to the zero value",
+				s.Key, s.Kind, v, v)
 		}
 	}
 }

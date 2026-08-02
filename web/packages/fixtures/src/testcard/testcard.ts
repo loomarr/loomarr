@@ -1,5 +1,7 @@
 import type {
   ClipDTO,
+  DiscoveredClip,
+  FillerSourceDTO,
   GuideChannelTimeline,
   IncomingAskDTO,
   IncomingReelDTO,
@@ -561,13 +563,141 @@ const guideChannels: GuideChannelTimeline[] = [
   },
 ];
 
+// --- V35: the Sources tab ---
+
+// The three derived rows the read-model always returns (§10). ⚠ Not a table: the server
+// derives these from `filler.dir` plus the library connection, which is why `library` is not
+// switchable — nothing scans a media-server library for clips, so a toggle would change
+// nothing — and why an unconfigured row is still a row.
+const fillerSources: FillerSourceDTO[] = [
+  {
+    id: "folder",
+    enabled: true,
+    switchable: true,
+    removable: false,
+    kind: "folder",
+    target: "/data/filler",
+    detail: "watched directly — new files appear on the next pass",
+    count: 412,
+    configured: true,
+    fetchable: true,
+  },
+  {
+    id: "library",
+    enabled: true,
+    switchable: false,
+    removable: false,
+    kind: "library",
+    target: "media server filler library",
+    detail: "scanned by the media server",
+    count: 6,
+    configured: true,
+    fetchable: true,
+  },
+  {
+    id: "remote",
+    enabled: true,
+    // A container for the registered collections, each of which carries its own switch.
+    switchable: false,
+    removable: false,
+    kind: "remote",
+    target: "downloads",
+    detail: "fetches clips into the watched folder from a URL you give it",
+    count: 0,
+    configured: false,
+    fetchable: false,
+  },
+];
+
+// The same three rows with collections registered under the `remote` one.
+//
+// ⚠ A SEPARATE fixture rather than `remotes` on the one above, deliberately: adding them there
+// would change what every existing FillerSources story renders, churning baselines for a change
+// that is supposed to be a pure move. The nesting is V33's model — the rows describe
+// CONFIGURATION (including "you could set this up but have not"), and a flat list of things
+// that EXIST cannot express that.
+const fillerSourcesWithRemotes: FillerSourceDTO[] = fillerSources.map((s) =>
+  s.kind === "remote"
+    ? {
+        ...s,
+        configured: true,
+        count: 137,
+        remotes: [
+          {
+            id: "src-classic-tv",
+            enabled: true,
+            label: "Classic TV Commercials",
+            uri: "classic_tv_commercials",
+            lastFetchedAt: "2026-07-30T09:14:00Z",
+          },
+          // ⚠ Switched off AND never fetched: the row must read as "stopped fetching", not
+          // "gone", and render "never" rather than an epoch date nobody meant.
+          {
+            id: "src-vintage-ads",
+            enabled: false,
+            label: "Vintage Ad Reels",
+            uri: "vintage_ad_reels",
+          },
+        ],
+      }
+    : s,
+);
+
+// archive.org search results, in the shapes the live API really returns.
+//
+// ⚠ `thumbnailUrl` is an INLINE data: URI, never the real https://archive.org/services/img/<id>
+// these carry in production. A remote URL in a fixture bypasses the visual suite's stubbed
+// fetch and races the snapshot, which is a flaky baseline rather than a network policy
+// question — the same reason `thumbnailedClip` above is a 2×1 PNG.
+//
+// ⚠ The variety is deliberate and matches the pinned Go fixture: one row has everything, one
+// has NO date, and one has neither duration nor height. Absence is the common case — archive
+// has not probed every item — and a row that renders "0:00" for an unprobed clip claims it is
+// empty. A uniform fixture would let that bug pass here and fail on the first real search.
+const discoveredClips: DiscoveredClip[] = [
+  {
+    id: "kelloggs-bran-flakes",
+    title: "Kellogg's Bran Flakes — 1989 television commercial",
+    url: "https://archive.org/details/kelloggs-bran-flakes",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+    date: "1989-01-01T00:00:00Z",
+    year: 1989,
+    durationMs: 10_800,
+    height: 720,
+  },
+  {
+    id: "saturday-morning-cartoons-v-110",
+    title: "Saturday Morning Cartoons Vol. 110 (full block)",
+    url: "https://archive.org/details/saturday-morning-cartoons-v-110",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+    // No date: 2 of the 5 pinned docs declare none.
+    durationMs: 11_032_100,
+    height: 360,
+  },
+  {
+    id: "youtube-IaEBrNaHfUs",
+    title: "1980s cereal commercial compilation",
+    url: "https://archive.org/details/youtube-IaEBrNaHfUs",
+    thumbnailUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+    date: "2015-09-06T00:00:00Z",
+    // ⚠ Neither duration nor height: archive never probed this item's files. The row must
+    // render "—", never "0:00" or "0p".
+  },
+];
+
 export {
   aiTaggedClip,
   bumperClip,
   cleanReel,
   compilationReel,
+  discoveredClips,
   emptyPool,
   fallbackCardEntry,
+  fillerSources,
+  fillerSourcesWithRemotes,
   guessedEraAsk,
   guideChannels,
   guideFrom,

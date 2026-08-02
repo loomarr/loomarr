@@ -63,10 +63,23 @@ func (s *Server) registerFiller(api huma.API) {
 		Description: "Admin only (§10, V33). Searches archive.org by keyword and returns candidates " +
 			"WITHOUT downloading anything — the operator is deciding what to fetch, and making them " +
 			"download to find out would defeat the point. Results carry only what the source's search " +
-			"index knows: no duration, no tags, and no licence (see below). Feed an id to POST " +
-			"/v1/filler/ingest to actually fetch it. Synchronous: one upstream request, no job to poll.",
+			"index knows: no tags, no licence (see below), and no duration or quality — those cost a " +
+			"metadata call per row, so ask GET /v1/filler/discover/stats for the rows you are showing. " +
+			"Feed an id to POST /v1/filler/ingest to actually fetch it. Synchronous: one upstream " +
+			"request, no job to poll.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.discoverFiller)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "discover-filler-stats", Method: http.MethodGet, Path: "/v1/filler/discover/stats",
+		Summary: "Runtime and quality for specific search results",
+		Description: "Admin only (§10, V35). Fills in the duration and quality a search deliberately " +
+			"omits. ⚠ This is ONE UPSTREAM CALL PER ID and archive.org is slow (median 1.8s, and it " +
+			"gets slower if asked for more at once), so send only the ids currently on screen — a " +
+			"full page of 25 measured 22.6s. An id archive.org cannot answer for is ABSENT from the " +
+			"response rather than zero: 0 would be indistinguishable from a genuinely empty clip.",
+		Tags: []string{"filler"},
+	}, RoleAdmin), s.discoverFillerStats)
 
 	// Compilation splitting (§10, V34). Propose is a job (detection runs minutes
 	// per file); the proposal read and the confirm are synchronous. All admin:
@@ -434,6 +447,63 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	}
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
+	return out, nil
+}
+
+type discoverStatsInput struct {
+	// IDs are the search-result identifiers to describe, COMMA-SEPARATED (`?id=a,b,c`).
+	//
+	// ⚠ Not repeated params. Huma disables `explode` for query fields by default ("parsing is
+	// much easier if we use comma-separated values"), so `?id=a&id=b` silently yields ONE
+	// element — and `maxItems` then never fires, because the slice is never long. Both were
+	// caught by a test asserting the handler sees exactly what was sent.
+	//
+	// ⚠ Capped, and the cap is the point: each id is one upstream call, so an uncapped list is
+	// a way to make Loomarr hammer archive.org on someone else's behalf. 25 matches the page.
+	IDs []string `query:"id" required:"true" maxItems:"25" doc:"Comma-separated result ids to describe"`
+}
+
+type discoverStatsOutput struct {
+	Body struct {
+		// Stats is keyed by result id. ⚠ An id archive.org could not answer for is ABSENT,
+		// never present-with-zeros: 0 renders as "0:00", which claims a clip is empty, and
+		// "unknown" is the only honest answer for an item it never probed.
+		Stats map[string]DiscoveredClipStats `json:"stats"`
+	}
+}
+
+// discoverFillerStats fills in the duration + quality a search omits (§10, V35).
+//
+// ⚠ **A separate route because it is a separate COST, measured against the live API.** A
+// listing is one Solr request; these two fields are one `/metadata/<id>` call each — 22.6s for
+// a page of 25, with a per-call median of 1.78s. Widening the fan-out makes it worse (12 and 25
+// concurrent both measured 25s against 6's 15.6s), so archive.org is throttling and the latency
+// is not ours to tune away. Asking only for rows a person is looking at is the fix.
+func (s *Server) discoverFillerStats(ctx context.Context, in *discoverStatsInput) (*discoverStatsOutput, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.filler == nil {
+		return nil, errNotImplemented("Filler isn't set up",
+			"Enable filler in Settings before searching for clips to add.")
+	}
+	if len(in.IDs) == 0 {
+		return nil, apiErr(http.StatusUnprocessableEntity, "Nothing to describe",
+			"Send at least one id.")
+	}
+
+	stats, err := s.filler.EnrichDiscovered(ctx, in.IDs)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't read clip details",
+			"archive.org didn't answer. Try again in a moment.", err)
+	}
+
+	out := &discoverStatsOutput{}
+	// Non-nil so a client can index without guarding; "nothing known" is a real answer.
+	out.Body.Stats = stats
+	if out.Body.Stats == nil {
+		out.Body.Stats = map[string]DiscoveredClipStats{}
+	}
 	return out, nil
 }
 

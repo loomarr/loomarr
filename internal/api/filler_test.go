@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -34,6 +35,11 @@ type fakeFiller struct {
 	// never lands on the keyword search (and vice versa) — a single log would pass either
 	// way round.
 	collections []string
+	// enriched records the ids EnrichDiscovered was asked for, so a test can prove the
+	// handler asks for exactly what the client sent — the cost is per id, so an extra one
+	// is a real upstream request nobody wanted.
+	enriched  []string
+	enrichErr error
 	// V34 split knobs.
 	splits           []fakeSplitCall
 	splitUnavailable bool
@@ -77,6 +83,25 @@ func (f *fakeFiller) DiscoverCollection(_ context.Context, ref string, limit int
 	return []api.DiscoveredClip{
 		{ID: "pack-1", Title: "Starter reel", Year: 1985, URL: "https://archive.org/details/pack-1"},
 	}, 667, nil
+}
+
+// EnrichDiscovered answers for SOME ids and not others, deliberately. An item archive.org has
+// never probed has no duration, and a fake that answered for everything would let a handler
+// (or a UI) that renders 0 as "0:00" pass — which is the whole failure this split-out route
+// exists around.
+func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
+	f.enriched = append(f.enriched, ids...)
+	if f.enrichErr != nil {
+		return nil, f.enrichErr
+	}
+	out := map[string]api.DiscoveredClipStats{}
+	for _, id := range ids {
+		if id == "unprobed" {
+			continue // absent, never zeroed
+		}
+		out[id] = api.DiscoveredClipStats{DurationMS: 91_090, Height: 960}
+	}
+	return out, nil
 }
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
@@ -501,6 +526,93 @@ func TestDiscoverFiller_UpstreamFailureIsABadGateway(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/filler/discover?q=cereal", adminToken, "")
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+// --- per-result stats, fetched on demand (V35) ---
+
+func decodeDiscoverStats(t *testing.T, resp *http.Response) map[string]api.DiscoveredClipStats {
+	t.Helper()
+	var body struct {
+		Stats map[string]api.DiscoveredClipStats `json:"stats"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body.Stats
+}
+
+// The route exists because a SEARCH cannot afford these fields: one upstream call per row,
+// measured at 22.6s for a page of 25. The handler must ask for exactly what it was sent.
+func TestDiscoverFillerStats_AsksForExactlyTheIdsRequested(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a,b", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	stats := decodeDiscoverStats(t, resp)
+
+	if len(ff.enriched) != 2 || ff.enriched[0] != "a" || ff.enriched[1] != "b" {
+		t.Errorf("service saw %v, want exactly [a b] — each extra id is a real upstream request", ff.enriched)
+	}
+	if stats["a"].DurationMS == 0 || stats["a"].Height == 0 {
+		t.Errorf("stats[a] = %+v, want a runtime and a height", stats["a"])
+	}
+}
+
+// ⚠ The load-bearing contract. An item archive.org never probed is ABSENT from the map, never
+// present-with-zeros: 0 renders as "0:00", which claims the clip is empty, and "unknown" is the
+// only honest answer. The fake withholds `unprobed` precisely so this can be asserted.
+func TestDiscoverFillerStats_OmitsWhatItCouldNotLearnRatherThanZeroingIt(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	stats := decodeDiscoverStats(t,
+		do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=known,unprobed", adminToken, ""))
+
+	if _, present := stats["unprobed"]; present {
+		t.Errorf("an unprobed id came back as %+v — absent is the only honest answer, since a "+
+			"client renders 0 as \"0:00\" and claims the clip is empty", stats["unprobed"])
+	}
+	if _, present := stats["known"]; !present {
+		t.Error("the probed id is missing — withholding everything is not the fix either")
+	}
+}
+
+func TestDiscoverFillerStats_UpstreamFailureIsABadGateway(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.enrichErr = errors.New("dial tcp: connection refused")
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a", adminToken, "")
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+// ⚠ The cap is a real defence, not tidiness: each id is one outbound request, so an uncapped
+// list is a way to make Loomarr hammer archive.org on someone else's behalf.
+func TestDiscoverFillerStats_CapsTheIdList(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+
+	ids := make([]string, 40)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("item-%d", i)
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id="+strings.Join(ids, ","), adminToken, "")
+
+	if resp.StatusCode == http.StatusOK {
+		t.Errorf("40 ids were accepted — that is 40 upstream requests from one client call")
+	}
+	if len(ff.enriched) != 0 {
+		t.Errorf("service saw %d ids; an over-cap request must be refused BEFORE any upstream call", len(ff.enriched))
+	}
+}
+
+func TestDiscoverFillerStats_IsAdminOnly(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/discover/stats?id=a", memberToken, ""); resp.StatusCode == http.StatusOK {
+		t.Error("a member could spend upstream requests")
 	}
 }
 

@@ -15,6 +15,7 @@ import {
   FillerSources,
   IncomingPanel,
   PoolHealth,
+  SourceSearch,
 } from "@/components/loomarr";
 import {
   Button,
@@ -169,6 +170,55 @@ const FillerPage = () => {
     },
   });
 
+  // Searching a source for clips to add (V35). ⚠ `submitted` is a SEPARATE state from what the
+  // operator is typing: the query runs on submit, not on keystroke. Each search costs archive.org
+  // one Solr request plus a metadata call per row, so firing per character would be both slow and
+  // rude — and the results would flicker under the cursor.
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const discover = fillerApi.useDiscoverFiller(
+    { q: submittedQuery },
+    // Admin-only on the server, and only once something has actually been submitted — an
+    // enabled query with an empty q would 422 on mount.
+    { query: { enabled: isAdmin && submittedQuery.trim().length >= 2 } },
+  );
+
+  // Runtime + quality for the rows on screen (V35).
+  //
+  // ⚠ These are NOT part of the search, and the measurement is the reason: each id is one
+  // `/metadata/<id>` call against archive.org, and a full page of 25 measured 22.6s. So the
+  // rows paint immediately and this fills in for what the operator is actually looking at.
+  //
+  // ⚠ `statIds` only ever GROWS within a result set, and never re-asks for an id it already
+  // holds — the observer fires repeatedly as rows scroll, and re-requesting would spend real
+  // upstream calls on answers already in hand.
+  const [statIds, setStatIds] = useState<string[]>([]);
+  const statsQuery = fillerApi.useDiscoverFillerStats(
+    { id: statIds },
+    { query: { enabled: isAdmin && statIds.length > 0 } },
+  );
+  const discoveredStats = unwrap(statsQuery.data, (b) => b.stats) ?? {};
+
+  // Which results have been queued this session. ⚠ Session state, deliberately NOT derived from
+  // the catalog: a queued download has not landed yet, so the clip it becomes is not in the
+  // catalog to compare against, and the row must still report that the operator already asked.
+  const [queuedIds, setQueuedIds] = useState<string[]>([]);
+  const [queueingId, setQueueingId] = useState<string>();
+  const queueClip = fillerApi.useIngestFiller({
+    mutation: {
+      onSettled: () => setQueueingId(undefined),
+      onSuccess: () => {
+        // ⚠ The id comes from the state set at CLICK time, not from the mutation's variables:
+        // the request body carries a URL, and mapping it back to a row would mean re-deriving
+        // an identity the click already knew.
+        setQueuedIds((prev) => (queueingId ? [...prev, queueingId] : prev));
+        // Downloads land in the drop-folder and appear on the next scan, so the catalog and the
+        // per-source counts both become stale.
+        invalidate();
+      },
+    },
+  });
+
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on
   // the page while a single confirm lands, which reads as the page having frozen.
@@ -317,6 +367,7 @@ const FillerPage = () => {
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
   const sourceRows = unwrap(sourcesQuery.data, (b) => b.sources) ?? [];
+  const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   const filtered = Boolean(q || kind || audience || untagged);
 
@@ -439,7 +490,7 @@ const FillerPage = () => {
           <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />
         </div>
       ) : tab === "sources" ? (
-        <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources">
+        <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
           <FillerSources
             sources={sourceRows}
             total={unwrap(sourcesQuery.data, (b) => b.total) ?? 0}
@@ -454,6 +505,44 @@ const FillerPage = () => {
               toggleSource.error?.detail ?? fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null
             }
           />
+
+          {/* Finding clips is something you do TO a source (V35) — which is why the Discover tab
+              is gone and this lives here. ⚠ Searching downloads nothing; `Queue download` is the
+              only path that fetches, and it goes through the SAME ingest route the manual URL
+              box uses rather than a second downloader. */}
+          <Card className="flex flex-col gap-3 p-4">
+            <h3 className="font-medium text-sm">Find clips</h3>
+            <SourceSearch
+              results={discoveredResults}
+              total={unwrap(discover.data, (b) => b.total) ?? undefined}
+              stats={discoveredStats}
+              // ⚠ De-duplicated HERE, not in the component: the observer reports the visible set
+              // on every scroll, and each id it repeats is a real ~1.8s upstream request.
+              onVisible={(visible) =>
+                setStatIds((prev) => {
+                  const next = visible.filter((id) => !prev.includes(id));
+                  return next.length > 0 ? [...prev, ...next] : prev;
+                })
+              }
+              loadingStats={statsQuery.isFetching ? statIds : []}
+              query={sourceQuery}
+              onQueryChange={setSourceQuery}
+              onSearch={() => {
+                setSubmittedQuery(sourceQuery);
+                // A new search is a new result set: keeping the old ids would ask archive.org
+                // about rows nobody is looking at any more.
+                setStatIds([]);
+              }}
+              onQueue={(clip) => {
+                setQueueingId(clip.id);
+                queueClip.mutate({ data: { urls: [clip.url] } });
+              }}
+              queued={queuedIds}
+              queueing={queueClip.isPending ? queueingId : null}
+              searching={discover.isFetching}
+              error={discover.error?.detail ?? queueClip.error?.detail ?? null}
+            />
+          </Card>
         </div>
       ) : (
         <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">

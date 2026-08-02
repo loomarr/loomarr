@@ -115,6 +115,17 @@ type Server struct {
 	ready ReadyFunc
 
 	liveConfigInt func(key string) int
+	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
+	//
+	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
+	// Kind, so `liveConfig("filler.source.folder.enabled")` killed the request rather than
+	// returning anything a comparison could inspect. A dedicated reader makes the Kind
+	// mismatch impossible to write instead of leaving the string accessor as the only tool.
+	//
+	// It is boolOn, not boolv, deliberately: nil ⇒ true, matching the syncer's own gate and
+	// the declared default. The keys read here answer "why is my catalog empty", so an
+	// unanswerable read must not render the drop-folder as switched off.
+	liveConfigBoolOn func(key string) bool
 	// guide answers now/next from Tunarr's generated guide (§6); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutSessions serves the /playout/ stream routes (§9.1); nil ⇒ they report
@@ -269,6 +280,17 @@ type FillerService interface {
 	// `ref` accepts a full URL, a /details/<id> path, or a bare identifier — the spellings
 	// Ingest already takes, so an operator pasting a URL need not know which form is wanted.
 	DiscoverCollection(ctx context.Context, ref string, limit int) ([]DiscoveredClip, int, error)
+	// EnrichDiscovered fills in duration + quality for specific results, ON DEMAND.
+	//
+	// ⚠ Separate from Discover because it is a DIFFERENT cost, measured: a listing is one
+	// request, while these fields are one `/metadata/<id>` call per row — 22.6s for a page of
+	// 25 against the live API, and worse if the fan-out is widened, because archive.org
+	// throttles. So a client asks only for the rows a person is actually looking at.
+	//
+	// Returns what it learned, keyed by id; an id it could not answer for is simply absent
+	// rather than zero, because 0 means "unknown" to every caller and a map entry saying 0
+	// would be indistinguishable from a genuinely empty clip.
+	EnrichDiscovered(ctx context.Context, ids []string) (map[string]DiscoveredClipStats, error)
 	// Split proposes cuts for a compilation clip (§10, V34). Fire-and-report like
 	// Ingest — detection runs minutes per file, so progress arrives on the SSE bus
 	// as `filler_split` frames and the finished proposal is read back via
@@ -283,9 +305,13 @@ type FillerService interface {
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).
 //
-// ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no duration, no path, no tags —
-// only what the source's search index knows. Reusing ClipDTO would advertise fields that are
-// structurally unavailable at this stage.
+// ⚠ NOT a ClipDTO: nothing has been downloaded, so it has no path and no tags — only what the
+// source knows about it. Reusing ClipDTO would advertise fields that are structurally
+// unavailable at this stage.
+//
+// ⚠ DurationMS and Height are absent from a SEARCH and filled by a follow-up enrich call (V35),
+// so a client must treat them as arriving late rather than as missing. They are on this struct
+// rather than a separate type because a row gains them in place.
 type DiscoveredClip struct {
 	// ID is the source's identifier — what Ingest would be given to fetch it.
 	ID string `json:"id"`
@@ -299,6 +325,38 @@ type DiscoveredClip struct {
 	Year int `json:"year,omitempty"`
 	// URL is the item's page, so an operator can look at it before adding it.
 	URL string `json:"url"`
+	// Date is the source's catalogued date (RFC3339), absent when it declares none.
+	//
+	// ⚠ Carries Year's weak-hint caveat, and the live data shows it: one pinned item is dated
+	// 1996 while archive.org's `publicdate` for it is 2023. Rendered for a human to read;
+	// never used to set a clip's era.
+	Date string `json:"date,omitempty"`
+	// DurationMS is the item's runtime. ⚠ ABSENT means unknown, never zero-length — archive.org
+	// has not probed every item's files, and a client must render "—" rather than "0:00", which
+	// would claim the clip is empty. Costs a per-item metadata call (see clipfetch.enrich).
+	DurationMS int `json:"durationMs,omitempty"`
+	// Height is the best available derivative's vertical resolution, rendered as a quality hint
+	// ("480p"). Absent means unknown, on the same terms as DurationMS.
+	Height int `json:"height,omitempty"`
+	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
+	// API call — which is why it is built here rather than fetched.
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+}
+
+// DiscoveredClipStats is what a per-item metadata call learns about one result (§10, V35) —
+// the two fields a search cannot afford to include.
+//
+// ⚠ A separate type rather than reusing DiscoveredClip, because the enrich response must not be
+// able to CONTRADICT the search: returning whole clips would let a second call disagree about a
+// title or a URL the client already rendered, and there is no rule for which one wins. This
+// carries only what the metadata call is authoritative for.
+type DiscoveredClipStats struct {
+	// DurationMS is the runtime. ⚠ Only ever present when known: an id archive.org has not
+	// probed is OMITTED from the map, never returned as 0, since 0 and "unknown" render
+	// differently and only one of them is true.
+	DurationMS int `json:"durationMs,omitempty"`
+	// Height is the best derivative's vertical resolution — the "480p" quality hint.
+	Height int `json:"height,omitempty"`
 }
 
 // ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
@@ -645,6 +703,17 @@ type Options struct {
 	// against a real settings service surfaced it (unit tests leave the seam nil, so the
 	// typed accessor was never reached).
 	LiveConfigInt func(key string) int
+	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
+	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
+	// for every Kind a route reads rather than only the two that have already broken.
+	// GET /v1/filler/sources panicked on `filler.source.folder.enabled` (a bool) exactly
+	// as /v1/users did on an int, and again only a real settings service reached it.
+	//
+	// ⚠ boolOn, not boolv: nil ⇒ TRUE. Callers here gate "is this source being scanned",
+	// where a false read renders a working drop-folder as switched off on the page whose
+	// job is explaining an empty catalog. A key that is off by default needs its own
+	// accessor rather than this one.
+	LiveConfigBoolOn func(key string) bool
 }
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).

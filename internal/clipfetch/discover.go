@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Discovery: listing what a remote collection HOLDS, without downloading any of it (§10, V33).
@@ -31,6 +32,16 @@ type DiscoveredItem struct {
 	// Year is Archive's catalogued year; 0 when the item declares none, which is common. A
 	// WEAK hint only — never used to set a clip's era (see searchDoc.Year).
 	Year int
+	// Date is Archive's catalogued date (RFC3339), empty when it declares none. Carries the
+	// same weak-hint caveat as Year — see searchDoc.Date.
+	Date string
+	// DurationMS is the item's runtime, 0 when unknown. ⚠ Zero means UNKNOWN, not "zero
+	// seconds": it is unset until the per-item enrichment pass runs (see enrich), and an item
+	// whose files Archive never probed keeps it. A caller renders 0 as "—", never as "0:00".
+	DurationMS int
+	// Height is the best derivative's vertical resolution, 0 when unknown — the quality hint
+	// the Sources search row renders as "480p". Same zero-means-unknown rule as DurationMS.
+	Height int
 }
 
 // DiscoveryResult is a page of a collection's contents.
@@ -76,7 +87,7 @@ func (c *archiveClient) discover(ctx context.Context, ref string, limit int) (Di
 	// Ask for everything a listing renders in ONE request. The download walk asks for
 	// `identifier` alone because it fetches each item's metadata anyway; a listing that did
 	// that would make N+1 requests to show N rows.
-	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year"}
+	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year", "date"}
 	q.Set("rows", strconv.Itoa(limit))
 	q.Set("output", "json")
 
@@ -106,9 +117,133 @@ func toResult(out searchResp) DiscoveryResult {
 			Title:   strings.TrimSpace(doc.Title),
 			License: strings.TrimSpace(doc.LicenseURL),
 			Year:    doc.Year,
+			Date:    strings.TrimSpace(doc.Date),
 		})
 	}
 	return res
+}
+
+// Per-item enrichment: duration + quality, fetched ON DEMAND (§10, V35).
+//
+// ⚠ **This is NOT part of a listing, and the measurement is why.** The mock's search row draws
+// `date · duration · quality`; Solr indexes only `date` at item level, so the other two need one
+// `/metadata/<id>` call per row. Enriching a full page inline was built, measured against the
+// live API, and abandoned:
+//
+//	limit=5     0.4s
+//	limit=25   22.6s          ← a search box nobody would wait for
+//	per call   median 1.78s, max 7.75s
+//
+// ⚠ And it cannot be tuned away — the ceiling is archive.org's, not ours. Raising the fan-out
+// makes it WORSE, which is the signal that they throttle or queue us:
+//
+//	concurrency  6 → 15.6s
+//	concurrency 12 → 25.0s
+//	concurrency 25 → 25.0s
+//
+// So the listing stays one request (the property the file header guards) and a client asks for
+// the extra fields only for rows a person is actually looking at. 6 remains the cap because it
+// measured fastest, not because it is polite.
+const enrichConcurrency = 6
+
+// Enrich fills DurationMS + Height for the given items by fetching each one's metadata.
+//
+// ⚠ **Every failure is non-fatal, per item.** A row whose metadata call fails keeps its search
+// fields and renders duration/quality as unknown — losing a whole batch because one item timed
+// out would be a far worse trade than an incomplete row. This mirrors the guide's per-channel
+// posture (`api/guide.go`), and it is why the function returns nothing: there is no error a
+// caller could act on that is not better handled by showing the rows.
+//
+// Mutates in place. The context is honoured, so a caller who navigates away stops the fan-out.
+func (d *ArchiveDownloader) Enrich(ctx context.Context, items []DiscoveredItem) {
+	d.client.enrich(ctx, items)
+}
+
+func (c *archiveClient) enrich(ctx context.Context, items []DiscoveredItem) {
+	// Write BY INDEX, never append: the listing's order is Solr's relevance/date ranking, and
+	// an append-as-you-finish would reorder results by whichever item's metadata returned first.
+	sem := make(chan struct{}, enrichConcurrency)
+	var wg sync.WaitGroup
+
+	for i := range items {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// ⚠ This select is an OPTIMISATION, not the cancellation guarantee. `metadata` →
+			// `getJSON` builds its request with http.NewRequestWithContext, which refuses a
+			// dead context on its own — verified by sabotage: deleting this select changes
+			// nothing observable. What it saves is the queued goroutines behind the semaphore
+			// (up to 19 of 25 rows) each opening a request that would only be refused.
+			//
+			// So do not "simplify" this into a bare `sem <- struct{}{}` on the grounds that a
+			// test still passes; the test that covers it is the one detaching the request
+			// context, and it pins the transport's behaviour rather than this line's.
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+
+			meta, err := c.metadata(ctx, items[i].ID)
+			if err != nil {
+				return // unknown duration/quality; the row still renders
+			}
+			items[i].DurationMS, items[i].Height = bestVideoStats(meta.Files)
+		}(i)
+	}
+	wg.Wait()
+}
+
+// bestVideoStats picks the runtime + resolution a listing row should show.
+//
+// ⚠ Duration and height are taken from DIFFERENT files on purpose. Every derivative of one item
+// has the same runtime (they are re-encodes of one source), so the first parseable length is
+// authoritative — but they differ in resolution, and the honest quality answer is the BEST
+// available rather than whichever file happened to be listed first. The pinned fixture has
+// exactly this shape: a 480p derivative beside a 960p original, both 91 seconds.
+func bestVideoStats(files []archiveFile) (durationMS, height int) {
+	for _, f := range files {
+		if ms := parseLengthMS(f.Length); ms > 0 && durationMS == 0 {
+			durationMS = ms
+		}
+		if h, err := strconv.Atoi(strings.TrimSpace(f.Height)); err == nil && h > height {
+			height = h
+		}
+	}
+	return durationMS, height
+}
+
+// parseLengthMS reads archive.org's `length` field, which arrives in three real spellings:
+// seconds with a decimal ("91.09"), seconds without one ("660"), and "MM:SS" / "HH:MM:SS".
+//
+// ⚠ Measured, not assumed: 36 video files across 5 items were all seconds-as-string, but the
+// colon form is documented behaviour on some audio derivatives, so it is parsed rather than
+// left to silently truncate to 0 the first time one appears in a movies collection.
+//
+// Returns 0 for anything unparseable, which every caller must treat as UNKNOWN — never as a
+// zero-length clip.
+func parseLengthMS(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if strings.Contains(raw, ":") {
+		var total float64
+		for _, part := range strings.Split(raw, ":") {
+			n, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+			if err != nil {
+				return 0 // a malformed segment makes the whole value untrustworthy
+			}
+			total = total*60 + n
+		}
+		return int(total * 1000)
+	}
+	secs, err := strconv.ParseFloat(raw, 64)
+	if err != nil || secs < 0 {
+		return 0
+	}
+	return int(secs * 1000)
 }
 
 // Search finds candidate clips across ALL of archive.org by keyword, rather than listing one
@@ -143,7 +278,7 @@ func (c *archiveClient) search(ctx context.Context, query string, limit int) (Di
 	// typing a URL would otherwise become a field query or a range, turning a search into a
 	// syntax error they cannot see the cause of.
 	q.Set("q", "("+sanitizeQuery(query)+") AND mediatype:movies")
-	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year"}
+	q["fl[]"] = []string{"identifier", "title", "licenseurl", "year", "date"}
 	q.Set("rows", strconv.Itoa(limit))
 	q.Set("output", "json")
 

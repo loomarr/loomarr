@@ -11,6 +11,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/settings"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -164,6 +165,79 @@ func TestFillerSources_ReadsTheDirLive(t *testing.T) {
 	if got := getSources(t, srv).Sources[0].Target; got != "/srv/clips" {
 		t.Errorf("target = %q after a settings change, want /srv/clips — the dir must be read live", got)
 	}
+}
+
+// The drop-folder switch is read through the BOOL seam, driven by a REAL settings service.
+//
+// ⚠ A map[string]string stub is what hid this: the route read the bool key through
+// LiveConfig (settings.String), which PANICS on a non-string Kind, so GET /v1/filler/sources
+// died with an empty reply on every real install while every stubbed test passed. Wiring the
+// real service is the point of this test — a fake that cannot panic would only prove the fake
+// does not panic. Sabotage it by pointing folderEnabled back at s.liveConfig.
+func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/api.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
+		rows, err := st.ListSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]settings.SettingRow, len(rows))
+		for i, r := range rows {
+			out[i] = settings.SettingRow{Key: r.Key, Value: r.Value, UpdatedBy: r.UpdatedBy}
+		}
+		return out, nil
+	}}
+	svc, err := settings.New(ctx, settings.NewRegistry(), loader, nil)
+	if err != nil {
+		t.Fatalf("settings.New: %v", err)
+	}
+
+	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store: st,
+		Auth:  api.NewTokenAuthorizer(adminToken),
+		Log:   slog.New(slog.DiscardHandler),
+		// Wired exactly as the composition root wires them, typed per Kind.
+		LiveConfig: func(k string) string { return svc.String(k) },
+		LiveConfigBoolOn: func(k string) bool {
+			if b, ok := svc.Resolve(k).Value.(bool); ok {
+				return b
+			}
+			return true
+		},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	// Declared default is true, so the folder row reports itself enabled.
+	folder := sourceOfKind(t, getSources(t, srv), "folder")
+	if !folder.Enabled {
+		t.Error("folder source reads disabled on a fresh install, want enabled (declared default is true)")
+	}
+
+	// And the switch is actually read: turning it off must reach the row. SetDB is the
+	// same hot-apply path a settings save takes, so no restart is involved here either.
+	svc.SetDB(map[string]string{"filler.source.folder.enabled": "false"})
+	folder = sourceOfKind(t, getSources(t, srv), "folder")
+	if folder.Enabled {
+		t.Error("folder source still reads enabled after the switch was turned off")
+	}
+}
+
+func sourceOfKind(t *testing.T, body sourcesBody, kind string) api.FillerSourceDTO {
+	t.Helper()
+	for _, s := range body.Sources {
+		if s.Kind == kind {
+			return s
+		}
+	}
+	t.Fatalf("no %q source in %+v", kind, body.Sources)
+	return api.FillerSourceDTO{}
 }
 
 // Admin-only: the rows name filesystem paths and library targets, which is infrastructure

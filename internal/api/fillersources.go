@@ -311,11 +311,14 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 		dir = s.liveConfig("filler.dir")
 	}
 
-	// ⚠ Anything other than an explicit "false" reads as ON, matching the syncer's own gate
-	// (`resolved.boolOn`) and the setting's declared default. Treating an unanswerable read as
-	// "off" would render the drop-folder switched off on a page whose whole job is telling the
-	// operator why their catalog is empty.
-	folderEnabled := s.liveConfig == nil || s.liveConfig("filler.source.folder.enabled") != "false"
+	// ⚠ Read through the BOOL seam, never liveConfig: settings.String panics on a non-string
+	// Kind, so routing this key through the string accessor took the whole route down with an
+	// empty reply rather than returning something a comparison could inspect.
+	//
+	// An unanswerable read is ON, matching the syncer's own gate (`resolved.boolOn`) and the
+	// setting's declared default. Treating it as "off" would render the drop-folder switched
+	// off on a page whose whole job is telling the operator why their catalog is empty.
+	folderEnabled := s.liveConfigBoolOn == nil || s.liveConfigBoolOn("filler.source.folder.enabled")
 
 	// The registered remotes, nested under the `remote` row below. A read failure is NOT
 	// fatal: the three config rows are the answer to "why is my catalog empty", and losing

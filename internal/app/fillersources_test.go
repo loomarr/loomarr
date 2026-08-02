@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -102,5 +103,35 @@ func TestArchiveIDFrom(t *testing.T) {
 		if got := archiveIDFrom(tc.in); got != tc.want {
 			t.Errorf("archiveIDFrom(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// ⚠ The omit-vs-zero rule, tested against the REAL mapping rather than through the API's fake
+// — which implements the rule itself, so asserting there proves the fake works, not the code.
+// Found by sabotage: deleting the rule from the adapter broke nothing.
+//
+// 0 means UNKNOWN. archive.org has not probed every item, and a client renders a present 0 as
+// "0:00" — claiming the clip is empty, which is a different and false statement from "we don't
+// know how long this is".
+func TestDiscoveredStats_OmitsAnItemItLearnedNothingAbout(t *testing.T) {
+	stats := discoveredStats([]clipfetch.DiscoveredItem{
+		{ID: "probed", DurationMS: 91_090, Height: 960},
+		{ID: "unprobed"},
+		// Partial knowledge is still knowledge: a height with no runtime must survive, or a
+		// "known nothing" rule written as AND-vs-OR silently drops half the answers.
+		{ID: "height-only", Height: 480},
+		{ID: "duration-only", DurationMS: 30_000},
+	})
+
+	if _, present := stats["unprobed"]; present {
+		t.Errorf("unprobed item present as %+v, want absent", stats["unprobed"])
+	}
+	for _, id := range []string{"probed", "height-only", "duration-only"} {
+		if _, present := stats[id]; !present {
+			t.Errorf("%s is missing — anything learned must survive", id)
+		}
+	}
+	if stats["probed"].DurationMS != 91_090 || stats["probed"].Height != 960 {
+		t.Errorf("probed = %+v, want the values it carried", stats["probed"])
 	}
 }
