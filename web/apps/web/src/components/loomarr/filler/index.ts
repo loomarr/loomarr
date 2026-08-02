@@ -5,4 +5,5 @@ export * from "./filler-sources";
 export * from "./incoming-panel";
 export * from "./pod-timeline";
 export * from "./pool-health";
+export * from "./pull-card";
 export * from "./split-review-editor";
