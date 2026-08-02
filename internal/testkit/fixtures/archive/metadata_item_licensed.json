@@ -13,13 +13,19 @@
       "name": "ちょっとだけ懐かしいCM 1993年 その４ 年末.ia.mp4",
       "format": "h.264 IA",
       "size": "75822371",
-      "source": "derivative"
+      "source": "derivative",
+      "length": "660",
+      "height": "480",
+      "width": "640"
     },
     {
       "name": "ちょっとだけ懐かしいCM 1993年 その４ 年末.mp4",
       "format": "MPEG4",
       "size": "75822371",
-      "source": "original"
+      "source": "original",
+      "length": "660",
+      "height": "480",
+      "width": "640"
     },
     {
       "name": "cm-1993-4.thumbs/ちょっとだけ懐かしいCM 1993年 その４ 年末_000001.jpg",

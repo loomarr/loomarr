@@ -7,7 +7,8 @@
         "identifier": "Commercials34",
         "licenseurl": "http://creativecommons.org/publicdomain/mark/1.0/",
         "title": "Commercials 34: Clothing – Banking - Gasoline",
-        "year": 2016
+        "year": 2016,
+        "date": "2016-03-31T00:00:00Z"
       },
       {
         "identifier": "1965PolaroidInstantPhotoCameraCommercialgoodQuality",
@@ -17,7 +18,8 @@
       {
         "identifier": "fed-ex-kinkos-2007-television-commercial",
         "title": "Fed Ex Kinkos ( 2007) Television Commercial",
-        "year": 2007
+        "year": 2007,
+        "date": "2007-01-01T00:00:00Z"
       },
       {
         "identifier": "HAROLDANDDEBRAPLAYINGSERIOUSCOMMERCIALS",
@@ -26,7 +28,8 @@
       {
         "identifier": "CLE-B31_84812-85082",
         "title": "Bonfire-of-the-Vanities Intermission Announcement ABC/WEWS 5 1996-07-28",
-        "year": 1996
+        "year": 1996,
+        "date": "1996-07-28T00:00:00Z"
       }
     ]
   }

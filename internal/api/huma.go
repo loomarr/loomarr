@@ -310,6 +310,22 @@ type DiscoveredClip struct {
 	Year int `json:"year,omitempty"`
 	// URL is the item's page, so an operator can look at it before adding it.
 	URL string `json:"url"`
+	// Date is the source's catalogued date (RFC3339), absent when it declares none.
+	//
+	// ⚠ Carries Year's weak-hint caveat, and the live data shows it: one pinned item is dated
+	// 1996 while archive.org's `publicdate` for it is 2023. Rendered for a human to read;
+	// never used to set a clip's era.
+	Date string `json:"date,omitempty"`
+	// DurationMS is the item's runtime. ⚠ ABSENT means unknown, never zero-length — archive.org
+	// has not probed every item's files, and a client must render "—" rather than "0:00", which
+	// would claim the clip is empty. Costs a per-item metadata call (see clipfetch.enrich).
+	DurationMS int `json:"durationMs,omitempty"`
+	// Height is the best available derivative's vertical resolution, rendered as a quality hint
+	// ("480p"). Absent means unknown, on the same terms as DurationMS.
+	Height int `json:"height,omitempty"`
+	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
+	// API call — which is why it is built here rather than fetched.
+	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
 }
 
 // ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT

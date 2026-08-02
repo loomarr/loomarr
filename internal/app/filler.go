@@ -476,12 +476,19 @@ func discoveredClips(res clipfetch.DiscoveryResult) ([]api.DiscoveredClip, int) 
 	out := make([]api.DiscoveredClip, 0, len(res.Items))
 	for _, it := range res.Items {
 		out = append(out, api.DiscoveredClip{
-			ID:    it.ID,
-			Title: it.Title,
-			Year:  it.Year,
+			ID:         it.ID,
+			Title:      it.Title,
+			Year:       it.Year,
+			Date:       it.Date,
+			DurationMS: it.DurationMS,
+			Height:     it.Height,
 			// The item's own page, so an operator can look before adding. Built here
 			// rather than in clipfetch because it is a presentation concern.
 			URL: "https://archive.org/details/" + it.ID,
+			// Archive's own thumbnail service: a stable URL pattern, no API call and no
+			// per-item cost, which is why the row gets an image for free while duration and
+			// quality had to be fetched.
+			ThumbnailURL: "https://archive.org/services/img/" + it.ID,
 		})
 	}
 	return out, res.Total

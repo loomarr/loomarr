@@ -1162,7 +1162,17 @@ components:
     DiscoveredClip:
       additionalProperties: false
       properties:
+        date:
+          type: string
+        durationMs:
+          format: int64
+          type: integer
+        height:
+          format: int64
+          type: integer
         id:
+          type: string
+        thumbnailUrl:
           type: string
         title:
           type: string

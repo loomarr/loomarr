@@ -6,7 +6,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -164,6 +167,217 @@ func TestDiscoverCollection_CapsRows(t *testing.T) {
 	}
 	if gotRows != "25" {
 		t.Errorf("rows = %s, want the 25 cap", gotRows)
+	}
+}
+
+// --- per-item enrichment: duration + quality (V35) ---
+
+// enrichServer serves the search fixture AND the pinned item metadata, which is what the live
+// API does and what `discoverServer` deliberately does not — see the download-nothing test.
+func enrichServer(t *testing.T, onMeta func(id string)) *httptest.Server {
+	t.Helper()
+	search, err := os.ReadFile("../testkit/fixtures/archive/collection_search.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := os.ReadFile("../testkit/fixtures/archive/metadata_item.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(search)
+	})
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, r *http.Request) {
+		if onMeta != nil {
+			onMeta(strings.TrimPrefix(r.URL.Path, "/metadata/"))
+		}
+		_, _ = w.Write(meta)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The mock's search row draws `date · duration · quality`. Solr indexes only `date` at item
+// level — measured against the live API, not assumed — so duration and quality come from a
+// per-item metadata call, and this is the test that they actually arrive.
+func TestDiscover_EnrichesDurationAndQuality(t *testing.T) {
+	srv := enrichServer(t, nil)
+
+	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "classic_tv_commercials", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) == 0 {
+		t.Fatal("no items")
+	}
+	for _, it := range res.Items {
+		// 91.09s in the pinned fixture, from the h.264 derivative.
+		if it.DurationMS != 91_090 {
+			t.Errorf("%s: DurationMS = %d, want 91090 from the fixture's length", it.ID, it.DurationMS)
+		}
+		// ⚠ The BEST of the two video files (a 480p derivative beside a 960p original), not the
+		// first listed — the honest quality answer is what is available, not what came first.
+		if it.Height != 960 {
+			t.Errorf("%s: Height = %d, want 960 — the best derivative, not the first", it.ID, it.Height)
+		}
+	}
+}
+
+// `date` rides the SAME search request as everything else — one extra field in fl[], not
+// another round trip. The fixture keeps docs with and without it, as the live API does.
+func TestDiscover_CarriesTheCataloguedDateWithoutAnExtraRequest(t *testing.T) {
+	var fields []string
+	srv := discoverServer(t, func(q url.Values) { fields = q["fl[]"] })
+
+	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "classic_tv_commercials", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(fields, "date") {
+		t.Errorf("fl[] = %v, want date requested in the same query", fields)
+	}
+	var withDate, withoutDate int
+	for _, it := range res.Items {
+		if it.Date != "" {
+			withDate++
+		} else {
+			withoutDate++
+		}
+	}
+	if withDate == 0 || withoutDate == 0 {
+		t.Errorf("fixture no longer covers both date states (%d with, %d without) — "+
+			"re-capture with a mix, or this stops testing the absent case", withDate, withoutDate)
+	}
+}
+
+// ⚠ A metadata failure must cost that ROW its extra fields, never the listing. Losing 25 results
+// because one item timed out is a far worse trade than one row reading "—".
+func TestDiscover_AnItemWhoseMetadataFailsStillLists(t *testing.T) {
+	search, err := os.ReadFile("../testkit/fixtures/archive/collection_search.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(search)
+	})
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "c", 0)
+	if err != nil {
+		t.Fatalf("one failing item killed the whole listing: %v", err)
+	}
+	if len(res.Items) != 5 {
+		t.Fatalf("got %d items, want all 5 — a metadata failure must not drop rows", len(res.Items))
+	}
+	// ⚠ 0 is UNKNOWN here, and the UI renders it as "—". It must never be shown as "0:00",
+	// which claims the clip is empty.
+	for _, it := range res.Items {
+		if it.DurationMS != 0 || it.Height != 0 {
+			t.Errorf("%s: got %dms/%dp from a failing metadata call", it.ID, it.DurationMS, it.Height)
+		}
+		if it.ID == "" || it.Title == "" {
+			t.Errorf("%s: lost its search fields when enrichment failed", it.ID)
+		}
+	}
+}
+
+// Enrichment asks once per row and no more — the cost this deliberately takes on is bounded by
+// the row cap, so a search is at most maxDiscoverRows metadata calls.
+func TestDiscover_AsksOncePerRow(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]int{}
+	srv := enrichServer(t, func(id string) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen[id]++
+	})
+
+	res, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "c", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != len(res.Items) {
+		t.Errorf("fetched metadata for %d ids, want %d — one per row", len(seen), len(res.Items))
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Errorf("%s fetched %d times, want exactly 1", id, n)
+		}
+	}
+}
+
+// A cancelled request must not fetch metadata nobody is waiting for.
+//
+// ⚠ **What this pins is the REQUEST context, not enrich's select.** Sabotage says so: deleting
+// the `case <-ctx.Done()` changes nothing here, because `metadata` → `getJSON` builds with
+// http.NewRequestWithContext and the transport refuses a dead context by itself. Detaching that
+// (a `context.Background()` request) makes this test fail with all 18 calls fired, which is how
+// the real guarantee was located. The select is an optimisation over the queued goroutines and
+// is documented as such at its site.
+//
+// ⚠ It drives `enrich` DIRECTLY, which is the only route to a cancelled enrichment: through
+// DiscoverCollection the SEARCH fails first (cancelled up front) or the body read fails
+// (cancelled from the handler), so enrichment is never reached and the assertion would hold
+// vacuously. An earlier version of this test did exactly that and proved nothing.
+//
+// More items than the concurrency cap, so the later goroutines are genuinely still queued.
+func TestEnrich_StopsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var mu sync.Mutex
+	var metaCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		metaCalls++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	items := make([]DiscoveredItem, enrichConcurrency*3)
+	for i := range items {
+		items[i].ID = "item-" + strconv.Itoa(i)
+	}
+	newArchiveClient(srv.URL, nil, diskSink{}).enrich(ctx, items)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if metaCalls != 0 {
+		t.Errorf("made %d metadata calls on an already-cancelled context, want 0", metaCalls)
+	}
+}
+
+// The three spellings archive.org really sends. ⚠ Measured: 36 video files across 5 live items
+// were all seconds-as-string, but the colon form is documented on some derivatives, so it is
+// parsed rather than left to truncate to 0 the first time one appears.
+func TestParseLengthMS(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want int
+	}{
+		{"91.09", 91_090},      // seconds with a decimal — the common case
+		{"660", 660_000},       // seconds without one — the licensed fixture's shape
+		{"9645.34", 9_645_340}, // a 2.7-hour feature, still seconds
+		{"2:30", 150_000},      // MM:SS
+		{"1:00:00", 3_600_000}, // HH:MM:SS
+		{"", 0},                // absent — every non-video file
+		{"garbage", 0},         // unparseable is UNKNOWN, never zero-length
+		{"1:bad", 0},           // a malformed segment poisons the whole value
+		{"-5", 0},              // negative is not a runtime
+	} {
+		if got := parseLengthMS(tc.raw); got != tc.want {
+			t.Errorf("parseLengthMS(%q) = %d, want %d", tc.raw, got, tc.want)
+		}
 	}
 }
 

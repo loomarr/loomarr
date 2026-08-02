@@ -101,6 +101,17 @@ type archiveFile struct {
 	Format string `json:"format"` // "h.264 IA", "MPEG4", "512Kb MPEG4", "Thumbnail", …
 	Size   string `json:"size"`   // bytes, as a string
 	Source string `json:"source"` // "original" | "derivative" | "metadata"
+	// Length is the runtime, as a STRING and in one of two spellings: seconds with a decimal
+	// ("91.09"), seconds without one ("660"), or — on some audio derivatives — "MM:SS". Absent
+	// on every non-video file, which is what distinguishes a real derivative from a thumbnail.
+	//
+	// ⚠ Only present on DERIVATIVES and originals that Archive has probed. A parser must treat
+	// absence as "unknown", never as zero: a 0-second clip is a real (and wrong) claim, while
+	// "unknown" is the honest one and the UI renders it as such.
+	Length string `json:"length"`
+	// Height is the vertical resolution, as a string, and is what the Sources search renders as
+	// a quality hint (480 → "480p"). Absent alongside Length on non-video files.
+	Height string `json:"height"`
 }
 
 type searchResp struct {
@@ -135,6 +146,15 @@ type searchDoc struct {
 	// entirely on items with no year, which `omitempty`-style zero handling covers: 0 renders
 	// as "no year" rather than as the year 0.
 	Year int `json:"year"`
+	// Date is Archive's catalogued date, RFC3339 ("1996-07-28T00:00:00Z"), and the field the
+	// Sources search row renders. Absent on 2 of the 5 pinned docs — the same optionality every
+	// field but Identifier has.
+	//
+	// ⚠ Carries the SAME weak-hint caveat as Year, and the live data shows it plainly: one
+	// pinned doc is dated 1996 while its `publicdate` is 2023. This is when the item is
+	// catalogued as being FROM, which for an upload is often neither the broadcast date nor the
+	// upload date. Rendered for a human to read; never used to set a clip's era.
+	Date string `json:"date"`
 }
 
 // walk resolves an Archive URL/id and downloads its video content. Returns
