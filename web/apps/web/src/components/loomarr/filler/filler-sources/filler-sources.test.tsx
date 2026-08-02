@@ -162,3 +162,69 @@ describe("FillerSources remotes", () => {
     expect(screen.queryByText(/never fetched/)).not.toBeInTheDocument();
   });
 });
+
+// --- the on/off switch (V35) ---
+
+describe("FillerSources switches", () => {
+  it("switches a source off through the handler", async () => {
+    const onToggleEnabled = vi.fn();
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler" })]}
+        total={1}
+        onFetch={() => {}}
+        onToggleEnabled={onToggleEnabled}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("switch", { name: "Use /data/filler" }));
+
+    expect(onToggleEnabled).toHaveBeenCalledWith("folder", false);
+  });
+
+  // ⚠ THE promise. A switched-off source keeps its clips, and the row has to say so — an
+  // operator who reads "disabled" as "my clips are gone" will switch it back on and re-download
+  // everything they already have.
+  it("says a switched-off source keeps its clips", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler", enabled: false })]}
+        total={1}
+        onFetch={() => {}}
+        onToggleEnabled={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("switched off")).toBeInTheDocument();
+    expect(screen.getByText(/still in your catalog/i)).toBeInTheDocument();
+  });
+
+  // ⚠ Nothing scans a media-server library for clips since §10 took the media server out of the
+  // filler path, so a switch there would change nothing — and the server refuses it with a 409.
+  // A control that cannot work is worse than no control.
+  it("gives no switch to a row with nothing running behind it", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "library", target: "media server filler library", switchable: false })]}
+        total={0}
+        onFetch={() => {}}
+        onToggleEnabled={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  // A caller that cannot mutate shows the same rows without a dead control.
+  it("renders no switches at all without a handler", () => {
+    render(
+      <FillerSources
+        sources={[source({ kind: "folder", target: "/data/filler" })]}
+        total={1}
+        onFetch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+});

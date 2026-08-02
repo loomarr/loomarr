@@ -157,6 +157,18 @@ const FillerPage = () => {
   const sync = fillerApi.useSyncFiller({ mutation: { onSuccess: invalidate } });
   const aiTag = fillerApi.useTagFiller({ mutation: { onSuccess: invalidate } });
 
+  // Switching a source on or off (V35). ⚠ The switch withdraws a source from future scanning,
+  // searching and downloading; clips already in the catalog are untouched, which is why nothing
+  // here invalidates the clip list.
+  const [togglingSource, setTogglingSource] = useState<string>();
+  const toggleSource = fillerApi.useSetFillerSourceEnabled({
+    mutation: {
+      onSettled: () => setTogglingSource(undefined),
+      onSuccess: () =>
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() }),
+    },
+  });
+
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on
   // the page while a single confirm lands, which reads as the page having frozen.
@@ -433,7 +445,14 @@ const FillerPage = () => {
             total={unwrap(sourcesQuery.data, (b) => b.total) ?? 0}
             onFetch={() => fetchSource.mutate()}
             fetching={fetchSource.isPending ? "folder" : null}
-            error={fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null}
+            onToggleEnabled={(id, enabled) => {
+              setTogglingSource(id);
+              toggleSource.mutate({ id, data: { enabled } });
+            }}
+            toggling={toggleSource.isPending ? togglingSource : null}
+            error={
+              toggleSource.error?.detail ?? fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null
+            }
           />
         </div>
       ) : (
