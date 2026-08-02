@@ -350,6 +350,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
     ["/filler", /split into clips/i, "the compilation-split entry point"],
+    // V35: per-source search, on the Sources tab. ⚠ `GET /v1/filler/discover` was API-ONLY for
+    // a whole phase — the route shipped, `DiscoverPanel` was deleted rather than left orphaned,
+    // and nothing called it. This is the assertion that stops it going back to that state.
+    ["/filler?tab=sources", /find clips/i, "the per-source search"],
+    // ⚠ And its promise, which is the reason an operator dares to search at all: browsing a
+    // collection must not fetch gigabytes. The line is a behaviour claim, not decoration.
+    [
+      "/filler?tab=sources",
+      /nothing downloads until you queue it/i,
+      "the search's downloads-nothing promise",
+    ],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
     renderAt(path);
