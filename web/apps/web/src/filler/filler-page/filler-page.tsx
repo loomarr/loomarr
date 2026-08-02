@@ -38,6 +38,30 @@ import { PinClipDialog } from "../pin-clip-dialog";
 // page cannot drift on what a retag carries.
 type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
 
+// The bulk bar's three dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that
+// field, and the server leaves the other two alone. A single "apply" that posted all three
+// would blank whatever the operator had not touched, which is the failure the BE's per-field
+// optionality exists to prevent.
+//
+// The vocabularies mirror the clip card's chips. ⚠ They deliberately omit the card's trailing
+// "" / 0 entries: those exist there so CYCLING can pass through "unset", which is a different
+// affordance from a menu — an "unset" item in a bulk menu is a one-click way to blank a
+// hundred clips' tags, and nothing in this bar should be that easy.
+// ⚠ Labelled "Set …", not "Era"/"Audience"/"Category". The catalog's FILTER bar already owns
+// those names on this page, and two controls sharing an accessible name is a real ambiguity for
+// anyone driving by keyboard or screen reader — a test caught it as "found multiple elements",
+// which is the same collision seen from the outside. The verb also says what each one does:
+// the filter narrows what you see, this changes what the clips ARE.
+const BULK_TAG_FIELDS = [
+  { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
+  { key: "audience", label: "Set audience", options: ["kids", "family", "general", "late_night"] },
+  {
+    key: "category",
+    label: "Set category",
+    options: ["food", "toys", "auto", "retail", "media", "service"],
+  },
+] as const;
+
 // FillerPage — the §10 clip catalog: browse, search, tag, sync, and (on the filler image)
 // download. Filtering is client-driven but server-executed: the store already indexes
 // these columns, so a query per filter change is cheaper and always correct, versus
@@ -137,6 +161,34 @@ const FillerPage = () => {
   // mutation's own isPending is global to the hook — using it alone greys out every button on
   // the page while a single confirm lands, which reads as the page having frozen.
   const [busyClip, setBusyClip] = useState<string>();
+
+  // Bulk selection (V35). ⚠ Deliberately NOT in the URL, unlike the filters: a selection is a
+  // transient intent about the rows in front of you, and a shared link that carried it would
+  // hand someone else a pre-armed destructive action over clips they never chose.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const toggleSelected = (path: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
+  const clearSelection = () => setSelected(new Set());
+
+  // Bulk retag. Each field is independent on the server, so sending only what the operator
+  // picked leaves the other two alone rather than blanking them.
+  const bulkTag = fillerApi.useBulkTagFiller({
+    mutation: {
+      onSuccess: (res) => {
+        clearSelection();
+        invalidate();
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
+        const updated = isOk(res) ? res.data.updated : 0;
+        toast.success(`Retagged ${pluralize(updated, "clip")}`);
+      },
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't retag those clips"),
+    },
+  });
 
   // Removing a clip from the catalog (V35). ⚠ A TOMBSTONE on the server: the clip leaves the
   // catalog and stops being used in breaks, and the file is untouched. The copy here says
@@ -391,6 +443,60 @@ const FillerPage = () => {
           {split.error != null && <ErrorState error={split.error} />}
           {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
+          {/* The bulk bar, shown only when something is selected. It appears ABOVE the grid
+              rather than floating over it: a bar that covers the cards hides the very thing the
+              operator is deciding about. */}
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/40 bg-signal/5 p-3">
+              <span className="font-mono text-signal text-xs">
+                {pluralize(selected.size, "clip")} selected
+              </span>
+
+              {BULK_TAG_FIELDS.map((field) => (
+                <Select
+                  key={field.key}
+                  value=""
+                  onValueChange={(value) =>
+                    bulkTag.mutate({
+                      data: {
+                        paths: [...selected],
+                        [field.key]: field.key === "era" ? Number(value) : value,
+                      },
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-auto min-w-32" aria-label={field.label}>
+                    <SelectValue placeholder={field.label} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ))}
+
+              {/* ⚠ "Remove from catalog", not "Delete". The server's action is a TOMBSTONE: the
+                  clip stops appearing here and stops being used in breaks, and the file stays
+                  exactly where the operator put it. The label has to keep saying catalog. */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={removeClips.isPending}
+                onClick={() => removeClips.mutate({ data: { paths: [...selected] } })}
+                title="Stop using these clips. The files stay in your folder."
+              >
+                Remove from catalog
+              </Button>
+
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={clearSelection}>
+                Clear
+              </Button>
+            </div>
+          )}
+
           {/* Split detection progress (§10 V34) — a job, not a request, so it gets a live
               status line the way ingest does. Success NAVIGATES to the review route; only
               running/error render here. */}
@@ -532,6 +638,8 @@ const FillerPage = () => {
                     {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
                     {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
                     splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
+                    {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
+                    selected={selected.has(clip.path)}
                   />
                 ))}
               </div>

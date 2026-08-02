@@ -80,6 +80,24 @@ const stubFetch = ({
     if (u.includes("/v1/filler/") && String(init?.method) === "PATCH") {
       return Promise.resolve(json(clips[0]));
     }
+    // V35 reads. Stubbed BEFORE the catch-all `/v1/filler` branch below, which would otherwise
+    // answer these with a clip list — a wrong shape that renders as an empty strip rather than
+    // an error, i.e. exactly the kind of silence a test should not have to chase.
+    if (u.includes("/v1/filler/pool")) {
+      return Promise.resolve(
+        json({
+          clips: clips.length,
+          commercials: clips.length,
+          eligible: clips.length,
+          untagged: 0,
+          channels: [],
+        }),
+      );
+    }
+    if (u.includes("/v1/filler/incoming")) {
+      return Promise.resolve(json({ asks: [], reels: [], total: 0 }));
+    }
+    if (u.includes("/v1/filler/bulk/")) return Promise.resolve(json({ updated: 1, missing: 0 }));
     if (u.includes("/v1/filler")) {
       // Honor the query string so a filter test proves the SERVER did the filtering.
       const query = u.includes("?") ? u.slice(u.indexOf("?")) : "";
@@ -321,5 +339,75 @@ describe("Filler page", () => {
 
     expect(await screen.findByText("ffprobe found no streams")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /review split/i })).not.toBeInTheDocument();
+  });
+
+  // --- bulk selection (V35) ---
+
+  it("shows the bulk bar only once something is selected", async () => {
+    stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    expect(screen.queryByText(/clip selected/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    expect(await screen.findByText("1 clip selected")).toBeInTheDocument();
+  });
+
+  // ⚠ The copy is a promise. The server's action is a TOMBSTONE — the clip leaves the catalog
+  // and stops being used in breaks, and the file stays where the operator put it. A label
+  // saying "Delete" would describe something Loomarr deliberately does not do.
+  it("offers removal in terms of the catalog, never the files", async () => {
+    stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    const remove = await screen.findByRole("button", { name: /remove from catalog/i });
+    expect(remove).toHaveAttribute("title", expect.stringMatching(/files stay/i));
+    expect(screen.queryByRole("button", { name: /^delete/i })).not.toBeInTheDocument();
+  });
+
+  it("bulk-removes the selection through the bulk route", async () => {
+    const mock = stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /remove from catalog/i }));
+
+    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/remove"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"] });
+  });
+
+  // ⚠ Each dropdown sends ONLY its own field. A bar that posted all three would blank whatever
+  // the operator had not touched — the failure the server's per-field optionality prevents, and
+  // which only holds if the client sends a partial body.
+  it("sends only the tag field the operator picked", async () => {
+    const mock = stubFetch();
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+    await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
+
+    // ⚠ "Set audience", not "Audience": the catalog's filter bar already owns that name, and
+    // the first draft of this test found two comboboxes. The distinct label is the fix, and
+    // this assertion is what keeps them distinct.
+    await userEvent.click(await screen.findByRole("combobox", { name: "Set audience" }));
+    await userEvent.click(await screen.findByRole("option", { name: "family" }));
+
+    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/tag"));
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"], audience: "family" });
+  });
+
+  // A member cannot bulk-edit, so the control that would 403 is simply absent rather than
+  // present-and-failing.
+  it("gives a member no way to select clips", async () => {
+    stubFetch({ me: MEMBER });
+    renderAt("/filler");
+    await screen.findByText("Frosted Flakes");
+
+    expect(screen.queryByRole("checkbox", { name: /select frosted flakes/i })).not.toBeInTheDocument();
   });
 });

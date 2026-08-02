@@ -89,9 +89,19 @@ const ClipCard = ({
   onCycle,
   onSplit,
   splitPending,
+  selected,
+  onToggleSelect,
   className,
 }: ClipCardProps) => (
-  <Card className={cn("flex flex-col gap-2.5 p-3", className)}>
+  <Card
+    className={cn(
+      "flex flex-col gap-2.5 p-3",
+      // A selected card is outlined rather than tinted: the grid is thumbnails, and a wash over
+      // them changes what the frame looks like, which is the one thing an operator is scanning.
+      selected && "ring-1 ring-signal",
+      className,
+    )}
+  >
     {/* The extracted frame (V17b), served by V30. Rendered ONLY when one exists.
         ⚠ A placeholder box for every clip without a thumbnail would be the wrong default: on a
         Tunarr-backed install, or one where ffmpeg never ran, that is the ENTIRE catalog, and a
@@ -114,7 +124,20 @@ const ClipCard = ({
     )}
 
     <div className="flex items-start justify-between gap-2">
-      <p className="min-w-0 truncate font-medium text-sm">{clip.name}</p>
+      {/* ⚠ A real checkbox input, not a styled div: bulk selection has to be keyboard-reachable
+          and announce its state, and the grid can hold hundreds of these. It renders only when
+          the caller passed a handler, so a member sees the card without a control that would
+          403 on use. */}
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={Boolean(selected)}
+          onChange={onToggleSelect}
+          className="mt-0.5 size-4 shrink-0 accent-signal"
+          aria-label={`Select ${clip.name}`}
+        />
+      )}
+      <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
       <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">
         {formatClipDuration(clip.durationMs)}
       </span>

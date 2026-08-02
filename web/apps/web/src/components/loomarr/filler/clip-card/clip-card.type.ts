@@ -26,6 +26,11 @@ interface ClipCardProps {
   // Detection for THIS clip is in flight — disables the split action so a slow decode
   // can't be queued twice.
   splitPending?: boolean;
+  // Bulk selection (V35). ⚠ `onToggleSelect` is what makes the card selectable at ALL — absent,
+  // no checkbox renders, which is how a member (who cannot bulk-edit) sees the same card
+  // without a control that would 403. `selected` alone does nothing.
+  selected?: boolean;
+  onToggleSelect?: () => void;
   className?: string;
 }
 
