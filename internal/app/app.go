@@ -644,6 +644,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
 			// silently, and the setting appeared to do nothing here.
 			Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
+			// The quality gate's floor (§10 V40). Read live, like `Dir`, so a settings change
+			// applies on the next sync rather than needing a restart.
+			MinDuration: func() time.Duration { return set.dur("filler.min_duration") },
 			// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
 			// warning has never once been emitted. That count exists precisely because extraction
 			// is best-effort and failures are skipped — the shape that already produced one

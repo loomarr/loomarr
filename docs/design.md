@@ -1010,6 +1010,50 @@ not, right or wrong. V38 gives an arriving clip a **state**:
    queued downloads, and split segments, i.e. everything that arrives because *Loomarr* fetched
    it rather than because a person put it there.
 
+### The quality gate: reject the broken, normalise the quiet (V40)
+
+A clip that arrives is not automatically a clip worth playing. Real downloads from the archive
+sources include truncated fragments, audio-only files, and spots recorded a decade apart at wildly
+different levels. **All of this is handled automatically — there is no badge, no review step, and
+no operator decision.** A gate an operator has to read is a gate they learn to click through (§7).
+
+**Rejected at the scan boundary.** `ScanDir` already skips unprobeable files; these join it, and
+they never become clips at all:
+
+- **Shorter than 10 seconds.** Nothing usable as a break body is shorter. The existing guard was
+  `DurationMs <= 0`, which a **2.9KB, 33-millisecond** truncated download passed — it sat `filed`
+  and airable in the dev catalog, i.e. a third of a second of nothing in an ad break.
+- **No audio stream.** Silence mid-break.
+- **No video stream.** An audio-only file in a video catalog.
+
+**Loudness is measured at ingest and applied at playout.** Measured across real fetched clips the
+spread was **−21.8 to −32.6 LUFS** — about 11 dB, which is the clip-to-clip volume jump an operator
+hears as "some of these are too quiet". The target is **−23 LUFS**, what broadcast uses. The
+measurement rides the decode that already happens for artwork (§10 V39), so it costs no extra pass.
+
+⚠ **Normalisation happens in the PLAYOUT chain — Loomarr never rewrites the operator's file.**
+`FILLER_DIR` and the watch folder hold files a person put there, and the pipeline has never
+modified them. Normalising in place is destructive and unrepeatable: the original cannot be
+recovered, and a re-scan cannot tell it has already happened, so a second pass would normalise a
+normalised file. At playout it is one filter on a stream already being encoded, it is reversible,
+and changing the target later simply works.
+
+**Language is a job, not an inline check.** `whisper-cli` is already vendored and wired
+(`MediaTools.Transcribe`, `ingest.whisper_path`, `ingest.whisper_model`), so this needs no new
+dependency — but it cannot ride the scan: whisper is dense matrix math, ~3s natively and **~341s
+under QEMU**, so an inline pass would be fine on the maintainer's machine and catastrophic on an
+arm64 install. It transcribes a **~10s span** rather than the whole clip, and only where the
+loudness pass found audible speech.
+
+⚠ **Silence is never grounds for rejection.** A wordless visual spot has no language, and those are
+often the best filler. Only confident non-English *speech* rejects.
+
+⚠ **Brightness is deliberately measured by nothing and fixed by nothing.** Sample clips ranged
+YAVG 64–127 against a mid-grey of 128, and the dim end is what an eighties VHS transfer genuinely
+looks like. Auto-brightening would invent a picture the source never had — and unlike loudness it
+is not recoverable at playout, because the correction would be baked into what the viewer sees with
+no original to fall back to.
+
 ### Tagging confidence, and auto-filing (V38)
 
 The tagger records a **confidence score** (0–100) alongside the tags. It exists for one job: to
@@ -2094,6 +2138,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
+| `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog |
+| `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target the playout chain normalises filler to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT, never written back to the file** — the drop-folder holds the operator's own files, and in-place normalisation is destructive, unrepeatable, and would be re-applied on every re-scan. Set empty to disable |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |

@@ -558,6 +558,28 @@ func declared() []Setting {
 			Kind: KindInt, Default: 1, Advanced: true,
 			Doc: "How heavily this commercial set is drawn from, relative to others.",
 		},
+		{
+			// ⚠ A REJECT, not a filter, and its default is ON — unlike filler.min_quality above,
+			// which is opt-in eligibility over clips that already exist. A file shorter than this
+			// never becomes a catalog row at all (§10 V40).
+			//
+			// It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated
+			// download passed it and sat filed-and-airable in the dev catalog.
+			Key: "filler.min_duration", EnvVar: "FILLER_MIN_DURATION", Group: GroupFiller,
+			Kind: KindDuration, Default: "10s", Advanced: true,
+			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
+		},
+		{
+			// ⚠ Applied in the PLAYOUT chain, never written back to the file. The drop-folder
+			// holds the operator's own files; in-place normalisation is destructive, unrepeatable,
+			// and a re-scan cannot tell it already happened (§10 V40, §9.1).
+			//
+			// Measured spread across real fetched clips: -21.8 to -32.6 LUFS, ~11 dB of
+			// clip-to-clip jump. -23 is the broadcast target.
+			Key: "filler.target_lufs", EnvVar: "FILLER_TARGET_LUFS", Group: GroupFiller,
+			Kind: KindString, Default: "-23", Advanced: true,
+			Doc: "Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded.",
+		},
 
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
