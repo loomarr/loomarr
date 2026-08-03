@@ -127,6 +127,83 @@ func TestScanDir_RejectsZeroDuration(t *testing.T) {
 	}
 }
 
+// ⚠ **THE case the duration floor exists for** (§10 V40). `DurationMs > 0` was the only guard,
+// and a **2.9KB / 33-millisecond** truncated download passed it — then sat filed and airable in
+// the dev catalog, i.e. a third of a second of nothing in the middle of an ad break.
+//
+// "Has a readable duration" and "is a usable clip" are different questions, and only the second
+// one matters at the boundary.
+func TestScanDir_RejectsAClipShorterThanTheFloor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "truncated.mp4")
+
+	// The real fragment's length, against the shipped 10s floor.
+	clips, skipped, err := filler.ScanDir(context.Background(), dir, fakeProbe(33), 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 0 {
+		t.Errorf("a 33ms fragment was catalogued: %+v", clips)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1", skipped)
+	}
+}
+
+// The mirror: a clip AT the floor is kept. Without this, a floor that rejected everything would
+// satisfy the test above while emptying the catalog.
+func TestScanDir_KeepsAClipAtTheFloor(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "spot.mp4")
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(10_000), 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		t.Fatalf("a clip exactly at the floor was rejected, got %d", len(clips))
+	}
+}
+
+// ⚠ **Omitting the floor means NO floor**, which is what keeps the other nine callers of ScanDir
+// — almost all tests — meaning what they meant before V40 added the parameter.
+func TestScanDir_NoFloorGivenAdmitsAShortClip(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "tiny.mp4")
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(500))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		t.Errorf("a short clip was rejected with no floor configured, got %d", len(clips))
+	}
+}
+
+// ⚠ A video-only file plays as DEAD AIR in the middle of a break, which reads to a viewer as the
+// stream having dropped. Rejected on sight.
+//
+// ⚠ Note this is about the STREAM's existence, never its level: a quiet clip is normalisation's
+// problem at playout (§10 V40), and rejecting one would throw away perfectly good filler.
+func TestScanDir_RejectsAClipWithNoAudioStream(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "silent.mp4")
+
+	silent := func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: 30_000, Height: 480, Silent: true}, nil
+	}
+	clips, skipped, err := filler.ScanDir(context.Background(), dir, silent, 10_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 0 {
+		t.Errorf("a video-only file was catalogued: %+v", clips)
+	}
+	if skipped != 1 {
+		t.Errorf("skipped = %d, want 1", skipped)
+	}
+}
+
 // An unset FILLER_DIR is "filler not configured" — an empty catalog, not an error. A missing
 // one IS an error: it is almost always a misconfigured path, and silently returning nothing
 // presents as "filler mysteriously does nothing".

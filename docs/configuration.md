@@ -145,6 +145,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |
 | `filler.min_quality` (`FILLER_MIN_QUALITY`) | int | `0` | Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution. _(advanced)_ |
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
+| `filler.min_duration` (`FILLER_MIN_DURATION`) | duration | `10s` | Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration. _(advanced)_ |
+| `filler.target_lufs` (`FILLER_TARGET_LUFS`) | string | `-23` | Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded. _(advanced)_ |
 | `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off. _(advanced)_ |
 | `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |
 | `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |

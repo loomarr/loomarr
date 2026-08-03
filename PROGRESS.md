@@ -4,12 +4,59 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V40 — the quality gate: reject the broken, normalise the quiet (2026-08-03, PR #166).** Gate:
+`make check` (0 lint, `-race`) + the settings suite green **with ffmpeg hidden from PATH** + the
+filler/playout/api suites. Automatic by maintainer decision — no badges, no review step, no
+operator choice.
+
+Two rejects at the scan boundary, so nothing downstream has to know: **shorter than 10s**
+(`filler.min_duration`) and **no audio stream**. The floor exists because `DurationMs > 0` was the
+only guard, and a **2.9KB / 33-millisecond truncated download passed it** — then sat `filed` and
+airable in the dev catalog. Loudness is normalised **at playout** to −23 LUFS
+(`filler.target_lufs`), verified end-to-end on real clips: −26.8 → **−23.4**, and −32.6 → **−23.1**
+(a 9.5 dB correction landing within 0.1 dB of target).
+
+⚠ **Normalisation never rewrites the file.** The clip folder holds files a person put there;
+in-place is destructive and unrepeatable — the original is unrecoverable, and a re-scan cannot tell
+it already happened, so a second pass would normalise an already-normalised file. ⚠ **Filler
+only**: `Airing.Source` is the discriminator (set for a clip under `FILLER_DIR`, empty for a
+library title), because normalising a feature film to advert loudness flattens its dynamic range.
+⚠ **Single-pass**, despite ffmpeg preferring two — two-pass reads the whole file before emitting a
+frame, which is fatal for a live stream.
+
+⚠ **It also fixed a CI failure that had been red since V38c.**
+`TestFeatures_UnsetToolPathsFallBackToPathLookup` faked `execProbe` but left the real
+`exec.LookPath` running, so it asserted the **host's** PATH: green on any machine with ffmpeg
+installed, red on every runner without it. Reproduced locally by hiding ffmpeg from PATH.
+
+⚠ **`Probed.HasAudio` was the wrong polarity, and the lesson generalises.** `false` meaning
+"reject" retroactively changed every `Probed{...}` literal written before the field existed — nine
+test doubles that were correct when written began rejecting every clip, and the suite panicked on
+an empty catalog. Renamed to `Silent` so the zero value is permissive. **A gate whose zero value
+denies is a gate that breaks its own callers.**
+
+**Deliberately not done: brightness.** Measured YAVG 64–127 against a mid-grey of 128, and the dim
+end is what an eighties VHS transfer looks like — auto-brightening invents a picture the source
+never had, and unlike loudness it is not recoverable at playout. **Language detection** is designed
+in §10 but unbuilt: `whisper-cli` is vendored, but ~3s natively and **~341s under QEMU**, so it must
+be a job over a ~10s span rather than an inline scan pass.
+
+**V39 — hover previews and a clip player (2026-08-03, `6fd0147`, PR #164).** Animated WebP previews
+generated **in the same ffmpeg pass as the still** (a `split` filter, one decode, ~0.47s/clip), a
+`VideoPlayer` core primitive that knows nothing about clips, and a Radix Slider scrubber (§14)
+replacing a hand-rolled `role="slider"`. ⚠ It surfaced that **`/v1/filler/media` had 404'd for every
+clip since V38c** — the handler used `GetClip` (`WHERE hash = ?`) while its URL carries the sharded
+*path*, and nothing noticed because no client called it until the player shipped.
+
 **V38c — one pipeline in, content-addressed clips, path-based navigation (2026-08-02, `f058075`,
 PR #162).** Gate: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
 `make fe` (biome + typecheck + **1076 tests**) + `fe-visual` (**706 passed, 0 axe**, on a CLEAN
-verify run, not `--update-snapshots`) + `make e2e` (7). ⚠ **Still open: V38c.8–9** (the per-row
-config disclosure and the Add-a-source polish), plus V38b's carried list — the first-run starter
-pull, loudness normalisation, reel name/thumbnail, the Tune panel and filmstrip.
+verify run, not `--update-snapshots`) + `make e2e` (7). ⚠ ~~**Still open: V38c.8–9**~~ **UPDATED
+2026-08-03 — V38c.8 shipped (`837d38b`, the seeded default sources) and loudness normalisation
+shipped in V40.** Genuinely still open: **V38c.9** (the Add-a-source polish against the mock), plus
+V38b's remaining carried list — the first-run starter pull, reel name/thumbnail, the Tune panel and
+filmstrip. Amended rather than deleted for the reason the superseded "Next up" at the bottom of this
+file records: a list of open items that outlives the work it names still reads as current.
 
 Every source now takes **one route** into the catalog — arrive in the watch folder, hash, move
 into the clip folder as `<hash>.<ext>`, sidecar, catalogue. Identity is a **sparse content hash**

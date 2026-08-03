@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"os/exec"
 	"testing"
 )
 
@@ -185,14 +186,31 @@ func TestFeatures_IngestGatesArchiveAndYouTubeSeparately(t *testing.T) {
 // the vendored binaries", but the registry defaults were "" and only the Docker image set them —
 // so every source build had ingest off even with the tools installed. Doc and code disagreed;
 // this is the code catching up.
+// ⚠ **Both seams are faked, and that is the point.** Injecting only `execProbe` left the real
+// `exec.LookPath` running, so this test asserted the HOST's PATH: it passed on a developer machine
+// with ffmpeg installed and failed on every CI runner without it. Green locally, red in CI, from
+// V38c until V39 — the whole point of a double is that the answer cannot depend on the machine.
 func TestFeatures_UnsetToolPathsFallBackToPathLookup(t *testing.T) {
 	s := featureService(t, nil)
-	// The probe stands in for "this is on PATH and executable" — LookPath resolves the name, and
-	// whatever it returns is accepted here.
+	// "It is on PATH": the lookup resolves the bare name, and the probe accepts what it returned.
+	s.execLookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
 	s.execProbe = func(string) bool { return true }
 
 	if !s.Features().IngestArchive {
 		t.Error("ffmpeg on PATH with no configured path → archive fetches must be available")
+	}
+}
+
+// The mirror, and the case CI was really in: nothing on PATH and nothing configured means the
+// gate is OFF. Without this, a lookup double that always succeeded would satisfy the test above
+// while proving nothing about the branch that matters on a bare install.
+func TestFeatures_NothingOnPathLeavesIngestOff(t *testing.T) {
+	s := featureService(t, nil)
+	s.execLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	s.execProbe = func(string) bool { return true } // generous on purpose: the lookup must decide
+
+	if f := s.Features(); f.IngestArchive || f.IngestYouTube || f.Ingest {
+		t.Errorf("no tools anywhere → every ingest gate must be off, got %+v", f)
 	}
 }
 
