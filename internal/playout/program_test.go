@@ -514,3 +514,65 @@ func TestProgramArgs_NoHwaccelOutputFormat(t *testing.T) {
 		}
 	}
 }
+
+// Loudness normalisation (§10 V40).
+//
+// ⚠ **The default path must be byte-identical to what shipped before V40.** A feature film
+// normalised to advert loudness loses its dynamic range, and the problem being solved — adverts
+// recorded a decade apart at wildly different levels, measured at an 11 dB spread across real
+// fetched clips — is a FILLER problem. So no target means no filter at all, not a filter with a
+// neutral value.
+func TestProgramArgs_NoLoudnessFilterWithoutATarget(t *testing.T) {
+	args := ProgramArgs(DefaultProfile(), testStreamURL, 0, time.Minute)
+
+	if i := argIndex(args, "-af"); i != -1 {
+		t.Errorf("an audio filter was added with no target: %v", args[i:i+2])
+	}
+	if strings.Contains(strings.Join(args, " "), "loudnorm") {
+		t.Error("loudnorm reached a library program; only filler is normalised")
+	}
+}
+
+// A filler clip gets the filter, at the requested target.
+func TestProgramArgs_NormalisesFillerToTheTarget(t *testing.T) {
+	args := ProgramArgsNormalised(DefaultProfile(), testStreamURL, 0, time.Minute, 0, "-23")
+
+	i := argIndex(args, "-af")
+	if i == -1 {
+		t.Fatalf("no audio filter for a normalised clip: %v", args)
+	}
+	filter := args[i+1]
+	if !strings.Contains(filter, "loudnorm") || !strings.Contains(filter, "I=-23") {
+		t.Errorf("filter = %q, want loudnorm at I=-23", filter)
+	}
+	// ⚠ A true-peak ceiling is not optional: `loudnorm` raising a quiet clip toward the target
+	// can push transients past 0 dBFS, and the lossy AAC encode below overshoots further. -1 dBTP
+	// is the EBU R128 ceiling and leaves that headroom.
+	if !strings.Contains(filter, "TP=-1") {
+		t.Errorf("filter = %q, want a true-peak ceiling — normalising up can clip", filter)
+	}
+}
+
+// ⚠ The filter must precede the CODEC it feeds. ffmpeg is order-sensitive in ways that fail
+// silently: `-af` after `-c:a` is accepted and applies to nothing.
+func TestProgramArgs_LoudnessFilterComesBeforeTheAudioCodec(t *testing.T) {
+	args := ProgramArgsNormalised(DefaultProfile(), testStreamURL, 0, time.Minute, 0, "-23")
+
+	af, codec := argIndex(args, "-af"), argIndex(args, "-c:a")
+	if af == -1 || codec == -1 {
+		t.Fatalf("missing -af (%d) or -c:a (%d)", af, codec)
+	}
+	if af > codec {
+		t.Errorf("-af at %d comes after -c:a at %d; it would apply to nothing", af, codec)
+	}
+}
+
+// The single-pass form, deliberately. Two-pass loudnorm measures the whole file before emitting a
+// frame — fine for a batch transcode, fatal for a live stream that must start now.
+func TestProgramArgs_LoudnessIsSinglePass(t *testing.T) {
+	args := ProgramArgsNormalised(DefaultProfile(), testStreamURL, 0, time.Minute, 0, "-23")
+
+	if joined := strings.Join(args, " "); strings.Contains(joined, "measured_I") {
+		t.Error("two-pass loudnorm would stall the stream until the whole clip was read")
+	}
+}

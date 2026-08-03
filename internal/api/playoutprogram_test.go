@@ -110,6 +110,9 @@ type programOpts struct {
 	encoder  api.PlayoutEncoder
 	noToken  bool
 	sessions api.PlayoutSessions
+	// config overlays LiveConfig, for tests about a setting the handler reads live —
+	// `filler.target_lufs` (§10 V40) is the first.
+	config map[string]string
 }
 
 func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
@@ -123,6 +126,9 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	cfg := map[string]string{
 		"server.public_url": "http://loomarr.local:8080",
 		"playout.backend":   "internal",
+	}
+	for k, v := range o.config {
+		cfg[k] = v
 	}
 	opts := api.Options{
 		Store:           st,
@@ -535,5 +541,74 @@ func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
 	// carried, not the copy-parent's absence of one.
 	if got[len(got)-1].encoder == "" {
 		t.Error("reported an empty encoder — the dashboard's hardware/software badge would be blank")
+	}
+}
+
+// fillerAiring is a resolved commercial clip. ⚠ `Source` is what marks it as filler — set for a
+// clip resolved to a local file under FILLER_DIR, empty for a library title (see Airing.Source).
+// That existing field is the discriminator the loudness gate reads, so it needed no new plumbing.
+func fillerAiring(remaining time.Duration) playout.Airing {
+	return playout.Airing{
+		Kind: schedule.SlotProgram, Source: "/filler/14/36/abc.mp4", Title: "Frosted Flakes",
+		Remaining: remaining,
+	}
+}
+
+// Loudness normalisation, FILLER ONLY (§10 V40).
+//
+// Measured across real fetched clips the spread was -21.8 to -32.6 LUFS — about 11 dB of
+// clip-to-clip jump, which is what an operator hears as "some of these are too quiet".
+func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
+	enc := &fakeEncoder{output: "ts"}
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
+		encoder:  enc.start,
+		config:   map[string]string{"filler.target_lufs": "-23"},
+	})
+
+	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if joined := strings.Join(enc.args(), " "); !strings.Contains(joined, "loudnorm=I=-23") {
+		t.Errorf("filler was not normalised; args = %v", enc.args())
+	}
+}
+
+// ⚠ **THE guard.** A feature film normalised to advert loudness loses its dynamic range — the
+// quiet scenes come up and the loud ones come down, which is the opposite of what a film wants.
+// The problem being solved is adverts recorded a decade apart; a library title must be untouched
+// even with the setting on.
+func TestPlayoutProgram_LeavesLibraryProgramsAlone(t *testing.T) {
+	enc := &fakeEncoder{output: "ts"}
+	srv := newProgramServer(t, programOpts{
+		// A library title: LibraryItemID set, Source empty.
+		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
+		encoder:  enc.start,
+		config:   map[string]string{"filler.target_lufs": "-23"},
+	})
+
+	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {
+		t.Errorf("a library program was normalised; args = %v", enc.args())
+	}
+}
+
+// Empty target ⇒ no filter, even for filler. That is what "set it empty to disable" means in §15,
+// and it keeps the pre-V40 behaviour reachable.
+func TestPlayoutProgram_EmptyTargetDisablesNormalisation(t *testing.T) {
+	enc := &fakeEncoder{output: "ts"}
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
+		encoder:  enc.start,
+		config:   map[string]string{"filler.target_lufs": ""},
+	})
+
+	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {
+		t.Errorf("normalisation ran with the setting disabled; args = %v", enc.args())
 	}
 }
