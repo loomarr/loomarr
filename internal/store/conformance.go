@@ -58,6 +58,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
 	t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
+	t.Run("ClipHeldLifecycle", func(t *testing.T) { testClipHeld(t, newStore) })
 	t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 }
 
@@ -796,8 +797,14 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 
 func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string) Clip {
 	c := Clip{}
-	// Path is the identity since §9.1; the Tunarr uuid rides alongside for filler-lists and
-	// is deliberately exercised as a NON-identity field (an install with no Tunarr has none).
+	// ⚠ Identity is the HASH since V38c, not the path (§10).
+	//
+	// These tests use the READABLE id as the hash — "c1", not 64 hex characters — so assertions
+	// stay legible (`GetClip(ctx, "c1")`) and a failure names a clip a human recognises. The
+	// store does not care what a hash looks like; only `filler.ClipPath` validates the shape, and
+	// that is covered where it belongs, in `filler/clippath_test.go`. Using real hashes here
+	// would make every assertion a wall of hex and would test nothing extra.
+	c.Hash = id
 	c.Path = id
 	c.TunarrProgramID = "tun-" + id
 	c.Name = name
@@ -1613,6 +1620,47 @@ func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
 //
 // The interesting assertions are the two that protect against silent data loss: a re-register
 // must not reset "last fetched", and deleting a source must not take its clips with it.
+// clipAt builds a catalog clip whose identity is its readable path.
+//
+// ⚠ Real 64-hex hashes are deliberately NOT used here. The store does not care what a hash looks
+// like — only `filler.ClipPath` validates the shape, and that is tested where it belongs
+// (`filler/clippath_test.go`). Using real hashes would turn every assertion in this file into a
+// wall of hex and would test nothing the hash tests do not already cover.
+func clipAt(path, name string, kind filler.Kind, durationMs int64) filler.Clip {
+	return filler.Clip{Hash: path, Path: path, Name: name, Kind: kind, DurationMs: durationMs}
+}
+
+// findSource returns one source by id, and whether it is still listed.
+//
+// ⚠ By id, not by position. V37's migration seeds two singleton rows (`folder`, `library`) so a
+// fresh store can still express "not configured", which means `ListFillerSources(ctx)[0]` is no
+// longer the row a test just added — it is whichever seeded row sorts first. Every positional
+// read in this suite was rewritten through here after exactly that broke.
+func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
+	t.Helper()
+	all, err := s.ListFillerSources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range all {
+		if f.ID == id {
+			return f, true
+		}
+	}
+	return FillerSource{}, false
+}
+
+// src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
+// caller can assert on its fields without a nil check at every use.
+func src1(t *testing.T, s Store) FillerSource {
+	t.Helper()
+	f, ok := findSource(t, s, "src-1")
+	if !ok {
+		t.Fatal("src-1 is not listed")
+	}
+	return f
+}
+
 func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
@@ -1639,26 +1687,127 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	got, err := s.ListFillerSources(ctx)
+	all, err := s.ListFillerSources(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("listed %d sources, want 2", len(got))
+
+	// ⚠ V37: the list is no longer empty on a fresh store. Migration 00029 materialises the two
+	// CONFIG-BACKED singletons (`folder`, `library`) so the flat list can still say "you could
+	// set up a drop-folder but have not" — §10's own answer to "why is my catalog empty?", which
+	// a table of things-that-exist otherwise cannot express. So this suite asserts on the rows it
+	// added, BY ID, rather than by position in the whole list.
+	byID := map[string]FillerSource{}
+	for _, f := range all {
+		byID[f.ID] = f
 	}
-	// Oldest first, explicitly ordered — an unordered list reshuffles between reads on
-	// Postgres and the Sources tab's rows would move under the pointer.
-	if got[0].ID != "src-1" || got[1].ID != "src-2" {
-		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", got[0].ID, got[1].ID)
+	for _, want := range []string{"folder", "library"} {
+		if _, ok := byID[want]; !ok {
+			t.Fatalf("singleton row %q missing — a fresh store must be able to say 'not configured'", want)
+		}
 	}
-	if got[0].License != src.License {
-		t.Errorf("licence = %q, want %q", got[0].License, src.License)
+	if byID["folder"].URI != "" {
+		t.Errorf("seeded folder URI = %q, want empty (= not configured, never a guessed path)", byID["folder"].URI)
 	}
-	if got[1].License != "" {
-		t.Errorf("unlicensed source has licence %q, want empty (= unknown)", got[1].License)
+
+	// Ordering is still oldest-first and still explicit — an unordered list reshuffles between
+	// reads on Postgres and the Sources tab's rows would move under the pointer. Checked over the
+	// two rows this test added rather than the whole list, whose head is now seeded.
+	var added []FillerSource
+	for _, f := range all {
+		if f.Kind == "archive" {
+			added = append(added, f)
+		}
 	}
-	if !got[0].LastFetchedAt.IsZero() {
-		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", got[0].LastFetchedAt)
+	if len(added) != 2 {
+		t.Fatalf("listed %d archive sources, want 2", len(added))
+	}
+	if added[0].ID != "src-1" || added[1].ID != "src-2" {
+		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", added[0].ID, added[1].ID)
+	}
+	if added[0].License != src.License {
+		t.Errorf("licence = %q, want %q", added[0].License, src.License)
+	}
+	if added[1].License != "" {
+		t.Errorf("unlicensed source has licence %q, want empty (= unknown)", added[1].License)
+	}
+	if !added[0].LastFetchedAt.IsZero() {
+		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", added[0].LastFetchedAt)
+	}
+
+	// ⚠ THE invariant the flat model has to carry itself (§10), MOVED in V38c from the kind to
+	// the TARGET. 00029 allowed exactly one folder row; 00032 allows many, because commercials
+	// living in two places is ordinary and V37 gave it no expression.
+	//
+	// What must still be impossible is ONE folder appearing as TWO rows — a stale row disagreeing
+	// with another about the same directory, which is the precedence question 00023 refused to
+	// have. So a DISTINCT path is accepted and a DUPLICATE path is refused, by the database
+	// rather than by a Go guard the next caller forgets.
+	second := FillerSource{ID: "folder-2", Kind: "folder", URI: "/other", Enabled: true, CreatedAt: created}
+	if err := s.UpsertFillerSource(ctx, second); err != nil {
+		t.Errorf("a second DISTINCT folder was refused (%v) — V38c allows many watched folders", err)
+	}
+	dup := FillerSource{ID: "folder-3", Kind: "folder", URI: "/other", Enabled: true, CreatedAt: created}
+	if err := s.UpsertFillerSource(ctx, dup); err == nil {
+		t.Error("a DUPLICATE folder path was accepted — one directory must not appear as two rows")
+	}
+
+	// ⚠ THE three-state encoding (§10 V38c). `nil` = inherit the global, `0` = never fetch this
+	// source, `N` = every N seconds. They cannot collapse: `filler.fetch.every = 0` already means
+	// "off", so a non-nullable column would make "unset" and "never" the same value and read as
+	// "every existing source is switched off" on upgrade — 00026's mistake exactly.
+	never, every900 := 0, 900
+	if err := s.SetFillerSourceFetchPolicy(ctx, "src-2", &never, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFillerSourceFetchPolicy(ctx, "folder-2", &every900, &every900); err != nil {
+		t.Fatal(err)
+	}
+	policies, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPolicyID := map[string]FillerSource{}
+	for _, f := range policies {
+		byPolicyID[f.ID] = f
+	}
+	// src-1 was never given a policy: nil, and it must resolve to the global.
+	if got := byPolicyID["src-1"]; got.FetchEverySeconds != nil {
+		t.Errorf("src-1 override = %v, want nil (inherit)", *got.FetchEverySeconds)
+	} else if d, ok := got.FetchEvery(time.Hour); !ok || d != time.Hour {
+		t.Errorf("an un-overridden source resolved to (%v, %v), want the global hour", d, ok)
+	}
+	// src-2 was set to 0 = NEVER. ⚠ It must NOT read as "inherit" — that is the collapse.
+	if got := byPolicyID["src-2"]; got.FetchEverySeconds == nil {
+		t.Error("a 0 override round-tripped as NULL — 'never' collapsed into 'inherit'")
+	} else if _, ok := got.FetchEvery(time.Hour); ok {
+		t.Error("a 0 override resolved to a poll interval — 0 must mean NEVER")
+	}
+	if got := byPolicyID["folder-2"]; got.FetchEverySeconds == nil || *got.FetchEverySeconds != 900 {
+		t.Errorf("folder-2 override did not round-trip: %v", got.FetchEverySeconds)
+	} else if d, _ := got.FetchEvery(time.Hour); d != 900*time.Second {
+		t.Errorf("resolved to %v, want 15m from the override rather than the global", d)
+	}
+	// Clearing goes back to inherit — a real operator action ("stop treating this specially").
+	if err := s.SetFillerSourceFetchPolicy(ctx, "src-2", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := findSource(t, s, "src-2"); got.FetchEverySeconds != nil {
+		t.Error("clearing an override did not return the source to inherit")
+	}
+
+	// ⚠ Two BLANK-uri rows must both survive. A seeded-but-unconfigured row carries no target —
+	// that is how "you could set up a drop-folder but have not" is expressed (§10) — and a plain
+	// unique index rather than a partial one would allow only ONE blank row across the table,
+	// so a fresh install could not have both an unconfigured folder and an unconfigured library.
+	for _, blank := range []FillerSource{
+		{ID: "blank-a", Kind: "folder", URI: "", Enabled: true, CreatedAt: created},
+		{ID: "blank-b", Kind: "library", URI: "", Enabled: true, CreatedAt: created},
+	} {
+		if err := s.UpsertFillerSource(ctx, blank); err != nil {
+			t.Errorf("an unconfigured %s row was refused (%v) — 'not configured' must stay expressible",
+				blank.Kind, err)
+		}
 	}
 
 	// Fetch stamps.
@@ -1666,9 +1815,8 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err := s.MarkFillerSourceFetched(ctx, "src-1", fetched); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.ListFillerSources(ctx)
-	if !got[0].LastFetchedAt.Equal(fetched) {
-		t.Errorf("LastFetchedAt = %v, want %v", got[0].LastFetchedAt, fetched)
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("LastFetchedAt = %v, want %v", src1(t, s).LastFetchedAt, fetched)
 	}
 
 	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source
@@ -1679,33 +1827,31 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertFillerSource(ctx, relabelled); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.ListFillerSources(ctx)
-	if got[0].Label != "Renamed" {
-		t.Errorf("label = %q, want Renamed", got[0].Label)
+	if src1(t, s).Label != "Renamed" {
+		t.Errorf("label = %q, want Renamed", src1(t, s).Label)
 	}
-	if !got[0].LastFetchedAt.Equal(fetched) {
-		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", got[0].LastFetchedAt)
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", src1(t, s).LastFetchedAt)
 	}
 
 	// The Sources tab's on/off switch (V35). Two properties, each a claim the switch's own
 	// copy makes to the operator.
-	if !got[0].Enabled {
+	if !src1(t, s).Enabled {
 		t.Error("source is not enabled — a registered source must be on until switched off")
 	}
 	if err := s.SetFillerSourceEnabled(ctx, "src-1", false); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.ListFillerSources(ctx)
-	if got[0].Enabled {
+	if src1(t, s).Enabled {
 		t.Error("source still enabled after being switched off")
 	}
 
 	// 1. ⚠ Disabling is NOT deleting. The row keeps its licence and its fetch history, which
 	//    is what makes switching it back on restore what was there instead of starting over.
-	if got[0].License != src.License {
-		t.Errorf("licence lost on disable: %q", got[0].License)
+	if src1(t, s).License != src.License {
+		t.Errorf("licence lost on disable: %q", src1(t, s).License)
 	}
-	if !got[0].LastFetchedAt.Equal(fetched) {
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
 		t.Error("fetch history lost on disable — the row was rewritten rather than updated")
 	}
 
@@ -1720,12 +1866,11 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertFillerSource(ctx, reRegistered); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.ListFillerSources(ctx)
-	if got[0].Enabled {
+	if src1(t, s).Enabled {
 		t.Error("re-registering re-enabled a disabled source — the switch is not the upsert's business")
 	}
-	if got[0].Label != "Renamed again" {
-		t.Errorf("label = %q, want the re-registered one", got[0].Label)
+	if src1(t, s).Label != "Renamed again" {
+		t.Errorf("label = %q, want the re-registered one", src1(t, s).Label)
 	}
 
 	// Put it back on, so the delete assertions below run against the normal state.
@@ -1737,6 +1882,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// possibly pinned into a channel, and forgetting where something came from is not a
 	// reason to throw it away.
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: "from-src-1.mp4",
 		Path: "from-src-1.mp4", Name: "From src 1", Kind: filler.Commercial, DurationMs: 30000,
 		Source: "archive", License: src.License,
 	}, UpdatedAt: created}); err != nil {
@@ -1748,8 +1894,8 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.GetClip(ctx, "from-src-1.mp4"); err != nil {
 		t.Errorf("deleting a source removed its clip: %v", err)
 	}
-	if got, _ = s.ListFillerSources(ctx); len(got) != 1 {
-		t.Errorf("after delete, %d sources remain, want 1", len(got))
+	if _, ok := findSource(t, s, "src-1"); ok {
+		t.Error("after delete, src-1 is still listed")
 	}
 
 	// An unknown id is ErrNotFound on both write paths, so a caller cannot believe it
@@ -1819,7 +1965,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// DeleteClip (confirm drops the compilation row) + proposal cleanup.
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{Path: "comps/1987.mp4", Name: "1987", Kind: filler.Commercial, DurationMs: 149000}, UpdatedAt: now}); err != nil {
+	if err := s.UpsertClip(ctx, Clip{Clip: clipAt("comps/1987.mp4", "1987", filler.Commercial, 149000), UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteClip(ctx, "comps/1987.mp4"); err != nil {
@@ -1849,10 +1995,12 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	licensed := Clip{Clip: filler.Clip{
+		Hash: "licensed.mp4",
 		Path: "licensed.mp4", Name: "Licensed", Kind: filler.Commercial, DurationMs: 30000,
 		License: "https://creativecommons.org/publicdomain/zero/1.0/",
 	}, UpdatedAt: now}
 	unknown := Clip{Clip: filler.Clip{
+		Hash: "unknown.mp4",
 		Path: "unknown.mp4", Name: "Unknown", Kind: filler.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	for _, c := range []Clip{licensed, unknown} {
@@ -1965,5 +2113,106 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 
 	if _, err := s.GetPull(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetPull unknown = %v, want ErrNotFound", err)
+	}
+}
+
+// testClipHeld covers the V38 clip lifecycle on BOTH backends: a held clip is recorded but is not
+// in the playable catalog, and only SetClipsHeld moves it.
+//
+// ⚠ The first assertion is the property the whole lifecycle rests on. Pod assembly, coverage, the
+// filler-list builder and the catalog listing all read through ListClips with a zero filter, so if
+// held clips were not excluded THERE, every untagged unreviewed download would air.
+func testClipHeld(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Now().UTC().Truncate(time.Second)
+
+	filed := Clip{Clip: filler.Clip{
+		Hash: "filed.mp4",
+		Path: "filed.mp4", Name: "Filed", Kind: filler.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: filler.Kids, Category: "toys",
+	}, UpdatedAt: at}
+	held := Clip{Clip: filler.Clip{
+		Hash: "held.mp4",
+		Path: "held.mp4", Name: "Held", Kind: filler.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true, Confidence: 40,
+	}, UpdatedAt: at}
+	for _, c := range []Clip{filed, held} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// ⚠ A ZERO filter is what pod assembly passes. A held clip must not be in this answer.
+	got, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range got {
+		if c.Path == "held.mp4" {
+			t.Fatal("a HELD clip came back from a zero-filter ListClips — pod assembly reads " +
+				"exactly this, so an unreviewed clip would air")
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("catalog has %d clips, want 1 (the filed one)", len(got))
+	}
+
+	// The review queue is the inverse, and it is how Incoming finds its work.
+	queue, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 1 || queue[0].Path != "held.mp4" {
+		t.Fatalf("HeldOnly returned %d clips, want just held.mp4", len(queue))
+	}
+	if queue[0].Confidence != 40 {
+		t.Errorf("confidence = %d, want 40 — the score must round-trip", queue[0].Confidence)
+	}
+
+	// ⚠ THE trap this lifecycle has to survive: `clips` is a synced CACHE, so the folder scan
+	// re-upserts every file it finds with held=false. If `held` rode along in UpsertClip's DO
+	// UPDATE list, one scan pass would file every held clip — emptying the review queue into live
+	// channels with no operator action and nothing in the logs.
+	rescan := held
+	rescan.Held = false
+	rescan.Confidence = 0 // a scan knows nothing about tagging
+	if err := s.UpsertClip(ctx, rescan); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Fatal("a re-scan FILED a held clip — UpsertClip must omit `held` from its DO UPDATE " +
+			"list, exactly as it omits the removal tombstone")
+	}
+	if after[0].Confidence != 40 {
+		t.Errorf("a re-scan blanked the confidence score (%d) — it must be omitted too, or a "+
+			"trusted clip starts asking again for no reason", after[0].Confidence)
+	}
+
+	// Filing is the only way out, and it records that nobody looked.
+	if _, err := s.SetClipsHeld(ctx, []string{"held.mp4"}, false, true, at); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog) != 2 {
+		t.Fatalf("after filing, catalog has %d clips, want 2", len(catalog))
+	}
+	var flag bool
+	for _, c := range catalog {
+		if c.Path == "held.mp4" {
+			flag = c.AutoFiled
+		}
+	}
+	if !flag {
+		t.Error("auto_filed did not survive — it is the only thing that can answer " +
+			"'which of these did I never see?'")
 	}
 }

@@ -14,7 +14,7 @@ const AboutPage = () => {
   if (version.isError) {
     return <ErrorState error={version.error} onRetry={() => void version.refetch()} />;
   }
-  if (!version.data || version.data.status !== 200) return null;
+  if (version.data?.status !== 200) return null;
 
   return (
     <div className="overflow-y-auto p-6">

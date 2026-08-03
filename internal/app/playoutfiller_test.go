@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -38,8 +40,23 @@ func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, erro
 	return filler.CoverageReport{}, s.err
 }
 
+func (s stubPods) ClipFit(context.Context, string) (map[string]filler.Fit, error) {
+	return nil, s.err
+}
+
 func (s stubPods) Pool(context.Context) (filler.PoolReport, error) {
 	return filler.PoolReport{}, s.err
+}
+
+// clipAt builds the SHARD-relative location a clip row carries since V38c — `a3/f9/<hash>.mp4`.
+//
+// ⚠ These fixtures used bare names like `1994/toys.mp4`, which `ClipPath`'s allow-list now
+// refuses. That refusal is not pedantry: playout hands a pod entry's path straight to ClipPath,
+// so an unresolvable one makes the break fall back to flex and the channel plays SILENCE. These
+// tests caught exactly that when identity changed, which is what they are for.
+func clipAt(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return filler.ClipRelPath(hex.EncodeToString(sum[:]), ".mp4")
 }
 
 func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
@@ -66,8 +83,8 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "bumper.mp4", Name: "bumper", DurationMs: 4000},
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 
@@ -102,9 +119,9 @@ func TestAiringNow_BreakResolvesToACommercialFile(t *testing.T) {
 func TestAiringNow_BreakWalksThePodByOffset(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "bumper.mp4", Name: "bumper", DurationMs: 4000},
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
-		{Path: "1994/cereal.mp4", Name: "cereal", DurationMs: 8000},
+		{Path: clipAt("bumper.mp4"), Name: "bumper", DurationMs: 4000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/cereal.mp4"), Name: "cereal", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 
@@ -141,6 +158,9 @@ func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 // the database, so containment is enforced at resolution, not assumed at write time.
 func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
 	pod := filler.Pod{Entries: []filler.PodEntry{
+		// ⚠ The RAW traversal string, deliberately NOT run through clipAt — hashing it would
+		// produce a perfectly valid id and test nothing. What must be refused is the crafted
+		// value itself, as it would arrive from a tampered database row.
 		{Path: "../../../../etc/passwd", Name: "evil", DurationMs: 4000},
 	}}
 	r := fillerResolver(t, t.TempDir(), pod)
@@ -157,6 +177,9 @@ func TestAiringNow_BreakRefusesAPathEscape(t *testing.T) {
 // The embedded fallback bumper card is generated, not a file: it has no path to play.
 func TestAiringNow_BreakWithOnlyTheFallbackCardPlaysNoFile(t *testing.T) {
 	pod := filler.Pod{Entries: []filler.PodEntry{
+		// ⚠ An EMPTY path, not a hashed one: the fallback card is generated rather than played
+		// from a file, and "" is how the resolver knows. Hashing it would give the card a path
+		// that resolves to a file which does not exist.
 		{Path: "", Name: "fallback card", DurationMs: 5000, IsFallbackCard: true},
 	}}
 	r := fillerResolver(t, t.TempDir(), pod)
@@ -239,7 +262,7 @@ func (r *recordingPlays) RecordClipPlay(_ context.Context, clipPath string, _ ti
 func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 	plays := &recordingPlays{}
@@ -248,7 +271,9 @@ func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
 		t.Fatal(err)
 	}
-	if len(plays.calls) != 1 || plays.calls[0] != "1994/toys.mp4" {
+	// ⚠ The CATALOG path, not the absolute file — the play counter keys on what the row stores,
+	// so an absolute path here would count against a clip that does not exist.
+	if len(plays.calls) != 1 || plays.calls[0] != clipAt("1994/toys.mp4") {
 		t.Fatalf("recorded %v, want one play of the CATALOG path", plays.calls)
 	}
 }
@@ -261,7 +286,7 @@ func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 	plays := &recordingPlays{}
@@ -283,7 +308,7 @@ func TestAiringNow_DoesNotCountAMidClipResolve(t *testing.T) {
 func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 	r.clipPlays = &recordingPlays{err: errors.New("database is gone")}
@@ -301,7 +326,7 @@ func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
 func TestAiringNow_NoRecorderIsFine(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: "1994/toys.mp4", Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod) // clipPlays left nil
 	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {

@@ -126,3 +126,61 @@ describe("IncomingPanel", () => {
     expect(screen.getByText("Nothing needs you")).toBeInTheDocument();
   });
 });
+
+// --- V38: confidence + the filing decisions ---
+
+describe("IncomingPanel confidence and filing", () => {
+  const ask = (over: Partial<IncomingAskDTO> = {}): IncomingAskDTO => ({
+    path: "a.mp4",
+    name: "Toy ad",
+    durationMs: 30_000,
+    kind: "commercial",
+    reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
+    ...over,
+  });
+
+  // ⚠ The bar is REAL now (V38) — the "no confidence bar" rule was retired when the tagger
+  // started measuring one. The number is grounding-capped, never the model's self-report.
+  it("renders the score, and says nothing when there is none", () => {
+    const { rerender } = render(<IncomingPanel asks={[ask({ confidence: 45 })]} reels={[]} />);
+    expect(screen.getByLabelText(/confidence 45 out of 100/i)).toBeInTheDocument();
+
+    // ⚠ 0 means NEVER SCORED, not "no confidence". A 0-width bar would state something false
+    // about a clip the tagger simply has not reached.
+    rerender(<IncomingPanel asks={[ask({ confidence: 0 })]} reels={[]} />);
+    expect(screen.queryByLabelText(/confidence/i)).not.toBeInTheDocument();
+  });
+
+  // ⚠ "File all as suggested" commits each clip's OWN era. It is offered only when something
+  // HAS a suggestion — otherwise the label promises something the action would not do.
+  it("offers File all as suggested only when a clip carries a guess", async () => {
+    const onFileAllAsSuggested = vi.fn();
+    const { rerender } = render(
+      <IncomingPanel asks={[ask()]} reels={[]} onFileAllAsSuggested={onFileAllAsSuggested} />,
+    );
+    expect(screen.queryByRole("button", { name: /file all as suggested/i })).not.toBeInTheDocument();
+
+    rerender(
+      <IncomingPanel
+        asks={[ask({ suggestedEra: 1985 })]}
+        reels={[]}
+        onFileAllAsSuggested={onFileAllAsSuggested}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /file all as suggested/i }));
+    expect(onFileAllAsSuggested).toHaveBeenCalledOnce();
+  });
+
+  // ⚠ THE audit half. Auto-filing is on by default, so an operator must be able to see what was
+  // filed without them — and it renders even when nothing is waiting, because that is exactly
+  // the install where "nothing needs you" would otherwise be the whole story.
+  it("shows what was filed without asking, and offers the undo", async () => {
+    const onSendBack = vi.fn();
+    const filed = ask({ path: "auto.mp4", name: "Auto ad", confidence: 88, autoFiled: true });
+    render(<IncomingPanel asks={[]} reels={[]} recentlyFiled={[filed]} onSendBack={onSendBack} />);
+
+    expect(screen.getByText(/filed 1 clip without asking/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /send it back/i }));
+    expect(onSendBack).toHaveBeenCalledWith(filed);
+  });
+});

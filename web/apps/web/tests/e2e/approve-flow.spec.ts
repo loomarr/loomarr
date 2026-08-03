@@ -49,13 +49,21 @@ test.describe("the approval gate", () => {
 
     // The approvals tab is admin-only, so a member never sees it at all (§11).
     //
-    // Asserted on the FULL TAB LIST rather than on a name matcher. CountTabs renders the
-    // count inside the button ("Needs approval 1" once whitespace-normalized), so a
-    // name-based `toHaveCount(0)` matches nothing and passes whether or not the tab is
-    // present — it was verified to miss a deliberate sabotage that showed the tab to
-    // members. Comparing the whole list cannot be fooled that way: it fails if an extra
-    // tab appears, whatever its label happens to be.
-    await expect(page.getByRole("tab")).toHaveText([/in flight/i]);
+    // Asserted on the FULL TAB LIST rather than on a name matcher. The count renders inside
+    // the tab ("Needs approval 1" once whitespace-normalized), so a name-based
+    // `toHaveCount(0)` matches nothing and passes whether or not the tab is present — it was
+    // verified to miss a deliberate sabotage that showed the tab to members. Comparing the
+    // whole list cannot be fooled that way: it fails if an extra tab appears, whatever its
+    // label happens to be.
+    //
+    // ⚠ Scoped to the Queue's own bar by its accessible NAME, and queried as LINKS. `NavTabs`
+    // replaced `CountTabs`: every tab is a real `<Link>` marked with `aria-current`, so
+    // `getByRole("tab")` now matches nothing and this assertion would have passed vacuously —
+    // the exact failure mode the comment above exists to prevent, arriving by a different
+    // route. The nav scope is needed because the app sidebar is also a list of links.
+    await expect(page.getByRole("navigation", { name: /queue sections/i }).getByRole("link")).toHaveText([
+      /in flight/i,
+    ]);
     await expect(page.getByRole("button", { name: /^approve$/i })).toHaveCount(0);
 
     // And the outcome that actually matters: nothing was acquired.

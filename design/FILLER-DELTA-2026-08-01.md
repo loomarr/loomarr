@@ -11,7 +11,11 @@ Read it alongside `docs/engineering/v2-build-plan.md` §6.5 (V35), which is what
 > `docs/design.md` wins on behaviour, and the illustrative strings below are mock sample data, not
 > a contract.
 
-## Why the .dc.html is stale
+## Why the .dc.html was stale — RESOLVED 2026-08-02
+
+> ✅ **The maintainer export landed.** `design/loomarr-prototype-desktop-v2.dc.html` is now the
+> 632,110-byte file carrying this screen, and `support.js` is updated alongside it. This section is
+> kept because the failure mode it describes recurs; the *instructions* in it are retired.
 
 `DesignSync.get_file` hard-caps at **262,144 bytes**. The prototype is ≥310 KB of markup before its
 `<script data-dc-script>` even begins, followed by ~192 KB of JS. The fetch on 2026-08-01 returned
@@ -24,13 +28,68 @@ new markup binds `poolStats` / `asks` / `reels` / `services`, which its JS does 
 the markup in yields a file that parses and renders nothing — strictly worse than a stale file that
 renders the old screen honestly.
 
-**Resolution: a maintainer export**, the same route taken 2026-07-28 (`design/README.md` records
-that the desktop v2 file was obtained that way for exactly this reason). Until it lands, the values
-behind `poolStats`, `asks`, `reels`, `services`, `autoConfChips` and `planRows` are **unknown — do
-not invent them.** That is the `tcOptions`/`poPresets` situation the build plan already names.
+⚠ **RETIRED: "the values behind `poolStats`, `asks`, `reels`, `services`, `autoConfChips` and
+`planRows` are unknown — do not invent them."** That was correct while the JS was unreachable. The
+export includes all ~270 KB of it, so every one of those is now readable at source. **Read them
+rather than inferring them from the markup** — see *What the JS revealed* below, where one of them
+overturns a conclusion this document drew from the markup alone.
 
-**Verified unchanged in the same fetch:** `support.js` and `image-slot.js` are byte-identical to the
-copies here, so no runtime change accompanies this and the export will render as-is.
+⚠ **CORRECTION: "`support.js` and `image-slot.js` are byte-identical … no runtime change
+accompanies this" was WRONG.** `image-slot.js` is indeed unchanged, but `support.js` went
+64,222 → 69,150 bytes (155 lines). The claim was checked — against the **truncated** fetch, which
+is the whole problem: **a hash taken from a capped read describes the cap, not the file.** Anything
+asserted from a partial fetch needs re-verifying once the full one lands.
+
+## What the JS revealed (2026-08-02) — read this before the sections below
+
+Everything after this point was written from **markup only**. The markup shows what a screen
+*draws*; the JS shows what those drawings *mean*. On one screen that difference is decisive.
+
+### The confidence number is the Incoming tab's routing key, not a decoration
+
+The markup shows a confidence meter per segment (`sg.confW` / `sg.confColor`) and a bar per ask.
+Read as layout, that is a small addition. The JS shows it is the **spine of the whole conveyor**:
+
+```js
+segState(rid, i, sg) {
+  if (sg.junk) return sg.d < s.autoMin ? 'junk' : 'check';
+  if (sg.dupe) return s.autoDupe ? 'dupe' : 'check';
+  if (sg.ask)  return 'check';
+  return sg.conf >= s.autoConf ? 'filed' : 'check';   // ← the routing decision
+}
+```
+
+Every segment's fate — filed silently vs. surfaced to a human — is `conf >= autoConf`. The Tune
+panel's chips set `autoConf` (75/85/95%) and `autoMin` (2/4/6s); `autoSummary` is a live readout of
+the consequence (*"Right now that files N segments without asking. M come to you."*); `asks` is
+literally the set of segments in state `check`. Sample `conf` values run 12–97 (`REELS[].segs[]`).
+
+⚠ **Consequence for the build order.** `fillerincoming.go:28-33` refuses to draw a confidence bar
+because the tagger records no score — correct, and it still is. But it means the Incoming redesign
+is **not a frontend delta**: the score is a backend capability the UI merely reports. Building the
+Tune panel over an absent score would fabricate the number that decides what a human never sees.
+The score comes first; the tab follows it. Tracked as its own phase, not as part of the page work.
+
+The two `autoToggles` are also behaviour, not chrome: *"Skip clips already in the catalog"* (gates
+the `dupe` branch above, and dedup exists today via `dupOf`) and *"Normalize loudness to −16 LUFS
+on file"*, which is an **ingest-pipeline** capability with no counterpart anywhere in the codebase.
+
+### Sources: five peers, not three rows with nested remotes
+
+`services` is a flat list of five (`fillersources.go` returns three): `LIBRARY`, `FOLDER`,
+`ARCHIVE`, `PLAYLIST` (YouTube), `PACKS` (community packs from the dizqueTV/Tunarr wiki), plus
+operator-added rows. Each carries an optional per-source `license` (`'public domain'` /
+`'community, mixed'` / `'you supply it'`) — a field the store has and the DTO deliberately withholds.
+`searchable` is `id === 'archive'` only, so the search expander is **archive-scoped by design**, not
+a generic per-source affordance.
+
+### Smaller confirmations
+
+- `fileAllAsks` sets every ask to `filed` in one action — it commits **each clip's own** suggestion,
+  which `bulk/tag` (one operator-chosen era applied uniformly) cannot express.
+- `pullMeta` / `pullRepeatLine` are computed from `planRows.length` (`est. N GB · ~N min`), i.e. the
+  mock's estimates are illustrative arithmetic, not a forecast contract. Shipped `est` is 0.
+- `goDiscover` routes to the **Queue**, confirming the pull is proposal-first everywhere it appears.
 
 ## Tabs
 

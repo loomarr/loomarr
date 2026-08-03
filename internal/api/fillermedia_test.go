@@ -48,7 +48,9 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
 	t.Cleanup(func() { _ = st.Close() })
 	for _, p := range []string{"80s/toys/intro.mp4", "notes.html"} {
 		if err := st.UpsertClip(ctx, store.Clip{
-			Clip:      filler.Clip{Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
+			// Hash AND Path: identity is the hash since V38c, and this route looks a clip up by
+			// id then serves the row's path. A Path-only literal has an empty id and 404s.
+			Clip:      filler.Clip{Hash: p, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)

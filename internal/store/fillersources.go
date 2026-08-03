@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -46,6 +47,88 @@ type FillerSource struct {
 	// already brought in are untouched either way — they are real files an operator may have
 	// tagged and pinned.
 	Enabled bool
+	// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c). A busy archive
+	// collection and a small playlist want different numbers, and one global figure serves
+	// neither well.
+	//
+	// ⚠ **nil = inherit the global; 0 = NEVER auto-fetch this source.** They cannot share an
+	// encoding, because 0 already means "off" for the global key — so a non-pointer int would
+	// make "unset" and "never" the same value, and every existing source would read as switched
+	// off on upgrade. That is 00026's mistake (a default chosen for new rows applied to old
+	// ones), which is why the column is nullable and this field is a pointer.
+	FetchEverySeconds *int
+	// FetchMaxPerRun overrides `filler.fetch.max_per_run` for this source. nil = inherit.
+	//
+	// ⚠ 0 is meaningless here rather than meaningful — "fetch nothing per run" is what
+	// FetchEverySeconds=0 says, and saying it twice invites the two to disagree. The API rejects
+	// it; the store does not need to.
+	FetchMaxPerRun *int
+}
+
+// FetchEvery resolves this source's poll interval against the global default (§10 V38c).
+//
+// ⚠ Returns (interval, ok). `ok=false` means NEVER poll this source — distinct from "poll every
+// zero seconds", which is what a bare int return would have to encode as. The two callers that
+// matter (the fetcher's per-source decision, and the config disclosure's display) must not
+// re-derive this three-state logic separately.
+func (f FillerSource) FetchEvery(global time.Duration) (time.Duration, bool) {
+	if f.FetchEverySeconds == nil {
+		return global, global > 0
+	}
+	if *f.FetchEverySeconds <= 0 {
+		return 0, false
+	}
+	return time.Duration(*f.FetchEverySeconds) * time.Second, true
+}
+
+// MaxPerRun resolves this source's per-run cap against the global default.
+func (f FillerSource) MaxPerRun(global int) int {
+	if f.FetchMaxPerRun == nil || *f.FetchMaxPerRun < 1 {
+		return global
+	}
+	return *f.FetchMaxPerRun
+}
+
+// Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
+// pull plan and be handed to the ingest job.
+//
+// ⚠ **This invariant used to be implicit and became false when the table flattened (V37).**
+// Before, `filler_sources` held only operator-registered remotes, so "every row here is
+// fetchable" was true by construction and both pull paths filtered on `Enabled` alone. Migration
+// 00029 seeds the config-backed singletons (`folder`, `library`) into the same table, and those
+// are SCANNED, not fetched — the folder has no URL to download from and its `uri` is empty.
+//
+// Without this, a pull plan included a folder row and approval handed `Ingest` an empty string:
+// a fetch of nothing, enqueued as real work. Caught by the existing pull tests, which is why the
+// check lives on the domain type rather than being re-derived at each call site — there are two
+// (propose and the approve-time re-check) and they must not disagree about what is fetchable.
+func (f FillerSource) Fetchable() bool {
+	switch f.Kind {
+	case "folder", "library":
+		return false
+	default:
+		return f.URI != ""
+	}
+}
+
+// Scannable reports whether this source is read from local/LAN storage rather than downloaded.
+//
+// ⚠ **The sibling of Fetchable, and the two are deliberately not opposites of one another.** They
+// answer different questions and a row can be neither: a `remote` with an empty URI is unusable
+// by both. Folding them into one `!Fetchable()` would make "we cannot download this" mean "so
+// scan it", which for a malformed remote row means scanning a path the operator never gave us.
+//
+// ⚠ V38c returned `library` to this set. V35 had it scanned by nothing at all — the media server
+// was out of the filler path — and §10 records why that reversed. `folder` and `library` differ
+// in WHERE they read (a filesystem path vs a media-server library) but agree on the important
+// part: nothing is downloaded, so neither belongs in a pull plan.
+func (f FillerSource) Scannable() bool {
+	switch f.Kind {
+	case "folder", "library":
+		return f.URI != ""
+	default:
+		return false
+	}
 }
 
 // NewFillerSource builds a source that is ON.
@@ -60,7 +143,8 @@ func NewFillerSource(id, kind, uri, label string, createdAt time.Time) FillerSou
 	return FillerSource{ID: id, Kind: kind, URI: uri, Label: label, CreatedAt: createdAt, Enabled: true}
 }
 
-const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled
+const fillerSourceSelect = `SELECT id, kind, uri, label, license, last_fetched_at, created_at, enabled,
+	fetch_every_seconds, fetch_max_per_run
 	FROM filler_sources`
 
 // ListFillerSources returns every source, OLDEST FIRST. Ordering is explicit rather than
@@ -79,13 +163,26 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 			src       FillerSource
 			fetchedAt int64
 			createdAt int64
+			// ⚠ sql.NullInt64, because NULL is MEANINGFUL here: it is "inherit the global",
+			// distinct from 0 = "never fetch this source" (§10 V38c). Scanning into a plain int
+			// would collapse the two and read every unset source as switched off.
+			every  sql.NullInt64
+			perRun sql.NullInt64
 		)
 		if err := rows.Scan(&src.ID, &src.Kind, &src.URI, &src.Label, &src.License,
-			&fetchedAt, &createdAt, &src.Enabled); err != nil {
+			&fetchedAt, &createdAt, &src.Enabled, &every, &perRun); err != nil {
 			return nil, fmt.Errorf("scan filler source: %w", err)
 		}
 		src.LastFetchedAt = fromEpoch(fetchedAt)
 		src.CreatedAt = fromEpoch(createdAt)
+		if every.Valid {
+			v := int(every.Int64)
+			src.FetchEverySeconds = &v
+		}
+		if perRun.Valid {
+			v := int(perRun.Int64)
+			src.FetchMaxPerRun = &v
+		}
 		out = append(out, src)
 	}
 	return out, rows.Err()
@@ -108,14 +205,58 @@ func (s *sqlStore) ListFillerSources(ctx context.Context) ([]FillerSource, error
 // only `SetFillerSourceEnabled` writes it.
 func (s *sqlStore) UpsertFillerSource(ctx context.Context, src FillerSource) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		// ⚠ The two override columns follow `enabled` exactly: INSERTed so a new row carries the
+		// caller's choice, and absent from DO UPDATE so a caller that knows nothing about them
+		// cannot blank them. A Go nil pointer writes NULL — which is "inherit" — so including
+		// them in the update list would silently reset every operator's per-source tuning on the
+		// next re-register. Same failure V35 nearly shipped with `enabled`, one column over.
+		// SetFillerSourceFetchPolicy is their only writer.
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, created_at, enabled,
+		   fetch_every_seconds, fetch_max_per_run)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   kind=excluded.kind, uri=excluded.uri, label=excluded.label, license=excluded.license`),
 		src.ID, src.Kind, src.URI, src.Label, src.License,
-		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled)
+		epoch(src.LastFetchedAt), epoch(src.CreatedAt), src.Enabled,
+		nullableInt(src.FetchEverySeconds), nullableInt(src.FetchMaxPerRun))
 	if err != nil {
 		return fmt.Errorf("upsert filler source %s: %w", src.ID, err)
+	}
+	return nil
+}
+
+// nullableInt turns an optional override into a driver value: nil → NULL (inherit the global).
+//
+// ⚠ Not `int64(0)` for nil. NULL and 0 are DIFFERENT states here — inherit vs never — and
+// collapsing them is the whole hazard the nullable column exists to avoid (§10 V38c).
+func nullableInt(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return int64(*v)
+}
+
+// SetFillerSourceFetchPolicy writes one source's per-source overrides (§10 V38c).
+//
+// ⚠ **The ONLY writer of those two columns**, exactly as SetFillerSourceEnabled owns `enabled`
+// and MarkFillerSourceFetched owns the fetch stamp — `UpsertFillerSource` deliberately omits all
+// of them from its DO UPDATE list, so a re-register cannot silently reset an operator's tuning.
+//
+// nil clears an override back to "inherit the global", which is a real operator action ("stop
+// treating this source specially") and must be expressible.
+func (s *sqlStore) SetFillerSourceFetchPolicy(ctx context.Context, id string, everySeconds, maxPerRun *int) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE filler_sources SET fetch_every_seconds = ?, fetch_max_per_run = ? WHERE id = ?`),
+		nullableInt(everySeconds), nullableInt(maxPerRun), id)
+	if err != nil {
+		return fmt.Errorf("set filler source fetch policy %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("set filler source fetch policy %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

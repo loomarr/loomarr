@@ -189,7 +189,13 @@ Store interface:
   ListSplitProposals(status)              # §10 V35: the Incoming tab's reels
   SetClipsRemoved(paths, at)              # §10 V35: the ONLY writer of the removal tombstone
                                           #   (the scan's upsert must never write it)
-  ListFillerSources/UpsertFillerSource/DeleteFillerSource   # §10 V35: remote rows + enabled
+                                          # §10 V38: clips carry `confidence` (0-100) + `auto_filed`
+                                          #   — the score is grounding-CAPPED, never self-reported,
+                                          #   and auto_filed is what makes an unattended file undoable
+  ListFillerSources/UpsertFillerSource/DeleteFillerSource   # §10 V35/V37: ONE flat list, all kinds
+                                          #   ⚠ V37: `folder`/`library` are SINGLETON rows
+                                          #   materialised from config — never operator-inserted,
+                                          #   never removable, so no source is listed twice
   GetPull/UpsertPull/ListPulls(status)    # §10 V35: filler acquisition's approval gate
   # users & sessions (§11)
   GetUser/UpsertUser/ListUsers            # keyed by media-server user id
@@ -464,8 +470,9 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, written into the drop-folder, and the **original compilation row removed** — its identity is a path that now means twenty clips, not one. |
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). Sibling of `/v1/filler/thumb/{path...}` and confined the same way — the path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**, for the reason `/thumb` is not: "preview" already means a pod listing in two places (build plan §6.2). |
 | GET | `/v1/filler/pool` | Catalog-wide filler health (§10 V35) — how well the catalog can actually resolve breaks, plus what is thin. ⚠ **Computed over the same pools pod assembly uses** (`internal/filler`), never a second implementation: a meter that agrees today and drifts next quarter is worse than none, which is why the per-channel `/v1/channels/{id}/filler/coverage` was built the same way. |
-| GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35). The folder and library rows stay derived from configuration; a POST adds a **remote** collection. |
-| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable or remove a source (admin, §10 V35). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. |
+| GET/POST | `/v1/filler/sources` | List sources, or add one (admin, §10 V35/V37/V38c). **One flat list, one row per source.** A POST carries `{kind, uri, label?}` — ⚠ `kind` is required and validated **per kind** (an archive identifier, a YouTube playlist URL, an absolute folder path and a media-server library name are not interchangeable). ⚠ **V38c: `folder` and `library` are ADDABLE and no longer singletons** — many watched folders and many scanned libraries are supported, so the partial unique index and the 409 that enforced one-of-each are both gone. |
+| PATCH/DELETE | `/v1/filler/sources/{id}` | Enable/disable, tune, or remove a source (admin, §10 V35, extended V38c). ⚠ Disabling withdraws a source from future scanning, searching and downloading — **it never removes clips already in the catalog**, and the enforcement lives at those three sites rather than in the UI. The PATCH body also carries the per-source fetch overrides: ⚠ `fetchEverySeconds` is **three-state** — omit/`null` inherits the global, `0` means *never auto-fetch this source*, a positive value is an interval. `fetchMaxPerRun` has a **minimum of 1**, because "fetch nothing per run" is what `fetchEverySeconds: 0` already says and saying it twice invites the two to disagree. |
+| GET | `/v1/filler/watch` | **The Filler header's live status (§10 V38c).** Returns `{health, sourcesOn, sourcesTotal, clips, lastScanAt?}` — everything the page header's pill renders, computed on the SERVER. ⚠ **`health` is `healthy` / `attention` / `unconfigured`, and the server owns that judgement.** Deriving it in the client was tried first and rejected for two reasons: the rule ("all sources dark", "nothing has arrived in days") is real domain logic that belongs where it can be tested against the store rather than against a hand-built fixture array, and `/v1/filler/sources` is **admin-only** — so a member's pill would have been permanently grey while their channels played fine. ⚠ **Member-readable**, like `/pool` and the catalog listing, and for the same reason: it explains what the channels are doing. It names no filesystem paths or library targets, which is what keeps it safe to widen — the counts and the verdict, never the infrastructure. |
 | GET | `/v1/filler/incoming` | The ingest conveyor (admin, §10 V35): clips whose tags need a human, and compilations mid-split. One read behind the Filler page's Incoming tab, so a restart cannot lose the queue. ⚠ Reports **no confidence score** — nothing measures one; each item carries the reason it is waiting, derived from real state. |
 | POST | `/v1/filler/bulk/tag` | Retag a selection (admin, §10 V35). Each tag field is **independent** — omitting one leaves it alone, so setting only the audience never blanks an era. Setting an era confirms an outstanding suggestion through the **same** path the single-clip edit uses. A selected clip that no longer exists is counted, not fatal: a selection races a re-scan. |
 | POST | `/v1/filler/bulk/remove` | Remove a selection from the catalog (admin, §10 V35). ⚠ **A tombstone.** The clip leaves the catalog and stops being used in breaks; **the file is untouched**, and the mark survives a re-scan (which a row delete could not). `restore:true` undoes it. |
@@ -892,7 +899,11 @@ Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station
 - **Ingestion path (v1):** clips land in a **drop-folder** — placed manually, via an existing tool like MeTube, or via loomarr's own **ingest job** (yt-dlp for YouTube/playlists, plain `net/http` for Archive.org), which writes files + info-JSON sidecars into that folder.
 - **Ingest runs in the core, in the single image (revised twice — see the history below).** Ingest is a normal job on the same job bus as every other long operation: it reports progress over SSE, is cancellable, and needs no service discovery, no compose profile, and no proxy hop from the API. The tooling it shells out to (`yt-dlp` + `ffmpeg`) **ships in the one published image** (§16), so ingest is always available. The `FeatureIngest` gate (config-design §7) remains — it now resolves from the binaries being *runnable* rather than from the image variant, and still drives the 409 and the Filler tab's empty state, so a broken vendored binary degrades honestly instead of erroring at the point of use.
   - *History, because this question keeps being re-decided:* **(1)** a `loomarr-ingest` sidecar, removed because its only justification was keeping media tooling out of the core image, bought at the price of a second image, a compose profile, a distributed seam on the Filler page's primary action, and progress that couldn't ride the SSE job bus. **(2)** an opt-in `loomarr:filler` tag, which bought the same slimness without the seam. **(3)** the single image (§9.1, §16) — because `ffmpeg` became load-bearing for *playout*, so a variant without it is not a slimmer Loomarr but a broken one. Each step followed a change in what the tooling was **for**.
-- **Filler is Loomarr-owned, NOT a media-server library (revised — the media server is out of the filler path).** The drop-folder is registered in **Tunarr as a `local` media source** (Tunarr scans a plain folder directly — no Emby/Jellyfin involved) that Loomarr sets up idempotently at first filler sync (same enumerate-first pattern as the Live TV wiring, §6). This keeps filler a pure **Loomarr↔Tunarr** concern: the operator never creates or manages a commercials library in their media server, and program content (Emby) stays cleanly separated from filler (Tunarr-local) — filler *cannot* leak into a programming lineup because it isn't in the media server at all. Rationale: commercials aren't "library titles"; making the operator curate an Emby library for them was the wrong seam.
+- **Filler is Loomarr-owned. A media-server library may be one SOURCE it pulls from (revised twice).** The clip folder is registered in **Tunarr as a `local` media source** (Tunarr scans a plain folder directly) that Loomarr sets up idempotently at first filler sync (same enumerate-first pattern as the Live TV wiring, §6). Loomarr owns the clips: they live in its clip folder, identified by content hash, and program content stays cleanly separated from filler.
+
+  ⚠ **What changed (V38c).** This bullet previously said the media server was out of the filler path *entirely* and that the operator "never creates or manages a commercials library in their media server". That is now too strong: an operator who ALREADY keeps commercials in an Emby/Jellyfin library can register it as a filler source, and Loomarr scans it (§10, "the media-server library row is scanned again"). What has not changed is the ownership model — a library scan is an **acquisition** path feeding the same intake as every other source, so clips are copied into the clip folder rather than played out of the library in place, and Loomarr never modifies the library. The original rationale still holds for the DEFAULT: commercials aren't "library titles", so nothing requires an operator to curate one. It is now an option rather than a prohibition.
+
+  ⚠ **The dependency §9.1 removed stays removed.** A library is never the catalog's only route: an install with no media server, or one whose media server is down, still gets a full catalog from its folders and remotes. "No media server ⇒ no commercials" must not come back.
 - **Catalog sync (core) — revised by §9.1.** Loomarr scans **`FILLER_DIR` itself** and probes each clip's duration with `ffprobe`. **Clip identity = the clip's path relative to `FILLER_DIR`** (e.g. `1994/toys-transformers.mp4`).
 
   *This reverses the previous design, in which Tunarr scanned the folder, assigned each clip a program id, probed its duration, and Loomarr synced that back — clip identity being the Tunarr program id.* Two things forced the change, both traceable to §9.1:
@@ -917,6 +928,145 @@ Each clip carries metadata so the scheduler can place it well, persisted in the 
 Tagging options, in increasing order of leverage: filename/folder convention → sidecar metadata → **AI-assisted classification**. AI tagging classifies a clip's **text signals** — filename, the source title/description that yt-dlp/Archive provide (the ingest job preserves these as info-JSON sidecar files next to each clip), and, for clips produced by compilation splitting, the segment's **transcript** (V34; whisper.cpp, §14) — into era/audience/category via the configured LLM. Vision-based tagging remains future work (§20). Even text-only tagging is what makes thousands of clips practical, and is where Loomarr beats hand-curated filler lists.
 
 **Era must be grounded in the source text — a measured §8 hole, closed by V34 (maintainer's call: both halves, not one).** Running the real tagging prompt over real transcripts invented an era on 2 of 10 clips — `1980` and `1970` with no year anywhere in the text, inferred from tone — and the validator had no way to tell an inferred year from a read one (plan §6.4). So: an `era` tag is accepted **only when that year appears literally in the clip's text signals** (filename, sidecar text, or transcript); otherwise it is **not persisted as fact** and is instead recorded as a **suggestion** the operator confirms (`PATCH /v1/filler/{id}` setting `era` confirms and clears it). This applies to **every** tagging path, not just transcripts — the sidecar path has always been able to hit it; transcripts merely made it frequent enough to measure.
+
+### Sources fetch on their own (V38b)
+
+A registered, enabled source is **polled on a schedule** and new items download without anyone
+asking. This supersedes §15's "there is no unattended crawler": clips arrive because you added a
+source, not because you pasted a URL each time.
+
+⚠ **The superseded rule's concern was legitimate — unattended fetching can fill a stranger's disk
+— so it survives as LIMITS rather than as a prohibition.** All are settings, all have defaults, and
+all fail toward doing less:
+
+| Bound | Default | Why |
+| --- | --- | --- |
+| `filler.fetch.every` | `6h` | How often a source is polled. Off (`0`) disables auto-fetch entirely |
+| `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
+| `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
+| `filler.fetch.max_disk_gb` | `20` | A ceiling on what the drop-folder may consume. Same behaviour at the limit |
+
+**Three properties that are not negotiable:**
+
+1. **Only registered, ENABLED sources are polled.** The Sources switch already claims Loomarr
+   "stops scanning, searching and downloading" from a source that is off; auto-fetch is bound by
+   the same switch or that copy becomes false.
+2. **Everything fetched arrives HELD.** Auto-fetch does not bypass the lifecycle — a downloaded
+   clip is still tagged, still scored, and still gated by the confidence cap before it can play.
+   The unattended step is *acquisition*, never *admission*.
+3. **A limit that is reached is REPORTED, never silent.** An operator whose catalog stopped
+   growing must be able to see which ceiling stopped it. A crawler that quietly does nothing is
+   indistinguishable from one that is broken.
+
+⚠ **Archive.org collections are the case the limits exist for.** A collection is thousands of
+items; `max_per_run` is what stops "add a source" from meaning "download 8,000 files tonight".
+A bulk backfill remains the **pull**'s job, where a human sees the plan and approves it.
+
+### Two downloaders, two gates (V38b)
+
+Filler arrives by two mechanisms with **different requirements**, and they are gated separately:
+
+| Source | Fetched by | Needs |
+| --- | --- | --- |
+| **archive.org** | plain HTTP | **ffmpeg only** (to probe and thumbnail what it fetched) |
+| **YouTube** | yt-dlp | yt-dlp **and** ffmpeg |
+
+⚠ **This corrects a real defect, not a preference.** One `ingest` feature flag required *both*
+binaries, so a missing yt-dlp switched off archive.org downloads too — despite that path never
+invoking it. On a source build with ffmpeg installed and no yt-dlp, downloads were reported
+unavailable while being perfectly runnable, and **the starter pull is an archive.org collection**,
+so first-run acquisition was blocked by a binary it does not use.
+
+The invariant "every ingest needs yt-dlp" was true when written and became false when the archive
+downloader landed beside it; the gate never split. Same shape as V37's `Fetchable()` — an implicit
+rule that quietly stops holding when a second case appears.
+
+**So the surface reports per source, never one blanket verdict.** "Downloading isn't available"
+was a claim about the whole subsystem made from one binary's absence; a source that can fetch says
+so, and one that cannot says which tool it wants.
+
+### The clip lifecycle: held, then filed (V38)
+
+Until V38 a clip had no lifecycle. The folder scan catalogued it and the tagger tagged it **in
+place**, which meant everything Loomarr downloaded was playable the moment it landed — tagged or
+not, right or wrong. V38 gives an arriving clip a **state**:
+
+- **held** — in Loomarr's records, **not in the playable catalog**. It is not matched into a pod,
+  not attached to a filler-list, and not counted as coverage. It is waiting to be tagged, and
+  then either filed or rejected.
+- **filed** — the catalog proper. Everything that plays is filed; everything filed was either
+  filed by a human or cleared the confidence bar below.
+
+⚠ **Two properties this must not break, both learned the hard way:**
+
+1. **Every existing clip migrates to `filed`.** They were catalogued under the old model and are
+   playing right now; migrating them to `held` would silently empty every channel's filler pool
+   on upgrade. This is the same class as `00026`'s upsert default, which would have switched off
+   every existing source — a default chosen for new rows, applied to old ones.
+2. **The drop-folder stays DIRECT.** A file an operator hand-copies into `FILLER_DIR` is a
+   deliberate human act, so it is filed on sight. Holding it would mean a clip you placed
+   yourself sits invisible until you approve it — the ceremony §7 warns about, which teaches
+   people to click through gates rather than read them. **Only ingested clips are held**: pulls,
+   queued downloads, and split segments, i.e. everything that arrives because *Loomarr* fetched
+   it rather than because a person put it there.
+
+### Tagging confidence, and auto-filing (V38)
+
+The tagger records a **confidence score** (0–100) alongside the tags. It exists for one job: to
+decide whether a held clip is **filed automatically** or **surfaced to a human** in Incoming.
+Anything scoring at or above `filler.autofile.min_confidence` is filed; anything below stays held
+and waits for a person.
+
+⚠ **The score is grounding-gated, and that is the whole safety property.** It is NOT the model's
+own self-assessment, because this tagger has a measured history of confident fabrication — the
+paragraph above records it inventing an era on 2 of 10 real clips, inferred from tone. A
+self-reported number would be the same failure one level up: the model that fabricated the era
+also grades how sure it is about the era.
+
+So the score is built in two layers, and only the first can *raise* it:
+
+1. **Grounding facts CAP it.** Everything `validateTags` can verify sets a ceiling — was the era
+   found **literally** in the text or merely inferred; did audience and category match the known
+   enums; was there any source text to check at all. ⚠ **An ungrounded era can never reach the
+   auto-file threshold**, no matter what the model claims. That is a hard ceiling, not a
+   subtraction, and it is the property to sabotage-test.
+2. **The model refines within the cap.** The model reports its own confidence and it may only
+   *lower* the grounded ceiling, never lift it. A model that is unsure about a clip whose tags all
+   verify is still worth surfacing; a model that is certain about an era it invented is not.
+
+**The consequence, stated plainly: auto-filed clips enter the catalog and can play on a channel
+with no human having looked at them.** That is a real change in what Loomarr does unattended, and
+it is why the ceiling above is not negotiable.
+
+⚠ **It is also strictly safer than what it replaces**, which is worth recording because the
+opposite is the intuitive reading. Before V38 an ingested clip was catalogued and playable
+*immediately*, with no score and no gate — auto-filing at 85 is the first time anything has stood
+between a downloaded file and a channel. The risk this section guards is not "clips reach
+channels unreviewed" (they already did); it is that a *fabricated* tag reaches matching and
+corrupts it silently.
+
+**Every auto-filed clip is attributed and reversible.** `auto_filed` records that no human looked
+at it, Incoming lists what was filed without asking, and sending one back to **held** is a single
+action. An unattended decision that cannot be found and undone is not a decision an appliance
+gets to make.
+
+**Defaults (maintainer, 2026-08-02):** auto-filing is **ON at 85**, matching the mock. ⚠ This
+means an existing install begins auto-filing on its first tagging run after upgrade without
+opting in — a deliberate product call, made with the grounding cap in mind: the fabrication class
+this section exists to guard against stays in Incoming regardless of the threshold, because an
+ungrounded era cannot clear it.
+
+**Loudness normalisation — SPECIFIED, NOT YET BUILT.** Clips filed automatically should be
+normalised to **−16 LUFS** on the ingest path: filler is cut together from sources recorded
+decades apart, and without it a break swings between a whisper and a shout, which is the single
+most audible defect in a channel that otherwise works.
+
+⚠ **`filler.autofile.normalize_loudness` is deliberately NOT in the registry yet**, and the reason
+is a rule this very phase re-learned. The key was declared alongside the other two, `make
+config-docs` published it, and a grep for its consumer found **nothing** — the exact
+declared-but-unconsumed defect that got `filler.autofile.*` removed in V35's review, committed
+inside the phase that documents the lesson. §15's rule is that a setting nothing READS does not
+exist. The key lands with its ffmpeg `loudnorm` pass, in the same PR, or not at all.
 
 **A new install has an empty drop-folder, so the first channel has nothing to break to.** The fix is a **starter pack**: `GET /v1/filler/discover?collection=<id>` lists a curated archive.org collection, the operator keeps or excludes rows, and only what survives is fetched through the ordinary ingest path. Three properties are load-bearing:
 
@@ -969,9 +1119,261 @@ The **drop-folder** and each **remote collection** can be **disabled**. A disabl
 
 ⚠ **Clips already in the catalog stay.** Disabling a source withdraws it from *future* work; it is not a delete, and it must never look like one. This is enforced at the scan and fetch sites rather than by hiding the source in the UI — a toggle that only dims a row is a claim the system does not honour.
 
-The folder stays **derived from configuration** (the read-model decision above), so its switch is a setting; remote collections are rows, so theirs is a column. That asymmetry is deliberate and is why one source never appears twice.
+⚠ **The media-server library row is SCANNED again (V38c — this reverses V35).** A `library` source names a media-server library that Loomarr scans for clips, exactly as it scans a watched folder, and it carries a working on/off switch like any other source.
 
-⚠ **The media-server library row has NO switch, and that is not an omission.** This section already records that the media server is out of the filler path — Loomarr scans `FILLER_DIR` itself — so nothing scans a library for clips and there is no work for a switch to stop. The row survives as **provenance**: clips carrying `source: library` were catalogued under the pre-§9.1 model and are still real files. Giving it a toggle would be the failure the paragraph above forbids, one file further down: a control that dims a row and changes nothing. *(An earlier draft of this section specified `FILLER_SOURCE_LIBRARY_ENABLED` alongside the folder key. It was removed when implementing V35 found there was no scan to gate — recorded rather than quietly dropped, because the key was already written down as if it did something.)*
+*What this reverses, and why it is not a quiet flip.* V35 recorded, at length, that the row had no switch **because nothing scanned a library** — the media server had been taken out of the filler path by §9.1 and a toggle would have been "a control that dims a row and changes nothing". That reasoning was sound about the code as it stood. The maintainer's decision (2026-08-02) is to give the kind real work instead of removing it from the UI: the mock's "Add a source" dialog offers Media server library, Watched folder, and Playlist/collection URL, and an operator who already keeps their commercials in an Emby library should be able to point Loomarr at it rather than being told to copy files.
+
+⚠ **What §9.1 forbade is still forbidden.** The dependency this restores is NARROW and must stay that way:
+
+- A library source is **one source among several**, never the catalog's only route. An install with no media server, or one whose media server is down, still gets a full catalog from its folders and remotes — the failure §9.1 removed was *"no media server ⇒ no commercials"*, and that must not come back. A library scan that fails is logged and skipped, exactly like an unreachable archive collection.
+- **Clip identity is still the content hash**, never a media-server item id. This is the third identity change's whole point (below): identity comes from the bytes Loomarr can see, so a library that is re-indexed, moved, or removed cannot orphan a catalogued clip.
+- **Clips still live in the clip folder.** A library scan is an *acquisition* path, not a second storage model: what it finds goes through the same intake as everything else (watch → hash → file → sidecar), so there are still no divergent paths. Loomarr does not play clips out of the operator's library in place, and never modifies it.
+- **Program content stays separate.** The reason commercials were moved out of the media server was that filler could otherwise leak into a programming lineup. A library registered as a *filler source* is read for clips only; it is never offered to the suggester as programme material.
+
+*(An earlier draft specified `FILLER_SOURCE_LIBRARY_ENABLED` as a setting. It stays deleted — V37 made sources one flat list, so a library's switch is a column on its own row like every other source, not a key in §15.)*
+
+### Sources are one flat list (V37 — supersedes the derived/registered split)
+
+**Every source is one row in one list**, whatever backs it: the drop-folder, the media-server
+library, each Internet Archive collection, each YouTube playlist. An operator adding a source
+picks a **kind** and gives a target; the list is the whole answer to *"where does filler come
+from?"*
+
+This **supersedes the read-model/registry asymmetry** V28 and V33 established — recorded here
+rather than quietly replaced, because the superseded rule was load-bearing and its reasoning
+still applies to the thing that replaces it. The old rule said: the folder is *derived from
+configuration* so its switch is a setting, remote collections are *rows* so theirs is a column,
+"and that asymmetry is deliberate and is why one source never appears twice."
+
+⚠ **Two properties that asymmetry protected are NOT optional, and the flat list must carry them
+itself:**
+
+1. **"Not configured" stays expressible.** The derived rows could say *"you could set up a
+   drop-folder but have not"* — a table of things-that-exist cannot say that, and it is §10's
+   own answer to *"why is my catalog empty?"*, the most important question this tab answers. So
+   the flat list keeps **`configured`** as a per-row fact, and the config-backed kinds
+   (`folder`, `library`) are **always present as rows even when unset**. They are not created by
+   an operator and cannot be removed; their target is the setting's value, blank when unset.
+2. ~~**No source appears twice.** The two config-backed kinds are **singletons**.~~
+   ⚠ **REVERSED in V38c — see "Many folders, many libraries" below.** The concern was real and
+   survives; the singleton was the wrong instrument for it.
+
+**Where the switch lives, now that both are rows.** A source's `enabled` is a column on every
+row. For `folder` the column is the projection of `filler.source.folder.enabled` — the setting
+remains the source of truth, so an operator flipping it in Settings and flipping it here are the
+same act, and there is still no precedence rule to write. ⚠ **`library` remains switchless** for
+the reason above: nothing scans a library, so its toggle would change nothing. Flattening the
+list does not create work for a switch to do.
+
+**Kinds.** `folder` · `library` · `archive` · `youtube`. Each declares whether it is
+*searchable* (archive today), *fetchable*, and whether an operator may add or remove it (`folder`
+and `library` are neither). ⚠ **`packs` — the dizqueTV/Tunarr-wiki bumper packs — is deliberately
+NOT a kind yet.** There is no pack index to read: no URL, no manifest, no fetcher. A row for it
+would be a control that dims and changes nothing, which this section forbids two paragraphs up.
+It returns when there is something real behind it.
+
+⚠ **A source's licence stays OFF the wire** (V37 decision). It is stored per source, but §6.3
+measured ~92% of archive.org items declaring none, and a badge that is absent for nine rows in
+ten teaches an operator to read absence as "fine" rather than "unknown". The stored value is
+audit, not UI.
+
+### Two folders, one pipeline (V38c)
+
+**`FILLER_WATCH_DIR` (`filler.watch_dir`) — the watch folder.** Where clips arrive: downloads land
+here, and an operator drops files in here. Loomarr **drains** it. Defaults to `<clip folder>/_watch`
+so a zero-config install has one without the operator mounting a second volume.
+
+**`FILLER_DIR` (`filler.dir`) — the clip folder.** Loomarr's own store. Every clip lives as
+`<hash>.<ext>` with `<hash>.info.json` beside it, sharded two levels (`a3/f9/<hash>.mp4`).
+
+⚠ **The clip folder keeps the EXISTING key rather than gaining a `filler.clip_dir` twin.**
+`filler.dir` has always meant "where the clips are", which is exactly what the clip folder is —
+its meaning did not change, only its layout did. Minting a new key would mean migrating every
+reader, retiring an identifier, and leaving two settings whose difference an operator would have
+to learn. The new concept is the watch folder, so the watch folder is what gets a new key.
+
+**Every source uses the same plumbing — there are no divergent paths.** YouTube, Internet Archive
+and a hand-dropped file all take one route:
+
+1. **Arrive** in the watch folder (downloader writes there; operator copies there).
+2. **Hash** the file — the sparse content hash below.
+3. **Move** it into the clip folder as `<hash>.<ext>`. Already present ⇒ it is a duplicate; the
+   arriving copy is discarded rather than catalogued twice.
+4. **Write the sidecar** beside it, carrying tags and provenance.
+5. **Catalogue** the clip.
+
+⚠ **The original filename is preserved IN THE SIDECAR before the rename**, and this is
+load-bearing rather than sentimental. §10's grounding rule accepts an era only when the year
+appears literally in the clip's text signals — and the filename is one of them
+(`Frosted Flakes 1993.mp4`). Renaming to a hash without capturing the name first would destroy
+that signal permanently, so every clip whose era came from its filename would become ungrounded.
+The tagger reads `originalName` from the sidecar instead of from the path.
+
+⚠ **Loomarr rearranges only its OWN clip folder.** The watch folder is drained, never
+reorganised; nothing outside those two directories is touched. §10's promise — Loomarr never
+deletes an operator's media — is unchanged: a file moves from watch to clip, it is not destroyed.
+
+⚠ **Why moved rather than copied.** A watch folder that never empties is a second copy of the
+whole library, and the operator would have to tidy it by hand forever. Draining is what makes it
+a *watch* folder.
+
+### Clip identity is a content hash (V38c — the third identity change)
+
+**A clip is identified by a hash of its bytes; its path is data, not identity.** Both are stored,
+each doing what it is good at:
+
+- **`id` = sparse content hash** — the first 64 KB, the last 64 KB, and the file size. Two seeks
+  rather than a full read, so hashing a 200 MB compilation costs about what a 2 MB clip does.
+- **`path` (+ its folder) = where the file lives** — human-readable in logs and the UI, the thing
+  playout opens, and the **filename the tagger reads for era and brand**. Identity moving off it
+  changes nothing about that signal.
+
+**Why identity had to move.** V38c allows many watched folders (below), and a path is only unique
+*within* its folder — two folders each holding `ads/coke.mp4` produced the same identity, and one
+silently overwrote the other. Prefixing with a folder id would have fixed the collision; hashing
+fixes it **and** answers the question a prefix cannot: *is this the same advert?*
+
+**Duplicates are not saved.** The same file found in two folders is catalogued **once**, first
+scan wins; the second is skipped. ⚠ **This is only safe because identity is the hash.** If the
+operator deletes the winning copy, the next scan finds the survivor, computes the *same* id, and
+re-catalogues it — the clip returns **with its tags intact**. Under path identity that would have
+been a different clip and the tags would be gone.
+
+⚠ **Three caveats, written down rather than discovered:**
+
+1. **A sparse hash is a heuristic, not a cryptographic guarantee.** Two files could share a size,
+   a head and a tail while differing in the middle — in practice a truncated duplicate or a
+   deliberately constructed file. The consequence is one clip shadowing another in the catalog,
+   which a re-scan does not fix by itself. Tolerable for filler (clips are a synced cache, and
+   the operator can delete the shadowing file), and stated here because a silent shadow is worse
+   than a documented one.
+2. **A re-encoded or trimmed file is a DIFFERENT clip, and loses its tags.** That is correct — it
+   is a different file — but an operator who re-encodes their library re-tags it. Worth saying
+   because "I only changed the bitrate" does not feel like "I replaced the clip".
+3. **The migration DROPS the catalog** (`00033`), because ids cannot be recomputed without
+   reading every file, and a migration that does I/O over an operator's whole media library is
+   not a migration. Clips are a synced cache and the next scan repopulates paths.
+
+   ⚠ **Tags are recoverable, play counts and pins are not.** Sidecars (below) carry era, audience,
+   category and confidence back into the catalog on the next scan — which is most of what an
+   operator typed. Play counts and channel pins live only in the database and do not survive.
+   ⚠ **The loss is surfaced in the app**, not left to be noticed: an operator whose pins vanished
+   must be told why, for the same reason §10 requires an auto-fetch limit to report itself rather
+   than silently doing nothing.
+
+   ⚠ **Sidecar recovery only helps installs that HAVE sidecars** — i.e. clips Loomarr downloaded,
+   plus anything tagged after V38c ships. A pre-V38c install that hand-dropped and hand-tagged its
+   whole library has none, and loses those tags outright. That is the case the warning is for.
+
+### Sidecars: metadata travels with the clip (V38c)
+
+A **sidecar** is a small JSON file beside a clip — `ads/coke-1985.mp4` and
+`ads/coke-1985.info.json`. `clipfetch` has always written one at download (yt-dlp's
+`--write-info-json` shape: title, description, upload date, source URL, licence) and Loomarr has
+only ever READ it.
+
+**Loomarr now writes to it too**, recording what it worked out: era, audience, category, kind and
+the confidence score. So the metadata **travels with the file**. Reset the database, move the
+folder to another install, or take migration `00033` above, and the tagging comes back on the next
+scan instead of being retyped.
+
+⚠ **JSON, not `.nfo`** (maintainer, 2026-08-02) — considered, because `.nfo` is the convention in
+exactly this ecosystem (Kodi/Emby/Jellyfin/*arr) and an operator would recognise it. Three things
+decided it: we would be *extending a file that already exists* rather than adding a format;
+`.nfo`'s schema is `<movie>`/`<episode>` and has no element for era-as-decade, audience or a
+confidence score, so we would be inventing custom tags inside someone else's schema — compliance
+in appearance only; and **nothing consumes it**, because §10 took the media server out of the
+filler path, so the interoperability argument that justifies `.nfo` elsewhere does not apply here.
+If filler ever lives in a scraped media library, that changes and `.nfo` becomes the better bet.
+
+⚠ **This is the first time Loomarr writes into the operator's media folder, and the promise it
+must not break is narrower than "never write".** §10's existing rule is that Loomarr never
+*deletes* an operator's media. A sidecar honours that — it adds a file, never removes or rewrites
+one the operator authored. **Loomarr may only ever create or update `*.info.json`**; the media
+files themselves stay byte-for-byte untouched.
+
+⚠ **The held/filed fork moves from the file's EXISTENCE to a FIELD inside it.** V38b decided
+"downloaded vs hand-dropped" by asking whether a sidecar existed — which stops working the moment
+Loomarr writes sidecars for hand-dropped clips too, because then everything has one. The download
+path now stamps **`"fetchedBy": "loomarr"`** and the fork reads that.
+
+That is a better signal than the one it replaces, not merely a repair: **existence was inferred,
+a field is explicit**. An operator who copies a clip together with its sidecar gets the honest
+answer either way, and one who tidies sidecars away no longer flips a clip's lifecycle by
+accident.
+
+### Many folders, many libraries (V38c — reverses V37's singleton rule)
+
+An operator may add **any number** of watched folders and media-server libraries, not one of each.
+Commercials living in two places is an ordinary situation, and V37 gave it no expression at all.
+
+⚠ **This reverses a rule V37 added one phase earlier, so the reasoning is recorded rather than
+edited away.** V37 made `folder`/`library` singletons because V28/V33's superseded asymmetry had
+protected "no source appears twice", and a flat list that let someone add a second folder beside
+the derived one looked like exactly that double-listing.
+
+**The concern was right; the instrument was wrong.** What must not happen is ONE folder appearing
+as TWO rows — a stale row disagreeing with the setting about the same directory. Forbidding a
+second *distinct* folder does not prevent that, and it forbids something legitimate. So:
+
+- **Uniqueness is on the TARGET, not the kind.** One row per distinct path or library id. Adding
+  a folder already listed is refused as a duplicate, which is the actual invariant.
+- **`filler.dir` is the FIRST folder, not the folder.** It seeds a row on a fresh install so a
+  zero-config install still has somewhere to drop files, and it remains the default the ingest
+  path downloads into. It stops being the only one anything scans.
+- **The scan walks every enabled folder row**, not just `filler.dir`. A folder that is switched
+  off is not scanned — the same promise the switch already makes.
+
+⚠ **"Not configured" still has to be expressible** (property 1 above, unchanged). A fresh install
+shows its seeded folder row with a blank target and a `not configured` badge, because "you could
+set up a drop-folder but have not" is §10's own answer to *"why is my catalog empty?"*.
+
+### Per-source fetch overrides (V38c)
+
+`filler.fetch.every` and `filler.fetch.max_per_run` gain **per-source overrides**. A busy archive
+collection and a small playlist genuinely want different numbers, and one global figure serves
+neither well.
+
+⚠ **Unset must be NULL, never 0.** `0` already means something for `fetch.every` — *never
+auto-fetch this source* — so "inherit the global" cannot share that encoding. A column defaulting
+to `0` would read as "every existing source is switched off", silently, on upgrade. That is the
+`00026` mistake (a default chosen for new rows applied to old ones) and it is the thing to
+sabotage-test here.
+
+⚠ **The catalog and disk ceilings stay GLOBAL.** They bound the whole install — what the operator
+is protecting is one disk, not one source — and a per-source disk cap would let four sources each
+stay under their limit while together filling the volume.
+
+### What the Sources tab shows (V38c — the mock, read properly)
+
+⚠ **V37 built this tab from the delta doc's SUMMARY rather than the mock's markup and JS**, which
+is how it ended up structurally right and detailed wrong. The summary described the shape (flat
+list, toggles, a search expander) and that shipped faithfully; the things only the source shows —
+the kind badge, the greying, the combined stat line, the three-kind picker, the per-kind copy —
+were never read. **A summary is not the source**, which is the same lesson the truncated-fetch
+correction records one section up.
+
+Per row: an on/off switch · a **kind badge** (fixed-width, colour-coded) · name + description ·
+a **stat** reading *"6 clips · scanned 2m ago"* · an optional Search expander · an optional
+remove. ⚠ **A disabled row is GREYED** (the mock's `sv.opacity`), not merely badged — the switch's
+effect has to be visible at a glance down a list.
+
+**A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
+already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
+enabled, and the fetch overrides above. ⚠ Re-pointing a source is deliberately NOT offered:
+changing a folder's path orphans every clip it brought in, which stay attributed to a source that
+no longer means the same thing. Remove and re-add makes that explicit rather than silent.
+
+**Two status lines, and they are different.** `svcOnLine` on the tab header reads *"4 of 5 on"*.
+The page header's pill — on **every** tab, with a live pulse — reads *"4 of 5 sources on · 9 clips
+· last scan 2m ago"*. ⚠ The scan time is the load-bearing part: with auto-fetch running
+unattended, *"is this thing actually running?"* is the question the header exists to answer, and
+counting rows does not answer it.
+
+⚠ **No Sync or AI-tag buttons in the header** (V38c). Both jobs run on schedules, so a manual
+trigger asks the operator to do work the appliance is already doing; the mock draws the status
+pill in that space instead. The capability is not lost — the Tasks page has Run-now for every
+scheduled job — and the pill's "last scan" is what those buttons were really being used to check.
 
 ### Compilation splitting (V34)
 Discovery (V33) surfaces a source; ingest downloads it. But a large share of what discovery finds is a **compilation** — one file holding twenty or more commercials back to back. Ingested whole it is a single 15-minute "clip" the pod assembler can never place (`durationEligible` rejects anything far longer than a break); split blindly it is twenty files named `compilation_seg07` with no era, audience or category, which the ladder cannot place either. **Splitting and metadata are one phase because either alone produces unplaceable clips.** The pipeline, designed from measurement on six real compilations rather than reasoning (plan §6.4 — every number below names its method there):
@@ -1015,7 +1417,7 @@ Two jobs the suggester (§8) can do here, both under the same grounding rule (ca
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
 
 ### Config
-Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_MAX_CONCURRENT` and `INGEST_TIMEOUT`. Ingestion *targets* (playlist/collection URLs) are supplied per-request by an admin, not configured globally — there is no unattended crawler. **Migration note (twice revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — which is **itself now superseded by the clip's path relative to `FILLER_DIR`** (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files). Each step moved identity closer to the thing Loomarr actually owns.
+Core: `FILLER_DIR` (the drop-folder path Loomarr registers as a Tunarr `local` media source — replaces the old `FILLER_LIBRARY` media-server-library id, which is removed since the media server is no longer in the filler path), `FILLER_SYNC_EVERY`, `FILLER_AI_TAGGING`, and pod/density knobs (see §15). **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_MAX_CONCURRENT` and `INGEST_TIMEOUT`. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
 
 ---
 
@@ -1645,14 +2047,20 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `SCHED_DEFAULT_STRATEGY` / `SCHED_BACKFILL` | `shuffle` / `stable` (§9) |
 | Policy defaults: `SCHED_EPISODE_NOREPEAT` / `SCHED_MOVIE_NOREPEAT` / `SCHED_SERIES_MIN_GAP` / `SCHED_BLOCK_MAX` / `SCHED_ORDERING` / `SEASONAL_MODE` | `168h` / `720h` / `2h` / `2` / `syndication` / `auto` (per-channel overridable — `programming-design.md`) |
 | `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). The drop-folder Loomarr registers as a Tunarr `local` source. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
+| `FILLER_DIR` / `FILLER_SYNC_EVERY` / `FILLER_AI_TAGGING` | **`/data/filler`** / `15m` / `false` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* The folder Loomarr registers as a Tunarr `local` source. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at boot if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error) |
+| `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and a watch folder that vanishes silently loses whatever had not been filed yet. The scan skips it by name, so a file waiting there is never catalogued from its arrival path |
 | `FILLER_BREAKS_PER_HOUR` / `FILLER_POD_MAX` | `4` / `4` (density + pod size) |
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
-| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; unset/unrunnable ⇒ `ingest` feature off (§10). Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too |
+| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
 | `FILLER_STARTER_COLLECTION` | the archive.org collection the **starter pack** lists on a fresh install (§10). A curated default, not a hardcoded truth: point it at your own collection, or **set it empty to turn the pack off entirely**. Listing only — nothing downloads without the operator keeping a row. ⚠ **From V35 this seeds a pull** rather than driving its own flow, so the "nothing downloads" property is now enforced by the approval gate instead of by a UI convention |
+| `FILLER_AUTOFILE_ENABLED` / `FILLER_AUTOFILE_MIN_CONFIDENCE` | **`true` / `85`** (§10 V38). Whether a tagged clip is filed automatically, and the score it must reach. ⚠ **These keys were REMOVED from this table in V35's review** as declared-but-unconsumed — §15's own rule is that a setting not in the registry does not exist. They return **with their consumer, in the same PR**: the filing path reads them, and a test proves a clip below the threshold reaches Incoming instead of the catalog. ⚠ **ON by default means an existing install starts auto-filing on its first tagging run after upgrade** (maintainer, 2026-08-02) — a deliberate product call. What makes it safe is not the number but §10's grounding **cap**: an ungrounded era cannot reach any threshold, so the fabrication class stays with a human regardless |
+| `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
+| `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
+| `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
+| `FILLER_FETCH_MAX_DISK_GB` | `20` (§10 V38b). Same, for drop-folder size. ⚠ Measured against the folder, not a running total, so files an operator deletes by hand are noticed |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 | `USER_SYNC_EVERY` | `1h` (user import/sync from the media server) |
 

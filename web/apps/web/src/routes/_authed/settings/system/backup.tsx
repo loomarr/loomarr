@@ -40,7 +40,7 @@ const BackupPage = () => {
   if (list.isError) {
     return <ErrorState error={list.error} onRetry={() => void list.refetch()} />;
   }
-  if (!list.data || list.data.status !== 200) return null;
+  if (list.data?.status !== 200) return null;
 
   return (
     <div className="overflow-y-auto p-6">

@@ -1,5 +1,4 @@
 export * from "./collapsible-section";
-export * from "./count-tabs";
 export * from "./empty-state";
 export * from "./error-details";
 export * from "./error-state";

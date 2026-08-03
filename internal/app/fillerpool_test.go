@@ -49,6 +49,8 @@ func liveChannel(id, name string, number, era int) store.Channel {
 
 func commercial(path string, era int, aud filler.Audience) filler.Clip {
 	return filler.Clip{
+		// Hash AND Path — identity is the hash since V38c, and the store keys on it.
+		Hash: path,
 		Path: path, Name: path, Kind: filler.Commercial,
 		Era: era, Audience: aud, Category: "toys", DurationMs: 30_000,
 		TunarrProgramID: "tp-" + path,
@@ -186,8 +188,8 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 			// Untagged: a commercial with no era/audience/category. The store owns this
 			// predicate; the assertion below is what proves Pool asked it rather than
 			// counting in Go.
-			{Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 20_000},
-			{Path: "bump.mp4", Name: "bump.mp4", Kind: filler.Bumper, DurationMs: 5_000},
+			{Hash: "mystery.mp4", Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+			{Hash: "bump.mp4", Path: "bump.mp4", Name: "bump.mp4", Kind: filler.Bumper, DurationMs: 5_000},
 		},
 		nil,
 	)

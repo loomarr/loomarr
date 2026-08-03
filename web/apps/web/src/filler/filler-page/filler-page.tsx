@@ -1,27 +1,27 @@
 import type { ClipDTO } from "@loomarr/api";
 import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
-import { pluralize } from "@loomarr/core";
+import { formatRelative, pluralize } from "@loomarr/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { LayoutGrid, List } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import {
   ClipCard,
-  CountTabs,
+  ClipRow,
   EmptyState,
   ErrorState,
-  FillerSources,
   IncomingPanel,
   PoolHealth,
-  SourceSearch,
+  WatchPill,
 } from "@/components/loomarr";
 import {
   Button,
   Card,
   Input,
   Label,
+  NavTabs,
   Select,
   SelectContent,
   SelectItem,
@@ -32,8 +32,9 @@ import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
-import { IngestPanel } from "../ingest-panel";
 import { PinClipDialog } from "../pin-clip-dialog";
+import { SourcesPanel } from "../sources-panel";
+import type { FillerPageProps } from "./filler-page.type";
 
 // One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
 // page cannot drift on what a retag carries.
@@ -63,11 +64,30 @@ const BULK_TAG_FIELDS = [
   },
 ] as const;
 
-// FillerPage — the §10 clip catalog: browse, search, tag, sync, and (on the filler image)
-// download. Filtering is client-driven but server-executed: the store already indexes
+// The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because
+// filler is picked by LOOKING at it — a wall of frames is the point; the list is for scanning
+// a large catalog and bulk-selecting, where a thumbnail per row is noise.
+//
+// ⚠ Only the GRID acts on one clip (tag/pin/split). That is the mock's split and it is
+// deliberate: see the note in `clip-row.tsx` on why per-row actions are not added back.
+const VIEWS = [
+  { id: "grid", label: "Grid", icon: LayoutGrid, title: "Cards with thumbnails and per-clip actions" },
+  { id: "list", label: "List", icon: List, title: "A dense row per clip, for scanning and selecting" },
+] as const;
+
+// FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
+// ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
+// on their own schedule and a button for work that already happens invites the reading that it
+// does not happen unless pressed. Filtering is client-driven but server-executed: the store indexes
 // these columns, so a query per filter change is cheaper and always correct, versus
 // holding thousands of clips in memory to filter locally (§7.2 — no client index).
-const FillerPage = () => {
+// ⚠ `tab` is a PROP, not read from the URL here (V-nav-paths): which section shows is now
+// the PATH (`/filler`, `/filler/incoming`, `/filler/sources`), and three different route
+// files render this component — each hands over the section it owns. The catalog FILTERS
+// below stay URL-driven, and stay scoped to `/_authed/filler/` because only that route
+// validates them; Incoming and Sources carry none of them (see filler-page's own note on
+// `catalogSearch`).
+const FillerPage = ({ tab }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -75,15 +95,35 @@ const FillerPage = () => {
   // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
   // validateSearch narrows them. setFilters merges a partial change and writes with
   // `replace: true` so typing in the search box doesn't stack a history entry per keystroke.
+  // ⚠ `strict: false`, not `from: "/_authed/filler/"`: that route id only matches when the
+  // active leaf IS the catalog, and this component also mounts under `/filler/incoming` and
+  // `/filler/sources`, neither of which declares these params. Loosely-typed search still
+  // reads whatever the catalog route wrote, so a link back to Catalog with `q`/`kind`/etc.
+  // round-trips; the other two tabs just never populate them.
   const {
-    tab = "catalog",
     q = "",
     kind = "",
     audience = "",
     untagged = false,
-  } = useSearch({ from: "/_authed/filler/" });
+    view = "grid",
+  } = useSearch({ strict: false }) as Partial<FillerSearch>;
   const setFilters = (next: Partial<FillerSearch>) =>
     navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
+
+  // What the Catalog tab's link carries back.
+  //
+  // ⚠ It preserves the CATALOG's own state (the filters and the grid/list choice) — the path
+  // itself (`/filler`) is what used to be `tab=catalog`; the query is only ever these filters
+  // now. The Incoming and Sources links deliberately carry NONE of it: `q`, `kind` and
+  // `audience` filter the clip grid, and nothing on those tabs is a clip — dragging a search
+  // term onto Sources would leave a filter applied to a list it cannot narrow.
+  const catalogSearch = {
+    ...(q ? { q } : {}),
+    ...(kind ? { kind } : {}),
+    ...(audience ? { audience } : {}),
+    ...(untagged ? { untagged } : {}),
+    ...(view !== "grid" ? { view } : {}),
+  };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
 
@@ -114,6 +154,12 @@ const FillerPage = () => {
   // (not just the tab) keeps a member's console clean.
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: isAdmin } });
 
+  // The header's live status (§10 V38c). ⚠ Member-readable, deliberately: it carries counts and a
+  // verdict but no paths, targets or ids, so a member sees whether filler is working without
+  // being shown the infrastructure behind it. Gating this on `isAdmin` would leave every member
+  // with a permanently grey indicator on a healthy install.
+  const watch = unwrap(fillerApi.useFillerWatch().data, (b) => b);
+
   // Catalog health (V35). Member-readable, so no `enabled` gate: it explains why a channel plays
   // what it plays, which is the same reason the catalog listing itself is member-visible.
   const poolQuery = fillerApi.useFillerPool();
@@ -126,6 +172,9 @@ const FillerPage = () => {
   const incomingAsks = unwrap(incomingQuery.data, (b) => b.asks) ?? [];
   const incomingReels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
   const incomingTotal = unwrap(incomingQuery.data, (b) => b.total) ?? 0;
+  // What was filed with nobody looking (§10 V38) — the audit half. ⚠ Deliberately NOT in
+  // `incomingTotal`: it is not work waiting, and a tab badge that never clears stops being read.
+  const incomingFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
 
   // ⚠ Proposing a pull DOWNLOADS NOTHING — it writes a proposal for the approval queue (§10).
   // The toast says so, because a button that appears to start a download and does not is worse
@@ -145,76 +194,22 @@ const FillerPage = () => {
       },
     },
   });
-  const fetchSource = fillerApi.useFetchFillerSource({
-    mutation: {
-      onSuccess: () => {
-        // Both: the catalog changed AND the per-source counts derive from it.
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
-      },
-    },
+  // Filing decisions (§10 V38). ⚠ All three invalidate the CLIP LIST as well as Incoming: filing
+  // moves a clip into the catalog, so the Catalog tab and the pool strip are both now wrong.
+  const invalidateLifecycle = () => {
+    void invalidate();
+    void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
+    void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
+  };
+  const fileClips = fillerApi.useFileFillerClips({
+    mutation: { onSettled: () => setBusyClip(undefined), onSuccess: invalidateLifecycle },
   });
-
-  const sync = fillerApi.useSyncFiller({ mutation: { onSuccess: invalidate } });
-  const aiTag = fillerApi.useTagFiller({ mutation: { onSuccess: invalidate } });
-
-  // Switching a source on or off (V35). ⚠ The switch withdraws a source from future scanning,
-  // searching and downloading; clips already in the catalog are untouched, which is why nothing
-  // here invalidates the clip list.
-  const [togglingSource, setTogglingSource] = useState<string>();
-  const toggleSource = fillerApi.useSetFillerSourceEnabled({
+  const holdClips = fillerApi.useHoldFillerClips({
     mutation: {
-      onSettled: () => setTogglingSource(undefined),
-      onSuccess: () =>
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() }),
-    },
-  });
-
-  // Searching a source for clips to add (V35). ⚠ `submitted` is a SEPARATE state from what the
-  // operator is typing: the query runs on submit, not on keystroke. Each search costs archive.org
-  // one Solr request plus a metadata call per row, so firing per character would be both slow and
-  // rude — and the results would flicker under the cursor.
-  const [sourceQuery, setSourceQuery] = useState("");
-  const [submittedQuery, setSubmittedQuery] = useState("");
-  const discover = fillerApi.useDiscoverFiller(
-    { q: submittedQuery },
-    // Admin-only on the server, and only once something has actually been submitted — an
-    // enabled query with an empty q would 422 on mount.
-    { query: { enabled: isAdmin && submittedQuery.trim().length >= 2 } },
-  );
-
-  // Runtime + quality for the rows on screen (V35).
-  //
-  // ⚠ These are NOT part of the search, and the measurement is the reason: each id is one
-  // `/metadata/<id>` call against archive.org, and a full page of 25 measured 22.6s. So the
-  // rows paint immediately and this fills in for what the operator is actually looking at.
-  //
-  // ⚠ `statIds` only ever GROWS within a result set, and never re-asks for an id it already
-  // holds — the observer fires repeatedly as rows scroll, and re-requesting would spend real
-  // upstream calls on answers already in hand.
-  const [statIds, setStatIds] = useState<string[]>([]);
-  const statsQuery = fillerApi.useDiscoverFillerStats(
-    { id: statIds },
-    { query: { enabled: isAdmin && statIds.length > 0 } },
-  );
-  const discoveredStats = unwrap(statsQuery.data, (b) => b.stats) ?? {};
-
-  // Which results have been queued this session. ⚠ Session state, deliberately NOT derived from
-  // the catalog: a queued download has not landed yet, so the clip it becomes is not in the
-  // catalog to compare against, and the row must still report that the operator already asked.
-  const [queuedIds, setQueuedIds] = useState<string[]>([]);
-  const [queueingId, setQueueingId] = useState<string>();
-  const queueClip = fillerApi.useIngestFiller({
-    mutation: {
-      onSettled: () => setQueueingId(undefined),
+      onSettled: () => setBusyClip(undefined),
       onSuccess: () => {
-        // ⚠ The id comes from the state set at CLICK time, not from the mutation's variables:
-        // the request body carries a URL, and mapping it back to a row would mean re-deriving
-        // an identity the click already knew.
-        setQueuedIds((prev) => (queueingId ? [...prev, queueingId] : prev));
-        // Downloads land in the drop-folder and appear on the next scan, so the catalog and the
-        // per-source counts both become stale.
-        invalidate();
+        toast.success("Sent back", { description: "It's out of rotation and back in the queue." });
+        invalidateLifecycle();
       },
     },
   });
@@ -235,6 +230,17 @@ const FillerPage = () => {
       return next;
     });
   const clearSelection = () => setSelected(new Set());
+  // "Select all" over the rows currently RENDERED (V35b). ⚠ Scoped to the filtered set on
+  // purpose: `rows` is what the operator can see, and the bulk bar's next control is
+  // "Remove from catalog". Selecting clips hidden behind a filter would arm a destructive
+  // action over rows nobody looked at.
+  //
+  // It doubles as the un-select once everything shown is picked, so the control is not a
+  // one-way door that needs a second button to undo.
+  const allSelected = (rows: readonly ClipDTO[]) =>
+    rows.length > 0 && rows.every((clip) => selected.has(clip.path));
+  const selectAll = (rows: readonly ClipDTO[]) =>
+    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.path)));
 
   // Bulk retag. Each field is independent on the server, so sending only what the operator
   // picked leaves the other two alone rather than blanking them.
@@ -367,19 +373,28 @@ const FillerPage = () => {
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
   const sourceRows = unwrap(sourcesQuery.data, (b) => b.sources) ?? [];
-  const discoveredResults = unwrap(discover.data, (b) => b.items) ?? [];
 
   const filtered = Boolean(q || kind || audience || untagged);
 
-  // The header's at-a-glance line (the mock's `watchLine`). ⚠ Counts the UNFILTERED catalog
-  // where it can: `clipList` is the current query's result, so with a filter applied it
-  // would read "1 clip" on a catalog of 200 — a header that changes meaning when you type
-  // in the search box is worse than no header. Sources are admin-only, so a member sees the
-  // clip count alone rather than a "0 sources" that is really "you can't see them".
-  const statusLine = [
-    ...(isAdmin && sourceRows.length > 0 ? [pluralize(sourceRows.length, "source")] : []),
-    filtered ? `${pluralize(clipList.length, "clip")} shown` : pluralize(clipList.length, "clip"),
-  ].join(" · ");
+  // The header's at-a-glance line (the mock's `watchLine`), rendered entirely from
+  // `GET /v1/filler/watch`.
+  //
+  // ⚠ **Every clause comes from the SERVER, including the counts.** They were computed here from
+  // `/v1/filler/sources` — which is admin-only, so a member's header silently lost its source
+  // clause — and the clip count came from `clipList`, the CURRENT QUERY's result, so a filter
+  // matching nothing rendered "0 clips" on a catalog of two hundred. A header that changes
+  // meaning when you type in the search box is worse than no header.
+  //
+  // ⚠ The "last scan" clause is DROPPED when the server sends no timestamp, rather than rendered
+  // as "never". Most sources are scanned rather than fetched, so absent is the ordinary case —
+  // "never" would read as a fault on a drop-folder working exactly as intended.
+  const statusLine = watch
+    ? [
+        `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
+        pluralize(watch.clips, "clip"),
+        ...(watch.lastScanAt ? [`last scan ${formatRelative(watch.lastScanAt)}`] : []),
+      ].join(" · ")
+    : "";
 
   return (
     // ⚠ p-6 — the page owns its own gutter. Without it this page rendered flush against the
@@ -387,45 +402,39 @@ const FillerPage = () => {
     // the tab rule and every card ran edge to edge. The shell deliberately adds no padding
     // (a full-bleed page like the Guide needs none), which makes it each page's job.
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeading status={statusLine} />
-        {isAdmin && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={sync.isPending}
-              onClick={() => sync.mutate()}
-              title="Re-scan the drop-folder (Loomarr probes it directly since §9.1, no Tunarr needed)"
-            >
-              <RefreshCw aria-hidden />
-              {sync.isPending ? "Syncing…" : "Sync"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={aiTag.isPending || !features?.suggestions}
-              onClick={() => aiTag.mutate()}
-              // AI tagging classifies era/audience/category from text signals (§10) and
-              // needs the LLM the Suggest tab uses; without it the button would 409.
-              title={
-                features?.suggestions
-                  ? "Classify untagged commercials with the configured LLM"
-                  : "Connect an LLM under Settings → AI to auto-tag clips"
-              }
-            >
-              <Sparkles aria-hidden />
-              {aiTag.isPending ? "Tagging…" : "AI tag"}
-            </Button>
-          </div>
-        )}
+      {/* ⚠ The Sync and AI-tag buttons were HERE and are deliberately gone (V38c, maintainer).
+          Neither was work an operator should have to remember to start: the sync runs on its own
+          schedule and drains the watch folder every pass, and tagging runs after it. A button for
+          something that already happens invites the reading that it does NOT happen unless
+          pressed. Both remain reachable where they mean something — "Fetch now" on an individual
+          Sources row, and the per-clip tag dialog.
+
+          The header is now the mock's `watchLine` pill alone: what is on, what is held, when
+          anything last arrived. */}
+      {/* ⚠ `items-start` and a 16px gap, matching the mock: the pill aligns to the TOP of the
+          heading block, not to its baseline or centre. The heading takes the remaining width so
+          the pill sits hard against the right edge. */}
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <PageHeading />
+        </div>
+        {/* ⚠ Everything here comes from `GET /v1/filler/watch` — the counts AND the verdict.
+            An earlier pass derived the health in the browser from `/v1/filler/sources`, which
+            was wrong twice: that route is admin-only, so a member's dot sat permanently grey on
+            a working install, and the rule ("every source dark", "nothing for days") is domain
+            logic that belongs where it can be tested against the store. */}
+        {watch && <WatchPill status={statusLine} health={watch.health} />}
       </div>
 
       {/* Catalog health, above the tabs rather than inside one (V35).
           ⚠ A strip, not a tab: what the catalog holds is the CONTEXT the other tabs are read
           in, and as its own tab it was the thing nobody clicked — which is how an install ends
-          up with four hundred clips and channels still falling back to the bumper card. */}
-      {pool && (
+          up with four hundred clips and channels still falling back to the bumper card.
+          ⚠ HIDDEN on Sources, matching the mock's own `showPool: fillerTab !== 'sources'`. The
+          strip answers "what does my catalog hold and can it fill a break" — which is the context
+          for reading CLIPS. The Sources tab is about where clips come from, and a coverage strip
+          above it invites the reading that a source is at fault for a channel's weak coverage. */}
+      {pool && tab !== "sources" && (
         <PoolHealth
           pool={pool}
           {...(isAdmin ? { onProposePull: () => proposePull.mutate({ data: {} }) } : {})}
@@ -435,17 +444,27 @@ const FillerPage = () => {
 
       {/* Three tabs, matching the redesigned mock: Catalog · Incoming · Sources.
           ⚠ There is no Discover tab any more. Finding clips used to be its own destination; it
-          is now something you do TO a source, which is the only place the answer differs. An old
-          ?tab=discover bookmark falls back to Catalog rather than rendering a blank panel. */}
-      <CountTabs
+          is now something you do TO a source, which is the only place the answer differs. */}
+      {/* ⚠ Real LINKS, not buttons calling `navigate()`. Each tab is its own PATH now
+          (V-nav-paths: `/filler`, `/filler/incoming`, `/filler/sources` — it used to be
+          `?tab=`), so rendering it as a button would cost middle-click, copy-link and every
+          browser affordance for nothing. `NavTabs` is shared with Queue and Settings. */}
+      <NavTabs
         label="Filler sections"
+        linkComponent={Link}
+        // ⚠ Sources carries NO count. Catalog and Incoming are queues — "how many clips do I
+        // have", "how many need me" — and the number is the reason to look. The Sources tab is a
+        // destination: the count of configured sources is already the header pill's job ("4 of 5
+        // sources on"), and a bare "5" beside the label answers a question nobody asked while
+        // implying the tab is a backlog.
         tabs={[
-          { id: "catalog", label: "Catalog", count: clipList.length },
-          ...(isAdmin ? [{ id: "incoming", label: "Incoming", count: incomingTotal }] : []),
-          { id: "sources", label: "Sources", count: sourceRows.length },
+          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: clipList.length },
+          ...(isAdmin
+            ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
+            : []),
+          { id: "sources", label: "Sources", to: "/filler/sources" },
         ]}
         activeId={tab}
-        onSelect={(id) => setFilters({ tab: id === "catalog" ? undefined : id })}
       />
 
       {tab === "incoming" && isAdmin ? (
@@ -483,71 +502,45 @@ const FillerPage = () => {
               setBusyClip(ask.path);
               removeClips.mutate({ data: { paths: [ask.path] } });
             }}
-            {...(confirmEra.isPending || removeClips.isPending ? { busyPath: busyClip } : {})}
+            recentlyFiled={incomingFiled}
+            // "Use it" files a clip as it stands — its tags are right enough. No era to confirm,
+            // so this is the plain file, not the confirm-then-file above.
+            onFile={(ask) => {
+              setBusyClip(ask.path);
+              fileClips.mutate({ data: { paths: [ask.path] } });
+            }}
+            // ⚠ `asSuggested` is what makes this per-CLIP: the server confirms each clip's own
+            // proposed era. Sending one era for the whole selection is what the bulk tag bar
+            // does, and it is the wrong answer for a queue of different guesses.
+            onFileAllAsSuggested={() =>
+              fileClips.mutate({
+                data: { paths: incomingAsks.map((a) => a.path), asSuggested: true },
+              })
+            }
+            // The undo for auto-filing. ⚠ NOT a removal: the clip and its file both stay, it
+            // simply stops being matched into pods until someone decides.
+            onSendBack={(clip) => {
+              setBusyClip(clip.path);
+              holdClips.mutate({ data: { paths: [clip.path] } });
+            }}
+            {...(confirmEra.isPending || removeClips.isPending || fileClips.isPending || holdClips.isPending
+              ? { busyPath: busyClip }
+              : {})}
           />
-          {/* The download tooling still lives here — it is how clips ARRIVE, which is what this
-              tab is about. It moved off the retired Discover tab rather than being deleted. */}
-          <IngestPanel ingestAvailable={Boolean(features?.ingest)} onIngested={invalidate} />
+          {/* ⚠ `IngestPanel` — the paste-a-URL box — is retired-ok here (V38b), not merely moved.
+              Clips arrive because you added a SOURCE: Sources registers one, its per-row search
+              queues a result, an approved pull fetches in bulk, and auto-fetch polls on a
+              schedule. Every one of those paths is better than re-supplying a URL by hand, and
+              a box that made you find the URL yourself was the odd one out.
+
+              The ingest SSE frame it consumed is deliberately NOT deleted — auto-fetch and
+              queued downloads still emit progress; nothing renders it yet. `events-provider`
+              records why that fan-out is guarded structurally. */}
         </div>
       ) : tab === "sources" ? (
-        <div id="panel-sources" role="tabpanel" aria-labelledby="tab-sources" className="flex flex-col gap-6">
-          <FillerSources
-            sources={sourceRows}
-            total={unwrap(sourcesQuery.data, (b) => b.total) ?? 0}
-            onFetch={() => fetchSource.mutate()}
-            fetching={fetchSource.isPending ? "folder" : null}
-            onToggleEnabled={(id, enabled) => {
-              setTogglingSource(id);
-              toggleSource.mutate({ id, data: { enabled } });
-            }}
-            toggling={toggleSource.isPending ? togglingSource : null}
-            error={
-              toggleSource.error?.detail ?? fetchSource.error?.detail ?? sourcesQuery.error?.detail ?? null
-            }
-          />
-
-          {/* Finding clips is something you do TO a source (V35) — which is why the Discover tab
-              is gone and this lives here. ⚠ Searching downloads nothing; `Queue download` is the
-              only path that fetches, and it goes through the SAME ingest route the manual URL
-              box uses rather than a second downloader. */}
-          <Card className="flex flex-col gap-3 p-4">
-            <h3 className="font-medium text-sm">Find clips</h3>
-            <SourceSearch
-              results={discoveredResults}
-              total={unwrap(discover.data, (b) => b.total) ?? undefined}
-              stats={discoveredStats}
-              // ⚠ De-duplicated HERE, not in the component: the observer reports the visible set
-              // on every scroll, and each id it repeats is a real ~1.8s upstream request.
-              onVisible={(visible) =>
-                setStatIds((prev) => {
-                  const next = visible.filter((id) => !prev.includes(id));
-                  return next.length > 0 ? [...prev, ...next] : prev;
-                })
-              }
-              loadingStats={statsQuery.isFetching ? statIds : []}
-              query={sourceQuery}
-              onQueryChange={setSourceQuery}
-              onSearch={() => {
-                setSubmittedQuery(sourceQuery);
-                // A new search is a new result set: keeping the old ids would ask archive.org
-                // about rows nobody is looking at any more.
-                setStatIds([]);
-              }}
-              onQueue={(clip) => {
-                setQueueingId(clip.id);
-                queueClip.mutate({ data: { urls: [clip.url] } });
-              }}
-              queued={queuedIds}
-              queueing={queueClip.isPending ? queueingId : null}
-              searching={discover.isFetching}
-              error={discover.error?.detail ?? queueClip.error?.detail ?? null}
-            />
-          </Card>
-        </div>
+        <SourcesPanel sources={sourceRows} sourcesError={sourcesQuery.error?.detail} />
       ) : (
         <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
-          {sync.error != null && <ErrorState error={sync.error} />}
-          {aiTag.error != null && <ErrorState error={aiTag.error} />}
           {split.error != null && <ErrorState error={split.error} />}
           {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
@@ -621,18 +614,11 @@ const FillerPage = () => {
             </p>
           )}
 
-          {sync.data?.status === 200 && (
-            <p className="text-muted-foreground text-sm">
-              {`Synced: ${sync.data.data.added} added, ${sync.data.data.updated} updated, ${sync.data.data.pruned} pruned.`}
-            </p>
-          )}
-          {aiTag.data?.status === 200 && (
-            <p className="text-muted-foreground text-sm">
-              {`Tagged ${aiTag.data.data.tagged} of ${aiTag.data.data.considered} considered${
-                aiTag.data.data.partial ? `, ${aiTag.data.data.partial} partially` : ""
-              }.`}
-            </p>
-          )}
+          {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
+              their buttons (V38c). Reporting the outcome of work nothing on this page can start
+              is a result with no cause — an operator reading it has no way to know what produced
+              it or how to produce it again. Per-source outcomes belong on the Sources row that
+              did the work. */}
 
           <Card className="flex flex-wrap items-end gap-3 p-4">
             {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
@@ -697,6 +683,27 @@ const FillerPage = () => {
             >
               Untagged only
             </Button>
+
+            {/* Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle
+                buttons: these are two states of ONE setting, and a pair of independent
+                buttons announces neither which is active nor that they are alternatives.
+                `ml-auto` puts it at the far end of the toolbar, as the mock draws it. */}
+            <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Clip view">
+              {VIEWS.map((v) => (
+                <Button
+                  key={v.id}
+                  variant={view === v.id ? "default" : "outline"}
+                  size="sm"
+                  role="radio"
+                  aria-checked={view === v.id}
+                  title={v.title}
+                  onClick={() => setFilters({ view: v.id === "grid" ? undefined : v.id })}
+                >
+                  <v.icon className="size-4" aria-hidden />
+                  {v.label}
+                </Button>
+              ))}
+            </div>
           </Card>
 
           {rows === undefined ? (
@@ -742,26 +749,50 @@ const FillerPage = () => {
             />
           ) : (
             <>
-              <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {rows.map((clip) => (
-                  <ClipCard
-                    key={clip.path}
-                    clip={clip}
-                    {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
-                    {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
-                    {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
-                    {...(isAdmin && clip.suggestedEra
-                      ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
-                      : {})}
-                    {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                    {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
-                    splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
-                    {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
-                    selected={selected.has(clip.path)}
-                  />
-                ))}
+              <div className="flex items-center gap-3">
+                <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
+                {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
+                    what is on screen — not the whole catalog. Selecting rows the operator
+                    cannot see, then offering "Remove from catalog", is how a bulk action
+                    surprises someone. The label says so when a filter is active. */}
+                {isAdmin && (
+                  <Button variant="ghost" size="sm" onClick={() => selectAll(rows)}>
+                    {allSelected(rows) ? "Clear selection" : filtered ? "Select these" : "Select all"}
+                  </Button>
+                )}
               </div>
+              {view === "list" ? (
+                <div className="overflow-hidden rounded-lg border border-border">
+                  {rows.map((clip) => (
+                    <ClipRow
+                      key={clip.path}
+                      clip={clip}
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
+                      selected={selected.has(clip.path)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {rows.map((clip) => (
+                    <ClipCard
+                      key={clip.path}
+                      clip={clip}
+                      {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
+                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
+                      {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+                      {...(isAdmin && clip.suggestedEra
+                        ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
+                        : {})}
+                      {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
+                      {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
+                      splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
+                      selected={selected.has(clip.path)}
+                    />
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -793,16 +824,9 @@ const FillerPage = () => {
 // its own Filler section (theme + pin/exclude, with a live preview). Tagging here is what
 // makes a clip matchable there; the link makes that relationship navigable rather than
 // implicit — the cohesion gap that made filler feel "disjointed".
-// ⚠ `status` is the mock's `watchLine` MINUS its "last scan 2m ago" clause. No DTO carries a
-// last-scan time (FillerSourceDTO is {configured,count,detail,fetchable,kind,remotes,target}),
-// and inventing one from the client's clock would assert a scan happened when the page
-// merely loaded. Two thirds of a true line beats three thirds of a plausible one.
-const PageHeading = ({ status }: { status?: string }) => (
+const PageHeading = () => (
   <div>
-    <div className="flex flex-wrap items-baseline gap-x-3">
-      <h1 className="font-semibold text-xl">Filler</h1>
-      {status && <span className="font-mono text-static-400 text-xs">{status}</span>}
-    </div>
+    <h1 className="font-semibold text-xl">Filler</h1>
     <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
       Your whole library of commercials, bumpers, and station IDs. Browse and tag them here. Tags are what let
       the scheduler match a clip to a channel. Each channel then{" "}

@@ -4,6 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,12 +29,17 @@ func (f *fakeSource) ListLocalClips(_ context.Context) ([]filler.RawClip, error)
 }
 
 // memStore is an in-memory filler.Store for sync tests.
+//
+// ⚠ Keyed on the clip's ID (its content hash), exactly as the real store is since V38c. It used
+// to key on `c.Path`, which quietly made every sync test agree with a Syncer that also keyed on
+// the path — so the re-key left `Sync` reading the wrong field and nothing went red. A double
+// that models identity differently from the real thing tests the double.
 type memStore struct{ clips map[string]filler.StoreClip }
 
 func newMemStore() *memStore { return &memStore{clips: map[string]filler.StoreClip{}} }
 
 func (m *memStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
-	m.clips[c.Path] = c
+	m.clips[c.ID()] = c
 	return nil
 }
 func (m *memStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
@@ -55,8 +63,11 @@ func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, erro
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+// raw builds a scanned clip. ⚠ ID and Path are set SEPARATELY — id is the content hash, path is
+// where the file sits. The fixtures below pass the same string for both where the distinction
+// does not matter; the tests that turn on it (see the two-folder case) pass different ones.
 func raw(id, name string, kind filler.Kind, dur int64, era int) filler.RawClip {
-	return filler.RawClip{Path: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
+	return filler.RawClip{ID: id, Path: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
 }
 
 func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
@@ -159,5 +170,239 @@ func TestSync_PrunesRemovedClips(t *testing.T) {
 	}
 	if _, ok := st.clips["c1"]; !ok {
 		t.Error("kept clip wrongly pruned")
+	}
+}
+
+// --- V38: the lifecycle fork ---
+
+// ⚠ THE mechanism the whole review queue depends on. Ingest downloads into the same folder the
+// scan watches, so at catalogue time a fetched clip and a hand-copied one are both just files.
+// The `.info.json` sidecar `clipfetch` writes is what tells them apart.
+//
+// If this fork were wrong in the "no sidecar ⇒ hold" direction, an operator's own files would sit
+// invisible until approved. Wrong the other way, every download would go straight to air.
+func TestSync_HoldsDownloadedClipsAndFilesHandCopiedOnes(t *testing.T) {
+	dir := t.TempDir()
+	// A downloaded clip. ⚠ The signal is the `fetchedBy` FIELD, not the sidecar's existence
+	// (V38c): Loomarr writes sidecars for hand-dropped clips too now, so a bare `{"title":"x"}`
+	// no longer means "downloaded" — it means "tagged". This fixture failed on exactly that,
+	// which is the change working.
+	if err := os.WriteFile(filepath.Join(dir, "fetched.info.json"),
+		[]byte(`{"title":"x","loomarr":{"fetchedBy":"loomarr"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	source := &fakeSource{clips: []filler.RawClip{
+		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
+		raw("copied.mp4", "Copied ad", filler.Commercial, 30000, 0),
+	}}
+	st := newMemStore()
+	sync := filler.NewSyncer(source, st, dir,
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
+
+	if _, err := sync.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	fetched, _, _ := st.GetClip(context.Background(), "fetched.mp4")
+	if !fetched.Held {
+		t.Error("a DOWNLOADED clip (sidecar present) was filed on sight — it must wait for review")
+	}
+	copied, _, _ := st.GetClip(context.Background(), "copied.mp4")
+	if copied.Held {
+		t.Error("a HAND-COPIED clip (no sidecar) was held — a file the operator placed themselves " +
+			"would sit invisible until approved")
+	}
+}
+
+// ⚠ A re-scan must never re-hold a clip a human already filed. The scan sees the same sidecar on
+// every pass, so without the preserve in the merge, filing a clip would last exactly until the
+// next sync — and the operator would find it back in the queue with no explanation.
+func TestSync_ReScanDoesNotReHoldAFiledClip(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fetched.info.json"),
+		[]byte(`{"title":"x","loomarr":{"fetchedBy":"loomarr"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := &fakeSource{clips: []filler.RawClip{
+		raw("fetched.mp4", "Fetched ad", filler.Commercial, 30000, 0),
+	}}
+	st := newMemStore()
+	sync := filler.NewSyncer(source, st, dir,
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
+
+	if _, err := sync.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The operator files it from Incoming.
+	c, _, _ := st.GetClip(context.Background(), "fetched.mp4")
+	c.Held = false
+	if err := st.UpsertClip(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+
+	// ⚠ The re-scan must actually WRITE, or this proves nothing. `serverFieldsUnchanged` skips
+	// an unchanged clip before any write, so a naive second Sync() passes whatever the merge
+	// does with `Held` — a sabotage that recomputed it from the sidecar still went green. The
+	// duration change below is what forces the update path this test exists to cover.
+	source.clips[0].DurationMs = 31000
+	if _, err := sync.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after, _, _ := st.GetClip(context.Background(), "fetched.mp4")
+	if after.DurationMs != 31000 {
+		t.Fatal("the re-scan did not write — this test would pass vacuously")
+	}
+	if after.Held {
+		t.Error("a re-scan RE-HELD a clip the operator had filed — the sidecar is still there on " +
+			"every pass, so `Held` must be preserved for a clip we already know")
+	}
+}
+
+// Two watched folders each holding `ads/coke.mp4` — different adverts that happen to share a
+// relative path. THE case V38c moved identity off the path for (§10).
+//
+// ⚠ This is the test the re-key was missing. `Sync` kept keying on `rc.Path` after identity
+// became `rc.ID`, and nothing caught it because every fixture set the two to the same string and
+// the in-memory double keyed on the path as well. With the path as identity the second clip
+// overwrites the first, `keep` carries one entry where two are live, and the prune then deletes a
+// clip that is sitting right there on disk.
+func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
+	source := &fakeSource{clips: []filler.RawClip{
+		{ID: "hash-coke-1985", Path: "ads/coke.mp4", Name: "Coke 1985",
+			Kind: filler.Commercial, DurationMs: 30000},
+		{ID: "hash-coke-1992", Path: "ads/coke.mp4", Name: "Coke 1992",
+			Kind: filler.Commercial, DurationMs: 15000},
+	}}
+	st := newMemStore()
+
+	res, err := newSyncer(source, st).Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Added != 2 {
+		t.Errorf("Added = %d, want 2 — one clip overwrote the other, so identity is still the path",
+			res.Added)
+	}
+	if len(st.clips) != 2 {
+		t.Fatalf("store holds %d clips, want 2", len(st.clips))
+	}
+	// And neither was pruned: `keep` must carry both identities, not one path twice.
+	if _, ok, _ := st.GetClip(context.Background(), "hash-coke-1985"); !ok {
+		t.Error("the 1985 advert was pruned — `keep` is collecting paths, so a live clip was deleted")
+	}
+	if _, ok, _ := st.GetClip(context.Background(), "hash-coke-1992"); !ok {
+		t.Error("the 1992 advert is missing from the catalog")
+	}
+	// The location still travels with each row — identity moved, the path did not disappear.
+	if got := st.clips["hash-coke-1985"].Path; got != "ads/coke.mp4" {
+		t.Errorf("Path = %q, want the on-disk location", got)
+	}
+}
+
+// --- V38c: intake runs inside the sync ---
+
+// realScanSource wires the ACTUAL DirSource to a temp folder, so this test exercises the real
+// intake → scan → catalog path rather than a double's idea of it. The property under test is an
+// ORDERING one, and a fake source returning fixed clips cannot express it.
+type realScanSource struct{ dir string }
+
+func (r realScanSource) EnsureLocalSource(context.Context, string) error { return nil }
+func (r realScanSource) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
+	clips, _, err := filler.ScanDir(ctx, r.dir, func(context.Context, string) (filler.Probed, error) {
+		return filler.Probed{DurationMs: 30_000}, nil
+	})
+	return clips, err
+}
+
+// ⚠ THE ordering property. Intake runs BEFORE the listing, so a file dropped in the watch folder
+// is catalogued by the SAME pass that files it. Draining afterwards would leave every arrival
+// waiting a full sync interval — 15 minutes by default — which reads to an operator as "I dropped
+// a file in and nothing happened".
+func TestSync_FilesAndCatalogsAWatchFolderArrivalInOnePass(t *testing.T) {
+	clipDir := t.TempDir()
+	watchDir := filepath.Join(clipDir, filler.WatchDirName)
+	if err := os.MkdirAll(watchDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	// A file big enough to hash, with a year in its name — the era signal that must survive the
+	// rename by way of the sidecar.
+	body := make([]byte, 4096)
+	for i := range body {
+		body[i] = byte(i % 251)
+	}
+	if err := os.WriteFile(filepath.Join(watchDir, "Frosted Flakes 1993.mp4"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st := newMemStore()
+	sync := filler.NewSyncer(realScanSource{clipDir}, st, clipDir,
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
+
+	res, err := sync.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Added != 1 {
+		t.Fatalf("Added = %d, want 1 — the arrival was not catalogued by the pass that filed it", res.Added)
+	}
+
+	var got filler.StoreClip
+	for _, c := range st.clips {
+		got = c
+	}
+	// Filed under its hash, in the sharded layout, NOT at its arrival path.
+	if !strings.HasSuffix(got.Path, ".mp4") || strings.Contains(got.Path, filler.WatchDirName) {
+		t.Errorf("Path = %q, want a sharded hash path outside the watch folder", got.Path)
+	}
+	if got.ID() != got.Hash || got.Hash == "" {
+		t.Errorf("identity = %q / hash = %q, want a content hash", got.ID(), got.Hash)
+	}
+	// ⚠ The era survived the rename. Once the file is `a3f9….mp4` the only place the year still
+	// exists is the sidecar's originalName — which is exactly why intake captures it.
+	if got.Era != 1993 {
+		t.Errorf("Era = %d, want 1993 — the filename's era signal was lost in the rename", got.Era)
+	}
+	if got.Name != "Frosted Flakes 1993" {
+		t.Errorf("Name = %q, want the original filename, not the hash", got.Name)
+	}
+	// The watch folder drained.
+	left, _ := os.ReadDir(watchDir)
+	for _, e := range left {
+		if !e.IsDir() {
+			t.Errorf("watch folder still holds %q", e.Name())
+		}
+	}
+}
+
+// A hand-dropped clip is FILED, not held (§10 V38c). Intake writes no `fetchedBy` for it, so the
+// sync's held/filed fork must let it straight into the catalog — holding a file the operator
+// placed themselves would mean it sits invisible until approved.
+func TestSync_AWatchFolderDropIsFiledNotHeld(t *testing.T) {
+	clipDir := t.TempDir()
+	watchDir := filepath.Join(clipDir, filler.WatchDirName)
+	if err := os.MkdirAll(watchDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	body := make([]byte, 2048)
+	for i := range body {
+		body[i] = byte(i % 97)
+	}
+	if err := os.WriteFile(filepath.Join(watchDir, "dropped.mp4"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st := newMemStore()
+	sync := filler.NewSyncer(realScanSource{clipDir}, st, clipDir,
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, discardLog())
+	if _, err := sync.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range st.clips {
+		if c.Held {
+			t.Error("a hand-dropped clip was HELD — it would sit invisible until approved, " +
+				"which is the ceremony §7 warns teaches people to click through gates")
+		}
 	}
 }

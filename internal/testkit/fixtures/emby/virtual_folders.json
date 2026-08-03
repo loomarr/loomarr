@@ -1,0 +1,67 @@
+[
+  {
+    "Name": "Recordings",
+    "Locations": [
+      "/config/data/livetv/recordings"
+    ],
+    "ItemId": "909427",
+    "Id": "909427",
+    "Guid": "ac20635066bf4402baa12b49a10dc713"
+  },
+  {
+    "Name": "Top Picks",
+    "Locations": [
+      "/config/data/top-picks"
+    ],
+    "ItemId": "882610",
+    "Id": "882610",
+    "Guid": "ce2eafb3e2fd411ab95ea302853faa2e"
+  },
+  {
+    "Name": "Music",
+    "Locations": [
+      "/data/music"
+    ],
+    "CollectionType": "music",
+    "ItemId": "228125",
+    "Id": "228125",
+    "Guid": "b7738d05f18b4b3a96fd66324c40659e"
+  },
+  {
+    "Name": "Collections",
+    "Locations": [],
+    "CollectionType": "boxsets",
+    "ItemId": "147963",
+    "Id": "147963",
+    "Guid": "aa3784708fda479a8cdf9930c55ed7bd"
+  },
+  {
+    "Name": "TV shows",
+    "Locations": [
+      "/data/tv"
+    ],
+    "CollectionType": "tvshows",
+    "ItemId": "12471",
+    "Id": "12471",
+    "Guid": "e0464df095be493f94e20cbfc4fe753c"
+  },
+  {
+    "Name": "Movies",
+    "Locations": [
+      "/data/movies"
+    ],
+    "CollectionType": "movies",
+    "ItemId": "3",
+    "Id": "3",
+    "Guid": "6627e4cff8a841b3952d31f1ab2985e1"
+  },
+  {
+    "Name": "Mixed content",
+    "Locations": [
+      "/data/fictional-backup/emby-live-recordings"
+    ],
+    "ItemId": "2849151",
+    "Id": "2849151",
+    "Guid": "1b73a76b4902424582ea1360bb0fd1b0"
+  }
+]

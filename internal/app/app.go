@@ -646,7 +646,26 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// hot-applies (config-design §3), so an operator who switches the drop-folder off
 		// expects the next scheduled pass to stop rather than a restart to be required.
 		syncer := filler.NewSyncer(fillerSource, fillerStoreAdapter{st}, set.str("filler.dir"), time.Now, log).
-			WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") })
+			WithEnabled(func() bool { return set.boolOn("filler.source.folder.enabled") }).
+			// Read live for the same reason (§10 V38c). An empty value resolves to
+			// `<filler.dir>/_watch`, so the watch folder is configured on every install
+			// whether or not the operator has ever set it.
+			WithWatchDir(func() string { return set.str("filler.watch_dir") })
+
+		// Registered folders and libraries (§10 V38c). ⚠ The library scanner is nil when no media
+		// server is configured, and that is a supported install rather than a degraded one:
+		// folder rows still drain and library rows simply do no work. Wiring a non-nil scanner
+		// over an absent media server would turn an optional service back into a precondition —
+		// the dependency §9.1 removed.
+		var libScanner *filler.LibraryScanner
+		if set.str("library.url") != "" {
+			libScanner = filler.NewLibraryScanner(
+				fillerLibraryAdapter{library.NewDynamic(
+					flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))},
+				func(msg string, args ...any) { log.Warn(msg, args...) },
+			)
+		}
+		syncer = syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
@@ -659,7 +678,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			if dir := set.str("filler.dir"); dir != "" {
 				drop = os.DirFS(dir)
 			}
-			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log)
+			tagger = filler.NewTagger(fillerTagStoreAdapter{st}, provider, drop, time.Now, log).
+				// Auto-filing (§10 V38): a held clip whose grounding-capped score clears the
+				// threshold is filed without a human. Closures, not captured values, so a
+				// changed threshold applies on the next run rather than the next restart.
+				//
+				// ⚠ `boolv`, NOT `boolOn`. The two differ only when the settings service cannot
+				// answer, and here that difference is the whole safety property: `boolOn` fails
+				// OPEN (returns true), which would publish unreviewed clips to live channels
+				// exactly when the install is degraded. Holding is the safe failure.
+				WithAutoFile(filler.AutoFilePolicy{
+					Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
+					MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
+				})
 		}
 		// Ingest tooling ships in the single image (§16); the loomarr:filler variant (retired-ok) no longer
 		// exists. Absent paths are
@@ -727,6 +758,26 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// shared heartbeat. Interval key: filler.sync_every.
 		jobReg.Add(fillerSyncJob(syncer))
 		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
+
+		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
+		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
+		// next run to honour it, not the next restart.
+		//
+		// ⚠ `filler.fetch.every == 0` disables the whole job. It is checked inside Run rather
+		// than by skipping registration, so the Tasks page still shows the row: an omitted row is
+		// indistinguishable from a job that runs fine and has never failed — the same call V12
+		// made for backups on Postgres.
+		autoFetch := filler.NewFetcher(
+			fetchStoreAdapter{st: st, fetchEvery: func() time.Duration { return set.dur("filler.fetch.every") }},
+			archiveDiscoverAdapter{}, fillerSvc, set.str("filler.dir"),
+			filler.FetchLimits{
+				MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
+				MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
+				MaxDiskGB:       func() int { return set.intv("filler.fetch.max_disk_gb") },
+			}, log,
+		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
+		jobReg.Add(fillerFetchJob(autoFetch))
+		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
 	}
 
 	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`

@@ -39,6 +39,13 @@ func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody)
 
 func putClip(t *testing.T, st store.Store, c filler.Clip) {
 	t.Helper()
+	// ⚠ Identity is the HASH since V38c (§10). Fixtures across these tests name clips by a
+	// readable path, so default the id from it rather than making every literal carry both —
+	// a `filler.Clip{Path: …}` with no Hash has an EMPTY id, which makes every lookup miss and
+	// every pin silently fail to match.
+	if c.Hash == "" {
+		c.Hash = c.Path
+	}
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -48,14 +55,17 @@ func putClip(t *testing.T, st store.Store, c filler.Clip) {
 // has a proposed answer to confirm, while an untagged commercial has nothing to confirm.
 func TestFillerIncoming_QueuesTheTwoAskKindsSeparately(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
+	// ⚠ HELD, because V38 made waiting a STATE rather than something inferred from missing tags.
+	// A clip that is not held is in the catalog and is nobody's decision, however it is tagged.
 	putClip(t, st, filler.Clip{
 		Path: "guess.mp4", Name: "guess.mp4", Kind: filler.Commercial, DurationMs: 30_000,
-		Era: 0, Audience: filler.Kids, Category: "toys", SuggestedEra: 1988,
+		Era: 0, Audience: filler.Kids, Category: "toys", SuggestedEra: 1988, Held: true,
 	})
 	putClip(t, st, filler.Clip{
 		Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 25_000,
+		Held: true,
 	})
-	// Fully tagged: not an ask.
+	// Filed and fully tagged: not an ask.
 	putClip(t, st, filler.Clip{
 		Path: "known.mp4", Name: "known.mp4", Kind: filler.Commercial, DurationMs: 30_000,
 		Era: 1992, Audience: filler.Kids, Category: "cereal",
@@ -123,7 +133,7 @@ func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 // one call is slower — which is exactly when the queue matters.
 func TestFillerIncoming_TotalCoversBothHalves(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 25_000})
+	putClip(t, st, filler.Clip{Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 25_000, Held: true})
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
 		ID: "sp_1", ClipPath: "comps/a.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "a"}},

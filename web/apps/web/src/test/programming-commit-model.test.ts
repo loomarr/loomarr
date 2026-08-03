@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 const src = (rel: string) => readFileSync(join(here, "..", rel), "utf8");
 
-const PROGRAMMING = "routes/_authed/channels/-channel-programming.tsx";
+const PROGRAMMING = "routes/_authed/channels/$id/-channel-programming.tsx";
 
 // design.md §12 names the review-before-apply surfaces, and scheduling RULES are the third —
 // the only block of the Programming page that drafts. Rules resolve first-match-by-priority,

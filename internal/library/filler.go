@@ -26,6 +26,17 @@ type FillerClip struct {
 	DurationMs    int64
 	Kind          filler.Kind // inferred from filename/folder convention (initial tag)
 	Era           int         // year parsed from the filename, 0 if none (initial tag)
+	// Path is the file's location AS THE MEDIA SERVER SEES IT (§10 V38c).
+	//
+	// ⚠ **It is only useful when Loomarr and the media server share storage** — the common
+	// homelab case (one box, or the same NFS mount), but not a guarantee. Loomarr checks whether
+	// the path is readable before using it and reports honestly when it is not; it must never
+	// assume this resolves locally.
+	//
+	// It was already being requested (`Fields=Path`) and used for the kind heuristic, then
+	// discarded. V38c needs it because a library is now an ACQUISITION source: the clip has to
+	// reach the clip folder as bytes, and a media-server item id is not something ffmpeg can open.
+	Path string
 }
 
 // fillerItem mirrors the /Items slice we need for filler. RunTimeTicks is the
@@ -76,6 +87,58 @@ func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, erro
 	return resp.Items[0].RunTimeTicks / ticksPerMs, nil
 }
 
+// virtualFolder is one library as `GET /Library/VirtualFolders` reports it.
+//
+// ⚠ **That endpoint returns a BARE ARRAY**, not the `{"Items": […]}` envelope every other
+// endpoint in this package uses. Captured from Emby 4.10.0.22 on 2026-08-02 rather than written
+// from memory — see fixtures/emby/FINDINGS.md, which is also where the `CollectionType` finding
+// below is recorded.
+type virtualFolder struct {
+	Name string `json:"Name"`
+	// ItemId is what `ParentId` accepts. ⚠ `Guid` is a DIFFERENT identifier on the same object
+	// and is NOT accepted by ParentId — picking it would 200 with an empty item list, which reads
+	// as "your filler library is empty" rather than as a bug.
+	ItemID string `json:"ItemId"`
+}
+
+// LibraryIDByName resolves a library's display NAME to the item id `ParentId` needs (§10 V38c).
+//
+// The operator types "Commercials" because that is what their media server shows them; making
+// them hunt for an item id would be asking them to do a lookup Loomarr can do itself.
+//
+// ⚠ Returns ("", nil) for a name the server does not have — "found nothing", not a failure. An
+// operator can rename or delete a library at any time, and that must degrade to a source that
+// scans zero clips rather than to an error that stops the other sources from being scanned.
+//
+// ⚠ **Matched on NAME ALONE, never filtered by `CollectionType`.** Three of the seven libraries
+// in the 2026-08-02 capture omit that key entirely — it is absent for mixed/unclassified
+// libraries, which is exactly what a hand-made commercials library usually is. Filtering on it
+// would hide the libraries an operator is most likely to point at.
+func (c *Client) LibraryIDByName(ctx context.Context, name string) (string, error) {
+	want := strings.TrimSpace(name)
+	if want == "" {
+		return "", nil
+	}
+	req, err := c.newRequest(ctx, http.MethodGet, "/Library/VirtualFolders", nil)
+	if err != nil {
+		return "", err
+	}
+	c.flavor.applyTokenAuth(req, c.token(), c.deviceID)
+
+	var folders []virtualFolder
+	if err := c.do(req, &folders); err != nil {
+		return "", err
+	}
+	for _, f := range folders {
+		// Case-insensitive: the operator is retyping a name they read off a screen, and
+		// "commercials" failing where "Commercials" works is a puzzle with no useful diagnosis.
+		if strings.EqualFold(strings.TrimSpace(f.Name), want) {
+			return f.ItemID, nil
+		}
+	}
+	return "", nil
+}
+
 // ListFillerClips reads every item in the media server's filler library (§10):
 //
 //	GET /Items?Recursive=true&ParentId=<fillerLibraryID>&IncludeItemTypes=Video
@@ -109,6 +172,7 @@ func (c *Client) ListFillerClips(ctx context.Context, fillerLibraryID string) ([
 			DurationMs:    it.RunTimeTicks / ticksPerMs,
 			Kind:          kindFromName(it.Name, it.Path),
 			Era:           eraFromName(it.Name),
+			Path:          it.Path,
 		})
 	}
 	return clips, nil

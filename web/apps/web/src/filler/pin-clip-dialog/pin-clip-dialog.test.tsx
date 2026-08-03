@@ -46,7 +46,7 @@ const channelDetail = {
 
 // Dispatches by method+path: GET /v1/channels (list), GET /v1/channels/{id} (the live-policy
 // read the merge depends on), PATCH /v1/channels/{id} (the pin write). PATCH bodies captured.
-const stubFetch = (opts: { detail?: unknown } = {}) => {
+const stubFetch = (opts: { detail?: unknown; pinned?: boolean } = {}) => {
   const patches: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -56,6 +56,22 @@ const stubFetch = (opts: { detail?: unknown } = {}) => {
       if (method === "PATCH") {
         patches.push(init?.body ? JSON.parse(init.body as string) : undefined);
         return Promise.resolve(jsonResponse(200, { id: "ch-1" }));
+      }
+      if (method === "GET" && /\/v1\/filler\/fit/.test(u)) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            channels: [
+              {
+                channelId: "ch-1",
+                name: "90s Action Hour",
+                number: 42,
+                level: "exact",
+                pinned: opts.pinned ?? false,
+                excluded: false,
+              },
+            ],
+          }),
+        );
       }
       if (method === "GET" && /\/v1\/channels\/ch-1$/.test(u)) {
         return Promise.resolve(jsonResponse(200, opts.detail ?? channelDetail));
@@ -76,51 +92,56 @@ const stubFetch = (opts: { detail?: unknown } = {}) => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("PinClipDialog", () => {
+  // ⚠ Still the load-bearing property after V35 rewrote this surface: PATCH replaces `policy`
+  // WHOLE, so a bare {filler} wipes scope/ordering/audience. The dialog reads the channel live
+  // and merges onto it.
   it("appends the clip to filler.pinned and MERGES onto the whole saved policy", async () => {
     const user = userEvent.setup();
     const { patches } = stubFetch();
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
-    await user.click(await screen.findByRole("button", { name: "Pin" }));
+    await user.click(await screen.findByRole("checkbox", { name: /Always play/ }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
     // The new pin is appended to the existing one (not replacing it)…
     expect(patches[0]).toMatchObject({
       policy: { filler: { pinned: ["already-here", "clip-9.mp4"], audience: "general" } },
     });
-    // …and the rest of the policy survives — PATCH replaces policy whole, so a bare
-    // {filler} would have wiped scope/ordering.
+    // …and the rest of the policy survives.
     expect(patches[0]).toMatchObject({
       policy: { ordering: "shuffle", scope: { era: { from: 1990 } } },
     });
   });
 
-  it("shows an already-pinned channel as Pinned, with no Pin button", async () => {
-    // The list row carries this channel's policy with the clip ALREADY pinned, so the row
-    // renders as Pinned straight away — no write path to reach.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: string, init?: RequestInit) => {
-        if ((init?.method ?? "GET") === "PATCH") throw new Error("must not PATCH an already-pinned channel");
-        return Promise.resolve(
-          jsonResponse(200, {
-            channels: [
-              {
-                id: "ch-1",
-                name: "90s Action Hour",
-                number: 42,
-                status: "live",
-                policy: { filler: { pinned: ["clip-9.mp4"] } },
-              },
-            ],
-          }),
-        );
-      }),
-    );
+  // ⚠ The state the old pin-only dialog could not express, and the reason V35 replaced it:
+  // unticking must BLOCK the clip on that channel, which is a different write from clearing
+  // the pin. A single flag would make this a no-op and the operator's intent would vanish.
+  it("unticking an overridden channel writes an exclusion, not just a missing pin", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubFetch({ pinned: true });
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
-    expect(await screen.findByText("Pinned")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pin" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("checkbox", { name: /Always play/ }));
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      policy: { filler: { pinned: ["already-here"], excluded: ["clip-9.mp4"] } },
+    });
+  });
+
+  // ⚠ "Back to automatic" clears BOTH lists — the only route to the third state, which a
+  // checkbox cannot express.
+  it("back to automatic clears both lists", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubFetch({ pinned: true });
+    render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
+
+    await user.click(await screen.findByRole("button", { name: /Back to automatic/ }));
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      policy: { filler: { pinned: ["already-here"], excluded: [] } },
+    });
   });
 
   it("renders nothing when no clip is given", () => {

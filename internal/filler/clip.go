@@ -57,13 +57,21 @@ const (
 //     and no commercials — a hard requirement on a service §9.1 makes optional. The files
 //     were on Loomarr's own disk the whole time.
 type Clip struct {
-	// Path is the clip's location RELATIVE to FILLER_DIR ("1994/toys-transformers.mp4") and
-	// is the identity.
+	// Hash is the identity: the clip's sparse content hash (§10 V38c) — 64 hex characters.
+	// Read it through `ID()` rather than directly; see that method.
 	//
-	// Relative, not absolute, deliberately: FILLER_DIR differs between a host and a container
-	// (~/clips vs /data/filler), and absolute paths would invalidate every row the first time
-	// someone moves the mount. Relative also keeps pod assembly deterministic across
-	// environments, since the pod seed hashes clip ids.
+	// ⚠ **Identity moved off the path in V38c**, the third such change (§15's migration note
+	// records all three). A path is only unique WITHIN a folder, so allowing many watched folders
+	// made two clips at `ads/coke.mp4` collide and silently overwrite one another. Hashing the
+	// bytes fixes that AND answers what a path cannot — *is this the same advert?* — which is
+	// what lets intake skip duplicates instead of airing one twice in a break.
+	Hash string
+	// Path is the clip's LOCATION relative to the clip folder: `a3/f9/<hash>.mp4`, as intake
+	// files it. Data, not identity.
+	//
+	// Relative, not absolute, deliberately: the clip folder differs between a host and a
+	// container (~/clips vs /data/clips), and absolute paths would invalidate every row the first
+	// time someone moves the mount.
 	Path string
 	// TunarrProgramID is the Tunarr program uuid, when Tunarr knows this clip. NO LONGER the
 	// identity and legitimately empty: Tunarr-backed channels need it to build filler-lists,
@@ -127,11 +135,49 @@ type Clip struct {
 	// Removed clips are excluded from listings and from pod assembly by DEFAULT (opt-in to see
 	// them), which is the safe polarity: pod assembly loads the catalog with a zero filter.
 	RemovedAt time.Time
+	// Held marks a clip that is recorded but NOT in the playable catalog (§10 V38). It is not
+	// matched into a pod, not attached to a filler-list, and not counted as coverage — it is
+	// waiting to be tagged and then filed or rejected.
+	//
+	// ⚠ Only INGESTED clips are held. A file an operator hand-copies into FILLER_DIR is a
+	// deliberate human act and is filed on sight; holding it would mean a clip you placed
+	// yourself sits invisible until you approve it. The scan writes false, the ingest path
+	// writes true — the asymmetry lives in the writers.
+	//
+	// Held clips are excluded from listings and pod assembly by DEFAULT (opt-in to see them),
+	// the same polarity as RemovedAt and for the same reason: pod assembly loads the catalog
+	// with a zero filter, so the safe state has to be the zero value.
+	Held bool
+	// Confidence (0-100) is the grounding-CAPPED tagging score (§10 V38). It decides whether a
+	// held clip is filed automatically or waits for a human.
+	//
+	// ⚠ NEVER the model's self-assessment — see filler.TagSuggestion.Score. 0 = never scored,
+	// which can never clear a threshold; that is the safe direction.
+	Confidence int
+	// AutoFiled records that NO HUMAN LOOKED at this clip before it entered the catalog and
+	// became playable. Not telemetry: it is what makes an unattended decision reversible, and
+	// the only thing that can answer "which of these did I never see?" after the fact.
+	AutoFiled bool
 }
 
-// ID returns the clip's identity. A method rather than direct field access at call sites so
-// the identity change above stayed a one-line edit in the places that only need "the id".
-func (c Clip) ID() string { return c.Path }
+// At builds a clip whose identity and location are the same string.
+//
+// ⚠ For TESTS and fixtures. Real clips get their identity from `ClipID` (the file's bytes) and
+// their location from intake; this exists so a test can say `At("coke", …)` instead of repeating
+// a 64-character hash, and so a `Clip{Path: …}` literal — which would leave `Hash` empty and make
+// `ID()` return "" — stops being the obvious thing to write. An empty id silently breaks every
+// pin, exclusion and lookup, which is exactly how V38c's identity change first showed up.
+func At(id string, kind Kind, era int, aud Audience, durationMs int64) Clip {
+	return Clip{Hash: id, Path: id, Kind: kind, Era: era, Audience: aud, DurationMs: durationMs}
+}
+
+// ID returns the clip's identity.
+//
+// ⚠ **This method is why V38c's identity change was one line.** It was written as a method rather
+// than direct field access precisely so identity could move without touching every call site —
+// and it has now paid for itself twice: `Path` when identity was the location, `Hash` since
+// content addressing (§10 V38c). Call sites that only need "the id" never had to know.
+func (c Clip) ID() string { return c.Hash }
 
 // Tagged reports whether a clip has the metadata pod matching needs (§10). An
 // untagged clip can't be era/audience-matched, so it's only usable as a generic

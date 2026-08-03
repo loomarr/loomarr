@@ -39,9 +39,14 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       },
       // ⚠ THIS ONE WAS MISSING, and nothing could catch it: EventHandlers marks every
       // handler optional, so omitting a frame type type-checks perfectly. The core hook
-      // subscribed to `fillerIngest`, this provider dropped it on the floor, and
-      // IngestPanel — the frame's only consumer — sat at "starting" forever because its
+      // subscribed to `fillerIngest`, this provider dropped it on the floor, and the ingest
+      // panel — the frame's only consumer at the time — sat at "starting" forever because its
       // callback could never fire. A whole feature silently dead, with green everything.
+      //
+      // ⚠ That panel was retired in V38b (retired-ok), so this frame currently has NO renderer:
+      // auto-fetch and queued downloads still emit progress and nothing shows it. Deliberately
+      // kept rather than deleted — the fan-out is what a future progress surface subscribes to,
+      // and the guard below is what stops it going missing again.
       //
       // The structural fix is the test below this file's own barrel: fanOutKeys() asserts
       // the provider fans out EVERY key the core EventHandlers declares, so a new frame
