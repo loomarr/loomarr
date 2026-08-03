@@ -210,12 +210,40 @@ func (p Profile) gopArgs() []string {
 
 // audioEncodeArgs is fixed AAC stereo 48kHz — see Profile.AudioBitrate.
 func (p Profile) audioEncodeArgs() []string {
-	return []string{
+	return p.audioEncodeArgsNormalised("")
+}
+
+// audioEncodeArgsNormalised is audioEncodeArgs plus an optional loudness filter (§10 V40).
+//
+// ⚠ **Normalisation happens HERE, at playout, and never rewrites the file on disk.** The clip
+// folder holds files a person put there, and Loomarr has never modified them. In-place is
+// destructive and unrepeatable: the original cannot be recovered, and a re-scan cannot tell it has
+// already happened — so a second pass would normalise an already-normalised file, and a third
+// would do it again. One filter on a stream already being encoded is reversible, and changing the
+// target later simply works.
+//
+// ⚠ **Single-pass `loudnorm`, deliberately, despite ffmpeg's docs preferring two.** Two-pass
+// measures the whole file first, which means reading it end-to-end BEFORE emitting a frame — fine
+// for a batch transcode, fatal for a live stream that must start now. The single-pass form is
+// approximate on the first second or so and correct thereafter, which is the right trade for a
+// 30-second advert: nobody hears the ramp, and the alternative is a stall at every break.
+//
+// `targetLUFS` empty ⇒ no filter at all, which is exactly what a library program gets: normalising
+// a feature film to advert loudness would flatten its dynamic range, and the problem this solves
+// (adverts recorded a decade apart at wildly different levels) is a FILLER problem.
+func (p Profile) audioEncodeArgsNormalised(targetLUFS string) []string {
+	args := []string{}
+	if targetLUFS != "" {
+		// I=integrated target, TP=true-peak ceiling, LRA=loudness range. -1 dBTP is the EBU R128
+		// ceiling and leaves headroom for the lossy encode below to overshoot without clipping.
+		args = append(args, "-af", "loudnorm=I="+targetLUFS+":TP=-1:LRA=11")
+	}
+	return append(args,
 		"-c:a", "aac",
-		"-b:a", strconv.Itoa(p.AudioBitrate) + "k",
+		"-b:a", strconv.Itoa(p.AudioBitrate)+"k",
 		"-ac", "2",
 		"-ar", "48000",
-	}
+	)
 }
 
 // TestCardArgs builds the args for a synthetic test card: a captioned colour field with

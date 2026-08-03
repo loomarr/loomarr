@@ -119,7 +119,24 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// builder is deliberately a pure function.
 	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), streamURL)
 
-	args := playout.ProgramArgsWithAudio(profile, streamURL, airing.Offset, airing.Remaining, audioTrack)
+	// Loudness normalisation, FILLER ONLY (§10 V40).
+	//
+	// ⚠ `airing.Source` is the discriminator, and it needs no new plumbing: it is set for a
+	// resolved filler clip and empty for a library title (see Airing.Source). Normalising a
+	// feature film to advert loudness would flatten its dynamic range — the problem this solves is
+	// adverts recorded a decade apart at wildly different levels, measured at an 11 dB spread
+	// across real fetched clips.
+	//
+	// ⚠ Read LIVE rather than captured at wiring, so `filler.target_lufs` hot-applies like every
+	// other setting (config-design §3). Empty (or no liveConfig, as in unit tests that build a
+	// bare Server) ⇒ no filter, byte-identical to what shipped before V40.
+	targetLUFS := ""
+	if airing.Source != "" && s.liveConfig != nil {
+		targetLUFS = s.liveConfig("filler.target_lufs")
+	}
+
+	args := playout.ProgramArgsNormalised(
+		profile, streamURL, airing.Offset, airing.Remaining, audioTrack, targetLUFS)
 	s.streamChild(w, r, channelID, airing.Title, args, profile.Encoder)
 }
 
