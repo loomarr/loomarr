@@ -4,6 +4,73 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V38c — one pipeline in, content-addressed clips, path-based navigation (2026-08-02, `f058075`,
+PR #162).** Gate: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
+`make fe` (biome + typecheck + **1076 tests**) + `fe-visual` (**706 passed, 0 axe**, on a CLEAN
+verify run, not `--update-snapshots`) + `make e2e` (7). ⚠ **Still open: V38c.8–9** (the per-row
+config disclosure and the Add-a-source polish), plus V38b's carried list — the first-run starter
+pull, loudness normalisation, reel name/thumbnail, the Tune panel and filmstrip.
+
+Every source now takes **one route** into the catalog — arrive in the watch folder, hash, move
+into the clip folder as `<hash>.<ext>`, sidecar, catalogue. Identity is a **sparse content hash**
+(head 64KB + tail 64KB + size), the third identity change and the one that finally keys on
+something Loomarr owns. Many watched folders made the path unusable: two folders each holding
+`ads/coke.mp4` produced one identity and silently overwrote each other.
+
+**Library sources are SCANNED again** (maintainer, reverses V35). §10 and §9.1 amended doc-first,
+carrying the guardrails the reversal must not break — a library is one source among several and
+never the catalog's only route, identity stays the hash rather than a media-server item id, clips
+are copied into the clip folder rather than played in place, and a filler library is never offered
+to the suggester as programme material.
+
+⚠ **THREE BUGS THAT EVERY GREEN GATE MISSED, all found by running the real binary.** This is the
+phase's most transferable lesson:
+
+1. **`DeleteClipsNotIn` deleted the entire catalog on every sync.** It matched `WHERE path NOT IN
+   (…)` while the sync passes HASHES; a hash never equals a path, so every clip counted as "not in
+   the keep set". The route reported `1 added, 1 pruned` forever and held nothing — filler
+   silently never worked. **The conformance suite passed throughout because its fixtures set
+   `path` and `hash` to the same string.**
+2. **A file dropped straight into `FILLER_DIR` was catalogued and then pruned in the same pass** —
+   the documented drop-folder, and what every pre-V38c install does. `ClipPath`'s new allow-list
+   accepts only hash paths, so a human-readable name was not a valid id. Every intake test missed
+   it because they all dropped fixtures into the WATCH folder.
+3. **`Sync` still keyed on `rc.Path`** after identity moved to `rc.ID`. Nothing caught it because
+   `DirSource` fills both AND the in-memory double keyed on the path too — a double that models
+   identity differently from the real thing tests the double.
+
+⚠ **An unlayered CSS rule had disabled every accent border in the app.** `styles.css` set
+`* { border-color: … }` outside any layer; Tailwind v4 sorts by LAYER before specificity, so it
+beat `.border-signal` and every sibling across **26 files**. The active tab's amber underline
+rendered grey. No gate could see it — the class was in the JSX, in the compiled CSS and on the
+element, simply always losing — and **the visual baselines had been captured while it was broken,
+so they encoded the grey as correct**. Found by diffing `getComputedStyle()` on the running app
+against the same element in the rendered mock; ~330 regenerated baselines are that correction.
+
+**Navigation is path-based app-wide** (maintainer): `/filler/sources`, `/queue/approval`,
+`/channels/$id/<section>` join `/settings/<page>`; old `?tab=`/`?section=` links redirect. ⚠ Only
+the TAB became a path segment — Filler's `q`/`kind`/`audience`/`view` stay in the query, because
+they narrow the clip grid and nothing on the other tabs is a clip. `NavTabs` replaced `CountTabs`
+and `ChannelNav`; tabs are real `<Link>`s with `aria-current`, **not** `role="tab"`, because these
+navigate and the tab role would promise arrow-key behaviour navigation does not have.
+
+**`fe-visual` earned its place twice.** It caught two real a11y bugs in components written this
+phase — an invalid `aria-controls` at CRITICAL impact (copied from `CountTabs`, where tabs
+genuinely controlled panels) and a 4.11:1 count pill (`signal` on a `signal` tint composites
+amber-on-amber). ⚠ It also surfaced that the **e2e wizard baseline was long stale**, showing a
+six-step flow with *Webhooks* and *Library* — both retired phases ago. The border diff only made a
+dead snapshot fail loudly.
+
+⚠ **Two deliberate departures from the mock**, recorded in the code so the next diff does not
+"correct" them back: the switched-off source row keeps its text readable (the mock's
+`opacity:.45` measures **2.95:1** against a required 4.5:1) and its `off` stat is not dimmed to
+`#5A6170` (**3.14:1**). The mock is authoritative for look; an axe failure is a hard gate.
+
+**A process note worth keeping:** `docker run -e CI` passes NOTHING when `CI` is unset on the
+host, so `playwright.config.ts`'s `workers: cpus().length` never applies locally and the visual
+suite runs at half the cores. Unfixed here deliberately — a one-line Makefile change that deserves
+its own commit and a single timed run.
+
 **V38b — clips arrive from SOURCES, not from a URL box (2026-08-02).** Registered sources are now
 polled on a schedule and new clips download unattended, bounded by four configurable limits. The
 paste-a-URL panel is **deleted**. ⚠ **Still open: the first-run starter pull, loudness
