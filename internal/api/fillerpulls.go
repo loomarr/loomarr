@@ -141,9 +141,12 @@ func (s *Server) proposeFillerPull(ctx context.Context, in *proposeFillerPullInp
 	// own empty state, and it belongs here rather than in the UI: a pull composed from a
 	// switched-off source is one that can never run, and discovering that at approval time —
 	// after a human agreed to it — is the worst moment to find out.
+	// ⚠ `Fetchable()` as well as `Enabled` (V37). The flat table now also holds the config-backed
+	// singletons, which are SCANNED rather than downloaded from — including one in a plan would
+	// enqueue a fetch of an empty URL at approval time.
 	var enabled []store.FillerSource
 	for _, src := range srcs {
-		if src.Enabled {
+		if src.Enabled && src.Fetchable() {
 			enabled = append(enabled, src)
 		}
 	}
@@ -275,9 +278,11 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list filler sources", err)
 	}
+	// Same pair of conditions as propose — deliberately the same predicate, via the same method,
+	// so the commit-time re-check cannot drift from what was plannable at propose time.
 	live := make(map[string]store.FillerSource, len(srcs))
 	for _, src := range srcs {
-		if src.Enabled {
+		if src.Enabled && src.Fetchable() {
 			live[src.ID] = src
 		}
 	}

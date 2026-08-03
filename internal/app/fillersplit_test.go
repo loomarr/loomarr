@@ -43,6 +43,8 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	t.Cleanup(func() { _ = st.Close() })
 	// A compilation to split.
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+		// Hash AND Path — identity is the hash since V38c, and Split looks the clip up by id.
+		Hash: "comps/1987.mp4",
 		Path: "comps/1987.mp4", Name: "1987.mp4", Kind: filler.Commercial, DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)

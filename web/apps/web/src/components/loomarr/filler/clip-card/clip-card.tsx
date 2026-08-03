@@ -41,6 +41,20 @@ const CATEGORIES = ["food", "toys", "auto", "retail", "media", "service", ""] as
 
 const next = <T,>(list: readonly T[], current: T): T => list[(list.indexOf(current) + 1) % list.length] as T;
 
+// How much this clip has actually aired — the mock's `usedLine`.
+//
+// ⚠ Exported because the LIST row (V35b) shows the same line, and this is a three-branch rule
+// where the wrong branch states a falsehood. `playsCounted:false` is NOT zero plays: it means
+// this install cannot OBSERVE airings (Tunarr-backed playout owns the stream), so "Never
+// played" there would be a lie the DTO's own comment warns against. Two renderers agreeing
+// today and drifting tomorrow is exactly how one of them starts lying, so there is one rule.
+const playsLine = (clip: ClipDTO): string => {
+  if (!clip.playsCounted) return "Plays aren't counted on this setup";
+  if (clip.playCount === 0) return "Never played";
+  const plays = `${clip.playCount} ${clip.playCount === 1 ? "play" : "plays"}`;
+  return clip.lastPlayedAt ? `${plays} · last ${formatRelative(clip.lastPlayedAt)}` : plays;
+};
+
 // A tag chip you can click to advance. Styled to match Badge (mono/uppercase, §2.2) rather
 // than composing it, because a <button> inside a <span>-shaped Badge would nest interactive
 // content in a label. The hover border is the affordance: a chip that looks identical to a
@@ -109,7 +123,7 @@ const ClipCard = ({
         Absence is the honest rendering — the card without a frame is exactly what shipped
         before this phase, which is a design that already works. */}
     {clip.thumbnail && (
-      <div className="-mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800">
+      <div className="relative -mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800">
         <img
           src={clipThumbURL(clip.path)}
           // Empty alt, deliberately: the clip's name is the very next element, so a
@@ -120,15 +134,46 @@ const ClipCard = ({
           // A catalog is hundreds of cards; without this every frame is fetched on mount.
           loading="lazy"
         />
+        {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
+            top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the
+            frame — a thumbnail is arbitrary video, so text with no backing plate has NO
+            guaranteed contrast against it. That is a legibility rule, not a style choice. */}
+        <span className="absolute right-1.5 bottom-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100 tabular-nums">
+          {formatClipDuration(clip.durationMs)}
+        </span>
+        {clip.quality && (
+          // ⚠ `role="img"` is load-bearing, not decoration. `aria-label` on a BARE span is
+          // ignored — ARIA only permits naming on an element that has a role, and the chip-row
+          // version below gets one from Badge. Without it the label silently does nothing and
+          // "1080P" is announced as letter-spaced shouting, which is the whole reason the
+          // label exists. A role that takes a name, over text styled to be unreadable aloud.
+          <span
+            role="img"
+            className="absolute top-1.5 right-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100"
+            title="Resolution, from the clip's video height"
+            aria-label={`Resolution ${clip.quality}`}
+          >
+            {clip.quality}
+          </span>
+        )}
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            onChange={onToggleSelect}
+            className="absolute top-1.5 left-1.5 size-4 accent-signal"
+            aria-label={`Select ${clip.name}`}
+          />
+        )}
       </div>
     )}
 
     <div className="flex items-start justify-between gap-2">
-      {/* ⚠ A real checkbox input, not a styled div: bulk selection has to be keyboard-reachable
-          and announce its state, and the grid can hold hundreds of these. It renders only when
-          the caller passed a handler, so a member sees the card without a control that would
-          403 on use. */}
-      {onToggleSelect && (
+      {/* ⚠ The checkbox and duration move ONTO the thumbnail above — but only when there is
+          one. A clip with no extracted frame renders no image, so without this fallback the
+          overlays would have nowhere to sit and the clip would become unselectable. On a
+          Tunarr-backed install that is the entire catalog (see the thumbnail note above). */}
+      {!clip.thumbnail && onToggleSelect && (
         <input
           type="checkbox"
           checked={Boolean(selected)}
@@ -138,9 +183,11 @@ const ClipCard = ({
         />
       )}
       <p className="min-w-0 flex-1 truncate font-medium text-sm">{clip.name}</p>
-      <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">
-        {formatClipDuration(clip.durationMs)}
-      </span>
+      {!clip.thumbnail && (
+        <span className="shrink-0 font-mono text-static-400 text-xs tabular-nums">
+          {formatClipDuration(clip.durationMs)}
+        </span>
+      )}
     </div>
 
     <div className="flex flex-wrap gap-1.5">
@@ -205,8 +252,11 @@ const ClipCard = ({
       {/* Resolution, from the probed video height. Display-only unless an operator sets the
           filler.min_quality floor (off by default), so it is a neutral fact here — NOT a
           warning. Colouring a 480p clip as a problem would invent a policy the install has
-          not opted into. */}
-      {clip.quality ? (
+          not opted into.
+          ⚠ Only when there is NO thumbnail — with one, quality renders as an overlay on the
+          frame (V35b, the mock). Dropping this branch entirely would hide the resolution on
+          exactly the installs that extract no frames, which is the whole catalog on some. */}
+      {!clip.thumbnail && clip.quality ? (
         // aria-label per frontend-design §219: the badge renders mono/uppercase by house
         // style, so a screen reader would otherwise announce letter-spaced shouting.
         <Badge
@@ -222,18 +272,8 @@ const ClipCard = ({
     {/* How much this clip has actually aired — the mock's `usedLine`. The API has sent
         playCount/playsCounted/lastPlayedAt since the catalog shipped and nothing rendered
         them, which is why a clip that never plays looked identical to one on every break.
-        ⚠ playsCounted:false is NOT zero plays. It means this install cannot OBSERVE
-        airings (Tunarr-backed playout owns the stream), so "0 plays" would be a lie the
-        DTO's own comment warns against. It reads as "plays aren't counted here" instead. */}
-    <p className="text-static-400 text-xs">
-      {!clip.playsCounted
-        ? "Plays aren't counted on this setup"
-        : clip.playCount === 0
-          ? "Never played"
-          : `${clip.playCount} ${clip.playCount === 1 ? "play" : "plays"}${
-              clip.lastPlayedAt ? ` · last ${formatRelative(clip.lastPlayedAt)}` : ""
-            }`}
-    </p>
+        The wording (and the playsCounted trap) lives in `playsLine`, shared with the list row. */}
+    <p className="text-static-400 text-xs">{playsLine(clip)}</p>
 
     {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit) && (
       <div className="flex flex-wrap gap-2">
@@ -291,4 +331,4 @@ const ClipCard = ({
   </Card>
 );
 
-export { ClipCard };
+export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, playsLine };

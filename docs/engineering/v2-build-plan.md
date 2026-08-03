@@ -657,14 +657,21 @@ invalidated five of its items.** That audit is now annotated rather than deleted
 lesson is the durable part: an audit is a claim about a moving reference. Do not work the tier list
 without reading the reconciliation under it.
 
-### What could not be verified, and must not be invented
+### ✅ RESOLVED — the export landed (2026-08-02)
 
-The fetch returned `truncated: true` at exactly 262,144 bytes — enough for the whole Filler screen
-(byte 172k–260k) and **none of the file's ~192 KB of JS**. So `poolStats` values, the `asks` /
-`reels` / `services` sample rows, `autoConfChips` options and `planRows` copy are **unknown**. Same
-rule as §8's `tcOptions` / `poPresets`: a maintainer export supplies them, or the phase invents them
-*deliberately and says so*. `support.js` and `image-slot.js` were re-fetched and are byte-identical,
-so no runtime change accompanies this.
+This section previously said `poolStats` / `asks` / `reels` / `services` / `autoConfChips` /
+`planRows` were **unknown, do not invent**. The maintainer export arrived: the committed prototype
+is now 632,110 bytes including all ~270 KB of JS, so every one of those is readable at source.
+`design/FILLER-DELTA-2026-08-01.md` §*What the JS revealed* records what it changed.
+
+⚠ **Two corrections that came with it, both about verification rather than design.**
+
+1. **`support.js` was NOT byte-identical** (64,222 → 69,150 bytes). The old claim here was checked
+   against the **truncated** fetch — and a hash taken from a capped read describes the cap, not the
+   file. Re-verify anything asserted from a partial fetch once the full one lands.
+2. **Reading the markup alone understated one screen.** The confidence meter looked like layout;
+   the JS shows `conf >= autoConf` is the **routing decision** for every incoming segment. That
+   moved Incoming out of the frontend step entirely — see the phase split below.
 
 ### Ratified decisions (maintainer, 2026-08-01)
 
@@ -679,6 +686,86 @@ so no runtime change accompanies this.
    only steps 1–2 touch `api/openapi.yaml`.
 3. **V36 is planned alongside but runs as its own lane** — no shared DTO, no shared generated
    output.
+
+### Ratified decisions (maintainer, 2026-08-02) — after the export
+
+*(Continuing the numbering above — these are decisions 4–6 of the same ratified set.)*
+
+- **(4) Follow the mock's design.** Where this section and the prototype differ on *look and
+  structure*, the prototype wins. The standing exception is unchanged and narrow: an interaction
+  the mock happens not to draw is not thereby deleted (the click-to-cycle ruling below), and
+  `docs/design.md` still wins on behaviour.
+- **(5) YouTube and community packs become real registrable sources.** The mock's five peer
+  services are the target model, not an illustration. This is a schema + contract change, not a
+  restyle: `POST /v1/filler/sources` gains a `kind`, the three-hardcoded-rows read-model flattens,
+  and per-source `license` — already stored, deliberately withheld — is exposed on the DTO.
+- **(6) The tagger records a confidence score.** This is the dependency that unblocks the Incoming
+  redesign. It is a §10/§15 doc-first change (a score column, `filler.autofile.*` in the registry)
+  before it is a UI one.
+
+### Phase split — V35 is finished; V37 and V38 are new
+
+The single-phase V35 above was written when Incoming looked like frontend work. It is not, so the
+track splits. **V35 as scoped below is done** — including 1.7, whose "NOT DONE" row in PROGRESS.md
+was stale, not accurate: `channel-override-picker` implements the mock's checkbox-set + `fitNote` +
+**Back to automatic** and is reachable through the rewritten `pin-clip-dialog`.
+
+| Phase | Scope | Gate on |
+| --- | --- | --- |
+| **V35** | The page as redesigned, the approval gate, 1.7. **Complete** | Recorded in PROGRESS.md |
+| **V35b** | The honest frontend delta: catalog **list ⇄ grid** toggle, thumbnail overlays (duration / quality / select move onto the image), **Select all**, and re-scoping `SourceSearch` from a global "Find clips" card into the archive row's expander (`searchable` is `id === 'archive'` in the mock — archive-scoped by design) | No backend work; `fe` + `fe-visual` |
+| ~~**V37**~~ | **Sources as one flat list** (decision 5). **DONE 2026-08-02** — ⚠ shipped **four** kinds, not five: `packs` is deferred for want of an index (7.5 below). Row-level detail in PROGRESS.md | Gate recorded in PROGRESS.md |
+| **V38** | **The confidence spine** (decision 6) | Doc-first; see below |
+
+⚠ **V37 and V38 are not safe together** by CLAUDE.md's own test — both add API surface and both
+regenerate `api/openapi.yaml` and the orval client. Sequential, or one worktree each *only* if the
+endpoint sets prove disjoint. V35b is disjoint from both and can run in parallel with either.
+
+### V37 — Sources as five peers
+
+**Doc-first:** §10 (what a source *is* — the flat model, and that a licence is a property of a
+source), §7 (the changed `POST` body), §5 (`filler_sources` gains `kind`; the nested-remote shape
+retires), §15 if any key follows.
+
+| # | Work | ⚠ |
+| --- | --- | --- |
+| 7.1 | `filler_sources.kind` + flatten the read-model to peers | Today `fillersources.go` returns three hardcoded rows with archive remotes **nested under** the remote row. The mock's `services` is flat, and `svcOnLine` counts peers |
+| 7.2 | `POST /v1/filler/sources` accepts `{kind, uri, label?}` | Kind is hardcoded `"archive"` today, and `archiveIdentifier` **rejects any URI containing a dot** — so a YouTube playlist URL 400s. That validator becomes per-kind, not global |
+| 7.3 | Expose `license` on the source DTO | Already on the store row (`store/fillersources.go:36`) and deliberately withheld. ⚠ **Per-source only.** §6.3 measured ~92% of archive.org *items* declaring none, so a per-**result** licence badge stays retired — this does not reopen it |
+| 7.4 | YouTube as a registrable source | `clipfetch` already routes YouTube URLs to yt-dlp on the *ingest* path. This makes it a source that can be listed, switched off, and named in a pull plan — not a new downloader |
+| 7.5 | Community packs (`PACKS`) | The dizqueTV/Tunarr wiki packs. Needs a real answer to *where the pack index comes from* before it is built — do not ship a row that dims and does nothing (the `filler.source.library.enabled` lesson) |
+
+⚠ **The switch's copy is a behaviour claim, not decoration**: *"Switch a source off and Loomarr
+stops scanning, searching and downloading from it."* V35 narrowed §10 because only the scan and
+pull paths were gated. Adding kinds must not re-widen that gap — gate at the call sites or narrow
+the copy, and say which.
+
+### V38 — the confidence spine
+
+**This is the phase that unblocks the Incoming redesign**, and it is backend-first by necessity:
+in the mock, `conf` is what decides whether a human ever sees a segment.
+
+**Doc-first:** §10 (the tagger records a score; what the score *means*), §15 (`filler.autofile.*` —
+⚠ these keys were **removed from §15 in V35's review** as declared-but-unconsumed; they come back
+only *with* their consumer, in the same PR), §5 (the score column).
+
+| # | Work | ⚠ |
+| --- | --- | --- |
+| 8.1 | A confidence column on the clip/segment review state | No `confidence`/`score` exists anywhere in `internal/store/migrations/` today. Forward-only |
+| 8.2 | The tagger records it | ⚠ **A score must mean something.** The grounding rules (§8) are non-negotiable: a fabricated or uniform score is worse than none, because the UI spends it deciding what a human never reviews |
+| 8.3 | `filler.autofile.*` in the registry + enforced | `autoConf` (75/85/95%) and `autoMin` (2/4/6s). ⚠ §15's rule — a setting not in the registry does not exist — cuts both ways: it must be **read** by the filing path, not just declared |
+| 8.4 | `POST /v1/filler/incoming/file-all` | Commits **each clip's own** `suggestedEra`. `bulk/tag` cannot express this — it applies one operator-chosen era uniformly |
+| 8.5 | Reel rows carry name + thumbnail | `IncomingReelDTO` has only `clipPath` today; the mock's collapsed reel shows a thumbnail, title, meta and quality |
+| 8.6 | **Frontend, last:** the Tune panel, per-ask confidence, the filmstrip, segment split/merge | Only after 8.1–8.3 make the number real |
+
+⚠ **Two `autoToggles` are separate scope, not free riders.** *"Skip clips already in the catalog"*
+gates a dedup path that partly exists (`dupOf`). *"Normalize loudness to −16 LUFS on file"* is an
+**ingest-pipeline capability with no counterpart in the tree** — it is a §10 conversation and may
+well be its own phase. Do not let a checkbox in a mock imply the pipeline behind it.
+
+⚠ **`fillerincoming.go:28-33` refuses to invent a confidence bar, and that refusal stays correct
+until 8.2 lands.** It is the guard that kept the UI honest; retire it *when* there is a score, not
+because a mock draws one.
 
 ### V35 — the Filler page as redesigned
 

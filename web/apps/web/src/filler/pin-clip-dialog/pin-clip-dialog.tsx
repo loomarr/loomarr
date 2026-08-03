@@ -1,126 +1,106 @@
-import { channelsApi, toProblem, unwrap } from "@loomarr/api";
+import { channelsApi, fillerApi, toProblem, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { ErrorState } from "@/components/loomarr";
+import { ChannelOverridePicker } from "@/components/loomarr";
 import { Button, Card } from "@/components/ui";
 import type { PinClipDialogProps } from "./pin-clip-dialog.type";
 
-// PinClipDialog — the catalog → channel bridge (P3 cohesion): pin one clip into a channel's
-// "always include" list straight from the Filler catalog, without opening that channel.
-// This is the SAME write the channel page's Apply does — append the clip id to
-// `policy.filler.pinned` and PATCH — just without the draft sandbox (you're doing one thing,
-// not iterating). Two correctness points carried from the channel page:
-//   1. PATCH replaces `policy` WHOLE, so we must read the target channel's CURRENT policy
-//      and merge the pin onto it (never send `{filler}` alone — it would wipe scope/etc).
-//   2. Pinning is idempotent: a clip already pinned on that channel is a no-op, surfaced as
-//      "already pinned" rather than a duplicate id.
-// Inline Card, same open/close idiom as ClipTagDialog (not a fixed overlay).
+// PinClipDialog — which channels use this clip (§10, V35 item 1.7).
+//
+// ⚠ **This replaced a pin-only dialog, and the model changed underneath it.** The old surface
+// offered one action ("Pin"), which could express only two of the domain's three states —
+// pinned, or nothing. Blocking a clip on one channel was unreachable from the catalog, and
+// UNPINNING was too: the button read "Pinned" and did nothing.
+//
+// The three states are pinned (forced in ahead of the ladder), excluded (never used, and it
+// WINS over pinned), and neither — the default, where the clip competes on the ladder. The
+// picker owns how they are presented; this owns reading the fit and writing the policy.
+//
+// Two correctness points carried from the old dialog, both still load-bearing:
+//   1. PATCH replaces `policy` WHOLE, so the target channel's CURRENT policy must be read and
+//      the change merged onto it — sending `{filler}` alone wipes scope, audience, ordering…
+//   2. The write is per channel, one at a time, so one failure cannot leave a half-applied set.
 const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
   const queryClient = useQueryClient();
-  const channels = channelsApi.useListChannels();
-  // The channel currently being pinned to (its row shows a spinner) — one PATCH at a time.
-  const [pinning, setPinning] = useState<string>();
+  const [busy, setBusy] = useState<string>();
+  const [error, setError] = useState<string | null>(null);
+
+  // The per-channel note. ⚠ Enabled only with a clip: the dialog renders nothing without one,
+  // but the hook must still be called unconditionally (hooks cannot sit below an early return).
+  const fit = fillerApi.useClipChannelFit(
+    { clip: clip?.path ?? "" },
+    { query: { enabled: Boolean(clip?.path) } },
+  );
+  const channels = unwrap(fit.data, (b) => b.channels) ?? [];
 
   const update = channelsApi.useUpdateChannel({
     mutation: {
+      onSettled: () => setBusy(undefined),
       onSuccess: (_res, vars) => {
         void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(vars.id) });
         void queryClient.invalidateQueries({ queryKey: channelsApi.getPreviewChannelPodsQueryKey(vars.id) });
-        toast.success("Pinned to channel");
-        onClose();
+        // The note itself changes — a pin removes the rung, an exclusion adds a reason — so the
+        // fit is as stale as the channel is.
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getClipChannelFitQueryKey() });
       },
-      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't pin the clip"),
-      onSettled: () => setPinning(undefined),
+      onError: (e) => setError(toProblem(e).detail ?? toProblem(e).title ?? "Couldn't save that change"),
     },
   });
 
   if (!clip) return null;
 
-  const rows = unwrap(channels.data, (b) => b.channels) ?? [];
-
-  // Pin `clip` into `channelId`: fetch that channel's live policy, append the id to
-  // filler.pinned (dedup), and PATCH the WHOLE merged policy. Reading the channel here
-  // (rather than trusting the list row, which carries policy but may be stale) keeps the
-  // merge honest.
-  const pinTo = async (channelId: string) => {
-    setPinning(channelId);
+  // Write one channel's override.
+  //
+  // ⚠ Reads the channel LIVE rather than trusting a list row: PATCH replaces the whole policy,
+  // so merging onto a stale copy silently reverts whatever else changed since it was fetched.
+  const write = async (channelId: string, next: { pinned: boolean; excluded: boolean }) => {
+    setBusy(channelId);
+    setError(null);
     const res = await channelsApi.getChannel(channelId);
     if (res.status !== 200) {
-      toast.error("Couldn't read that channel");
-      setPinning(undefined);
+      setError("Couldn't read that channel");
+      setBusy(undefined);
       return;
     }
     const policy = res.data.policy ?? {};
-    const pinned = policy.filler?.pinned ?? [];
-    if (pinned.includes(clip.path)) {
-      toast.info(`Already pinned to ${res.data.name}`);
-      setPinning(undefined);
-      onClose();
-      return;
-    }
+    const f = policy.filler ?? {};
+    // Both lists are rebuilt from the requested state rather than toggled, so the two flags
+    // cannot drift apart — the source of truth is what the caller asked for, not what was there.
+    // ⚠ `string[] | null | undefined`, not just `string[]`: the generated list types are
+    // nullable because the server omits an empty list, so an absent override arrives as `null`
+    // rather than `[]` and a signature without it silently narrows.
+    const without = (ids: string[] | null | undefined) => (ids ?? []).filter((id) => id !== clip.path);
+    const pinned = next.pinned ? [...without(f.pinned), clip.path] : without(f.pinned);
+    const excluded = next.excluded ? [...without(f.excluded), clip.path] : without(f.excluded);
+
     update.mutate({
       id: channelId,
-      data: {
-        policy: { ...policy, filler: { ...policy.filler, pinned: [...pinned, clip.path] } },
-      },
+      data: { policy: { ...policy, filler: { ...f, pinned, excluded } } },
     });
   };
 
   return (
     <Card>
-      <section aria-label={`Pin ${clip.name} to a channel`} className="flex flex-col gap-4 p-4">
+      <section aria-label={`Channels for ${clip.name}`} className="flex flex-col gap-4 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate font-semibold text-lg">Pin “{clip.name}” to a channel</h2>
-            <p className="mt-1 text-muted-foreground text-sm">
-              It'll always be available in that channel's breaks, ahead of the theme. Fine-tune the rest on
-              the channel's Filler section.
-            </p>
+            <h2 className="truncate font-semibold text-lg">Which channels play “{clip.name}”</h2>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             Close
           </Button>
         </div>
 
-        {channels.error != null && <ErrorState error={channels.error} onRetry={() => channels.refetch()} />}
-
-        {rows.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No channels yet. Create one first.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {rows.map((ch) => {
-              const already = (ch.policy?.filler?.pinned ?? []).includes(clip.path);
-              return (
-                <li
-                  key={ch.id}
-                  className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate font-medium text-sm">{ch.name}</span>
-                    <span className="ml-2 font-mono text-static-400 text-xs">Ch {ch.number}</span>
-                  </div>
-                  {already ? (
-                    <span className="flex items-center gap-1 text-muted-foreground text-xs">
-                      <Check className="size-3.5" aria-hidden />
-                      Pinned
-                    </span>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={pinning !== undefined}
-                      onClick={() => void pinTo(ch.id)}
-                    >
-                      {pinning === ch.id ? "Pinning…" : "Pin"}
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <ChannelOverridePicker
+          clipName={clip.name}
+          channels={channels}
+          onSet={(id, next) => void write(id, next)}
+          // "Back to automatic" clears BOTH lists — the only way to reach the third state.
+          onReset={(id) => void write(id, { pinned: false, excluded: false })}
+          busyChannelId={update.isPending ? busy : null}
+          loading={fit.isLoading}
+          error={error ?? fit.error?.detail ?? null}
+        />
       </section>
     </Card>
   );

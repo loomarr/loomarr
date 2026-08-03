@@ -116,6 +116,11 @@ func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
 		string(settings.FeatureFiller):      f.Filler,
 		string(settings.FeatureUserSync):    f.UserSync,
 		string(settings.FeatureIngest):      f.Ingest,
+		// ⚠ Per-source (V38b). `ingest` alone cannot say WHICH source works, and reporting one
+		// blanket verdict from two independent capabilities is what made a box with ffmpeg and no
+		// yt-dlp claim it could not download at all.
+		string(settings.FeatureIngestArchive): f.IngestArchive,
+		string(settings.FeatureIngestYouTube): f.IngestYouTube,
 	}
 }
 

@@ -5,9 +5,9 @@ import { IncomingPanel } from "./incoming-panel";
 
 // The ingest conveyor: what has been downloaded but is not yet filed (V35).
 //
-// ⚠ No confidence bar. The mock draws one per row; the tagger records neither a score nor a
-// rationale, so a bar here would be a number no code produced. Each row shows the REASON it is
-// waiting, which the server derives from real state.
+// ⚠ The "no confidence bar" note that stood here is RETIRED (V38): the tagger now records a
+// GROUNDING-CAPPED score, so the bar renders a real measurement. The reason line stays beside it —
+// a number says how sure, only the sentence says why.
 //
 // withRouter because a compilation row links to the split-review route. Args come from
 // `@loomarr/fixtures` per frontend-design §5.1b.
@@ -55,5 +55,53 @@ const NothingWaiting: Story = {
   args: { asks: [], reels: [] },
 };
 
+// V38: the confidence meter, on the three bands the colour switches between. ⚠ The score is
+// GROUNDING-CAPPED — the 40 here is what an ungrounded era gets no matter how certain the model
+// claimed to be, which is why it can never reach the auto-file threshold.
+const WithConfidence: Story = {
+  args: {
+    asks: [
+      { ...untaggedAsk, path: "low.mp4", name: "Unidentified toy spot", confidence: 40 },
+      { ...untaggedAsk, path: "mid.mp4", name: "Cereal ad", confidence: 72 },
+      { ...guessedEraAsk, path: "high.mp4", name: "Frosted Flakes 1993", confidence: 92 },
+    ],
+    reels: [],
+    onConfirmEra: () => {},
+    onEditTags: () => {},
+    onFile: () => {},
+    onFileAllAsSuggested: () => {},
+  },
+};
+
+// ⚠ THE audit half (§10 V38). Auto-filing is ON by default, so this is what an operator who did
+// not ask for it sees — rendered even with an EMPTY queue, because "nothing needs you" and "here
+// is what I did without asking" are different statements and the second one matters most on
+// exactly the install where the first is true.
+const FiledWithoutAsking: Story = {
+  args: {
+    asks: [],
+    reels: [],
+    recentlyFiled: [
+      {
+        ...untaggedAsk,
+        path: "auto-1.mp4",
+        name: "Hot Wheels spot",
+        confidence: 86,
+        autoFiled: true,
+        reason: "Loomarr was confident enough about these tags to file it without asking.",
+      },
+      {
+        ...untaggedAsk,
+        path: "auto-2.mp4",
+        name: "Station ident",
+        confidence: 95,
+        autoFiled: true,
+        reason: "Loomarr was confident enough about these tags to file it without asking.",
+      },
+    ],
+    onSendBack: () => {},
+  },
+};
+
 export default meta;
-export { BothAskKinds, CompilationsToReview, NothingWaiting, OneRowBusy };
+export { BothAskKinds, CompilationsToReview, FiledWithoutAsking, NothingWaiting, OneRowBusy, WithConfidence };

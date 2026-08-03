@@ -79,3 +79,52 @@ func TestListFillerClips_DurationFromServer(t *testing.T) {
 		t.Errorf("clip-101 era = %d, want 1994", byID["clip-101"].Era)
 	}
 }
+
+// LibraryIDByName resolves the NAME an operator reads off their media server to the item id
+// `ParentId` needs (§10 V38c). Written against a fixture CAPTURED from Emby 4.10.0.22 rather than
+// from remembered field names — `GET /Library/VirtualFolders` returns a bare array, not the
+// `{"Items": […]}` envelope every other endpoint uses, which is exactly the kind of detail that
+// gets remembered wrong.
+func TestLibraryIDByName_ResolvesTheNameAnOperatorTypes(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+
+	for _, tc := range []struct{ name, want string }{
+		{"Movies", "3"},
+		{"TV shows", "12471"},
+		// ⚠ A library with NO CollectionType — three of the seven in the capture omit that key
+		// entirely, and a hand-made commercials library is typically exactly this kind. Matching
+		// must not filter on it, or the libraries an operator is most likely to point at become
+		// invisible.
+		{"Mixed content", "2849151"},
+		// Case-insensitive: the operator is retyping something they read off a screen.
+		{"movies", "3"},
+		{"  TV shows  ", "12471"},
+	} {
+		got, err := c.LibraryIDByName(context.Background(), tc.name)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Errorf("LibraryIDByName(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// ⚠ An unknown name is ("", nil) — "found nothing", never an error. An operator can rename or
+// delete a library at any time, and that must degrade to a source scanning zero clips rather than
+// to a failure that stops every OTHER source from being scanned (§9.1's guarantee, one level down).
+func TestLibraryIDByName_UnknownNameIsNotAnError(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+
+	for _, name := range []string{"Commercials", "", "   "} {
+		got, err := c.LibraryIDByName(context.Background(), name)
+		if err != nil {
+			t.Errorf("LibraryIDByName(%q) errored: %v — a missing library is not a failure", name, err)
+		}
+		if got != "" {
+			t.Errorf("LibraryIDByName(%q) = %q, want empty", name, got)
+		}
+	}
+}

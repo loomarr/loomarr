@@ -7,6 +7,8 @@ export * from "./checkbox";
 export * from "./dialog";
 export * from "./input";
 export * from "./label";
+export * from "./nav-tabs";
 export * from "./select";
 export * from "./status-dot";
+export * from "./switch";
 export * from "./tooltip";

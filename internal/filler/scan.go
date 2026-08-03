@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -107,16 +108,28 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 			return nil //nolint:nilerr // deliberate: skip and continue
 		}
 		if d.IsDir() {
+			// ⚠ The watch folder sits INSIDE the clip folder by default (§10 V38c), and the scan
+			// must not descend into it. A file still waiting to be filed would otherwise be
+			// catalogued at its ARRIVAL path — and then pruned on the very next sync, once intake
+			// moved it to its hash. The catalog would show clips appearing and vanishing with
+			// nothing wrong on disk. Skipped by NAME so it holds however `filler.watch_dir` is
+			// configured, including when it is somewhere else entirely and this never matches.
+			if path != dir && d.Name() == WatchDirName {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !clipExtensions[strings.ToLower(filepath.Ext(path))] {
 			return nil // not a media container; not counted as skipped (it is not a clip)
 		}
 
-		// The identity: path RELATIVE to dir, with forward slashes so the id is identical on
-		// every platform. A Windows-authored catalog and a Linux one must agree, because the
-		// pod seed hashes clip ids and a differing separator would silently change pod
-		// contents rather than failing.
+		// The location: path RELATIVE to dir, forward slashes so it is identical on every
+		// platform. A Windows-authored catalog and a Linux one must agree, because the pod seed
+		// hashes clip ids and a differing separator would silently change pod contents.
+		//
+		// ⚠ This is the clip's LOCATION, not its identity (V38c). Intake files clips as
+		// `a3/f9/<hash>.mp4`, so a well-formed clip folder yields exactly that shape here and
+		// `ClipID` below recovers the identity from the bytes.
 		rel, relErr := filepath.Rel(dir, path)
 		if relErr != nil {
 			skipped++
@@ -133,8 +146,26 @@ func ScanDir(ctx context.Context, dir string, probe Prober) (clips []RawClip, sk
 			return nil
 		}
 
+		// ⚠ The DISPLAY name comes from the sidecar's `originalName`, not from the file, because
+		// the file is now called `a3f9….mp4`. Falling back to the filename keeps a clip that has
+		// lost its sidecar readable rather than showing a hash to an operator — and keeps the
+		// era/kind heuristics below working on anything not yet through intake.
 		name := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
+		id := ""
+		if tags, ok := ReadSidecarTags(path); ok {
+			if tags.OriginalName != "" {
+				name = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
+			}
+		}
+		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
+		// which is the same call the probe above makes about a file with no duration.
+		if id, relErr = ClipID(path); relErr != nil {
+			skipped++
+			return nil
+		}
+
 		clips = append(clips, RawClip{
+			ID:   id,
 			Path: rel,
 			Name: name,
 			// Kind + Era from the filename — the cheapest tagging tier (§10). Without this a
@@ -265,41 +296,70 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	return Probed{DurationMs: int64(secs * 1000), Height: height}, nil
 }
 
-// ClipPath resolves a clip's identity back to an absolute path ffmpeg can read.
+// ShardDepth is how many 2-character directory levels a clip is filed under.
 //
-// ⚠ THIS IS A SECURITY BOUNDARY, not just a join. A clip id reaches here from the database,
-// and the pod assembler and the API both accept ids from callers — so a crafted id containing
-// `../` would otherwise make playout read (and stream) an arbitrary file outside FILLER_DIR.
-// Containment is verified against the CLEANED path rather than by rejecting ".." textually,
-// which misses encodings and symlink-shaped tricks.
-func ClipPath(dir, clipID string) (string, error) {
-	if dir == "" {
-		return "", fmt.Errorf("filler: no FILLER_DIR configured")
-	}
-	if clipID == "" {
-		return "", fmt.Errorf("filler: empty clip id")
-	}
-	// An absolute id is never legitimate — ids are relative by construction (see Clip.Path) —
-	// and filepath.Join would silently honour it.
-	if filepath.IsAbs(clipID) || strings.HasPrefix(clipID, "/") {
-		return "", fmt.Errorf("filler: clip id %q is absolute", clipID)
-	}
+// ⚠ Sharding rather than one flat directory (§10 V38c): a catalog is thousands of clips, and a
+// single directory holding them all degrades badly on several filesystems and makes `ls`
+// unusable. Two levels of 2 hex characters is 65,536 buckets, so even a 50k-clip catalog averages
+// under one file per directory. Same trick git and Docker use for content-addressed stores.
+const ShardDepth = 2
 
-	base := filepath.Clean(dir)
-	full := filepath.Clean(filepath.Join(base, filepath.FromSlash(clipID)))
+// hexClipID matches the identity ClipID produces: 64 lowercase hex characters.
+var hexClipID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-	// The containment check. filepath.Rel gives a path starting with ".." exactly when `full`
-	// escapes `base`, which covers `../`, nested traversal, and a cleaned path that lands
-	// outside for any other reason.
-	rel, err := filepath.Rel(base, full)
-	if err != nil {
-		return "", fmt.Errorf("filler: clip id %q is not under the filler dir", clipID)
+// ClipRelPath is a clip's location under the clip folder: `a3/f9/a3f9….mp4`.
+//
+// Derived from the id rather than stored, so there is one rule for where a clip lives and no way
+// for a recorded path to disagree with it.
+func ClipRelPath(clipID, ext string) string {
+	parts := make([]string, 0, ShardDepth+1)
+	for i := 0; i < ShardDepth; i++ {
+		parts = append(parts, clipID[i*2:i*2+2])
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("filler: clip id %q escapes the filler dir", clipID)
-	}
-	return full, nil
+	return filepath.Join(append(parts, clipID+strings.ToLower(ext))...)
 }
+
+// ClipPath resolves a clip's identity to an absolute path, given the clip folder.
+//
+// ⚠ THIS IS A SECURITY BOUNDARY, not just a join. A clip id reaches here from the database, and
+// the pod assembler and the API both accept ids from callers — so a crafted id containing `../`
+// would otherwise make playout read (and stream) an arbitrary file outside the clip folder.
+//
+// ⚠ **Under hash identity the guard gets STRONGER, not weaker** (V38c). It used to sanitise an
+// operator-shaped relative path and verify containment after cleaning. An id is now a 64-character
+// hex hash, so the check is an ALLOW-LIST on the alphabet: nothing containing a separator, a dot
+// or an encoding trick can match `^[0-9a-f]{64}$` in the first place. Validating what an id may
+// BE beats reasoning about what a path might become.
+//
+// ⚠ Accepts EITHER a bare clip id or the shard-relative path a clip row stores
+// (`a3/f9/a3f9….mp4`). Consumers hold the row and pass its `Path`; intake holds only the fresh
+// hash. Both resolve here so there is ONE containment check rather than one per caller — the
+// property that made this function a security boundary in the first place.
+func ClipPath(dir, clipRef, ext string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("filler: no clip folder configured")
+	}
+	rel := clipRef
+	if hexClipID.MatchString(clipRef) {
+		rel = ClipRelPath(clipRef, ext)
+	} else if !validShardPath(clipRef) {
+		// Not a hash, and not a shard path built from one. Covers empty, absolute, traversal and
+		// every encoding of them: an id that is not a hash is not an id.
+		return "", fmt.Errorf("filler: %q is not a clip id", clipRef)
+	}
+	return filepath.Join(filepath.Clean(dir), filepath.FromSlash(rel)), nil
+}
+
+// shardPath matches `a3/f9/<64 hex>.<ext>` — what a clip row stores.
+var shardPath = regexp.MustCompile(`^[0-9a-f]{2}/[0-9a-f]{2}/[0-9a-f]{64}\.[a-z0-9]{1,5}$`)
+
+// validShardPath checks a stored clip path against the shape intake produces.
+//
+// ⚠ An ALLOW-LIST on the whole string, not a traversal check on its parts. Every character of a
+// legitimate path is hex, a slash or an extension, so nothing containing `..`, a backslash or a
+// percent-encoding can match — which is a stronger guarantee than cleaning a path and hoping the
+// result stayed inside.
+func validShardPath(p string) bool { return shardPath.MatchString(p) }
 
 // DirSource is the FillerSource that scans FILLER_DIR directly (§9.1).
 //

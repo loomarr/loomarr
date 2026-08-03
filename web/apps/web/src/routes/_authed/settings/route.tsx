@@ -1,8 +1,9 @@
 import { settingsApi, setupApi } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { ErrorState, SettingsSaveBar } from "@/components/loomarr";
-import { cn, useDocumentTitle } from "@/lib";
+import { NavTabs } from "@/components/ui";
+import { useDocumentTitle } from "@/lib";
 import { SettingsEditsProvider, useSettingsEdits } from "@/settings";
 
 // Settings (config-design §5) — Sonarr's shape: grouped pages, an explicit save bar per page.
@@ -67,6 +68,10 @@ const SettingsSaveBarHost = () => {
 const SettingsLayout = () => {
   useDocumentTitle("Settings");
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
+  // ⚠ Read BEFORE the error early-return below: a hook after a conditional return is skipped on
+  // that path, which React reports as "rendered fewer hooks than expected" and replaces the page
+  // with an error boundary. (The same trap `filler-page.tsx` records hitting.)
+  const { pathname } = useLocation();
 
   if (settings.error) {
     return (
@@ -82,25 +87,21 @@ const SettingsLayout = () => {
     // edits. Held one level lower (inside a page) it died on every tab switch.
     <SettingsEditsProvider>
       <div className="flex h-full flex-col">
-        {/* Horizontal tab bar — the same tab idiom the channel detail page uses. Scrolls
-          sideways on narrow screens; the active page glows brand amber (signal). */}
-        <nav
-          aria-label="Settings"
-          className="flex gap-1 overflow-x-auto border-border border-b bg-background px-6 py-2"
-        >
-          {PAGES.map((p) => (
-            <Link
-              key={p.to}
-              to={p.to}
-              className={cn(
-                "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-accent hover:text-foreground",
-                "data-[status=active]:bg-signal-tint-15 data-[status=active]:font-medium data-[status=active]:text-signal",
-              )}
-            >
-              {p.label}
-            </Link>
-          ))}
-        </nav>
+        {/* ⚠ This bar's look is now the WHOLE APP's (2026-08-02): its pill treatment was
+            extracted into the shared `NavTabs`, and Filler and Queue — which drew an underline
+            bar — were migrated onto it. The styling that used to live inline here is the
+            component's, so a change lands on all three at once.
+            ⚠ `activeId` is derived from the PATHNAME because these tabs are separate routes.
+            The router's own `data-status="active"` would do it implicitly, but the shared
+            component takes an explicit id so the two tab bars that key off `?tab=` and the one
+            that keys off the path can use one API. */}
+        <NavTabs
+          label="Settings"
+          linkComponent={Link}
+          className="bg-background px-6 pt-2"
+          tabs={PAGES.map((p) => ({ id: p.to, label: p.label, to: p.to }))}
+          activeId={PAGES.find((p) => pathname.startsWith(p.to))?.to ?? PAGES[0].to}
+        />
         <div className="min-w-0 flex-1 overflow-hidden">
           <Outlet />
         </div>

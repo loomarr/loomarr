@@ -32,6 +32,11 @@ func TestJobSet(t *testing.T) {
 		"backup | 0 30 3 * * * | backup.schedule",
 		"channel-recurate | 0 0 4 * * 0 | job.recurate.schedule",
 		"channel-sweep | 0 */10 * * * * | job.channel_sweep.schedule",
+		// ⚠ Auto-fetch (§10 V38b) is the first job that reaches OUT to the internet unattended.
+		// Its presence here is the deliberate record of that: §15 previously said "there is no
+		// unattended crawler", and this row is what a future reader sees when they check whether
+		// that is still true.
+		"filler-fetch | 0 0 */6 * * * | job.filler_fetch.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",

@@ -64,8 +64,22 @@
   --radius-DEFAULT: var(--radius);
 }
 
-* {
-  border-color: var(--color-border);
+/* The default border colour, so a bare `border` needs no colour class.
+ *
+ * ⚠ **It MUST live in `@layer base`.** Tailwind v4 emits every utility inside
+ * `@layer utilities`, and the cascade sorts by LAYER before specificity — so an UNLAYERED `*`
+ * rule beats `.border-signal` despite having specificity 0. Unlayered, this one line silently
+ * disabled every border-colour utility in the app: the active tab's amber underline rendered
+ * grey, and so did every other accent border. The class names were all present in the HTML and
+ * in the compiled CSS; they were simply always losing.
+ *
+ * Found by measuring the running app against the mock — the computed border came back
+ * `#2A2E37` where the mock has `#FFB020`, with `data-[status=active]:border-signal` sitting
+ * right there on the element. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 body {

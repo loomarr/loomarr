@@ -165,65 +165,19 @@ func TestScanDir_InfersKindAndEraFromTheFilename(t *testing.T) {
 }
 
 // --- ClipPath: the containment boundary ---
-
-// ⚠ A clip id reaches ClipPath from the DATABASE and from API callers, so a crafted `../`
-// would otherwise make playout stream an arbitrary file off the host.
-func TestClipPath_RefusesToEscapeTheFillerDir(t *testing.T) {
-	dir := t.TempDir()
-
-	for name, id := range map[string]string{
-		"parent":          "../secrets.env",
-		"nested parent":   "ads/../../../../etc/passwd",
-		"absolute":        "/etc/passwd",
-		"absolute nested": "/var/lib/loomarr/loomarr.db",
-		"bare parent":     "..",
-		"empty":           "",
-	} {
-		if got, err := filler.ClipPath(dir, id); err == nil {
-			t.Errorf("%s: %q resolved to %q instead of being refused", name, id, got)
-		}
-	}
-}
-
-// …while a legitimate id resolves, including one in a subfolder.
-func TestClipPath_ResolvesLegitimateIDs(t *testing.T) {
-	dir := t.TempDir()
-
-	for _, id := range []string{"ad.mp4", "1994/toys.mp4", "a/b/c/deep.mp4"} {
-		got, err := filler.ClipPath(dir, id)
-		if err != nil {
-			t.Errorf("%q was refused: %v", id, err)
-			continue
-		}
-		if !strings.HasPrefix(got, dir) {
-			t.Errorf("%q resolved outside the filler dir: %q", id, got)
-		}
-		if !strings.HasSuffix(got, filepath.FromSlash(id)) {
-			t.Errorf("%q resolved to %q, which is not that clip", id, got)
-		}
-	}
-}
-
-// An id that merely LOOKS like traversal after cleaning is fine — "a/../b.mp4" is "b.mp4",
-// still inside. Rejecting on the raw string would refuse it; checking the cleaned path does not.
-func TestClipPath_AllowsInternalDotDotThatStaysInside(t *testing.T) {
-	dir := t.TempDir()
-	got, err := filler.ClipPath(dir, "ads/../bumpers/x.mp4")
-	if err != nil {
-		t.Fatalf("a path that stays inside was refused: %v", err)
-	}
-	if !strings.HasSuffix(got, filepath.Join("bumpers", "x.mp4")) {
-		t.Errorf("resolved to %q", got)
-	}
-}
-
-// No FILLER_DIR means no clip can be resolved — never a bare relative path handed to ffmpeg,
-// which would resolve against the process's working directory.
-func TestClipPath_RefusesWhenUnconfigured(t *testing.T) {
-	if _, err := filler.ClipPath("", "ad.mp4"); err == nil {
-		t.Error("resolved a clip with no FILLER_DIR configured")
-	}
-}
+//
+// ⚠ THREE tests lived here and are SUPERSEDED by `clippath_test.go` (V38c). They asserted the
+// pre-hash model, where a clip id was an operator-shaped relative path (`1994/toys.mp4`) and
+// containment was proved by cleaning the path and checking it had not escaped.
+//
+// Under hash identity the guard is an ALLOW-LIST on the alphabet instead — an id is 64 lowercase
+// hex characters, so a separator, a dot or an encoding cannot appear in a valid one at all. The
+// old tests could not simply be updated because one of them asserted the OPPOSITE of the new
+// rule: `TestClipPath_AllowsInternalDotDotThatStaysInside` required `ads/../bumpers/x.mp4` to be
+// ACCEPTED, which the allow-list rightly refuses.
+//
+// Validating what an id may BE is a stronger guarantee than reasoning about what a path might
+// become, which is why the replacement is not a like-for-like port.
 
 // --- DirSource: the scan is the source of truth, Tunarr only annotates ---
 
@@ -382,5 +336,50 @@ func TestScanDir_NoVideoStreamStillYieldsAClip(t *testing.T) {
 	}
 	if clips[0].Quality != "" {
 		t.Errorf("quality = %q, want empty rather than an invented resolution", clips[0].Quality)
+	}
+}
+
+// The scan does NOT descend into the watch folder (§10 V38c). It sits inside the clip folder by
+// default, so without this a file still waiting to be filed is catalogued at its ARRIVAL path —
+// and then pruned on the very next sync, once intake has moved it to its hash. The operator sees
+// clips appear and vanish with nothing wrong on disk.
+func TestScanDir_SkipsTheWatchFolder(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "filed.mp4")
+	writeFile(t, dir, filler.WatchDirName+"/just-arrived.mp4")
+	// Nested, too — a downloader may write into a subfolder of the watch folder.
+	writeFile(t, dir, filler.WatchDirName+"/pending/also-arriving.mp4")
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		var got []string
+		for _, c := range clips {
+			got = append(got, c.Path)
+		}
+		t.Fatalf("scanned %v, want only the filed clip — the watch folder was walked", got)
+	}
+	if clips[0].Path != "filed.mp4" {
+		t.Errorf("scanned %q, want filed.mp4", clips[0].Path)
+	}
+}
+
+// ⚠ Skipped by NAME, not by "it is the first level down". A folder genuinely called `_watch`
+// nested deeper is still the watch folder as far as an operator is concerned, and a clip folder
+// that legitimately contains one is not a case worth optimising for. This pins the rule so the
+// implementation cannot quietly narrow to a top-level-only check.
+func TestScanDir_SkipsANestedWatchFolderToo(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ads/filed.mp4")
+	writeFile(t, dir, "ads/"+filler.WatchDirName+"/arriving.mp4")
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Path != "ads/filed.mp4" {
+		t.Errorf("scanned %d clips, want only ads/filed.mp4", len(clips))
 	}
 }

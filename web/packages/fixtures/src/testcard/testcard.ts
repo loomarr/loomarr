@@ -1,4 +1,5 @@
 import type {
+  ChannelFitDTO,
   ClipDTO,
   DiscoveredClip,
   FillerSourceDTO,
@@ -569,6 +570,11 @@ const guideChannels: GuideChannelTimeline[] = [
 // derives these from `filler.dir` plus the library connection, which is why `library` is not
 // switchable — nothing scans a media-server library for clips, so a toggle would change
 // nothing — and why an unconfigured row is still a row.
+// ⚠ V37: ONE FLAT LIST. The `remote` CONTAINER row is gone — each registered collection is a
+// peer row carrying its own kind, switch and fetch time. What survives the flattening is the
+// property the old model got for free: `folder`/`library` are still rows even when unconfigured,
+// because "you could set up a drop-folder but have not" is §10's answer to "why is my catalog
+// empty?", and a list of things-that-exist cannot say it.
 const fillerSources: FillerSourceDTO[] = [
   {
     id: "folder",
@@ -581,6 +587,8 @@ const fillerSources: FillerSourceDTO[] = [
     count: 412,
     configured: true,
     fetchable: true,
+    // Scanned, not searched: there is no upstream catalog to query for a local folder.
+    searchable: false,
   },
   {
     id: "library",
@@ -593,55 +601,93 @@ const fillerSources: FillerSourceDTO[] = [
     count: 6,
     configured: true,
     fetchable: true,
-  },
-  {
-    id: "remote",
-    enabled: true,
-    // A container for the registered collections, each of which carries its own switch.
-    switchable: false,
-    removable: false,
-    kind: "remote",
-    target: "downloads",
-    detail: "fetches clips into the watched folder from a URL you give it",
-    count: 0,
-    configured: false,
-    fetchable: false,
+    searchable: false,
   },
 ];
 
-// The same three rows with collections registered under the `remote` one.
+// The flat list with two registered sources added as PEERS (V37) — one archive collection and
+// one YouTube playlist, which is the shape the redesigned Sources tab draws.
 //
-// ⚠ A SEPARATE fixture rather than `remotes` on the one above, deliberately: adding them there
-// would change what every existing FillerSources story renders, churning baselines for a change
-// that is supposed to be a pure move. The nesting is V33's model — the rows describe
-// CONFIGURATION (including "you could set this up but have not"), and a flat list of things
-// that EXIST cannot express that.
-const fillerSourcesWithRemotes: FillerSourceDTO[] = fillerSources.map((s) =>
-  s.kind === "remote"
-    ? {
-        ...s,
-        configured: true,
-        count: 137,
-        remotes: [
-          {
-            id: "src-classic-tv",
-            enabled: true,
-            label: "Classic TV Commercials",
-            uri: "classic_tv_commercials",
-            lastFetchedAt: "2026-07-30T09:14:00Z",
-          },
-          // ⚠ Switched off AND never fetched: the row must read as "stopped fetching", not
-          // "gone", and render "never" rather than an epoch date nobody meant.
-          {
-            id: "src-vintage-ads",
-            enabled: false,
-            label: "Vintage Ad Reels",
-            uri: "vintage_ad_reels",
-          },
-        ],
-      }
-    : s,
-);
+// ⚠ Still a SEPARATE fixture from the two rows above, for the same reason as before: adding
+// them to `fillerSources` would change what every existing FillerSources story renders, churning
+// baselines for what is meant to be an additive change.
+const fillerSourcesWithRemotes: FillerSourceDTO[] = [
+  ...fillerSources,
+  {
+    id: "archive:classic_tv_commercials",
+    enabled: true,
+    switchable: true,
+    removable: true,
+    kind: "archive",
+    target: "Classic TV Commercials",
+    detail: "an archive.org collection — searchable here, downloaded when you queue or approve",
+    count: 137,
+    configured: true,
+    fetchable: true,
+    // Only archive can be searched in place — the per-row search expander's condition.
+    searchable: true,
+    lastFetchedAt: "2026-07-30T09:14:00Z",
+  },
+  // ⚠ Switched off AND never fetched: the row must read as "stopped fetching", not "gone", and
+  // render "never" rather than an epoch date nobody meant.
+  //
+  // ⚠ Also `searchable: false` while being a remote source — yt-dlp ENUMERATES a playlist, it
+  // does not search YouTube, so a search box here would return nothing forever. That is the
+  // distinction this fixture exists to keep visible.
+  {
+    id: "youtube:PLvintage",
+    enabled: false,
+    switchable: true,
+    removable: true,
+    kind: "youtube",
+    target: "Vintage Ad Reels",
+    detail: "a playlist you added — titles and descriptions are kept for tagging",
+    count: 0,
+    configured: true,
+    fetchable: true,
+    searchable: false,
+  },
+];
+
+// Per-clip channel fit (V35 item 1.7) — one row per channel, number-sorted as the server sends.
+//
+// ⚠ Deliberately covers all FIVE renderings the picker has to distinguish, because four of them
+// look alike from a distance: a plain ladder match, an automatic non-match WITH a reason, a pin
+// (no rung and no reason — a pin is placed ahead of the ladder), an exclusion, and the
+// contradictory both-flags state the server reports as stored.
+const channelFits: ChannelFitDTO[] = [
+  { channelId: "ch-1", name: "Saturday Mornings", number: 1, level: "exact", pinned: false, excluded: false },
+  {
+    channelId: "ch-2",
+    name: "Late Night Sci-Fi",
+    number: 2,
+    level: "widened",
+    pinned: false,
+    excluded: false,
+  },
+  // Automatic, and it would never be picked — the row the fit note exists for.
+  {
+    channelId: "ch-3",
+    name: "Kids Block",
+    number: 3,
+    level: "bumper_card",
+    reason: "audience",
+    pinned: false,
+    excluded: false,
+  },
+  // ⚠ Pinned: bumper_card with NO reason. Rendered as "always played here", never as
+  // "won't be picked" — a pin has no rung because it bypasses the ladder entirely.
+  { channelId: "ch-4", name: "Retro Movies", number: 4, level: "bumper_card", pinned: true, excluded: false },
+  {
+    channelId: "ch-5",
+    name: "Newsreel",
+    number: 5,
+    level: "bumper_card",
+    reason: "excluded",
+    pinned: false,
+    excluded: true,
+  },
+];
 
 // archive.org search results, in the shapes the live API really returns.
 //
@@ -691,6 +737,7 @@ const discoveredClips: DiscoveredClip[] = [
 export {
   aiTaggedClip,
   bumperClip,
+  channelFits,
   cleanReel,
   compilationReel,
   discoveredClips,

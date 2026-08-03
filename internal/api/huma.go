@@ -403,6 +403,17 @@ type PodPreviewer interface {
 	// that it agrees with what airs, and splitting it onto its own service is the first step
 	// toward two implementations of "what would this channel get".
 	Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error)
+	// ClipFit reports how ONE clip relates to EVERY channel's selection (§10 V35 item 1.7) —
+	// the override picker's per-channel note, keyed by channel id.
+	//
+	// On this interface for the same reason Coverage and Pool are: the answer must be the one
+	// assembly would give. A note reading "exact match" beside a channel whose breaks never
+	// play the clip is the confident-wrong-answer failure `channelpreview.go` records the v2
+	// mock's own meter committing.
+	//
+	// ⚠ CLIP-centric, not channel-centric: the picker shows one clip against every channel, so
+	// a per-channel endpoint would be N requests to render one card.
+	ClipFit(ctx context.Context, clipPath string) (map[string]filler.Fit, error)
 	// Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35):
 	// how much material exists, and what every live channel's breaks currently resolve to.
 	//

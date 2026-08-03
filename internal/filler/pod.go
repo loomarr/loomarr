@@ -21,7 +21,15 @@ type Pod struct {
 // internal playout hands `Path` to ffmpeg, Tunarr references `TunarrProgramID` in a
 // filler-list. One assembler, one seed, one pod — two ways to name the same clip.
 type PodEntry struct {
-	// Path is the clip's identity, relative to FILLER_DIR. "" for the embedded bumper card.
+	// Path is the clip's LOCATION under the clip folder — `a3/f9/<hash>.mp4` since V38c. "" for
+	// the embedded bumper card.
+	//
+	// ⚠ It used to be the identity as well ("relative to FILLER_DIR"), and this comment said so.
+	// Identity is the hash now (§10 V38c), and the two must not be confused HERE in particular:
+	// playout hands this straight to `ClipPath`, whose allow-list rejects anything that is not a
+	// hash or a shard path. Assembly filling this with a bare filename means every break resolves
+	// to nothing and the channel plays SILENCE — caught by playoutfiller_test, which is the only
+	// reason it is not shipping.
 	Path string
 	// TunarrProgramID is set only when Tunarr knows the clip; "" for the bumper card and on
 	// any install without Tunarr.

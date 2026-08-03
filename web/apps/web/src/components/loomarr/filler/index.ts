@@ -1,4 +1,6 @@
+export * from "./channel-override-picker";
 export * from "./clip-card";
+export * from "./clip-row";
 export * from "./coverage-meter";
 // ⚠ `discover-panel` is DELETED (V35), not merely unrendered. Discover stopped being a tab —
 // searching is something you do to a source — and the redesigned per-source search is a
@@ -15,3 +17,4 @@ export * from "./pool-health";
 export * from "./pull-card";
 export * from "./source-search";
 export * from "./split-review-editor";
+export * from "./watch-pill";

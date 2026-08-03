@@ -10,9 +10,10 @@ import { describe, expect, it } from "vitest";
 // so a provider that implements four of six type-checks perfectly.
 //
 // That is exactly what happened: `onFillerIngest` was subscribed by the core hook and dropped
-// by this provider. IngestPanel is the frame's only consumer, and its callback could never
-// fire, so "Download clips" sat at "starting" forever. A whole feature dead, with a green
-// build, green types and green tests. A doc-drift audit found it by reading, not by running.
+// by this provider. The ingest panel was the frame's only consumer (retired-ok, V38b) and its
+// callback could never fire, so "Download clips" sat at "starting" forever. A whole feature
+// dead, with a green build, green types and green tests. A doc-drift audit found it by reading,
+// not by running.
 //
 // Parsing the SOURCE rather than importing and probing is deliberate: the handlers are wired
 // inside a `useMemo` in a React component, so there is nothing to enumerate at runtime without

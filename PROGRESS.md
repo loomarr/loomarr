@@ -4,6 +4,279 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V38b — clips arrive from SOURCES, not from a URL box (2026-08-02).** Registered sources are now
+polled on a schedule and new clips download unattended, bounded by four configurable limits. The
+paste-a-URL panel is **deleted**. ⚠ **Still open: the first-run starter pull, loudness
+normalisation, reel name/thumbnail, the Tune panel and filmstrip.**
+
+**This phase started from a user question, not a plan.** The Incoming tab said *"Everything
+downloaded so far has been filed"* directly above a panel saying *"Downloading isn't available in
+this install"* — two claims that cannot both be true. Pulling that thread found a real defect
+underneath.
+
+⚠ **ONE `ingest` flag gated TWO downloaders with different needs.** archive.org is fetched over
+plain HTTP and needs only ffmpeg; yt-dlp is for YouTube. Requiring both meant a box with ffmpeg
+and no yt-dlp reported "downloading unavailable" **while being perfectly able to fetch** — and the
+starter pull is an archive.org collection, so first-run acquisition was blocked by a binary it
+never invokes. Same shape as V37's `Fetchable()`: an invariant true when written ("every ingest
+needs yt-dlp") that quietly stopped holding when a second downloader landed beside it.
+
+⚠ **The test defended the bug.** `TestFeatures_IngestNeedsBothToolsPresent` asserted *both*
+directions. One is a real dependency and is documented — yt-dlp shells out to ffmpeg to merge
+streams. The mirror case had **no comment and no argument**: it was asserted by symmetry. Now
+split, and sabotage-verified — re-coupling them fails naming the defect.
+
+**Also found while checking:** §15 has always said the tool paths "default to the vendored
+binaries"; the registry defaults were `""` and only the Docker image set them, so **every source
+build had ingest off even with the tools installed**. Unset now falls back to a PATH lookup, which
+makes the documented behaviour true.
+
+**Auto-fetch, and what bounds it (maintainer, 2026-08-02).** §15's *"there is no unattended
+crawler"* is **superseded**: a registered, enabled source is polled and new items download without
+anyone asking. ⚠ **The superseded rule's concern was legitimate, so it survives as LIMITS rather
+than as a prohibition** — `filler.fetch.every` (6h, `0` = off), `max_per_run` (10),
+`max_catalog_clips` (2000), `max_disk_gb` (20). Every one fails toward doing less.
+
+**Three properties, each sabotage-verified:** only **enabled** sources are polled (the Sources
+switch already promises it); everything fetched arrives **held**, so the unattended step is
+*acquisition* and never *admission*; and a limit that stops a pass is **reported**, because a
+crawler that quietly does nothing is indistinguishable from one that is broken.
+
+⚠ **Dedupe has no cursor, deliberately.** archive.org discovery is a search, not a feed, so "new"
+can only mean "not already here" — the catalog is the high-water mark. It compares **basenames
+without extension**, because a downloaded clip lands as `<id>.mp4` and comparing raw strings
+against bare archive ids would match nothing and re-download everything on every pass. And the
+catalog read must include **held** clips or the job re-downloads its own review queue forever.
+
+**The URL box is retired**, not moved. Clips arrive because you added a source — registration,
+per-row search, an approved pull, or auto-fetch — and a box that made you find the URL yourself
+was the odd one out. Its two end-to-end tests were **deleted rather than relocated**: the
+behaviour is gone, and a test kept alive against a deleted surface passes by rendering something
+nobody can reach. `check-retired.sh` now guards the name.
+
+⚠ **A bug I introduced and the maintainer's question surfaced.** Asked whether the Sources panel
+was being redesigned too (it was not — V37 did that), checking found the fetcher polled sources
+and **never stamped them**: `MarkFillerSourceFetched` shipped in V33, is in the store interface,
+and had **no production caller**. Every row would have read *"never fetched"* forever while
+auto-fetch downloaded from it every six hours. Now stamped — ⚠ only after a successful queue AND
+only when something was actually queued, because "last fetched" must mean "last brought something
+in" or a source polled fruitlessly for a week reads as freshly productive. Sabotage-verified.
+
+**Two guards that fired usefully:** `Resolve` **panics** on an undeclared `ScheduleKey`, so
+registering a job without its settings row takes the app down at boot — fail-fast, caught by
+`make check`. And `TestJobSet` pins the whole job roster, so **the first job that reaches out to
+the internet unattended could not be added quietly**; its row is now the record that §15's old
+claim no longer holds.
+
+Gate: `make check` GREEN (`-race`) · `make fe` GREEN (1050 tests) · **`fe-visual` 690 passed, 4
+modified baselines** (the corrected empty state), verified without `--update-snapshots` ·
+`make e2e` 7/7 · `retired-verify` clean (6 identifiers) · `config-docs` regenerated.
+
+**V38 — the confidence spine (2026-08-02).** Clips gain a **lifecycle**: an ingested clip is
+**held** — recorded but not in the playable catalog, not matched into a pod, not counted as
+coverage — until it is filed, by a human or by clearing a confidence threshold. Incoming reads
+held clips, files them (singly or **all-as-suggested**), and shows **what was filed without
+asking** with a one-click undo. ⚠ **Still open: loudness normalisation, reel name/thumbnail, the
+Tune panel and filmstrip.**
+
+**Maintainer calls:** grounding-gated score with the model refining **within the cap**;
+auto-filing **ON at 85**; and — after I found the shipped pipeline had no filing step at all —
+**build the real hold-then-file pipeline** rather than repurposing a heuristic.
+
+⚠ **I mis-scoped this twice, and both corrections matter more than the code.** First I planned to
+gate "filing" without checking one existed: the scan catalogued a clip and the tagger tagged it
+**in place**, so nothing was ever held. Then I warned that auto-filing ON meant clips reaching
+channels unreviewed — **backwards**: before V38 an ingested clip was catalogued and playable
+*immediately*, no score, no gate. Auto-filing at 85 is the **first** thing ever to stand between a
+download and a channel. §10 records both.
+
+**Six safety properties, each sabotage-verified:**
+
+1. ⚠ **An ungrounded era cannot be auto-filed at ANY settable threshold.** Grounding facts set a
+   **ceiling**; the model may only lower it. Verified twice — as arithmetic, and end-to-end
+   through the filing decision, because **a correct cap that nothing consults protects nothing**.
+2. ⚠ **Held clips never reach a pod** — excluded at the one `ListClips` chokepoint, the shape
+   V35's tombstone established, because pod assembly reads it with a zero filter.
+3. ⚠ **A re-scan cannot file a held clip** — omitted from `UpsertClip`'s `DO UPDATE` *and*
+   preserved in the sync merge. One scan pass would otherwise empty the queue into live channels.
+4. ⚠ **The policy fails CLOSED** — `boolv`, not `boolOn`. They differ only when settings cannot
+   answer, and there `boolOn` would publish unreviewed clips exactly when the install is degraded.
+5. ⚠ **Hand-filing CLEARS `auto_filed`** — a human looked, and leaving the marker set makes a
+   reviewed clip indistinguishable from an unreviewed one.
+6. ⚠ **Confirm-as-suggested carries all three tags** — `UpdateClipTags` writes era, audience and
+   category unconditionally, so an era-only write blanks the other two. Second call site to hit
+   this; the first is commented in `filler-page.tsx`, which is now a strong argument that the
+   store method's all-columns behaviour is the real smell.
+
+**The lifecycle fork needed a maintainer decision.** Ingest downloads into the *same folder the
+scan watches*, so at catalogue time a fetched clip and a hand-copied one are both just files. The
+`.info.json` sidecar is the signal: sidecar ⇒ Loomarr fetched it ⇒ hold; none ⇒ a person put it
+there ⇒ file on sight. Holding a hand-copied clip is the ceremony §7 warns teaches people to click
+through gates.
+
+**Five defects the tooling caught — three of them mine:**
+
+- ⚠ **A test that passed under sabotage.** `TestSync_ReScanDoesNotReHoldAFiledClip` went green with
+  the preserve replaced by a recompute: `serverFieldsUnchanged` skips an unchanged clip *before any
+  write*, so the second sync never exercised the merge. It now forces a write. **The protection was
+  real but came from the idempotent skip, not the line the test claimed to cover** — false
+  assurance that would have shipped.
+- ⚠ **A comment that disagreed with its own code** — I wrote that `confidence` was omitted from
+  `DO UPDATE` while the SQL still updated it. Only executing it found that.
+- ⚠ **`boolToInt` into a Postgres BOOLEAN — the third dialect trap this session.** `ai_tagged` uses
+  that helper safely because its column is INTEGER in *both*. **The split is per COLUMN.**
+- ⚠ **`filler.autofile.normalize_loudness` shipped declared-but-unconsumed** and I caught it in the
+  final gate. `make config-docs` published a key nothing reads — the exact defect that got these
+  keys removed in V35's review, **re-committed inside the phase that documents the lesson**.
+  Removed; it lands with its ffmpeg pass.
+- ⚠ **Every filler duration in Incoming rendered "0m"** — `formatDuration` is minute-granular
+  (programme runtimes); clips are 5–60 seconds. `formatClipDuration` already existed and is what
+  the card and row use. No test asserted on it, and "0m" is a plausible-looking string; only the
+  baseline image showed it.
+
+⚠ **And one thing I got wrong twice about the confidence bar**: I read three scores as rendering
+identically and "fixed" it twice before measuring the pixels — 17px, 30px, 38px for 40/72/92. It
+was correct all along; a 40×1px bar simply reads as a band. What the measurement *did* find is
+that a native `<meter>` cannot be themed (it drew the browser's green, not `lock`), which is why
+it is a `role="meter"` div. **Reading an image is evidence; guessing from one is not.**
+
+Also: `ListUntaggedCommercials` needs `IncludeHeld` — held clips are precisely the ones needing
+tags, and without it the tagger skips every fresh download and the threshold appears inert. And
+the reachability stub had **no `/v1/filler/incoming` branch**, so the tab tested the catch-all —
+the second time that stub has answered the wrong shape (V35b found the first).
+
+Gate: `make check` GREEN (`-race`) · `test-pg` GREEN (00030/00031 both dialects) · `make fe` GREEN
+(**1053** tests) · **`fe-visual` 690 passed, 6 new baselines**, verified without
+`--update-snapshots` · `make e2e` 7/7 · `config-docs` regenerated · `openapi-verify` clean once
+committed.
+
+**V37 — sources as one flat list, and YouTube becomes real (2026-08-02).** Every source is one
+row in one list: the drop-folder, the media-server library, each archive collection, each YouTube
+playlist. The `remote` CONTAINER row is retired, `POST /v1/filler/sources` takes a **kind**, and a
+registered source carries its own switch, fetch time and Remove.
+
+⚠ **This SUPERSEDES a rule that was load-bearing, so the doc records what survives it.** §10 said
+the folder is derived-from-config and remotes are rows, *"and that asymmetry is deliberate and is
+why one source never appears twice."* Flattening does not dissolve that concern — it moves it, so
+§10's new *"Sources are one flat list"* names the two properties the flat model must carry itself:
+**"not configured" stays expressible** (the config kinds are rows even when unset — §10's own
+answer to *"why is my catalog empty?"*, which a table of things-that-exist cannot give), and **no
+source appears twice** (those kinds are singletons). Doc-first, before any code.
+
+**Five findings, three of them defects the tooling caught:**
+
+1. ⚠ **A pull would have enqueued a fetch of an empty URL.** Both pull paths filtered on
+   `Enabled` alone, which was correct while the table held *only* fetchable remotes — my seeded
+   singletons are enabled, so a plan gained a folder row whose `uri` is `""`, and approval handed
+   `Ingest` a blank string. **The invariant "every row here is fetchable" was implicit and became
+   false the moment the table flattened.** Now explicit as `FillerSource.Fetchable()`, used by
+   propose *and* the approve-time re-check so the two cannot disagree.
+2. ⚠ **`enabled` is BOOLEAN on Postgres and INTEGER on SQLite** — a literal `1` copied across is
+   a hard 42804 at migrate time. Invisible reading the two files side by side; `test-pg` caught
+   it. The good failure mode: it cannot reach an install half-applied.
+3. ⚠ **The singleton guard lives in the DATABASE, not in Go.** A partial unique index on
+   `kind IN ('folder','library')`. Sabotage-verified — dropping `UNIQUE` fails the conformance
+   suite with *"a SECOND folder row was accepted"*. A Go-only guard is one the next caller
+   forgets, and the failure mode is two drop-folder rows with different switches: exactly the
+   precedence question the superseded model refused to have.
+4. ⚠ **Registration is deliberately STRICTER than ingest.** `clipfetch.KindForURL` defaults an
+   unknown host to YouTube because yt-dlp handles the widest set of sites — right for an admin
+   pasting one URL and watching it work, wrong for a row that persists and fetches unattended.
+   The host check is **exact**, not `Contains`: sabotage proved a substring check registers both
+   `youtube.com.evil.test` and `notyoutube.com`.
+5. ⚠ **The on/off switch had never been in a visual baseline.** No story passed
+   `onToggleEnabled`, so the tab's most consequential control — whose copy is a behaviour claim —
+   was unrendered in every snapshot. Pre-existing, not a V37 regression; closed by the new
+   `WithRegisteredSources` story, and found by *looking at the picture*.
+
+Also: the row id is namespaced (`archive:…` / `youtube:…`) because one table now holds two
+vocabularies and a bare identifier lets one kind silently UPSERT over another's; `searchable` is
+**server-sent** rather than re-derived client-side (V35b hard-coded `kind === "remote"` and
+predicted this); and the page's Add-a-source form closes a route that had been **API-only for two
+phases** — `POST /v1/filler/sources` shipped in V35 with nothing calling it.
+
+**Deferred, deliberately: community packs.** There is no pack index — no URL, no manifest, no
+fetcher — so a `PACKS` row would be the "control that dims and changes nothing" §10 forbids two
+paragraphs above. **Licence stays off the wire** (maintainer, 2026-08-02): §6.3 measured ~92% of
+archive items declaring none, and a badge absent nine rows in ten teaches an operator to read
+absence as "fine" rather than "unknown".
+
+Gate: `make check` GREEN (`-race`) · `test-pg` GREEN (00029 conformant on **both** dialects) ·
+`make fe` GREEN (1049 tests) · **`fe-visual` 686 passed, 2 new baselines and 10 modified**,
+verified by re-running **without** `--update-snapshots` · `make e2e` 7/7 · `config-docs` no drift ·
+`openapi-verify` clean once committed (spec verified stable across regenerations).
+
+⚠ **`retired-verify` fails on an UNTRACKED local `docker/.env`** holding a generated
+`WEBHOOK_SECRET` from an old dev run. Not V37 and not something CI sees — the check greps the
+working tree, not the index. Verified clean with that file moved aside (5 identifiers checked).
+
+**V35b — the honest frontend delta (2026-08-02).** The part of the redesigned Filler page that
+needed no backend: the catalog's **list ⇄ grid** toggle (`?view=list`, new `ClipRow`), the card's
+**thumbnail overlays** (duration / quality / select move onto the frame), **Select all**, and the
+per-source search **re-scoped into the archive row** behind a *Search it* toggle — finding clips is
+something you do TO a source, so it no longer sits in a detached card.
+
+**Four things the tooling caught that no assertion would have:**
+
+1. ⚠ **`/v1/filler/sources` was never stubbed in the reachability suite** — it fell through to the
+   clips payload, so the Sources tab rendered **zero source rows** in every run, and the old
+   *"Find clips"* assertion passed anyway because that heading sat OUTSIDE the list. Moving the
+   search INTO the row is what made the test depend on the shape. **A stub answering the wrong
+   shape is indistinguishable from a working page until something depends on it.**
+2. ⚠ **The list row crushed the clip name.** A grid item's default `min-width:auto` refuses to
+   shrink below its content, so a long name pushed the tag columns out instead of ellipsising —
+   the one column that must never be squeezed. Every test passed; **only reading the baseline
+   image showed it.** Fixed with `min-w-0` and pinned by a `LongName` story.
+3. ⚠ **`aria-label` on a bare `<span>` is ignored.** The quality overlay carried one to stop
+   "1080P" being announced as letter-spaced shouting; ARIA only permits naming on an element with
+   a role, and the chip-row version got its role from `Badge`. Biome caught it — a real a11y bug,
+   not a lint nit. `role="img"` now carries the name.
+4. ⚠ **A `widthFrame(360)` story does NOT test a mobile layout.** Tailwind's `md:`/`lg:` resolve
+   against the VIEWPORT, so the decorator narrows the container and changes which columns render
+   not at all — the story drew a squashed desktop row that *looked* like proof. Deleted (with its
+   two orphaned baselines, which `--update-snapshots` writes but never prunes); the visual suite's
+   mobile viewport is what actually exercises the collapse.
+
+⚠ **The mock's `searchable: id === 'archive'` could not be followed literally** — archive.org has
+no peer row today; it lives nested under `remote`. The expander is a **render prop keyed by row**,
+so V37's flattening changes which row matches and not this shape.
+
+**Not adopted from the mock, deliberately:** list rows carry **no per-row actions**. List view is
+for scanning and bulk-selecting; acting on one clip is what the card is for, and rebuilding it
+badly in 46px of column would be worse than the split the mock draws.
+
+Gate: `make fe` GREEN (**1047** tests, up from 1039) · `fe-visual` **684 passed, 14 new baselines
+and 2 modified** (both the intended ClipCard overlay change), verified by re-running **without**
+`--update-snapshots` so the axe half ran · `make check` GREEN.
+
+**The maintainer export landed, and it split the Filler track (2026-08-02).**
+`design/loomarr-prototype-desktop-v2.dc.html` is now the **632,110-byte** export — the one the
+V35 row below says was needed. It carries the redesigned Filler screen *and* the ~270 KB of JS
+every previous fetch truncated. **Next up: V35b, then V37 and V38** (plan §6.5).
+
+⚠ **Reading the markup alone had understated one screen.** The confidence meter looked like
+layout; the JS shows `conf >= autoConf` is the **routing decision** for every incoming segment —
+what gets filed silently vs. surfaced to a human. So the Incoming redesign is **not frontend
+work**: the score is a backend capability the UI only reports. It became its own phase (V38)
+rather than a step inside a page phase.
+
+⚠ **Two verification lessons, both about the truncated fetch rather than the design.** (1)
+`support.js` was recorded as byte-identical in three places; it was **not** (64,222 → 69,150
+bytes, 155 lines). The check was real but ran against the capped read — **a hash taken from a
+truncated fetch describes the cap, not the file.** (2) The "do not invent `poolStats`/`asks`/
+`reels`/`services`" instruction was correct while the JS was unreachable and is now **retired**,
+because those values are readable at source. Both corrected in `design/README.md`,
+`design/FILLER-DELTA-2026-08-01.md` and plan §6.5.
+
+⚠ **1.7 was recorded as NOT DONE and that was wrong** — see the corrected row below. The work sat
+uncommitted in the tree, so the record and the code disagreed in the direction that costs most:
+the plan would have re-specified a built feature.
+
+**Three ratified decisions (maintainer, 2026-08-02)** now in plan §6.5: **follow the mock's
+design**; **YouTube + community packs become real registrable sources** (V37 — a schema and
+contract change, not a restyle); and **the tagger records a confidence score** (V38 — the
+dependency the whole Incoming redesign rests on).
+
 **V35 — the Filler page as redesigned (2026-08-01).**
 Branch `feat/filler-clip-card-detail`, 14 commits. The design project's prototype was re-fetched
 and the Filler screen had been **rewritten** — 4 tabs → 3, Discover deleted into Sources, a new
@@ -15,12 +288,12 @@ block below): **five items retired, three reshaped, two survive**. That block is
 rather than deleted, because the lesson is the durable part — an audit is a claim about a moving
 reference, and this one had a shelf life of one day.
 
-⚠ **`design/loomarr-prototype-desktop-v2.dc.html` is STALE for this screen and could not be
-updated.** `DesignSync.get_file` caps at 262,144 bytes; the file is ~310 KB of markup before its
-~192 KB of JS, and a markup-only splice renders nothing (the committed JS defines
-`covBars`/`registry`/`dscFilters` while the new markup binds `poolStats`/`asks`/`reels`/
-`services`). **Needs a maintainer export.** `support.js` + `image-slot.js` were re-fetched in the
-same pass and are byte-identical, so no runtime change accompanies it.
+~~⚠ **`design/loomarr-prototype-desktop-v2.dc.html` is STALE for this screen and could not be
+updated.**~~ ✅ **RESOLVED 2026-08-02 — the export landed** (see the top entry). The cap that
+caused it was real and is worth keeping: `DesignSync.get_file` stops at 262,144 bytes, the file is
+~310 KB of markup before its JS, and a markup-only splice renders nothing. ⚠ The last sentence of
+this block — `support.js` "byte-identical, so no runtime change accompanies it" — was **wrong**,
+because it was verified against the truncated fetch.
 
 **Shipped (backend + contract):**
 
@@ -77,8 +350,15 @@ alone leaves the control announcing no state; `aria-checked` is explicit.
 
 **NOT DONE, and deliberately so:**
 
-- **1.7 per-channel include-set override + `fitNote`** — the card's pin/block still uses the
-  shipped dialog rather than the mock's checkbox-set override.
+- ~~**1.7 per-channel include-set override + `fitNote`**~~ **DONE — this row was stale, not
+  accurate (corrected 2026-08-02).** `components/loomarr/filler/channel-override-picker/`
+  implements exactly the mock's shape: one checkbox per channel, a `fitNote` per row, and **Back
+  to automatic** as the route to the third state. It is reachable through the rewritten
+  `pin-clip-dialog` (no longer pin-only — it can exclude and un-pin), which `filler-page` renders,
+  and `reachability.test.tsx` asserts the entry point. ⚠ It sat **uncommitted** while the record
+  said NOT DONE, which is the direction of drift that costs most: the next phase would have
+  re-specified a feature that was already built. Commit `8af15e4` carries the backend half
+  (`GET /v1/filler/fit`, `ChannelFitDTO` with a reason **code** the frontend words).
 - ~~**The card's cycle → "Edit tags" swap.**~~ **DECIDED: not doing it** (maintainer,
   2026-08-01). Click-to-cycle stays. It is faster for the common case (one wrong tag on one
   clip), and the select editor's real advantage — several fields across several clips — is what
@@ -1651,22 +1931,22 @@ gate**. "Find clips" is renamed *"Propose a pull"* in three places and Approvals
 PULL` card. §10 already stated the principle without an object to hang it on — *"the machine
 proposes, a human commits"* — so this is the gate arriving where the doc said it belonged.
 
-⚠ **The prototype file in `design/` could NOT be updated** and is stale for this screen. The
-`DesignSync.get_file` cap (262,144 bytes) truncates before the file's ~192 KB of JS, and a
-markup-only splice renders nothing — the committed JS defines `covBars`/`registry`/`dscFilters`
-while the new markup binds `poolStats`/`asks`/`reels`/`services`. The structure is recorded in
-`design/FILLER-DELTA-2026-08-01.md`; the file needs another maintainer export. `support.js` and
-`image-slot.js` were re-fetched in the same pass and are **byte-identical**, so no runtime change
-accompanies it.
+~~⚠ **The prototype file in `design/` could NOT be updated** and is stale for this screen.~~
+✅ **RESOLVED 2026-08-02 — the export landed** (top entry). The cap was real: `DesignSync.get_file`
+stops at 262,144 bytes, before the file's ~192 KB of JS, and a markup-only splice renders nothing.
+⚠ The `support.js` "byte-identical, so no runtime change" claim in this block was **wrong** — it
+was verified against the truncated fetch.
 
 **Both new phases are specced in plan §6.5: V35** (the Filler page as redesigned) and **V36** (the
 Watch player, which arrived in the same import and is blocked on playout emitting raw MPEG-TS —
 nothing a `<video>` element can play).
 
-**Next up: V35's remainder, then V36** (plan §6.5). V35 shipped its backend and the page; what is
-left is listed by name in the block at the top of this file — **1.7**, the card's cycle→Edit-tags
-swap (⚠ a deletion of working code, held for a maintainer's read), and the Sources tab's search /
-add-a-source UI. `design/` still needs a maintainer export before the mock renders this screen.
+~~**Next up: V35's remainder, then V36.**~~ **SUPERSEDED 2026-08-02 — see the top entry.** Of the
+three items this line named: **1.7 was already built** (the record was stale, not the code); the
+cycle→Edit-tags swap was **ratified as not-doing**; and the Sources search/add UI grew into **V37**
+once YouTube and community packs became real source kinds. The current answer is at the top of this
+file — ⚠ **read that, not this line.** This is exactly the drift CLAUDE.md's worktree section warns
+about: a "Next up" that outlives the work it points at still reads as current.
 The V34 note below is history; its own row records completion.
 
 *Historical, kept for its findings:* **V34 — compilation splitting + per-clip metadata** (plan §6.4).

@@ -508,7 +508,7 @@ func (r *playoutResolver) airingFiller(
 			}
 			// ⚠ ClipPath is the containment check, not a join: the id comes from the database
 			// and a crafted `../` would otherwise stream an arbitrary file off the host.
-			full, perr := filler.ClipPath(r.fillerDir(), e.Path)
+			full, perr := filler.ClipPath(r.fillerDir(), e.Path, "")
 			if perr != nil {
 				return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 			}

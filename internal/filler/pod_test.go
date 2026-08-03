@@ -11,16 +11,16 @@ import (
 // era/audience/category cycle, plus two bumpers.
 func sampleCatalog() []filler.Clip {
 	c := []filler.Clip{
-		{Path: "b1.mp4", TunarrProgramID: "tun-b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
-		{Path: "b2.mp4", TunarrProgramID: "tun-b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Hash: "b1.mp4", Path: "b1.mp4", TunarrProgramID: "tun-b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Hash: "b2.mp4", Path: "b2.mp4", TunarrProgramID: "tun-b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
 		// 1992 kids commercials across categories.
-		{Path: "c1.mp4", TunarrProgramID: "tun-c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
-		{Path: "c2.mp4", TunarrProgramID: "tun-c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{Path: "c3.mp4", TunarrProgramID: "tun-c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
-		{Path: "c4.mp4", TunarrProgramID: "tun-c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
+		{Hash: "c1.mp4", Path: "c1.mp4", TunarrProgramID: "tun-c1", Name: "Frosted Flakes", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
+		{Hash: "c2.mp4", Path: "c2.mp4", TunarrProgramID: "tun-c2", Name: "TMNT figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Hash: "c3.mp4", Path: "c3.mp4", TunarrProgramID: "tun-c3", Name: "Sega Genesis", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
+		{Hash: "c4.mp4", Path: "c4.mp4", TunarrProgramID: "tun-c4", Name: "Capri Sun", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
 		// A 1985 (different decade) kids ad + a late-night ad (wrong audience).
-		{Path: "c5.mp4", TunarrProgramID: "tun-c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{Path: "c6.mp4", TunarrProgramID: "tun-c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{Hash: "c5.mp4", Path: "c5.mp4", TunarrProgramID: "tun-c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Hash: "c6.mp4", Path: "c6.mp4", TunarrProgramID: "tun-c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 	return c
 }

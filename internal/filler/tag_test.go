@@ -15,6 +15,10 @@ import (
 type tagMemStore struct {
 	clips   map[string]filler.StoreClip
 	updates map[string]filler.StoreClip
+	// filed records the paths SetClipsHeld filed, in call order — the auto-file assertions
+	// read this rather than inspecting clips, so a test says "this was filed" rather than
+	// "this ended up not-held", which a bug could also produce.
+	filed []string
 }
 
 func newTagMemStore() *tagMemStore {
@@ -27,6 +31,18 @@ func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.Store
 		out = append(out, c)
 	}
 	return out, nil
+}
+func (m *tagMemStore) SetClipsHeld(_ context.Context, paths []string, held, autoFiled bool, _ time.Time) (int, error) {
+	for _, p := range paths {
+		c := m.clips[p]
+		c.Held = held
+		c.AutoFiled = autoFiled
+		m.clips[p] = c
+		if !held {
+			m.filed = append(m.filed, p)
+		}
+	}
+	return len(paths), nil
 }
 func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, _ time.Time) error {
 	c := m.clips[id]
@@ -43,8 +59,12 @@ func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audi
 	return nil
 }
 
+// untaggedClip builds a catalog clip. ⚠ Since V38c the sidecar is found by PATH, so a fixture
+// giving a clip a sidecar must name it `<path minus extension>.info.json` — the shape intake
+// produces. Fuzzy name matching is gone; see TestTagger_ReadsTheSidecarBesideTheClip.
 func untaggedClip(id, name string) filler.StoreClip {
 	c := filler.StoreClip{}
+	c.Hash = id
 	c.Path = id
 	c.Name = name
 	c.Kind = filler.Commercial
@@ -247,7 +267,7 @@ func sidecarFS(files map[string]string) fstest.MapFS {
 
 func TestTagger_SendsSidecarTextNotProvenance(t *testing.T) {
 	st := newTagMemStore()
-	clip := untaggedClip("c1", "toy-ad-1994")
+	clip := untaggedClip("toy-ad-1994.mp4", "toy-ad-1994")
 	clip.Source = "tunarr-local" // the provenance enum that used to reach the model
 	st.clips["c1"] = clip
 
@@ -306,13 +326,21 @@ func TestTagger_FallsBackToFilenameWhenNoSidecar(t *testing.T) {
 	}
 }
 
-func TestTagger_MatchesSidecarAcrossNameNormalization(t *testing.T) {
+// The sidecar is found BESIDE the clip, at its real sharded path (§10 V38c).
+//
+// ⚠ This replaces TestTagger_MatchesSidecarAcrossNameNormalization, which pinned a capability
+// that has been deliberately removed rather than one that broke. That test walked the folder
+// comparing normalized basenames, because clip identity used to be a display name Tunarr might
+// have tidied. Intake now files every clip as `a3/f9/<hash>.mp4`, so there is no name to fuzzily
+// match — and the walk would have matched nothing, silently costing every filed clip its sidecar
+// text. Reading the path the row already carries is both simpler and correct.
+func TestTagger_ReadsTheSidecarBesideTheClip(t *testing.T) {
 	st := newTagMemStore()
-	// Tunarr's scan tidies the display name; the file on disk keeps its own spelling.
-	st.clips["c1"] = untaggedClip("c1", "Toy Ad (1994)")
+	clip := untaggedClip("a3/f9/a3f9deadbeef.mp4", "Toy Ad")
+	st.clips["c1"] = clip
 
 	drop := sidecarFS(map[string]string{
-		"toy_ad_1994.info.json": `{"title": "Cereal Prize Spot", "description": "Saturday morning."}`,
+		"a3/f9/a3f9deadbeef.info.json": `{"title": "Cereal Prize Spot", "description": "Saturday morning."}`,
 	})
 	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1994,"audience":"kids","category":"cereal"}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
@@ -321,7 +349,43 @@ func TestTagger_MatchesSidecarAcrossNameNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(llmMock.Prompt(), "Cereal Prize Spot") {
-		t.Errorf("normalized name match failed; prompt:\n%s", llmMock.Prompt())
+		t.Errorf("the sidecar beside the clip was not read; prompt:\n%s", llmMock.Prompt())
+	}
+}
+
+// ⚠ THE grounding-survival property (§10 V38c). §8 accepts an era only when the year appears
+// LITERALLY in a text signal. Intake renames `Frosted Flakes 1993.mp4` to `a3f9….mp4`, so after
+// filing, the only surviving copy of that year is the sidecar's `originalName` — and if the
+// tagger does not read it back, every clip whose era came from its filename silently becomes
+// ungrounded. The model's answer would be capped to a suggestion and nobody would be told why.
+func TestTagger_GroundsTheEraOnTheOriginalFilename(t *testing.T) {
+	st := newTagMemStore()
+	// The catalog name has NO year — this is a clip whose era lived only in its filename.
+	// ⚠ Keyed by its PATH, which is what the tagger updates by; keying it "c1" would send the
+	// write to a different entry and the assertion below would read an untouched zero value.
+	const path = "a3/f9/a3f9deadbeef.mp4"
+	st.clips[path] = untaggedClip(path, "a3f9deadbeef")
+
+	drop := sidecarFS(map[string]string{
+		"a3/f9/a3f9deadbeef.info.json": `{"loomarr":{"originalName":"Frosted Flakes 1993.mp4"}}`,
+	})
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1993,"audience":"kids","category":"cereal"}`))
+	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(llmMock.Prompt(), "Frosted Flakes 1993") {
+		t.Errorf("the prompt carries the hash, not the original filename — the era signal is gone:\n%s",
+			llmMock.Prompt())
+	}
+	// And it lands as a GROUNDED era, not a suggestion: 1993 appears literally in the text.
+	// (Written to `updates`, which is where the double records tag writes — `clips` is the
+	// work list it was seeded with.)
+	got := st.updates[path]
+	if got.Era != 1993 {
+		t.Errorf("Era = %d (suggested %d), want a grounded 1993 — the year was in the text signals",
+			got.Era, got.SuggestedEra)
 	}
 }
 
@@ -342,5 +406,183 @@ func TestTagger_MalformedSidecarDegradesToFilename(t *testing.T) {
 	}
 	if res.Partial != 1 {
 		t.Errorf("Partial = %d, want 1 (a malformed sidecar must not fail the tag): %+v", res.Partial, res)
+	}
+}
+
+// --- V38: the grounding-capped confidence score ---
+
+// ⚠ THE safety property of V38, stated as a test: a model that is CERTAIN about an era it
+// invented must not be able to talk its way past the auto-file gate.
+//
+// This is the same failure §10's grounding rule and migration 00024 exist for — the tagger
+// inferred a decade from tone on 2 of 10 real clips — one level up: the model that fabricates
+// the era also grades how sure it is about the era. If the score were self-reported, a confident
+// fabrication would be auto-filed into the catalog and onto a channel with nobody looking.
+func TestScore_UngroundedEraIsCappedBelowEveryReachableThreshold(t *testing.T) {
+	// The model claims total certainty about an era that is NOT in the clip's text.
+	ungrounded := filler.TagSuggestion{SuggestedEra: 1985, Audience: "kids", Category: "toys"}
+
+	got := ungrounded.Score(100)
+	if got >= filler.MaxAutoFileConfidence {
+		t.Fatalf("Score = %d with a model claiming 100 — an ungrounded era reached %d, the highest "+
+			"threshold an operator can set. A fabricated era would be auto-filed.", got, filler.MaxAutoFileConfidence)
+	}
+	// Belt and braces: no threshold in the settable range may admit it.
+	for threshold := 0; threshold <= filler.MaxAutoFileConfidence; threshold++ {
+		if threshold > got && threshold <= filler.MaxAutoFileConfidence {
+			return // there exists a reachable threshold that excludes it — the gate can work
+		}
+	}
+	t.Fatalf("no reachable threshold excludes an ungrounded era scoring %d", got)
+}
+
+// The model may LOWER the grounded ceiling but never lift it. A model unsure about a
+// fully-verified clip is still worth surfacing; that direction is safe and allowed.
+func TestScore_ModelCanOnlyLowerTheGroundedCeiling(t *testing.T) {
+	grounded := filler.TagSuggestion{Era: 1985, Audience: "kids", Category: "toys"}
+
+	if got := grounded.Score(30); got != 30 {
+		t.Errorf("Score(30) on a grounded clip = %d, want 30 — the model must be able to lower it", got)
+	}
+	// 0 means "the model said nothing", so the grounding ceiling stands alone.
+	full := grounded.Score(0)
+	if got := grounded.Score(100); got != full {
+		t.Errorf("Score(100) = %d but Score(0) = %d — the model lifted the ceiling", got, full)
+	}
+}
+
+// An out-of-range self-report arrives in the same untrusted JSON as the tags. It must read as
+// "the model said nothing" rather than becoming the score.
+func TestClassify_ClampsAnOutOfRangeModelConfidence(t *testing.T) {
+	for _, raw := range []string{"150", "-1"} {
+		llmMock := testkit.NewLLM(testkit.FinalResponse(
+			`{"era":1985,"audience":"kids","category":"toys","confidence":` + raw + `}`))
+		got, err := filler.Classify(context.Background(), llmMock, "Toy ad 1985", "A 1985 toy commercial")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Confidence < 0 || got.Confidence > 100 {
+			t.Errorf("confidence %q produced a score of %d, outside 0-100", raw, got.Confidence)
+		}
+	}
+}
+
+// --- V38: the filing decision ---
+
+// heldClip is an INGESTED clip waiting to be tagged and filed. The drop-folder path never
+// produces one of these — a file an operator hand-copies is filed on sight (§10).
+func heldClip(id, name string) filler.StoreClip {
+	c := untaggedClip(id, name)
+	c.Held = true
+	return c
+}
+
+func autoFileAt(min int) filler.AutoFilePolicy {
+	return filler.AutoFilePolicy{
+		Enabled:       func() bool { return true },
+		MinConfidence: func() int { return min },
+	}
+}
+
+// A fully-grounded classification scores 100 and files without a human.
+func TestTagger_FilesAHeldClipWhoseTagsAllVerify(t *testing.T) {
+	st := newTagMemStore()
+	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
+
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":90}`))
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
+		WithAutoFile(autoFileAt(85))
+
+	res, err := tagger.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.AutoFiled != 1 {
+		t.Fatalf("AutoFiled = %d, want 1 (era 1985 is literally in the name)", res.AutoFiled)
+	}
+	if len(st.filed) != 1 || st.filed[0] != "c1" {
+		t.Fatalf("filed = %v, want [c1]", st.filed)
+	}
+	if !st.clips["c1"].AutoFiled {
+		t.Error("auto_filed not recorded — the operator cannot find what was filed without them")
+	}
+}
+
+// ⚠ THE end-to-end safety property, at the level a user experiences it. A model that is CERTAIN
+// about an era found nowhere in the clip's text must leave that clip HELD, whatever it claims and
+// whatever the threshold is set to.
+//
+// The unit test on Score pins the arithmetic; this pins that the arithmetic is actually wired to
+// the filing decision. Both are needed: a correct cap that nothing consults protects nothing.
+func TestTagger_NeverAutoFilesAnUngroundedEra(t *testing.T) {
+	for _, threshold := range []int{50, 85, 95} {
+		st := newTagMemStore()
+		// No year anywhere in the name — so era 1985 can only have been inferred from tone.
+		st.clips["c1"] = heldClip("c1", "Retro toy commercial")
+
+		llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+		tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
+			WithAutoFile(autoFileAt(threshold))
+
+		if _, err := tagger.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if len(st.filed) != 0 {
+			t.Errorf("threshold %d: an UNGROUNDED era was auto-filed — a fabricated tag reached "+
+				"a live channel with nobody looking", threshold)
+		}
+		if !st.clips["c1"].Held {
+			t.Errorf("threshold %d: the clip is no longer held", threshold)
+		}
+		// The guess is still recorded as a question for the operator, not discarded.
+		// ⚠ Read from `updates`, which is where this fake records a tag write (`clips` holds
+		// the seeded state plus what SetClipsHeld changed). Asserting on the wrong map here
+		// looked like a lost suggestion and was purely the fake's shape.
+		if st.updates["c1"].SuggestedEra != 1985 {
+			t.Errorf("threshold %d: the suggestion was lost (%d) — holding must not throw the "+
+				"model's guess away, it is what makes the review one click",
+				threshold, st.updates["c1"].SuggestedEra)
+		}
+	}
+}
+
+// Auto-filing off ⇒ everything waits for a human, however confident.
+func TestTagger_FilesNothingWhenAutoFilingIsOff(t *testing.T) {
+	st := newTagMemStore()
+	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
+
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
+		WithAutoFile(filler.AutoFilePolicy{
+			Enabled:       func() bool { return false },
+			MinConfidence: func() int { return 85 },
+		})
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.filed) != 0 {
+		t.Errorf("filed %v with auto-filing switched off", st.filed)
+	}
+}
+
+// ⚠ An ALREADY-FILED clip is never re-filed. Re-filing would set `auto_filed` on a clip a human
+// had filed by hand, rewriting the answer to "did anyone look at this?" — and that flag is the
+// only thing that can answer it.
+func TestTagger_DoesNotRefileAClipAHumanAlreadyFiled(t *testing.T) {
+	st := newTagMemStore()
+	st.clips["c1"] = untaggedClip("c1", "Toy ad 1985") // not held: already in the catalog
+
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
+		WithAutoFile(autoFileAt(85))
+
+	res, err := tagger.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.AutoFiled != 0 || len(st.filed) != 0 {
+		t.Errorf("re-filed an already-filed clip (%v) — that would stamp auto_filed on a human's "+
+			"own decision", st.filed)
 	}
 }

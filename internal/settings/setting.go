@@ -64,7 +64,11 @@ const (
 	FeatureSuggestions Feature = "suggestions" // needs an LLM + TMDB grounding
 	FeatureFiller      Feature = "filler"      // needs a filler drop-folder
 	FeatureUserSync    Feature = "user_sync"   // needs a media server to sync users FROM
-	FeatureIngest      Feature = "ingest"      // needs runnable yt-dlp + ffmpeg (now always in the image, §16 V3 — so this gate reports a BROKEN vendored binary, not an opt-out)
+	// ⚠ `ingest` is the OR of the two below — "some source can download". Anything reporting
+	// which source is usable must read those instead (V38b).
+	FeatureIngestArchive Feature = "ingest_archive" // archive.org: HTTP + ffmpeg, no yt-dlp
+	FeatureIngestYouTube Feature = "ingest_youtube" // yt-dlp + ffmpeg
+	FeatureIngest        Feature = "ingest"         // needs runnable yt-dlp + ffmpeg (now always in the image, §16 V3 — so this gate reports a BROKEN vendored binary, not an opt-out)
 )
 
 // ValidateFunc checks a parsed value's shape (config-design §2, §9). URL

@@ -193,6 +193,18 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	ms := &MediaServer{AdminToken: "test-admin-token", GoodUser: "Matt", GoodPass: "correct-horse"}
 	mux := http.NewServeMux()
 
+	// /Library/VirtualFolders — library enumeration, for resolving a filler library's NAME to the
+	// item id `ParentId` needs (§10 V38c).
+	//
+	// ⚠ Serves a BARE ARRAY, because that is what Emby 4.10.0.22 returns — the one endpoint here
+	// without the `{"Items": […]}` envelope. Captured 2026-08-02; see fixtures/emby/FINDINGS.md.
+	// Wrapping it for consistency would make every test agree with a parser that cannot read the
+	// real server.
+	mux.HandleFunc("GET /Library/VirtualFolders", func(w http.ResponseWriter, r *http.Request) {
+		ms.capture(r)
+		_, _ = w.Write(Fixture(t, "emby/virtual_folders.json"))
+	})
+
 	// /Items — presence lookup (§6) AND term search (§7.2). SearchTerm branches
 	// to the search fixture; otherwise AnyProviderIdEquals decides present/absent.
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
