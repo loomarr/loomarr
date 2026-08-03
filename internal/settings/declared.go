@@ -580,6 +580,31 @@ func declared() []Setting {
 			Kind: KindString, Default: "-23", Advanced: true,
 			Doc: "Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded.",
 		},
+		{
+			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and
+			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
+			Key: "filler.language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
+			Kind: KindString, Default: "en", Advanced: true,
+			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. Empty turns the language check off.",
+		},
+		{
+			// Mirrors `llm.provider`'s local-vs-hosted split (§8.1), and for the same reason:
+			// local is free and offline, hosted costs money and leaves the box.
+			//
+			// ⚠ **NOT Ollama.** "We already run a local LLM so we do not need whisper" is the
+			// reasonable inference and it is wrong — Ollama has no audio input path at all
+			// (probed 2026-08-03: completion/vision/tools/thinking, no `audio`; vision is images).
+			// Local audio means whisper; hosted is what Ollama cannot be.
+			//
+			// ⚠ whisper is ~3s per clip natively but **~341s under QEMU**, which is why the job
+			// runs in the background and why an arm64 install effectively needs the hosted path.
+			Key: "filler.language_provider", EnvVar: "FILLER_LANGUAGE_PROVIDER", Group: GroupFiller,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
+			},
+			Default: "whisper", Advanced: true,
+			Doc: "What works out a clip's language: the built-in local engine (free and offline, but slow on low-power hardware), or a hosted AI service (fast anywhere, costs a fraction of a cent per clip and sends a few seconds of audio off this machine).",
+		},
 
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
@@ -621,6 +646,22 @@ func declared() []Setting {
 			Key: "ingest.whisper_model", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
+		},
+		{
+			// ⚠ A SECOND model, and the reason is the `.en` suffix on the one above. An
+			// English-only whisper build does NOT identify languages — it assumes English and
+			// transcribes accordingly, so asked about a Spanish advert it answers "en" and the
+			// language gate silently never rejects anything (§10 V40).
+			//
+			// `tiny` (multilingual, ~74MB) is adequate here in a way it was not for splitting:
+			// language ID is CLASSIFICATION over the first seconds, not transcription, so the
+			// "does it drop audible speech" gate that ruled out tiny.en never applies.
+			//
+			// Empty ⇒ local language detection is unavailable and the gate stays inert; the image
+			// sets it, a source build does not.
+			Key: "filler.language_model", EnvVar: "FILLER_LANGUAGE_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off.",
 		},
 		// The starter pack (§10, V17d). A DEFAULT, not a hardcoded truth: an operator can
 		// point it at their own collection, and emptying it turns the pack off. Listing

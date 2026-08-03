@@ -1263,6 +1263,8 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	// vice versa) is a silent data loss the type system cannot see — the two lists are
 	// hand-maintained and positional.
 	c.Preview = "1994/toys.webp"
+	// The detected language (V40, 00036) — a third hand-maintained position in the same lists.
+	c.Language = "en"
 	if err := s.UpsertClip(ctx, c); err != nil {
 		t.Fatalf("seed clip: %v", err)
 	}
@@ -1277,6 +1279,11 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	if got.Preview != "1994/toys.webp" {
 		t.Errorf("preview = %q, want it round-tripped — a preview that vanishes on read means "+
 			"every card silently falls back to its still", got.Preview)
+	}
+	// ⚠ A language that vanishes on read reads as NOT YET CHECKED, so the detection job would
+	// re-run forever — and on the local backend that is ~341s of QEMU per clip, every cycle.
+	if got.Language != "en" {
+		t.Errorf("language = %q, want it round-tripped", got.Language)
 	}
 	if got.PlayCount != 0 || !got.LastPlayedAt.IsZero() {
 		t.Errorf("a fresh clip must start unplayed, got count=%d at=%v", got.PlayCount, got.LastPlayedAt)

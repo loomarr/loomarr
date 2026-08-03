@@ -84,8 +84,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -95,6 +95,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
 		   preview=excluded.preview,
+		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
@@ -103,7 +104,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
 		// line is the fourth time it has bitten this session.
-		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview,
+		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
 	if err != nil {
@@ -113,7 +114,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era,
+	rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
@@ -336,7 +337,7 @@ func scanClip(sc scannable) (Clip, error) {
 		updatedAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
