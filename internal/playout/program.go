@@ -59,6 +59,22 @@ func ProgramArgs(p Profile, streamURL string, offset, limit time.Duration) []str
 func ProgramArgsWithAudio(
 	p Profile, streamURL string, offset, limit time.Duration, audioTrack int,
 ) []string {
+	return ProgramArgsNormalised(p, streamURL, offset, limit, audioTrack, "")
+}
+
+// ProgramArgsNormalised is ProgramArgsWithAudio with an optional loudness target (§10 V40).
+//
+// ⚠ **Only FILLER passes a target.** The caller decides, because only the caller knows what it is
+// playing: `Airing.Source` is set for a resolved filler clip and empty for a library title, which
+// is the discriminator — no new plumbing needed. Normalising a feature film to advert loudness
+// would flatten its dynamic range, and the problem being solved (adverts recorded a decade apart
+// at wildly different levels — a measured 11 dB spread) is a filler problem.
+//
+// `targetLUFS` empty ⇒ byte-identical to what shipped before V40, which is what keeps every
+// existing caller and every existing test meaning what it meant.
+func ProgramArgsNormalised(
+	p Profile, streamURL string, offset, limit time.Duration, audioTrack int, targetLUFS string,
+) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
@@ -148,7 +164,7 @@ func ProgramArgsWithAudio(
 
 	args = append(args, p.scaleFilterArgs()...)
 	args = append(args, p.videoEncodeArgs()...)
-	args = append(args, p.audioEncodeArgs()...)
+	args = append(args, p.audioEncodeArgsNormalised(targetLUFS)...)
 
 	// `+initial_discontinuity` tells the downstream demuxer the first timestamps are not
 	// necessarily zero — true for anything joining a live stream mid-flight, and true here
