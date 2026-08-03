@@ -31,6 +31,13 @@ interface ClipCardProps {
   // without a control that would 403. `selected` alone does nothing.
   selected?: boolean;
   onToggleSelect?: () => void;
+  // Open this clip in the player (V39). Member-safe, unlike every other action here: watching a
+  // clip changes nothing, and `media` is already member-readable — so this is offered to anyone
+  // who can see the card at all.
+  //
+  // Absent renders no play control anywhere on the card, which is the honest degraded state for a
+  // caller that has nowhere to open a player.
+  onPlay?: () => void;
   className?: string;
 }
 

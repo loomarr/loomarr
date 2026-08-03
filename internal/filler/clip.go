@@ -109,6 +109,15 @@ type Clip struct {
 	// they are regenerable from the source file, and thousands of them in a table that rides
 	// the §16 backup would bloat every backup and every V11 migration (see 00017).
 	Thumbnail string
+	// Preview is a path RELATIVE to the preview cache dir; "" = not generated yet, which renders
+	// as the still thumbnail rather than as a broken image (V39).
+	//
+	// ⚠ Stored rather than derived from Thumbnail. The two are almost always the same stem with a
+	// different extension, which is what makes derivation tempting — and wrong, because the two
+	// ffmpeg passes fail independently. A derived path would assert a file exists whenever the
+	// STILL succeeded, so a clip whose preview render failed would render a broken image on hover
+	// instead of simply not having one.
+	Preview string
 	// PlayCount / LastPlayedAt are written from PLAYOUT, never from pod assembly (see 00017).
 	//
 	// ⚠ Only INTERNAL playout can report these. A Tunarr-backed channel airs its filler

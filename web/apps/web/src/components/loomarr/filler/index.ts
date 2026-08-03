@@ -1,5 +1,6 @@
 export * from "./channel-override-picker";
 export * from "./clip-card";
+export * from "./clip-player";
 export * from "./clip-row";
 export * from "./coverage-meter";
 // ⚠ `discover-panel` is DELETED (V35), not merely unrendered. Discover stopped being a tab —

@@ -182,4 +182,105 @@ describe("ClipCard", () => {
     render(<ClipCard clip={base} onSplit={onSplit} splitPending />);
     expect(screen.getByRole("button", { name: /splitting/i })).toBeDisabled();
   });
+
+  // The hover preview and its play button (V39).
+  describe("preview and play", () => {
+    const framed = { ...base, path: "80s/toys/intro.mp4", thumbnail: "80s/toys/intro.jpg" };
+
+    // ⚠ **The name says WHICH clip.** A grid of buttons all called "Play" is meaningless in a
+    // screen reader's element list and unusable by voice control ("click play" — which one?).
+    it("names the play button after the clip", () => {
+      const onPlay = vi.fn();
+      render(<ClipCard clip={{ ...framed, name: "Frosted Flakes" }} onPlay={onPlay} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Play Frosted Flakes" }));
+      expect(onPlay).toHaveBeenCalledOnce();
+    });
+
+    // ⚠ **The button is in the DOM before any hover, revealed by opacity.** Rendering it only on
+    // hover would make it unreachable by Tab — a keyboard user could never play a clip. This is
+    // the assertion that catches a "simplification" to conditional rendering.
+    it("keeps the play button focusable without a hover", () => {
+      render(<ClipCard clip={framed} onPlay={() => {}} />);
+      // Queried with no pointer events fired at all.
+      expect(screen.getByRole("button", { name: /^play/i })).toBeInTheDocument();
+    });
+
+    // The animation is NOT fetched on mount. A catalog is hundreds of cards, and mounting every
+    // preview would pull the whole grid's worth of webp immediately — the exact cost the still
+    // exists to avoid.
+    it("loads the animation only once hovered", () => {
+      const { container } = render(
+        <ClipCard clip={{ ...framed, preview: "80s/toys/intro.webp" }} onPlay={() => {}} />,
+      );
+
+      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+
+      fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
+      const preview = container.querySelector('img[src*="/v1/filler/hover/"]');
+      // Built from the clip's PATH, like the thumbnail: the route derives the .webp itself, so
+      // passing `preview` would request `intro.webp.webp`.
+      expect(preview).toHaveAttribute("src", "/v1/filler/hover/80s/toys/intro.mp4");
+    });
+
+    // ⚠ **Unmounting on leave is what makes the animation RESTART on the next hover.** An
+    // animated WebP begins at frame 0 when it decodes and then runs on its own — the browser
+    // keeps it going while the element lives, whether or not anyone is looking. Hiding it instead
+    // of unmounting meant a second hover picked the loop up mid-advert. (Maintainer, 2026-08-03.)
+    //
+    // This is the test that catches a "keep it mounted for caching" optimisation reintroducing it.
+    it("unmounts the animation on leave so the next hover starts it again", () => {
+      const { container } = render(
+        <ClipCard clip={{ ...framed, preview: "80s/toys/intro.webp" }} onPlay={() => {}} />,
+      );
+      const frame = container.querySelector(".group") as HTMLElement;
+
+      fireEvent.mouseEnter(frame);
+      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeInTheDocument();
+
+      fireEvent.mouseLeave(frame);
+      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+
+      // ...and it comes back, freshly decoded from frame 0.
+      fireEvent.mouseEnter(frame);
+      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeInTheDocument();
+    });
+
+    // ⚠ A clip with no rendered preview must not request one. That is EVERY clip on an install
+    // that has not re-synced since V39, so a card that asked anyway would 404 once per hover
+    // across the whole catalog.
+    it("does not request an animation for a clip that has none", () => {
+      const { container } = render(<ClipCard clip={framed} onPlay={() => {}} />);
+      fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
+
+      expect(container.querySelector('img[src*="/v1/filler/hover/"]')).toBeNull();
+      // ...and the still is still there, which is the whole fallback.
+      expect(container.querySelector('img[src*="/v1/filler/thumb/"]')).toBeInTheDocument();
+    });
+
+    // ⚠ **Without a frame there is nowhere for the disc to sit** — and on a Tunarr-backed install,
+    // or one where ffmpeg never ran, that is the ENTIRE catalog. The action row carries the
+    // fallback, or the feature is invisible on exactly those installs.
+    it("falls back to an action-row button when there is no thumbnail", () => {
+      const onPlay = vi.fn();
+      render(<ClipCard clip={{ ...base, thumbnail: undefined }} onPlay={onPlay} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /play/i }));
+      expect(onPlay).toHaveBeenCalledOnce();
+    });
+
+    // ...and NOT both at once: two "Play X" buttons on one card is noise on screen and a real
+    // problem in a screen reader's element list.
+    it("offers exactly one play control when there is a thumbnail", () => {
+      render(<ClipCard clip={framed} onPlay={() => {}} />);
+      expect(screen.getAllByRole("button", { name: /play/i })).toHaveLength(1);
+    });
+
+    // No handler, no control anywhere — the honest degraded state for a caller with nowhere to
+    // open a player.
+    it("renders no play control without a handler", () => {
+      render(<ClipCard clip={framed} />);
+      expect(screen.queryByRole("button", { name: /play/i })).not.toBeInTheDocument();
+    });
+  });
 });

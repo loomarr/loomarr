@@ -376,10 +376,15 @@ type DirSource struct {
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
 	// supported configuration — an install with no Tunarr — not a degraded one.
 	Tunarr TunarrClipSource
-	// Thumbs extracts one frame per clip (V28); nil ⇒ FFmpegThumbnail("ffmpeg"). A separate
-	// seam from Probe because it is a separate binary and a separate exec — see thumbnail.go.
-	Thumbs Thumbnailer
-	// Log records how many thumbnails could not be generated. Optional, but the reason it
+	// Artwork renders a clip's still AND its animated hover preview (V28/V39); nil ⇒
+	// FFmpegArtwork("ffmpeg"). A separate seam from Probe because it is a separate binary and a
+	// separate exec — reading metadata is ffprobe, rendering frames is ffmpeg.
+	//
+	// ⚠ ONE seam for BOTH assets, because it is one ffmpeg invocation: the two outputs come from
+	// a single decode. Two seams would let a caller render them separately and quietly
+	// reintroduce the second decode that merging them removed.
+	Artwork ArtworkRenderer
+	// Log records how many clips could not have their artwork generated. Optional, but the reason it
 	// exists is not cosmetic: extraction is best-effort and failures are skipped, which is
 	// exactly the shape that once let a misconfigured binary produce a silently empty catalog
 	// (see FFprobeNextTo). A count in the log makes "ffmpeg is wrong" legible.
@@ -423,10 +428,11 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	}
 	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
 	// catalog UI and have nothing to do with whether Tunarr is reachable.
-	if failed := GenerateThumbnails(ctx, dir, clips, d.Thumbs); failed > 0 && d.Log != nil {
-		d.Log("filler: some clip thumbnails could not be generated",
+	if failed := GenerateArtwork(ctx, dir, clips, d.Artwork); failed > 0 && d.Log != nil {
+		d.Log("filler: some clip artwork could not be generated",
 			"failed", failed, "of", len(clips),
-			"hint", "check playout.ffmpeg_path — a wrong binary fails every extraction")
+			"hint", "check playout.ffmpeg_path — a wrong binary fails every render, and the "+
+				"animation needs libwebp compiled in (ffmpeg -encoders | grep webp)")
 	}
 
 	if d.Tunarr == nil || len(clips) == 0 {

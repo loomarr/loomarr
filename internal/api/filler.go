@@ -161,6 +161,13 @@ type ClipDTO struct {
 	// Thumbnail is the extracted frame's path relative to the thumbnail cache; "" when
 	// extraction failed or has not run, which renders as no image rather than a broken one.
 	Thumbnail string `json:"thumbnail,omitempty"`
+	// Preview is the animated hover preview's path relative to the preview cache; "" when the
+	// render failed or has not run (V39).
+	//
+	// ⚠ Absence is ORDINARY, not an error, and the client must treat it that way: it is the state
+	// of every clip on an install that has not re-synced since V39, and of any clip ffmpeg could
+	// not render. The card falls back to the still, which is what shipped before this existed.
+	Preview string `json:"preview,omitempty" doc:"Animated hover preview; absent when not generated — fall back to the thumbnail, do not render a placeholder"`
 	// PlayCount / LastPlayedAt count airings on INTERNAL playout only.
 	//
 	// ⚠ PlaysCounted is what stops this being a lie. A Tunarr-backed channel airs its filler
@@ -193,7 +200,8 @@ func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 	d := ClipDTO{
 		Path: c.Path, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
-		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality, Thumbnail: c.Thumbnail,
+		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
+		Thumbnail: c.Thumbnail, Preview: c.Preview,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
 	}
@@ -371,7 +379,10 @@ func (s *Server) ingestFiller(ctx context.Context, in *ingestFillerInput) (*inge
 	if s.filler == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Enable filler in Settings to sync a commercial and bumper catalog.")
 	}
-	jobID, err := s.filler.Ingest(ctx, in.Body.URLs)
+	// ⚠ `IngestAsked`, not `Ingest`: this is the one path where an OPERATOR named the target, so
+	// it is the one path that registers a source. Auto-fetch and approved pulls carry the items
+	// inside an already-registered collection and must not add a row per clip.
+	jobID, err := s.filler.IngestAsked(ctx, in.Body.URLs)
 	if errors.Is(err, ErrIngestUnavailable) {
 		// NOT feature_not_configured: no setting can assert that a binary RUNS. ⚠ This
 		// used to say "run the loomarr:filler image" — that variant no longer exists (the

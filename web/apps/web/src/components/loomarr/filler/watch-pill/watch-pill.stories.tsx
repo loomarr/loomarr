@@ -37,5 +37,16 @@ const Unconfigured: Story = {
   args: { status: "0 of 0 sources on · 0 clips", health: "unconfigured" },
 };
 
+// ⚠ **The state a first fetch actually lands in, and the one this pill got WRONG.** Auto-fetch
+// holds everything it downloads for review, so a successful first pull leaves the catalog at zero
+// and the Incoming queue full. The header read "5 of 5 sources on · 0 clips" — a working fetcher
+// rendered as a broken one. The two counts stay separate clauses: summing them would claim a
+// channel can play clips nobody has approved.
+//
+// Healthy, deliberately. Nothing is wrong here; there is just something to review.
+const Holding: Story = {
+  args: { status: "5 of 5 sources on · 0 clips · 12 waiting · last scan 1m ago", health: "healthy" },
+};
+
 export default meta;
-export { Healthy, NeedsAttention, Unconfigured };
+export { Healthy, Holding, NeedsAttention, Unconfigured };

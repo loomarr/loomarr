@@ -703,6 +703,9 @@ components:
         playsCounted:
           description: False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0
           type: boolean
+        preview:
+          description: Animated hover preview; absent when not generated — fall back to the thumbnail, do not render a placeholder
+          type: string
         quality:
           description: Resolution label from the probed video height (1080p, 480p). Display-only by default; affects selection only when the filler.min_quality floor is set, which is off unless an operator turns it on.
           type: string
@@ -1605,6 +1608,10 @@ components:
             - attention
             - unconfigured
           type: string
+        held:
+          description: Downloaded clips awaiting review in Incoming; NOT included in clips
+          format: int64
+          type: integer
         lastScanAt:
           description: RFC3339; absent if nothing has ever been fetched
           type: string
@@ -1619,6 +1626,7 @@ components:
         - sourcesOn
         - sourcesTotal
         - clips
+        - held
       type: object
     GenreFilter:
       additionalProperties: false

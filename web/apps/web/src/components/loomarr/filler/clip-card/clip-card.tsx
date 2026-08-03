@@ -1,6 +1,7 @@
 import type { ClipDTO } from "@loomarr/api";
-import { clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
-import { Pin, Scissors, Sparkles, Tag } from "lucide-react";
+import { clipHoverURL, clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
+import { Pin, Play, Scissors, Sparkles, Tag } from "lucide-react";
+import { useState } from "react";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ClipCardProps } from "./clip-card.type";
@@ -77,7 +78,11 @@ const CycleChip = ({
     // The title doubles as the accessible name: "1990s" alone does not say it is editable.
     aria-label={title}
     className={cn(
-      "inline-flex w-fit items-center rounded-sm border border-border px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide transition-colors hover:border-static-400 hover:text-static-200",
+      // ⚠ cursor-pointer: Tailwind v4's Preflight no longer sets it on <button> (v3 did), so this
+      // chip showed an ARROW — while the comment above claimed "the hover border is the
+      // affordance", which was written when the cursor changed too. A chip that looks like a
+      // static badge and does not even change the pointer invites nothing.
+      "inline-flex w-fit cursor-pointer items-center rounded-sm border border-border px-1.5 py-0.5 font-medium font-mono text-2xs uppercase tracking-wide transition-colors hover:border-static-400 hover:text-static-200",
       // ⚠ An UNSET chip is a quiet invitation, not an alarm. Three chips shouting
       // "AUDIENCE?" beside a "Untagged" badge says the same thing four times and makes an
       // untagged clip look broken rather than merely unfinished — the badge is the signal,
@@ -94,6 +99,161 @@ const CycleChip = ({
   </button>
 );
 
+// ClipFrame — the thumbnail, its overlays, and the hover preview (V39).
+//
+// Its own component because it is the only stateful part of an otherwise pure card, and inlining
+// a `useState` would make every card in a 200-card grid re-render on any one card's hover.
+//
+// ⚠ **The animation is a generated ASSET, not the clip streamed on hover.** Playing the source on
+// hover was the cheaper build and the wrong one at catalog scale: a grid would open a range
+// request per hovered card against files tens of megabytes each, to show six seconds. The webp is
+// ~150KB and already the right length. See internal/filler/preview.go.
+const ClipFrame = ({
+  clip,
+  selected,
+  onToggleSelect,
+  onPlay,
+}: {
+  clip: ClipDTO;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  onPlay?: () => void;
+}) => {
+  // ⚠ **Unmounted on leave, and that is what makes the animation RESTART.** An animated WebP
+  // begins at frame 0 when it decodes and then runs on its own — the browser keeps it going while
+  // the element lives, whether or not anyone is looking. Keeping it mounted and merely hiding it
+  // meant the second hover picked the loop up wherever it happened to be, usually mid-advert.
+  // Remounting forces a fresh decode, so every hover starts from the beginning. (Maintainer,
+  // 2026-08-03.)
+  //
+  // The re-fetch this implies is cheap: the asset carries `Cache-Control: private, max-age=3600`,
+  // so a second hover is a memory-cache hit rather than a network round trip.
+  //
+  // ⚠ Still nothing at all before the first hover. A catalog is hundreds of cards, and mounting
+  // every preview up front would pull the whole grid's worth of animation immediately — precisely
+  // what the still exists to avoid.
+  const [hovered, setHovered] = useState(false);
+  const showPreview = hovered && Boolean(clip.preview);
+
+  // ⚠ These handlers are DECORATIVE: they reveal a preview and do nothing else. The real control
+  // is the play button inside, which is already focusable and already flips this same state via
+  // `onFocus` — so a keyboard user reaches everything a mouse user does.
+  //
+  // ⚠ Do NOT "fix" the lint by adding `role`/`tabIndex` here. That would add a tab stop that
+  // activates nothing, and ARIA copied onto something that merely looks interactive is how this
+  // repo has already earned a CRITICAL axe violation (see nav-tabs' aria-controls note).
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: decorative hover only, see above
+    <div
+      className="group relative -mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      // Focus counts as hover so a keyboard user tabbing to the play button sees the same preview
+      // a mouse user does. `onBlur` mirrors it for the same restart reason.
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      <img
+        src={clipThumbURL(clip.path)}
+        // Empty alt, deliberately: the clip's name is the very next element, so a description
+        // here would have a screen reader announce the same clip twice. The frame is decoration
+        // for a label that is already present.
+        alt=""
+        className="size-full object-cover"
+        // A catalog is hundreds of cards; without this every frame is fetched on mount.
+        loading="lazy"
+      />
+      {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
+          would blank the box for as long as the webp took to arrive — a flash of empty card on
+          every hover — and would lose the still if the preview 404'd. Layering means the still is
+          simply covered once there is something to cover it with. */}
+      {showPreview && (
+        <img
+          src={clipHoverURL(clip.path)}
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+          // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
+          // A broken-image glyph over the frame would be a visible fault where the honest state
+          // is "this clip has no preview" — the common case on any install that has not re-synced
+          // since V39.
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      )}
+
+      {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
+          top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
+          — a thumbnail is arbitrary video, so text with no backing plate has NO guaranteed
+          contrast against it. That is a legibility rule, not a style choice. */}
+      <span className="absolute right-1.5 bottom-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100 tabular-nums">
+        {formatClipDuration(clip.durationMs)}
+      </span>
+      {clip.quality && (
+        // ⚠ `role="img"` is load-bearing, not decoration. `aria-label` on a BARE span is ignored —
+        // ARIA only permits naming on an element that has a role, and the chip-row version below
+        // gets one from Badge. Without it the label silently does nothing and "1080P" is announced
+        // as letter-spaced shouting, which is the whole reason the label exists.
+        <span
+          role="img"
+          className="absolute top-1.5 right-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100"
+          title="Resolution, from the clip's video height"
+          aria-label={`Resolution ${clip.quality}`}
+        >
+          {clip.quality}
+        </span>
+      )}
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={Boolean(selected)}
+          onChange={onToggleSelect}
+          className="absolute top-1.5 left-1.5 size-4 accent-signal"
+          aria-label={`Select ${clip.name}`}
+        />
+      )}
+
+      {/* The play button — the mock's 58px amber disc (line 982 of the desktop prototype),
+          scaled to this smaller frame. Centred over the preview.
+
+          ⚠ A real <button>, not a click handler on the frame. The whole card is not clickable
+          (its chips and actions are), so a bare div-with-onClick here would be an invisible
+          target with no keyboard route and no accessible name.
+
+          ⚠ Always in the DOM, revealed on hover/focus by opacity — NOT conditionally rendered.
+          A button that only exists on hover cannot be reached by Tab, so a keyboard user could
+          never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
+      {onPlay && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          {/* The app's `Button` primitive, not a hand-rolled <button>: the pointer cursor (which
+              Tailwind v4's Preflight stopped giving <button>), the focus ring and the disabled
+              handling all live there once. Only the disc SHAPE is local. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onPlay}
+            // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
+            // control and meaningless in a screen reader's element list.
+            aria-label={`Play ${clip.name}`}
+            title={`Play ${clip.name}`}
+            className={cn(
+              "pointer-events-auto size-11 rounded-full bg-signal/90 text-static-950 opacity-0 shadow-lg transition-opacity hover:bg-signal",
+              "focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100",
+              // Visible focus ring against arbitrary video underneath.
+              "focus-visible:ring-static-100 focus-visible:ring-offset-0",
+            )}
+          >
+            {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
+                box, so a mathematically centred play glyph reads as sitting too far left. The
+                mock does the same thing with `padding-left:4px`. */}
+            <Play className="ml-0.5 size-5 fill-current" aria-hidden />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ClipCard = ({
   clip,
   onConfirmTags,
@@ -105,6 +265,7 @@ const ClipCard = ({
   splitPending,
   selected,
   onToggleSelect,
+  onPlay,
   className,
 }: ClipCardProps) => (
   <Card
@@ -123,49 +284,7 @@ const ClipCard = ({
         Absence is the honest rendering — the card without a frame is exactly what shipped
         before this phase, which is a design that already works. */}
     {clip.thumbnail && (
-      <div className="relative -mx-3 -mt-3 aspect-video overflow-hidden rounded-t-[inherit] bg-static-800">
-        <img
-          src={clipThumbURL(clip.path)}
-          // Empty alt, deliberately: the clip's name is the very next element, so a
-          // description here would have a screen reader announce the same clip twice. The
-          // frame is decoration for a label that is already present.
-          alt=""
-          className="size-full object-cover"
-          // A catalog is hundreds of cards; without this every frame is fetched on mount.
-          loading="lazy"
-        />
-        {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
-            top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the
-            frame — a thumbnail is arbitrary video, so text with no backing plate has NO
-            guaranteed contrast against it. That is a legibility rule, not a style choice. */}
-        <span className="absolute right-1.5 bottom-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100 tabular-nums">
-          {formatClipDuration(clip.durationMs)}
-        </span>
-        {clip.quality && (
-          // ⚠ `role="img"` is load-bearing, not decoration. `aria-label` on a BARE span is
-          // ignored — ARIA only permits naming on an element that has a role, and the chip-row
-          // version below gets one from Badge. Without it the label silently does nothing and
-          // "1080P" is announced as letter-spaced shouting, which is the whole reason the
-          // label exists. A role that takes a name, over text styled to be unreadable aloud.
-          <span
-            role="img"
-            className="absolute top-1.5 right-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100"
-            title="Resolution, from the clip's video height"
-            aria-label={`Resolution ${clip.quality}`}
-          >
-            {clip.quality}
-          </span>
-        )}
-        {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={Boolean(selected)}
-            onChange={onToggleSelect}
-            className="absolute top-1.5 left-1.5 size-4 accent-signal"
-            aria-label={`Select ${clip.name}`}
-          />
-        )}
-      </div>
+      <ClipFrame clip={clip} selected={selected} onToggleSelect={onToggleSelect} onPlay={onPlay} />
     )}
 
     <div className="flex items-start justify-between gap-2">
@@ -275,8 +394,21 @@ const ClipCard = ({
         The wording (and the playsCounted trap) lives in `playsLine`, shared with the list row. */}
     <p className="text-static-400 text-xs">{playsLine(clip)}</p>
 
-    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit) && (
+    {(onConfirmTags || onConfirmEra || onTag || onPin || onSplit || (onPlay && !clip.thumbnail)) && (
       <div className="flex flex-wrap gap-2">
+        {/* ⚠ **Only when there is NO frame to overlay.** With a thumbnail the play control is the
+            disc centred on it; duplicating it here would put two "Play X" buttons on one card,
+            which is noise on screen and a genuine problem in a screen reader's element list.
+
+            Without a thumbnail there is nowhere for the disc to sit — and on a Tunarr-backed
+            install, or one where ffmpeg never ran, that is the ENTIRE catalog. Dropping this
+            branch would make the whole feature invisible on exactly those installs. */}
+        {onPlay && !clip.thumbnail && (
+          <Button variant="outline" size="sm" onClick={onPlay} title={`Play ${clip.name}`}>
+            <Play aria-hidden />
+            Play
+          </Button>
+        )}
         {clip.aiTagged && onConfirmTags && (
           <Button variant="outline" size="sm" onClick={onConfirmTags}>
             Confirm tags

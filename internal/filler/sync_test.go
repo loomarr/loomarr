@@ -149,6 +149,55 @@ func TestSync_IdempotentNoChange(t *testing.T) {
 	}
 }
 
+// ⚠ **Artwork that appears on a LATER pass must still reach the database.**
+//
+// `serverFieldsUnchanged` gates the write, so a scan-owned field it does not compare can never be
+// persisted for an existing clip: the merge assigns it and the sync then skips the row as
+// unchanged. This is not hypothetical — it is exactly what happened live in V39. All 13 clips had
+// their previews rendered to disk, `merged.Preview = rc.Preview` ran, and every `preview` column
+// stayed empty, because Name/DurationMs/Kind were identical.
+//
+// That path is the NORMAL one on upgrade: the whole existing catalog gains previews on a re-scan
+// of clips whose rows already exist. `Thumbnail` carried the same latent bug and had simply never
+// been exercised, because a still was always generated on the pass that first inserted the clip.
+func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
+	// First pass: a clip whose artwork has not been rendered yet (the pre-V39 catalog).
+	bare := raw("c1", "clip", filler.Commercial, 30000, 1992)
+	source := &fakeSource{clips: []filler.RawClip{bare}}
+	st := newMemStore()
+	s := newSyncer(source, st)
+	if _, err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second pass: the artwork now exists, and NOTHING else about the clip has changed.
+	withArt := bare
+	withArt.Thumbnail = "c1.jpg"
+	withArt.Preview = "c1.webp"
+	source.clips = []filler.RawClip{withArt}
+
+	res, err := s.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Updated != 1 {
+		t.Errorf("updated = %d, want 1 — newly rendered artwork is a REAL change, and skipping "+
+			"the write means it can never be stored", res.Updated)
+	}
+
+	got, ok, err := st.GetClip(context.Background(), "c1")
+	if err != nil || !ok {
+		t.Fatalf("get c1: ok=%v err=%v", ok, err)
+	}
+	if got.Preview != "c1.webp" {
+		t.Errorf("preview = %q, want it persisted — every hover on this install renders nothing "+
+			"until this column is written", got.Preview)
+	}
+	if got.Thumbnail != "c1.jpg" {
+		t.Errorf("thumbnail = %q, want it persisted", got.Thumbnail)
+	}
+}
+
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{

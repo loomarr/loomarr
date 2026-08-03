@@ -84,8 +84,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -94,6 +94,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
+		   preview=excluded.preview,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
@@ -102,7 +103,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
 		// line is the fourth time it has bitten this session.
-		c.AITagged, c.Quality, c.License, c.Thumbnail,
+		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
 	if err != nil {
@@ -112,11 +113,27 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, play_count, last_played_at, suggested_era,
+	rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+}
+
+// GetClipByPath looks a clip up by its location under FILLER_DIR.
+//
+// ⚠ **Needed because a clip's PATH and its IDENTITY stopped being the same string in V38c.**
+// Identity is now the content hash (`14365f2b…`), while the path is the sharded location
+// (`14/36/14365f2b….mp4`). `GetClip` queries `WHERE hash = ?`, so handing it a path matches
+// nothing — silently, as an ordinary not-found.
+//
+// That is not hypothetical: `/v1/filler/media` did exactly this from V38c until V39 and 404'd for
+// every clip in the catalog. Nothing noticed because no client called it until the player shipped.
+//
+// The media route needs this one rather than the hash lookup because its URL carries the path —
+// which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.
+func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error) {
+	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
 }
 
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
@@ -319,7 +336,7 @@ func scanClip(sc scannable) (Clip, error) {
 		updatedAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail,
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
