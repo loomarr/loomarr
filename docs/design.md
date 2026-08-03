@@ -1139,6 +1139,48 @@ library, each Internet Archive collection, each YouTube playlist. An operator ad
 picks a **kind** and gives a target; the list is the whole answer to *"where does filler come
 from?"*
 
+#### A fresh install ships with sources (V38c.8, maintainer)
+
+`folder` and `library` were the only seeded rows; **Internet Archive and YouTube now seed too**,
+so a new install can fetch without the operator first having to know what to add.
+
+⚠ **The two seed differently, and the difference is a rule rather than an accident.** Three
+archive collections seed with real targets; the YouTube row seeds **empty**. §10 says Loomarr
+*"never recommends YouTube content itself"* — the operator brings their own playlist — so a
+seeded YouTube target would be Loomarr making exactly the recommendation that sentence forbids.
+The mock draws the same split: a YouTube row present but reading *"Bring your own playlist"* with
+the stat *"no playlist yet"*. An empty row is an invitation; a filled one is an endorsement.
+
+⚠ **Seeding a source downloads NOTHING.** A row records that a source exists and is allowed;
+fetching is the pull's approval gate or a deliberate per-result queue. This is the same promise
+the Add-a-source copy makes, and it is what makes seeding safe to do on the operator's behalf.
+
+**The three collections, each VERIFIED against the live archive.org API rather than guessed**
+(2026-08-03) — identifier, human-readable label, and item count at capture:
+
+| identifier | label | movies |
+| --- | --- | --- |
+| `classic_tv_commercials` | Classic TV Commercials | 7,985 |
+| `vhscommercials` | Commercials From The Vault | 17,953 |
+| `tv_ads` | TV Ads | 2,951 |
+
+⚠ **Every row carries a human-readable `label`**, not the bare identifier. `vhscommercials` is not
+a name an operator recognises, and the Sources row renders the label with the target beneath it.
+
+⚠ **The count is THREE, not the mock's "11 curated collections".** That number is fixture prose in
+the prototype — there is no list behind it in code or in this doc. Five plausible identifiers were
+checked and returned **zero items** (`classic_tv_ads`, `televisionads`, `vintage_tv_commercials`,
+`tvcommercials`, `commercialsandbumpers`); the large collections that DO exist — `mirrortube`
+(1.2M mirrored YouTube videos), `television` (735K), `vhsvault` (116K) — are general video, and
+seeding them would point auto-fetch at arbitrary long-form content for a catalog meant for
+30-second breaks. Three verified beats eleven invented. Expanding the list means verifying more,
+not padding to a number.
+
+⚠ **All three declare NO licence, and the seed records that honestly** — `license` stays empty,
+which this section already defines as UNKNOWN and never "public domain". ~92% of archive items
+declare nothing (667 of 8362 measured in `classic_tv_commercials`), so absence is the norm and
+carries no permission. The row renders no licence chip rather than a reassuring one.
+
 This **supersedes the read-model/registry asymmetry** V28 and V33 established — recorded here
 rather than quietly replaced, because the superseded rule was load-bearing and its reasoning
 still applies to the thing that replaces it. The old rule said: the folder is *derived from

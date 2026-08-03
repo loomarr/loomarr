@@ -1666,13 +1666,68 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 
+	// ⚠ A FRESH install ships with fetchable sources (§10 V38c.8, migration 00034). Asserted here,
+	// on BOTH backends, because a seed that lands on sqlite and not on postgres is exactly the
+	// dialect drift this one-suite-two-backends rule exists to catch — and it would show up as
+	// "filler mysteriously does nothing" on one deployment only.
+	for _, want := range []struct{ id, label, uri string }{
+		{"archive:classic_tv_commercials", "Classic TV Commercials", "classic_tv_commercials"},
+		{"archive:vhscommercials", "Commercials From The Vault", "vhscommercials"},
+		{"archive:tv_ads", "TV Ads", "tv_ads"},
+	} {
+		got, ok := findSource(t, s, want.id)
+		if !ok {
+			t.Fatalf("a fresh store is missing the seeded source %q — a new install cannot fetch", want.id)
+		}
+		// ⚠ The LABEL is human-readable. `vhscommercials` is not a name an operator recognises,
+		// and the row renders the label above the target.
+		if got.Label != want.label {
+			t.Errorf("%s label = %q, want %q", want.id, got.Label, want.label)
+		}
+		if got.URI != want.uri {
+			t.Errorf("%s uri = %q, want %q", want.id, got.URI, want.uri)
+		}
+		if !got.Enabled {
+			t.Errorf("%s seeded switched OFF — it would sit in the UI doing nothing", want.id)
+		}
+		// ⚠ Fetchable, which is the whole point: `folder` and `library` are SCANNED, so before
+		// this seed a fresh install had no source it could download from at all.
+		if !got.Fetchable() {
+			t.Errorf("%s is not fetchable — the seed exists so a new install CAN fetch", want.id)
+		}
+		// ⚠ EMPTY licence, and that is correct rather than missing data. All three declare none,
+		// and §10 defines empty as UNKNOWN — never "public domain". A reassuring default here
+		// would have Loomarr asserting a legal fact nobody checked.
+		if got.License != "" {
+			t.Errorf("%s licence = %q, want empty (unknown, NOT public domain)", want.id, got.License)
+		}
+	}
+
+	// ⚠ YouTube seeds PRESENT BUT EMPTY. §10: Loomarr never recommends YouTube content itself, so
+	// the operator brings the playlist — a seeded target would be that recommendation. The empty
+	// uri also fails `Fetchable()`, which keeps the row out of every pull plan until it is filled
+	// in; without that, approval would hand `Ingest` an empty string.
+	if yt, ok := findSource(t, s, "youtube"); !ok {
+		t.Error("a fresh store is missing the YouTube row — the mock draws it, unconfigured")
+	} else {
+		if yt.URI != "" {
+			t.Errorf("youtube seeded with uri %q — Loomarr must not recommend a playlist", yt.URI)
+		}
+		if yt.Fetchable() {
+			t.Error("an unconfigured youtube row is fetchable — a pull would ingest an empty string")
+		}
+	}
+
 	created := time.Now().UTC().Truncate(time.Second)
 	src := FillerSource{
 		// Enabled explicitly: a Go bool zero-values to false, so a literal that omits it
 		// describes a source that is switched OFF. Real add paths go through
 		// NewFillerSource for exactly that reason.
 		Enabled: true,
-		ID:      "src-1", Kind: "archive", URI: "classic_tv_commercials",
+		// ⚠ NOT `classic_tv_commercials` — that is a SEEDED row now (00034), and 00032's unique
+		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
+		// The fixture needs its own target; the index is doing its job.
+		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
 		Label:   "Classic TV commercials",
 		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
@@ -1713,14 +1768,19 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// Ordering is still oldest-first and still explicit — an unordered list reshuffles between
 	// reads on Postgres and the Sources tab's rows would move under the pointer. Checked over the
 	// two rows this test added rather than the whole list, whose head is now seeded.
+	//
+	// ⚠ Filtered by ID, not by KIND. `Kind == "archive"` was unambiguous while every archive row
+	// came from this test; migration 00034 seeds three of them, so the kind filter started
+	// collecting the seed too and the count assertion below failed for the right reason.
+	wanted := map[string]bool{"src-1": true, "src-2": true}
 	var added []FillerSource
 	for _, f := range all {
-		if f.Kind == "archive" {
+		if wanted[f.ID] {
 			added = append(added, f)
 		}
 	}
 	if len(added) != 2 {
-		t.Fatalf("listed %d archive sources, want 2", len(added))
+		t.Fatalf("listed %d of this test's own sources, want 2", len(added))
 	}
 	if added[0].ID != "src-1" || added[1].ID != "src-2" {
 		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", added[0].ID, added[1].ID)

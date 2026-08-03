@@ -511,3 +511,47 @@ func TestListFillerSources_ShowsOperatorAddedFoldersAndLibraries(t *testing.T) {
 		}
 	}
 }
+
+// ⚠ An UNCONFIGURED source offers no "Fetch now". The seeded YouTube row ships with an empty uri
+// — §10 forbids Loomarr recommending a playlist, so the operator brings one — and the button was
+// offered anyway because the DTO asked "does the ingest route exist" (a fact about the INSTALL)
+// rather than "does this row have anything to fetch". A control that cannot work is worse than no
+// control, and this is the shape §10 forbids by name.
+func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := context.Background()
+
+	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.
+	unconfigured := store.NewFillerSource("youtube", "youtube", "", "YouTube", time.Now().UTC())
+	if err := st.UpsertFillerSource(ctx, unconfigured); err != nil {
+		t.Fatal(err)
+	}
+	// And one that IS configured, so this test cannot pass by reporting false for everything.
+	if err := st.UpsertFillerSource(ctx,
+		store.NewFillerSource("youtube:PL1", "youtube", "https://www.youtube.com/playlist?list=PL1",
+			"My playlist", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+
+	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/sources", "", adminToken)
+	var body struct {
+		Sources []struct {
+			ID        string `json:"id"`
+			Fetchable bool   `json:"fetchable"`
+		} `json:"sources"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	byID := map[string]bool{}
+	for _, s := range body.Sources {
+		byID[s.ID] = s.Fetchable
+	}
+	if byID["youtube"] {
+		t.Error("an unconfigured YouTube row offers Fetch now — there is no playlist to enumerate")
+	}
+	if !byID["youtube:PL1"] {
+		t.Error("a configured playlist cannot be fetched — the guard is too broad")
+	}
+}
