@@ -51,15 +51,24 @@ describe("NavTabs", () => {
     expect(screen.getByRole("link", { name: "Sources" })).toHaveTextContent(/^Sources$/);
   });
 
-  // These are NAVIGATION, not the ARIA tablist pattern (nav-tabs.tsx's own warning): the
-  // active destination is marked with aria-current, and only it points at a panel — an
-  // inactive tab's target panel is not even mounted.
-  it("marks the active destination with aria-current and aria-controls", () => {
+  // These are NAVIGATION, not the ARIA tablist pattern (nav-tabs.tsx's own warning): the active
+  // destination is marked with `aria-current`, and that is the WHOLE vocabulary.
+  //
+  // ⚠ **`aria-controls` is deliberately absent, and this test used to demand it.** The attribute
+  // was carried over from `CountTabs`, whose tabs really did reveal panels in the same document;
+  // these navigate, so there is no panel for a link to control, and pointing at one that is not
+  // mounted is axe's `aria-valid-attr-value` at CRITICAL impact. The component was fixed in V38c
+  // and this assertion was not, so the suite has been red ever since — the failure was inherited,
+  // not introduced by whoever next runs it.
+  //
+  // The lesson worth keeping: copying ARIA between two things that merely LOOK alike is how a
+  // component acquires attributes promising behaviour it does not have.
+  it("marks the active destination with aria-current and no aria-controls", () => {
     render(<NavTabs tabs={tabs} activeId="history" linkComponent={anchorLink} label="Queue sections" />);
 
     const active = screen.getByRole("link", { name: /History/ });
     expect(active).toHaveAttribute("aria-current", "page");
-    expect(active).toHaveAttribute("aria-controls", "panel-history");
+    expect(active).not.toHaveAttribute("aria-controls");
 
     const inactive = screen.getByRole("link", { name: /In flight/ });
     expect(inactive).not.toHaveAttribute("aria-current");

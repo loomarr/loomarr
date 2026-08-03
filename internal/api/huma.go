@@ -262,7 +262,15 @@ type FillerService interface {
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
 	// same shape the model pull uses (§8.1). ErrIngestUnavailable when the running image
 	// lacks the tooling.
+	//
+	// ⚠ Downloads and nothing else — it does not register a source.
 	Ingest(ctx context.Context, urls []string) (jobID string, err error)
+	// IngestAsked is Ingest plus "remember this source", for `POST /v1/filler/ingest` only.
+	//
+	// ⚠ The split is a correctness fix: registration used to live inside Ingest, and auto-fetch
+	// passes the URL of every ITEM inside an already-registered collection — so one fetch
+	// registered 30 clips as 30 sources. Only the caller knows which it holds.
+	IngestAsked(ctx context.Context, urls []string) (jobID string, err error)
 	// Discover searches archive.org for candidate clips WITHOUT downloading anything (§10,
 	// V33). One search request whatever the result count — the operator is deciding what to
 	// fetch, and making them download gigabytes to find out would defeat the point.

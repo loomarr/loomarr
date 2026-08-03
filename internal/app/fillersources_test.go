@@ -138,3 +138,55 @@ func TestDiscoveredStats_OmitsAnItemItLearnedNothingAbout(t *testing.T) {
 		t.Errorf("probed = %+v, want the values it carried", stats["probed"])
 	}
 }
+
+// ⚠ **AUTO-FETCH MUST NOT REGISTER A SOURCE PER CLIP.** `rememberSources` was written for V33,
+// when an operator pasted one collection URL. V38b changed what the ingest path receives:
+// auto-fetch enumerates a REGISTERED collection and passes the URL of every item inside it — so
+// every downloaded clip registered itself, and one fetch turned 5 source rows into 35. The
+// Sources tab became a second, worse clip list.
+//
+// The two entry points are what keep them apart: `Ingest` downloads, `IngestAsked` downloads and
+// remembers. Only the caller knows which it holds.
+func TestIngest_AutoFetchDoesNotRegisterEveryClipAsASource(t *testing.T) {
+	rec := &recordingSources{}
+	a := fillerServiceAdapter{
+		sources: rec,
+		newID:   func() string { return "job-1" },
+		now:     func() time.Time { return time.Unix(1_800_000_000, 0).UTC() },
+	}
+
+	// The shape auto-fetch sends: individual ITEMS inside a collection already registered.
+	items := []string{
+		"https://archive.org/details/CLE-B01_161770-162673",
+		"https://archive.org/details/CalpolAdvert",
+		"https://archive.org/details/CampbellsSoupAdvert",
+	}
+	// ⚠ A nil fetcher makes this return ErrIngestUnavailable BEFORE downloading, which is what
+	// keeps the test hermetic — registration happens (or must not) regardless of the download.
+	_, _ = a.Ingest(context.Background(), items)
+
+	if len(rec.upserted) != 0 {
+		t.Errorf("auto-fetch registered %d sources (%v) — one row per downloaded clip is the bug",
+			len(rec.upserted), rec.upserted)
+	}
+}
+
+// The mirror: an OPERATOR pasting a collection URL still gets it remembered, or the Sources tab
+// stops answering "where did this come from".
+func TestIngestAsked_RemembersWhatTheOperatorNamed(t *testing.T) {
+	rec := &recordingSources{}
+	a := fillerServiceAdapter{
+		sources: rec,
+		newID:   func() string { return "job-1" },
+		now:     func() time.Time { return time.Unix(1_800_000_000, 0).UTC() },
+	}
+
+	_, _ = a.IngestAsked(context.Background(), []string{"https://archive.org/details/classic_tv_commercials"})
+
+	if len(rec.upserted) != 1 {
+		t.Fatalf("registered %d sources, want the 1 the operator named", len(rec.upserted))
+	}
+	if rec.upserted[0].ID != "classic_tv_commercials" {
+		t.Errorf("registered %q, want the collection identifier", rec.upserted[0].ID)
+	}
+}

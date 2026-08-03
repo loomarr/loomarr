@@ -29,6 +29,10 @@ type Opts = {
   features?: Record<string, boolean>;
   clips?: Array<Record<string, unknown>>;
   me?: Record<string, unknown>;
+  // Overrides the header pill's payload. Needed because `clips` here seeds the CATALOG, and the
+  // states worth testing in the header are the ones where the catalog and the review queue
+  // disagree — a fresh auto-fetch has zero of one and a dozen of the other.
+  watch?: Record<string, unknown>;
 };
 
 // The SSE stream, captured so a test can fire frames at the app: the split job's terminal
@@ -55,6 +59,7 @@ const stubFetch = ({
   features = { filler: true, suggestions: true },
   clips = [clip()],
   me = ADMIN,
+  watch,
 }: Opts = {}) => {
   CaptureEventSource.listeners = new Map();
   const mock = vi.fn((url: string, init?: RequestInit) => {
@@ -101,7 +106,17 @@ const stubFetch = ({
     // the SERVER — counts and health verdict both — rather than deriving them from the sources
     // list, which is admin-only and would leave a member's pill permanently grey.
     if (u.includes("/v1/filler/watch")) {
-      return Promise.resolve(json({ health: "healthy", sourcesOn: 1, sourcesTotal: 2, clips: clips.length }));
+      return Promise.resolve(
+        json(
+          watch ?? {
+            health: "healthy",
+            sourcesOn: 1,
+            sourcesTotal: 2,
+            clips: clips.length,
+            held: 0,
+          },
+        ),
+      );
     }
     if (u.includes("/v1/filler/bulk/")) return Promise.resolve(json({ updated: 1, missing: 0 }));
     if (u.includes("/v1/filler")) {
@@ -194,6 +209,37 @@ describe("Filler page", () => {
     await screen.findByText("Frosted Flakes");
 
     expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
+  });
+
+  // ⚠ **A held clip must not read as a missing clip.** Auto-fetch holds everything it downloads
+  // until someone reviews it, so the FIRST successful fetch leaves the catalog at zero and the
+  // Incoming queue full. The header said "5 of 5 sources on · 0 clips" on an install that had just
+  // pulled twelve — a working fetcher rendered as a broken one, which is how the maintainer came
+  // to ask why the Catalog was empty.
+  //
+  // The two counts stay SEPARATE clauses. Summing them would be the opposite lie: it would claim a
+  // channel can play clips nobody has approved yet.
+  it("says how many clips are waiting rather than reporting an empty catalog", async () => {
+    stubFetch({
+      clips: [],
+      watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 0, held: 12 },
+    });
+    renderAt("/filler");
+
+    expect(await screen.findByText(/0 clips · 12 waiting/i)).toBeInTheDocument();
+  });
+
+  // The mirror: with nothing held the clause is absent entirely, not "0 waiting". A permanent
+  // zero is noise on the many installs that never hold anything, and noise in a status line is
+  // how an operator learns to stop reading it.
+  it("omits the waiting clause when nothing is held", async () => {
+    stubFetch({
+      watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 9, held: 0 },
+    });
+    renderAt("/filler");
+
+    await screen.findByText(/9 clips/i);
+    expect(screen.queryByText(/waiting/i)).not.toBeInTheDocument();
   });
 
   it("explains rather than listing when no filler folder is configured", async () => {

@@ -62,7 +62,18 @@ type fillerWatchOutput struct {
 		SourcesTotal int `json:"sourcesTotal"`
 		// Clips is the whole catalog, NOT a filtered view — the header must not change meaning
 		// when someone types in the search box.
+		//
+		// ⚠ HELD clips are excluded, because they are not in the catalog yet — they are waiting
+		// for a human in Incoming. `Held` below is what stops that reading as "nothing arrived".
 		Clips int `json:"clips"`
+		// Held is how many downloaded clips are waiting for review (§10 V38).
+		//
+		// ⚠ **Reported SEPARATELY, and the header says so.** Auto-fetch holds everything it
+		// downloads, so a fresh install that just fetched 12 clips has a catalog of ZERO and 12
+		// in Incoming. Reporting only `clips` made the pill read "0 clips" on an install that had
+		// just worked perfectly — indistinguishable from a fetch that failed. Found by fetching
+		// real collections and then asking why the Catalog tab was empty.
+		Held int `json:"held" doc:"Downloaded clips awaiting review in Incoming; NOT included in clips"`
 		// LastScanAt is the most recent fetch across every source; absent when nothing has ever
 		// reported one.
 		//
@@ -98,10 +109,17 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 		return nil, huma.Error500InternalServerError("list filler sources", err)
 	}
 	// The whole catalog, unfiltered — the header must not change meaning when someone types in
-	// the search box.
+	// the search box. ⚠ This EXCLUDES held clips by default (see ClipFilter), which is correct:
+	// a held clip is not in the catalog, it is waiting for a human.
 	clips, err := s.store.ListClips(ctx, store.ClipFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count filler clips", err)
+	}
+	// ...so the queue is counted separately, or an install that just auto-fetched reads as "0
+	// clips" while holding a dozen.
+	held, err := s.store.ListClips(ctx, store.ClipFilter{HeldOnly: true})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("count held clips", err)
 	}
 
 	// ⚠ The configured drop-folder is a SOURCE even though its row's state comes from settings
@@ -118,7 +136,8 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 		// A seeded-but-unconfigured row is not a source the operator has. It exists so the list
 		// can say "you could set this up but have not" (§10), which is the opposite of a source
 		// doing work, and counting it would make a fresh install look configured.
-		if src.URI == "" && !(src.Kind == "folder" && dir != "") {
+		// Read as: no target of its own, AND not the folder source that gets one from settings.
+		if src.URI == "" && (src.Kind != "folder" || dir == "") {
 			continue
 		}
 		total++
@@ -130,13 +149,19 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 		}
 	}
 
-	out.Body.SourcesOn, out.Body.SourcesTotal, out.Body.Clips = on, total, len(clips)
+	out.Body.SourcesOn, out.Body.SourcesTotal = on, total
+	out.Body.Clips, out.Body.Held = len(clips), len(held)
 	if !newest.IsZero() {
 		out.Body.LastScanAt = newest.UTC().Format(time.RFC3339)
 	}
 	// ⚠ `time.Now()` here, but the RULE takes an explicit `now` so the staleness cases are
 	// testable without a clock seam on Server (which nothing else needs).
-	out.Body.Health = fillerWatchVerdict(total, on, len(clips), newest, time.Now())
+	//
+	// ⚠ Clips AND held are both handed to the verdict: an install that has fetched a dozen clips
+	// and is holding them for review is WORKING, not broken. Passing only the catalog count made
+	// a successful first fetch report `attention` — the fetcher's own success looking like a
+	// failure.
+	out.Body.Health = fillerWatchVerdict(total, on, len(clips)+len(held), newest, time.Now())
 	return out, nil
 }
 
@@ -144,17 +169,22 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 // across the clock cases without constructing a server.
 //
 // ⚠ **`clips` is what separates "quiet" from "broken".** An install holding clips WORKS even if
-// nothing has arrived lately — the operator finished curating. Sources on and an EMPTY catalog is
+// nothing has arrived lately — the operator finished curating. Sources on and NOTHING at all is
 // the state worth flagging, and flagging it on day one beats someone noticing a channel playing
 // silence a week later.
-func fillerWatchVerdict(total, on, clips int, newest, now time.Time) FillerWatchHealth {
+//
+// ⚠ `clips` here means **catalogued PLUS held**, not the catalog alone. Auto-fetch holds
+// everything it downloads, so a first fetch leaves the catalog at zero with a full review queue —
+// counting only the catalog reported `attention` at the exact moment the fetcher had just
+// succeeded.
+func fillerWatchVerdict(total, on, haveClips int, newest, now time.Time) FillerWatchHealth {
 	if total == 0 {
 		return FillerWatchUnconfigured
 	}
 	if on == 0 {
 		return FillerWatchAttention
 	}
-	if clips == 0 {
+	if haveClips == 0 {
 		return FillerWatchAttention
 	}
 	// ⚠ Only when something actually REPORTED a fetch. A zero timestamp is the ordinary state for

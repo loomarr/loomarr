@@ -143,6 +143,12 @@ type UserStore interface {
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
+	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
+	//
+	// ⚠ The two stopped being the same string in V38c: identity is the content hash, the path is
+	// the sharded location. Routes whose URL carries a path (the byte-serving ones — `media`)
+	// must use this; `GetClip` matches nothing for them and fails as an ordinary not-found.
+	GetClipByPath(ctx context.Context, path string) (Clip, error)
 	// ListClips returns clips matching the filter (any zero-value field is a
 	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
 	//

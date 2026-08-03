@@ -22,7 +22,19 @@ type watchBody struct {
 	SourcesOn    int    `json:"sourcesOn"`
 	SourcesTotal int    `json:"sourcesTotal"`
 	Clips        int    `json:"clips"`
+	Held         int    `json:"held"`
 	LastScanAt   string `json:"lastScanAt"`
+}
+
+// seedHeldClip is a clip that ARRIVED but has not been filed — the state auto-fetch leaves
+// everything in until a human reviews it (§10 V38).
+func seedHeldClip(t *testing.T, st store.Store, id string) {
+	t.Helper()
+	seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "toys")
+	// SetClipsHeld is the only writer of `held`, deliberately — see internal/store/clips.go.
+	if _, err := st.SetClipsHeld(t.Context(), []string{id}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func getWatch(t *testing.T, srvURL, token string) (watchBody, int) {
@@ -144,6 +156,55 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 	}
 	if body.Clips != 2 {
 		t.Errorf("clips = %d, want 2", body.Clips)
+	}
+}
+
+// ⚠ **A HELD clip is not a missing clip.** Auto-fetch holds everything it downloads for review, so
+// the very first successful fetch leaves the CATALOG at zero and the review queue full. Counting
+// only the catalog made that moment report `attention` and the header read "0 clips" — the
+// fetcher's own success rendered as a failure, and indistinguishable from a fetch that never ran.
+//
+// Found live: an install that had just pulled 12 clips showed "5 of 5 sources on · 0 clips".
+func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertFillerSource(t.Context(),
+		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a.mp4", "b.mp4", "c.mp4"} {
+		seedHeldClip(t, st, id)
+	}
+
+	body, _ := getWatch(t, srv.URL, adminToken)
+	if body.Health != "healthy" {
+		t.Errorf("health = %q, want healthy — three clips just arrived and are awaiting review, "+
+			"which is the fetcher WORKING", body.Health)
+	}
+	// Separate numbers, not a sum: the catalog really is empty, and the header must be able to say
+	// "0 clips · 3 waiting" rather than overstate what a channel can actually play.
+	if body.Clips != 0 {
+		t.Errorf("clips = %d, want 0 — nothing has been filed into the catalog yet", body.Clips)
+	}
+	if body.Held != 3 {
+		t.Errorf("held = %d, want 3 — an install holding clips must say so, not report nothing", body.Held)
+	}
+}
+
+// The mirror, so the healthy-on-held rule above cannot be satisfied by never flagging anything:
+// sources on, and genuinely NOTHING anywhere, is still attention.
+func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertFillerSource(t.Context(),
+		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := getWatch(t, srv.URL, adminToken)
+	if body.Health != "attention" {
+		t.Errorf("health = %q, want attention — nothing catalogued AND nothing held", body.Health)
+	}
+	if body.Held != 0 {
+		t.Errorf("held = %d, want 0", body.Held)
 	}
 }
 

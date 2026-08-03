@@ -56,6 +56,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 	t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
+	t.Run("SeededDefaultSources", func(t *testing.T) { testSeededDefaultSources(t, newStore) })
 	t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })
 	t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 	t.Run("ClipHeldLifecycle", func(t *testing.T) { testClipHeld(t, newStore) })
@@ -1257,6 +1258,11 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	c := sampleClip("1994/toys.mp4", "TMNT toys", filler.Commercial, 1994, filler.Kids, "toys")
 	c.Thumbnail = "1994/toys.jpg"
+	// ⚠ The animated preview is a SEPARATE column, not derived from the still (V39, 00035). Both
+	// are asserted here because a column added to the INSERT and forgotten in the SELECT (or
+	// vice versa) is a silent data loss the type system cannot see — the two lists are
+	// hand-maintained and positional.
+	c.Preview = "1994/toys.webp"
 	if err := s.UpsertClip(ctx, c); err != nil {
 		t.Fatalf("seed clip: %v", err)
 	}
@@ -1267,6 +1273,10 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.Thumbnail != "1994/toys.jpg" {
 		t.Errorf("thumbnail = %q, want it round-tripped", got.Thumbnail)
+	}
+	if got.Preview != "1994/toys.webp" {
+		t.Errorf("preview = %q, want it round-tripped — a preview that vanishes on read means "+
+			"every card silently falls back to its still", got.Preview)
 	}
 	if got.PlayCount != 0 || !got.LastPlayedAt.IsZero() {
 		t.Errorf("a fresh clip must start unplayed, got count=%d at=%v", got.PlayCount, got.LastPlayedAt)
@@ -1661,10 +1671,138 @@ func src1(t *testing.T, s Store) FillerSource {
 	return f
 }
 
+// testSeededDefaultSources covers what migration 00034 puts in a FRESH store, on BOTH backends
+// (§10 V38c.8).
+//
+// ⚠ **This is the ONLY test that may depend on the seeded set.** Every other suite clears it —
+// `newFillerServer` in internal/api does so explicitly — because eleven tests phrased as absolute
+// counts ("want 1", "unconfigured") went red the moment the migration landed, none of them wrong
+// about the behaviour they described. Concentrating the dependency here means the next change to
+// the seed breaks exactly one test, and it breaks the one whose job is to notice.
+//
+// ⚠ It runs on both dialects because the seed is HAND-DUPLICATED per backend — two nearly
+// identical SQL files, differing in `unixepoch()` vs its Postgres spelling. That is precisely the
+// shape that drifts: a row added to one file and forgotten in the other produces a Postgres
+// install that silently ships fewer sources than a SQLite one, and no single-dialect test can see
+// it.
+func testSeededDefaultSources(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+
+	all, err := s.ListFillerSources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]FillerSource{}
+	for _, f := range all {
+		byID[f.ID] = f
+	}
+
+	// The three VERIFIED archive collections (checked against the live API 2026-08-03 — five
+	// plausible-looking identifiers returned zero items, which is why this list is short).
+	for _, want := range []struct{ id, label string }{
+		{"archive:classic_tv_commercials", "Classic TV Commercials"},
+		{"archive:vhscommercials", "Commercials From The Vault"},
+		{"archive:tv_ads", "TV Ads"},
+	} {
+		got, ok := byID[want.id]
+		if !ok {
+			t.Errorf("%s is missing — a fresh install must have something it can fetch", want.id)
+			continue
+		}
+		if !got.Enabled {
+			t.Errorf("%s is disabled; the seeded defaults are on so filler works on day one", want.id)
+		}
+		if !got.Fetchable() {
+			t.Errorf("%s is not fetchable — a scanned-only default would leave the install stuck", want.id)
+		}
+		// ⚠ A human-readable name, not the identifier. `vhscommercials` is not something an
+		// operator recognises in the Sources list.
+		if got.Label != want.label {
+			t.Errorf("%s label = %q, want %q", want.id, got.Label, want.label)
+		}
+		// ⚠ EMPTY licence, deliberately. ~92% of archive items declare none and §10 defines empty
+		// as UNKNOWN, never "public domain" — a reassuring default here would have Loomarr
+		// asserting a legal fact nobody checked.
+		if got.License != "" {
+			t.Errorf("%s license = %q, want empty (unknown) — absence carries no permission",
+				want.id, got.License)
+		}
+	}
+
+	// ⚠ The YouTube row is present but has NO target, and that is the design rather than an
+	// oversight. §10 says Loomarr never recommends YouTube content itself; the operator brings
+	// their own playlist. An empty uri also keeps the row out of every pull plan on its own,
+	// because Fetchable() requires one.
+	yt, ok := byID["youtube"]
+	if !ok {
+		t.Fatal("the youtube row is missing — the mock draws it as a present, empty prompt")
+	}
+	if yt.URI != "" {
+		t.Errorf("youtube uri = %q, want empty — seeding a target IS the recommendation §10 forbids",
+			yt.URI)
+	}
+	if yt.Fetchable() {
+		t.Error("the empty youtube row is fetchable; it must not reach the ingest job until someone fills it in")
+	}
+}
+
 func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+
+	// ⚠ A FRESH install ships with fetchable sources (§10 V38c.8, migration 00034). Asserted here,
+	// on BOTH backends, because a seed that lands on sqlite and not on postgres is exactly the
+	// dialect drift this one-suite-two-backends rule exists to catch — and it would show up as
+	// "filler mysteriously does nothing" on one deployment only.
+	for _, want := range []struct{ id, label, uri string }{
+		{"archive:classic_tv_commercials", "Classic TV Commercials", "classic_tv_commercials"},
+		{"archive:vhscommercials", "Commercials From The Vault", "vhscommercials"},
+		{"archive:tv_ads", "TV Ads", "tv_ads"},
+	} {
+		got, ok := findSource(t, s, want.id)
+		if !ok {
+			t.Fatalf("a fresh store is missing the seeded source %q — a new install cannot fetch", want.id)
+		}
+		// ⚠ The LABEL is human-readable. `vhscommercials` is not a name an operator recognises,
+		// and the row renders the label above the target.
+		if got.Label != want.label {
+			t.Errorf("%s label = %q, want %q", want.id, got.Label, want.label)
+		}
+		if got.URI != want.uri {
+			t.Errorf("%s uri = %q, want %q", want.id, got.URI, want.uri)
+		}
+		if !got.Enabled {
+			t.Errorf("%s seeded switched OFF — it would sit in the UI doing nothing", want.id)
+		}
+		// ⚠ Fetchable, which is the whole point: `folder` and `library` are SCANNED, so before
+		// this seed a fresh install had no source it could download from at all.
+		if !got.Fetchable() {
+			t.Errorf("%s is not fetchable — the seed exists so a new install CAN fetch", want.id)
+		}
+		// ⚠ EMPTY licence, and that is correct rather than missing data. All three declare none,
+		// and §10 defines empty as UNKNOWN — never "public domain". A reassuring default here
+		// would have Loomarr asserting a legal fact nobody checked.
+		if got.License != "" {
+			t.Errorf("%s licence = %q, want empty (unknown, NOT public domain)", want.id, got.License)
+		}
+	}
+
+	// ⚠ YouTube seeds PRESENT BUT EMPTY. §10: Loomarr never recommends YouTube content itself, so
+	// the operator brings the playlist — a seeded target would be that recommendation. The empty
+	// uri also fails `Fetchable()`, which keeps the row out of every pull plan until it is filled
+	// in; without that, approval would hand `Ingest` an empty string.
+	if yt, ok := findSource(t, s, "youtube"); !ok {
+		t.Error("a fresh store is missing the YouTube row — the mock draws it, unconfigured")
+	} else {
+		if yt.URI != "" {
+			t.Errorf("youtube seeded with uri %q — Loomarr must not recommend a playlist", yt.URI)
+		}
+		if yt.Fetchable() {
+			t.Error("an unconfigured youtube row is fetchable — a pull would ingest an empty string")
+		}
+	}
 
 	created := time.Now().UTC().Truncate(time.Second)
 	src := FillerSource{
@@ -1672,7 +1810,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		// describes a source that is switched OFF. Real add paths go through
 		// NewFillerSource for exactly that reason.
 		Enabled: true,
-		ID:      "src-1", Kind: "archive", URI: "classic_tv_commercials",
+		// ⚠ NOT `classic_tv_commercials` — that is a SEEDED row now (00034), and 00032's unique
+		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
+		// The fixture needs its own target; the index is doing its job.
+		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
 		Label:   "Classic TV commercials",
 		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
@@ -1713,14 +1854,19 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// Ordering is still oldest-first and still explicit — an unordered list reshuffles between
 	// reads on Postgres and the Sources tab's rows would move under the pointer. Checked over the
 	// two rows this test added rather than the whole list, whose head is now seeded.
+	//
+	// ⚠ Filtered by ID, not by KIND. `Kind == "archive"` was unambiguous while every archive row
+	// came from this test; migration 00034 seeds three of them, so the kind filter started
+	// collecting the seed too and the count assertion below failed for the right reason.
+	wanted := map[string]bool{"src-1": true, "src-2": true}
 	var added []FillerSource
 	for _, f := range all {
-		if f.Kind == "archive" {
+		if wanted[f.ID] {
 			added = append(added, f)
 		}
 	}
 	if len(added) != 2 {
-		t.Fatalf("listed %d archive sources, want 2", len(added))
+		t.Fatalf("listed %d of this test's own sources, want 2", len(added))
 	}
 	if added[0].ID != "src-1" || added[1].ID != "src-2" {
 		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", added[0].ID, added[1].ID)

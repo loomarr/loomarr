@@ -211,3 +211,46 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 		t.Errorf("Untagged = %d, want 1 (from the store's predicate, not a Go copy of it)", report.Untagged)
 	}
 }
+
+// ⚠ **The report counts the CATALOG, and `Untagged` has to mean the same catalog as `Clips`.**
+//
+// `ListUntaggedCommercials` passes `IncludeHeld: true` deliberately — held clips are exactly the
+// ones the AI tagger must tag. Pool reused that helper for a display statistic and inherited the
+// flag invisibly, so an install with one filed clip and twelve held ones rendered
+// "CLIPS 1 / 12 clips still need tagging" — a headline contradicted by its own subtext.
+//
+// Counting them is also unactionable: the strip's advice is to go and tag them, and they are not
+// in the Catalog to tag. Incoming owns that queue and carries its own count.
+//
+// Seen live on the maintainer's install, 2026-08-03.
+func TestPool_UntaggedCountsTheCatalogNotTheReviewQueue(t *testing.T) {
+	ctx := context.Background()
+	a, st := newPoolAdapter(t,
+		[]filler.Clip{
+			// Filed and untagged: this one IS the operator's work, and must count.
+			{Hash: "filed.mp4", Path: "filed.mp4", Name: "filed.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+			// Downloaded, untagged, and still awaiting review below.
+			{Hash: "held-a.mp4", Path: "held-a.mp4", Name: "held-a.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+			{Hash: "held-b.mp4", Path: "held-b.mp4", Name: "held-b.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+		},
+		nil,
+	)
+	if _, err := st.SetClipsHeld(ctx, []string{"held-a.mp4", "held-b.mp4"}, true, false, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := a.Pool(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The premise: every other number here already excludes held clips. If this drifts the test
+	// below is measuring nothing.
+	if report.Clips != 1 {
+		t.Fatalf("Clips = %d, want 1 — held clips are not in the catalog", report.Clips)
+	}
+	if report.Untagged != 1 {
+		t.Errorf("Untagged = %d, want 1 — counting the two held clips makes the subtext claim more "+
+			"work than the headline has clips, and points at a queue this strip does not show",
+			report.Untagged)
+	}
+}

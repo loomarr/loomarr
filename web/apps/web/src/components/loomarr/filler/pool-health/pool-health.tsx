@@ -56,6 +56,10 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
   const weakest = channels[0];
   const covered = channels.filter((c) => c.level === "exact").length;
   const onCardOnly = channels.filter((c) => c.level === "bumper_card").length;
+  // ⚠ The MIDDLE of the ladder — channels that do play commercials, just not well-matched ones.
+  // Derived as "neither end" rather than by listing `widened`/`audience`, so a new rung lands here
+  // (accurately: it is a looser match) instead of silently vanishing from the note.
+  const looseMatch = channels.length - covered - onCardOnly;
 
   return (
     <section
@@ -85,6 +89,15 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
         {...(pool.commercials > 0 && pool.eligible === 0 ? { tone: "warn" as const } : {})}
       />
 
+      {/* ⚠ **The note has to describe the same population the fraction counts.** It said "every
+          channel has commercials" whenever nothing had fallen to the bumper card — true, but about
+          a DIFFERENT question than the headline, which counts channels matching EXACTLY. An
+          install where all four sat on the middle rung read "2/4 · every channel has commercials",
+          two numbers that look like a contradiction and are both correct.
+
+          The middle rung is the interesting state and had no words at all: those channels do play
+          commercials, just poorly matched ones. Naming it is what turns the fraction into
+          something an operator can act on. Seen live 2026-08-03. */}
       {channels.length > 0 && (
         <Stat
           label="Channels covered"
@@ -92,7 +105,9 @@ const PoolHealth = ({ pool, onProposePull, proposing, className }: PoolHealthPro
           note={
             onCardOnly > 0
               ? `${pluralize(onCardOnly, "channel")} ${onCardOnly === 1 ? "has" : "have"} nothing to play`
-              : "every channel has commercials"
+              : looseMatch > 0
+                ? `${pluralize(looseMatch, "channel")} ${looseMatch === 1 ? "falls" : "fall"} back to a looser match`
+                : "every channel matches exactly"
           }
           {...(onCardOnly > 0 ? { tone: "warn" as const } : {})}
         />

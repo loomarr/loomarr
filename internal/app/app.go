@@ -638,6 +638,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		fillerSource := filler.DirSource{
 			Dir:   func() string { return set.str("filler.dir") },
 			Probe: filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+			// ⚠ **Artwork was relying on its nil default, which ignored `playout.ffmpeg_path`
+			// entirely** and shelled out to whatever `ffmpeg` PATH resolved to. An operator who
+			// points that setting at a custom build (the whole reason it exists — see the
+			// hardware-encode notes) got their frames from a DIFFERENT binary than playout uses,
+			// silently, and the setting appeared to do nothing here.
+			Artwork: filler.FFmpegArtwork(set.str("playout.ffmpeg_path")),
+			// ⚠ **Log was never assigned either**, so the "some thumbnails could not be generated"
+			// warning has never once been emitted. That count exists precisely because extraction
+			// is best-effort and failures are skipped — the shape that already produced one
+			// silently-empty catalog in this repo's history (see FFprobeNextTo). A generator that
+			// counts failures into a logger nobody wired is the same silence with extra steps.
+			Log: log.Warn,
 		}
 		if set.str("tunarr.url") != "" {
 			fillerSource.Tunarr = fillerSourceAdapter{fillerProg}
@@ -696,13 +708,34 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// exists. Absent paths are
 		// the NORMAL state on loomarr:latest, so a nil fetcher is expected, not an error
 		// — the `ingest` feature gate reports it and the UI explains the image variant.
+		// ⚠ **TWO downloaders, resolved INDEPENDENTLY** (§10 V38b, wiring fixed V38c.8). archive.org
+		// is fetched over plain HTTP and needs only ffmpeg; yt-dlp is for YouTube and shells out to
+		// ffmpeg itself.
+		//
+		// This required BOTH paths to be set, which was the V38b defect surviving in the wiring
+		// after the feature GATE was split. The result was worse than the original bug: `features
+		// .ingest` reported true (correctly — ffmpeg is present), the Sources rows offered
+		// "Fetch now", and then every archive fetch failed at the point of use with "ingest
+		// tooling not present in this image". Two claims that cannot both be true, which is the
+		// exact shape that started V38b.
+		//
+		// ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has
+		// always described these as defaulting to the vendored binaries, and only the Docker image
+		// set them, so a source build had ingest off with the tools installed.
+		ytPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
+		ffPath := resolveTool(set.str("ingest.ffmpeg_path"), "ffmpeg")
 		var fetcher *clipfetch.Ingestor
-		if yt, ff := set.str("ingest.ytdlp_path"), set.str("ingest.ffmpeg_path"); yt != "" && ff != "" {
-			fetcher = clipfetch.New(
-				clipfetch.NewYtDlpDownloader(yt, ff),
-				clipfetch.NewArchiveDownloader(false),
-				set.str("filler.dir"), log)
-			log.Info("filler ingest available", "ytdlp", yt, "ffmpeg", ff)
+		if ffPath != "" {
+			// ⚠ A nil YouTube downloader is FINE — `downloaderFor` returns nil per kind and the
+			// Ingestor counts that source as failed rather than dying. So a box with ffmpeg and no
+			// yt-dlp fetches archive collections (the seeded ones) and reports honestly on
+			// playlists, instead of refusing everything.
+			var ytDL clipfetch.Downloader
+			if ytPath != "" {
+				ytDL = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
+			}
+			fetcher = clipfetch.New(ytDL, clipfetch.NewArchiveDownloader(false), set.str("filler.dir"), log)
+			log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
 		}
 		// Compilation splitting (§10, V34). Needs the drop-folder (clip paths are
 		// relative to it, so without one there is nothing to cut). ffmpeg/ffprobe

@@ -10,7 +10,7 @@ Loomarr turns a natural-language channel intent into a live, self-maintaining Tu
 2. **Gates are hard.** A gate is a set of tests. Never stub, skip, or weaken a test to turn a gate green — if a gate can't pass, the design is wrong or the code is; fix one of them, doc-first.
 3. **Never weaken safety for convenience.** Specifically: the grounding rules (§8), the approval gate / authorization model (§7, §11), and forward-only migrations (§16) are not negotiable, including in tests and seed data.
 4. **Generated files are never hand-edited**: `api/openapi.yaml` (regenerate via `make openapi`), orval output, goose-applied schemas.
-5. **No new dependencies** beyond design doc §14 without updating §14 in the same PR, with a one-line rationale.
+5. **New dependencies are fine when they genuinely help** — record them in design doc §14 in the same PR, with a one-line rationale. A library that solves a real problem (accessibility semantics, a hard algorithm, a protocol) beats hand-rolling it and pretending that was free. What §14 exists to prevent is *unconsidered* dependencies, not useful ones: prefer something already in the tree, prefer a focused library over a framework, and say why in the §14 row. Don't stop to ask permission for a dependency that clearly earns its place.
 6. **All application code is Go** (design doc §14 language policy). The only non-Go allowed: FE libraries that compile to embedded static assets, and the vendored `yt-dlp` binary invoked via exec. Never introduce a Python/Node/shell *service* or script as application code — if a task seems to need one, that's a §14 conversation first.
 
 ## Session start ritual

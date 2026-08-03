@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import {
   ClipCard,
+  ClipPlayer,
   ClipRow,
   EmptyState,
   ErrorState,
@@ -126,6 +127,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
+  // The clip open in the player (V39), by path. A path rather than the DTO so the dialog always
+  // renders the CURRENT row — retagging a clip while it plays would otherwise leave the player
+  // showing a stale copy.
+  const [playing, setPlaying] = useState<string>();
 
   const settings = settingsApi.useSettingsList();
   const features = unwrap(settings.data, (b) => b.features);
@@ -388,10 +393,17 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // ⚠ The "last scan" clause is DROPPED when the server sends no timestamp, rather than rendered
   // as "never". Most sources are scanned rather than fetched, so absent is the ordinary case —
   // "never" would read as a fault on a drop-folder working exactly as intended.
+  // ⚠ **"N waiting" is a SEPARATE clause, not folded into the clip count.** Auto-fetch holds
+  // everything it downloads until someone reviews it, so a first fetch leaves the catalog at zero
+  // with a full Incoming queue. Reporting the catalog alone rendered "5 of 5 sources on · 0 clips"
+  // on an install that had just pulled twelve — the fetcher's success reading as a failure, and
+  // the reason the maintainer asked "why don't I see any clips in the catalog then?". Summing them
+  // instead would be the opposite lie: it would claim a channel can play clips nobody has approved.
   const statusLine = watch
     ? [
         `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
         pluralize(watch.clips, "clip"),
+        ...(watch.held > 0 ? [`${watch.held} waiting`] : []),
         ...(watch.lastScanAt ? [`last scan ${formatRelative(watch.lastScanAt)}`] : []),
       ].join(" · ")
     : "";
@@ -789,6 +801,12 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                       splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
                       {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
                       selected={selected.has(clip.path)}
+                      // ⚠ NOT gated on isAdmin, unlike every other action on this card. Watching
+                      // a clip mutates nothing, and `/v1/filler/media` is member-readable by
+                      // design — these are the same commercials the household's channels play at
+                      // them. Gating it would hide a safe capability from exactly the people who
+                      // would want to check what is airing.
+                      onPlay={() => setPlaying(clip.path)}
                     />
                   ))}
                 </div>
@@ -813,6 +831,16 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               onClose={() => setPinning(undefined)}
             />
           )}
+
+          {/* The player (V39). ⚠ `?? null` rather than a `&&` guard like its siblings above: this
+              dialog takes a NULLABLE clip and derives `open` from it, so handing it `undefined`
+              would be a type error and handing it nothing at all would leave it permanently
+              closed. A row that has vanished under a filter closes the player, which is the
+              honest outcome — the clip it was showing is no longer in the list. */}
+          <ClipPlayer
+            clip={rows?.find((c) => c.path === playing) ?? null}
+            onClose={() => setPlaying(undefined)}
+          />
         </div>
       )}
     </div>
