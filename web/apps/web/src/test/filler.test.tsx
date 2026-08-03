@@ -97,6 +97,12 @@ const stubFetch = ({
     if (u.includes("/v1/filler/incoming")) {
       return Promise.resolve(json({ asks: [], reels: [], total: 0 }));
     }
+    // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
+    // the SERVER — counts and health verdict both — rather than deriving them from the sources
+    // list, which is admin-only and would leave a member's pill permanently grey.
+    if (u.includes("/v1/filler/watch")) {
+      return Promise.resolve(json({ health: "healthy", sourcesOn: 1, sourcesTotal: 2, clips: clips.length }));
+    }
     if (u.includes("/v1/filler/bulk/")) return Promise.resolve(json({ updated: 1, missing: 0 }));
     if (u.includes("/v1/filler")) {
       // Honor the query string so a filter test proves the SERVER did the filtering.
@@ -161,22 +167,33 @@ describe("Filler page", () => {
     expect(searched, "the filter must reach the API, not filter a cached list").toBe(true);
   });
 
-  it("runs a catalog sync and reports what changed", async () => {
+  // ⚠ The whole-catalog Sync and AI-tag buttons are GONE (V38c, maintainer). Two tests here
+  // pinned them — "runs a catalog sync and reports what changed" and "disables AI tagging when
+  // no LLM is configured" — and both were removed rather than repaired, because they asserted
+  // affordances that no longer exist rather than behaviour that broke.
+  //
+  // Neither was work an operator should have to remember to start: the sync runs on its own
+  // schedule and drains the watch folder every pass, and tagging follows it. A button for
+  // something that already happens invites the reading that it does NOT happen unless pressed.
+  // This test is what stops them being re-added by reflex.
+  it("offers no whole-catalog sync or tag button — that work runs on its own", async () => {
     stubFetch();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
-    await userEvent.click(screen.getByRole("button", { name: /^sync$/i }));
-    expect(await screen.findByText(/2 added, 1 updated, 0 pruned/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^sync$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ai tag/i })).not.toBeInTheDocument();
   });
 
-  // AI tagging needs the same LLM the Suggest tab uses; without it the call 409s, so the
-  // button must be disabled rather than offered and rejected.
-  it("disables AI tagging when no LLM is configured", async () => {
-    stubFetch({ features: { filler: true, suggestions: false } });
+  // The mock's `watchLine`: what is on, what is held, when anything last arrived. ⚠ "N of M
+  // sources on" rather than a bare count — an operator who switched a source off wants to see
+  // that, and "3 sources" on an install where one is dark is a reassuring lie.
+  it("heads the page with how many sources are on", async () => {
+    stubFetch();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
-    expect(screen.getByRole("button", { name: /ai tag/i })).toBeDisabled();
+
+    expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
   });
 
   it("explains rather than listing when no filler folder is configured", async () => {
@@ -185,47 +202,17 @@ describe("Filler page", () => {
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
 
-  // ⚠ Both ingest tests render the INCOMING tab (V35). Discover was retired as a tab —
-  // finding clips is now something you do to a source — and the download tooling moved to
-  // the tab that is about how clips ARRIVE rather than being deleted with it.
+  // ⚠ TWO ingest tests were here and are DELETED with the panel they drove (V38b, retired-ok):
+  // one asserted the degraded-install copy, the other typed a URL and clicked Download.
   //
-  // ⚠ This asserts the copy does NOT name `loomarr:filler` (retired-ok). That variant no longer
-  // exists — the single image always ships the downloader (§16) — so the old copy sent an
-  // operator hunting for a tag they cannot pull. An absence assertion, because the failure
-  // mode is a plausible-sounding instruction, not a missing one.
+  // They are not replaced, because the behaviour is not relocated — it is gone. Clips arrive
+  // because you added a SOURCE: registration, per-row search, an approved pull, or the auto-fetch
+  // job, each of which has its own coverage. A test kept alive against a deleted surface is worse
+  // than no test: it passes by rendering something nobody can reach.
   //
-  // ⚠ `main` still has the INVERTED assertion here — it requires `loomarr:filler` (retired-ok)
-  // to be PRESENT. That is the older truth, from before the sidecar's remains were removed, and
-  // taking it in this merge would have made `retired-verify` and this test contradict each
-  // other. The merge keeps this side deliberately.
-  //
-  // ⚠ And this comment needed the `retired-ok` marker to say so: `check-retired.sh` failed on
-  // the sentence explaining the retirement. That is the guard working, not over-reaching — it
-  // greps for the identifier and cannot read intent, which is exactly why it catches the
-  // instructions a prose rule would miss.
-  it("explains a degraded install without naming an image that no longer exists", async () => {
-    stubFetch({ features: { filler: true, ingest: false } });
-    renderAt("/filler?tab=incoming");
-    expect(await screen.findByText(/downloading isn't available in this install/i)).toBeInTheDocument();
-    // The dead image name (retired-ok), asserted ABSENT.
-    expect(screen.queryByText(/loomarr:filler/)).not.toBeInTheDocument(); // retired-ok
-    expect(screen.queryByRole("button", { name: /^download$/i })).not.toBeInTheDocument();
-  });
-
-  it("starts an ingest job when the tooling is present", async () => {
-    const fetchMock = stubFetch({ features: { filler: true, ingest: true } });
-    renderAt("/filler?tab=incoming");
-    await screen.findByLabelText("URLs");
-
-    await userEvent.type(screen.getByLabelText("URLs"), "https://archive.org/details/classic-tv-commercials");
-    await userEvent.click(screen.getByRole("button", { name: /^download$/i }));
-
-    const posted = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/filler/ingest"));
-    expect(posted, "Download should POST the URLs").toBeDefined();
-    expect(JSON.parse(String(posted?.[1]?.body)).urls).toEqual([
-      "https://archive.org/details/classic-tv-commercials",
-    ]);
-  });
+  // ⚠ The `loomarr:filler` (retired-ok) absence assertion went with them. That check now lives
+  // where it belongs — `scripts/check-retired.sh` greps the whole tree for the dead image name,
+  // which is stronger than one component test asserting one string is missing from one panel.
 
   it("opens the tag editor and saves a corrected kind", async () => {
     const fetchMock = stubFetch({ clips: [clip({ kind: "commercial", name: "Some Trailer" })] });

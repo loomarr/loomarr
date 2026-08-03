@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
@@ -159,6 +159,74 @@ const stubFetch = () => {
     }
     if (u.includes("/filler/coverage")) {
       return Promise.resolve(json({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }));
+    }
+    // Before the /v1/filler catalog match: the Sources tab's rows.
+    //
+    // ⚠ Without this branch the request fell through to the clips payload below, so the tab
+    // rendered ZERO source rows — and the old "Find clips" assertion still passed, because
+    // that heading sat OUTSIDE the list. V35b moved the search inside the row that owns it,
+    // which is what surfaced the gap. A stub that answers the wrong shape is indistinguishable
+    // from a working page until something depends on the shape.
+    if (u.includes("/v1/filler/sources")) {
+      return Promise.resolve(
+        json({
+          // ⚠ V37: a flat list. `remote` was the CONTAINER row and is retired — a registered
+          // archive collection is a peer carrying `searchable`, which is what the search
+          // expander now keys on (the page no longer tests the kind itself).
+          sources: [
+            {
+              id: "archive:classic_tv_commercials",
+              enabled: true,
+              switchable: true,
+              removable: true,
+              kind: "archive",
+              target: "Classic TV Commercials",
+              detail: "an archive.org collection — searchable here",
+              count: 0,
+              configured: true,
+              fetchable: true,
+              searchable: true,
+            },
+          ],
+          total: 1,
+        }),
+      );
+    }
+    // Before the /v1/filler catalog match: the Incoming queue (§10 V35/V38).
+    //
+    // ⚠ Same gap as the sources one above — without this branch the request fell through to the
+    // clips payload, so the tab rendered whatever `asks: undefined` produces. That is the second
+    // time this stub's catch-all has quietly answered the wrong shape; a route added to the app
+    // needs a branch here, or its assertion tests the fallback rather than the feature.
+    if (u.includes("/v1/filler/incoming")) {
+      return Promise.resolve(
+        json({
+          asks: [
+            {
+              path: "held.mp4",
+              name: "Unidentified toy spot",
+              durationMs: 30000,
+              kind: "commercial",
+              reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
+              confidence: 45,
+            },
+          ],
+          reels: [],
+          // V38's audit half — what was filed with nobody looking.
+          recentlyFiled: [
+            {
+              path: "auto.mp4",
+              name: "Hot Wheels spot",
+              durationMs: 30000,
+              kind: "commercial",
+              reason: "Loomarr was confident enough about these tags to file it without asking.",
+              confidence: 88,
+              autoFiled: true,
+            },
+          ],
+          total: 1,
+        }),
+      );
     }
     // Before the /v1/filler catalog match: a persisted split proposal (V34) for the
     // /filler/splits/$proposalId review route this suite derives from the router.
@@ -333,14 +401,20 @@ describe("feature-gated panels mount when their flag is on", () => {
     // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
     // nobody can navigate to from passing as "reachable".
     //
-    // ⚠ The copy alternation here is the V35 wording, NOT main's. `main` still says "doesn't
-    // include the downloader" and names the `loomarr:filler` image; that tag was retired and
-    // `scripts/check-retired.sh` fails on it, so taking main's side of this merge would have
-    // been red twice over.
-    ["/filler?tab=incoming", /download clips|downloading isn't available/i, "the ingest panel"],
+    // ⚠ The ingest panel's assertion was here and is DELETED with it (V38b, retired-ok). This
+    // suite guards that a built thing is REACHABLE; a row for a deleted surface asserts the
+    // opposite of what it looks like, and would have to be satisfied by re-adding the panel.
+    //
+    // What replaced it is the Sources row below — "add a source" is now the door clips come
+    // through, and it is asserted there.
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
-    ["/filler?tab=incoming", /nothing needs you|needs? a decision/i, "the incoming queue"],
+    ["/filler/incoming", /nothing needs you|needs? a decision/i, "the incoming queue"],
+    // ⚠ V38's AUDIT half. Auto-filing is on by default, so clips enter the catalog unattended;
+    // if this section stops rendering, an operator has no way to find what was filed without
+    // them, and nothing else on the page would look wrong. That is precisely the silent-loss
+    // shape this suite exists for.
+    ["/filler/incoming", /filed .* without asking/i, "the auto-filed audit list"],
     // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
     // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
     ["/filler", /^incoming$/i, "the Incoming tab's own entry point"],
@@ -350,17 +424,26 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V34: the split review route exists, but if no card offers the entry point the
     // operator can never reach it. The action lives on each clip card (admin).
     ["/filler", /split into clips/i, "the compilation-split entry point"],
+    // V35 item 1.7: the per-channel override picker. Its entry point is on each clip card
+    // (admin) — the picker itself is behind a click, so this asserts the DOOR, which is the
+    // half that has gone missing eight times before.
+    ["/filler", /use in a channel/i, "the channel-override entry point"],
     // V35: per-source search, on the Sources tab. ⚠ `GET /v1/filler/discover` was API-ONLY for
     // a whole phase — the route shipped, `DiscoverPanel` was deleted rather than left orphaned,
     // and nothing called it. This is the assertion that stops it going back to that state.
-    ["/filler?tab=sources", /find clips/i, "the per-source search"],
-    // ⚠ And its promise, which is the reason an operator dares to search at all: browsing a
-    // collection must not fetch gigabytes. The line is a behaviour claim, not decoration.
-    [
-      "/filler?tab=sources",
-      /nothing downloads until you queue it/i,
-      "the search's downloads-nothing promise",
-    ],
+    //
+    // ⚠ V35b moved the search INSIDE the archive source row, behind a "Search it" toggle, and
+    // this assertion correctly went red when the old "Find clips" heading disappeared. It now
+    // names the new DOOR. It deliberately does not reach past the toggle: what this suite
+    // guards is that an entry point exists, and asserting on something behind the click would
+    // pass just as happily with no way in — the exact state it was written to catch. The
+    // panel's own contents are covered by the expander test below.
+    ["/filler/sources", /search it/i, "the per-source search's entry point"],
+    // V37: adding a source. ⚠ `POST /v1/filler/sources` shipped in V35 and NOTHING called it for
+    // two phases — the route existed, the store wrote, and there was no way to reach it from the
+    // app. That is the same API-only state this suite caught for `discover`, and the reason
+    // YouTube could not be registered was partly that no UI ever tried.
+    ["/filler/sources", /add a source/i, "the add-a-source form"],
   ])("%s mounts %s", async (path, pattern) => {
     stubFetch();
     renderAt(path);
@@ -370,19 +453,52 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(found.length).toBeGreaterThan(0);
   });
 
+  // V35b: the per-source search moved INSIDE the archive row, behind a "Search it" toggle. The
+  // row above proves the door exists; this proves it OPENS onto the real panel.
+  //
+  // ⚠ The assertion is the search's downloads-nothing promise, not merely the input. That line
+  // is a behaviour claim — it is why an operator dares to browse a collection at all — and it
+  // previously sat in a card that was always mounted. Behind a click it needs a click to guard,
+  // or the promise could silently stop rendering with every test still green.
+  it("/filler/sources opens the archive row's search onto its downloads-nothing promise", async () => {
+    stubFetch();
+    renderAt("/filler/sources");
+    await userEvent.click(await screen.findByRole("button", { name: /search it/i }));
+    const found = await screen.findAllByText(/nothing downloads until you queue it/i, undefined, {
+      timeout: 3000,
+    });
+    expect(found.length).toBeGreaterThan(0);
+  });
+
   // The §12 pod preview lives in the channel-detail "Filler" tab (admin-only) — the detail page
   // is now a tabbed layout, one section shown at a time. This guards the tab is WIRED +
   // reachable: the Filler tab is present, and selecting it reveals the live draft-sandbox break.
   it("/channels/ch-1 reaches the §12 filler section (its tab) with the break preview", async () => {
     stubFetch();
-    renderAt("/channels/ch-1");
-    // The Filler tab in the section bar is always present for an admin.
-    const fillerTab = await screen.findByRole("button", { name: "Filler" });
-    expect(fillerTab).toBeInTheDocument();
-    // Selecting it swaps to the Filler panel → the break preview inside is reachable.
-    await userEvent.click(fillerTab);
+    // ⚠ Rendered AT the section's own URL rather than clicking through from `/channels/ch-1`.
+    // The section bar moved onto `NavTabs` (V-nav-paths), so each section is a real route — and
+    // a deep link is the stronger reachability claim: it proves the URL an operator can bookmark
+    // or be sent actually mounts the panel, not merely that a click within one page swaps it.
+    // The tab's own presence is asserted separately below.
+    renderAt("/channels/ch-1/filler");
     const found = await screen.findAllByText(/this channel's break/i, undefined, { timeout: 3000 });
     expect(found.length).toBeGreaterThan(0);
+  });
+
+  // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only
+  // proves a URL works for someone who already knows it. This is the V1/V17a/V23 failure in tab
+  // form — a panel that exists at an address nobody can navigate to.
+  it("/channels/ch-1 offers the Filler section as a link", async () => {
+    stubFetch();
+    renderAt("/channels/ch-1");
+    // ⚠ Scoped to the section bar by NAME, because the app SIDEBAR also has a "Filler" link
+    // (to `/filler`, the catalog) and it wins a bare `findByRole("link", { name: "Filler" })`.
+    // Two different destinations sharing one accessible name is fine for a sighted user — the
+    // bars are far apart — but a test has to say which one it means.
+    const sectionBar = await screen.findByRole("navigation", { name: /channel sections/i });
+    const tab = within(sectionBar).getByRole("link", { name: "Filler" });
+    // A real destination, not a button that swaps state: middle-clickable, copyable, bookmarkable.
+    expect(tab).toHaveAttribute("href", expect.stringContaining("/channels/ch-1/filler"));
   });
 
   // V29b's meter, in the same tab. Guarded here rather than trusted because this suite exists
@@ -391,8 +507,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // renders it. Only a route test answers "can an operator see it".
   it("/channels/ch-1 reaches the filler coverage meter", async () => {
     stubFetch();
-    renderAt("/channels/ch-1");
-    await userEvent.click(await screen.findByRole("button", { name: "Filler" }));
+    renderAt("/channels/ch-1/filler");
     expect(await screen.findByText(/catalog coverage/i, undefined, { timeout: 3000 })).toBeInTheDocument();
     // And the meter itself rendered, not just its heading.
     expect(await screen.findByText("Exact match")).toBeInTheDocument();
