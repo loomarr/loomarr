@@ -182,11 +182,20 @@ func (s *Service) toolRunnable(key string) bool {
 	}
 	// Unset: find it the way a shell would. LookPath already checks the execute bit, but the
 	// probe still runs so a test double sees every candidate.
+	//
+	// ⚠ **The lookup is injectable too, and it has to be.** Faking only `execProbe` left this
+	// calling the real `exec.LookPath`, so the unset-path test passed on any machine with ffmpeg
+	// installed and failed on every CI runner without it — green locally, red in CI, for a whole
+	// release. A test that reads the host's PATH is not hermetic however good its double is.
+	look := s.execLookPath
+	if look == nil {
+		look = exec.LookPath
+	}
 	name := map[string]string{"ingest.ytdlp_path": "yt-dlp", "ingest.ffmpeg_path": "ffmpeg"}[key]
 	if name == "" {
 		return false
 	}
-	found, err := exec.LookPath(name)
+	found, err := look(name)
 	return err == nil && probe(found)
 }
 

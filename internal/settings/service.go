@@ -74,6 +74,14 @@ type Service struct {
 	// tested without touching the filesystem. nil ⇒ the real os.Stat probe.
 	execProbe func(path string) bool
 
+	// execLookPath resolves a bare tool name the way a shell would. Injectable for the same
+	// reason as execProbe, and it has to be: faking only the PROBE left `exec.LookPath` running
+	// for real, so `TestFeatures_UnsetToolPathsFallBackToPathLookup` passed on any machine with
+	// ffmpeg installed and failed on every CI runner without it. A test that depends on the
+	// host's PATH is not hermetic, and this one hid that for a whole release.
+	// nil ⇒ the real exec.LookPath.
+	execLookPath func(name string) (string, error)
+
 	mu sync.RWMutex
 	db map[string]string // persisted overrides (raw strings)
 	// unlocked holds the keys taken back from the environment (§3.1). Only true entries
