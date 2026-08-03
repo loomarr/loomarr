@@ -765,6 +765,19 @@ func declared() []Setting {
 			Doc: "How often Loomarr checks your filler sources for new clips (cron).",
 		},
 		{
+			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on
+			// an undeclared key, so a job registered without one takes the whole app down at
+			// startup rather than degrading. Caught by the boot test, which is exactly its job.
+			//
+			// Hourly rather than the 15-minute sync or the 6-hourly fetch, because this is the
+			// expensive one: on the local backend a batch of 25 clips is minutes natively and
+			// hours under QEMU (~341s per clip). Hourly drains a catalog steadily without a pass
+			// overlapping the next.
+			Key: "job.filler_language.schedule", EnvVar: "JOB_FILLER_LANGUAGE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 30 * * * *",
+			Doc: "How often Loomarr checks what language new filler clips are spoken in (cron).",
+		},
+		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 0 * * * *",
 			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",

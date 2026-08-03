@@ -474,3 +474,23 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 	}
 	return int(n), nil
 }
+
+// SetClipLanguage records what the detection job heard (§10 V40, migration 00036).
+//
+// ⚠ **The ONLY writer of `language`**, exactly like SetClipsRemoved owns the tombstone and
+// RecordClipPlay owns the counters — and for the same reason: `UpsertClip` deliberately omits the
+// column, so the folder scan cannot blank a detected language by finding the file still on disk.
+// Without that omission every sync would reset the catalog to "not yet checked" and the job would
+// re-detect everything on the next pass, which on the local backend is ~341s per clip under QEMU.
+//
+// Keyed by PATH rather than hash, because that is what the job carries and what every other
+// clip-writing method here takes.
+func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET language = ?, updated_at = ? WHERE path = ?`),
+		language, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip language %s: %w", path, err)
+	}
+	return nil
+}

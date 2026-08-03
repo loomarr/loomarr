@@ -162,6 +162,12 @@ type ClipStore interface {
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// SetClipLanguage records the detected language (§10 V40).
+	//
+	// ⚠ The ONLY writer of that column, like the tombstone above: UpsertClip omits it, which is
+	// what stops a folder scan blanking a detected language and making the job re-detect the whole
+	// catalog every sync (~341s per clip under QEMU on the local backend).
+	SetClipLanguage(ctx context.Context, path, language string, at time.Time) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
