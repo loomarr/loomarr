@@ -23,6 +23,10 @@ import (
 type fakeFiller struct {
 	syncs, tags int
 	ingested    []string
+	// asked records only what came through IngestAsked — the operator-initiated path, and the
+	// only one that may register a source. Separate from `ingested` so a test can tell the two
+	// entry points apart; collapsing them is how the real adapter's bug hid.
+	asked []string
 	// unavailable simulates loomarr:latest — the image with no ingest tooling.
 	unavailable bool
 	// discovered records the queries Discover was asked for; discoverErr forces the
@@ -112,6 +116,18 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	return "job-1", nil
 }
 
+// ⚠ Records SEPARATELY from `Ingest`, so a test can prove which entry point a route used. The two
+// differ only in whether the target is registered as a source, and the real adapter got that
+// wrong for a release — a double that collapsed them could not have caught it.
+func (f *fakeFiller) IngestAsked(_ context.Context, urls []string) (string, error) {
+	if f.unavailable {
+		return "", api.ErrIngestUnavailable
+	}
+	f.ingested = append(f.ingested, urls...)
+	f.asked = append(f.asked, urls...)
+	return "job-1", nil
+}
+
 // Split/ConfirmSplit (V34): record calls; the error knobs force the handler's
 // 404/409/422 branches.
 type fakeSplitCall struct {
@@ -163,7 +179,31 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
+	// ⚠ **Start with an EMPTY source registry, deliberately.** Migration 00034 seeds four default
+	// sources so a real install can fetch on day one — correct there, and fatal to every assertion
+	// here phrased as an absolute ("want 1", "registered sources = 1", "unconfigured"). Eleven
+	// tests across three files went red the moment the migration landed, none of them wrong.
+	//
+	// Clearing here rather than teaching each assertion to say "+4" keeps them readable AND keeps
+	// them honest when the seeded set changes again — which it will. The seeding itself is not
+	// untested: `TestMigrations_SeedDefaultSources` owns exactly that, and is the ONLY test that
+	// should ever depend on what 00034 inserts.
+	clearSeededSources(t, st)
 	return srv, st, ff
+}
+
+// clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.
+func clearSeededSources(t *testing.T, st store.Store) {
+	t.Helper()
+	seeded, err := st.ListFillerSources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range seeded {
+		if err := st.DeleteFillerSource(context.Background(), s.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {

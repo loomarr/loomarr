@@ -154,11 +154,26 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 # browsers match exactly. The container reuses the host's (JS-only) node_modules read
 # through the bind mount and the browsers baked into the image — no in-container install,
 # so the host's macOS binaries are never touched.
-# ⚠ `docker run` inherits NOTHING from the host environment, so `-e CI` (bare, forwarding the
-# host value only when set) is what lets the container know it is in CI. Without it
-# `process.env.CI` was undefined inside the image: the worker count fell back to Playwright's
-# half-the-cores default (2 on a 4-core runner, for 504 tests), AND `forbidOnly` never applied
-# — so a stray `test.only` would have silently narrowed the suite in CI while passing.
+# ⚠ `docker run` inherits NOTHING from the host environment, so the container has to be TOLD it
+# is in CI. Without it `process.env.CI` is undefined inside the image: the worker count falls back
+# to Playwright's half-the-cores default, AND `forbidOnly` never applies — so a stray `test.only`
+# silently narrows the suite while passing.
+#
+# ⚠ **This was `-e CI` (bare) and that forwards NOTHING when `CI` is unset on the host** — which
+# is every local run. So locally the suite ran 12 workers on a 24-core box and `forbidOnly` was
+# OFF, while CI ran with both. `?=` keeps it overridable (`make fe-visual PW_CI=`), and an
+# exported `CI=true` still wins.
+#
+# ⚠ **The win here is CONSISTENCY, not speed** — measured 2026-08-02, and the measurement is worth
+# recording because the obvious assumption is wrong: doubling the workers took the visual suite
+# from 96s to 86s, about 10%. 706 fast screenshot tests are not worker-bound; something else
+# (container I/O, the static server, per-test context setup) is already the floor. Do not reach
+# for more parallelism here expecting a large win — and GPU passthrough is a dead end for the same
+# reason, since these are static pages with no video, WebGL or canvas to rasterize.
+#
+# What it DOES buy is a local gate that behaves like CI: all cores, and `test.only` refused in
+# both places rather than only one.
+PW_CI ?= 1
 PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
 # PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/2`). Empty by
@@ -171,12 +186,12 @@ PW_SHARD ?=
 
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
-	docker run --rm --ipc=host -e CI -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test $(PW_SHARD)
 
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
-	docker run --rm --ipc=host -e CI -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --update-snapshots
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
@@ -184,7 +199,7 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
 e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
-	docker run --rm --ipc=host -e CI -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
 
 ## ---- Maintainer smoke (NOT CI) -------------------------------------------
@@ -207,7 +222,7 @@ smoke-down: ## tear down the smoke stack (container, volume, temp database)
 
 .PHONY: e2e-update
 e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
-	docker run --rm --ipc=host -e CI -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
 
 # Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't

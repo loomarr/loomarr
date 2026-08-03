@@ -2,8 +2,14 @@ package clipfetch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/mantonx/loomarr/internal/filler"
 )
 
 // This file holds the REAL downloaders — the ones that touch the network and the
@@ -48,7 +54,59 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, 0, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, string(out))
 	}
+	// ⚠ **Mark what we just downloaded as OURS** — the held/filed fork's only signal (§10 V38c).
+	// A clip Loomarr fetched waits in Incoming for a human; one an operator dropped in is filed on
+	// sight. Only the downloader can tell them apart.
+	//
+	// Stamped AFTERWARDS rather than written here, because yt-dlp owns this sidecar
+	// (`--write-info-json`) and re-creating it would throw away the title and description that
+	// are the tagger's real text signals. `stampFetched` merges into what yt-dlp wrote.
+	//
+	// ⚠ Best-effort: a stamp that fails must not fail the download. The clip is on disk and
+	// catalogueable; the cost is that it files without review rather than being lost.
+	stampFetched(dropDir)
 	return 0, 0, nil
+}
+
+// stampFetched adds Loomarr's `fetchedBy` mark to every info-JSON in dropDir that lacks one.
+//
+// ⚠ Sweeps the folder rather than tracking filenames, because yt-dlp names its own output from a
+// template (`%(title)s [%(id)s]`) after sanitising, and guessing that name back is how the mark
+// would silently miss the files it was written for. Anything already stamped is left alone, so a
+// re-run is cheap and idempotent.
+func stampFetched(dropDir string) {
+	entries, err := os.ReadDir(dropDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".info.json") {
+			continue
+		}
+		path := filepath.Join(dropDir, e.Name())
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			// A sidecar we cannot read is left ALONE rather than replaced — it is yt-dlp's file,
+			// and overwriting something unparseable is the one move guaranteed to lose data.
+			continue
+		}
+		if _, done := doc[filler.SidecarLoomarrKey()]; done {
+			continue
+		}
+		doc[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMark()
+		out, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			continue
+		}
+		// ⚠ A failed write is swallowed rather than logged: this type carries no logger, and the
+		// consequence is bounded — the clip files without review instead of being lost. The
+		// Ingestor above it reports the download itself.
+		_ = os.WriteFile(path, out, 0o644) //nolint:gosec // metadata beside media the operator owns
+	}
 }
 
 // ArchiveDownloader fetches an Archive.org item/collection via plain net/http

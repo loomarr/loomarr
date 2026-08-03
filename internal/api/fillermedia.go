@@ -21,8 +21,13 @@ import (
 // already means a pod listing in `PodAdapter.Preview` and two channel-scoped operations. A third
 // meaning on a route name is how an endpoint ends up called by the wrong handler a year later.
 //
-// A plain mux handler rather than a Huma op, like `thumb` and the backup download: Huma models
-// typed JSON and this is a byte stream.
+// A plain mux handler rather than a Huma op, like `thumb` and the backup download.
+//
+// ⚠ NOT because Huma is limited to JSON — it is not, and this comment used to say so. It is that
+// `http.ServeContent` (see the bottom of this file) is what gives this route Range support, and
+// range support is the whole point here: it is what lets a <video> seek instead of downloading a
+// whole clip to play its last five seconds. An op would need the raw ResponseWriter to call it
+// regardless.
 
 // mediaTypes is the allowlist of what this route will serve, keyed by lowercase extension.
 //
@@ -100,7 +105,12 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	// segment directly against the filesystem — which is why the lookup's result was discarded.
 	// It cannot be now: a caller-supplied string must never reach the filesystem, and the row is
 	// the only thing that says where a clip actually lives.
-	clip, err := s.store.GetClip(r.Context(), clipPath)
+	// ⚠ **By PATH, not by hash.** The URL segment is a clip's location under FILLER_DIR, which
+	// V38c made a DIFFERENT string from its identity — the path is sharded (`14/36/<hash>.mp4`)
+	// while the hash is bare. `GetClip` queries `WHERE hash = ?`, so this route used it and
+	// matched nothing: it 404'd for every clip in the catalog from V38c until V39, and nothing
+	// noticed because no client called it until the player shipped.
+	clip, err := s.store.GetClipByPath(r.Context(), clipPath)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			s.log.Error("look up clip for media", "id", clipPath, "err", err)

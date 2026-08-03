@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/filler"
 )
 
 // Archive.org ingestion (§10): a plain-net/http walk of Archive's public JSON
@@ -238,6 +240,15 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	if meta.Metadata.LicenseURL != "" {
 		fields["license"] = meta.Metadata.LicenseURL
 	}
+	// ⚠ **Mark it as OURS.** This is the held/filed fork's only signal (§10 V38c): a clip Loomarr
+	// downloaded waits in Incoming for a human, while one an operator dropped in is filed on
+	// sight. The downloader is the only party that knows which this is — the sync sees a file in
+	// a folder and cannot tell.
+	//
+	// Nothing wrote this until V38c.8, so every auto-fetched clip landed `held=false` and went
+	// straight to air unreviewed. Caught by running auto-fetch against real collections and
+	// reading the rows back, not by any test.
+	fields[filler.SidecarLoomarrKey()] = filler.SidecarFetchedMark()
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")
 	if err := c.fs.WriteFile(sidecarPath, sidecar); err != nil {
 		return 1, 0, fmt.Errorf("archive sidecar %s: %w", id, err)

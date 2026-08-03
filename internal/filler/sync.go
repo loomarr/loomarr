@@ -54,6 +54,11 @@ type RawClip struct {
 	// extraction failed or has not run. Filled by a SEPARATE pass (GenerateThumbnails), not
 	// by the probe — see thumbnail.go for why it cannot ride along with ffprobe.
 	Thumbnail string
+	// Preview is the animated hover preview's path relative to the preview cache dir; "" when
+	// the render failed or has not run (V39). A third pass again (GeneratePreviews) for the same
+	// reason as the still: it is a distinct ffmpeg invocation, and a failed render must cost a
+	// preview rather than a clip.
+	Preview string
 }
 
 // FillerSource discovers the clips in FILLER_DIR.
@@ -374,6 +379,10 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// generator adopts an existing image rather than re-extracting, so this is already
 		// the previous value whenever one exists.
 		merged.Thumbnail = rc.Thumbnail
+		// Preview, identically: derived from the FILE, and GeneratePreviews adopts an existing
+		// animation rather than re-rendering, so this is already the previous value whenever one
+		// exists (V39).
+		merged.Preview = rc.Preview
 		// Licence is scan-owned (it comes from the source's sidecar, never from a human), but
 		// ⚠ a BLANK scan value must not erase a known one. The sidecar can go missing for
 		// reasons that say nothing about the licence — an operator tidying `.info.json` files
@@ -466,9 +475,21 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	return res, nil
 }
 
-// serverFieldsUnchanged reports whether the Tunarr-owned fields match (so a
-// re-sync is a no-op write). Tags aren't compared — they're loomarr-owned and
-// preserved, not synced.
+// serverFieldsUnchanged reports whether the SCAN-owned fields match (so a re-sync is a no-op
+// write). Tags aren't compared — they're loomarr-owned and preserved, not synced.
+//
+// ⚠ **Every scan-owned field must be listed here, or it can never reach the database.** This
+// gates the write: a field the scan freshly computed but that this function ignores makes the
+// sync decide "nothing changed" and skip the row entirely, so the merge assigning it runs and is
+// then thrown away.
+//
+// Found live (V39): artwork rendered to disk for all 13 clips, `merged.Preview = rc.Preview` ran,
+// and the column stayed empty on every row — sync reported `updated: 0` because Name, DurationMs
+// and Kind were identical. `Thumbnail` had the same latent bug and had simply never been exercised,
+// because a clip's still was always generated on the same pass that first inserted it.
+//
+// The rule for anything added later: if `syncClips` assigns it from `rc`, compare it here.
 func serverFieldsUnchanged(a, b Clip) bool {
-	return a.Name == b.Name && a.DurationMs == b.DurationMs && a.Kind == b.Kind
+	return a.Name == b.Name && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
+		a.Thumbnail == b.Thumbnail && a.Preview == b.Preview
 }

@@ -65,6 +65,26 @@ const (
 	fetchedByUs  = "loomarr"
 )
 
+// SidecarFetchedMark is the `loomarr` block a DOWNLOADER writes into the info-JSON beside a clip
+// it just fetched, so the sync holds it for review instead of filing it on sight (§10 V38c).
+//
+// ⚠ **Exported because the mark has to be written by whoever DOWNLOADED the file**, and that is
+// `clipfetch`, which must not import this package's internals. Both sides reading one definition
+// is the point: the sync's `wasFetchedByUs` looks for exactly this shape, and a second hand-rolled
+// copy in the downloader is how the two silently stop agreeing.
+//
+// ⚠ **Nothing wrote it until V38c.8, so the approval gate never engaged for auto-fetched clips.**
+// The `fetched=true` branch of `TakeIn` had no caller: both call sites pass false, correctly, since
+// the sync cannot know who put a file in the watch folder. Only the downloader knows. Found by
+// running auto-fetch against real archive.org collections and seeing every clip land `held=false`.
+func SidecarFetchedMark() map[string]any {
+	return map[string]any{fetchedByKey: fetchedByUs}
+}
+
+// SidecarLoomarrKey is the namespaced key `SidecarFetchedMark` belongs under. Exported for the
+// same reason: the downloader writes it, this package reads it.
+func SidecarLoomarrKey() string { return loomarrKey }
+
 // SidecarTags is what Loomarr records about a clip, written back beside the file so the metadata
 // travels with it (§10 V38c). Reset the database, move the folder, or take migration 00033 and
 // the tagging returns on the next scan instead of being retyped.

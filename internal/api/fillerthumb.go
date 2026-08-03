@@ -24,7 +24,14 @@ import (
 // meaning on a route name is how an endpoint ends up called by the wrong handler a year later.
 //
 // A plain mux handler rather than a Huma op, for the same reason as the backup download and the
-// channel icon: Huma models typed JSON, and this is image bytes.
+// channel icon.
+//
+// ⚠ That reason is NOT "Huma only supports JSON" — it supports arbitrary content types, and this
+// comment used to imply otherwise. It is that `http.ServeContent` does Range, If-Modified-Since
+// and 206 in a single call, and reaching it through an op means dropping to the raw
+// ResponseWriter anyway — so the wrapper would buy a spec entry for an opaque byte body and cost
+// the escape hatch. The tradeoff is that this route is absent from openapi.yaml, which is why its
+// client URL is hand-written (`clipThumbURL`) rather than generated.
 
 // serveFillerThumb streams a clip's thumbnail JPEG.
 //

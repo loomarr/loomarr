@@ -159,6 +159,12 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// `preview`. Range-capable, so a <video> element can seek.
 	mux.HandleFunc("GET /v1/filler/media/{path...}", srv.serveFillerMedia)
 
+	// Clip hover previews (V39) — a few seconds of silent animation per clip, so a grid of
+	// stills can answer "is this actually the advert it says it is?" without opening anything.
+	// ⚠ `hover`, not `preview`, for the third time on this surface: /channels/{id}/filler/preview
+	// and PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
+	mux.HandleFunc("GET /v1/filler/hover/{path...}", srv.serveFillerHover)
+
 	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
 	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
 	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a

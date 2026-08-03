@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -334,11 +335,21 @@ func (a fillerServiceAdapter) Tag(ctx context.Context) (int, int, int, int, erro
 // HTTP request open would guarantee a gateway timeout on exactly the useful cases.
 // Progress rides the SSE bus as `filler_ingest` frames — the same shape the §8.1 model
 // pull uses, because it is the same problem (long external process, no request to hold).
+// ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
+	return a.ingest(ctx, urls)
+}
+
+// IngestAsked downloads AND remembers the target, for the one path where an operator named it.
+func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
+	a.rememberSources(ctx, urls)
+	return a.ingest(ctx, urls)
+}
+
+func (a fillerServiceAdapter) ingest(ctx context.Context, urls []string) (string, error) {
 	if a.fetcher == nil {
 		return "", api.ErrIngestUnavailable
 	}
-	a.rememberSources(ctx, urls)
 	sources := make([]clipfetch.Source, 0, len(urls))
 	for _, u := range urls {
 		sources = append(sources, clipfetch.Source{Kind: clipfetch.KindForURL(u), URL: u})
@@ -541,7 +552,17 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// Counted in SQL rather than recomputed here — "untagged" is the AI-tagging job's own
 	// predicate (store/clips.go), and a second Go definition of the word would be free to
 	// disagree with the job that acts on it.
-	untagged, err := a.store.ListUntaggedCommercials(ctx)
+	//
+	// ⚠ **The predicate is shared; the SCOPE is not.** `ListUntaggedCommercials` sets
+	// `IncludeHeld: true` on purpose, because held clips are exactly what the tagger must tag.
+	// Reusing it here inherited that as a silent side effect, and every OTHER number in this
+	// report counts the catalog alone — so an install with 1 filed clip and 12 held ones rendered
+	// "CLIPS 1 / 12 clips still need tagging", a headline its own subtext contradicts.
+	//
+	// Counting held clips here is not merely inconsistent, it is unactionable: the strip's advice
+	// is to go and tag them, and they are not in the Catalog to tag. Incoming carries its own
+	// count for that queue.
+	untagged, err := a.store.ListClips(ctx, store.ClipFilter{UntaggedOnly: true})
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
@@ -689,17 +710,16 @@ func discoveredClips(res clipfetch.DiscoveryResult) ([]api.DiscoveredClip, int) 
 	return out, res.Total
 }
 
-// rememberSources records the archive.org items an operator asked for, so the Sources tab can
-// show where the catalog came from (§10, V33).
+// rememberSources records an archive.org COLLECTION an operator asked for (§10, V33).
 //
-// ⚠ BEST-EFFORT by contract, and the ordering says so: it runs before the download starts and
-// a failure only logs. Registering where a clip came from must never be able to stop the clip
-// being fetched — that would trade the feature for its own bookkeeping. The same reasoning
-// RecordActivity carries.
+// ⚠ **Only from `IngestAsked`** — never auto-fetch or an approved pull, which carry the URLs of
+// individual ITEMS inside a collection that is already registered. Calling it from those turned
+// 5 source rows into 35, one per downloaded clip.
 //
-// ⚠ Only archive.org items get a row. A YouTube URL is a video, not a source with state to
-// remember: nothing about it needs a licence, a fetch cursor or a name an operator chose, and a
-// row per video would turn the registry into a second, worse clip list.
+// ⚠ Best-effort: it runs before the download and a failure is dropped. Bookkeeping must never be
+// able to stop a clip being fetched.
+//
+// ⚠ Archive only. A YouTube URL is a video, not a source with state worth remembering.
 func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string) {
 	if a.sources == nil {
 		return
@@ -741,4 +761,35 @@ func archiveIDFrom(raw string) string {
 		id = id[:j]
 	}
 	return id
+}
+
+// resolveTool turns a configured tool path into a usable one, falling back to a PATH lookup.
+//
+// ⚠ **The fallback is what makes §15's documented behaviour true.** §15 has always described the
+// ingest binaries as "defaulted to the vendored binaries", but the registry defaults are the empty
+// string and only the Docker image sets them — so a source build had ingest off even with the
+// tools installed. `settings.toolRunnable` does the same lookup for the FEATURE GATE; this is the
+// wiring side of the same rule, and the two disagreeing is what let the UI offer a "Fetch now"
+// button that always failed.
+//
+// Returns "" when the tool cannot be found, which the caller reads as "this downloader is
+// unavailable" rather than as an error — an install without yt-dlp is a supported configuration.
+func resolveTool(configured, name string) string {
+	if configured != "" {
+		return configured
+	}
+	found, err := exec.LookPath(name)
+	if err != nil {
+		return ""
+	}
+	return found
+}
+
+// orNone renders an empty tool path for a log line. "none" says the tool is absent; an empty
+// string in structured output reads as a logging bug.
+func orNone(path string) string {
+	if path == "" {
+		return "none"
+	}
+	return path
 }

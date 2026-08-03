@@ -182,6 +182,26 @@ func (s *Server) registerFillerSources(api huma.API) {
 	}, RoleAdmin), s.deleteFillerSource)
 }
 
+// canFetchRow reports whether this row's "Fetch now" has anything to do.
+//
+// ⚠ It used to be a bare `s.filler != nil` — "does the ingest route exist" — which is a fact
+// about the INSTALL, not about the row. The seeded YouTube source ships with an empty uri (§10
+// forbids Loomarr recommending a playlist, so the operator brings one), and that row offered a
+// Fetch-now button with nothing to enumerate. A control that cannot work is worse than no
+// control.
+//
+// The two kinds fail for different reasons and are answered separately:
+//   - SCANNED (folder, library) read local/LAN storage, so they need no ingest tooling at all —
+//     "Fetch now" runs the same sync the scheduler does.
+//   - DOWNLOADED (archive, youtube) need BOTH a target to fetch (the store's `Fetchable()`,
+//     which is false on an empty uri) and the ingest route to hand it to.
+func canFetchRow(src store.FillerSource, ingestAvailable bool) bool {
+	if src.Scannable() {
+		return true
+	}
+	return src.Fetchable() && ingestAvailable
+}
+
 // addFillerSourceInput registers a source (V37: any addable kind, not only archive).
 type addFillerSourceInput struct {
 	Body struct {
@@ -544,7 +564,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// A scanned folder whose button did nothing would read as broken; the store's
 				// `Fetchable()`/`Scannable()` pair is what keeps a folder out of a PULL plan,
 				// which is the distinction that actually matters.
-				Fetchable: src.Scannable() || s.filler != nil,
+				Fetchable: canFetchRow(src, s.filler != nil),
 				// ⚠ Only archive can be searched in place. A "search" box on a YouTube playlist
 				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
 				// YouTube, and offering the box would be a control that returns nothing forever.

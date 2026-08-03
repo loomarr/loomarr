@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/mantonx/loomarr/internal/filler"
 )
 
 // memSink is an in-memory fileSink for testing the walk without touching disk.
@@ -120,6 +122,24 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	_ = json.Unmarshal(fs.files[sidecarPath], &sc)
 	if sc["title"] != "Test 90s Cereal Ad" || sc["description"] != "A 1994 cereal commercial." {
 		t.Errorf("sidecar lost text signals: %+v", sc)
+	}
+
+	// ⚠ **THE APPROVAL GATE.** A clip Loomarr DOWNLOADED must be marked as ours, or the sync
+	// files it on sight instead of holding it in Incoming for a human (§10 V38c). Nothing wrote
+	// this mark until V38c.8 — the `fetched=true` branch of `TakeIn` had no caller at all — so
+	// every auto-fetched clip went straight to air unreviewed. Found by running auto-fetch
+	// against real archive.org collections and reading `held=false` off every row.
+	//
+	// Asserted through `filler.SidecarFetchedMark()` rather than a literal, so this test and the
+	// sync's `wasFetchedByUs` cannot drift apart into two spellings of the same key.
+	ours, ok := sc[filler.SidecarLoomarrKey()].(map[string]any)
+	if !ok {
+		t.Fatalf("downloaded clip is not marked as ours — it would file WITHOUT REVIEW: %+v", sc)
+	}
+	for k, want := range filler.SidecarFetchedMark() {
+		if ours[k] != want {
+			t.Errorf("fetched mark %s = %v, want %v", k, ours[k], want)
+		}
 	}
 }
 
