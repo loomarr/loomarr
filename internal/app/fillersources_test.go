@@ -31,6 +31,9 @@ func (r *recordingSources) MarkFillerSourceFetched(context.Context, string, time
 	return nil
 }
 func (r *recordingSources) SetFillerSourceEnabled(context.Context, string, bool) error { return nil }
+func (r *recordingSources) SetFillerSourceFetchPolicy(context.Context, string, *int, *int) error {
+	return nil
+}
 
 func TestRememberSources(t *testing.T) {
 	fixed := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)

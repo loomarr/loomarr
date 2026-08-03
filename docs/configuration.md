@@ -91,6 +91,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.reconcile.schedule` (`JOB_RECONCILE_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr checks on in-progress downloads (cron). |
 | `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
+| `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
@@ -128,10 +129,17 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 
 | Setting (env) | Kind | Default | Notes |
 | --- | --- | --- | --- |
-| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
+| `filler.dir` (`FILLER_DIR`) | string | `/data/filler` | Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library. _(required for filler)_ |
+| `filler.watch_dir` (`FILLER_WATCH_DIR`) | string | — | Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder. |
 | `filler.sync_every` (`FILLER_SYNC_EVERY`) | duration | `15m` | How often to re-sync the filler catalog from Tunarr's local source. |
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
+| `filler.autofile.enabled` (`FILLER_AUTOFILE_ENABLED`) | bool | `true` | File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming. |
+| `filler.autofile.min_confidence` (`FILLER_AUTOFILE_MIN_CONFIDENCE`) | int | `85` | How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check. |
+| `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself. |
+| `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. |
+| `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. |
+| `filler.fetch.max_disk_gb` (`FILLER_FETCH_MAX_DISK_GB`) | int | `20` | Stop fetching automatically once the filler folder reaches this size in GB. |
 | `filler.breaks_per_hour` (`FILLER_BREAKS_PER_HOUR`) | int | `4` | Commercial-break density: breaks interleaved per program hour. |
 | `filler.pod_max` (`FILLER_POD_MAX`) | int | `4` | Maximum clips per commercial pod. |
 | `filler.cooldown_seconds` (`FILLER_COOLDOWN_SECONDS`) | int | `30` | Seconds before the same commercial can play again. _(advanced)_ |

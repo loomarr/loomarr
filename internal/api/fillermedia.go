@@ -95,21 +95,27 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	// convenience. Without it this route serves any allowlisted file anywhere under a folder
 	// the operator also uses for their own media; with it, the only reachable files are rows
 	// the scan created. A path that is not a clip is not a clip, whatever is on disk.
-	if _, err := s.store.GetClip(r.Context(), clipPath); err != nil {
+	// ⚠ The URL carries the clip's IDENTITY (its hash since V38c), and the file served is the
+	// row's `Path`. Before V38c those were the same string, so this route resolved the URL
+	// segment directly against the filesystem — which is why the lookup's result was discarded.
+	// It cannot be now: a caller-supplied string must never reach the filesystem, and the row is
+	// the only thing that says where a clip actually lives.
+	clip, err := s.store.GetClip(r.Context(), clipPath)
+	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
-			s.log.Error("look up clip for media", "path", clipPath, "err", err)
+			s.log.Error("look up clip for media", "id", clipPath, "err", err)
 		}
 		http.NotFound(w, r)
 		return
 	}
 
-	ctype, ok := mediaTypes[strings.ToLower(filepath.Ext(clipPath))]
+	ctype, ok := mediaTypes[strings.ToLower(filepath.Ext(clip.Path))]
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
-	full, ok := safeFillerPath(dir, clipPath)
+	full, ok := safeFillerPath(dir, clip.Path)
 	if !ok {
 		// A traversal attempt is a 404, not a 403: a distinct error would confirm which paths
 		// exist outside the drop-folder.

@@ -63,3 +63,25 @@ back **empty** over Tailscale — the §13 "reach the server" check should key o
 `system_info_authed.json`, `users_list.json`, `lookup_present.json`, `lookup_absent.json`,
 `auth_badpw_response.json`. **No design-doc deviation** (unified-header is an option to consider,
 not a contradiction).
+
+## Library enumeration for filler sources (captured 2026-08-02, §10 V38c)
+
+`GET /Library/VirtualFolders?api_key=…` → 200, an ARRAY (not an `{Items:[]}` envelope — the
+one shape difference from every other endpoint here, and the reason this was captured rather
+than written from memory). Source: **Emby 4.10.0.22**, 7 libraries.
+
+Each element carries `Name`, `ItemId`, `Id`, `Guid`, `Locations[]`, and — only when the library
+has one — `CollectionType` (`movies`, `tvshows`, `music`, `boxsets`).
+
+Two findings that matter for the library-source scan:
+
+- **`ItemId` is what `ParentId` wants.** `ListFillerClips` filters `/Items?ParentId=<id>`, and
+  `ItemId`/`Id` are the same value here. `Guid` is a DIFFERENT identifier and is not accepted
+  by `ParentId`.
+- ⚠ **`CollectionType` is ABSENT for mixed/unclassified libraries**, not empty-string — three of
+  the seven have no such key. A filler library is typically exactly this kind (mixed content, no
+  collection type), so filtering libraries by `CollectionType` would hide the ones an operator is
+  most likely to point at. Match on `Name` only.
+
+Fixture: `virtual_folders.json` (trimmed to the parsed fields plus `Locations`/`CollectionType`;
+the raw response carries ~40 `LibraryOptions` keys per folder that Loomarr never reads).

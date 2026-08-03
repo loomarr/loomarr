@@ -143,8 +143,11 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 
 	// Exactly what a scan does when it finds the file again: upsert the row from the
 	// filesystem's view, which knows nothing about the tombstone.
+	// ⚠ Carries the same HASH as the seeded row, or this upsert inserts a SECOND clip instead of
+	// updating the tombstoned one — and the test would pass for the wrong reason (the tombstone
+	// survives because nothing touched it). Identity is the hash since V38c.
 	if err := st.UpsertClip(ctx, store.Clip{
-		Clip:      filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000},
+		Clip:      filler.Clip{Hash: "a.mp4", Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000},
 		UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)

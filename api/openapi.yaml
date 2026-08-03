@@ -55,14 +55,23 @@ components:
           format: uri
           readOnly: true
           type: string
+        kind:
+          description: Which kind of source this is
+          enum:
+            - archive
+            - youtube
+            - folder
+            - library
+          type: string
         label:
           description: Operator-facing name; falls back to the identifier
           type: string
         uri:
-          description: archive.org collection identifier, /details/<id> path, or full URL
+          description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
           minLength: 1
           type: string
       required:
+        - kind
         - uri
       type: object
     AdjacentContext:
@@ -1409,6 +1418,30 @@ components:
         - updated
         - pruned
       type: object
+    FileFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FileFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        asSuggested:
+          description: Confirm each clip's own suggested era as it files
+          type: boolean
+        paths:
+          description: Clip identities (paths relative to FILLER_DIR)
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - paths
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -1420,6 +1453,12 @@ components:
           readOnly: true
           type: string
         asks:
+          items:
+            $ref: "#/components/schemas/IncomingAskDTO"
+          type:
+            - array
+            - "null"
+        recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingAskDTO"
           type:
@@ -1438,6 +1477,7 @@ components:
       required:
         - asks
         - reels
+        - recentlyFiled
         - total
       type: object
     FillerSelection:
@@ -1492,15 +1532,18 @@ components:
           enum:
             - folder
             - library
-            - remote
+            - archive
+            - youtube
           type: string
-        remotes:
-          items:
-            $ref: "#/components/schemas/RemoteSourceDTO"
-          type:
-            - array
-            - "null"
+        lastFetchedAt:
+          description: RFC3339; absent if never fetched
+          type: string
+        license:
+          description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
         removable:
+          type: boolean
+        searchable:
           type: boolean
         switchable:
           type: boolean
@@ -1512,6 +1555,7 @@ components:
         - switchable
         - removable
         - kind
+        - searchable
         - target
         - detail
         - count
@@ -1540,6 +1584,41 @@ components:
       required:
         - sources
         - total
+      type: object
+    FillerWatchOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/FillerWatchOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        clips:
+          format: int64
+          type: integer
+        health:
+          description: Whether filler is working right now
+          enum:
+            - healthy
+            - attention
+            - unconfigured
+          type: string
+        lastScanAt:
+          description: RFC3339; absent if nothing has ever been fetched
+          type: string
+        sourcesOn:
+          format: int64
+          type: integer
+        sourcesTotal:
+          format: int64
+          type: integer
+      required:
+        - health
+        - sourcesOn
+        - sourcesTotal
+        - clips
       type: object
     GenreFilter:
       additionalProperties: false
@@ -1709,6 +1788,27 @@ components:
         - fromMs
         - toMs
         - channels
+      type: object
+    HoldFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/HoldFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        paths:
+          description: Clip identities (paths relative to FILLER_DIR)
+          items:
+            type: string
+          minItems: 1
+          type:
+            - array
+            - "null"
+      required:
+        - paths
       type: object
     HostedModelView:
       additionalProperties: false
@@ -1912,8 +2012,13 @@ components:
       properties:
         audience:
           type: string
+        autoFiled:
+          type: boolean
         category:
           type: string
+        confidence:
+          format: int64
+          type: integer
         durationMs:
           format: int64
           type: integer
@@ -3587,6 +3692,18 @@ components:
           type: string
         enabled:
           type: boolean
+        fetchEverySeconds:
+          description: Seconds between automatic fetches of this source. 0 means never; omit or null to inherit the global setting.
+          format: int64
+          maximum: 604800
+          minimum: 0
+          type: integer
+        fetchMaxPerRun:
+          description: Most clips to take from this source in one run. Omit or null to inherit the global setting.
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
       required:
         - enabled
       type: object
@@ -3602,6 +3719,12 @@ components:
           type: string
         enabled:
           type: boolean
+        fetchEverySeconds:
+          format: int64
+          type: integer
+        fetchMaxPerRun:
+          format: int64
+          type: integer
         id:
           type: string
       required:
@@ -5428,6 +5551,32 @@ paths:
       summary: Runtime and quality for specific search results
       tags:
         - filler
+  /v1/filler/file:
+    post:
+      description: "Admin only (§10 V38). Admits held clips to the playable catalog — they become matchable into pods. With `asSuggested`, each clip's OWN ungrounded era guess is confirmed as it files (the mock's \"File all as suggested\"), which `bulk/tag` cannot express because it applies one era to the whole selection. Filing by hand CLEARS the auto-filed marker: a human looked."
+      operationId: file-filler-clips
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: File held clips into the catalog
+      tags:
+        - filler
   /v1/filler/fit:
     get:
       description: "The override picker's per-channel note (§10 V35). For every channel: which rung of the §10 ladder this clip would be drawn from, or WHY it would never be picked, plus the operator's pin/exclude state. Computed from the SAME predicates assembly uses, through the same per-channel selection as the pod preview — a note that disagrees with what airs is a confident wrong answer about why a channel looks the way it does. Read-only. ⚠ A PINNED clip reports no rung and no reason: a pin is placed ahead of the ladder, so it has none. ⚠ Every channel is listed, including paused ones — pinning to a paused channel is a decision that takes effect when it resumes."
@@ -5458,6 +5607,32 @@ paths:
       tags:
         - filler
         - channels
+  /v1/filler/hold:
+    post:
+      description: "Admin only (§10 V38). The undo for auto-filing: a clip Loomarr filed without asking goes back to Incoming and stops being matched into pods. ⚠ It does NOT remove the clip or touch the file — that is \"Remove from catalog\", a different action with a different promise."
+      operationId: hold-filler-clips
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HoldFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Send clips back to the review queue
+      tags:
+        - filler
   /v1/filler/incoming:
     get:
       description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
@@ -5727,7 +5902,7 @@ paths:
       tags:
         - filler
     patch:
-      description: "Admin only (§10 V35). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `folder` writes the drop-folder setting; any other id writes that collection's own row. The `library` row is not switchable — nothing scans a media-server library for clips (§10)."
+      description: "Admin only (§10 V35, extended V38c). Off means Loomarr stops scanning, searching and downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the source keeps its licence and fetch history, so switching it back on resumes rather than restarts. `folder` writes the drop-folder setting; any other id writes that source's own row. ⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never auto-fetch this source, or a positive number of seconds. Library sources became switchable in V38c, when §10 restored them to being scanned."
       operationId: set-filler-source-enabled
       parameters:
         - in: path
@@ -5754,7 +5929,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Switch a source on or off
+      summary: Switch a source on or off, and tune how often it is fetched
       tags:
         - filler
   /v1/filler/splits/{proposalId}:
@@ -5853,6 +6028,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: AI-tag untagged clips
+      tags:
+        - filler
+  /v1/filler/watch:
+    get:
+      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
+      operationId: filler-watch
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerWatchOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Is filler working right now
       tags:
         - filler
   /v1/filler/{id}:

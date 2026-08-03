@@ -151,8 +151,13 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:  st,
-		Auth:   api.NewTokenAuthorizer(adminToken),
+		Store: st,
+		// ⚠ `testAuthorizer`, not `NewTokenAuthorizer(adminToken)`. The production authorizer
+		// resolves admin-or-ANONYMOUS only (API_TOKEN is a break-glass admin credential, §11), so
+		// with it a test that passes `memberToken` is really testing an anonymous caller — which
+		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
+		// is member-readable and that has to be provable.
+		Auth:   testAuthorizer{},
 		Log:    slog.New(slog.DiscardHandler),
 		Filler: ff,
 	})
@@ -164,7 +169,10 @@ func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) 
 func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := store.Clip{}
-	// Path is identity since §9.1; the Tunarr uuid rides alongside for filler-lists.
+	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
+	// both so assertions stay legible — the store does not care what a hash looks like, and the
+	// 64-hex shape is enforced (and tested) in `filler.ClipPath`.
+	c.Hash = id
 	c.Path = id
 	c.TunarrProgramID = "tun-" + id
 	c.Name = "clip " + id

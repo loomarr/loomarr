@@ -12,6 +12,7 @@ import (
 	"github.com/mantonx/loomarr/internal/clipfetch"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -92,6 +93,61 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 	return a.st.DeleteClipsNotIn(ctx, keep)
 }
 
+// fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
+//
+// ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the
+// fetch path puts its `Enabled && Fetchable()` check. Both predicates are the store's domain
+// knowledge about a row; re-deriving them inside the job is how the two start disagreeing about
+// what a source is for.
+type fillerScanSourceAdapter struct{ st store.Store }
+
+func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.ScanSource, error) {
+	srcs, err := a.st.ListFillerSources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.ScanSource, 0, len(srcs))
+	for _, s := range srcs {
+		if s.Enabled && s.Scannable() {
+			out = append(out, filler.ScanSource{ID: s.ID, Kind: s.Kind, URI: s.URI})
+		}
+	}
+	return out, nil
+}
+
+// fillerLibraryAdapter bridges the media-server client → filler.LibraryLister (§10 V38c).
+//
+// ⚠ It resolves the operator's library NAME to the item id the API needs. The operator types
+// "Commercials" because that is what their media server shows them; `ListFillerClips` needs the
+// library's id. Making the operator find an id would be asking them to do a lookup Loomarr can do.
+//
+// ⚠ An unknown name is an EMPTY result and no error. The operator named a library their server
+// does not have, which is "found nothing" — a scan that reports zero clips against a named
+// library, not a failure that stops the other sources.
+type fillerLibraryAdapter struct{ lib *library.Client }
+
+func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string) ([]filler.LibraryClip, error) {
+	if a.lib == nil || name == "" {
+		return nil, nil
+	}
+	id, err := a.lib.LibraryIDByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if id == "" {
+		return nil, nil // no such library on this server
+	}
+	clips, err := a.lib.ListFillerClips(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.LibraryClip, 0, len(clips))
+	for _, c := range clips {
+		out = append(out, filler.LibraryClip{Name: c.Name, Path: c.Path})
+	}
+	return out, nil
+}
+
 // fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
 type fillerTagStoreAdapter struct{ st store.Store }
 
@@ -110,9 +166,89 @@ func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, er
 	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
 }
 
+func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
+	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+}
+
+// fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
+type fetchStoreAdapter struct {
+	st store.Store
+	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
+	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
+	fetchEvery func() time.Duration
+}
+
+func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.FetchSource, error) {
+	srcs, err := a.st.ListFillerSources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.FetchSource, 0, len(srcs))
+	for _, s := range srcs {
+		// ⚠ The three-state override is resolved HERE, by the store's own method, and handed to
+		// the fetcher already decided (§10 V38c). `FetchEvery` is the single implementation of
+		// nil-vs-0-vs-N; re-deriving it in the fetcher is how the two would drift, and the way
+		// they would drift is toward treating "never" as "inherit" — i.e. fetching from a source
+		// the operator opted out of.
+		//
+		// The interval itself is not passed on: the JOB's cron decides when a pass happens, so
+		// what the fetcher needs from a per-source interval is only whether it is zero.
+		_, pollable := s.FetchEvery(a.fetchEvery())
+		out = append(out, filler.FetchSource{
+			ID: s.ID, Kind: s.Kind, URI: s.URI, Enabled: s.Enabled,
+			NeverFetch: !pollable,
+			MaxPerRun:  s.MaxPerRun(0),
+		})
+	}
+	return out, nil
+}
+
+// CatalogPaths returns every clip path.
+//
+// ⚠ `IncludeHeld` is REQUIRED. A held clip is not in the catalog by the default filter, but it is
+// very much already on disk — omitting it would make auto-fetch re-download everything sitting in
+// the review queue, on every pass, forever.
+func (a fetchStoreAdapter) CatalogPaths(ctx context.Context) ([]string, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeRemoved: true})
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, len(clips))
+	for i, c := range clips {
+		paths[i] = c.Path
+	}
+	return paths, nil
+}
+
+func (a fetchStoreAdapter) MarkFetched(ctx context.Context, id string, at time.Time) error {
+	return a.st.MarkFillerSourceFetched(ctx, id, at)
+}
+
+// archiveDiscoverAdapter bridges clipfetch → filler.FetchDiscoverer.
+type archiveDiscoverAdapter struct{}
+
+func (archiveDiscoverAdapter) DiscoverCollection(ctx context.Context, ref string, limit int) ([]filler.DiscoveredRef, int, error) {
+	res, err := clipfetch.NewArchiveDownloader(false).DiscoverCollection(ctx, ref, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]filler.DiscoveredRef, 0, len(res.Items))
+	for _, it := range res.Items {
+		out = append(out, filler.DiscoveredRef{ID: it.ID, URL: "https://archive.org/details/" + it.ID})
+	}
+	// ⚠ `res.Total` is the collection's FULL size, not len(Items) — see DiscoveryResult. The
+	// fetcher does not use it today, but returning len() here would quietly make an 8362-item
+	// collection report 5 to whatever reads it next.
+	return out, res.Total, nil
+}
+
 // clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).
 type clipCatalogAdapter struct{ st store.Store }
 
+// ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,
+// coverage and the filler-list builder all read through here, so the exclusion living in
+// ListClips means none of them can forget it. Adding IncludeHeld to this call would put every
+// unreviewed download into live channels.
 func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error) {
 	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
 	if err != nil {

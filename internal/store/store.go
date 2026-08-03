@@ -156,6 +156,13 @@ type ClipStore interface {
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
+	//
+	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
+	// UpsertClip omits both, which is what stops the folder scan filing a held clip by finding
+	// its file still on disk. `autoFiled` marks that no human looked before it became playable,
+	// and is cleared whenever a person decides.
+	SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error)
 	// UpdateClipTags edits a clip's era/audience/category (+ ai flag) — the tag
 	// editor (§10) and the AI-tagging job. suggestedEra records an UNGROUNDED
 	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
@@ -226,6 +233,12 @@ type FillerSourceStore interface {
 	DeleteFillerSource(ctx context.Context, id string) error
 	// MarkFillerSourceFetched stamps a successful fetch, for the Sources tab's "last fetched".
 	MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error
+	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
+	//
+	// ⚠ The ONLY writer of those columns, like SetFillerSourceEnabled owns `enabled` — the upsert
+	// omits them so a re-register cannot blank an operator's tuning. nil clears an override back
+	// to "inherit the global", which is a real action and must be expressible.
+	SetFillerSourceFetchPolicy(ctx context.Context, id string, everySeconds, maxPerRun *int) error
 	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.

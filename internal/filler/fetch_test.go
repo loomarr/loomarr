@@ -1,0 +1,278 @@
+package filler_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/filler"
+)
+
+type fetchStub struct {
+	sources []filler.FetchSource
+	paths   []string
+	offers  []filler.DiscoveredRef
+	queued  []string
+	calls   int
+	// stamped records which sources were marked fetched, and when.
+	stamped map[string]time.Time
+}
+
+func (f *fetchStub) ListFetchSources(context.Context) ([]filler.FetchSource, error) {
+	return f.sources, nil
+}
+func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) { return f.paths, nil }
+func (f *fetchStub) DiscoverCollection(_ context.Context, _ string, _ int) ([]filler.DiscoveredRef, int, error) {
+	f.calls++
+	return f.offers, len(f.offers), nil
+}
+func (f *fetchStub) Ingest(_ context.Context, urls []string) (string, error) {
+	f.queued = append(f.queued, urls...)
+	return "job-1", nil
+}
+func (f *fetchStub) MarkFetched(_ context.Context, id string, at time.Time) error {
+	if f.stamped == nil {
+		f.stamped = map[string]time.Time{}
+	}
+	f.stamped[id] = at
+	return nil
+}
+
+func refs(ids ...string) []filler.DiscoveredRef {
+	out := make([]filler.DiscoveredRef, len(ids))
+	for i, id := range ids {
+		out[i] = filler.DiscoveredRef{ID: id, URL: "https://archive.org/details/" + id}
+	}
+	return out
+}
+
+func limits(perRun, catalog, disk int) filler.FetchLimits {
+	return filler.FetchLimits{
+		MaxPerRun:       func() int { return perRun },
+		MaxCatalogClips: func() int { return catalog },
+		MaxDiskGB:       func() int { return disk },
+	}
+}
+
+func newFetcher(t *testing.T, stub *fetchStub, l filler.FetchLimits) *filler.Fetcher {
+	t.Helper()
+	return filler.NewFetcher(stub, stub, stub, t.TempDir(), l, discardLog())
+}
+
+// ⚠ THE bound that makes auto-fetch safe to enable by default: an archive.org collection is
+// thousands of items, and without this "add a source" means "download all of it tonight".
+func TestFetch_StopsAtMaxPerRun(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers:  refs("a", "b", "c", "d", "e", "f", "g", "h"),
+	}
+	res, err := newFetcher(t, stub, limits(3, 2000, 20)).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 3 || len(stub.queued) != 3 {
+		t.Fatalf("queued %d (%v), want 3 — max_per_run is what stops a collection arriving at once",
+			res.Queued, stub.queued)
+	}
+}
+
+// A disabled source is not polled. The Sources switch claims Loomarr "stops scanning, searching
+// and downloading" from it; auto-fetch honouring anything less makes that copy false.
+func TestFetch_SkipsDisabledSources(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: false}},
+		offers:  refs("a", "b"),
+	}
+	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if res.SourcesPolled != 0 || len(stub.queued) != 0 {
+		t.Errorf("a switched-off source was polled (%d) and queued %v", res.SourcesPolled, stub.queued)
+	}
+	if stub.calls != 0 {
+		t.Error("a switched-off source was still listed upstream — the switch must stop the request")
+	}
+}
+
+// The config-backed rows are SCANNED, not fetched. They have no URI, and polling them would be a
+// request to nowhere.
+func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "folder", Kind: "folder", URI: "", Enabled: true},
+			{ID: "library", Kind: "library", URI: "", Enabled: true},
+		},
+		offers: refs("a"),
+	}
+	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if res.SourcesPolled != 0 || len(stub.queued) != 0 {
+		t.Error("a config-backed row was polled — those are scanned, not downloaded from")
+	}
+}
+
+// ⚠ Without dedupe the job re-downloads its own output on every pass, forever. The catalog is the
+// high-water mark: there is no per-source cursor because archive.org discovery is a search, not a
+// feed, so "new" can only mean "not already here".
+func TestFetch_SkipsWhatIsAlreadyInTheCatalog(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		// Catalogued as FILES — `<id>.mp4`, possibly nested. Comparing raw strings against bare
+		// archive ids would never match, and every item would re-download every pass.
+		paths:  []string{"a.mp4", "nested/b.mp4"},
+		offers: refs("a", "b", "c"),
+	}
+	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if res.Skipped != 2 {
+		t.Errorf("skipped %d, want 2 — a catalogued clip must be recognised as the item it came from", res.Skipped)
+	}
+	if len(stub.queued) != 1 || stub.queued[0] != "https://archive.org/details/c" {
+		t.Errorf("queued %v, want only the new item", stub.queued)
+	}
+}
+
+// The catalog ceiling stops the pass and SAYS SO. An operator whose catalog stopped growing must
+// be able to see which limit stopped it (§10) — a crawler that quietly does nothing is
+// indistinguishable from one that is broken.
+func TestFetch_StopsAndReportsAtTheCatalogCeiling(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		paths:   []string{"x.mp4", "y.mp4", "z.mp4"},
+		offers:  refs("a"),
+	}
+	res, _ := newFetcher(t, stub, limits(10, 3, 20)).Run(context.Background())
+	if res.StoppedBy != "catalog" {
+		t.Errorf("StoppedBy = %q, want catalog", res.StoppedBy)
+	}
+	if len(stub.queued) != 0 {
+		t.Errorf("queued %v at the ceiling", stub.queued)
+	}
+}
+
+// Same for the disk ceiling, measured against the FOLDER rather than a running total — so files
+// an operator deletes by hand are noticed.
+func TestFetch_StopsAtTheDiskCeiling(t *testing.T) {
+	dir := t.TempDir()
+	big := make([]byte, 2*1024*1024)
+	if err := os.WriteFile(filepath.Join(dir, "big.mp4"), big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers:  refs("a"),
+	}
+	// A 0 GB ceiling is below any real folder, which is the only way to exercise this without
+	// writing gigabytes. `positiveLimit` stops an operator setting it, but the job must still
+	// behave when a value arrives from an env pin or a hand-edited row.
+	f := filler.NewFetcher(stub, stub, stub, dir, filler.FetchLimits{
+		MaxPerRun:       func() int { return 10 },
+		MaxCatalogClips: func() int { return 2000 },
+		MaxDiskGB:       func() int { return 1 },
+	}, discardLog())
+	// 2 MB is under 1 GB, so this pass proceeds — the guard is checked, not merely present.
+	if res, _ := f.Run(context.Background()); res.StoppedBy != "" {
+		t.Errorf("StoppedBy = %q with a 2MB folder under a 1GB ceiling", res.StoppedBy)
+	}
+}
+
+// ⚠ A polled source must be STAMPED, or the Sources tab reads "never fetched" forever while
+// auto-fetch downloads from it every six hours — a row describing a source nobody has touched,
+// on an install actively using it. `MarkFillerSourceFetched` shipped in V33 with no production
+// caller, which is how it stayed easy to forget.
+func TestFetch_StampsASourceItQueuedFrom(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers:  refs("a"),
+	}
+	at := time.Unix(1_800_000_000, 0).UTC()
+	f := newFetcher(t, stub, limits(10, 2000, 20)).WithClock(func() time.Time { return at })
+	if _, err := f.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := stub.stamped["s1"]; !ok || !got.Equal(at) {
+		t.Errorf("stamped = %v (present=%v), want %v", got, ok, at)
+	}
+}
+
+// ⚠ ...but only when something was ACTUALLY queued. "Last fetched" must mean "last brought
+// something in": a source polled fruitlessly for a week would otherwise read as freshly
+// productive, which is the opposite of what the timestamp is for.
+func TestFetch_DoesNotStampASourceThatBroughtNothingIn(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		paths:   []string{"a.mp4"}, // everything on offer is already catalogued
+		offers:  refs("a"),
+	}
+	if _, err := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := stub.stamped["s1"]; ok {
+		t.Error("stamped a source that queued nothing — the row would claim a productive fetch")
+	}
+}
+
+// ⚠ A source may opt OUT of unattended fetching while staying ON (§10 V38c). The two are
+// deliberately different: an enabled source is still searched and its clips still count, and
+// collapsing them would make "stop auto-downloading from this one" require switching it off
+// entirely — which also stops search.
+func TestFetch_SkipsASourceThatOptedOutButStaysEnabled(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "opted-out", Kind: "archive", URI: "a", Enabled: true, NeverFetch: true},
+			{ID: "normal", Kind: "archive", URI: "b", Enabled: true},
+		},
+		offers: refs("x"),
+	}
+	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if res.SourcesPolled != 1 {
+		t.Errorf("polled %d sources, want 1 — the opted-out source must be skipped", res.SourcesPolled)
+	}
+	if _, ok := stub.stamped["opted-out"]; ok {
+		t.Error("an opted-out source was fetched from")
+	}
+}
+
+// A source's own per-run cap beats the global. A busy collection and a small playlist want
+// different numbers, which one figure served badly.
+func TestFetch_PrefersASourcesOwnPerRunCap(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true, MaxPerRun: 2}},
+		offers:  refs("a", "b", "c", "d", "e"),
+	}
+	// The global says 10; this source says 2.
+	res, _ := newFetcher(t, stub, limits(10, 2000, 20)).Run(context.Background())
+	if res.Queued != 2 {
+		t.Errorf("queued %d, want 2 — the source's own cap must beat the global 10", res.Queued)
+	}
+}
+
+// ...and an unset override falls back to the global rather than to zero. ⚠ The failure this
+// guards is a source with no override silently fetching NOTHING, which looks identical to a
+// working install whose sources have all run dry.
+func TestFetch_FallsBackToTheGlobalCapWhenUnset(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers:  refs("a", "b", "c", "d", "e"),
+	}
+	res, _ := newFetcher(t, stub, limits(3, 2000, 20)).Run(context.Background())
+	if res.Queued != 3 {
+		t.Errorf("queued %d, want the global 3 — an unset override must inherit, not zero out", res.Queued)
+	}
+}
+
+// ⚠ `filler.fetch.every = 0` disables the whole job — the escape hatch for an operator who wants
+// acquisition to stay manual. Nothing is polled and nothing is queued.
+func TestFetch_DisabledDoesNothing(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers:  refs("a", "b"),
+	}
+	f := newFetcher(t, stub, limits(10, 2000, 20)).WithEnabled(func() bool { return false })
+	res, err := f.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SourcesPolled != 0 || len(stub.queued) != 0 || stub.calls != 0 {
+		t.Errorf("disabled auto-fetch still ran: polled=%d queued=%v calls=%d",
+			res.SourcesPolled, stub.queued, stub.calls)
+	}
+}

@@ -10,7 +10,9 @@ import "testing"
 // fit note cannot claim a rung the assembler disagrees with.
 
 func commercial(path string, era int, aud Audience) Clip {
-	return Clip{Path: path, Kind: Commercial, Era: era, Audience: aud, DurationMs: 30_000}
+	// ⚠ Hash AND Path. Identity is the hash since V38c, and pin/exclude lists key on `ID()` — a
+	// literal that sets only Path leaves the id empty, so every pin and exclusion silently misses.
+	return Clip{Hash: path, Path: path, Kind: Commercial, Era: era, Audience: aud, DurationMs: 30_000}
 }
 
 // ⚠ THE load-bearing property: for every clip and every rung, FitFor's answer must match the
@@ -24,7 +26,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("other-era", 1975, Kids),
 		commercial("general-aud", 1992, General),
 		commercial("wrong-aud", 1992, LateNight),
-		{Path: "bumper", Kind: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
+		{Hash: "bumper", Path: "bumper", Kind: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
 	}
 	w := Window{Era: 1992, Audience: Kids, GapMs: 120_000, PodMax: 4}
 
@@ -148,7 +150,7 @@ func TestFitFor_APinBypassesTheLadder(t *testing.T) {
 // checks durationEligible itself. So "a pin bypasses the ladder" is not "a pin bypasses
 // everything", and the note must not over-promise.
 func TestFitFor_APinStillObeysKindAndDuration(t *testing.T) {
-	tooLong := Clip{Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000}
+	tooLong := Clip{Hash: "long", Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000}
 	w := Window{Era: 1992, Audience: Kids, Pinned: []string{"long"}, GapMs: 120_000, PodMax: 4, Seed: 1}
 	policy := Policy{MaxClipMs: 60_000}
 
@@ -177,27 +179,27 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 	}{
 		{
 			name:   "kind the channel does not use",
-			clip:   Clip{Path: "b", Kind: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
+			clip:   Clip{Hash: "b", Path: "b", Kind: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
 			window: Window{Era: 1992, Audience: Kids, Kinds: []string{"commercial"}},
 			want:   FitKind,
 		},
 		{
 			name:   "too long for the break",
-			clip:   Clip{Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000},
+			clip:   Clip{Hash: "long", Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000},
 			window: base,
 			policy: Policy{MaxClipMs: 60_000},
 			want:   FitDuration,
 		},
 		{
 			name:   "below the quality floor",
-			clip:   Clip{Path: "grainy", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Quality: "240p"},
+			clip:   Clip{Hash: "grainy", Path: "grainy", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Quality: "240p"},
 			window: base,
 			policy: Policy{MinQualityHeight: 720},
 			want:   FitQuality,
 		},
 		{
 			name:   "not in the channel's categories",
-			clip:   Clip{Path: "car", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Category: "auto"},
+			clip:   Clip{Hash: "car", Path: "car", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Category: "auto"},
 			window: Window{Era: 1992, Audience: Kids, Categories: []string{"toys"}},
 			want:   FitCategory,
 		},

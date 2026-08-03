@@ -1,5 +1,7 @@
 package settings
 
+import "fmt"
+
 // declared is the canonical registry content: every app-managed setting, in the
 // order it appears in design.md §15. This list IS the contract — design.md §15
 // is its human mirror and `make config-docs` its generated reference. A key added
@@ -9,6 +11,47 @@ package settings
 // are NOT here — they stay in config.Config (config-design §1 classification).
 // Generated secrets (SESSION_SECRET, API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
 // (minted, not demanded — §4), not the app-managed registry.
+
+// autoFileConfidenceRange bounds `filler.autofile.min_confidence` to 50–95 (§10 V38).
+//
+// ⚠ **The upper bound is load-bearing, not cosmetic.** `filler.MaxAutoFileConfidence` is 95 and
+// an ungrounded era is capped strictly BELOW it, which is what guarantees no settable threshold
+// can auto-file a fabricated era. Raising this ceiling without raising that cap silently breaks
+// the guarantee §10 makes.
+//
+// ⚠ The number is repeated here rather than imported: `settings` must not depend on `filler`
+// (the dependency runs the other way — the tagger reads settings). `filler`'s own test pins the
+// relationship, so a divergence fails there rather than going unnoticed.
+//
+// The lower bound is a usability floor: below 50 the threshold admits clips whose tags did not
+// fully verify, which makes Incoming an empty room and the catalog a surprise.
+func autoFileConfidenceRange(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number")
+	}
+	if n < 50 || n > 95 {
+		return fmt.Errorf("want 50-95 (got %d) — below 50 files clips whose tags didn't verify; above 95 nothing would ever file", n)
+	}
+	return nil
+}
+
+// positiveLimit rejects a zero or negative cap.
+//
+// ⚠ Zero is refused rather than treated as "unlimited". A limit key silently meaning its own
+// opposite is how an operator sets 0 expecting "no fetching" and gets an uncapped crawler.
+// Turning auto-fetch OFF is `filler.fetch.every = 0`, which says what it does.
+func positiveLimit(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number")
+	}
+	if n < 1 {
+		return fmt.Errorf("want 1 or more (got %d) — to stop fetching automatically, set filler.fetch.every to 0", n)
+	}
+	return nil
+}
+
 func declared() []Setting {
 	return []Setting{
 		// --- Connections: media server (§15, Phase 5) ---
@@ -373,7 +416,27 @@ func declared() []Setting {
 			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", EnvVar: "FILLER_DIR", Group: GroupFiller,
 			Kind: KindString, Default: "/data/filler", Required: FeatureFiller,
-			Doc: "Drop-folder Loomarr registers as a Tunarr 'local' source for commercials/bumpers. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
+			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
+		},
+		{
+			// The watch folder (§10 V38c, "Two folders, one pipeline"). Clips ARRIVE here —
+			// downloads land here, operators drop files here — and every sync drains it into the
+			// clip folder above.
+			//
+			// ⚠ **The default is EMPTY, resolved to `<filler.dir>/_watch` by the reader**, not a
+			// literal `/data/filler/_watch`. A literal would silently stop tracking the moment an
+			// operator pointed `filler.dir` at an existing library on another disk: arrivals would
+			// keep landing under `/data` while the catalog looked elsewhere, and the drop-folder
+			// would appear broken with both settings looking correct.
+			//
+			// ⚠ **Inside the clip folder rather than a sibling.** A sibling needs its own mounted
+			// volume, and an unmounted watch folder loses anything not yet filed on the next
+			// restart — silently, because an empty folder is also what success looks like. The
+			// scan skips `_watch` by name so a waiting file is never catalogued from its arrival
+			// path (which would then be pruned the moment intake moved it).
+			Key: "filler.watch_dir", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
+			Kind: KindString, Default: "",
+			Doc: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
 		},
 		{
 			Key: "filler.sync_every", EnvVar: "FILLER_SYNC_EVERY", Group: GroupFiller,
@@ -402,6 +465,65 @@ func declared() []Setting {
 			Key: "filler.ai_tagging", EnvVar: "FILLER_AI_TAGGING", Group: GroupFiller,
 			Kind: KindBool, Default: false,
 			Doc: "Enable AI tagging of untagged commercials (era/audience/category).",
+		},
+		// Auto-filing (§10 V38). ⚠ These two keys were REMOVED from §15 in V35's review as
+		// declared-but-unconsumed — §15's own rule is that a setting not in the registry does not
+		// exist, and the corollary is that one nothing READS does not either. They return here
+		// with their consumer in the same PR: the tag job reads them, and a test proves a clip
+		// below the threshold reaches Incoming instead of the catalog.
+		//
+		// ⚠ **ON by default** (maintainer, 2026-08-02), which means an existing install begins
+		// filing clips without a human on its first tagging run after upgrade. What makes that
+		// safe is not this number but §10's grounding CAP: an ungrounded era scores below every
+		// reachable threshold, so the fabrication class stays with a person regardless of what
+		// this is set to. `filler.Score` owns that property and a sabotage test pins it.
+		{
+			Key: "filler.autofile.enabled", EnvVar: "FILLER_AUTOFILE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
+		},
+		{
+			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
+			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
+			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
+			Key: "filler.autofile.min_confidence", EnvVar: "FILLER_AUTOFILE_MIN_CONFIDENCE", Group: GroupFiller,
+			Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
+			Doc: "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
+		},
+		// ⚠ `filler.autofile.normalize_loudness` is NOT declared here yet, deliberately. The
+		// loudness pass (ffmpeg `loudnorm`) is real work that is not built, and §15's rule is that
+		// a setting nothing READS does not exist — the exact defect that got the two keys above
+		// removed in V35's review. Declaring the toggle first would repeat it inside the very
+		// phase that records the lesson. It lands with its consumer.
+		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
+		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
+		// survives as these bounds rather than as a prohibition.
+		//
+		// ⚠ Every one of them fails toward doing LESS. An operator who never opens this page gets
+		// a trickle they can live with; the failure mode being designed against is "add a source,
+		// wake up to 8,000 files".
+		{
+			Key: "filler.fetch.every", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Default: "6h",
+			Doc: "How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself.",
+		},
+		{
+			Key: "filler.fetch.max_per_run", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Validate: positiveLimit,
+			Doc: "How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once.",
+		},
+		{
+			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
+			// a deliberate act and is not stopped by this — a ceiling on what happens while
+			// nobody is looking is not a ceiling on what someone chooses to do.
+			Key: "filler.fetch.max_catalog_clips", EnvVar: "FILLER_FETCH_MAX_CATALOG_CLIPS", Group: GroupFiller,
+			Kind: KindInt, Default: 2000, Validate: positiveLimit,
+			Doc: "Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand.",
+		},
+		{
+			Key: "filler.fetch.max_disk_gb", EnvVar: "FILLER_FETCH_MAX_DISK_GB", Group: GroupFiller,
+			Kind: KindInt, Default: 20, Validate: positiveLimit,
+			Doc: "Stop fetching automatically once the filler folder reaches this size in GB.",
 		},
 		{
 			Key: "filler.breaks_per_hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,
@@ -565,6 +687,19 @@ func declared() []Setting {
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */15 * * * *",
 			Doc: "How often Loomarr syncs the filler catalog (cron).",
+		},
+		{
+			// ⚠ A scheduler Job's `ScheduleKey` MUST be declared here — `Resolve` panics on an
+			// undeclared key, so a job registered without its row takes the whole app down at
+			// boot. Caught by `make check`, which is the right place, but the coupling is easy
+			// to miss when adding a job.
+			//
+			// Distinct from `filler.fetch.every`, which is the operator-facing "how often" in the
+			// Filler group; this is the cron the scheduler actually runs on, in Advanced beside
+			// its siblings. The two agree by default (6h).
+			Key: "job.filler_fetch.schedule", EnvVar: "JOB_FILLER_FETCH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 */6 * * *",
+			Doc: "How often Loomarr checks your filler sources for new clips (cron).",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,

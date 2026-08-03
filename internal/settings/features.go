@@ -1,6 +1,9 @@
 package settings
 
-import "os"
+import (
+	"os"
+	"os/exec"
+)
 
 // FeatureSet is the computed availability of each gated capability (config-design
 // §7). One function produces it; the API 409s, the tab empty states, and the
@@ -27,7 +30,24 @@ type FeatureSet struct {
 	// so OFF now means a DEGRADED install: a custom image without the vendored binaries,
 	// or a configured path that is missing or not executable. The UI copy must not send
 	// an operator hunting for an image tag that is not published.
+	//
+	// ⚠ **`Ingest` means "SOME source can download", not "everything works"** (V38b). It is the OR
+	// of the two gates below, kept so existing callers that only ask "is downloading possible at
+	// all" keep working. Anything reporting WHICH source is available must read `IngestArchive` /
+	// `IngestYouTube` instead — see the note on those.
 	Ingest bool
+	// IngestArchive: archive.org fetches, which use plain HTTP and need only ffmpeg (to probe and
+	// thumbnail what they fetched).
+	//
+	// ⚠ Split out because one flag for both downloaders was a real defect: a missing yt-dlp
+	// switched off archive.org too, despite that path never invoking it — and the STARTER PULL is
+	// an archive.org collection, so first-run acquisition was blocked by a binary it does not use.
+	// The invariant "every ingest needs yt-dlp" was true when written and became false when the
+	// archive downloader landed beside it.
+	IngestArchive bool
+	// IngestYouTube: yt-dlp fetches. Needs yt-dlp AND ffmpeg (yt-dlp shells out to it to combine
+	// separate video and audio streams).
+	IngestYouTube bool
 }
 
 // Available reports whether a named feature is on.
@@ -43,6 +63,13 @@ func (f FeatureSet) Available(feature Feature) bool {
 		return f.UserSync
 	case FeatureIngest:
 		return f.Ingest
+	// ⚠ Without these two cases the switch falls through to `default: return true` — an UNGATED
+	// answer for a gated capability, i.e. the API would report YouTube available on a box with no
+	// yt-dlp. A new Feature constant is not enough; it has to be answered here too.
+	case FeatureIngestArchive:
+		return f.IngestArchive
+	case FeatureIngestYouTube:
+		return f.IngestYouTube
 	default:
 		return true // ungated
 	}
@@ -54,11 +81,13 @@ func (f FeatureSet) Available(feature Feature) bool {
 // so it's evaluated explicitly rather than forced into the generic fold.
 func (s *Service) Features() FeatureSet {
 	return FeatureSet{
-		Acquisition: s.requesterConfigured(),
-		Suggestions: s.allRequiredSet(FeatureSuggestions),
-		Filler:      s.allRequiredSet(FeatureFiller),
-		UserSync:    !s.isEmpty("library.flavor"),
-		Ingest:      s.ingestAvailable(),
+		Acquisition:   s.requesterConfigured(),
+		Suggestions:   s.allRequiredSet(FeatureSuggestions),
+		Filler:        s.allRequiredSet(FeatureFiller),
+		UserSync:      !s.isEmpty("library.flavor"),
+		Ingest:        s.ingestArchiveAvailable() || s.ingestYouTubeAvailable(),
+		IngestArchive: s.ingestArchiveAvailable(),
+		IngestYouTube: s.ingestYouTubeAvailable(),
 	}
 }
 
@@ -122,16 +151,43 @@ func (s *Service) isEmpty(key string) bool {
 // The paths come from settings (so an operator can point at a newer yt-dlp), but the
 // CHECK is a filesystem probe — which is why this gate is environment-derived rather
 // than completeness-derived. execProbe is injectable so tests never touch the disk.
-func (s *Service) ingestAvailable() bool {
+// ingestArchiveAvailable reports whether archive.org fetches can run: HTTP plus ffmpeg.
+//
+// ⚠ It deliberately does NOT consult yt-dlp. `clipfetch` routes archive.org through a plain
+// net/http downloader; requiring yt-dlp here is what made a source build with ffmpeg installed
+// report "downloading unavailable" while being able to fetch perfectly well.
+func (s *Service) ingestArchiveAvailable() bool {
+	return s.toolRunnable("ingest.ffmpeg_path")
+}
+
+// ingestYouTubeAvailable reports whether yt-dlp fetches can run. Both binaries: yt-dlp shells out
+// to ffmpeg to combine the separate video and audio streams YouTube serves.
+func (s *Service) ingestYouTubeAvailable() bool {
+	return s.toolRunnable("ingest.ytdlp_path") && s.toolRunnable("ingest.ffmpeg_path")
+}
+
+// toolRunnable resolves one tool path and reports whether it names something executable.
+//
+// ⚠ An UNSET path falls back to a `PATH` lookup (V38b). §15 has always described these as
+// "defaulted to the vendored binaries", but the registry defaults were the empty string and only
+// the Docker image set them — so every source build had ingest off even with the tools installed,
+// and the doc and the code disagreed. Looking on PATH is what makes the documented behaviour true.
+func (s *Service) toolRunnable(key string) bool {
 	probe := s.execProbe
 	if probe == nil {
 		probe = isExecutable
 	}
-	ytdlp, ffmpeg := s.resolveString("ingest.ytdlp_path"), s.resolveString("ingest.ffmpeg_path")
-	if ytdlp == "" || ffmpeg == "" {
+	if p := s.resolveString(key); p != "" {
+		return probe(p)
+	}
+	// Unset: find it the way a shell would. LookPath already checks the execute bit, but the
+	// probe still runs so a test double sees every candidate.
+	name := map[string]string{"ingest.ytdlp_path": "yt-dlp", "ingest.ffmpeg_path": "ffmpeg"}[key]
+	if name == "" {
 		return false
 	}
-	return probe(ytdlp) && probe(ffmpeg)
+	found, err := exec.LookPath(name)
+	return err == nil && probe(found)
 }
 
 // isExecutable reports whether path names an existing file with an execute bit. A

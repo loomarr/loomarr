@@ -42,6 +42,9 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *h
 
 func clip(path, source string) store.Clip {
 	var c store.Clip
+	// Hash AND Path — identity is the hash since V38c; a Path-only clip has an empty id, and the
+	// store keys on it, so every row would collide on "".
+	c.Hash = path
 	c.Path = path
 	c.Name = path
 	c.Kind = filler.Commercial

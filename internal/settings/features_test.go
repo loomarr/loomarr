@@ -129,7 +129,7 @@ func TestFeatures_UserSyncTracksMediaServerWiring(t *testing.T) {
 // Ingest is the one gate NOT derived from settings completeness (config-design §7): it
 // depends on whether the running IMAGE carries yt-dlp + ffmpeg. The probe is injected so
 // this never touches the filesystem (CLAUDE.md: unit tests stay off the disk).
-func TestFeatures_IngestNeedsBothToolsPresent(t *testing.T) {
+func TestFeatures_IngestGatesArchiveAndYouTubeSeparately(t *testing.T) {
 	svc := func(db map[string]string, present ...string) *Service {
 		s := featureService(t, db)
 		set := map[string]bool{}
@@ -141,26 +141,72 @@ func TestFeatures_IngestNeedsBothToolsPresent(t *testing.T) {
 	}
 	paths := map[string]string{"ingest.ytdlp_path": "/bin/yt-dlp", "ingest.ffmpeg_path": "/bin/ffmpeg"}
 
-	// loomarr:latest — no tool paths configured at all.
-	if svc(nil).Features().Ingest {
-		t.Error("no tool paths → ingest must be off (this is the default image)")
-	}
-	// Configured but missing on disk: off, and NOT a boot failure — the image is
+	// Configured but missing on disk: everything off, and NOT a boot failure — the image is
 	// otherwise perfectly usable without ingest.
-	if svc(paths).Features().Ingest {
-		t.Error("paths configured but absent on disk → ingest must be off")
+	if f := svc(paths).Features(); f.Ingest || f.IngestArchive || f.IngestYouTube {
+		t.Error("paths configured but absent on disk → every ingest gate must be off")
 	}
-	// Only one tool present. yt-dlp cannot merge video+audio without ffmpeg, so a
-	// half-present image would accept the request and fail mid-download on exactly the
-	// high-resolution sources most worth fetching.
-	if svc(paths, "/bin/yt-dlp").Features().Ingest {
-		t.Error("yt-dlp without ffmpeg → ingest must be off")
+
+	// ⚠ THE case this test exists for, and the one the previous version asserted BACKWARDS.
+	// archive.org is fetched over plain HTTP; ffmpeg only probes and thumbnails what arrived.
+	// Requiring yt-dlp made a source build with ffmpeg report "downloading unavailable" while
+	// being perfectly able to fetch — and the STARTER PULL is an archive.org collection, so
+	// first-run acquisition was blocked by a binary it never invokes.
+	ffmpegOnly := svc(paths, "/bin/ffmpeg").Features()
+	if !ffmpegOnly.IngestArchive {
+		t.Error("ffmpeg present → archive.org fetches must be available; they never touch yt-dlp")
 	}
-	if svc(paths, "/bin/ffmpeg").Features().Ingest {
-		t.Error("ffmpeg without yt-dlp → ingest must be off")
+	if ffmpegOnly.IngestYouTube {
+		t.Error("no yt-dlp → YouTube must be off")
 	}
+	if !ffmpegOnly.Ingest {
+		t.Error("Ingest is the OR of the two — one working source means downloading IS possible")
+	}
+
+	// ⚠ The other direction is a REAL dependency and stays: yt-dlp shells out to ffmpeg to
+	// combine the separate video and audio streams YouTube serves, so a half-present install
+	// would accept the request and fail mid-download on exactly the high-resolution sources most
+	// worth fetching. The old test asserted both directions; only this one was ever justified.
+	ytdlpOnly := svc(paths, "/bin/yt-dlp").Features()
+	if ytdlpOnly.IngestYouTube {
+		t.Error("yt-dlp without ffmpeg → YouTube must be off (it cannot merge video+audio)")
+	}
+	if ytdlpOnly.IngestArchive || ytdlpOnly.Ingest {
+		t.Error("no ffmpeg → nothing can be probed, so no source is usable")
+	}
+
 	// Both present — the normal case on the shipped image.
-	if !svc(paths, "/bin/yt-dlp", "/bin/ffmpeg").Features().Ingest {
-		t.Error("both tools present → ingest must be on")
+	if f := svc(paths, "/bin/yt-dlp", "/bin/ffmpeg").Features(); !f.Ingest || !f.IngestArchive || !f.IngestYouTube {
+		t.Errorf("both tools present → every gate must be on, got %+v", f)
+	}
+}
+
+// ⚠ An UNSET path is looked up on PATH (V38b). §15 has always described these as "defaulted to
+// the vendored binaries", but the registry defaults were "" and only the Docker image set them —
+// so every source build had ingest off even with the tools installed. Doc and code disagreed;
+// this is the code catching up.
+func TestFeatures_UnsetToolPathsFallBackToPathLookup(t *testing.T) {
+	s := featureService(t, nil)
+	// The probe stands in for "this is on PATH and executable" — LookPath resolves the name, and
+	// whatever it returns is accepted here.
+	s.execProbe = func(string) bool { return true }
+
+	if !s.Features().IngestArchive {
+		t.Error("ffmpeg on PATH with no configured path → archive fetches must be available")
+	}
+}
+
+// ⚠ A new Feature constant that `Available` does not answer falls through to `default: return
+// true` — an UNGATED answer for a gated capability. Concretely: the API would report YouTube
+// downloads available on a box with no yt-dlp, which is the opposite of the truth and exactly the
+// class of silent-wrong-answer this whole split exists to fix.
+func TestFeatureSet_AvailableAnswersEveryIngestGate(t *testing.T) {
+	off := FeatureSet{} // everything false
+
+	for _, f := range []Feature{FeatureIngest, FeatureIngestArchive, FeatureIngestYouTube} {
+		if off.Available(f) {
+			t.Errorf("%s reported AVAILABLE on an all-off FeatureSet — Available() has no case for "+
+				"it and fell through to the ungated default", f)
+		}
 	}
 }

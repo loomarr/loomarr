@@ -12,6 +12,10 @@ RETIRED=(
   # an image tag that is not published. Exactly the docs/help failure this script exists for.
   'loomarr-ingest|the ingest sidecar was folded into the core (internal/clipfetch); there is no separate service or image'
   'loomarr:filler|the two-tag split was replaced by the SINGLE image (§16) — yt-dlp/ffmpeg always ship, so telling an operator to switch tags is a dead end'
+  # V38b: clips arrive because you added a SOURCE, not because you pasted a URL. The panel was
+  # the odd one out once Sources had registration, per-row search, pulls and auto-fetch — and
+  # leaving its name in help text would send an operator hunting a box that is not there.
+  'IngestPanel|the paste-a-URL box was retired (V38b); clips arrive from a registered source — add one under Filler → Sources'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how

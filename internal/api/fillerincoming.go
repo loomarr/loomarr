@@ -25,12 +25,16 @@ import (
 // question ("what is waiting on me?"), and a client that fetched them separately would render a
 // half-empty queue whenever one call was slower — which is exactly when the queue matters.
 //
-// ⚠ **Nothing here invents a confidence score.** The mock draws a per-ask confidence bar and a
-// rationale; the tagger does not record either. `reason` is therefore derived from the real
-// state (an ungrounded era, or no tags at all), and there is no numeric confidence field —
-// putting a number in front of an operator that nothing measured is the failure the estimate
-// field on a pull is also written to avoid. `filler.autofile.*` is the knob that WOULD need one;
-// it is not built yet, and this DTO deliberately does not pretend otherwise.
+// ⚠ **The "nothing here invents a confidence score" rule is RETIRED (V38), not weakened.** It
+// stood for two phases and was right the whole time: the mock drew a confidence bar, the tagger
+// recorded nothing, and rendering a number nothing measured would have been the same failure as a
+// fabricated pull estimate. V38 built the thing the rule was waiting for — a **grounding-capped**
+// score (`filler.TagSuggestion.Score`), where the model may only lower a ceiling set by what
+// could actually be verified in the clip's own text. So `confidence` is now a real measurement,
+// and `filler.autofile.*` — the knob that rule named as needing one — is registered and read.
+//
+// ⚠ The bar the rule set still applies to everything else here: `reason` stays derived from real
+// state and is never generated prose.
 
 // IncomingAskDTO is one clip waiting on a human decision about its tags.
 type IncomingAskDTO struct {
@@ -52,6 +56,19 @@ type IncomingAskDTO struct {
 	// Reason is why this clip is in the queue, in the operator's terms. Derived from real
 	// state, never generated prose.
 	Reason string `json:"reason"`
+	// Confidence (0-100) is the grounding-capped tagging score (§10 V38) — how sure Loomarr is
+	// that these tags are right, and what the auto-file threshold compares against.
+	//
+	// ⚠ NEVER the model's self-assessment. Grounding facts cap it and the model may only lower
+	// that cap, which is why an ungrounded era sits low here however certain the model claimed
+	// to be. 0 = never scored (a clip catalogued before V38, or one the tagger has not reached).
+	Confidence int `json:"confidence,omitempty"`
+	// AutoFiled marks a clip already filed WITHOUT a human — shown so an operator who did not
+	// expect auto-filing can find what happened and send it back.
+	//
+	// ⚠ Asks are held clips, so this is false on all of them. It carries meaning on the
+	// `recentlyFiled` half below, and lives on the shared DTO so both halves render identically.
+	AutoFiled bool `json:"autoFiled,omitempty"`
 }
 
 // IncomingReelDTO is one compilation mid-split.
@@ -69,7 +86,15 @@ type fillerIncomingOutput struct {
 	Body struct {
 		Asks  []IncomingAskDTO  `json:"asks"`
 		Reels []IncomingReelDTO `json:"reels"`
-		Total int               `json:"total" doc:"Everything waiting on a human — asks plus reels"`
+		// RecentlyFiled is what Loomarr filed WITHOUT asking (§10 V38) — the audit half of
+		// auto-filing.
+		//
+		// ⚠ It is not decoration and not telemetry. Auto-filing is on by default, so on an
+		// upgraded install clips begin entering the catalog unattended; an operator who did not
+		// expect that must be able to see exactly what was filed and send any of it back. An
+		// unattended decision that cannot be found is not one an appliance gets to make (§10).
+		RecentlyFiled []IncomingAskDTO `json:"recentlyFiled"`
+		Total         int              `json:"total" doc:"Everything waiting on a human — asks plus reels"`
 	}
 }
 
@@ -93,24 +118,18 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
 
-	clips, err := s.store.ListClips(ctx, store.ClipFilter{})
+	// ⚠ HELD clips are the queue (§10 V38). Before the lifecycle existed this read the whole
+	// catalog and inferred "waiting" from missing tags; now waiting is a STATE, so the queue is
+	// simply what is held. `HeldOnly` is required — the default filter excludes exactly these.
+	held, err := s.store.ListClips(ctx, store.ClipFilter{HeldOnly: true})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list clips", err)
 	}
 
 	out := &fillerIncomingOutput{}
-	out.Body.Asks = make([]IncomingAskDTO, 0)
-	for _, c := range clips {
-		reason, ok := askReason(c)
-		if !ok {
-			continue
-		}
-		out.Body.Asks = append(out.Body.Asks, IncomingAskDTO{
-			Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
-			Thumbnail: c.Thumbnail, Kind: string(c.Kind), Era: c.Era,
-			Audience: string(c.Audience), Category: c.Category,
-			SuggestedEra: c.SuggestedEra, Reason: reason,
-		})
+	out.Body.Asks = make([]IncomingAskDTO, 0, len(held))
+	for _, c := range held {
+		out.Body.Asks = append(out.Body.Asks, incomingDTO(c, askReasonFor(c)))
 	}
 	// An ungrounded era sorts ahead of a bare untagged clip: it is a decision with a proposed
 	// answer (one click), where an untagged clip needs the operator to supply everything.
@@ -138,27 +157,82 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		}
 	}
 
+	// The audit half: what was filed with nobody looking. ⚠ A read failure here is NOT fatal —
+	// same call as the split proposals above. Losing the whole tab because the audit list did not
+	// load would take away the queue an operator CAN act on.
+	out.Body.RecentlyFiled = make([]IncomingAskDTO, 0)
+	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{}); ferr != nil {
+		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
+	} else {
+		for _, c := range filed {
+			if !c.AutoFiled {
+				continue
+			}
+			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c)))
+		}
+		// Highest confidence last: the ones worth a second look are the ones Loomarr was least
+		// sure about, so they sort to the top where an operator scanning the list meets them first.
+		sort.SliceStable(out.Body.RecentlyFiled, func(i, j int) bool {
+			return out.Body.RecentlyFiled[i].Confidence < out.Body.RecentlyFiled[j].Confidence
+		})
+	}
+
+	// ⚠ Total counts what is WAITING, so recentlyFiled is deliberately excluded: it is an audit
+	// list, not work. Including it would put a badge on the tab that never clears, and a count
+	// that cannot reach zero stops being read.
 	out.Body.Total = len(out.Body.Asks) + len(out.Body.Reels)
 	return out, nil
 }
 
-// askReason reports why a clip is waiting on a human, and whether it is waiting at all.
+// incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row
+// cannot drift into describing the same clip differently.
+func incomingDTO(c store.Clip, reason string) IncomingAskDTO {
+	return IncomingAskDTO{
+		Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
+		Thumbnail: c.Thumbnail, Kind: string(c.Kind), Era: c.Era,
+		Audience: string(c.Audience), Category: c.Category,
+		SuggestedEra: c.SuggestedEra, Reason: reason,
+		Confidence: c.Confidence, AutoFiled: c.AutoFiled,
+	}
+}
+
+// autoFiledReason says why Loomarr filed this without asking, in the operator's terms.
+func autoFiledReason(c store.Clip) string {
+	if c.Confidence > 0 {
+		return "Loomarr was confident enough about these tags to file it without asking."
+	}
+	return "Filed automatically."
+}
+
+// askReasonFor reports why a HELD clip is still waiting, in the operator's terms.
 //
-// ⚠ The two cases are deliberately NOT merged into "needs tags". They are different asks: an
-// ungrounded era has a proposed answer the operator confirms or rejects, while an untagged
-// commercial has nothing to confirm. Collapsing them would put one button on two questions.
-func askReason(c store.Clip) (string, bool) {
+// ⚠ **It no longer decides WHETHER a clip is waiting** (§10 V38) — being held is that answer, and
+// it is a state rather than something inferred from missing tags. The previous version returned
+// `(string, bool)` and the bool was the queue's membership test; a clip that happened to be fully
+// tagged could not be queued at all, which the lifecycle needs (a downloaded clip is held whether
+// or not the tagger has reached it yet).
+//
+// ⚠ The cases stay distinct rather than collapsing into "needs tags". An ungrounded era has a
+// proposed answer to confirm or reject; an untagged commercial has nothing to confirm; a clip
+// below the auto-file bar has tags that simply were not trusted. One button on three questions
+// would be wrong for two of them.
+func askReasonFor(c store.Clip) string {
 	if c.SuggestedEra > 0 {
 		// V34's grounding rule, in the operator's terms rather than the validator's.
-		return "The year isn't written anywhere in this clip's name or description, so Loomarr guessed it.", true
+		return "The year isn't written anywhere in this clip's name or description, so Loomarr guessed it."
 	}
 	// Only commercials: bumpers and station IDs do their bookend job without era/audience/
-	// category, so queueing them would fill the review with work that changes nothing. Same
+	// category, so flagging them would fill the review with work that changes nothing. Same
 	// rule the AI-tagging job applies (store/clips.go).
 	if c.Kind == filler.Commercial && (c.Era == 0 || c.Audience == "" || c.Category == "") {
-		return "Loomarr couldn't work out what this is, so it will only match broadly.", true
+		return "Loomarr couldn't work out what this is, so it will only match broadly."
 	}
-	return "", false
+	if c.Confidence > 0 {
+		return "Loomarr tagged this but wasn't sure enough to file it without checking."
+	}
+	// Held, tagged, unscored — the tagger has not reached it yet. Honest about the wait rather
+	// than inventing a fault: nothing is wrong with this clip, it is simply in the queue.
+	return "Downloaded and waiting to be checked."
 }
 
 // segmentsNeedingAttention counts the segments an operator cannot simply accept.

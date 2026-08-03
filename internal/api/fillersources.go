@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -41,17 +43,29 @@ type FillerSourceDTO struct {
 	// Enabled is the row's on/off switch (V35). ⚠ Off means Loomarr stops scanning, searching
 	// and downloading from this source — it does NOT remove clips already in the catalog.
 	Enabled bool `json:"enabled"`
-	// Switchable is false for a row with no work to stop. ⚠ The `library` row is the case:
-	// nothing scans a media-server library for clips (§10 took the media server out of the
-	// filler path), so a switch there would dim a row and change nothing. It survives as
-	// PROVENANCE for clips catalogued under the pre-§9.1 model.
+	// Switchable is false for a row with no work to stop — a switch there would dim a row and
+	// change nothing.
+	//
+	// ⚠ The remaining case is the legacy `library` PROVENANCE row, which says where clips
+	// catalogued under the pre-§9.1 model came from. An operator-ADDED library is switchable like
+	// any other source: V38c restored library scanning (§10), so there is real work to stop.
 	Switchable bool `json:"switchable"`
 	// Removable is true only for rows that can be forgotten — the registered remotes. The
 	// derived rows describe configuration, which is changed in Settings, not deleted here.
 	Removable bool `json:"removable"`
-	// Kind is what sort of source this is: folder (the watched drop-folder), library (the
-	// media server's own scan), or remote (fetched in by the ingest sidecar).
-	Kind string `json:"kind" enum:"folder,library,remote"`
+	// Kind is what sort of source this is (V37: one flat vocabulary, one row per source).
+	//
+	// ⚠ `remote` is GONE. It was the container the registered archive collections nested under;
+	// the flat list has no container, so a collection carries `archive` and a playlist carries
+	// `youtube` directly. An old client reading `remote` finds no such row rather than an empty
+	// one — the retired-identifier check guards the prose, and the enum guards the wire.
+	//
+	// ⚠ `packs` is deliberately absent: there is no pack index to read (no URL, no manifest, no
+	// fetcher), and §10 forbids a row that dims and changes nothing.
+	Kind string `json:"kind" enum:"folder,library,archive,youtube"`
+	// Searchable marks a source whose catalog can be searched in place — the Sources tab's
+	// per-row search expander. Only `archive` today; the mock draws the same restriction.
+	Searchable bool `json:"searchable"`
 	// Target is the thing itself — a path, a library name, a URL.
 	Target string `json:"target"`
 	// Detail is operator-facing prose explaining how this source behaves, rendered verbatim.
@@ -64,15 +78,33 @@ type FillerSourceDTO struct {
 	Configured bool `json:"configured"`
 	// Fetchable marks a source that `POST /v1/filler/sources/fetch` can refresh on demand.
 	Fetchable bool `json:"fetchable"`
-	// Remotes are the specific archive.org items an operator ADDED, nested under the
-	// `remote` row (V33). Empty on every other row.
+	// LastFetchedAt is absent when never fetched — rendered as "never" rather than as an epoch
+	// date nobody meant. Empty on the config-backed rows, which are scanned rather than fetched.
+	LastFetchedAt string `json:"lastFetchedAt,omitempty" doc:"RFC3339; absent if never fetched"`
+	// License is what the source DECLARED about its material — the mock's per-row licence chip.
 	//
-	// ⚠ Nested rather than promoted to peers, deliberately. The three rows above describe
-	// CONFIGURATION — including "you could set up a library but have not", which is what
-	// `configured:false` is for — and a flat list of things that EXIST cannot express that.
-	// Merging the two models would show the drop-folder twice; see the build plan §6.1.
-	Remotes []RemoteSourceDTO `json:"remotes,omitempty"`
+	// ⚠ **Absent means UNKNOWN, never "public domain".** ~92% of archive.org items declare no
+	// licence at all (667 of 8362 measured in `classic_tv_commercials`, 2026-07-31), so absence is
+	// the common case and carries no permission whatsoever. The UI must render nothing rather than
+	// a reassuring default — a chip that said "public domain" by omission would be Loomarr
+	// asserting a legal fact nobody checked.
+	//
+	// ⚠ Sent here for the first time in V38c. The column has existed since V33 and reached no
+	// surface, so the operator could not see what a source claimed even though Loomarr had
+	// recorded it.
+	License string `json:"license,omitempty" doc:"Licence the source declared; absent means unknown, NOT public domain"`
 }
+
+// ⚠ `Remotes` is GONE from this DTO (V37). It carried the archive collections nested under the
+// `remote` container row, and the flat list has no container — each collection is now a peer row
+// with its own `kind`, `enabled` and `lastFetchedAt`.
+//
+// The nesting existed for a real reason, recorded here because the reason OUTLIVED the shape:
+// the derived rows described CONFIGURATION, including "you could set up a library but have not",
+// which a table of things-that-exist cannot express. The flat list carries that property itself
+// — `configured` is still a per-row fact, and `folder`/`library` are singleton rows materialised
+// even when unset (migration 00029). Flattening without preserving it would have deleted the
+// answer to "why is my catalog empty?".
 
 // RemoteSourceDTO is one registered remote source (§10, V33).
 type RemoteSourceDTO struct {
@@ -128,12 +160,14 @@ func (s *Server) registerFillerSources(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "set-filler-source-enabled", Method: http.MethodPatch, Path: "/v1/filler/sources/{id}",
-		Summary: "Switch a source on or off",
-		Description: "Admin only (§10 V35). Off means Loomarr stops scanning, searching and downloading from " +
-			"this source. ⚠ It does NOT remove clips already in the catalog, and it is not a delete: the " +
-			"source keeps its licence and fetch history, so switching it back on resumes rather than restarts. " +
-			"`folder` writes the drop-folder setting; any other id writes that collection's own row. The " +
-			"`library` row is not switchable — nothing scans a media-server library for clips (§10).",
+		Summary: "Switch a source on or off, and tune how often it is fetched",
+		Description: "Admin only (§10 V35, extended V38c). Off means Loomarr stops scanning, searching and " +
+			"downloading from this source. ⚠ It does NOT remove clips already in the catalog, and it is not " +
+			"a delete: the source keeps its licence and fetch history, so switching it back on resumes rather " +
+			"than restarts. `folder` writes the drop-folder setting; any other id writes that source's own row. " +
+			"⚠ `fetchEverySeconds` is three-state — omit or send null to inherit the global, 0 to never " +
+			"auto-fetch this source, or a positive number of seconds. Library sources became switchable in " +
+			"V38c, when §10 restored them to being scanned.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.setFillerSourceEnabled)
 
@@ -148,12 +182,87 @@ func (s *Server) registerFillerSources(api huma.API) {
 	}, RoleAdmin), s.deleteFillerSource)
 }
 
-// addFillerSourceInput registers a remote collection.
+// addFillerSourceInput registers a source (V37: any addable kind, not only archive).
 type addFillerSourceInput struct {
 	Body struct {
-		URI   string `json:"uri" minLength:"1" doc:"archive.org collection identifier, /details/<id> path, or full URL"`
+		// ⚠ Required, and validated PER KIND below. Before V37 this was absent and the kind was
+		// hardcoded "archive", so `archiveIdentifier` — which rejects anything containing a dot —
+		// was applied to every URI, and a YouTube playlist URL 400'd on a message about
+		// archive.org collections. One validator cannot serve two vocabularies.
+		Kind  string `json:"kind" enum:"archive,youtube,folder,library" doc:"Which kind of source this is"`
+		URI   string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
 		Label string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
 	}
+}
+
+// normalizeSourceURI validates a URI against its OWN kind's rules and returns the canonical
+// identity to store, or "" if the kind cannot use it.
+//
+// ⚠ The two kinds disagree about what a valid URI even looks like: an archive identifier is a
+// plain slug and is REJECTED if it contains a dot, while a YouTube playlist URL is nothing but
+// dots and slashes. That is why validation is per kind rather than one shared check — the
+// pre-V37 code applied the archive rule to everything, which is precisely why YouTube could not
+// be registered.
+//
+// ⚠ `folder` and `library` are ADDABLE since V38c. They were singleton rows materialised from
+// configuration (migration 00029) and refused here; V38c allows many of each, and the maintainer's
+// 2026-08-02 decision returned `library` to being scanned for real (§10). The singleton index is
+// gone (migration 00032), so the guard that used to 409 them is gone with it.
+func normalizeSourceURI(kind, raw string) string {
+	switch kind {
+	case "archive":
+		return archiveIdentifier(raw)
+	case "youtube":
+		return youtubeTarget(raw)
+	case "folder":
+		return folderPath(raw)
+	case "library":
+		return libraryName(raw)
+	default:
+		return ""
+	}
+}
+
+// folderPath validates a watched-folder path an operator typed.
+//
+// ⚠ **ABSOLUTE ONLY, and that is a correctness rule rather than a style preference.** A relative
+// path resolves against Loomarr's working directory, which is an implementation detail the
+// operator cannot see and which differs between a container and a `go run`. "ads" would silently
+// mean different directories in dev and in production, and the failure — an empty catalog — says
+// nothing about why.
+//
+// ⚠ `..` is refused even inside an absolute path. It cannot escape anything by itself here (the
+// scan is confined to whatever this resolves to), but a path that needs cleaning is a path the
+// operator did not mean to type, and storing the pre-cleaned form makes the row disagree with the
+// directory it names.
+func folderPath(raw string) string {
+	p := strings.TrimSpace(raw)
+	if p == "" || !strings.HasPrefix(p, "/") {
+		return ""
+	}
+	if strings.Contains(p, "..") {
+		return ""
+	}
+	// Cleaned so `/data/filler/` and `/data//filler` are ONE source rather than two rows watching
+	// one directory — the duplicate the dropped singleton index no longer prevents.
+	cleaned := path.Clean(p)
+	if cleaned == "/" {
+		// Scanning the filesystem root would walk the entire machine. Refused as an obvious
+		// mis-type rather than accepted as an heroic instruction.
+		return ""
+	}
+	return cleaned
+}
+
+// libraryName validates a media-server library name (§10 V38c).
+//
+// ⚠ Deliberately permissive: this is a NAME the operator reads off their own media server
+// ("Commercials", "TV Ads (80s)"), not an identifier with a grammar. Over-validating it would
+// reject real libraries for containing a bracket. The scan resolves it against the media server,
+// which is the only thing that can actually say whether it exists — an unmatched name surfaces
+// there as a scan that finds nothing, with the library named.
+func libraryName(raw string) string {
+	return strings.TrimSpace(raw)
 }
 
 type addFillerSourceOutput struct {
@@ -168,18 +277,43 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
-	id := archiveIdentifier(in.Body.URI)
+	kind := strings.TrimSpace(in.Body.Kind)
+	// ⚠ `folder` and `library` used to be refused here with a 409 — they were singletons
+	// materialised from configuration, guarded by a partial unique index (00029). V38c allows
+	// many of each and drops that index (00032), so both the guard and the index are gone
+	// together. Leaving the guard would have made the UI's own "Add a source" dialog 409 against
+	// two of the three kinds it offers.
+	id := normalizeSourceURI(kind, in.Body.URI)
 	if id == "" {
-		return nil, errBadRequest("That doesn't look like an archive.org collection",
-			"Paste a collection identifier (like classic_tv_commercials) or its archive.org URL.")
+		// The message names the shape THIS kind accepts. A shared "invalid URI" would have been
+		// the pre-V37 behaviour that told a YouTube user about archive.org collections.
+		switch kind {
+		case "youtube":
+			return nil, errBadRequest("That doesn't look like a YouTube playlist or channel",
+				"Paste a playlist URL (youtube.com/playlist?list=…) or a channel URL.")
+		case "folder":
+			return nil, errBadRequest("That doesn't look like a folder Loomarr can watch",
+				"Give a full path starting with / — for example /data/filler. "+
+					"A relative path would mean different directories depending on how Loomarr was started.")
+		case "library":
+			return nil, errBadRequest("That library needs a name",
+				"Use the library's name as it appears on your media server — for example Commercials.")
+		default:
+			return nil, errBadRequest("That doesn't look like an archive.org collection",
+				"Paste a collection identifier (like classic_tv_commercials) or its archive.org URL.")
+		}
 	}
 	label := strings.TrimSpace(in.Body.Label)
 	if label == "" {
 		label = id
 	}
+	// ⚠ The row id is namespaced by kind. Before V37 every row was an archive collection, so the
+	// bare identifier was unique; now a YouTube URL and an archive slug share one table, and an
+	// un-namespaced id lets one kind's row silently UPSERT over another's.
+	rowID := kind + ":" + id
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
-	src := store.NewFillerSource(id, "archive", strings.TrimSpace(in.Body.URI), label, time.Now().UTC())
+	src := store.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
 	if err := s.store.UpsertFillerSource(ctx, src); err != nil {
 		return nil, huma.Error500InternalServerError("register filler source", err)
 	}
@@ -192,6 +326,23 @@ type setFillerSourceEnabledInput struct {
 	ID   string `path:"id"`
 	Body struct {
 		Enabled bool `json:"enabled"`
+		// FetchEverySeconds overrides `filler.fetch.every` for THIS source (§10 V38c).
+		//
+		// ⚠ **A POINTER, and the three states are all distinct and all reachable:**
+		//   - omitted / `null` ⇒ clear the override, inherit the global
+		//   - `0`              ⇒ NEVER auto-fetch this source
+		//   - `n > 0`          ⇒ poll every n seconds
+		//
+		// A plain int could not express this: `0` is already meaningful ("never"), so "unset"
+		// would have to share an encoding with it and every source would read as switched off.
+		// This mirrors the store column, which is nullable for exactly the same reason.
+		FetchEverySeconds *int `json:"fetchEverySeconds,omitempty" minimum:"0" maximum:"604800" doc:"Seconds between automatic fetches of this source. 0 means never; omit or null to inherit the global setting."`
+		// FetchMaxPerRun overrides `filler.fetch.max_per_run` for this source. Omit/null inherits.
+		//
+		// ⚠ Minimum 1, NOT 0. "Fetch nothing per run" is what FetchEverySeconds=0 already says,
+		// and letting it be said twice invites the two to disagree — a source that is scheduled
+		// to poll but capped at nothing looks enabled and does nothing.
+		FetchMaxPerRun *int `json:"fetchMaxPerRun,omitempty" minimum:"1" maximum:"1000" doc:"Most clips to take from this source in one run. Omit or null to inherit the global setting."`
 	}
 }
 
@@ -199,6 +350,11 @@ type setFillerSourceEnabledOutput struct {
 	Body struct {
 		ID      string `json:"id"`
 		Enabled bool   `json:"enabled"`
+		// Echoed back so the UI renders what was STORED rather than what it hoped it sent — the
+		// difference matters here because null and 0 mean different things and a client that
+		// muddles them would show "never fetch" as "inherit".
+		FetchEverySeconds *int `json:"fetchEverySeconds,omitempty"`
+		FetchMaxPerRun    *int `json:"fetchMaxPerRun,omitempty"`
 	}
 }
 
@@ -214,6 +370,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	}
 	out := &setFillerSourceEnabledOutput{}
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
+	out.Body.FetchEverySeconds, out.Body.FetchMaxPerRun = in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun
 
 	switch in.ID {
 	case "folder":
@@ -236,12 +393,15 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 			}
 		}
 		return out, nil
-	case "library", "remote":
-		// Refused rather than silently accepted. Nothing scans a media-server library for
-		// clips (§10), and `remote` is a container whose children carry the switches — so
-		// storing a flag for either would be a control that changes nothing.
+	case "remote":
+		// Refused rather than silently accepted: `remote` is a CONTAINER whose children carry
+		// the switches, so storing a flag on it would be a control that changes nothing.
+		//
+		// ⚠ `library` used to be refused here too, on the grounds that nothing scanned a
+		// media-server library. V38c reverses that (§10) — a library source is scanned like any
+		// other, so it has a real switch and lands in the default branch below.
 		return nil, errConflict("That source has no switch",
-			"This row is here to show where existing clips came from. There's nothing running to turn off.")
+			"This row groups the sources you've added — switch them off individually.")
 	default:
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
@@ -251,6 +411,17 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
 			}
 			return nil, huma.Error500InternalServerError("set filler source enabled", err)
+		}
+		// ⚠ The overrides are written UNCONDITIONALLY, including when both are nil — because nil
+		// means "clear this back to inheriting the global", which is a real action an operator
+		// takes and must be expressible. Writing only when non-nil would make the override a
+		// one-way door: settable, never removable.
+		if err := s.store.SetFillerSourceFetchPolicy(ctx, in.ID,
+			in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFound("Source not found", "That source isn't registered — it may have been removed.")
+			}
+			return nil, huma.Error500InternalServerError("set filler source fetch policy", err)
 		}
 		return out, nil
 	}
@@ -269,9 +440,15 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
 	switch in.ID {
-	case "folder", "library", "remote":
-		// The derived rows are configuration, not registrations. Deleting one would have to
-		// mean "unset filler.dir", which belongs in Settings where the consequence is legible.
+	case "folder", "library":
+		// ⚠ The config-backed SINGLETONS are not registrations, so there is nothing to
+		// un-register. Deleting one would have to mean "unset filler.dir", which belongs in
+		// Settings where the consequence is legible — and since migration 00029 materialises
+		// these rows, a delete here would be undone by the next migrate anyway.
+		//
+		// ⚠ `remote` was in this list until V37 and is deliberately gone: it was the CONTAINER
+		// row that archive collections nested under, and the flat list has no container. Leaving
+		// it would guard an id nothing can produce, which reads as protection and is noise.
 		return nil, errConflict("That source can't be removed here",
 			"This row describes how Loomarr is configured. Change it in Settings instead.")
 	}
@@ -320,22 +497,75 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// off on a page whose whole job is telling the operator why their catalog is empty.
 	folderEnabled := s.liveConfigBoolOn == nil || s.liveConfigBoolOn("filler.source.folder.enabled")
 
-	// The registered remotes, nested under the `remote` row below. A read failure is NOT
-	// fatal: the three config rows are the answer to "why is my catalog empty", and losing
-	// that whole page because a secondary list did not load would be a poor trade.
-	var remotes []RemoteSourceDTO
+	// The operator-registered sources — archive collections and YouTube playlists — as PEER rows
+	// (V37). A read failure is NOT fatal: the two config-backed rows below are the answer to "why
+	// is my catalog empty", and losing that whole page because the registry did not load would be
+	// a poor trade.
+	//
+	// ⚠ The SEEDED singletons are skipped here — not the kinds. Migration 00029 materialises one
+	// `folder` and one `library` row so the list is complete on a fresh install, but their live
+	// state comes from configuration (the folder's path from `filler.dir`, its switch from
+	// `filler.source.folder.enabled`), so emitting the stored copy too would list the drop-folder
+	// TWICE with the stale one free to disagree with the setting.
+	//
+	// ⚠ **V38c narrowed this from "skip the kind" to "skip the seeded row".** Many folders and
+	// libraries are now addable (§10), and skipping the whole kind would have hidden every one of
+	// them — the operator adds a source, gets a 200, and never sees it again. The seeded folder is
+	// the one whose URI IS the configured directory; a folder pointing anywhere else is a genuine
+	// peer. The seeded library row carries a blank URI (nothing was ever configured into it) and
+	// is skipped on that basis, with the provenance row below covering old clips.
+	var registered []FillerSourceDTO
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
 		for _, src := range srcs {
-			r := RemoteSourceDTO{ID: src.ID, Label: src.Label, URI: src.URI, Enabled: src.Enabled}
-			if r.Label == "" {
-				r.Label = src.URI
+			if src.Kind == "folder" && (src.URI == "" || src.URI == dir) {
+				continue // the config-backed drop-folder; rendered from configuration above
+			}
+			if src.Kind == "library" && src.URI == "" {
+				continue // the seeded placeholder, never configured into
+			}
+			label := src.Label
+			if label == "" {
+				label = src.URI
+			}
+			row := FillerSourceDTO{
+				ID:         src.ID,
+				Kind:       src.Kind,
+				Enabled:    src.Enabled,
+				Switchable: true,
+				Removable:  true,
+				Target:     label,
+				Detail:     sourceDetail(src.Kind, src.URI),
+				Count:      bySource[src.Kind],
+				Configured: true,
+				// ⚠ SCANNED sources are refreshed by the sync, DOWNLOADED ones by ingest — and
+				// both are reachable through this row's "Fetch now", so both report fetchable.
+				// A scanned folder whose button did nothing would read as broken; the store's
+				// `Fetchable()`/`Scannable()` pair is what keeps a folder out of a PULL plan,
+				// which is the distinction that actually matters.
+				Fetchable: src.Scannable() || s.filler != nil,
+				// ⚠ Only archive can be searched in place. A "search" box on a YouTube playlist
+				// would have nothing to query: yt-dlp enumerates a playlist, it does not search
+				// YouTube, and offering the box would be a control that returns nothing forever.
+				// A folder or library is not searchable for the same reason.
+				Searchable: src.Kind == "archive" && s.filler != nil,
+			}
+			// ⚠ Counted by SOURCE ID for the addable kinds, not by kind. Two watched folders both
+			// count `bySource["folder"]`, so a kind-keyed count would show each of them the
+			// catalog's whole folder total — every row claiming every clip.
+			if src.Scannable() {
+				row.Count = bySource[src.ID]
 			}
 			if !src.LastFetchedAt.IsZero() {
-				r.LastFetchedAt = src.LastFetchedAt.UTC().Format(time.RFC3339)
+				row.LastFetchedAt = src.LastFetchedAt.UTC().Format(time.RFC3339)
 			}
-			remotes = append(remotes, r)
+			// ⚠ Sent through UNCHANGED, including empty. Empty means UNKNOWN and the client
+			// renders nothing — never a reassuring default. Substituting "public domain" here
+			// would have Loomarr asserting a legal fact about ~92% of archive.org items that
+			// declare no licence at all.
+			row.License = src.License
+			registered = append(registered, row)
 		}
 	}
 
@@ -359,46 +589,51 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			Configured: dir != "",
 			Fetchable:  dir != "",
 		},
-		{
-			ID:   "library",
-			Kind: "library",
-			// ⚠ No switch: nothing scans a library for filler since §10 took the media server
-			// out of that path, so this row is provenance for older clips rather than a source
-			// doing work. `enabled:true` says "these clips count", not "a scan is running".
-			Enabled:    true,
-			Switchable: false,
-			Target:     "media server filler library",
-			Detail:     "scanned by the media server",
-			Count:      bySource["library"],
-			// The library connection is configured iff its URL is set — the same signal every
-			// other library-dependent surface gates on.
-			Configured: s.liveConfig != nil && s.liveConfig("library.url") != "",
-			Fetchable:  s.filler != nil,
-		},
-		{
-			ID:   "remote",
-			Kind: "remote",
-			// The `remote` row is a container for the registered collections nested under it;
-			// each carries its own switch, so the container has none.
-			Enabled:    true,
-			Switchable: false,
-			// ⚠ Was "ingest sidecar" / "needs the loomarr:filler image" (retired-ok), and neither of those
-			// things exists any more. The sidecar was folded into the core and the two-tag split
-			// was replaced by the single image (§10 records both reversals), so this label was
-			// telling operators to go and find a deployment they cannot get.
-			Target: "downloads",
-			Detail: "fetches clips into the watched folder from a URL you give it",
-			Count:  bySource["ingest"] + bySource["youtube"] + bySource["archive"],
-			// Availability is only knowable by trying (ErrIngestUnavailable), so this reports
-			// whether the ROUTE exists rather than claiming the tooling is present.
-			Configured: s.filler != nil,
-			// Not fetchable from here: a remote fetch needs URLs, which is POST /v1/filler/ingest.
-			// A "Fetch now" that silently did nothing would be worse than no button.
-			Fetchable: false,
-			Remotes:   remotes,
-		},
 	}
+	// The legacy media-server PROVENANCE row (§10). ⚠ Shown only when clips actually carry that
+	// source, which is why it is appended conditionally rather than declared above.
+	//
+	// It describes where OLD clips came from — those catalogued under the pre-§9.1 model — and it
+	// is not a source doing work: `enabled:true` says "these clips count", not "a scan is
+	// running". V38c restored library SCANNING (§10), but a scanned library is an operator-added
+	// row appended below with its own target, switch and counts. Rendering this one unconditionally
+	// alongside those would put two different things called "library" in one list, one of them
+	// inert — which is the competing-descriptions problem this file's header exists to prevent.
+	if n := bySource["library"]; n > 0 {
+		out.Body.Sources = append(out.Body.Sources, FillerSourceDTO{
+			ID:         "library",
+			Kind:       "library",
+			Enabled:    true,
+			Switchable: false, // provenance, not a scan — there is no work to stop
+			Target:     "media server (previously scanned)",
+			Detail:     "where these clips originally came from",
+			Count:      n,
+			Configured: true,
+		})
+	}
+	// ⚠ The `remote` CONTAINER row was here and is deliberately gone (V37). It existed to hold
+	// the nested collections; the flat list has no container, so each registered source is a peer
+	// appended below. Its clip count is not lost — each peer counts its own kind, and clips whose
+	// provenance is the older `ingest` string are counted by the folder row they physically live
+	// in. Keeping an empty container would show a source that nothing can be.
+	out.Body.Sources = append(out.Body.Sources, registered...)
 	return out, nil
+}
+
+// sourceDetail is the operator-facing sentence under a registered source's name. Per KIND rather
+// than per row: it explains how that sort of source BEHAVES, which is a property of the kind.
+func sourceDetail(kind, uri string) string {
+	switch kind {
+	case "archive":
+		return "an archive.org collection — searchable here, downloaded when you queue or approve"
+	case "youtube":
+		// ⚠ Names the operator's own act. §10 records that Loomarr never recommends YouTube
+		// content itself; the playlist is one the operator supplied, and the copy should not
+		// imply Loomarr chose it.
+		return "a playlist you added — titles and descriptions are kept for tagging"
+	default:
+		return uri
+	}
 }
 
 type fetchFillerSourceOutput struct {
@@ -454,6 +689,48 @@ func errSourceDisabled() huma.StatusError {
 // identifier, a `/details/<id>` path, and a full URL. Returns "" for anything else, which the
 // caller turns into a message naming the shapes that work — silently registering an
 // unparseable source would produce a row that can never fetch.
+// youtubeTarget validates a YouTube playlist or channel URL for REGISTRATION (V37), returning
+// the canonical URL to store or "" if it is not one.
+//
+// ⚠ Deliberately STRICTER than `clipfetch.KindForURL`, which defaults an unknown host to YouTube
+// because yt-dlp handles the widest set of sites. That default is right for INGEST — an admin
+// pasting one URL deliberately, watching it work. It is wrong here: a registered source persists
+// and is fetched unattended, so a typo'd host would become a permanent row that can never fetch,
+// with the failure surfacing much later and far from the mistake. Registration is the stricter
+// act because nobody is watching the second time.
+//
+// Accepts the shapes an operator actually pastes — a playlist, a channel, a @handle, a /c/ or
+// /user/ URL — on youtube.com (with or without a subdomain) or youtu.be.
+func youtubeTarget(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	// Scheme is optional in what people paste; normalise so the host check is uniform.
+	probe := v
+	if !strings.Contains(probe, "://") {
+		probe = "https://" + probe
+	}
+	u, err := url.Parse(probe)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	host = strings.TrimPrefix(host, "www.")
+	// ⚠ Exact host match, never `strings.Contains`: "youtube.com.evil.test" contains the string
+	// and is a different site. A substring check here would register an attacker-chosen host as
+	// a trusted source.
+	if host != "youtube.com" && host != "m.youtube.com" && host != "music.youtube.com" && host != "youtu.be" {
+		return ""
+	}
+	// A bare host with no path identifies nothing to fetch.
+	if strings.Trim(u.Path, "/") == "" && u.RawQuery == "" {
+		return ""
+	}
+	u.Scheme = "https"
+	return u.String()
+}
+
 func archiveIdentifier(raw string) string {
 	v := strings.TrimSpace(raw)
 	if v == "" {
