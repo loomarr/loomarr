@@ -3023,6 +3023,12 @@ components:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
           type: string
+        retired:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         scores:
           $ref: "#/components/schemas/Scores"
       required:

@@ -21,7 +21,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/suggest"
@@ -41,12 +40,13 @@ type CuratorStore interface {
 	suggest.ApproveStore
 	ListChannels(ctx context.Context) ([]store.Channel, error)
 	UpdateProposal(ctx context.Context, p store.Proposal) error
-	// UpsertChannel persists a retirement (§8.2a): the turnstile removes the retired title
-	// from ch.Lineup so the incoming one has a slot. Writing the CHANNEL rather than routing
-	// through the binder is deliberate — a retirement is a lineup edit this subsystem decided,
-	// not an approval outcome, and the binder's additive union would put the title straight
-	// back.
-	UpsertChannel(ctx context.Context, ch store.Channel) error
+	// ⚠ NO UpsertChannel, deliberately. This package decides retirements (§8.2a) but must not
+	// APPLY them: it records them on the proposal and the binder — the single writer of a
+	// channel's lineup — applies them through schedule.ApplyLineup. The method used to be here,
+	// and the resulting two-writer arrangement was held together by a comment explaining that
+	// this write had to land before the binder's additive union or the union would undo it.
+	// Leaving the method off the interface makes that ordering unexpressible rather than merely
+	// discouraged.
 }
 
 // Curator is the channel-scoped auto-curate grant (§8.2). It approves a re-curation proposal
@@ -109,29 +109,13 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 	}
 	filtered := res.Proposal
 
-	// Apply retirements BEFORE approving: the incoming titles need the slots, and the binder's
-	// additive union (§8.2) would otherwise re-add what we just removed.
-	if len(res.RetiredKey) > 0 {
-		retire := make(map[provision.Key]struct{}, len(res.RetiredKey))
-		for _, k := range res.RetiredKey {
-			retire[k] = struct{}{}
-		}
-		trimmed := make([]schedule.LineupEntry, 0, len(ch.Lineup))
-		for _, e := range ch.Lineup {
-			if _, gone := retire[e.Key]; gone {
-				continue
-			}
-			trimmed = append(trimmed, e)
-		}
-		ch.Lineup = trimmed
-		if err := c.store.UpsertChannel(ctx, ch); err != nil {
-			// A failed retirement must not fail the run: the incoming titles simply land
-			// over-cap and are dropped, which is the pre-turnstile behaviour.
-			c.log.Warn("auto-curate: retirement could not be persisted; the channel keeps its lineup",
-				"channel", ch.ID, "err", err)
-		}
-	}
-
+	// ⚠ Retirements are RECORDED ON THE PROPOSAL (`filterAcquisitions` wrote them into the
+	// body), not applied to the channel here. This block used to trim `ch.Lineup` and call
+	// UpsertChannel, which made this package a second lineup writer: the binder's additive
+	// union (§8.2) runs moments later and would re-add whatever was removed, so the two were
+	// sequenced against each other by a comment rather than by any checkable contract. The
+	// binder now consumes `Retired` through the same `ApplyOpts.Drop` seam it already uses for
+	// off-intent titles — one writer, one primitive, and the retirement is an input to it.
 	if err := c.store.UpdateProposal(ctx, filtered); err != nil {
 		return suggest.Decision{Reason: "could not persist filtered proposal"}, err
 	}

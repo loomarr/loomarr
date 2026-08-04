@@ -37,14 +37,46 @@ func mustExcludeKeys(p store.Proposal) map[string]struct{} {
 	return out
 }
 
+// retiredKeys is the set of lineup keys the auto-curate turnstile rotated OUT to make room for
+// this proposal's incoming titles (§8.2a), as recorded on the proposal by `recurate`.
+//
+// ⚠ A THIRD drop signal, and the one that is a decision rather than an observation. The other
+// two ask "is this title still wanted?"; this one carries an answer another subsystem already
+// computed — it weighed the outgoing title's score against the incoming one's and committed to
+// the swap. Empty for every non-auto-curate proposal, and for auto-curate runs that had room.
+func retiredKeys(p store.Proposal) map[provision.Key]struct{} {
+	var body suggest.Proposal
+	if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
+		return nil
+	}
+	out := make(map[provision.Key]struct{}, len(body.Retired))
+	for _, k := range body.Retired {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
 // dropPredicate builds the LineupAdditive drop test the auto-curate rebind hands to
 // schedule.ApplyLineup (§8.2): an existing title the refresh did NOT re-pick is dropped ONLY
-// when it is clearly off-intent — gone from the library (unavailable) or named by the intent's
-// MustExclude. A still-available title the stochastic LLM merely didn't re-pick is KEPT (no
-// churn). The store read (droppable) lives here so ApplyLineup's union logic stays pure; each
-// drop is logged. The union/order (existing-kept first, new appended) is ApplyLineup's job.
-func (b *Binder) dropPredicate(ctx context.Context, mustExclude map[string]struct{}) func(schedule.LineupEntry) bool {
+// when it is clearly off-intent — gone from the library (unavailable), named by the intent's
+// MustExclude, or RETIRED by the turnstile to make room. A still-available title the stochastic
+// LLM merely didn't re-pick is KEPT (no churn). The store read (droppable) lives here so
+// ApplyLineup's union logic stays pure; each drop is logged. The union/order (existing-kept
+// first, new appended) is ApplyLineup's job.
+//
+// ⚠ Retirement is checked FIRST and without a store read. It is a decision already made, not a
+// property of the title to be re-derived — a retired title is usually still perfectly available,
+// so `droppable` would say "keep" and the turnstile's swap would silently never happen.
+func (b *Binder) dropPredicate(
+	ctx context.Context,
+	mustExclude map[string]struct{},
+	retired map[provision.Key]struct{},
+) func(schedule.LineupEntry) bool {
 	return func(e schedule.LineupEntry) bool {
+		if _, gone := retired[e.Key]; gone {
+			b.log.Info("auto-curate retired a title to make room", "title", e.Title, "key", e.Key)
+			return true
+		}
 		if !b.droppable(ctx, e, mustExclude) {
 			return false
 		}
