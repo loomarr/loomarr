@@ -51,6 +51,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 	t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
 	t.Run("ClipKeyIsHashNotPath", func(t *testing.T) { testClipKeyIsHashNotPath(t, newStore) })
+	t.Run("ClipCounts", func(t *testing.T) { testClipCounts(t, newStore) })
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
@@ -1336,6 +1337,88 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	// row, not a playback error.
 	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
 		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
+	}
+}
+
+// testClipCounts pins the count queries against the listing they replaced.
+//
+// ⚠ Every assertion compares COUNT(*) against len(ListClips(sameFilter)) rather than a literal.
+// That is the whole point: the counts exist to avoid materialising rows, so the only property
+// worth pinning is that they still answer the SAME question as the listing. A hard-coded number
+// would keep passing if the two predicates drifted apart, which is the one failure mode here.
+func testClipCounts(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	seed := func(id, source string, held, autoFiled bool, era int) {
+		c := sampleClip(id, id+".mp4", filler.Commercial, era, filler.Kids, "toys")
+		c.Source = source
+		c.Held = held
+		c.AutoFiled = autoFiled
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("a1", "youtube", false, false, 1990)
+	seed("a2", "youtube", false, true, 1991)
+	seed("a3", "archive", false, false, 0) // untagged: era 0
+	seed("a4", "archive", true, false, 1992)
+	seed("a5", "", false, false, 1993)
+
+	filters := map[string]ClipFilter{
+		"catalog":   {},
+		"held":      {HeldOnly: true},
+		"untagged":  {UntaggedOnly: true},
+		"autofiled": {AutoFiledOnly: true},
+		"by-kind":   {Kind: filler.Commercial},
+	}
+	for name, f := range filters {
+		listed, err := s.ListClips(ctx, f)
+		if err != nil {
+			t.Fatalf("%s list: %v", name, err)
+		}
+		got, err := s.CountClips(ctx, f)
+		if err != nil {
+			t.Fatalf("%s count: %v", name, err)
+		}
+		if got != len(listed) {
+			t.Errorf("CountClips(%s) = %d, but ListClips returned %d — the two predicates have drifted",
+				name, got, len(listed))
+		}
+	}
+
+	// AutoFiledOnly must actually narrow, or the assertion above passes vacuously against a
+	// filter the WHERE builder ignores.
+	if n, _ := s.CountClips(ctx, ClipFilter{AutoFiledOnly: true}); n != 1 {
+		t.Errorf("auto-filed count = %d, want exactly the 1 seeded auto-filed clip", n)
+	}
+
+	// The per-source rollup must agree with the catalog total, or the Sources page's "N sources ·
+	// M clips" line contradicts itself.
+	bySource, err := s.CountClipsBySource(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := 0
+	for _, n := range bySource {
+		sum += n
+	}
+	total, _ := s.CountClips(ctx, ClipFilter{})
+	if sum != total {
+		t.Errorf("per-source counts sum to %d but the catalog holds %d — a clip vanished from the rollup", sum, total)
+	}
+	if bySource["youtube"] != 2 {
+		t.Errorf("youtube = %d, want 2", bySource["youtube"])
+	}
+	// ⚠ The empty source must survive as its own bucket. `source` is free text, so an unknown or
+	// blank value is possible, and dropping it would silently lose clips from a page whose whole
+	// job is accounting for where they came from.
+	if bySource[""] != 1 {
+		t.Errorf("blank source = %d, want the 1 seeded clip — an unattributed clip must not vanish", bySource[""])
+	}
+	// Held is excluded by default, exactly as in the listing.
+	if bySource["archive"] != 1 {
+		t.Errorf("archive = %d, want 1 (the held clip is not in the catalog)", bySource["archive"])
 	}
 }
 

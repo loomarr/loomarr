@@ -161,13 +161,12 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	// same call as the split proposals above. Losing the whole tab because the audit list did not
 	// load would take away the queue an operator CAN act on.
 	out.Body.RecentlyFiled = make([]IncomingAskDTO, 0)
-	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{}); ferr != nil {
+	// ⚠ Narrowed in SQL. This loaded the WHOLE catalog and discarded all but the auto-filed rows
+	// in Go — on an install with thousands of clips, to render a handful of audit cards.
+	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{AutoFiledOnly: true}); ferr != nil {
 		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
 	} else {
 		for _, c := range filed {
-			if !c.AutoFiled {
-				continue
-			}
 			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c)))
 		}
 		// Highest confidence last: the ones worth a second look are the ones Loomarr was least

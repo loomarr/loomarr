@@ -591,13 +591,24 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// Counting held clips here is not merely inconsistent, it is unactionable: the strip's advice
 	// is to go and tag them, and they are not in the Catalog to tag. Incoming carries its own
 	// count for that queue.
-	untagged, err := a.store.ListClips(ctx, store.ClipFilter{UntaggedOnly: true})
+	// Counted in SQL, not materialised: this loaded every column of every untagged row purely
+	// to take len() of the slice.
+	report.Untagged, err = a.store.CountClips(ctx, store.ClipFilter{UntaggedOnly: true})
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
-	report.Untagged = len(untagged)
 
 	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return filler.PoolReport{}, err
+	}
+	// ⚠ ONE catalog load for every channel's coverage, not one each. `CoverageFor` loads the
+	// catalog per call, so asking it per channel made this request O(channels) full-table reads —
+	// 20 channels meant 20 `AllClips` on top of the two counts above. `CoverageFrom` runs the
+	// identical derivation over a catalog passed in, so the numbers are still the SAME `Coverage`
+	// the channel page shows (the invariant this function is built on); only the redundant reads
+	// are gone.
+	clips, err := a.pods.Catalog(ctx)
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
@@ -609,10 +620,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 		if ch.Status == schedule.StatusPaused || ch.Status == schedule.StatusDetached {
 			continue
 		}
-		cov, err := a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
-		if err != nil {
-			return filler.PoolReport{}, err
-		}
+		cov := a.pods.CoverageFrom(clips, ch.ID, channels.SelectionForChannel(ch))
 		report.Channels = append(report.Channels, filler.ChannelCoverage{
 			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Report: cov,
 		})

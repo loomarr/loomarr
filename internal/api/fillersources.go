@@ -488,16 +488,20 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
-	clips, err := s.store.ListClips(ctx, store.ClipFilter{})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("list clips", err)
-	}
-
 	// Count by provenance. The `source` column is free text written by whatever discovered the
 	// clip, so an unrecognized value is possible and must not vanish — see the Total field.
-	bySource := map[string]int{}
-	for _, c := range clips {
-		bySource[c.Source]++
+	//
+	// ⚠ Counted in SQL. This loaded EVERY column of EVERY clip row to build a map of integers
+	// and a total, which on a large catalog was the dominant cost of rendering this page. The
+	// filter is still the zero filter, so the default exclusions (removed, held) are unchanged
+	// and the numbers mean exactly what they did.
+	bySource, err := s.store.CountClipsBySource(ctx, store.ClipFilter{})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("count clips", err)
+	}
+	totalClips := 0
+	for _, n := range bySource {
+		totalClips += n
 	}
 
 	// Read live rather than through a dedicated field: filler.dir hot-applies
@@ -590,7 +594,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	}
 
 	out := &fillerSourcesOutput{}
-	out.Body.Total = len(clips)
+	out.Body.Total = totalClips
 	out.Body.Sources = []FillerSourceDTO{
 		{
 			ID:   "folder",
