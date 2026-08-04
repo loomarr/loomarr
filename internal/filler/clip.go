@@ -118,6 +118,18 @@ type Clip struct {
 	// STILL succeeded, so a clip whose preview render failed would render a broken image on hover
 	// instead of simply not having one.
 	Preview string
+	// Language is what the detection job heard, and it has THREE meaningful states (§10 V40,
+	// migration 00036):
+	//
+	//	""      NOT YET CHECKED — the job has not reached this clip. Never a reason to reject.
+	//	"none"  CHECKED, and there is no speech to judge. A wordless visual spot. ALWAYS KEPT.
+	//	"en"/…  CHECKED, and this is what was heard.
+	//
+	// ⚠ The ""-vs-"none" distinction is load-bearing. Both mean "we are not rejecting this", which
+	// is exactly what makes them tempting to merge — and merging them makes a clip whose detection
+	// FAILED (whisper unrunnable, hosted key missing) indistinguishable from one that genuinely has
+	// no dialogue. A silent advert is often the best filler; a failed detection is a retry.
+	Language string
 	// PlayCount / LastPlayedAt are written from PLAYOUT, never from pod assembly (see 00017).
 	//
 	// ⚠ Only INTERNAL playout can report these. A Tunarr-backed channel airs its filler

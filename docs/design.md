@@ -1038,15 +1038,70 @@ recovered, and a re-scan cannot tell it has already happened, so a second pass w
 normalised file. At playout it is one filter on a stream already being encoded, it is reversible,
 and changing the target later simply works.
 
-**Language is a job, not an inline check.** `whisper-cli` is already vendored and wired
-(`MediaTools.Transcribe`, `ingest.whisper_path`, `ingest.whisper_model`), so this needs no new
-dependency — but it cannot ride the scan: whisper is dense matrix math, ~3s natively and **~341s
-under QEMU**, so an inline pass would be fine on the maintainer's machine and catastrophic on an
-arm64 install. It transcribes a **~10s span** rather than the whole clip, and only where the
-loudness pass found audible speech.
+**Language is a job, not an inline check**, and it REJECTS rather than holding (maintainer,
+2026-08-03) — consistent with the other two gates, which drop a file at the boundary and leave a
+log line rather than a queue entry.
 
-⚠ **Silence is never grounds for rejection.** A wordless visual spot has no language, and those are
-often the best filler. Only confident non-English *speech* rejects.
+⚠ **It runs in the BACKGROUND, after the clip is already catalogued.** A clip enters the catalog on
+the scan and the job fills in its language afterwards, acting on the answer then. Inline was the
+simpler code path and is not viable: on the local backend a 100-clip folder becomes a ~9.5-hour
+scan on arm64 (see the timings below), and the sync timer would overlap itself. This is the same
+shape the AI tagger already has, for the same reason.
+
+⚠ **Only where there is audible speech to judge, and SILENCE NEVER REJECTS.** A wordless visual
+spot has no language, and those are often the best filler — so "no speech detected" means keep,
+never drop. Only confident non-target *speech* rejects.
+
+⚠ **A model handed silence does not decline — it GUESSES, and arbitrarily.** This is the failure
+the first live run produced, and it deleted two real clips. Two recorded ad breaks (867s and 978s)
+were sampled at their first ten seconds, which on a long recording is leader: tape run-up and dead
+air measuring **−70 LUFS**. Asked what language that was, the model answered `ar` for one and `es`
+for the other, and the gate tombstoned both. Re-asked about the identical span later it said `en` —
+so the answer is not reliably *wrong*, it is reliably *unpredictable*, which no amount of prompt
+tuning makes safe to act on.
+
+Two defences, and they are deliberately independent:
+
+- **Long recordings are sampled from the MIDDLE.** Past two minutes a clip has stopped being one
+  advert and become a recording of several, which always opens with leader. This fixes *where* we
+  look — the same clips measured −25 and −28 LUFS mid-recording, squarely in speech range.
+- **A span below a loudness floor is never asked about at all.** `−50 LUFS`, measured with the
+  same `ebur128` the loudness half of V40 uses. This holds *wherever* we land, including on a clip
+  that is genuinely silent throughout. The floor leaves wide room above the quietest real clip
+  measured in this catalog (−32.6 LUFS), because treating a quiet advert as silent would be the
+  same bug in the other direction.
+
+⚠ The local backend has a third defence the hosted one structurally cannot: it checks whether
+whisper transcribed anything, so silence yields no utterances and returns `none` naturally. Only
+the hosted path can guess, which is why the floor exists.
+
+**Two backends behind one seam**, mirroring `llm.provider`'s local-vs-hosted split (§8.1):
+
+| | `filler.language_provider = whisper` (default) | `= hosted` |
+| --- | --- | --- |
+| Engine | vendored `whisper-cli` + `ggml-small.en.bin` | an audio-input model via the §8.1 hosted provider |
+| Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
+| Cost | free | fractions of a cent for a 10s span |
+| Offline | yes | no |
+
+⚠ **NOT Ollama, and this is the trap worth naming.** "We already run a local LLM, so we do not need
+whisper" is the reasonable inference and it is wrong: Ollama has no audio input path at all. Probed
+against the live dev instance (2026-08-03), its models report `completion`, `vision`, `tools`,
+`thinking` — there is no `audio` capability, and `vision` is images only. Local audio means
+whisper; the hosted option is what Ollama cannot be.
+
+⚠ **The consequence for arm64, stated so nobody has to discover it:** 341s per clip is not usable,
+so an arm64 install effectively has only the hosted path. The feature is off by default rather than
+degrading silently there.
+
+⚠ **Local is the default, and hosted is an opt-in that costs money and leaves the house.** Sending
+clip audio to a third party is a change in posture, not a performance tweak — the same reason §8.1
+defaults to local Ollama and makes hosted a deliberate choice with a key. It is also the first
+feature that spends money per clip.
+
+The seam is `MediaTools.Transcribe(ctx, file, startMs, endMs)`, which already exists for
+compilation splitting. A hosted detector is a second implementation behind it, so the job, the
+reject rule and every test are identical whichever backend answered.
 
 ⚠ **Brightness is deliberately measured by nothing and fixed by nothing.** Sample clips ranged
 YAVG 64–127 against a mid-grey of 128, and the dim end is what an eighties VHS transfer genuinely
@@ -2140,6 +2195,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
 | `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog |
 | `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target the playout chain normalises filler to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT, never written back to the file** — the drop-folder holds the operator's own files, and in-place normalisation is destructive, unrepeatable, and would be re-applied on every re-scan. Set empty to disable |
+| `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely |
+| `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |

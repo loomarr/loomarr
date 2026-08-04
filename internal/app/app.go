@@ -795,6 +795,60 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobReg.Add(fillerSyncJob(syncer))
 		log.Info("filler catalog sync registered", "dir", set.str("filler.dir"), "every", set.dur("filler.sync_every"), "ai_tagging", set.boolv("filler.ai_tagging"))
 
+		// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
+		// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
+		// exists to be seen and paused.
+		//
+		// ⚠ The DETECTOR is chosen at construction, not per run, because the two backends need
+		// entirely different collaborators — one a local binary and a model file, the other an
+		// HTTP client with a key. `filler.language` and the reject rule still hot-apply; changing
+		// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
+		var langDetect filler.LanguageDetector
+		if set.str("filler.language_provider") == "hosted" {
+			// ⚠ Its OWN client rather than the tagger's. The tagging provider is built inside
+			// `if filler.ai_tagging && llm.url != ""`, so reusing it would silently tie the
+			// language gate to a setting that has nothing to do with it — switch AI tagging off
+			// and clips would stop being checked, with nothing saying why.
+			//
+			// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
+			// That is the honest state for an install that selected `hosted` without configuring
+			// a key: inert, not broken, and not silently deleting things.
+			// ⚠ **CLOSURES, not resolved values.** The first cut called `set.str(...)` here and
+			// baked the URL, model and key into a client at boot — so changing `llm.model` in
+			// Settings did nothing, the detector kept calling whatever was configured at startup,
+			// and every clip failed with a real 404 ("No endpoints found that support input
+			// audio") about a request the operator thought they had already fixed. Cost a live
+			// debugging session to find, because the error was accurate and the config looked right.
+			//
+			// Everything else in this feature reads live; the one setting that decides whether the
+			// backend can work at all must too.
+			langDetect = filler.NewHostedLanguage(
+				func() filler.AudioAsker {
+					url := set.str("llm.url")
+					if url == "" {
+						return nil // not configured ⇒ the gate keeps every clip
+					}
+					return audioAskerAdapter{llm.NewOpenAI(url, set.str("llm.model"), set.str("llm.api_key"))}
+				},
+				func() string { return set.str("llm.model") },
+				set.str("playout.ffmpeg_path"), "")
+		} else {
+			// ⚠ `filler.language_model`, NOT `ingest.whisper_model`. The latter is
+			// `ggml-small.en.bin` — an ENGLISH-ONLY build that does not identify languages at all,
+			// so pointing this at it would answer "en" for every clip on earth and the gate would
+			// silently never reject anything.
+			langDetect = filler.NewWhisperLanguage(
+				set.str("ingest.whisper_path"), set.str("filler.language_model"),
+				set.str("playout.ffmpeg_path"), "")
+		}
+		jobReg.Add(fillerLanguageJob(filler.NewLanguageJob(
+			fillerLanguageStoreAdapter{st}, langDetect,
+			func() string { return set.str("filler.dir") },
+			func() string { return set.str("filler.language") },
+			time.Now, log)))
+		log.Info("filler language gate registered",
+			"provider", set.str("filler.language_provider"), "want", set.str("filler.language"))
+
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
 		// next run to honour it, not the next restart.
