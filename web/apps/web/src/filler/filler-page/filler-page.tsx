@@ -1,7 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { formatRelative, pluralize } from "@loomarr/core";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
 import { useState } from "react";
@@ -13,7 +12,6 @@ import {
   ClipRow,
   EmptyState,
   ErrorState,
-  IncomingPanel,
   PoolHealth,
   WatchPill,
 } from "@/components/loomarr";
@@ -33,8 +31,10 @@ import { useLoomarrEventListener } from "@/events";
 import { useDocumentTitle } from "@/lib";
 import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
+import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
 import { SourcesPanel } from "../sources-panel";
+import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
 // One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
@@ -90,7 +90,6 @@ const VIEWS = [
 // `catalogSearch`).
 const FillerPage = ({ tab }: FillerPageProps) => {
   useDocumentTitle("Filler");
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   // Filters live in the URL (deep-linkable, shareable, back-button aware) — the route's
@@ -143,7 +142,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(untagged ? { untagged: true } : {}),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerQueryKey() });
+  // ⚠ `invalidateLifecycle` invalidates the clip list AND the two queue views (Incoming, pool).
+  // The trio was written out by hand at four call sites here, which is three chances to forget
+  // the third key and leave an operator looking at a queue that has already moved on.
+  const { invalidateCatalog: invalidate, invalidateLifecycle } = useFillerInvalidate();
 
   // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
   // source is moving onto the Sources tab, where it belongs — a search is something you do to a
@@ -170,16 +172,20 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const poolQuery = fillerApi.useFillerPool();
   const pool = unwrap(poolQuery.data, (b) => b);
 
-  // The Incoming queue (V35) — what has been downloaded but is not yet filed. Admin-only on the
-  // server, so the QUERY is gated too, not just the tab: a member's request would 403 and fill
-  // their console with an error about a surface they cannot reach.
+  // The Incoming queue's COUNT (V35) — the tab badge, which the shell owns because the badge is
+  // visible from every tab. Admin-only on the server, so the QUERY is gated too, not just the
+  // tab: a member's request would 403 and fill their console with an error about a surface they
+  // cannot reach.
+  //
+  // ⚠ Only `total` is read here. The queue's contents (asks, reels, recently-filed) belong to
+  // `IncomingTab`, which runs the same query when it mounts — TanStack dedupes them onto one
+  // cache entry, so this is one request, not two. What it is NOT is the previous arrangement,
+  // where the Catalog tab unpacked and held a queue it never rendered.
+  //
+  // ⚠ `total` deliberately EXCLUDES the recently-filed audit list: that is not work waiting,
+  // and a tab badge that never clears stops being read.
   const incomingQuery = fillerApi.useFillerIncoming({ query: { enabled: isAdmin } });
-  const incomingAsks = unwrap(incomingQuery.data, (b) => b.asks) ?? [];
-  const incomingReels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
   const incomingTotal = unwrap(incomingQuery.data, (b) => b.total) ?? 0;
-  // What was filed with nobody looking (§10 V38) — the audit half. ⚠ Deliberately NOT in
-  // `incomingTotal`: it is not work waiting, and a tab badge that never clears stops being read.
-  const incomingFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
 
   // ⚠ Proposing a pull DOWNLOADS NOTHING — it writes a proposal for the approval queue (§10).
   // The toast says so, because a button that appears to start a download and does not is worse
@@ -199,30 +205,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       },
     },
   });
-  // Filing decisions (§10 V38). ⚠ All three invalidate the CLIP LIST as well as Incoming: filing
-  // moves a clip into the catalog, so the Catalog tab and the pool strip are both now wrong.
-  const invalidateLifecycle = () => {
-    void invalidate();
-    void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
-    void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
-  };
-  const fileClips = fillerApi.useFileFillerClips({
-    mutation: { onSettled: () => setBusyClip(undefined), onSuccess: invalidateLifecycle },
-  });
-  const holdClips = fillerApi.useHoldFillerClips({
-    mutation: {
-      onSettled: () => setBusyClip(undefined),
-      onSuccess: () => {
-        toast.success("Sent back", { description: "It's out of rotation and back in the queue." });
-        invalidateLifecycle();
-      },
-    },
-  });
-
-  // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
-  // mutation's own isPending is global to the hook — using it alone greys out every button on
-  // the page while a single confirm lands, which reads as the page having frozen.
-  const [busyClip, setBusyClip] = useState<string>();
+  // ⚠ The filing mutations (file / hold / confirm-era) and their busy-row state moved into
+  // `IncomingTab` with the queue they serve. They are not shared: nothing outside Incoming
+  // files or holds a clip, so mounting them here made the Catalog tab pay for a surface it
+  // never touches.
 
   // Bulk selection (V35). ⚠ Deliberately NOT in the URL, unlike the filters: a selection is a
   // transient intent about the rows in front of you, and a shared link that carried it would
@@ -253,9 +239,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     mutation: {
       onSuccess: (res) => {
         clearSelection();
-        invalidate();
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
+        invalidateLifecycle();
         const updated = isOk(res) ? res.data.updated : 0;
         toast.success(`Retagged ${pluralize(updated, "clip")}`);
       },
@@ -268,16 +252,8 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // "catalog" for that reason and must keep saying it.
   const removeClips = fillerApi.useBulkRemoveFiller({
     mutation: {
-      onSuccess: () => {
-        setBusyClip(undefined);
-        invalidate();
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
-      },
-      onError: (e) => {
-        setBusyClip(undefined);
-        toast.error(toProblem(e).title ?? "Couldn't remove those clips");
-      },
+      onSuccess: invalidateLifecycle,
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't remove those clips"),
     },
   });
 
@@ -285,20 +261,13 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // audience/category: UpdateClipTags writes all three columns unconditionally, so a
   // bare `{era}` would wipe the other two. Setting era confirms and clears the
   // suggestion in the same write (the BE's rule).
+  // ⚠ `invalidateLifecycle`, not just the clip list. A retag can move a clip between the queue
+  // and the catalog and changes what the pool can cover, so all three views are now stale —
+  // without the other two keys the row sits in Incoming until a reload.
   const confirmEra = fillerApi.useTagFillerClip({
     mutation: {
-      onSuccess: () => {
-        setBusyClip(undefined);
-        invalidate();
-        // The Incoming queue and the pool strip both change when a clip is filed, and neither
-        // is keyed on the clip list — without these the row stays in the queue until a reload.
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
-        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerPoolQueryKey() });
-      },
-      onError: (e) => {
-        setBusyClip(undefined);
-        toast.error(toProblem(e).title ?? "Couldn't confirm the era");
-      },
+      onSuccess: invalidateLifecycle,
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the era"),
     },
   });
 
@@ -480,75 +449,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
       />
 
       {tab === "incoming" && isAdmin ? (
-        <div
-          id="panel-incoming"
-          role="tabpanel"
-          aria-labelledby="tab-incoming"
-          className="flex flex-col gap-4"
-        >
-          {incomingQuery.error != null && (
-            <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
-          )}
-          <IncomingPanel
-            asks={incomingAsks}
-            reels={incomingReels}
-            // ⚠ Carries the clip's CURRENT audience and category, not just the era. The BE's
-            // UpdateClipTags writes all three columns unconditionally, so a bare `{era}` would
-            // silently wipe the other two — the hazard the comment above `confirmEra` records,
-            // and one this call site reproduced on its first draft.
-            onConfirmEra={(ask) => {
-              setBusyClip(ask.path);
-              confirmEra.mutate({
-                id: ask.path,
-                data: {
-                  era: ask.suggestedEra ?? 0,
-                  ...(ask.audience ? { audience: ask.audience as never } : {}),
-                  ...(ask.category ? { category: ask.category } : {}),
-                },
-              });
-            }}
-            onEditTags={(ask) => setTagging(ask.path)}
-            // "Don't use it" removes the clip from the CATALOG. The file stays where the
-            // operator put it — the server's action is a tombstone, never a delete.
-            onDismiss={(ask) => {
-              setBusyClip(ask.path);
-              removeClips.mutate({ data: { paths: [ask.path] } });
-            }}
-            recentlyFiled={incomingFiled}
-            // "Use it" files a clip as it stands — its tags are right enough. No era to confirm,
-            // so this is the plain file, not the confirm-then-file above.
-            onFile={(ask) => {
-              setBusyClip(ask.path);
-              fileClips.mutate({ data: { paths: [ask.path] } });
-            }}
-            // ⚠ `asSuggested` is what makes this per-CLIP: the server confirms each clip's own
-            // proposed era. Sending one era for the whole selection is what the bulk tag bar
-            // does, and it is the wrong answer for a queue of different guesses.
-            onFileAllAsSuggested={() =>
-              fileClips.mutate({
-                data: { paths: incomingAsks.map((a) => a.path), asSuggested: true },
-              })
-            }
-            // The undo for auto-filing. ⚠ NOT a removal: the clip and its file both stay, it
-            // simply stops being matched into pods until someone decides.
-            onSendBack={(clip) => {
-              setBusyClip(clip.path);
-              holdClips.mutate({ data: { paths: [clip.path] } });
-            }}
-            {...(confirmEra.isPending || removeClips.isPending || fileClips.isPending || holdClips.isPending
-              ? { busyPath: busyClip }
-              : {})}
-          />
-          {/* ⚠ `IngestPanel` — the paste-a-URL box — is retired-ok here (V38b), not merely moved.
-              Clips arrive because you added a SOURCE: Sources registers one, its per-row search
-              queues a result, an approved pull fetches in bulk, and auto-fetch polls on a
-              schedule. Every one of those paths is better than re-supplying a URL by hand, and
-              a box that made you find the URL yourself was the odd one out.
-
-              The ingest SSE frame it consumed is deliberately NOT deleted — auto-fetch and
-              queued downloads still emit progress; nothing renders it yet. `events-provider`
-              records why that fan-out is guarded structurally. */}
-        </div>
+        // ⚠ The tab owns its own query and its four filing mutations — see `incoming-tab.tsx`.
+        // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
+        <IncomingTab onEditTags={setTagging} />
       ) : tab === "sources" ? (
         <SourcesPanel sources={sourceRows} sourcesError={sourcesQuery.error?.detail} />
       ) : (
