@@ -1052,6 +1052,29 @@ shape the AI tagger already has, for the same reason.
 spot has no language, and those are often the best filler — so "no speech detected" means keep,
 never drop. Only confident non-target *speech* rejects.
 
+⚠ **A model handed silence does not decline — it GUESSES, and arbitrarily.** This is the failure
+the first live run produced, and it deleted two real clips. Two recorded ad breaks (867s and 978s)
+were sampled at their first ten seconds, which on a long recording is leader: tape run-up and dead
+air measuring **−70 LUFS**. Asked what language that was, the model answered `ar` for one and `es`
+for the other, and the gate tombstoned both. Re-asked about the identical span later it said `en` —
+so the answer is not reliably *wrong*, it is reliably *unpredictable*, which no amount of prompt
+tuning makes safe to act on.
+
+Two defences, and they are deliberately independent:
+
+- **Long recordings are sampled from the MIDDLE.** Past two minutes a clip has stopped being one
+  advert and become a recording of several, which always opens with leader. This fixes *where* we
+  look — the same clips measured −25 and −28 LUFS mid-recording, squarely in speech range.
+- **A span below a loudness floor is never asked about at all.** `−50 LUFS`, measured with the
+  same `ebur128` the loudness half of V40 uses. This holds *wherever* we land, including on a clip
+  that is genuinely silent throughout. The floor leaves wide room above the quietest real clip
+  measured in this catalog (−32.6 LUFS), because treating a quiet advert as silent would be the
+  same bug in the other direction.
+
+⚠ The local backend has a third defence the hosted one structurally cannot: it checks whether
+whisper transcribed anything, so silence yields no utterances and returns `none` naturally. Only
+the hosted path can guess, which is why the floor exists.
+
 **Two backends behind one seam**, mirroring `llm.provider`'s local-vs-hosted split (§8.1):
 
 | | `filler.language_provider = whisper` (default) | `= hosted` |

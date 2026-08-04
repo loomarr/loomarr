@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -71,12 +72,33 @@ func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 		// spare second to skip, and taking nothing would report "none" for every short clip.
 		return 0, durationMs
 	}
+	// ⚠ **A LONG recording is sampled from its MIDDLE, not its opening.** A fixed 1s offset is
+	// right for a 30-second spot and wrong for a 978-second one: recorded ad breaks and VHS
+	// transfers begin with leader — dead air, a blank frame, tape run-up — so the first ten
+	// seconds are silence, and a detector handed silence produces a guess.
+	//
+	// Found live: "USA Network Commercial Breaks (10-6-1994)", 978s, whose first 10s measure
+	// **-70 LUFS**. The model was asked what language the silence was in, answered `ar`, and the
+	// gate tombstoned a perfectly good American ad break.
+	//
+	// The threshold is where a clip stops being an advert and starts being a recording of several.
+	if durationMs > longRecordingMs {
+		start := durationMs/2 - LanguageSampleMs/2
+		return start, start + LanguageSampleMs
+	}
+
 	start := skipMs
 	if end := start + LanguageSampleMs; end > durationMs {
 		start = durationMs - LanguageSampleMs
 	}
 	return start, start + LanguageSampleMs
 }
+
+// longRecordingMs is where a clip stops being one advert and starts being a recording of several.
+//
+// Two minutes: no single commercial runs that long, so anything past it is a compilation, a break
+// recording or a tape transfer — all of which open with leader rather than content.
+const longRecordingMs int64 = 120_000
 
 // NormalizeLanguage reduces a code to its base tag for comparison: `en-US`, `EN`, `eng ` all
 // become `en`.
@@ -254,6 +276,54 @@ func parseWhisperLanguage(raw []byte) (string, error) {
 		return LangUndetermined, nil
 	}
 	return lang, nil
+}
+
+// silenceFloorLUFS is the loudness below which a span carries nothing worth asking about.
+//
+// -50 LUFS is far below anything audible — the quietest real clip measured in this catalog was
+// -32.6 LUFS (§10 V40's loudness work), and the leader that caused the false positive measured
+// **-70**. The gap between those two numbers is wide enough that this cannot mistake a quiet
+// advert for silence, which is the failure that would matter: a quiet clip must still be judged.
+const silenceFloorLUFS = -50.0
+
+// spanIsSilent reports whether an extracted span is effectively silent.
+//
+// ⚠ **The guard that the byte-size check could not be.** A ten-second wav of leader is 320KB of
+// near-zero samples — full size, entirely empty. Asked what language that is, a model guesses
+// rather than declining, and the gate then deletes a clip on the strength of a guess.
+//
+// Uses `ebur128`, the same measurement the loudness half of V40 already relies on, so "silent"
+// means the same thing in both places rather than being a second opinion.
+//
+// An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
+// either direction, and the caller keeps the clip either way.
+func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
+	ff := ffmpegPath
+	if ff == "" {
+		ff = "ffmpeg"
+	}
+	out, err := exec.CommandContext(ctx, ff,
+		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
+	if err != nil {
+		return false, err
+	}
+	// ffmpeg prints the summary to stderr; the integrated line reads "    I:         -70.0 LUFS".
+	idx := strings.Index(string(out), "Integrated loudness")
+	if idx < 0 {
+		return false, fmt.Errorf("no integrated loudness in ffmpeg output")
+	}
+	for _, line := range strings.Split(string(out)[idx:], "\n") {
+		fields := strings.Fields(line)
+		// "I: -70.0 LUFS"
+		if len(fields) >= 3 && fields[0] == "I:" && fields[2] == "LUFS" {
+			lufs, parseErr := strconv.ParseFloat(fields[1], 64)
+			if parseErr != nil {
+				return false, parseErr
+			}
+			return lufs < silenceFloorLUFS, nil
+		}
+	}
+	return false, fmt.Errorf("no integrated loudness value in ffmpeg output")
 }
 
 // msToFFmpegTime renders milliseconds as ffmpeg's seconds-with-decimals.

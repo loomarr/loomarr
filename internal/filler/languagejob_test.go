@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -234,5 +236,74 @@ func TestLanguageJob_RecordsTheAnswerEvenWhenRemovalFails(t *testing.T) {
 	}
 	if res.Rejected != 0 {
 		t.Errorf("rejected = %d, want 0 — nothing was actually removed", res.Rejected)
+	}
+}
+
+// recordingAsker captures which model it was asked for, so a test can prove the value was read
+// LIVE rather than captured when the detector was built.
+type recordingAsker struct {
+	models []string
+	answer string
+}
+
+func (r *recordingAsker) AskAboutAudio(_ context.Context, req filler.AudioAsk) (string, error) {
+	r.models = append(r.models, req.Model)
+	return r.answer, nil
+}
+
+// ⚠ **THE regression this exists for, found live and not by a test.** The first cut resolved
+// `llm.url`/`llm.model`/`llm.api_key` ONCE at construction and baked them into a client. Changing
+// the model in Settings then did nothing: the detector kept calling whatever was configured when
+// the process started, which had no audio input, and every clip failed with a real 404 —
+// "No endpoints found that support input audio" — about a request the operator believed they had
+// already fixed. The error was accurate and the config looked right, which is what made it
+// expensive to find.
+//
+// Everything else in this feature reads live (`filler.dir`, `filler.language`). The one setting
+// that decides whether the backend can work at all has to as well.
+func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
+	rec := &recordingAsker{answer: "en"}
+	model := "stale-model-with-no-audio"
+
+	det := filler.NewHostedLanguage(
+		func() filler.AudioAsker { return rec },
+		func() string { return model }, // read per call, like a settings closure
+		"", t.TempDir())
+
+	// A real file is needed for the ffmpeg extract; a silent one is enough to reach the ask.
+	// If ffmpeg is unavailable the detector reports undetermined, which still exercises nothing
+	// useful — so skip rather than assert a false pass.
+	dir := t.TempDir()
+	clip := filepath.Join(dir, "c.wav")
+	if err := exec.Command("ffmpeg", "-nostdin", "-v", "error",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ac", "1", "-ar", "16000",
+		"-y", clip).Run(); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+
+	if _, err := det.DetectLanguage(context.Background(), clip, 0, 3000); err != nil {
+		t.Fatal(err)
+	}
+	// The operator changes the model in Settings — no restart, no rebuild.
+	model = "corrected-model-with-audio"
+	if _, err := det.DetectLanguage(context.Background(), clip, 0, 3000); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(rec.models) != 2 {
+		t.Fatalf("asked %d times, want 2", len(rec.models))
+	}
+	if rec.models[1] != "corrected-model-with-audio" {
+		t.Errorf("second call used %q, want the CORRECTED model — a captured value means changing "+
+			"the setting silently does nothing and every clip 404s", rec.models[1])
+	}
+}
+
+// A nil asker (hosted selected, nothing configured) keeps every clip rather than erroring.
+func TestHostedLanguage_UnconfiguredIsInertNotBroken(t *testing.T) {
+	det := filler.NewHostedLanguage(func() filler.AudioAsker { return nil }, func() string { return "" }, "", t.TempDir())
+	got, err := det.DetectLanguage(context.Background(), "/nonexistent.mp4", 0, 10_000)
+	if err != nil || got != filler.LangUndetermined {
+		t.Errorf("got (%q, %v), want (undetermined, nil) — an unconfigured backend must not reject", got, err)
 	}
 }

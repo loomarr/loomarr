@@ -59,25 +59,47 @@ const hostedLanguageMaxTokens = 8
 
 // HostedLanguage detects with an audio-capable model through the §8.1 hosted provider.
 type HostedLanguage struct {
-	// Asker is the hosted client. Nil ⇒ every call returns LangUndetermined, so an install that
-	// selected `hosted` without configuring a key is inert rather than broken.
-	Asker AudioAsker
-	// Model is the audio-capable model id. Empty ⇒ the client's configured default.
-	Model string
+	// Asker resolves the hosted client PER CALL rather than holding one.
+	//
+	// ⚠ **A func, not a value, and this cost a live debugging session.** The first cut captured
+	// `llm.NewOpenAI(url, model, key)` once at boot, so the URL, model and key were frozen at
+	// whatever they were when the process started. Changing `llm.model` in Settings then did
+	// nothing: the detector kept calling the model configured at startup, which had no audio
+	// input, and every clip failed with "No endpoints found that support input audio" — a real
+	// 404 about a request the operator thought they had already fixed.
+	//
+	// Everything else in this feature reads live (`filler.dir`, `filler.language`); this has to
+	// as well, or the one setting that decides whether the backend can work at all is the one
+	// that needs a restart.
+	//
+	// Returning nil ⇒ LangUndetermined, so an install that selected `hosted` without configuring
+	// a key is inert rather than broken.
+	Asker func() AudioAsker
+	// Model is read per call for the same reason.
+	Model func() string
 	// FFmpegPath extracts the span; the wire format is 16kHz mono wav for the same reason whisper
 	// wants it — small, universally decodable, and ~430KB of base64 for ten seconds.
 	FFmpegPath string
 	tmpDir     string
 }
 
-// NewHostedLanguage builds the hosted detector. Every field may be empty; the result reports
-// LangUndetermined rather than erroring, because "we cannot tell" is an answer the gate handles.
-func NewHostedLanguage(asker AudioAsker, model, ffmpegPath, tmpDir string) *HostedLanguage {
+// NewHostedLanguage builds the hosted detector.
+//
+// ⚠ `asker` and `model` are FUNCS, resolved per call — see the field comments. Either may be nil
+// or return a zero value; the result reports LangUndetermined rather than erroring, because
+// "we cannot tell" is an answer the gate already knows how to handle.
+func NewHostedLanguage(asker func() AudioAsker, model func() string, ffmpegPath, tmpDir string) *HostedLanguage {
 	return &HostedLanguage{Asker: asker, Model: model, FFmpegPath: ffmpegPath, tmpDir: tmpDir}
 }
 
 func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startMs, endMs int64) (string, error) {
+	// Resolved HERE, per call, not captured at construction — see the field comment. An install
+	// that has not configured a hosted client yields nil, which keeps every clip.
 	if h.Asker == nil {
+		return LangUndetermined, nil
+	}
+	asker := h.Asker()
+	if asker == nil {
 		return LangUndetermined, nil
 	}
 	dir, err := os.MkdirTemp(h.tmpDir, "loomarr-lang-hosted-")
@@ -107,9 +129,23 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 	if len(audio) < 1024 {
 		return LangNone, nil
 	}
+	// ⚠ **A FULL-SIZE file of silence is the case that actually bit.** The size check above only
+	// catches an empty wav; ten seconds of leader is 320KB of near-zero samples and sails through.
+	// Asked what language silence is in, a model does not decline — it guesses.
+	//
+	// Found live: a 978s recorded ad break whose first 10s measure -70 LUFS was answered `ar` and
+	// tombstoned. `LanguageSpan` now samples long recordings from the middle, but that fixes WHERE
+	// we look; this is the guard that holds wherever we land, including on a genuinely silent clip.
+	if silent, err := spanIsSilent(ctx, ff, wav); err == nil && silent {
+		return LangNone, nil
+	}
 
-	answer, err := h.Asker.AskAboutAudio(ctx, AudioAsk{
-		Model: h.Model, Prompt: languagePrompt, Audio: audio,
+	model := ""
+	if h.Model != nil {
+		model = h.Model()
+	}
+	answer, err := asker.AskAboutAudio(ctx, AudioAsk{
+		Model: model, Prompt: languagePrompt, Audio: audio,
 		Format: "wav", MaxTokens: hostedLanguageMaxTokens,
 	})
 	if err != nil {
