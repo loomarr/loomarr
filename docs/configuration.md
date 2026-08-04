@@ -92,6 +92,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.channel_sweep.schedule` (`JOB_CHANNEL_SWEEP_SCHEDULE`) | cron | `0 */10 * * * *` | How often Loomarr reconciles channels with Tunarr (cron). |
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
 | `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
+| `job.filler_language.schedule` (`JOB_FILLER_LANGUAGE_SCHEDULE`) | cron | `0 30 * * * *` | How often Loomarr checks what language new filler clips are spoken in (cron). |
 | `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
@@ -147,12 +148,15 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.weight` (`FILLER_WEIGHT`) | int | `1` | How heavily this commercial set is drawn from, relative to others. _(advanced)_ |
 | `filler.min_duration` (`FILLER_MIN_DURATION`) | duration | `10s` | Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration. _(advanced)_ |
 | `filler.target_lufs` (`FILLER_TARGET_LUFS`) | string | `-23` | Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded. _(advanced)_ |
+| `filler.language` (`FILLER_LANGUAGE`) | string | `en` | The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. Empty turns the language check off. _(advanced)_ |
+| `filler.language_provider` (`FILLER_LANGUAGE_PROVIDER`) | enum | `whisper` | What works out a clip's language: the built-in local engine (free and offline, but slow on low-power hardware), or a hosted AI service (fast anywhere, costs a fraction of a cent per clip and sends a few seconds of audio off this machine). _(advanced; one of: whisper \| hosted)_ |
 | `ingest.ytdlp_path` (`INGEST_YTDLP_PATH`) | string | — | Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off. _(advanced)_ |
 | `ingest.ffmpeg_path` (`INGEST_FFMPEG_PATH`) | string | — | Where the ffmpeg program lives (yt-dlp needs it to combine video and audio). _(advanced)_ |
 | `ingest.max_concurrent` (`INGEST_MAX_CONCURRENT`) | int | `2` | Maximum ingest sources downloaded in parallel. _(advanced)_ |
 | `ingest.timeout` (`INGEST_TIMEOUT`) | duration | `30m` | How long one download may run before it's stopped, so a stuck fetch can't block others. _(advanced)_ |
 | `ingest.whisper_path` (`INGEST_WHISPER_PATH`) | string | — | Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks. _(advanced)_ |
 | `ingest.whisper_model` (`INGEST_WHISPER_MODEL`) | string | — | The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks. _(advanced)_ |
+| `filler.language_model` (`FILLER_LANGUAGE_MODEL`) | string | — | The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off. _(advanced)_ |
 | `filler.starter_collection` (`FILLER_STARTER_COLLECTION`) | string | `classic_tv_commercials` | The archive.org collection suggested as a starter pack when your clip catalog is empty. Nothing downloads until you pick from it. Leave empty to turn the suggestion off. |
 
 ## Users & security

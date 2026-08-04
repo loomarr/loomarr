@@ -112,6 +112,18 @@ ARG WHISPER_VERSION=v1.9.1
 # clips get cut. Same reasoning as the version pins above, higher stakes.
 ARG WHISPER_MODEL_REV=5359861c739e955e79d9a303bcbc70fb988958b1
 ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d
+# ⚠ A SECOND model, for language identification only (§10 V40) — and the `.en` suffix is
+# exactly why it is needed. `ggml-small.en.bin` above is an ENGLISH-ONLY build: it does not
+# perform language identification at all, it assumes English and transcribes accordingly.
+# Asked "what language is this?" about a Spanish advert it answers `en`, so the language
+# gate would silently never reject anything — a feature that looks shipped and does nothing.
+#
+# `tiny` (multilingual, ~74MB) is adequate here in a way it was NOT for splitting: language
+# ID is CLASSIFICATION over the first seconds, not transcription. The gate that ruled out
+# `tiny.en` for splitting was "does it drop audible speech", which this task never asks.
+# Measured 2026-08-03: 77,691,713 bytes, sha256 be07e048… (verified by download, not
+# copied from a listing).
+ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
 RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) YTDLP_ASSET=yt-dlp_linux;         DENO_ARCH=x86_64;  FFMPEG_ARCH=linux64;    WHISPER_ARCH=x64 ;; \
@@ -235,6 +247,10 @@ RUN set -eux; \
     curl -fsSL -o /usr/local/share/whisper/ggml-small.en.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-small.en.bin"; \
     echo "${WHISPER_MODEL_SHA256}  /usr/local/share/whisper/ggml-small.en.bin" | sha256sum -c -; \
+    # The language-ID model (§10 V40) — see the ARG comment for why `small.en` cannot do this job.
+    curl -fsSL -o /usr/local/share/whisper/ggml-tiny.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
+    echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
     apt-get purge -y curl xz-utils unzip; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
@@ -291,7 +307,8 @@ VOLUME /data
 ENV INGEST_YTDLP_PATH=/usr/local/bin/yt-dlp \
     INGEST_FFMPEG_PATH=/usr/local/bin/ffmpeg \
     INGEST_WHISPER_PATH=/usr/local/bin/whisper-cli \
-    INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin
+    INGEST_WHISPER_MODEL=/usr/local/share/whisper/ggml-small.en.bin \
+    FILLER_LANGUAGE_MODEL=/usr/local/share/whisper/ggml-tiny.bin
 ARG VERSION=""
 ARG COMMIT=""
 # licenses is the SPDX expression for the AGGREGATE image: Loomarr (MIT) plus the
