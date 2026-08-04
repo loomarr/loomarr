@@ -216,7 +216,12 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 			res.Skipped++
 			continue // nothing usable
 		}
-		if err := t.store.UpdateClipTags(ctx, clip.Path, era, audience, category, suggestedEra, true, t.now()); err != nil {
+		// ⚠ Hash, not Path. `UpdateClipTags` is keyed `WHERE hash = ?` while `SetClipsHeld`
+		// eleven lines below is keyed `WHERE path IN (…)` — the same loop legitimately needs
+		// both. This call passed `clip.Path` from V38c until V41, so every run returned
+		// ErrNotFound on its first taggable clip and the fatal `return` below meant NO clip was
+		// ever AI-tagged. Invisible to tests because the store fixtures set hash == path.
+		if err := t.store.UpdateClipTags(ctx, clip.Hash, era, audience, category, suggestedEra, true, t.now()); err != nil {
 			return res, err
 		}
 		// The filing decision (§10 V38). Only HELD clips are candidates: a clip already in the

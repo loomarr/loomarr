@@ -50,6 +50,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("SessionLifecycle", func(t *testing.T) { testSessionLifecycle(t, newStore) })
 	t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 	t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
+	t.Run("ClipKeyIsHashNotPath", func(t *testing.T) { testClipKeyIsHashNotPath(t, newStore) })
 	t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 	t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 	t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
@@ -805,8 +806,13 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	// store does not care what a hash looks like; only `filler.ClipPath` validates the shape, and
 	// that is covered where it belongs, in `filler/clippath_test.go`. Using real hashes here
 	// would make every assertion a wall of hex and would test nothing extra.
+	//
+	// ⚠ But `Path` must NOT be the id as well. It was until V41, and hash-keyed and path-keyed
+	// store methods became indistinguishable to this suite: `UpdateClipTags` (`WHERE hash = ?`)
+	// was being called with a path in production and every test still passed. See `clipAt` for
+	// the full post-mortem. Keep the two fields distinct in every fixture, always.
 	c.Hash = id
-	c.Path = id
+	c.Path = clipPathFor(id)
 	c.TunarrProgramID = "tun-" + id
 	c.Name = name
 	c.Kind = kind
@@ -848,13 +854,15 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("kind=commercial = %d, want 3", len(comms))
 	}
 	// Filter by audience + era.
+	// ⚠ Assert on Hash, not Path: identity is the hash (§10 V38c). Asserting the path here read
+	// as correct only while the fixture made the two equal.
 	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
-	if len(kids92) != 1 || kids92[0].Path != "c1" {
+	if len(kids92) != 1 || kids92[0].Hash != "c1" {
 		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
 	}
 	// Untagged only.
 	untagged, _ := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
-	if len(untagged) != 1 || untagged[0].Path != "u1" {
+	if len(untagged) != 1 || untagged[0].Hash != "u1" {
 		t.Errorf("untagged = %+v, want just u1", ids2(untagged))
 	}
 	// Empty filter = all.
@@ -1269,7 +1277,11 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("seed clip: %v", err)
 	}
 
-	got, err := s.GetClip(ctx, c.Path)
+	// ⚠ Read by HASH, not path. `GetClip`, `RecordClipPlay` and `UpdateClipTags` are all keyed
+	// `WHERE hash = ?`; passing a path returns ErrNotFound. This test used `c.Path` throughout
+	// while the fixture made the two equal, so it could not distinguish the two keys — and the
+	// production callers that passed a path went undetected for two releases (see `clipAt`).
+	got, err := s.GetClip(ctx, c.Hash)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -1291,11 +1303,11 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 
 	aired := time.Unix(1_800_000_000, 0).UTC()
 	for i := 0; i < 3; i++ {
-		if err := s.RecordClipPlay(ctx, c.Path, aired); err != nil {
+		if err := s.RecordClipPlay(ctx, c.Hash, aired); err != nil {
 			t.Fatalf("record play %d: %v", i, err)
 		}
 	}
-	got, _ = s.GetClip(ctx, c.Path)
+	got, _ = s.GetClip(ctx, c.Hash)
 	if got.PlayCount != 3 {
 		t.Errorf("play count = %d, want 3", got.PlayCount)
 	}
@@ -1309,7 +1321,7 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, c); err != nil {
 		t.Fatalf("re-sync: %v", err)
 	}
-	got, _ = s.GetClip(ctx, c.Path)
+	got, _ = s.GetClip(ctx, c.Hash)
 	if got.Name != "TMNT toys (renamed)" {
 		t.Errorf("a re-sync must refresh the name, got %q", got.Name)
 	}
@@ -1324,6 +1336,74 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	// row, not a playback error.
 	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
 		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
+	}
+}
+
+// testClipKeyIsHashNotPath pins WHICH key the clip writers take (§10 V38c).
+//
+// ⚠ This test exists because the absence of it cost two releases. `Hash` (identity) and `Path`
+// (location) are both strings, so passing the wrong one is invisible to the compiler — and every
+// fixture in this suite set them to the same value, so it was invisible to the tests too. Two
+// production callers passed a path into a hash-keyed UPDATE: the AI tagger aborted on its first
+// clip (ErrNotFound is fatal there) and play counters silently never moved.
+//
+// The assertions are deliberately negative — "a path must NOT work" — because the positive case
+// passes just as happily against a store that accepts either.
+func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	c := sampleClip("k1", "keyed.mp4", filler.Commercial, 0, "", "")
+	if c.Hash == c.Path {
+		t.Fatalf("fixture bug: hash and path are equal (%q) — this test cannot distinguish the "+
+			"two keys and neither can any other test in this file", c.Hash)
+	}
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+
+	// GetClip is hash-keyed.
+	if _, err := s.GetClip(ctx, c.Path); err != ErrNotFound {
+		t.Errorf("GetClip(path) = %v, want ErrNotFound — GetClip is keyed WHERE hash = ?", err)
+	}
+	if _, err := s.GetClip(ctx, c.Hash); err != nil {
+		t.Errorf("GetClip(hash) = %v, want it to resolve", err)
+	}
+
+	// UpdateClipTags is hash-keyed, and its ErrNotFound is fatal to the tagging job.
+	if err := s.UpdateClipTags(ctx, c.Path, 1994, "kids", "cereal", 0, true, now); err != ErrNotFound {
+		t.Errorf("UpdateClipTags(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
+	}
+	if err := s.UpdateClipTags(ctx, c.Hash, 1994, "kids", "cereal", 0, true, now); err != nil {
+		t.Errorf("UpdateClipTags(hash) = %v, want it to apply", err)
+	}
+
+	// RecordClipPlay is hash-keyed and deliberately silent on a miss, so assert the COUNTER
+	// rather than the error — a path that no-ops returns nil either way.
+	if err := s.RecordClipPlay(ctx, c.Path, now); err != nil {
+		t.Errorf("RecordClipPlay(path) = %v, want a silent no-op", err)
+	}
+	got, _ := s.GetClip(ctx, c.Hash)
+	if got.PlayCount != 0 {
+		t.Errorf("play count = %d after recording against a PATH, want 0", got.PlayCount)
+	}
+	if err := s.RecordClipPlay(ctx, c.Hash, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.PlayCount != 1 {
+		t.Errorf("play count = %d after recording against the HASH, want 1", got.PlayCount)
+	}
+
+	// SetClipLanguage is the other half of the split: path-keyed, by design (the language job
+	// walks the filesystem). Pinned so a well-meaning "consistency" change has to be deliberate.
+	if err := s.SetClipLanguage(ctx, c.Path, "en", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Language != "en" {
+		t.Errorf("language = %q, want %q — SetClipLanguage is keyed WHERE path = ?", got.Language, "en")
 	}
 }
 
@@ -1637,15 +1717,33 @@ func testScheduledJobPaused(t *testing.T, newStore NewStoreFunc) {
 //
 // The interesting assertions are the two that protect against silent data loss: a re-register
 // must not reset "last fetched", and deleting a source must not take its clips with it.
-// clipAt builds a catalog clip whose identity is its readable path.
+// clipAt builds a catalog clip whose identity (`Hash`) is DISTINCT from its location (`Path`).
 //
-// ⚠ Real 64-hex hashes are deliberately NOT used here. The store does not care what a hash looks
+// ⚠ Hash and Path must never be equal here, and this is the whole point of the helper. They were
+// the same string until V41, and that single fact hid two production defects for two releases:
+// `DeleteClipsNotIn` wiped the entire catalog on every sync (see the post-mortem on
+// `store.SetClipsRemoved`), and `UpdateClipTags`/`RecordClipPlay` were being called with a path
+// against a `WHERE hash = ?` — so the AI tagger aborted on its first clip and play counters never
+// moved. Every assertion passed throughout, because a fixture where the two keys are equal cannot
+// tell them apart. A key-confusion bug is invisible by construction against such a fixture.
+//
+// ⚠ Real 64-hex hashes are still deliberately NOT used. The store does not care what a hash looks
 // like — only `filler.ClipPath` validates the shape, and that is tested where it belongs
-// (`filler/clippath_test.go`). Using real hashes would turn every assertion in this file into a
-// wall of hex and would test nothing the hash tests do not already cover.
+// (`filler/clippath_test.go`). A wall of hex would cost readability without buying coverage. The
+// property that matters is that the two fields are DISTINGUISHABLE, not that the hash is realistic,
+// so the readable path gets a short readable hash beside it.
 func clipAt(path, name string, kind filler.Kind, durationMs int64) filler.Clip {
-	return filler.Clip{Hash: path, Path: path, Name: name, Kind: kind, DurationMs: durationMs}
+	return filler.Clip{Hash: clipHashFor(path), Path: path, Name: name, Kind: kind, DurationMs: durationMs}
 }
+
+// clipHashFor derives a fixture clip's identity from its path, and clipPathFor derives a fixture
+// clip's location from its identity. The two builders in this file start from opposite ends —
+// `clipAt` is given a readable path, `sampleClip` a readable id — so each needs the other half.
+//
+// Both are deterministic (the suite asserts exact values and runs against two backends), readable
+// in failure output, and — the load-bearing property — never equal to the value they derive from.
+func clipHashFor(path string) string { return "h:" + path }
+func clipPathFor(hash string) string { return "p/" + hash + ".mp4" }
 
 // findSource returns one source by id, and whether it is still listed.
 //
