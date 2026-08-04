@@ -38,3 +38,33 @@ The `transcription` array is cut to two utterances. The parser only asks *"was a
 the rest is bulk; everything the parser reads is verbatim.
 
 Regenerate by rebuilding the image and re-running the arguments above.
+
+---
+
+# Hosted backend — live verification (no fixture)
+
+The hosted detector has no captured fixture because its answer is a bare word, not a document.
+Verified live instead, 2026-08-03, against `google/gemini-3.5-flash-lite` via OpenRouter using the
+exact payload `llm.OpenAI.AskAboutAudio` builds (a multimodal `input_audio` content part, bare
+base64, `format: "wav"`) and the exact prompt from `languagehosted.go`:
+
+| sample | answer |
+| --- | --- |
+| Spanish advert (the `lang_es` audio) | `es` — twice, so the answer is stable rather than lucky |
+| English catalog clip (the `lang_en` audio) | `en` |
+| pure silence | `none` |
+| music only, no speech | `none` |
+
+**The last two are the point.** The local backend earns `none` structurally — it checks whether
+anything was transcribed. The hosted one depends entirely on the model obeying an instruction, so
+"answer exactly: none" was the branch most likely to misbehave: a model asked *"what language is
+this?"* over wordless audio tends to guess, and a guess there would wrongly reject every wordless
+advert. It declined correctly on both.
+
+Six calls cost **$0.000300** total (~5 hundredths of a cent each), which is the measurement behind
+§10's "fractions of a cent per clip".
+
+⚠ The 402 path was exercised too, accidentally and usefully: an empty account returns
+`Insufficient credits` in the response BODY. `AskAboutAudio` includes that body in its error for
+exactly this reason — a bare status code would leave an operator guessing between a bad key, a
+wrong model and an empty balance.
