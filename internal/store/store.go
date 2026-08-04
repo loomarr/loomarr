@@ -156,6 +156,12 @@ type ClipStore interface {
 	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
 	// a ZERO filter, so an opt-out would keep a removed clip airing.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	// CountClips is ListClips' question answered without the rows, for callers that only ever
+	// took len() of the result. Same filter, same predicate (they share the WHERE builder).
+	CountClips(ctx context.Context, filter ClipFilter) (int, error)
+	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
+	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
+	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
 	// ⚠ The ONLY writer of that tombstone, like RecordClipPlay is the only writer of the play

@@ -269,11 +269,25 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	now := time.Now()
+	// ⚠ Resolve the wire identity (a PATH) to the storage identity (the HASH) once, here.
+	//
+	// `ClipDTO.Path` is the API's identity and stays that way: channel policy pinned/excluded
+	// lists reference paths, so changing the wire format would ripple through saved policy.
+	// But `UpdateClipTags`/`UpdateClipKind`/`GetClip` are all keyed `WHERE hash = ?`, so this
+	// handler passed a path into three hash-keyed calls and every PATCH 404'd from V38c until
+	// V41 — the UI simply could not edit a clip's tags. One lookup, then hashes below.
+	clip, err := s.store.GetClipByPath(ctx, in.ID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+		}
+		return nil, err
+	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
 	// CONFIRMS and clears any suggestion in the same write, while an era-less edit
 	// leaves the operator's unanswered question alone (§10, V34).
-	if err := s.store.UpdateClipTags(ctx, in.ID, in.Body.Era, in.Body.Audience, in.Body.Category, 0, false, now); err != nil {
+	if err := s.store.UpdateClipTags(ctx, clip.Hash, in.Body.Era, in.Body.Audience, in.Body.Category, 0, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
@@ -283,14 +297,14 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
 	// safe to retry if the second fails.
 	if in.Body.Kind != "" {
-		if err := s.store.UpdateClipKind(ctx, in.ID, in.Body.Kind, now); err != nil {
+		if err := s.store.UpdateClipKind(ctx, clip.Hash, in.Body.Kind, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			return nil, err
 		}
 	}
-	c, err := s.store.GetClip(ctx, in.ID)
+	c, err := s.store.GetClip(ctx, clip.Hash)
 	if err != nil {
 		return nil, err
 	}

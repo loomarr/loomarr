@@ -526,8 +526,13 @@ func (r *playoutResolver) airingFiller(
 			// ⚠ Internal playout only. A Tunarr-backed channel airs its filler through Tunarr,
 			// which never reports back, so those clips stay at zero — "not counted here", not
 			// "never played". The DTO says which.
-			if into == 0 && r.clipPlays != nil {
-				if err := r.clipPlays.RecordClipPlay(ctx, e.Path, now); err != nil {
+			//
+			// ⚠ Keyed by Hash, not Path. `RecordClipPlay` is `WHERE hash = ?`; this passed
+			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
+			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
+			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
+			if into == 0 && r.clipPlays != nil && e.Hash != "" {
+				if err := r.clipPlays.RecordClipPlay(ctx, e.Hash, now); err != nil {
 					// Telemetry, never correctness: a failed count must not stop a break from
 					// airing. Logged at debug because a pruned clip is an ordinary race.
 					_ = err
