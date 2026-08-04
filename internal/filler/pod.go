@@ -31,6 +31,14 @@ type PodEntry struct {
 	// to nothing and the channel plays SILENCE — caught by playoutfiller_test, which is the only
 	// reason it is not shipping.
 	Path string
+	// Hash is the clip's IDENTITY (§10 V38c) — what the hash-keyed store methods take. "" for
+	// the embedded bumper card, which has no catalog row.
+	//
+	// ⚠ Carried because `Path` alone is not enough to write back. Playout counts an airing via
+	// `RecordClipPlay`, which is keyed `WHERE hash = ?`; without this field the resolver passed
+	// the path, the UPDATE matched nothing, and play counters sat at zero from V38c to V41. The
+	// error there is deliberately swallowed as telemetry, so nothing surfaced it.
+	Hash string
 	// TunarrProgramID is set only when Tunarr knows the clip; "" for the bumper card and on
 	// any install without Tunarr.
 	TunarrProgramID string
@@ -257,7 +265,7 @@ func (p *Pod) append(e PodEntry, used map[string]bool) {
 
 func clipToEntry(c Clip) PodEntry {
 	return PodEntry{
-		Path: c.Path, TunarrProgramID: c.TunarrProgramID,
+		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
 		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
 		// Display-only passengers (see PodEntry) — every entry gets them from one place, so
 		// a clip cannot reach the hover card with its era and quality mysteriously absent.

@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -10,6 +11,11 @@ import (
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
+
+// errTagClipNotFound stands in for store.ErrNotFound, which this package cannot import (`filler`
+// deliberately does not depend on `store`). What matters to the tagger is only that a miss is an
+// ERROR — it returns fatally on one, so a mock that silently succeeded on a wrong key hid the bug.
+var errTagClipNotFound = errors.New("clip not found")
 
 // tagMemStore is an in-memory TagStore.
 type tagMemStore struct {
@@ -25,6 +31,12 @@ func newTagMemStore() *tagMemStore {
 	return &tagMemStore{clips: map[string]filler.StoreClip{}, updates: map[string]filler.StoreClip{}}
 }
 
+// seed adds a clip keyed by its own identity. ⚠ Use this rather than assigning into `clips`
+// directly: the map key IS the hash the store looks up, so seeding `clips["c1"]` with a clip
+// whose Hash is something else builds a row that cannot be found by either key. That was
+// harmless while every fixture set hash == path and became four failures the moment they differed.
+func (m *tagMemStore) seed(c filler.StoreClip) { m.clips[c.Hash] = c }
+
 func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.StoreClip, error) {
 	var out []filler.StoreClip
 	for _, c := range m.clips {
@@ -32,20 +44,49 @@ func (m *tagMemStore) ListUntaggedCommercials(_ context.Context) ([]filler.Store
 	}
 	return out, nil
 }
+
+// ⚠ SetClipsHeld is keyed by PATH and UpdateClipTags by HASH, mirroring the real store exactly
+// (`WHERE path IN (…)` vs `WHERE hash = ?`). A mock that accepted either — which this one did
+// until V41, because every fixture set hash == path — cannot catch a caller passing the wrong
+// key, and that is precisely the bug that shipped. Both methods now MISS loudly on a wrong key
+// rather than quietly succeeding.
 func (m *tagMemStore) SetClipsHeld(_ context.Context, paths []string, held, autoFiled bool, _ time.Time) (int, error) {
+	n := 0
 	for _, p := range paths {
-		c := m.clips[p]
+		hash, ok := m.hashByPath(p)
+		if !ok {
+			continue // the real store's `WHERE path IN (…)` matches no row either
+		}
+		c := m.clips[hash]
 		c.Held = held
 		c.AutoFiled = autoFiled
-		m.clips[p] = c
+		m.clips[hash] = c
+		n++
 		if !held {
 			m.filed = append(m.filed, p)
 		}
 	}
-	return len(paths), nil
+	return n, nil
 }
+
+// hashByPath resolves a clip's location to its identity, the lookup the real store does in SQL.
+func (m *tagMemStore) hashByPath(path string) (string, bool) {
+	for h, c := range m.clips {
+		if c.Path == path {
+			return h, true
+		}
+	}
+	return "", false
+}
+
 func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, _ time.Time) error {
-	c := m.clips[id]
+	c, ok := m.clips[id]
+	if !ok {
+		// The real store returns store.ErrNotFound here, and the tagger treats it as FATAL —
+		// which is how "the tagger passed a path" became "no clip was ever tagged". A local
+		// sentinel because `filler` must not import `store` (the layering the package relies on).
+		return errTagClipNotFound
+	}
 	c.Era = era
 	c.Audience = filler.Audience(audience)
 	c.Category = category
@@ -62,10 +103,15 @@ func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audi
 // untaggedClip builds a catalog clip. ⚠ Since V38c the sidecar is found by PATH, so a fixture
 // giving a clip a sidecar must name it `<path minus extension>.info.json` — the shape intake
 // produces. Fuzzy name matching is gone; see TestTagger_ReadsTheSidecarBesideTheClip.
+//
+// ⚠ Hash and Path are DELIBERATELY different. They were both `id` until V41, which made this
+// mock unable to tell a hash-keyed call from a path-keyed one — so the tagger passing `clip.Path`
+// into the hash-keyed `UpdateClipTags` passed every test here while failing on every real clip
+// in production. `id` is the identity; the path is derived from it.
 func untaggedClip(id, name string) filler.StoreClip {
 	c := filler.StoreClip{}
 	c.Hash = id
-	c.Path = id
+	c.Path = "p/" + id + ".mp4"
 	c.Name = name
 	c.Kind = filler.Commercial
 	return c
@@ -267,9 +313,10 @@ func sidecarFS(files map[string]string) fstest.MapFS {
 
 func TestTagger_SendsSidecarTextNotProvenance(t *testing.T) {
 	st := newTagMemStore()
-	clip := untaggedClip("toy-ad-1994.mp4", "toy-ad-1994")
-	clip.Source = "tunarr-local" // the provenance enum that used to reach the model
-	st.clips["c1"] = clip
+	clip := untaggedClip("c1", "toy-ad-1994")
+	clip.Path = "toy-ad-1994.mp4" // the sidecar is found beside the PATH, not the identity
+	clip.Source = "tunarr-local"  // the provenance enum that used to reach the model
+	st.seed(clip)
 
 	drop := sidecarFS(map[string]string{
 		"toy-ad-1994.info.json": `{
@@ -336,8 +383,9 @@ func TestTagger_FallsBackToFilenameWhenNoSidecar(t *testing.T) {
 // text. Reading the path the row already carries is both simpler and correct.
 func TestTagger_ReadsTheSidecarBesideTheClip(t *testing.T) {
 	st := newTagMemStore()
-	clip := untaggedClip("a3/f9/a3f9deadbeef.mp4", "Toy Ad")
-	st.clips["c1"] = clip
+	clip := untaggedClip("a3f9deadbeef", "Toy Ad")
+	clip.Path = "a3/f9/a3f9deadbeef.mp4" // the filed shard path the sidecar sits beside
+	st.seed(clip)
 
 	drop := sidecarFS(map[string]string{
 		"a3/f9/a3f9deadbeef.info.json": `{"title": "Cereal Prize Spot", "description": "Saturday morning."}`,
@@ -361,10 +409,15 @@ func TestTagger_ReadsTheSidecarBesideTheClip(t *testing.T) {
 func TestTagger_GroundsTheEraOnTheOriginalFilename(t *testing.T) {
 	st := newTagMemStore()
 	// The catalog name has NO year — this is a clip whose era lived only in its filename.
-	// ⚠ Keyed by its PATH, which is what the tagger updates by; keying it "c1" would send the
-	// write to a different entry and the assertion below would read an untouched zero value.
-	const path = "a3/f9/a3f9deadbeef.mp4"
-	st.clips[path] = untaggedClip(path, "a3f9deadbeef")
+	//
+	// ⚠ Keyed by its HASH. This said "keyed by its PATH, which is what the tagger updates by"
+	// until V41 — a comment that documented the bug as the design. The tagger passed a path into
+	// the hash-keyed `UpdateClipTags`, so in production the write matched nothing; here it landed
+	// because the fixture was keyed to match the defect. The sidecar is still found by PATH.
+	const hash = "a3f9deadbeef"
+	clip := untaggedClip(hash, "a3f9deadbeef")
+	clip.Path = "a3/f9/a3f9deadbeef.mp4"
+	st.seed(clip)
 
 	drop := sidecarFS(map[string]string{
 		"a3/f9/a3f9deadbeef.info.json": `{"loomarr":{"originalName":"Frosted Flakes 1993.mp4"}}`,
@@ -382,7 +435,7 @@ func TestTagger_GroundsTheEraOnTheOriginalFilename(t *testing.T) {
 	// And it lands as a GROUNDED era, not a suggestion: 1993 appears literally in the text.
 	// (Written to `updates`, which is where the double records tag writes — `clips` is the
 	// work list it was seeded with.)
-	got := st.updates[path]
+	got := st.updates[hash]
 	if got.Era != 1993 {
 		t.Errorf("Era = %d (suggested %d), want a grounded 1993 — the year was in the text signals",
 			got.Era, got.SuggestedEra)
@@ -500,8 +553,11 @@ func TestTagger_FilesAHeldClipWhoseTagsAllVerify(t *testing.T) {
 	if res.AutoFiled != 1 {
 		t.Fatalf("AutoFiled = %d, want 1 (era 1985 is literally in the name)", res.AutoFiled)
 	}
-	if len(st.filed) != 1 || st.filed[0] != "c1" {
-		t.Fatalf("filed = %v, want [c1]", st.filed)
+	// ⚠ Filing is keyed by PATH (`SetClipsHeld` is `WHERE path IN (…)`), unlike the tag write
+	// two calls earlier, which is keyed by hash. The same loop legitimately uses both keys, and
+	// this assertion names the one filing actually takes.
+	if len(st.filed) != 1 || st.filed[0] != st.clips["c1"].Path {
+		t.Fatalf("filed = %v, want [%s]", st.filed, st.clips["c1"].Path)
 	}
 	if !st.clips["c1"].AutoFiled {
 		t.Error("auto_filed not recorded — the operator cannot find what was filed without them")

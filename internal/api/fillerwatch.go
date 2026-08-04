@@ -111,13 +111,16 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	// The whole catalog, unfiltered — the header must not change meaning when someone types in
 	// the search box. ⚠ This EXCLUDES held clips by default (see ClipFilter), which is correct:
 	// a held clip is not in the catalog, it is waiting for a human.
-	clips, err := s.store.ListClips(ctx, store.ClipFilter{})
+	//
+	// ⚠ Counted in SQL. Both of these loaded whole rows to call len() on the slice — this
+	// endpoint polls the Filler page header, so it paid for two full catalog reads on a timer.
+	clipCount, err := s.store.CountClips(ctx, store.ClipFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count filler clips", err)
 	}
 	// ...so the queue is counted separately, or an install that just auto-fetched reads as "0
 	// clips" while holding a dozen.
-	held, err := s.store.ListClips(ctx, store.ClipFilter{HeldOnly: true})
+	heldCount, err := s.store.CountClips(ctx, store.ClipFilter{HeldOnly: true})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count held clips", err)
 	}
@@ -150,7 +153,7 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	}
 
 	out.Body.SourcesOn, out.Body.SourcesTotal = on, total
-	out.Body.Clips, out.Body.Held = len(clips), len(held)
+	out.Body.Clips, out.Body.Held = clipCount, heldCount
 	if !newest.IsZero() {
 		out.Body.LastScanAt = newest.UTC().Format(time.RFC3339)
 	}
@@ -161,7 +164,7 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	// and is holding them for review is WORKING, not broken. Passing only the catalog count made
 	// a successful first fetch report `attention` — the fetcher's own success looking like a
 	// failure.
-	out.Body.Health = fillerWatchVerdict(total, on, len(clips)+len(held), newest, time.Now())
+	out.Body.Health = fillerWatchVerdict(total, on, clipCount+heldCount, newest, time.Now())
 	return out, nil
 }
 
