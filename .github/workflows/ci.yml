@@ -137,6 +137,33 @@ jobs:
           restore-keys: |
             golangci-${{ runner.os }}-v2.12.2-${{ hashFiles('go.sum') }}-
             golangci-${{ runner.os }}-v2.12.2-
+      # ⚠ ffmpeg is NOT on the runner image, and several filler tests skip without it — the
+      # language gate's span extraction (16kHz mono WAV, the shape whisper requires), the
+      # silence guard, artwork rendering and the clip scan's probe. Measured on this runner
+      # before adding this step: `ffmpeg: MISSING`, and the three `TestExtractSpanWAV_*`
+      # tests reported SKIP while the job stayed green.
+      #
+      # A skip is visible in the log, so this was never a silent hole — but it did mean CI
+      # could not catch a broken `-ar 16000`, which is exactly the flag those tests exist to
+      # pin. The two backends carried byte-identical copies of that invocation with nothing
+      # asserting it, so the gap was worth closing rather than documenting.
+      #
+      # ⚠ `ffmpeg` alone pulls `ffprobe` (same Debian source package), and both are needed:
+      # the tests assert what the extracted file IS by probing it, not merely that ffmpeg
+      # exited 0. `--no-install-recommends` keeps the codec/doc tail off a runner that only
+      # has to decode and re-encode small synthetic WAVs.
+      - name: Install ffmpeg (several filler tests skip without it)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
+      # to skipping and the job stays green — the exact "green but not covered" state this
+      # step was added to end, and one nobody would notice because a skip looks like a pass
+      # at a glance.
+      - name: ffmpeg and ffprobe are on PATH
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
       - run: make check
       - name: OpenAPI spec is committed and current
         run: make openapi-verify
