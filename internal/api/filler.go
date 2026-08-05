@@ -118,7 +118,7 @@ func (s *Server) registerFiller(api huma.API) {
 		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
 		Summary: "Read a split proposal",
 		Description: "Admin only (§10, V34). The review surface's source of truth on SSE reconnect — " +
-			"the same pattern as /v1/suggestions/{id}.",
+			"the same pattern as /v1/proposals/{id}.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.getFillerSplit)
 

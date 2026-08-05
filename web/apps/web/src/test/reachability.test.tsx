@@ -300,7 +300,7 @@ const stubFetch = () => {
     }
     if (u.includes("/v1/titles")) return Promise.resolve(json({ titles: [] }));
     if (u.includes("/v1/proposals")) return Promise.resolve(json({ proposals: [] }));
-    if (u.includes("/v1/suggestions")) return Promise.resolve(json({ proposals: [] }));
+    if (u.includes("/v1/proposals")) return Promise.resolve(json({ proposals: [] }));
     return Promise.resolve(json({}));
   });
   vi.stubGlobal("fetch", mock);

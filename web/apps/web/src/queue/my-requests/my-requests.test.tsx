@@ -23,7 +23,7 @@ const stubProposals = (byStatus: Record<string, unknown[]>) => {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
-      if (typeof url === "string" && url.includes("/v1/suggestions")) {
+      if (typeof url === "string" && url.includes("/v1/proposals")) {
         urls.push(url);
         const status = new URL(url, "http://x").searchParams.get("status") ?? "";
         return Promise.resolve(jsonResponse({ proposals: byStatus[status] ?? [] }));
@@ -46,7 +46,7 @@ const proposal = (over: Record<string, unknown> = {}) => ({
 
 describe("MyRequests", () => {
   // The reachability assertion the phase gate asks for. `A2`'s defect was that a member could
-  // submit a request and see NOTHING — the queue page never queried /v1/suggestions at all.
+  // submit a request and see NOTHING — the queue page never queried /v1/proposals at all.
   it("mounts and renders the member's requests", async () => {
     stubProposals({ submitted: [proposal()] });
     render(<MyRequests />);

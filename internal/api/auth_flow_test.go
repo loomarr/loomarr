@@ -485,7 +485,7 @@ func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=submitted&mine=true", kid, "")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted&mine=true", kid, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("mine=true → %d, want 200", resp.StatusCode)
@@ -505,7 +505,7 @@ func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=submitted", kid, "")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", kid, "")
 	defer func() { _ = resp.Body.Close() }()
 	if got := proposalIDs(t, resp); len(got) != 2 {
 		t.Errorf("unscoped list returned %v, want both proposals", got)
@@ -520,7 +520,7 @@ func TestListProposals_MineHonoursTheStatusFilter(t *testing.T) {
 	seedProposalFor(t, st, "p-denied", "u-kid", "denied", store.Proposal{DenyReason: "over the cap"})
 
 	kid := login(t, srv, "kid", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=denied&mine=true", kid, "")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=denied&mine=true", kid, "")
 	defer func() { _ = resp.Body.Close() }()
 	if got := proposalIDs(t, resp); len(got) != 1 || got[0] != "p-denied" {
 		t.Errorf("status=denied&mine=true returned %v, want only [p-denied]", got)
@@ -536,7 +536,7 @@ func TestListProposals_MineOnTokenDoesNotSeeEveryone(t *testing.T) {
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/suggestions?status=submitted&mine=true", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/proposals?status=submitted&mine=true", nil)
 	req.Header.Set("Authorization", "Bearer break-glass-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -560,7 +560,7 @@ func TestListProposals_CarriesApprovalProvenance(t *testing.T) {
 	})
 
 	kid := login(t, srv, "kid", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/suggestions?status=approved&mine=true", kid, "")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=approved&mine=true", kid, "")
 	defer func() { _ = resp.Body.Close() }()
 
 	var body struct {

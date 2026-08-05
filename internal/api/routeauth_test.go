@@ -25,7 +25,7 @@ func TestAnonymousIsRefusedOnMemberRoutes(t *testing.T) {
 	for _, path := range []string{
 		"/v1/channels",
 		"/v1/titles?state=available",
-		"/v1/suggestions",
+		"/v1/proposals",
 	} {
 		t.Run(path, func(t *testing.T) {
 			resp := do(t, srv, http.MethodGet, path, "", "")
@@ -39,7 +39,7 @@ func TestAnonymousIsRefusedOnMemberRoutes(t *testing.T) {
 	}
 }
 
-// ⚠ **The one that mattered most.** Before this gate, POST /v1/suggestions returned 200 to a
+// ⚠ **The one that mattered most.** Before this gate, POST /v1/proposals returned 200 to a
 // caller with no credential and invoked the LLM — unauthenticated spend, with created_by
 // stamped "" because there was nobody to attribute it to.
 //
@@ -49,7 +49,7 @@ func TestAnonymousIsRefusedOnMemberRoutes(t *testing.T) {
 func TestAnonymousCannotSpendLLMTokens(t *testing.T) {
 	srv, _, fs := newSuggestServer(t)
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions", "", `{"description":"90s sci-fi"}`)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", "", `{"description":"90s sci-fi"}`)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {

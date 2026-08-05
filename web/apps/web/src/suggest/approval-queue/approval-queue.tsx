@@ -1,4 +1,4 @@
-import { type ApprovalEditDTO, fillerApi, suggestionsApi, unwrap } from "@loomarr/api";
+import { type ApprovalEditDTO, fillerApi, proposalsApi, unwrap } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -11,9 +11,9 @@ import { Button, Checkbox } from "@/components/ui";
 // surface for "what is about to spend real resources".
 const ApprovalQueue = () => {
   const queryClient = useQueryClient();
-  const proposals = suggestionsApi.useListProposals({ status: "submitted" }, { query: { retry: false } });
+  const proposals = proposalsApi.useListProposals({ status: "submitted" }, { query: { retry: false } });
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
 
   // Approving CREATES the channel (§7), so it ends by showing the operator the thing
   // they just made rather than an emptier queue. Without this the flow stops at
@@ -23,7 +23,7 @@ const ApprovalQueue = () => {
   // that case there is nowhere to navigate to. Staying put is right, and the queue
   // refresh still shows the proposal left the queue.
   const navigate = useNavigate();
-  const approve = suggestionsApi.useApproveProposal({
+  const approve = proposalsApi.useApproveProposal({
     mutation: {
       onSuccess: (res) => {
         invalidate();
@@ -32,7 +32,7 @@ const ApprovalQueue = () => {
       },
     },
   });
-  const deny = suggestionsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
+  const deny = proposalsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
 
   // Filler pulls (V35). ⚠ `status: "pending"` and not a client-side filter: a decided pull is
   // KEPT on the server for the History tab, so asking for everything would put approvals an
@@ -65,7 +65,7 @@ const ApprovalQueue = () => {
   // so the gate stays one implementation. Clearing the selection on success matters: the ids
   // that went through are no longer `submitted`, and a stale selection would offer to approve
   // them again.
-  const bulk = suggestionsApi.useBulkApproveProposals({
+  const bulk = proposalsApi.useBulkApproveProposals({
     mutation: {
       onSuccess: () => {
         setSelected(new Set());

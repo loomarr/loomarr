@@ -1,4 +1,4 @@
-import { suggestionsApi, unwrap } from "@loomarr/api";
+import { proposalsApi, unwrap } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { ApprovalHistoryRow, EmptyState, ErrorState } from "@/components/loomarr";
 
@@ -10,12 +10,12 @@ import { ApprovalHistoryRow, EmptyState, ErrorState } from "@/components/loomarr
 // reachable: `approvedBy` was stored and rendered nowhere, `modSummary`/`note` never left the
 // server, and `approvedAt` did not exist.
 //
-// Approved and denied are fetched separately because `GET /v1/suggestions` filters by ONE status
+// Approved and denied are fetched separately because `GET /v1/proposals` filters by ONE status
 // per call, then merged and sorted here.
 const ApprovalHistory = () => {
   const queries = useQueries({
     queries: (["approved", "denied"] as const).map((status) =>
-      suggestionsApi.getListProposalsQueryOptions({ status }),
+      proposalsApi.getListProposalsQueryOptions({ status }),
     ),
   });
 

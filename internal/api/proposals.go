@@ -24,45 +24,45 @@ func userIDFromHuma(ctx context.Context) string {
 	return ""
 }
 
-// registerSuggestions mounts /v1/suggestions* (§7/§8). Submit is open to any
+// registerProposals mounts /v1/proposals* (§7/§8). Submit is open to any
 // authenticated user (members request; §8 human-in-the-loop); list/get are
 // visible to all; approve/deny require admin (the approval gate — §11). Approve
 // is the ONLY path from a proposal to an acquisition, and it is admin-gated, so
 // nothing unapproved ever reaches /v1/titles (§19).
-func (s *Server) registerSuggestions(api huma.API) {
+func (s *Server) registerProposals(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "submit-suggestion", Method: http.MethodPost, Path: "/v1/suggestions",
-		Summary: "Start a suggestion job from an intent", Description: "Any authenticated user (§8).",
-		Tags: []string{"suggestions"},
-	}, RoleMember), s.submitSuggestion)
+		OperationID: "submit-proposal", Method: http.MethodPost, Path: "/v1/proposals",
+		Summary: "Start a proposal job from an intent", Description: "Any authenticated user (§8).",
+		Tags: []string{"proposals"},
+	}, RoleMember), s.submitProposal)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "list-proposals", Method: http.MethodGet, Path: "/v1/suggestions",
+		OperationID: "list-proposals", Method: http.MethodGet, Path: "/v1/proposals",
 		Summary: "List proposals by status", Description: "status=submitted is the approval queue.",
-		Tags: []string{"suggestions"},
+		Tags: []string{"proposals"},
 	}, RoleMember), s.listProposals)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "get-proposal", Method: http.MethodGet, Path: "/v1/suggestions/{id}",
-		Summary: "Get a proposal + its job status", Tags: []string{"suggestions"},
+		OperationID: "get-proposal", Method: http.MethodGet, Path: "/v1/proposals/{id}",
+		Summary: "Get a proposal + its job status", Tags: []string{"proposals"},
 	}, RoleMember), s.getProposal)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "approve-proposal", Method: http.MethodPost, Path: "/v1/suggestions/{id}/approve",
+		OperationID: "approve-proposal", Method: http.MethodPost, Path: "/v1/proposals/{id}/approve",
 		Summary: "Approve a proposal (admin)", Description: "Admin only. Enqueues acquisitions through the approval gate (§8).",
-		Tags: []string{"suggestions"},
+		Tags: []string{"proposals"},
 	}, RoleAdmin), s.approveProposal)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "bulk-approve-proposals", Method: http.MethodPost, Path: "/v1/suggestions/approve",
+		OperationID: "bulk-approve-proposals", Method: http.MethodPost, Path: "/v1/proposals/approve",
 		Summary:     "Approve several proposals (admin)",
 		Description: "Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.",
-		Tags:        []string{"suggestions"},
+		Tags:        []string{"proposals"},
 	}, RoleAdmin), s.bulkApproveProposals)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "deny-proposal", Method: http.MethodPost, Path: "/v1/suggestions/{id}/deny",
-		Summary: "Deny a proposal (admin)", Description: "Admin only.", Tags: []string{"suggestions"},
+		OperationID: "deny-proposal", Method: http.MethodPost, Path: "/v1/proposals/{id}/deny",
+		Summary: "Deny a proposal (admin)", Description: "Admin only.", Tags: []string{"proposals"},
 	}, RoleAdmin), s.denyProposal)
 }
 
@@ -83,7 +83,7 @@ type submitOutput struct {
 	}
 }
 
-func (s *Server) submitSuggestion(ctx context.Context, in *submitInput) (*submitOutput, error) {
+func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOutput, error) {
 	if s.suggest == nil || s.featureOff(ctx, "suggestions") {
 		return nil, errNotImplemented("AI isn't set up", "Connect an AI provider in Settings → AI to build channels from a sentence.")
 	}

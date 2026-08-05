@@ -26,7 +26,7 @@ describe("intent schema ↔ API contract", () => {
       maxAcquisitions: 7,
     });
 
-    // Spelled exactly as POST /v1/suggestions accepts them.
+    // Spelled exactly as POST /v1/proposals accepts them.
     expect(parsed.runtimeTargetMin).toBe(180);
     expect(parsed.maxAcquisitions).toBe(7);
     // The old lookalikes must not survive anywhere in the parsed body.
