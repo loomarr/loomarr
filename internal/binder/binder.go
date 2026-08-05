@@ -135,8 +135,11 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	// Both branches go through the one lineup primitive (schedule.ApplyLineup, §9): the human
 	// path is a plain Replace, auto-curate is Additive with the store-backed Drop predicate.
 	if isAutoCurate(p) && existing.ID != "" {
+		// ⚠ `retiredKeys(p)` carries the turnstile's rotate-out decisions (§8.2a). They arrive
+		// as an INPUT to the union rather than as a channel write `recurate` made moments
+		// earlier — which is what stops the union from re-adding what the turnstile removed.
 		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive,
-			schedule.ApplyOpts{Drop: b.dropPredicate(ctx, mustExcludeKeys(p))})
+			schedule.ApplyOpts{Drop: b.dropPredicate(ctx, mustExcludeKeys(p), retiredKeys(p))})
 	} else {
 		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupReplace, schedule.ApplyOpts{})
 	}
