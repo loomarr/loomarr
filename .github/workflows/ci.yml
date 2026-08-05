@@ -152,10 +152,74 @@ jobs:
       # the tests assert what the extracted file IS by probing it, not merely that ffmpeg
       # exited 0. `--no-install-recommends` keeps the codec/doc tail off a runner that only
       # has to decode and re-encode small synthetic WAVs.
-      - name: Install ffmpeg (several filler tests skip without it)
+      #
+      # ⚠ The DEBS are cached, not the installed binaries. Copying `/usr/bin/ffmpeg` back into
+      # place would leave its shared libraries behind — ffmpeg links a large tree (libav*,
+      # libx264, …) spread across /usr/lib, so a binary-only cache produces a file that exists
+      # and cannot run. Caching the .debs and letting apt install them keeps the package
+      # manager's own dependency handling and skips only the download, which is the slow part.
+      #
+      # ⚠ Cache what APT ITSELF decides to fetch on THIS runner (~62.8 MB), not a computed
+      # dependency closure. Measured while writing this: `apt-cache depends --recurse` over
+      # ffmpeg resolves 298 packages / 244 MB, because the closure includes base packages the
+      # runner image already has installed. Caching that would spend 244 MB of a 10GB repo-wide
+      # budget to save 38 seconds — worse than no cache at all. `-d` into the apt archive dir
+      # asks apt for the actual delta against what is already there.
+      #
+      # ⚠ A STABLE key, deliberately NOT the rolling `github.run_id` pattern the golangci and
+      # gobuild caches above use. Those cache contents track something their key does not
+      # (`~/.cache/go-build` tracks .go SOURCE), so they must re-save every run. This one's
+      # contents are fully determined by the key — a fixed package set at a runner image
+      # version — exactly like the pnpm caches, which are keyed on the lockfile alone. The
+      # rolling pattern here would write a fresh copy EVERY run into the budget that
+      # `cache-cleanup.yml` exists because the repo already blew through once.
+      #
+      # ⚠ The Ubuntu RELEASE is in the key because the package versions come from the runner
+      # image's apt sources. Without it a runner image bump would restore debs built for the
+      # previous release and the install would fail on unmet dependencies — a red CI whose
+      # cause is a cache entry nobody edited.
+      #
+      # ⚠ Read from `/etc/os-release` into an output, NOT from `env.ImageOS`. That variable is
+      # set by the hosted runner image rather than by Actions itself, so it is not a documented
+      # context (editors flag it, and a self-hosted or changed image can leave it empty) — and
+      # an empty segment does not fail, it silently produces ONE key shared across every image
+      # version, which is precisely the collision this segment exists to prevent.
+      - name: Resolve the runner's Ubuntu release (cache key input)
+        id: os
+        run: |
+          . /etc/os-release
+          test -n "$VERSION_ID"
+          echo "release=$VERSION_ID" >> "$GITHUB_OUTPUT"
+      - name: Cache ffmpeg packages
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/ffmpeg-debs
+          key: ffmpeg-debs-${{ runner.os }}-${{ steps.os.outputs.release }}-v1
+      - name: Download ffmpeg packages
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          mkdir -p ~/ffmpeg-debs
+          # -d downloads without installing. Copied out of apt's archive dir rather than
+          # pointed there directly, because that path is root-owned and actions/cache runs
+          # as the runner user.
+          sudo apt-get install -y --no-install-recommends -d -o Dir::Cache::archives="$HOME/apt-debs" ffmpeg \
+            || sudo apt-get install -y --no-install-recommends -d ffmpeg
+          sudo find "$HOME/apt-debs" /var/cache/apt/archives -maxdepth 1 -name '*.deb' \
+            -exec cp -n {} ~/ffmpeg-debs/ \; 2>/dev/null || true
+          sudo chown -R "$USER" ~/ffmpeg-debs
+          echo "cached $(find ~/ffmpeg-debs -name '*.deb' | wc -l) debs, $(du -sh ~/ffmpeg-debs | cut -f1)"
+      # ⚠ apt-get install with the cached debs already in its archive dir, NOT `dpkg -i`. dpkg
+      # processes files in glob order and fails on a package whose dependency has not been
+      # unpacked yet; apt orders them itself. `--no-download` proves the cache is doing the
+      # work — if a deb is missing this fails rather than quietly re-fetching it, which is how
+      # a cache that stopped working would otherwise stay invisible.
+      - name: Install ffmpeg (several filler tests skip without it)
+        run: |
+          sudo cp -n ~/ffmpeg-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          sudo apt-get install -y --no-install-recommends --no-download ffmpeg \
+            || sudo apt-get install -y --no-install-recommends ffmpeg
       # ⚠ FAIL LOUDLY if the install silently stopped working. Without this the tests go back
       # to skipping and the job stays green — the exact "green but not covered" state this
       # step was added to end, and one nobody would notice because a skip looks like a pass
