@@ -43,6 +43,23 @@ func (s *sqlStore) GetChannelByNumber(ctx context.Context, number int) (Channel,
 	return scanChannel(row)
 }
 
+// GetChannelByIntentRef finds the channel bound to a suggestion job. A channel's `intent_ref` IS
+// the job id that produced it, so this answers "which channel does this proposal belong to?" —
+// asked once per bind and once per auto-curate consideration.
+//
+// ⚠ Indexed (00037), and it replaces two byte-identical `ListChannels`-then-linear-scan helpers
+// that had been copy-pasted into `binder` and `recurate`. Two packages walking the whole channel
+// table for one row is the shape a missing store method leaves behind.
+//
+// ⚠ Returns ErrNotFound rather than a zero Channel. Both former callers treated "no match" as
+// benign (a job with no channel is simply not an auto-curate candidate), and they still can — but
+// that has to be the CALLER's decision: a lookup that silently answers with an empty struct is one
+// a caller can forget to check, and the zero Channel has an empty ID that reads as valid.
+func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error) {
+	row := s.db.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), intentRef)
+	return scanChannel(row)
+}
+
 func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
 	lineupBlob, err := json.Marshal(orEmptyEntries(ch.Lineup))
 	if err != nil {

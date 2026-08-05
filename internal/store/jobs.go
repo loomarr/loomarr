@@ -178,6 +178,26 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 	return scanProposals(rows)
 }
 
+// NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
+// the binder's "which approved proposal does this channel bind to?" query.
+//
+// ⚠ NEWEST wins, and that is load-bearing rather than a tiebreak. A job legitimately accrues
+// SEVERAL approved proposals over its life: a refine re-runs the channel's own job, and the
+// channel must bind to the latest approved lineup, not the original (§7; asserted by
+// TestRefine_NewestApprovedWins). The `ORDER BY created_at DESC` here is the same one
+// `ListProposalsByStatus` applies — the caller used to read every approved proposal in the
+// install and take the first match, relying on that ordering from a different method.
+//
+// ⚠ Filtered in SQL and indexed on job_id (00037) because retention deliberately never purges
+// APPROVED proposals — they are the audit trail — so the table this scanned grows monotonically
+// for the life of the install while denied ones are swept. Measured: 0.38ms at 100 rows, 3.45ms
+// at 1k, 19.4ms at 5k, linear, on every bind including every scheduled auto-curate cycle.
+func (s *sqlStore) NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error) {
+	row := s.db.QueryRowContext(ctx, s.ph(
+		proposalSelect+` WHERE job_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1`), jobID, status)
+	return scanProposal(row)
+}
+
 func (s *sqlStore) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(proposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
 	if err != nil {
