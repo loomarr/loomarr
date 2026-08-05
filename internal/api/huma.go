@@ -44,7 +44,7 @@ type Server struct {
 	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
 	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
 	tunarrConnect TunarrConnector
-	// suggest/search wire /v1/suggestions*, /v1/search (§7.2/§8); nil until
+	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
 	suggest SuggestService
 	search  SearchService
@@ -667,7 +667,7 @@ type Options struct {
 	Channels      ChannelService    // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV        LiveTVService     // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunarrConnect TunarrConnector   // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
-	Suggest       SuggestService    // /v1/suggestions submit (Phase 11); nil ⇒ submit route 501
+	Suggest       SuggestService    // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
 	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
 	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
 	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501

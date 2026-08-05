@@ -12,7 +12,7 @@ import (
 // in an operation's `Description: "Admin only."`; enforcement lived in a `requireAdmin(ctx)`
 // call at the top of a handler body, 250 lines away. Nothing bound them, so the requirement
 // could be documented and not enforced — or, more often, neither. Probing found 27 of 83
-// operations consulting no role at all, including `POST /v1/suggestions`, which returned 200
+// operations consulting no role at all, including `POST /v1/proposals`, which returned 200
 // to an anonymous caller and spent LLM tokens.
 //
 // ⚠ **Anonymous is denied by DEFAULT.** `roleForOperation` returns RoleAdmin — the most

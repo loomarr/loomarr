@@ -182,7 +182,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 				Proposal json.RawMessage `json:"proposal"`
 			} `json:"proposals"`
 		}
-		r.getJSON(t, "/v1/suggestions?status=submitted", &list)
+		r.getJSON(t, "/v1/proposals?status=submitted", &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
 				var prop suggest.Proposal
@@ -267,7 +267,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	seedFillerClips(t, r.store)
 
 	// 1. SUBMIT the intent → the real worker runs the real suggester.
-	resp := r.do(t, http.MethodPost, "/v1/suggestions",
+	resp := r.do(t, http.MethodPost, "/v1/proposals",
 		`{"description":"90s Saturday morning cartoons for kids"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
@@ -298,7 +298,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	}
 
 	// 3. APPROVE (the real gate) → in-library picks become `available` titles.
-	if resp := r.do(t, http.MethodPost, "/v1/suggestions/"+propID+"/approve", ""); resp.StatusCode != http.StatusOK {
+	if resp := r.do(t, http.MethodPost, "/v1/proposals/"+propID+"/approve", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
 	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003", "movie:tmdb:5004"} {

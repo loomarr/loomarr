@@ -1,4 +1,4 @@
-import { suggestionsApi, toProblem } from "@loomarr/api";
+import { proposalsApi, toProblem } from "@loomarr/api";
 import { ChevronDown, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,7 +36,7 @@ const RefinePanel = ({
     refine.reset();
   };
 
-  const approve = suggestionsApi.useApproveProposal({
+  const approve = proposalsApi.useApproveProposal({
     mutation: {
       onSuccess: () => {
         toast.success("Applied");

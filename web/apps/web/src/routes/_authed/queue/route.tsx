@@ -1,4 +1,4 @@
-import { suggestionsApi, type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
+import { proposalsApi, type TitleDTO, TitleDTOState, titlesApi, unwrap } from "@loomarr/api";
 import { pluralize } from "@loomarr/core";
 import { useQueries } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -45,7 +45,7 @@ const QueueLayout = () => {
   // disagree — a tab reading "3" above a list of two is worse than no count. Members never see
   // this tab (approving is admin-only, §11), so the query is gated rather than 403ing in the
   // background on every member's page load.
-  const pending = suggestionsApi.useListProposals(
+  const pending = proposalsApi.useListProposals(
     { status: "submitted" },
     { query: { enabled: isAdmin, retry: false } },
   );
@@ -53,7 +53,7 @@ const QueueLayout = () => {
 
   const decided = useQueries({
     queries: (["approved", "denied"] as const).map((status) =>
-      suggestionsApi.getListProposalsQueryOptions({ status }),
+      proposalsApi.getListProposalsQueryOptions({ status }),
     ),
   });
   const historyCount = decided.reduce((n, q) => n + (unwrap(q.data, (b) => b.proposals?.length) ?? 0), 0);

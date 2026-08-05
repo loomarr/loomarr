@@ -146,12 +146,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // A proposal is created by anyone; only an ADMIN turns it into acquisitions. This
     // mock enforces the same rule the server does, so the smoke proves the UI honors a
     // real 403 rather than a hand-waved one.
-    if (path === "/v1/suggestions" && method === "POST") {
+    if (path === "/v1/proposals" && method === "POST") {
       const id = `prop-${state.proposals.length + 1}`;
       state.proposals.push({ id, status: "submitted" });
       return json(route, { jobId: `job-${id}` });
     }
-    if (path === "/v1/suggestions" && method === "GET") {
+    if (path === "/v1/proposals" && method === "GET") {
       // Shaped as the real ProposalDTO (`proposal.intent.description`, `.rationale`,
       // `.acquisitions`) — the queue reads those exact fields, and a hand-guessed shape
       // would make this smoke pass against a proposal the app can't actually render.

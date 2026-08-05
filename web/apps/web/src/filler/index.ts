@@ -7,6 +7,7 @@ export * from "./incoming-tab";
 // fetches in bulk, and auto-fetch polls on a schedule. Leaving it barrel-exported and rendered
 // nowhere is the "built and imported by nothing" state the reachability suite exists to catch.
 export * from "./pin-clip-dialog";
+export * from "./sources-tab";
 export * from "./split-review-page";
 export * from "./use-channel-filler-draft";
 export * from "./use-filler-invalidate";
