@@ -79,7 +79,25 @@ func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedu
 // seedApprovedProposal writes an APPROVED proposal for jobID (approvedBy sets the path).
 func seedApprovedProposal(t *testing.T, st store.Store, id, jobID, approvedBy string, picks []suggest.ProposalItem, mustExclude []string) {
 	t.Helper()
-	body := suggest.Proposal{Lineup: picks, Intent: suggest.Intent{MustExclude: mustExclude}}
+	seedApprovedProposalRetiring(t, st, id, jobID, approvedBy, picks, mustExclude, nil)
+}
+
+// seedApprovedProposalRetiring is seedApprovedProposal plus the turnstile's rotate-out decisions
+// (§8.2a) — the `Retired` keys `recurate` records on the proposal for the binder to apply.
+func seedApprovedProposalRetiring(
+	t *testing.T,
+	st store.Store,
+	id, jobID, approvedBy string,
+	picks []suggest.ProposalItem,
+	mustExclude []string,
+	retired []provision.Key,
+) {
+	t.Helper()
+	body := suggest.Proposal{
+		Lineup:  picks,
+		Intent:  suggest.Intent{MustExclude: mustExclude},
+		Retired: retired,
+	}
 	blob, _ := json.Marshal(body)
 	now := time.Now()
 	p := store.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
@@ -90,6 +108,17 @@ func seedApprovedProposal(t *testing.T, st store.Store, id, jobID, approvedBy st
 
 func inLib(tmdbID int, name string) suggest.ProposalItem {
 	return suggest.ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
+}
+
+// mustChannel reads a channel or fails the test. Used where the assertion is about the lineup
+// the binder WROTE, so a read error must not be swallowed into an empty-lineup false pass.
+func mustChannel(t *testing.T, st store.Store, id string) store.Channel {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get channel %s: %v", id, err)
+	}
+	return ch
 }
 
 func lineupKeys(ch store.Channel) map[provision.Key]bool {
@@ -137,6 +166,67 @@ func TestBind_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	}
 	if len(ch.Lineup) != 4 {
 		t.Errorf("lineup = %d titles, want 4 (3 kept + 1 added)", len(ch.Lineup))
+	}
+}
+
+// THE OTHER HALF OF THE TURNSTILE (§8.2a). `recurate` decides which title to rotate out and
+// records it on the proposal; the BINDER applies it. This test is what makes that split safe.
+//
+// ⚠ The retired title is still perfectly AVAILABLE, and that is the whole point. The additive
+// union's other two drop signals both ask "is this title still wanted?" — an available title
+// answers yes to both — so without the retirement signal the union would keep it and the
+// turnstile's swap would silently never happen. Before V41 `recurate` avoided that by writing
+// the trimmed channel itself moments before the binder ran, which made it a second lineup
+// writer ordered against this one by a comment.
+func TestBind_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
+	st := newStore(t)
+	putAvailable(t, st, 1, "Keeper")
+	putAvailable(t, st, 2, "Retired") // still in the library — only the turnstile wants it gone
+	seedChannel(t, st, "c1", "job1",
+		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Retired")},
+		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
+	putAvailable(t, st, 3, "Incoming")
+	seedApprovedProposalRetiring(t, st, "p1", "job1", suggest.AutoCuratedBy,
+		[]suggest.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
+
+	b := binder.New(st, nil, testkit.Logger())
+	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
+		t.Fatal(err)
+	}
+
+	keys := lineupKeys(mustChannel(t, st, "c1"))
+	if keys[movieKey(2)] {
+		t.Error("a title the turnstile retired is still in the lineup — the swap never happened")
+	}
+	if !keys[movieKey(1)] {
+		t.Error("an un-retired available title was dropped — retirement must not widen the prune")
+	}
+	if !keys[movieKey(3)] {
+		t.Error("the incoming title did not take the freed slot")
+	}
+}
+
+// ⚠ Retirements are SCOPED TO AUTO-CURATE. A human approval replaces the lineup wholesale (a
+// person decided, including what to remove), so a `Retired` list riding a manually-approved
+// proposal must not quietly delete anything the person kept. Asserted because the field is on
+// the shared proposal body and nothing in the type system stops a non-auto-curate path setting it.
+func TestBind_ManualApproval_IgnoresRetirements(t *testing.T) {
+	st := newStore(t)
+	putAvailable(t, st, 1, "Kept By A Human")
+	seedChannel(t, st, "c1", "job1",
+		[]schedule.LineupEntry{entry(1, "Kept By A Human")},
+		schedule.ChannelPolicy{})
+	// A human's approval re-picks the title, while the body still carries a retirement for it.
+	seedApprovedProposalRetiring(t, st, "p1", "job1", "admin",
+		[]suggest.ProposalItem{inLib(1, "Kept By A Human")}, nil, []provision.Key{movieKey(1)})
+
+	b := binder.New(st, nil, testkit.Logger())
+	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
+		t.Fatal(err)
+	}
+
+	if !lineupKeys(mustChannel(t, st, "c1"))[movieKey(1)] {
+		t.Error("a manual approval honoured a retirement — replace semantics must ignore the field")
 	}
 }
 

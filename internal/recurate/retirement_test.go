@@ -2,6 +2,7 @@ package recurate_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -52,6 +53,31 @@ func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []sc
 	}
 }
 
+// retiredOf reads the keys the turnstile decided to rotate out, from the PROPOSAL it rewrote.
+//
+// ⚠ The proposal, not the channel. `recurate` decides retirements; the BINDER applies them,
+// because a channel's lineup has exactly one writer (§8.2a). These assertions read the channel
+// until V41, when `recurate` still trimmed `ch.Lineup` itself and raced the binder's additive
+// union. The property under test is unchanged — "the weakest retirable title is rotated out" —
+// only the place it becomes observable moved. `binder`'s own tests prove the other half: that a
+// recorded retirement actually leaves the lineup.
+func retiredOf(t *testing.T, st store.Store, proposalID string) map[provision.Key]bool {
+	t.Helper()
+	p, err := st.GetProposal(context.Background(), proposalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body suggest.Proposal
+	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
+		t.Fatalf("proposal %s malformed: %v", proposalID, uerr)
+	}
+	out := map[provision.Key]bool{}
+	for _, k := range body.Retired {
+		out[k] = true
+	}
+	return out
+}
+
 func lineupOf(t *testing.T, st store.Store, id string) map[provision.Key]bool {
 	t.Helper()
 	ch, err := st.GetChannel(context.Background(), id)
@@ -88,11 +114,14 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if d.Enqueued != 1 {
 		t.Fatalf("enqueued = %d, want 1 (the turnstile should admit a better title)", d.Enqueued)
 	}
-	got := lineupOf(t, st, "ch1")
-	if got[provision.Key("movie:tmdb:200")] {
+	retired := retiredOf(t, st, "p1")
+	if !retired[provision.Key("movie:tmdb:200")] {
 		t.Error("the weakest retirable title should have been retired")
 	}
-	if !got[provision.Key("movie:tmdb:100")] {
+	// ⚠ THE safety property, and it must be asserted as "not retired" rather than "still in the
+	// lineup": the lineup is the binder's to write now, so a channel read here would pass for
+	// the trivial reason that nothing has touched it yet.
+	if retired[provision.Key("movie:tmdb:100")] {
 		t.Error("the AIRING title must never be retired")
 	}
 }
@@ -192,7 +221,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 	if _, err := cur.Consider(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
-	if !lineupOf(t, st, "ch1")[provision.Key("movie:tmdb:200")] {
+	if retiredOf(t, st, "p1")[provision.Key("movie:tmdb:200")] {
 		t.Fatal("a tie retired the bench title — that is coin-flip churn")
 	}
 }
@@ -226,13 +255,13 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 	// The observable is a RETIREMENT, not lineup size: a net-new acquisition becomes a
 	// `wanted` title and does not join ch.Lineup until it lands, so counting entries cannot
 	// distinguish "traded" from "took a free slot". One of the two stale titles must be gone.
-	got := lineupOf(t, st, "ch1")
-	staleGone := !got[provision.Key("movie:tmdb:200")] || !got[provision.Key("movie:tmdb:300")]
+	retired := retiredOf(t, st, "p1")
+	staleGone := retired[provision.Key("movie:tmdb:200")] || retired[provision.Key("movie:tmdb:300")]
 	if !staleGone {
 		t.Fatal("above the rotation target a better candidate must retire a stale title, " +
 			"even though a free slot exists (the ratchet is back)")
 	}
-	if !got[provision.Key("movie:tmdb:100")] {
+	if retired[provision.Key("movie:tmdb:100")] {
 		t.Error("the airing title must never be retired, target or no target")
 	}
 }
