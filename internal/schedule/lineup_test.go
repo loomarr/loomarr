@@ -439,75 +439,13 @@ func TestComputeDesired_Shuffle_DeterministicUnderSeed(t *testing.T) {
 	}
 }
 
-func TestPlaceAvailable_ReplacesInPlace_Idempotent(t *testing.T) {
-	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "A"), // available
-		entry("movie:tmdb:2", "B"), // pending
-	}
-	avail := mapAvail{"movie:tmdb:1": "lib-A"}
-	d := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
-
-	// B lands.
-	d2, changed := d.PlaceAvailable("movie:tmdb:2", "lib-B", "B", 3600000)
-	if !changed {
-		t.Fatalf("expected a change when a pending title lands")
-	}
-	// Placed IN PLACE — index 1 stays B, index 0 untouched (§9 stable placement).
-	if d2.Slots[1].Kind != schedule.SlotProgram || d2.Slots[1].LibraryItemID != "lib-B" {
-		t.Fatalf("B not placed in its own slot: %+v", d2.Slots[1])
-	}
-	if d2.Slots[0].Title != "A" {
-		t.Fatalf("placement reshuffled the channel; slot 0 = %q", d2.Slots[0].Title)
-	}
-	// Duplicate event → no-op (idempotent).
-	d3, changed2 := d2.PlaceAvailable("movie:tmdb:2", "lib-B", "B", 3600000)
-	if changed2 {
-		t.Fatalf("duplicate available event must be a no-op")
-	}
-	_ = d3
-}
-
-func TestSubstitute_ReplacesHoldingSlot(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("movie:tmdb:5", "Gone")}
-	d := schedule.ComputeDesired(seqChannel(), entries, mapAvail{}, schedule.ComingSoon)
-
-	fallback := schedule.Slot{Kind: schedule.SlotFiller, Title: "bumper"}
-	d2, changed := d.Substitute("movie:tmdb:5", fallback)
-	if !changed {
-		t.Fatalf("expected substitution")
-	}
-	if d2.Slots[0].Kind != schedule.SlotFiller || d2.Slots[0].Title != "bumper" {
-		t.Fatalf("substitution didn't take: %+v", d2.Slots[0])
-	}
-}
-
-func TestRevalidateAgainstLibrary_DemotesVanishedProgram(t *testing.T) {
-	entries := []schedule.LineupEntry{
-		entry("movie:tmdb:1", "Stays"),
-		entry("movie:tmdb:2", "Vanishes"),
-	}
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
-	d := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
-	if d.ProgramCount() != 2 {
-		t.Fatalf("setup: want 2 programs")
-	}
-
-	// The library loses movie 2 (deleted/re-id'd).
-	shrunk := mapAvail{"movie:tmdb:1": "lib-1"}
-	d2, drifted := d.RevalidateAgainstLibrary(shrunk, schedule.PodFill)
-	if !drifted {
-		t.Fatalf("expected drift when a scheduled program vanishes")
-	}
-	if d2.Slots[1].IsProgram() {
-		t.Fatalf("vanished program must be demoted, still a program: %+v", d2.Slots[1])
-	}
-	if d2.Slots[1].Key != "movie:tmdb:2" {
-		t.Fatalf("demoted slot must keep key for re-backfill, got %q", d2.Slots[1].Key)
-	}
-	if !d2.Slots[0].IsProgram() {
-		t.Fatalf("present program must be untouched")
-	}
-}
+// ⚠ `TestPlaceAvailable_*`, `TestSubstitute_*` and `TestRevalidateAgainstLibrary_*` were
+// DELETED with `schedule/backfill.go` (V41). The three pure lineup mutations they covered had
+// no production callers: the live backfill path is `channels.Engine.OnAvailability` →
+// `Reconcile`, which recomputes the whole DesiredLineup from scratch rather than mutating it in
+// place — see `channels/backfill.go`, whose comment records that recompute supersedes the point
+// mutations. Their only remaining callers were these tests, which is the shape §21 calls
+// "built and imported by nothing": exported, covered, and unreachable.
 
 func TestChannelValidate(t *testing.T) {
 	cases := []struct {
