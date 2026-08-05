@@ -40,6 +40,9 @@ type TitleStore interface {
 type ChannelStore interface {
 	GetChannel(ctx context.Context, id string) (Channel, error)
 	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
+	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
+	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
 	UpsertChannel(ctx context.Context, ch Channel) error
 	ListChannels(ctx context.Context) ([]Channel, error)
 	DeleteChannel(ctx context.Context, id string) error
@@ -97,6 +100,10 @@ type ProposalStore interface {
 	GetProposal(ctx context.Context, id string) (Proposal, error)
 	UpdateProposal(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
+	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
+	// one job in one status. Newest wins because a refine produces a newer approved proposal
+	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
 	// PurgeDeniedProposals removes denied proposals older than `before` (§5
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept

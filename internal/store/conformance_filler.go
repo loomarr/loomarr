@@ -1,0 +1,1218 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/filler"
+)
+
+// Filler (§10): clips, their lifecycle, the source registry, pulls and split proposals.
+//
+// ⚠ These were spread across FOUR non-contiguous regions of the old single file — clip tests
+// at four separate offsets with sources, pulls and splits interleaved between them. The domain
+// was always coherent; only the file ordering (historical, by when each test was written) was
+// not.
+
+// testFillerSources covers the persisted REMOTE source registry (§10, V33) on BOTH backends.
+//
+// The interesting assertions are the two that protect against silent data loss: a re-register
+// must not reset "last fetched", and deleting a source must not take its clips with it.
+// clipAt builds a catalog clip whose identity (`Hash`) is DISTINCT from its location (`Path`).
+//
+// ⚠ Hash and Path must never be equal here, and this is the whole point of the helper. They were
+// the same string until V41, and that single fact hid two production defects for two releases:
+// `DeleteClipsNotIn` wiped the entire catalog on every sync (see the post-mortem on
+// `store.SetClipsRemoved`), and `UpdateClipTags`/`RecordClipPlay` were being called with a path
+// against a `WHERE hash = ?` — so the AI tagger aborted on its first clip and play counters never
+// moved. Every assertion passed throughout, because a fixture where the two keys are equal cannot
+// tell them apart. A key-confusion bug is invisible by construction against such a fixture.
+//
+// ⚠ Real 64-hex hashes are still deliberately NOT used. The store does not care what a hash looks
+// like — only `filler.ClipPath` validates the shape, and that is tested where it belongs
+// (`filler/clippath_test.go`). A wall of hex would cost readability without buying coverage. The
+// property that matters is that the two fields are DISTINGUISHABLE, not that the hash is realistic,
+// so the readable path gets a short readable hash beside it.
+func clipAt(path, name string, kind filler.Kind, durationMs int64) filler.Clip {
+	return filler.Clip{Hash: clipHashFor(path), Path: path, Name: name, Kind: kind, DurationMs: durationMs}
+}
+
+// clipHashFor derives a fixture clip's identity from its path, and clipPathFor derives a fixture
+// clip's location from its identity. The two builders in this file start from opposite ends —
+// `clipAt` is given a readable path, `sampleClip` a readable id — so each needs the other half.
+//
+// Both are deterministic (the suite asserts exact values and runs against two backends), readable
+// in failure output, and — the load-bearing property — never equal to the value they derive from.
+func clipHashFor(path string) string { return "h:" + path }
+
+func clipPathFor(hash string) string { return "p/" + hash + ".mp4" }
+
+func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string) Clip {
+	c := Clip{}
+	// ⚠ Identity is the HASH since V38c, not the path (§10).
+	//
+	// These tests use the READABLE id as the hash — "c1", not 64 hex characters — so assertions
+	// stay legible (`GetClip(ctx, "c1")`) and a failure names a clip a human recognises. The
+	// store does not care what a hash looks like; only `filler.ClipPath` validates the shape, and
+	// that is covered where it belongs, in `filler/clippath_test.go`. Using real hashes here
+	// would make every assertion a wall of hex and would test nothing extra.
+	//
+	// ⚠ But `Path` must NOT be the id as well. It was until V41, and hash-keyed and path-keyed
+	// store methods became indistinguishable to this suite: `UpdateClipTags` (`WHERE hash = ?`)
+	// was being called with a path in production and every test still passed. See `clipAt` for
+	// the full post-mortem. Keep the two fields distinct in every fixture, always.
+	c.Hash = id
+	c.Path = clipPathFor(id)
+	c.TunarrProgramID = "tun-" + id
+	c.Name = name
+	c.Kind = kind
+	c.Era = era
+	c.Audience = aud
+	c.Category = cat
+	c.DurationMs = 30000
+	c.Source = "archive"
+	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()
+	return c
+}
+
+func ids2(clips []Clip) []string {
+	out := make([]string, len(clips))
+	for i, c := range clips {
+		out[i] = c.Path
+	}
+	return out
+}
+
+// findSource returns one source by id, and whether it is still listed.
+//
+// ⚠ By id, not by position. V37's migration seeds two singleton rows (`folder`, `library`) so a
+// fresh store can still express "not configured", which means `ListFillerSources(ctx)[0]` is no
+// longer the row a test just added — it is whichever seeded row sorts first. Every positional
+// read in this suite was rewritten through here after exactly that broke.
+func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
+	t.Helper()
+	all, err := s.ListFillerSources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range all {
+		if f.ID == id {
+			return f, true
+		}
+	}
+	return FillerSource{}, false
+}
+
+// src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
+// caller can assert on its fields without a nil check at every use.
+func src1(t *testing.T, s Store) FillerSource {
+	t.Helper()
+	f, ok := findSource(t, s, "src-1")
+	if !ok {
+		t.Fatal("src-1 is not listed")
+	}
+	return f
+}
+
+func testClipFilters(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
+	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
+
+	// Round-trip.
+	got, err := s.GetClip(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Frosted Flakes" || got.Kind != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
+		t.Errorf("clip round-trip mismatch: %+v", got.Clip)
+	}
+	if got.DurationMs != 30000 {
+		t.Errorf("duration lost: %d", got.DurationMs)
+	}
+	if _, err := s.GetClip(ctx, "nope"); err != ErrNotFound {
+		t.Errorf("GetClip(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Filter by kind.
+	comms, _ := s.ListClips(ctx, ClipFilter{Kind: filler.Commercial})
+	if len(comms) != 3 {
+		t.Errorf("kind=commercial = %d, want 3", len(comms))
+	}
+	// Filter by audience + era.
+	// ⚠ Assert on Hash, not Path: identity is the hash (§10 V38c). Asserting the path here read
+	// as correct only while the fixture made the two equal.
+	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
+	if len(kids92) != 1 || kids92[0].Hash != "c1" {
+		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
+	}
+	// Untagged only.
+	untagged, _ := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
+	if len(untagged) != 1 || untagged[0].Hash != "u1" {
+		t.Errorf("untagged = %+v, want just u1", ids2(untagged))
+	}
+	// Empty filter = all.
+	all, _ := s.ListClips(ctx, ClipFilter{})
+	if len(all) != 4 {
+		t.Errorf("no filter = %d, want 4", len(all))
+	}
+}
+
+func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", ""))
+	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
+
+	// Tag the untagged clip (the AI-tagging job path).
+	if err := s.UpdateClipTags(ctx, "u1", 1994, "kids", "cereal", 0, true, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetClip(ctx, "u1")
+	if got.Era != 1994 || got.Audience != filler.Kids || got.Category != "cereal" || !got.AITagged {
+		t.Errorf("tag update didn't persist: %+v", got.Clip)
+	}
+	if !got.Tagged() {
+		t.Error("clip should be Tagged() after update")
+	}
+	// Tagging a missing clip → ErrNotFound.
+	if err := s.UpdateClipTags(ctx, "gone", 1990, "kids", "toys", 0, false, now); err != ErrNotFound {
+		t.Errorf("UpdateClipTags(missing) = %v, want ErrNotFound", err)
+	}
+
+	// Era suggestions (§10 V34) — the conditional suggested_era write:
+	//  **record** an ungrounded suggestion on an era-less clip,
+	//  **keep** it across a tag edit that carries neither era nor suggestion,
+	//  **clear** it in the same write that sets era (the operator confirming).
+	if err := s.UpdateClipTags(ctx, "keep", 0, "family", "", 1985, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 || got.Era != 0 {
+		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 0, "general", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1985 {
+		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
+	}
+	if err := s.UpdateClipTags(ctx, "keep", 1985, "", "", 0, false, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.Era != 1985 || got.SuggestedEra != 0 {
+		t.Errorf("confirming era did not clear the suggestion: era=%d suggestedEra=%d, want 1985/0", got.Era, got.SuggestedEra)
+	}
+	// A suggestion survives a sync upsert (sync.go merges it like the other tags).
+	keep, _ := s.GetClip(ctx, "keep")
+	keep.SuggestedEra = 1990
+	if err := s.UpsertClip(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, "keep")
+	if got.SuggestedEra != 1990 {
+		t.Errorf("suggested_era did not round-trip through UpsertClip: %d, want 1990", got.SuggestedEra)
+	}
+
+	// Prune: keep only "keep" — u1 is removed (it left the media server's library).
+	n, err := s.DeleteClipsNotIn(ctx, []string{"keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("prune removed %d, want 1", n)
+	}
+	if _, err := s.GetClip(ctx, "u1"); err != ErrNotFound {
+		t.Error("pruned clip still present")
+	}
+	if _, err := s.GetClip(ctx, "keep"); err != nil {
+		t.Error("kept clip was wrongly pruned")
+	}
+	// Prune with empty keep set deletes all.
+	n, _ = s.DeleteClipsNotIn(ctx, nil)
+	if n != 1 {
+		t.Errorf("prune-all removed %d, want 1", n)
+	}
+}
+
+// testClipNameSearch covers the §7.2 `name LIKE` clip search. It is in the shared suite
+// because the two dialects disagree by default: SQLite's LIKE folds ASCII case while
+// Postgres's does not, so a naive implementation would make search case-sensitive on
+// exactly one backend — the dialect fork the store rules forbid.
+func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	_ = s.UpsertClip(ctx, sampleClip("c1", "Frosted Flakes", filler.Commercial, 1992, filler.Kids, "cereal"))
+	_ = s.UpsertClip(ctx, sampleClip("c2", "TMNT figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	_ = s.UpsertClip(ctx, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
+
+	names := func(f ClipFilter) []string {
+		t.Helper()
+		got, err := s.ListClips(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(got))
+		for _, c := range got {
+			out = append(out, c.Name)
+		}
+		return out
+	}
+
+	// Substring, and case-insensitive on BOTH backends.
+	if got := names(ClipFilter{Query: "flakes"}); len(got) != 1 || got[0] != "Frosted Flakes" {
+		t.Errorf("Query=flakes → %v, want [Frosted Flakes] (case-insensitive on both dialects)", got)
+	}
+	if got := names(ClipFilter{Query: "FROSTED"}); len(got) != 1 {
+		t.Errorf("Query=FROSTED → %v, want 1 match", got)
+	}
+
+	// A literal % must not act as a wildcard. Without escaping this returns everything,
+	// which reads as "search is broken" and scans the whole table.
+	if got := names(ClipFilter{Query: "%"}); len(got) != 1 || got[0] != "100% Juice" {
+		t.Errorf("Query=%% → %v, want only [100%% Juice] — %% must be literal, not a wildcard", got)
+	}
+	// Likewise _, which would otherwise match any single character.
+	if got := names(ClipFilter{Query: "_"}); len(got) != 0 {
+		t.Errorf("Query=_ → %v, want none — _ must be literal, not a single-char wildcard", got)
+	}
+
+	// Search composes with the other filters rather than replacing them.
+	if got := names(ClipFilter{Query: "e", Category: "toys"}); len(got) != 1 || got[0] != "TMNT figures" {
+		t.Errorf("Query+Category → %v, want [TMNT figures]", got)
+	}
+}
+
+// V28: play counters are written ONLY by RecordClipPlay, and a re-sync must not reset them.
+//
+// The reset is the bug worth pinning: UpsertClip lists most columns in its ON CONFLICT DO
+// UPDATE, so adding play_count there would zero every counter on each sync pass — silently,
+// and visible only as "usage never goes up".
+func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	c := sampleClip("1994/toys.mp4", "TMNT toys", filler.Commercial, 1994, filler.Kids, "toys")
+	c.Thumbnail = "1994/toys.jpg"
+	// ⚠ The animated preview is a SEPARATE column, not derived from the still (V39, 00035). Both
+	// are asserted here because a column added to the INSERT and forgotten in the SELECT (or
+	// vice versa) is a silent data loss the type system cannot see — the two lists are
+	// hand-maintained and positional.
+	c.Preview = "1994/toys.webp"
+	// The detected language (V40, 00036) — a third hand-maintained position in the same lists.
+	c.Language = "en"
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatalf("seed clip: %v", err)
+	}
+
+	// ⚠ Read by HASH, not path. `GetClip`, `RecordClipPlay` and `UpdateClipTags` are all keyed
+	// `WHERE hash = ?`; passing a path returns ErrNotFound. This test used `c.Path` throughout
+	// while the fixture made the two equal, so it could not distinguish the two keys — and the
+	// production callers that passed a path went undetected for two releases (see `clipAt`).
+	got, err := s.GetClip(ctx, c.Hash)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Thumbnail != "1994/toys.jpg" {
+		t.Errorf("thumbnail = %q, want it round-tripped", got.Thumbnail)
+	}
+	if got.Preview != "1994/toys.webp" {
+		t.Errorf("preview = %q, want it round-tripped — a preview that vanishes on read means "+
+			"every card silently falls back to its still", got.Preview)
+	}
+	// ⚠ A language that vanishes on read reads as NOT YET CHECKED, so the detection job would
+	// re-run forever — and on the local backend that is ~341s of QEMU per clip, every cycle.
+	if got.Language != "en" {
+		t.Errorf("language = %q, want it round-tripped", got.Language)
+	}
+	if got.PlayCount != 0 || !got.LastPlayedAt.IsZero() {
+		t.Errorf("a fresh clip must start unplayed, got count=%d at=%v", got.PlayCount, got.LastPlayedAt)
+	}
+
+	aired := time.Unix(1_800_000_000, 0).UTC()
+	for i := 0; i < 3; i++ {
+		if err := s.RecordClipPlay(ctx, c.Hash, aired); err != nil {
+			t.Fatalf("record play %d: %v", i, err)
+		}
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.PlayCount != 3 {
+		t.Errorf("play count = %d, want 3", got.PlayCount)
+	}
+	if !got.LastPlayedAt.Equal(aired) {
+		t.Errorf("last played = %v, want %v", got.LastPlayedAt, aired)
+	}
+
+	// A re-sync (what the periodic scan does) must leave the counters alone. Everything else
+	// about the row is legitimately refreshed.
+	c.Name = "TMNT toys (renamed)"
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Name != "TMNT toys (renamed)" {
+		t.Errorf("a re-sync must refresh the name, got %q", got.Name)
+	}
+	if got.PlayCount != 3 {
+		t.Errorf("a re-sync RESET the play count to %d — play_count must not be in the DO UPDATE list", got.PlayCount)
+	}
+	if !got.LastPlayedAt.Equal(aired) {
+		t.Errorf("a re-sync reset last_played_at to %v", got.LastPlayedAt)
+	}
+
+	// Playout may resolve a clip the catalog has since pruned; that is telemetry missing a
+	// row, not a playback error.
+	if err := s.RecordClipPlay(ctx, "gone/missing.mp4", aired); err != nil {
+		t.Errorf("recording a play for a pruned clip must not error, got %v", err)
+	}
+}
+
+// testClipKeyIsHashNotPath pins WHICH key the clip writers take (§10 V38c).
+//
+// ⚠ This test exists because the absence of it cost two releases. `Hash` (identity) and `Path`
+// (location) are both strings, so passing the wrong one is invisible to the compiler — and every
+// fixture in this suite set them to the same value, so it was invisible to the tests too. Two
+// production callers passed a path into a hash-keyed UPDATE: the AI tagger aborted on its first
+// clip (ErrNotFound is fatal there) and play counters silently never moved.
+//
+// The assertions are deliberately negative — "a path must NOT work" — because the positive case
+// passes just as happily against a store that accepts either.
+func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	c := sampleClip("k1", "keyed.mp4", filler.Commercial, 0, "", "")
+	if c.Hash == c.Path {
+		t.Fatalf("fixture bug: hash and path are equal (%q) — this test cannot distinguish the "+
+			"two keys and neither can any other test in this file", c.Hash)
+	}
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+
+	// GetClip is hash-keyed.
+	if _, err := s.GetClip(ctx, c.Path); err != ErrNotFound {
+		t.Errorf("GetClip(path) = %v, want ErrNotFound — GetClip is keyed WHERE hash = ?", err)
+	}
+	if _, err := s.GetClip(ctx, c.Hash); err != nil {
+		t.Errorf("GetClip(hash) = %v, want it to resolve", err)
+	}
+
+	// UpdateClipTags is hash-keyed, and its ErrNotFound is fatal to the tagging job.
+	if err := s.UpdateClipTags(ctx, c.Path, 1994, "kids", "cereal", 0, true, now); err != ErrNotFound {
+		t.Errorf("UpdateClipTags(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
+	}
+	if err := s.UpdateClipTags(ctx, c.Hash, 1994, "kids", "cereal", 0, true, now); err != nil {
+		t.Errorf("UpdateClipTags(hash) = %v, want it to apply", err)
+	}
+
+	// RecordClipPlay is hash-keyed and deliberately silent on a miss, so assert the COUNTER
+	// rather than the error — a path that no-ops returns nil either way.
+	if err := s.RecordClipPlay(ctx, c.Path, now); err != nil {
+		t.Errorf("RecordClipPlay(path) = %v, want a silent no-op", err)
+	}
+	got, _ := s.GetClip(ctx, c.Hash)
+	if got.PlayCount != 0 {
+		t.Errorf("play count = %d after recording against a PATH, want 0", got.PlayCount)
+	}
+	if err := s.RecordClipPlay(ctx, c.Hash, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.PlayCount != 1 {
+		t.Errorf("play count = %d after recording against the HASH, want 1", got.PlayCount)
+	}
+
+	// SetClipLanguage is the other half of the split: path-keyed, by design (the language job
+	// walks the filesystem). Pinned so a well-meaning "consistency" change has to be deliberate.
+	if err := s.SetClipLanguage(ctx, c.Path, "en", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Language != "en" {
+		t.Errorf("language = %q, want %q — SetClipLanguage is keyed WHERE path = ?", got.Language, "en")
+	}
+}
+
+// testClipCounts pins the count queries against the listing they replaced.
+//
+// ⚠ Every assertion compares COUNT(*) against len(ListClips(sameFilter)) rather than a literal.
+// That is the whole point: the counts exist to avoid materialising rows, so the only property
+// worth pinning is that they still answer the SAME question as the listing. A hard-coded number
+// would keep passing if the two predicates drifted apart, which is the one failure mode here.
+func testClipCounts(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	seed := func(id, source string, held, autoFiled bool, era int) {
+		c := sampleClip(id, id+".mp4", filler.Commercial, era, filler.Kids, "toys")
+		c.Source = source
+		c.Held = held
+		c.AutoFiled = autoFiled
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("a1", "youtube", false, false, 1990)
+	seed("a2", "youtube", false, true, 1991)
+	seed("a3", "archive", false, false, 0) // untagged: era 0
+	seed("a4", "archive", true, false, 1992)
+	seed("a5", "", false, false, 1993)
+
+	filters := map[string]ClipFilter{
+		"catalog":   {},
+		"held":      {HeldOnly: true},
+		"untagged":  {UntaggedOnly: true},
+		"autofiled": {AutoFiledOnly: true},
+		"by-kind":   {Kind: filler.Commercial},
+	}
+	for name, f := range filters {
+		listed, err := s.ListClips(ctx, f)
+		if err != nil {
+			t.Fatalf("%s list: %v", name, err)
+		}
+		got, err := s.CountClips(ctx, f)
+		if err != nil {
+			t.Fatalf("%s count: %v", name, err)
+		}
+		if got != len(listed) {
+			t.Errorf("CountClips(%s) = %d, but ListClips returned %d — the two predicates have drifted",
+				name, got, len(listed))
+		}
+	}
+
+	// AutoFiledOnly must actually narrow, or the assertion above passes vacuously against a
+	// filter the WHERE builder ignores.
+	if n, _ := s.CountClips(ctx, ClipFilter{AutoFiledOnly: true}); n != 1 {
+		t.Errorf("auto-filed count = %d, want exactly the 1 seeded auto-filed clip", n)
+	}
+
+	// The per-source rollup must agree with the catalog total, or the Sources page's "N sources ·
+	// M clips" line contradicts itself.
+	bySource, err := s.CountClipsBySource(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := 0
+	for _, n := range bySource {
+		sum += n
+	}
+	total, _ := s.CountClips(ctx, ClipFilter{})
+	if sum != total {
+		t.Errorf("per-source counts sum to %d but the catalog holds %d — a clip vanished from the rollup", sum, total)
+	}
+	if bySource["youtube"] != 2 {
+		t.Errorf("youtube = %d, want 2", bySource["youtube"])
+	}
+	// ⚠ The empty source must survive as its own bucket. `source` is free text, so an unknown or
+	// blank value is possible, and dropping it would silently lose clips from a page whose whole
+	// job is accounting for where they came from.
+	if bySource[""] != 1 {
+		t.Errorf("blank source = %d, want the 1 seeded clip — an unattributed clip must not vanish", bySource[""])
+	}
+	// Held is excluded by default, exactly as in the listing.
+	if bySource["archive"] != 1 {
+		t.Errorf("archive = %d, want 1 (the held clip is not in the catalog)", bySource["archive"])
+	}
+}
+
+// testClipLicense pins that a clip's declared licence round-trips on BOTH backends, and that an
+// absent one stays absent. ⚠ Empty means UNKNOWN, never "public domain" — ~92% of archive.org
+// items declare none, so the empty case is the common one and must not acquire a default.
+func testClipLicense(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	licensed := Clip{Clip: filler.Clip{
+		Hash: "licensed.mp4",
+		Path: "licensed.mp4", Name: "Licensed", Kind: filler.Commercial, DurationMs: 30000,
+		License: "https://creativecommons.org/publicdomain/zero/1.0/",
+	}, UpdatedAt: now}
+	unknown := Clip{Clip: filler.Clip{
+		Hash: "unknown.mp4",
+		Path: "unknown.mp4", Name: "Unknown", Kind: filler.Commercial, DurationMs: 30000,
+	}, UpdatedAt: now}
+	for _, c := range []Clip{licensed, unknown} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.GetClip(ctx, "licensed.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.License != licensed.License {
+		t.Errorf("licence = %q, want %q", got.License, licensed.License)
+	}
+	if got, err = s.GetClip(ctx, "unknown.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	if got.License != "" {
+		t.Errorf("a clip with no declared licence has %q, want empty", got.License)
+	}
+}
+
+// testClipHeld covers the V38 clip lifecycle on BOTH backends: a held clip is recorded but is not
+// in the playable catalog, and only SetClipsHeld moves it.
+//
+// ⚠ The first assertion is the property the whole lifecycle rests on. Pod assembly, coverage, the
+// filler-list builder and the catalog listing all read through ListClips with a zero filter, so if
+// held clips were not excluded THERE, every untagged unreviewed download would air.
+func testClipHeld(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	at := time.Now().UTC().Truncate(time.Second)
+
+	filed := Clip{Clip: filler.Clip{
+		Hash: "filed.mp4",
+		Path: "filed.mp4", Name: "Filed", Kind: filler.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: filler.Kids, Category: "toys",
+	}, UpdatedAt: at}
+	held := Clip{Clip: filler.Clip{
+		Hash: "held.mp4",
+		Path: "held.mp4", Name: "Held", Kind: filler.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true, Confidence: 40,
+	}, UpdatedAt: at}
+	for _, c := range []Clip{filed, held} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// ⚠ A ZERO filter is what pod assembly passes. A held clip must not be in this answer.
+	got, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range got {
+		if c.Path == "held.mp4" {
+			t.Fatal("a HELD clip came back from a zero-filter ListClips — pod assembly reads " +
+				"exactly this, so an unreviewed clip would air")
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("catalog has %d clips, want 1 (the filed one)", len(got))
+	}
+
+	// The review queue is the inverse, and it is how Incoming finds its work.
+	queue, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue) != 1 || queue[0].Path != "held.mp4" {
+		t.Fatalf("HeldOnly returned %d clips, want just held.mp4", len(queue))
+	}
+	if queue[0].Confidence != 40 {
+		t.Errorf("confidence = %d, want 40 — the score must round-trip", queue[0].Confidence)
+	}
+
+	// ⚠ THE trap this lifecycle has to survive: `clips` is a synced CACHE, so the folder scan
+	// re-upserts every file it finds with held=false. If `held` rode along in UpsertClip's DO
+	// UPDATE list, one scan pass would file every held clip — emptying the review queue into live
+	// channels with no operator action and nothing in the logs.
+	rescan := held
+	rescan.Held = false
+	rescan.Confidence = 0 // a scan knows nothing about tagging
+	if err := s.UpsertClip(ctx, rescan); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 {
+		t.Fatal("a re-scan FILED a held clip — UpsertClip must omit `held` from its DO UPDATE " +
+			"list, exactly as it omits the removal tombstone")
+	}
+	if after[0].Confidence != 40 {
+		t.Errorf("a re-scan blanked the confidence score (%d) — it must be omitted too, or a "+
+			"trusted clip starts asking again for no reason", after[0].Confidence)
+	}
+
+	// Filing is the only way out, and it records that nobody looked.
+	if _, err := s.SetClipsHeld(ctx, []string{"held.mp4"}, false, true, at); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog) != 2 {
+		t.Fatalf("after filing, catalog has %d clips, want 2", len(catalog))
+	}
+	var flag bool
+	for _, c := range catalog {
+		if c.Path == "held.mp4" {
+			flag = c.AutoFiled
+		}
+	}
+	if !flag {
+		t.Error("auto_filed did not survive — it is the only thing that can answer " +
+			"'which of these did I never see?'")
+	}
+}
+
+func testFillerSources(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+
+	// ⚠ A FRESH install ships with fetchable sources (§10 V38c.8, migration 00034). Asserted here,
+	// on BOTH backends, because a seed that lands on sqlite and not on postgres is exactly the
+	// dialect drift this one-suite-two-backends rule exists to catch — and it would show up as
+	// "filler mysteriously does nothing" on one deployment only.
+	for _, want := range []struct{ id, label, uri string }{
+		{"archive:classic_tv_commercials", "Classic TV Commercials", "classic_tv_commercials"},
+		{"archive:vhscommercials", "Commercials From The Vault", "vhscommercials"},
+		{"archive:tv_ads", "TV Ads", "tv_ads"},
+	} {
+		got, ok := findSource(t, s, want.id)
+		if !ok {
+			t.Fatalf("a fresh store is missing the seeded source %q — a new install cannot fetch", want.id)
+		}
+		// ⚠ The LABEL is human-readable. `vhscommercials` is not a name an operator recognises,
+		// and the row renders the label above the target.
+		if got.Label != want.label {
+			t.Errorf("%s label = %q, want %q", want.id, got.Label, want.label)
+		}
+		if got.URI != want.uri {
+			t.Errorf("%s uri = %q, want %q", want.id, got.URI, want.uri)
+		}
+		if !got.Enabled {
+			t.Errorf("%s seeded switched OFF — it would sit in the UI doing nothing", want.id)
+		}
+		// ⚠ Fetchable, which is the whole point: `folder` and `library` are SCANNED, so before
+		// this seed a fresh install had no source it could download from at all.
+		if !got.Fetchable() {
+			t.Errorf("%s is not fetchable — the seed exists so a new install CAN fetch", want.id)
+		}
+		// ⚠ EMPTY licence, and that is correct rather than missing data. All three declare none,
+		// and §10 defines empty as UNKNOWN — never "public domain". A reassuring default here
+		// would have Loomarr asserting a legal fact nobody checked.
+		if got.License != "" {
+			t.Errorf("%s licence = %q, want empty (unknown, NOT public domain)", want.id, got.License)
+		}
+	}
+
+	// ⚠ YouTube seeds PRESENT BUT EMPTY. §10: Loomarr never recommends YouTube content itself, so
+	// the operator brings the playlist — a seeded target would be that recommendation. The empty
+	// uri also fails `Fetchable()`, which keeps the row out of every pull plan until it is filled
+	// in; without that, approval would hand `Ingest` an empty string.
+	if yt, ok := findSource(t, s, "youtube"); !ok {
+		t.Error("a fresh store is missing the YouTube row — the mock draws it, unconfigured")
+	} else {
+		if yt.URI != "" {
+			t.Errorf("youtube seeded with uri %q — Loomarr must not recommend a playlist", yt.URI)
+		}
+		if yt.Fetchable() {
+			t.Error("an unconfigured youtube row is fetchable — a pull would ingest an empty string")
+		}
+	}
+
+	created := time.Now().UTC().Truncate(time.Second)
+	src := FillerSource{
+		// Enabled explicitly: a Go bool zero-values to false, so a literal that omits it
+		// describes a source that is switched OFF. Real add paths go through
+		// NewFillerSource for exactly that reason.
+		Enabled: true,
+		// ⚠ NOT `classic_tv_commercials` — that is a SEEDED row now (00034), and 00032's unique
+		// index on (kind, uri) correctly refuses a second row pointing at the same collection.
+		// The fixture needs its own target; the index is doing its job.
+		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
+		Label:   "Classic TV commercials",
+		License: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
+		// common one — both are covered.
+		CreatedAt: created,
+	}
+	if err := s.UpsertFillerSource(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	unlicensed := FillerSource{ID: "src-2", Kind: "archive", URI: "vintage_ads", CreatedAt: created.Add(time.Second)}
+	if err := s.UpsertFillerSource(ctx, unlicensed); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ⚠ V37: the list is no longer empty on a fresh store. Migration 00029 materialises the two
+	// CONFIG-BACKED singletons (`folder`, `library`) so the flat list can still say "you could
+	// set up a drop-folder but have not" — §10's own answer to "why is my catalog empty?", which
+	// a table of things-that-exist otherwise cannot express. So this suite asserts on the rows it
+	// added, BY ID, rather than by position in the whole list.
+	byID := map[string]FillerSource{}
+	for _, f := range all {
+		byID[f.ID] = f
+	}
+	for _, want := range []string{"folder", "library"} {
+		if _, ok := byID[want]; !ok {
+			t.Fatalf("singleton row %q missing — a fresh store must be able to say 'not configured'", want)
+		}
+	}
+	if byID["folder"].URI != "" {
+		t.Errorf("seeded folder URI = %q, want empty (= not configured, never a guessed path)", byID["folder"].URI)
+	}
+
+	// Ordering is still oldest-first and still explicit — an unordered list reshuffles between
+	// reads on Postgres and the Sources tab's rows would move under the pointer. Checked over the
+	// two rows this test added rather than the whole list, whose head is now seeded.
+	//
+	// ⚠ Filtered by ID, not by KIND. `Kind == "archive"` was unambiguous while every archive row
+	// came from this test; migration 00034 seeds three of them, so the kind filter started
+	// collecting the seed too and the count assertion below failed for the right reason.
+	wanted := map[string]bool{"src-1": true, "src-2": true}
+	var added []FillerSource
+	for _, f := range all {
+		if wanted[f.ID] {
+			added = append(added, f)
+		}
+	}
+	if len(added) != 2 {
+		t.Fatalf("listed %d of this test's own sources, want 2", len(added))
+	}
+	if added[0].ID != "src-1" || added[1].ID != "src-2" {
+		t.Errorf("order = %s,%s; want src-1,src-2 (oldest first)", added[0].ID, added[1].ID)
+	}
+	if added[0].License != src.License {
+		t.Errorf("licence = %q, want %q", added[0].License, src.License)
+	}
+	if added[1].License != "" {
+		t.Errorf("unlicensed source has licence %q, want empty (= unknown)", added[1].License)
+	}
+	if !added[0].LastFetchedAt.IsZero() {
+		t.Errorf("a never-fetched source has LastFetchedAt %v, want zero", added[0].LastFetchedAt)
+	}
+
+	// ⚠ THE invariant the flat model has to carry itself (§10), MOVED in V38c from the kind to
+	// the TARGET. 00029 allowed exactly one folder row; 00032 allows many, because commercials
+	// living in two places is ordinary and V37 gave it no expression.
+	//
+	// What must still be impossible is ONE folder appearing as TWO rows — a stale row disagreeing
+	// with another about the same directory, which is the precedence question 00023 refused to
+	// have. So a DISTINCT path is accepted and a DUPLICATE path is refused, by the database
+	// rather than by a Go guard the next caller forgets.
+	second := FillerSource{ID: "folder-2", Kind: "folder", URI: "/other", Enabled: true, CreatedAt: created}
+	if err := s.UpsertFillerSource(ctx, second); err != nil {
+		t.Errorf("a second DISTINCT folder was refused (%v) — V38c allows many watched folders", err)
+	}
+	dup := FillerSource{ID: "folder-3", Kind: "folder", URI: "/other", Enabled: true, CreatedAt: created}
+	if err := s.UpsertFillerSource(ctx, dup); err == nil {
+		t.Error("a DUPLICATE folder path was accepted — one directory must not appear as two rows")
+	}
+
+	// ⚠ THE three-state encoding (§10 V38c). `nil` = inherit the global, `0` = never fetch this
+	// source, `N` = every N seconds. They cannot collapse: `filler.fetch.every = 0` already means
+	// "off", so a non-nullable column would make "unset" and "never" the same value and read as
+	// "every existing source is switched off" on upgrade — 00026's mistake exactly.
+	never, every900 := 0, 900
+	if err := s.SetFillerSourceFetchPolicy(ctx, "src-2", &never, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFillerSourceFetchPolicy(ctx, "folder-2", &every900, &every900); err != nil {
+		t.Fatal(err)
+	}
+	policies, err := s.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPolicyID := map[string]FillerSource{}
+	for _, f := range policies {
+		byPolicyID[f.ID] = f
+	}
+	// src-1 was never given a policy: nil, and it must resolve to the global.
+	if got := byPolicyID["src-1"]; got.FetchEverySeconds != nil {
+		t.Errorf("src-1 override = %v, want nil (inherit)", *got.FetchEverySeconds)
+	} else if d, ok := got.FetchEvery(time.Hour); !ok || d != time.Hour {
+		t.Errorf("an un-overridden source resolved to (%v, %v), want the global hour", d, ok)
+	}
+	// src-2 was set to 0 = NEVER. ⚠ It must NOT read as "inherit" — that is the collapse.
+	if got := byPolicyID["src-2"]; got.FetchEverySeconds == nil {
+		t.Error("a 0 override round-tripped as NULL — 'never' collapsed into 'inherit'")
+	} else if _, ok := got.FetchEvery(time.Hour); ok {
+		t.Error("a 0 override resolved to a poll interval — 0 must mean NEVER")
+	}
+	if got := byPolicyID["folder-2"]; got.FetchEverySeconds == nil || *got.FetchEverySeconds != 900 {
+		t.Errorf("folder-2 override did not round-trip: %v", got.FetchEverySeconds)
+	} else if d, _ := got.FetchEvery(time.Hour); d != 900*time.Second {
+		t.Errorf("resolved to %v, want 15m from the override rather than the global", d)
+	}
+	// Clearing goes back to inherit — a real operator action ("stop treating this specially").
+	if err := s.SetFillerSourceFetchPolicy(ctx, "src-2", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := findSource(t, s, "src-2"); got.FetchEverySeconds != nil {
+		t.Error("clearing an override did not return the source to inherit")
+	}
+
+	// ⚠ Two BLANK-uri rows must both survive. A seeded-but-unconfigured row carries no target —
+	// that is how "you could set up a drop-folder but have not" is expressed (§10) — and a plain
+	// unique index rather than a partial one would allow only ONE blank row across the table,
+	// so a fresh install could not have both an unconfigured folder and an unconfigured library.
+	for _, blank := range []FillerSource{
+		{ID: "blank-a", Kind: "folder", URI: "", Enabled: true, CreatedAt: created},
+		{ID: "blank-b", Kind: "library", URI: "", Enabled: true, CreatedAt: created},
+	} {
+		if err := s.UpsertFillerSource(ctx, blank); err != nil {
+			t.Errorf("an unconfigured %s row was refused (%v) — 'not configured' must stay expressible",
+				blank.Kind, err)
+		}
+	}
+
+	// Fetch stamps.
+	fetched := created.Add(time.Hour)
+	if err := s.MarkFillerSourceFetched(ctx, "src-1", fetched); err != nil {
+		t.Fatal(err)
+	}
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("LastFetchedAt = %v, want %v", src1(t, s).LastFetchedAt, fetched)
+	}
+
+	// ⚠ THE assertion this table's ON CONFLICT clause exists for. Re-registering a source
+	// (an operator fixing its label) knows nothing about fetches; if last_fetched_at joined
+	// the DO UPDATE list, a working source would silently look like it had never run.
+	relabelled := src
+	relabelled.Label = "Renamed"
+	if err := s.UpsertFillerSource(ctx, relabelled); err != nil {
+		t.Fatal(err)
+	}
+	if src1(t, s).Label != "Renamed" {
+		t.Errorf("label = %q, want Renamed", src1(t, s).Label)
+	}
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Errorf("re-registering reset LastFetchedAt to %v — it must survive an upsert", src1(t, s).LastFetchedAt)
+	}
+
+	// The Sources tab's on/off switch (V35). Two properties, each a claim the switch's own
+	// copy makes to the operator.
+	if !src1(t, s).Enabled {
+		t.Error("source is not enabled — a registered source must be on until switched off")
+	}
+	if err := s.SetFillerSourceEnabled(ctx, "src-1", false); err != nil {
+		t.Fatal(err)
+	}
+	if src1(t, s).Enabled {
+		t.Error("source still enabled after being switched off")
+	}
+
+	// 1. ⚠ Disabling is NOT deleting. The row keeps its licence and its fetch history, which
+	//    is what makes switching it back on restore what was there instead of starting over.
+	if src1(t, s).License != src.License {
+		t.Errorf("licence lost on disable: %q", src1(t, s).License)
+	}
+	if !src1(t, s).LastFetchedAt.Equal(fetched) {
+		t.Error("fetch history lost on disable — the row was rewritten rather than updated")
+	}
+
+	// 2. ⚠ A re-register must not flip the switch back. `UpsertFillerSource` deliberately omits
+	//    `enabled` from its DO UPDATE list, for the same reason last_fetched_at is omitted: a
+	//    caller fixing a label knows nothing about the switch, and a Go bool zero-values to
+	//    FALSE, so writing it would silently disable a source behind the operator's back. The
+	//    first draft of V35 had exactly that bug.
+	reRegistered := src
+	reRegistered.Label = "Renamed again"
+	reRegistered.Enabled = true // what a caller who does not know about the switch would send
+	if err := s.UpsertFillerSource(ctx, reRegistered); err != nil {
+		t.Fatal(err)
+	}
+	if src1(t, s).Enabled {
+		t.Error("re-registering re-enabled a disabled source — the switch is not the upsert's business")
+	}
+	if src1(t, s).Label != "Renamed again" {
+		t.Errorf("label = %q, want the re-registered one", src1(t, s).Label)
+	}
+
+	// Put it back on, so the delete assertions below run against the normal state.
+	if err := s.SetFillerSourceEnabled(ctx, "src-1", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// ⚠ Deleting a source must NOT delete its clips: they are real files already tagged and
+	// possibly pinned into a channel, and forgetting where something came from is not a
+	// reason to throw it away.
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: "from-src-1.mp4",
+		Path: "from-src-1.mp4", Name: "From src 1", Kind: filler.Commercial, DurationMs: 30000,
+		Source: "archive", License: src.License,
+	}, UpdatedAt: created}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFillerSource(ctx, "src-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, "from-src-1.mp4"); err != nil {
+		t.Errorf("deleting a source removed its clip: %v", err)
+	}
+	if _, ok := findSource(t, s, "src-1"); ok {
+		t.Error("after delete, src-1 is still listed")
+	}
+
+	// An unknown id is ErrNotFound on both write paths, so a caller cannot believe it
+	// recorded something.
+	if err := s.DeleteFillerSource(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("delete unknown = %v, want ErrNotFound", err)
+	}
+	if err := s.MarkFillerSourceFetched(ctx, "nope", fetched); !errors.Is(err, ErrNotFound) {
+		t.Errorf("mark unknown fetched = %v, want ErrNotFound", err)
+	}
+	if err := s.SetFillerSourceEnabled(ctx, "nope", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("set enabled on unknown = %v, want ErrNotFound", err)
+	}
+}
+
+// testSeededDefaultSources covers what migration 00034 puts in a FRESH store, on BOTH backends
+// (§10 V38c.8).
+//
+// ⚠ **This is the ONLY test that may depend on the seeded set.** Every other suite clears it —
+// `newFillerServer` in internal/api does so explicitly — because eleven tests phrased as absolute
+// counts ("want 1", "unconfigured") went red the moment the migration landed, none of them wrong
+// about the behaviour they described. Concentrating the dependency here means the next change to
+// the seed breaks exactly one test, and it breaks the one whose job is to notice.
+//
+// ⚠ It runs on both dialects because the seed is HAND-DUPLICATED per backend — two nearly
+// identical SQL files, differing in `unixepoch()` vs its Postgres spelling. That is precisely the
+// shape that drifts: a row added to one file and forgotten in the other produces a Postgres
+// install that silently ships fewer sources than a SQLite one, and no single-dialect test can see
+// it.
+func testSeededDefaultSources(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+
+	all, err := s.ListFillerSources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]FillerSource{}
+	for _, f := range all {
+		byID[f.ID] = f
+	}
+
+	// The three VERIFIED archive collections (checked against the live API 2026-08-03 — five
+	// plausible-looking identifiers returned zero items, which is why this list is short).
+	for _, want := range []struct{ id, label string }{
+		{"archive:classic_tv_commercials", "Classic TV Commercials"},
+		{"archive:vhscommercials", "Commercials From The Vault"},
+		{"archive:tv_ads", "TV Ads"},
+	} {
+		got, ok := byID[want.id]
+		if !ok {
+			t.Errorf("%s is missing — a fresh install must have something it can fetch", want.id)
+			continue
+		}
+		if !got.Enabled {
+			t.Errorf("%s is disabled; the seeded defaults are on so filler works on day one", want.id)
+		}
+		if !got.Fetchable() {
+			t.Errorf("%s is not fetchable — a scanned-only default would leave the install stuck", want.id)
+		}
+		// ⚠ A human-readable name, not the identifier. `vhscommercials` is not something an
+		// operator recognises in the Sources list.
+		if got.Label != want.label {
+			t.Errorf("%s label = %q, want %q", want.id, got.Label, want.label)
+		}
+		// ⚠ EMPTY licence, deliberately. ~92% of archive items declare none and §10 defines empty
+		// as UNKNOWN, never "public domain" — a reassuring default here would have Loomarr
+		// asserting a legal fact nobody checked.
+		if got.License != "" {
+			t.Errorf("%s license = %q, want empty (unknown) — absence carries no permission",
+				want.id, got.License)
+		}
+	}
+
+	// ⚠ The YouTube row is present but has NO target, and that is the design rather than an
+	// oversight. §10 says Loomarr never recommends YouTube content itself; the operator brings
+	// their own playlist. An empty uri also keeps the row out of every pull plan on its own,
+	// because Fetchable() requires one.
+	yt, ok := byID["youtube"]
+	if !ok {
+		t.Fatal("the youtube row is missing — the mock draws it as a present, empty prompt")
+	}
+	if yt.URI != "" {
+		t.Errorf("youtube uri = %q, want empty — seeding a target IS the recommendation §10 forbids",
+			yt.URI)
+	}
+	if yt.Fetchable() {
+		t.Error("the empty youtube row is fetchable; it must not reach the ingest job until someone fills it in")
+	}
+}
+
+// testFillerPulls covers the filler approval gate (§10 V35) on BOTH backends.
+//
+// The assertions that matter are the ones protecting the AUDIT: a decided pull is kept, and a
+// dropped plan row is retained with its flag rather than removed. "We approved this" is only
+// meaningful next to what was proposed.
+func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	created := time.Now().UTC().Truncate(time.Second)
+
+	p := filler.Pull{
+		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
+		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
+		Plan: []filler.PullPlanRow{
+			{SourceID: "classic", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 40},
+			{SourceID: "psa", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 12},
+		},
+	}
+	if err := s.UpsertPull(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Plan) != 2 || got.Plan[0].SourceID != "classic" || got.Plan[0].EstimateClips != 40 {
+		t.Errorf("plan did not round-trip: %+v", got.Plan)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, created)
+	}
+	// Pending means undecided, and that must be legible as a ZERO time rather than an epoch
+	// date nobody meant.
+	if !got.DecidedAt.IsZero() {
+		t.Errorf("a pending pull has DecidedAt %v, want zero", got.DecidedAt)
+	}
+	if got.EstimatedClips() != 52 {
+		t.Errorf("EstimatedClips = %d, want 52", got.EstimatedClips())
+	}
+
+	// Approve with one row dropped.
+	decided := created.Add(time.Hour)
+	got.Plan[1].Dropped = true
+	got.Status = filler.PullApproved
+	got.Note = "no local dealers"
+	got.DecidedAt = decided
+	got.DecidedBy = "admin-2"
+	if err := s.UpsertPull(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := s.GetPull(ctx, "pull_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ The dropped row is STILL THERE, flagged. Removing it would leave a record of what was
+	// fetched with no record of what was declined, which is the half a reviewer needs.
+	if len(after.Plan) != 2 {
+		t.Fatalf("plan has %d rows after approval, want 2 — a dropped row must be retained", len(after.Plan))
+	}
+	if !after.Plan[1].Dropped {
+		t.Error("the dropped flag did not persist")
+	}
+	if n := len(after.Committed()); n != 1 {
+		t.Errorf("Committed() = %d rows, want 1", n)
+	}
+	if after.EstimatedClips() != 40 {
+		t.Errorf("EstimatedClips after drop = %d, want 40", after.EstimatedClips())
+	}
+	if !after.DecidedAt.Equal(decided) || after.DecidedBy != "admin-2" || after.Note != "no local dealers" {
+		t.Errorf("decision not recorded: %+v", after)
+	}
+
+	// Status filtering, and the fact that a decided pull is KEPT rather than deleted.
+	if pending, err := s.ListPulls(ctx, filler.PullPending); err != nil || len(pending) != 0 {
+		t.Errorf("pending = %d (%v), want 0", len(pending), err)
+	}
+	approved, err := s.ListPulls(ctx, filler.PullApproved)
+	if err != nil || len(approved) != 1 {
+		t.Fatalf("approved = %d (%v), want 1 — the history must survive the decision", len(approved), err)
+	}
+	if all, err := s.ListPulls(ctx, ""); err != nil || len(all) != 1 {
+		t.Errorf("all = %d (%v), want 1", len(all), err)
+	}
+
+	if _, err := s.GetPull(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPull unknown = %v, want ErrNotFound", err)
+	}
+}
+
+// testSplitProposals covers the persisted split proposal (§10, V34) on BOTH backends: the
+// segments JSON round-trip, ONE proposal per clip (re-detection replaces, and the new id
+// wins), delete, and DeleteClip (the confirm path's drop of the compilation row).
+func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	p := filler.SplitProposal{
+		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: now,
+		Segments: []filler.SplitSegment{
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
+			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4"},
+			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
+		},
+	}
+	if err := s.UpsertSplitProposal(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetSplitProposal(ctx, "sp_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClipPath != p.ClipPath || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+		t.Fatalf("proposal round-trip = %+v", got)
+	}
+	// Every segment field survives the JSON round-trip — including the V34-specific
+	// suggestion, dedup flag, and unsplittable marker the review renders.
+	s1 := got.Segments[1]
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || s1.Era != 0 {
+		t.Errorf("segment suggestion/dedup fields lost: %+v", s1)
+	}
+	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
+		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
+	}
+
+	// ⚠ Re-detection REPLACES the pending proposal for the same clip — two competing
+	// cut-lists for one file is a review bug, not a choice. The NEW id answers the old
+	// one's GET with ErrNotFound.
+	p2 := filler.SplitProposal{ID: "sp_2", ClipPath: p.ClipPath, CreatedAt: now.Add(time.Hour),
+		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
+	if err := s.UpsertSplitProposal(ctx, p2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetSplitProposal(ctx, "sp_1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("stale proposal after re-detection = %v, want ErrNotFound", err)
+	}
+	got2, err := s.GetSplitProposal(ctx, "sp_2")
+	if err != nil || len(got2.Segments) != 1 {
+		t.Fatalf("replacement proposal = (%+v, %v)", got2, err)
+	}
+
+	// DeleteClip (confirm drops the compilation row) + proposal cleanup.
+	if err := s.UpsertClip(ctx, Clip{Clip: clipAt("comps/1987.mp4", "1987", filler.Commercial, 149000), UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteClip(ctx, "comps/1987.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClip(ctx, "comps/1987.mp4"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("compilation row survived DeleteClip: %v", err)
+	}
+	if err := s.DeleteClip(ctx, "comps/1987.mp4"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteClip twice = %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteSplitProposal(ctx, "sp_2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSplitProposal(ctx, "sp_2"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
+	}
+}
