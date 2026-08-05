@@ -25,7 +25,7 @@ const proposal: Proposal = {
 
 // Dispatches by method: POST is the refine trigger, GET is the approval-queue poll —
 // mirroring the two real endpoints (`POST /v1/channels/{id}/refine`, `GET
-// /v1/suggestions?status=submitted`) without pinning to exact URL strings. The
+// /v1/proposals?status=submitted`) without pinning to exact URL strings. The
 // proposals response is deferred (an externally-resolvable promise) rather than
 // resolved immediately, so a test can observe the run's "in flight" state before
 // choosing to let the list respond — this hook's list query has no refetchInterval

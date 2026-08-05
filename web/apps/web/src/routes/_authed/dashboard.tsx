@@ -2,7 +2,7 @@ import {
   channelsApi,
   dashboardApi,
   fillerApi,
-  suggestionsApi,
+  proposalsApi,
   systemApi,
   TitleDTOState,
   titlesApi,
@@ -47,7 +47,7 @@ const DashboardScreen = () => {
   const playout = dashboardApi.useGetPlayoutTelemetry({ query: { enabled } });
   // The approval queue's depth — the mock's `pendingCount`, the same number Queue's nav badge
   // and its "Needs approval" tab show. One source, so they cannot disagree.
-  const pending = suggestionsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
+  const pending = proposalsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
   const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
 
   // "Acquiring" spans every non-available state, and GET /v1/titles filters by ONE state, so

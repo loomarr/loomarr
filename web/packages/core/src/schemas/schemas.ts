@@ -6,7 +6,7 @@ import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only
 // required field — the blank-page killer templates prefill the rest.
-// Field names are the API's `Intent` verbatim (POST /v1/suggestions). They were NOT:
+// Field names are the API's `Intent` verbatim (POST /v1/proposals). They were NOT:
 // this schema said `maxAcquire` where the wire says `maxAcquisitions`, so a user's
 // acquisition cap was silently dropped, and `runtimeTarget` where the wire says
 // `runtimeTargetMin`. Both are the hand-mirroring the 1:1 rule exists to prevent (§12).

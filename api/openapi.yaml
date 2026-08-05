@@ -3023,6 +3023,12 @@ components:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
           type: string
+        retired:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         scores:
           $ref: "#/components/schemas/Scores"
       required:
@@ -3274,7 +3280,7 @@ components:
           readOnly: true
           type: string
         jobId:
-          description: Poll /v1/suggestions for the refined proposal (matched on this jobId), then approve to apply.
+          description: Poll /v1/proposals for the refined proposal (matched on this jobId), then approve to apply.
           type: string
       required:
         - jobId
@@ -5244,7 +5250,7 @@ paths:
         - channels
   /v1/channels/{id}/refine:
     post:
-      description: Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).
+      description: Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/proposals for the proposal, review the diff, and approve to apply (patches THIS channel).
       operationId: refine-channel
       parameters:
         - in: path
@@ -5942,7 +5948,7 @@ paths:
         - filler
   /v1/filler/splits/{proposalId}:
     get:
-      description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/suggestions/{id}.
+      description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/proposals/{id}.
       operationId: get-filler-split
       parameters:
         - in: path
@@ -6288,6 +6294,184 @@ paths:
       summary: The closed rule authoring vocabulary
       tags:
         - channels
+  /v1/proposals:
+    get:
+      description: status=submitted is the approval queue.
+      operationId: list-proposals
+      parameters:
+        - description: Filter by status; submitted = the approval queue
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Filter by status; submitted = the approval queue
+            enum:
+              - submitted
+              - approved
+              - denied
+            type: string
+        - description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
+          explode: false
+          in: query
+          name: mine
+          schema:
+            description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProposalsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List proposals by status
+      tags:
+        - proposals
+    post:
+      description: Any authenticated user (§8).
+      operationId: submit-proposal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Intent"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Start a proposal job from an intent
+      tags:
+        - proposals
+  /v1/proposals/approve:
+    post:
+      description: Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.
+      operationId: bulk-approve-proposals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkApproveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkApproveOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve several proposals (admin)
+      tags:
+        - proposals
+  /v1/proposals/{id}:
+    get:
+      operationId: get-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get a proposal + its job status
+      tags:
+        - proposals
+  /v1/proposals/{id}/approve:
+    post:
+      description: Admin only. Enqueues acquisitions through the approval gate (§8).
+      operationId: approve-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalEditDTO"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve a proposal (admin)
+      tags:
+        - proposals
+  /v1/proposals/{id}/deny:
+    post:
+      description: Admin only.
+      operationId: deny-proposal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DenyInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DenyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Deny a proposal (admin)
+      tags:
+        - proposals
   /v1/search:
     get:
       operationId: search
@@ -6648,184 +6832,6 @@ paths:
       summary: Wire the library as Tunarr's media source
       tags:
         - setup
-  /v1/suggestions:
-    get:
-      description: status=submitted is the approval queue.
-      operationId: list-proposals
-      parameters:
-        - description: Filter by status; submitted = the approval queue
-          explode: false
-          in: query
-          name: status
-          schema:
-            description: Filter by status; submitted = the approval queue
-            enum:
-              - submitted
-              - approved
-              - denied
-            type: string
-        - description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
-          explode: false
-          in: query
-          name: mine
-          schema:
-            description: Scope to the caller's own proposals (the My requests surface). Resolved from the session, not from a user id.
-            type: boolean
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListProposalsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: List proposals by status
-      tags:
-        - suggestions
-    post:
-      description: Any authenticated user (§8).
-      operationId: submit-suggestion
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Intent"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SubmitOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Start a suggestion job from an intent
-      tags:
-        - suggestions
-  /v1/suggestions/approve:
-    post:
-      description: Admin only. Approves each id through the SAME single-approve gate (§8) — no batch path. Returns a per-id result so one already-handled proposal does not hide the rest.
-      operationId: bulk-approve-proposals
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BulkApproveInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BulkApproveOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Approve several proposals (admin)
-      tags:
-        - suggestions
-  /v1/suggestions/{id}:
-    get:
-      operationId: get-proposal
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProposalDTO"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Get a proposal + its job status
-      tags:
-        - suggestions
-  /v1/suggestions/{id}/approve:
-    post:
-      description: Admin only. Enqueues acquisitions through the approval gate (§8).
-      operationId: approve-proposal
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ApprovalEditDTO"
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApproveOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Approve a proposal (admin)
-      tags:
-        - suggestions
-  /v1/suggestions/{id}/deny:
-    post:
-      description: Admin only.
-      operationId: deny-proposal
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DenyInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DenyOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Deny a proposal (admin)
-      tags:
-        - suggestions
   /v1/system/backups:
     get:
       description: Admin only. What the scheduled backup job has written into the configured directory, plus the schedule and retention in force. A directory that does not exist yet is an empty list, not an error — nothing written yet is the normal state of a fresh install.

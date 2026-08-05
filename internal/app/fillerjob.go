@@ -44,3 +44,23 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := f.Run(ctx); return err },
 	}
 }
+
+// fillerLanguageJob declares the language gate (§10 V40) — detecting what a clip's speech is in
+// and removing the ones that are confidently not `filler.language`.
+//
+// ⚠ **Its own job, and on a much slower cron than its siblings**, because it is the expensive one.
+// On the local backend a clip costs ~3s natively and ~341s under QEMU, so a batch of 25 is
+// minutes-to-hours of work depending on the machine — nothing like the folder read `filler-sync`
+// does. Hourly drains a catalog steadily without a pass ever overlapping the next.
+//
+// ⚠ It is also the only filler job that DELETES something. A separate row on the Tasks page is
+// what lets an operator see it ran, pause it, and connect "my Spanish advert disappeared" to a job
+// rather than to a mystery.
+func fillerLanguageJob(j *filler.LanguageJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-language", Title: "Check filler languages",
+		Description: "Listens to a few seconds of each new clip and removes the ones spoken in a different language. Clips with no speech — music or visuals only — are always kept.",
+		DefaultCron: "0 30 * * * *", ScheduleKey: "job.filler_language.schedule",
+		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}

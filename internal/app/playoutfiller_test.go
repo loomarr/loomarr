@@ -252,17 +252,23 @@ type recordingPlays struct {
 	err   error
 }
 
-func (r *recordingPlays) RecordClipPlay(_ context.Context, clipPath string, _ time.Time) error {
-	r.calls = append(r.calls, clipPath)
+func (r *recordingPlays) RecordClipPlay(_ context.Context, clipHash string, _ time.Time) error {
+	r.calls = append(r.calls, clipHash)
 	return r.err
 }
 
-// V28: a clip that AIRS is counted, and the count identifies the clip by its catalog path
-// (not the absolute file, which is a deployment detail).
+// V28: a clip that AIRS is counted. V41: the count identifies the clip by its HASH.
+//
+// ⚠ This test asserted the catalog PATH from V28 until V41, and it was right when written —
+// identity was the path then. V38c moved identity to the hash and never revisited this
+// assertion, so the test went on pinning the pre-V38c contract and kept `RecordClipPlay`'s
+// path argument looking correct while every counter in production stayed at zero
+// (`RecordClipPlay` is keyed `WHERE hash = ?`). A test that outlives the model it encodes
+// stops being a guard and becomes a reason not to look.
 func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
+		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
 	plays := &recordingPlays{}
@@ -271,10 +277,32 @@ func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
 	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
 		t.Fatal(err)
 	}
-	// ⚠ The CATALOG path, not the absolute file — the play counter keys on what the row stores,
-	// so an absolute path here would count against a clip that does not exist.
-	if len(plays.calls) != 1 || plays.calls[0] != clipAt("1994/toys.mp4") {
-		t.Fatalf("recorded %v, want one play of the CATALOG path", plays.calls)
+	// ⚠ The HASH, not the path and not the absolute file. The counter keys on identity, so
+	// anything else counts against a clip that does not exist — silently, because the caller
+	// swallows the error as telemetry.
+	if len(plays.calls) != 1 || plays.calls[0] != "hash-toys" {
+		t.Fatalf("recorded %v, want one play of the clip HASH", plays.calls)
+	}
+}
+
+// ⚠ The bumper card has no catalog row, so it has no hash — and must not be counted. Without
+// the `e.Hash != ""` guard this records a play against the empty string, which is not merely
+// useless: it is an UPDATE with an attacker-independent but wrong key, and the swallowed error
+// means it would never be noticed.
+func TestAiringNow_DoesNotCountAnEntryWithNoHash(t *testing.T) {
+	dir := t.TempDir()
+	pod := filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("1994/toys.mp4"), Name: "no-hash", DurationMs: 8000},
+	}}
+	r := fillerResolver(t, dir, pod)
+	plays := &recordingPlays{}
+	r.clipPlays = plays
+
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plays.calls) != 0 {
+		t.Errorf("recorded %v for an entry with no hash, want no play counted", plays.calls)
 	}
 }
 

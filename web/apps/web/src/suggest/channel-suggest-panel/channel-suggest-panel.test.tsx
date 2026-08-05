@@ -7,7 +7,7 @@ import { ChannelSuggestPanel } from "./channel-suggest-panel";
 
 // The panel reuses the whole Suggest flow (useSuggestionRun → GenerationProgress →
 // ProposalReview), so its test mirrors suggest-workspace's harness: an admin auth/me, a POST
-// /v1/suggestions that returns a jobId, a /v1/proposals list that yields a submitted proposal
+// /v1/proposals that returns a jobId, a /v1/proposals list that yields a submitted proposal
 // matched on that jobId, and a stubbed EventSource (jsdom has none — the phases ride SSE, the
 // proposal rides the list). The panel needs a router (it navigates on approve) + a query
 // client + the events provider is absent in isolation (the listener is then a no-op, exactly
@@ -41,8 +41,8 @@ const stubFetch = (opts: { proposals?: unknown[]; me?: unknown; approveBody?: un
     if (u.includes("/approve") && method === "POST") {
       return Promise.resolve(json(opts.approveBody ?? { channelId: "ch_new123" }));
     }
-    if (u.includes("/v1/suggestions") && method === "POST") return Promise.resolve(json({ jobId: "job-1" }));
-    if (u.includes("/v1/proposals") || u.includes("/v1/suggestions")) {
+    if (u.includes("/v1/proposals") && method === "POST") return Promise.resolve(json({ jobId: "job-1" }));
+    if (u.includes("/v1/proposals") || u.includes("/v1/proposals")) {
       return Promise.resolve(json({ proposals: opts.proposals ?? [] }));
     }
     return Promise.resolve(json({}));
@@ -86,7 +86,7 @@ describe("ChannelSuggestPanel", () => {
 
     await waitFor(() => {
       const posted = fetchMock.mock.calls.find(
-        ([u, init]) => String(u).includes("/v1/suggestions") && String(init?.method) === "POST",
+        ([u, init]) => String(u).includes("/v1/proposals") && String(init?.method) === "POST",
       );
       expect(posted).toBeTruthy();
       expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({ description: "80s teen comedies" });
@@ -109,7 +109,7 @@ describe("ChannelSuggestPanel", () => {
 
     await waitFor(() => {
       const posted = fetchMock.mock.calls.find(
-        ([u, init]) => String(u).includes("/v1/suggestions") && String(init?.method) === "POST",
+        ([u, init]) => String(u).includes("/v1/proposals") && String(init?.method) === "POST",
       );
       expect(posted).toBeTruthy();
       expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({

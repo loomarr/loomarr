@@ -1,4 +1,4 @@
-import { suggestionsApi, toProblem } from "@loomarr/api";
+import { proposalsApi, toProblem } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth";
 import { ErrorState, GenerationProgress, ProposalReview } from "@/components/loomarr";
@@ -28,10 +28,10 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
   const run = useSuggestionRun();
   const elapsed = useElapsed(run.isRunning);
 
-  const approve = suggestionsApi.useApproveProposal({
+  const approve = proposalsApi.useApproveProposal({
     mutation: {
       onSuccess: (res) => {
-        void queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
         // The approval created (or patched) a channel and returned its id — navigate there so
         // the operator lands on the new channel. Empty channelId only if creation failed
         // server-side (the approval still stands); guard so we never navigate to "".
@@ -42,10 +42,10 @@ const ChannelSuggestPanel = ({ onCreated, initialIntent, className }: ChannelSug
       },
     },
   });
-  const deny = suggestionsApi.useDenyProposal({
+  const deny = proposalsApi.useDenyProposal({
     mutation: {
       onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: suggestionsApi.getListProposalsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
         run.reset();
       },
     },

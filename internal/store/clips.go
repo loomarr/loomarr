@@ -52,6 +52,13 @@ type ClipFilter struct {
 	// /v1/search because a clip is not a provisionable title (§10), so it cannot be a
 	// federated Candidate without leaking a non-title into the LLM grounding path.
 	Query string
+	// AutoFiledOnly restricts to clips filed into the catalog WITHOUT a human (§10 V38) — the
+	// Incoming tab's audit list, "what happened while nobody was looking".
+	//
+	// ⚠ Opt-in like every other narrowing flag here, so the zero filter keeps meaning "the whole
+	// catalog". Added because the audit list was loading every clip in the install and dropping
+	// all but the auto-filed ones in Go; the predicate belongs beside the column it reads.
+	AutoFiledOnly bool
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
@@ -84,8 +91,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -95,6 +102,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
 		   preview=excluded.preview,
+		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, string(c.Kind), c.Era, string(c.Audience), c.Category,
@@ -103,7 +111,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
 		// line is the fourth time it has bitten this session.
-		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview,
+		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
 	if err != nil {
@@ -113,7 +121,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, play_count, last_played_at, suggested_era,
+	rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
@@ -139,6 +147,75 @@ func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error)
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
 // UntaggedOnly flag adds "era=0 OR audience=” OR category=”" (any missing tag).
 func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) {
+	where, args := clipWhere(f)
+	q := clipSelect
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += " ORDER BY path"
+
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanClips(rows)
+}
+
+// CountClips answers "how many match?" without materialising the rows.
+//
+// ⚠ Shares `clipWhere` with ListClips rather than restating the predicate. Several callers wanted
+// only a number and were loading every column of every row to take `len()` of the slice — on a
+// large catalog that is the dominant cost of rendering a settings page. A second hand-written
+// WHERE here would be free to drift from the one the listing (and the tagging job) actually use,
+// which is the failure this deliberately forecloses.
+func (s *sqlStore) CountClips(ctx context.Context, f ClipFilter) (int, error) {
+	where, args := clipWhere(f)
+	q := `SELECT COUNT(*) FROM clips`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, s.ph(q), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count clips: %w", err)
+	}
+	return n, nil
+}
+
+// CountClipsBySource returns the clip count per source — the Sources page's whole question.
+//
+// ⚠ Grouped in SQL. This was every row of the catalog loaded into Go to build a map of counters;
+// the answer is one small map either way, so the load was pure waste. Honours the same default
+// exclusions as the listing (removed and held clips are out unless asked for) so the per-source
+// numbers add up to the catalog total a caller sees elsewhere.
+func (s *sqlStore) CountClipsBySource(ctx context.Context, f ClipFilter) (map[string]int, error) {
+	where, args := clipWhere(f)
+	q := `SELECT source, COUNT(*) FROM clips`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	q += " GROUP BY source"
+
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return nil, fmt.Errorf("count clips by source: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int{}
+	for rows.Next() {
+		var src string
+		var n int
+		if err := rows.Scan(&src, &n); err != nil {
+			return nil, err
+		}
+		out[src] = n
+	}
+	return out, rows.Err()
+}
+
+// clipWhere builds the ANDed predicate for a ClipFilter, shared by every query that has to mean
+// the same thing by "matching clips" — the listing, the counts, and the per-source rollup.
+func clipWhere(f ClipFilter) ([]string, []any) {
 	var where []string
 	var args []any
 	if f.Kind != "" {
@@ -191,23 +268,17 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		// tags for pod matching.
 		where = append(where, "kind = 'commercial' AND (era = 0 OR audience = '' OR category = '')")
 	}
-	q := clipSelect
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
+	if f.AutoFiledOnly {
+		// ⚠ Bound, not a literal: `auto_filed` is INTEGER on sqlite and BOOLEAN on Postgres,
+		// the same dialect trap the `held` comparison above documents.
+		where = append(where, "auto_filed = ?")
+		args = append(args, true)
 	}
-	q += " ORDER BY path"
-
-	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	return scanClips(rows)
+	return where, args
 }
 
-// ListUntaggedCommercials is the AI-tagging work list (§10) — sugar over the
+// ListUntaggedCommercials is the AI-tagging job's work list (§10) — sugar over the
 // commercial-scoped UntaggedOnly filter.
-// ListUntaggedCommercials is the AI-tagging job's work list.
 //
 // ⚠ **IncludeHeld is required, not optional** (§10 V38). Held clips are exactly the ones most in
 // need of tagging — a held clip is waiting to be tagged and then filed — and the default catalog
@@ -336,7 +407,7 @@ func scanClip(sc scannable) (Clip, error) {
 		updatedAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
@@ -472,4 +543,24 @@ func (s *sqlStore) SetClipsRemoved(ctx context.Context, paths []string, at time.
 		return 0, fmt.Errorf("set clips removed: %w", err)
 	}
 	return int(n), nil
+}
+
+// SetClipLanguage records what the detection job heard (§10 V40, migration 00036).
+//
+// ⚠ **The ONLY writer of `language`**, exactly like SetClipsRemoved owns the tombstone and
+// RecordClipPlay owns the counters — and for the same reason: `UpsertClip` deliberately omits the
+// column, so the folder scan cannot blank a detected language by finding the file still on disk.
+// Without that omission every sync would reset the catalog to "not yet checked" and the job would
+// re-detect everything on the next pass, which on the local backend is ~341s per clip under QEMU.
+//
+// Keyed by PATH rather than hash, because that is what the job carries and what every other
+// clip-writing method here takes.
+func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET language = ?, updated_at = ? WHERE path = ?`),
+		language, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip language %s: %w", path, err)
+	}
+	return nil
 }

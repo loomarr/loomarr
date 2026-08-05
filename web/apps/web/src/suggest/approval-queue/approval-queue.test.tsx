@@ -51,7 +51,7 @@ const stubApi = () => {
       if (typeof url === "string" && url.includes("/v1/search")) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
-      if (typeof url === "string" && url.includes("/v1/suggestions")) {
+      if (typeof url === "string" && url.includes("/v1/proposals")) {
         return Promise.resolve(jsonResponse({ proposals: [proposal] }));
       }
       return Promise.resolve(jsonResponse({}));

@@ -104,7 +104,7 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-lib/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-lib/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -124,7 +124,7 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 
 func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 	srv, _, fs := newSuggestServer(t)
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions", adminToken, `{"description":"90s action"}`)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, `{"description":"90s action"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
 	}
@@ -139,7 +139,7 @@ func TestApprove_RequiresAdmin_NothingEnqueued(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", "", "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("member approve → %d, want 401", resp.StatusCode)
 	}
@@ -161,7 +161,7 @@ func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin approve → %d, want 200", resp.StatusCode)
 	}
@@ -199,8 +199,8 @@ func TestApprove_Admin_EnqueuesAcquisitions(t *testing.T) {
 func TestApprove_AlreadyApproved409(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
-	_ = do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "")
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "")
+	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("re-approve → %d, want 409", resp.StatusCode)
 	}
@@ -209,7 +209,7 @@ func TestApprove_AlreadyApproved409(t *testing.T) {
 func TestDeny_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/deny", "", `{"reason":"no"}`)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/deny", "", `{"reason":"no"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member deny → %d, want 401", resp.StatusCode)
 	}
@@ -219,7 +219,7 @@ func TestListProposals_ApprovalQueue(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
 	seedProposal(t, st, "p2")
-	resp := do(t, srv, http.MethodGet, "/v1/suggestions?status=submitted", adminToken, "")
+	resp := do(t, srv, http.MethodGet, "/v1/proposals?status=submitted", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d", resp.StatusCode)
 	}
@@ -279,7 +279,7 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	          "runtimeTargetMin":180,"maxAcquisitions":7,
 	          "mustInclude":["Speed"],"mustExclude":["Cats"]}`
 
-	if resp := do(t, srv, http.MethodPost, "/v1/suggestions", adminToken, body); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, body); resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
 	}
 
@@ -321,7 +321,7 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-ch/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-ch/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -369,7 +369,7 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-era/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-era/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
 	}
@@ -403,7 +403,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 		}
 	}
 	seed("p-a", "job-same")
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-a/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-a/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first approve → %d", resp.StatusCode)
 	}
@@ -421,7 +421,7 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 
 	// A second proposal for the SAME intent (a re-run of that job) is approved.
 	seed("p-b", "job-same")
-	resp = do(t, srv, http.MethodPost, "/v1/suggestions/p-b/approve", adminToken, "")
+	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-b/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("second approve → %d", resp.StatusCode)
 	}
@@ -478,7 +478,7 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 	mk("p-refined", "106", "Predator", base.Add(time.Hour)) // the refine result (newer)
 
 	// Approve the ORIGINAL first → binds a channel to the job with The Matrix.
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-orig/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-orig/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve original → %d, want 200", resp.StatusCode)
 	}
@@ -492,7 +492,7 @@ func TestRefine_NewestApprovedWins(t *testing.T) {
 
 	// Now approve the REFINED proposal. Same job → must patch the SAME channel, and the
 	// lineup must become the refined one (Predator), not stay the original (Matrix).
-	resp = do(t, srv, http.MethodPost, "/v1/suggestions/p-refined/approve", adminToken, "")
+	resp = do(t, srv, http.MethodPost, "/v1/proposals/p-refined/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve refined → %d, want 200", resp.StatusCode)
 	}
@@ -552,7 +552,7 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-n/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-n/approve", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d", resp.StatusCode)
 	}
@@ -584,7 +584,7 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-drop/approve", adminToken,
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-drop/approve", adminToken,
 		`{"drop":["movie:tmdb:100"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve with edit → %d, want 200", resp.StatusCode)
@@ -604,7 +604,7 @@ func TestApprove_AddedTitleIsEnqueued(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p-add")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-add/approve", adminToken,
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-add/approve", adminToken,
 		`{"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}]}`)
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -626,7 +626,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p-audit")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-audit/approve", adminToken,
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-audit/approve", adminToken,
 		`{"drop":["movie:tmdb:100"],"add":[{"mediaType":"movie","tmdbId":603,"name":"The Matrix","year":1999,"inLibrary":false}],"note":"swapped it, we already have Speed"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
@@ -656,7 +656,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p-stored")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-stored/approve", adminToken,
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-stored/approve", adminToken,
 		`{"drop":["movie:tmdb:100"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
@@ -680,7 +680,7 @@ func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-plain/approve", adminToken, ""); resp.StatusCode != http.StatusOK {
+	if resp := do(t, srv, http.MethodPost, "/v1/proposals/p-plain/approve", adminToken, ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve with no body → %d, want 200 — an empty body must still approve", resp.StatusCode)
 	}
 	after, err := st.GetProposal(context.Background(), "p-plain")
@@ -700,7 +700,7 @@ func TestApprove_MemberCannotEditAndApprove(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p-member")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p-member/approve", "",
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-member/approve", "",
 		`{"drop":["movie:tmdb:100"],"note":"let me in"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("member approve with an edit → %d, want 401", resp.StatusCode)
@@ -720,7 +720,7 @@ func TestApprove_StampsApprovedAt(t *testing.T) {
 	seedProposal(t, st, "p1")
 
 	before := time.Now().Add(-time.Second)
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "")
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", resp.StatusCode)
@@ -744,7 +744,7 @@ func TestProposalDTO_OmitsApprovedAtWhileUnapproved(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
 
-	resp := do(t, srv, http.MethodGet, "/v1/suggestions?status=submitted", adminToken, "")
+	resp := do(t, srv, http.MethodGet, "/v1/proposals?status=submitted", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if strings.Contains(string(body), "approvedAt") {
@@ -755,9 +755,9 @@ func TestProposalDTO_OmitsApprovedAtWhileUnapproved(t *testing.T) {
 func TestProposalDTO_CarriesApprovedAtOnceApproved(t *testing.T) {
 	srv, st, _ := newSuggestServer(t)
 	seedProposal(t, st, "p1")
-	_ = do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "").Body.Close()
+	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
 
-	resp := do(t, srv, http.MethodGet, "/v1/suggestions?status=approved", adminToken, "")
+	resp := do(t, srv, http.MethodGet, "/v1/proposals?status=approved", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		Proposals []struct {
@@ -775,8 +775,8 @@ func TestProposalDTO_CarriesApprovedAtOnceApproved(t *testing.T) {
 	}
 }
 
-// ⚠ The route-shape check. `POST /v1/suggestions/approve` (bulk) and
-// `POST /v1/suggestions/{id}/approve` (single) are different paths, but a literal segment that
+// ⚠ The route-shape check. `POST /v1/proposals/approve` (bulk) and
+// `POST /v1/proposals/{id}/approve` (single) are different paths, but a literal segment that
 // could be mistaken for an id is worth pinning: if the router ever resolved "approve" as an
 // {id}, bulk would 404 as a missing proposal instead of approving anything.
 func TestBulkApprove_DoesNotCollideWithSingleApprove(t *testing.T) {
@@ -784,7 +784,7 @@ func TestBulkApprove_DoesNotCollideWithSingleApprove(t *testing.T) {
 	seedProposal(t, st, "p1")
 	seedProposal(t, st, "p2")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken, `{"ids":["p1","p2"]}`)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", adminToken, `{"ids":["p1","p2"]}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -805,7 +805,7 @@ func TestBulkApprove_GoesThroughTheSameGate(t *testing.T) {
 	seedProposalWithTMDB(t, st, "p1", 100, "Speed")
 	seedProposalWithTMDB(t, st, "p2", 101, "Heat")
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken, `{"ids":["p1","p2"]}`)
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", adminToken, `{"ids":["p1","p2"]}`)
 	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		Approved int `json:"approved"`
@@ -853,9 +853,9 @@ func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
 	seedProposal(t, st, "p1")
 	seedProposal(t, st, "p2")
 	// p1 is already approved before the bulk call.
-	_ = do(t, srv, http.MethodPost, "/v1/suggestions/p1/approve", adminToken, "").Body.Close()
+	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
 
-	resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", adminToken,
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", adminToken,
 		`{"ids":["p1","missing","p2"]}`)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -896,7 +896,7 @@ func TestBulkApprove_MemberIsRejected(t *testing.T) {
 	seedProposal(t, st, "p1")
 
 	for _, tok := range []string{"", "not-the-admin-token"} {
-		resp := do(t, srv, http.MethodPost, "/v1/suggestions/approve", tok, `{"ids":["p1"]}`)
+		resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", tok, `{"ids":["p1"]}`)
 		if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
 			t.Errorf("bulk approve with token %q → %d, want 401/403", tok, resp.StatusCode)
 		}

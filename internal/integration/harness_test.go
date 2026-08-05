@@ -316,7 +316,7 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 				Proposal json.RawMessage `json:"proposal"`
 			} `json:"proposals"`
 		}
-		h.getJSON("/v1/suggestions?status=submitted", cookie, &list)
+		h.getJSON("/v1/proposals?status=submitted", cookie, &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
 				var prop suggest.Proposal

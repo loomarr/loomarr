@@ -156,12 +156,24 @@ type ClipStore interface {
 	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
 	// a ZERO filter, so an opt-out would keep a removed clip airing.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	// CountClips is ListClips' question answered without the rows, for callers that only ever
+	// took len() of the result. Same filter, same predicate (they share the WHERE builder).
+	CountClips(ctx context.Context, filter ClipFilter) (int, error)
+	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
+	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
+	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
 	// ⚠ The ONLY writer of that tombstone, like RecordClipPlay is the only writer of the play
 	// counters: UpsertClip deliberately omits the column, which is what stops the next scan
 	// resurrecting a removed clip by finding its file still on disk. It never touches the file.
 	SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
+	// SetClipLanguage records the detected language (§10 V40).
+	//
+	// ⚠ The ONLY writer of that column, like the tombstone above: UpsertClip omits it, which is
+	// what stops a folder scan blanking a detected language and making the job re-detect the whole
+	// catalog every sync (~341s per clip under QEMU on the local backend).
+	SetClipLanguage(ctx context.Context, path, language string, at time.Time) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:

@@ -167,13 +167,32 @@ func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Sele
 	if err != nil {
 		return CoverageReport{}, err
 	}
+	return a.CoverageFrom(clips, channelID, sel), nil
+}
+
+// Catalog loads the full clip catalog once, for a caller that will then ask several
+// catalog-shaped questions of it (the pool report asks one per live channel). Pairs with
+// CoverageFrom: load here, answer there.
+func (a *PodAdapter) Catalog(ctx context.Context) ([]Clip, error) { return a.catalog.AllClips(ctx) }
+
+// CoverageFrom is CoverageFor over a catalog the caller already holds — the same derivation,
+// the same window, the same answer, minus the load.
+//
+// ⚠ The aggregate report (the Filler pool strip) asks this question once per live channel. Going
+// through CoverageFor there made an N-channel install an N-catalog-load request, which is the
+// exact cost `FitForChannel` above already refuses for the same reason. What must NOT change is
+// that every caller gets its number from THIS function: the pool strip and the channel page are
+// compared by operators when something looks wrong, and a second implementation of the ladder
+// would eventually let them disagree. Sharing the computation is the invariant; re-reading the
+// catalog was never part of it.
+func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection) CoverageReport {
 	podMax := a.policy.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
 	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
 	// so nobody threads a real seed through expecting it to matter.
-	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy), nil
+	return Coverage(clips, a.windowFor(channelID, 0, sel, podMax), a.policy)
 }
 
 // FitForChannel reports how ONE clip relates to one channel's selection (§10 V35 item 1.7).

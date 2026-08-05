@@ -37,6 +37,13 @@ func TestJobSet(t *testing.T) {
 		// unattended crawler", and this row is what a future reader sees when they check whether
 		// that is still true.
 		"filler-fetch | 0 0 */6 * * * | job.filler_fetch.schedule",
+		// ⚠ The language gate (§10 V40) is the first job that DELETES catalog rows unattended —
+		// the same kind of record the fetch row above is for reaching the internet. Its presence
+		// here is what a future reader sees when they ask "does anything remove clips on its own?"
+		//
+		// Hourly, not the sync's 15 minutes: on the local backend a batch is minutes natively and
+		// hours under QEMU, so it drains a catalog steadily rather than overlapping itself.
+		"filler-language | 0 30 * * * * | job.filler_language.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",

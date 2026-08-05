@@ -1,4 +1,4 @@
-import { suggestionsApi, unwrap } from "@loomarr/api";
+import { proposalsApi, unwrap } from "@loomarr/api";
 import { useQueries } from "@tanstack/react-query";
 import { ErrorState, MyRequestCard } from "@/components/loomarr";
 
@@ -14,13 +14,13 @@ import { ErrorState, MyRequestCard } from "@/components/loomarr";
 //
 // Three statuses are fetched because a member's question is "what happened to what I asked
 // for?", and the two answers that matter most — it was declined, or it came back changed — live
-// outside `submitted`. `GET /v1/suggestions` filters by ONE status per call, so this fans out
+// outside `submitted`. `GET /v1/proposals` filters by ONE status per call, so this fans out
 // and merges, the same aggregation the queue's title table already does.
 const STATUSES = ["submitted", "approved", "denied"] as const;
 
 const MyRequests = () => {
   const queries = useQueries({
-    queries: STATUSES.map((status) => suggestionsApi.getListProposalsQueryOptions({ status, mine: true })),
+    queries: STATUSES.map((status) => proposalsApi.getListProposalsQueryOptions({ status, mine: true })),
   });
 
   const error = queries.find((q) => q.error)?.error;

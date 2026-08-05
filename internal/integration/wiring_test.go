@@ -33,7 +33,7 @@ func TestWiring_FreshInstall(t *testing.T) {
 	// (After the live-enable fix these still 501 when unconfigured; saving the config
 	// makes them work live — see TestWiring_ConfigEnablesLive.)
 	unconfigured := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/suggestions", `{"description":"x"}`},
+		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 		{http.MethodPost, "/v1/setup/tunarr-connect", ""},
@@ -87,7 +87,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 
 	// Fresh install: the feature routes report unconfigured (501).
 	preCheck := []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/suggestions", `{"description":"x"}`},
+		{http.MethodPost, "/v1/proposals", `{"description":"x"}`},
 		{http.MethodGet, "/v1/search?q=matrix", ""},
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 	}
@@ -116,8 +116,8 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	}
 
 	// ...AND the routes are enabled WITH NO RESTART — the whole point of the fix.
-	if code := h.status(http.MethodPost, "/v1/suggestions", `{"description":"x"}`, admin); code == http.StatusNotImplemented {
-		t.Error("POST /v1/suggestions still 501 after saving config — not live-enabled (would need a restart)")
+	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"x"}`, admin); code == http.StatusNotImplemented {
+		t.Error("POST /v1/proposals still 501 after saving config — not live-enabled (would need a restart)")
 	}
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {
 		t.Errorf("GET /v1/search → %d after saving library, want 200 (live-enabled)", code)

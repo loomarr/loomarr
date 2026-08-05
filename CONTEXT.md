@@ -56,7 +56,19 @@ _Avoid_: prompt, query, description
 **Proposal**:
 The Suggester's grounded answer to an Intent: a lineup of picks plus an extracted policy.
 Statuses are `submitted`, `approved`, `denied` (§7, §8).
+Lives at `/v1/proposals*`; every operationId is `*-proposal(s)`.
 _Avoid_: suggestion, recommendation, plan
+
+⚠ The routes said `/v1/suggestions` until V41, and one operationId (`submit-suggestion`) sat
+among five `*-proposal` siblings in the same file — so one resource was submitted as a
+"suggestion" and read, approved and denied as a "proposal". A glossary nothing follows is not a
+glossary. `scripts/check-retired.sh` now guards the old path.
+
+⚠ Two survivors are deliberate, and both are the VERB, not the artifact. The suggester job's
+persisted `kind` is `"suggest"` (renaming it is a data migration, and the job is not the
+proposal), and the SSE frame `"suggestion"` reports that job's PHASE — its Go→TS handler pairing
+has no drift guard, so churning it is real risk for no glossary gain. The banned noun is the name
+for the artifact; `internal/suggest` remains the package that produces one.
 
 **Grounding**:
 The rule that the model may only pick from candidates a tool call actually returned this run.

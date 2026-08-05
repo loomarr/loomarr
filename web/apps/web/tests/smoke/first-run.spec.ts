@@ -254,9 +254,9 @@ test("7 · a real intent becomes a grounded proposal from the operator's own Oll
   // not something the model composed. Asserted against the PERSISTED proposal — a UI that
   // merely renders plausible text cannot satisfy this.
   //
-  // The approval queue is GET /v1/suggestions?status=submitted (proposals are the
+  // The approval queue is GET /v1/proposals?status=submitted (proposals are the
   // resource, suggestions the route — §7.2).
-  const listed = await (await page.request.get("/v1/suggestions?status=submitted")).json();
+  const listed = await (await page.request.get("/v1/proposals?status=submitted")).json();
   const latest = listed.proposals?.[0];
   expect(latest, "a submitted proposal should be persisted").toBeTruthy();
 
@@ -296,7 +296,7 @@ test("8 · approving materializes a channel, and Tunarr really has it", async ({
 
   // Work with whatever step 7 left in the queue; if it is empty the approval already
   // happened on an earlier run, and the channel assertions below still hold.
-  const queued = (await (await page.request.get("/v1/suggestions?status=submitted")).json()).proposals?.[0];
+  const queued = (await (await page.request.get("/v1/proposals?status=submitted")).json()).proposals?.[0];
 
   if (queued) {
     await page.goto("/suggest");

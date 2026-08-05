@@ -1,4 +1,4 @@
-import { type Intent, suggestionsApi, unwrap } from "@loomarr/api";
+import { type Intent, proposalsApi, unwrap } from "@loomarr/api";
 import type { SuggestionPhase } from "@loomarr/core";
 import { useState } from "react";
 import { useLoomarrEventListener } from "@/events";
@@ -19,7 +19,7 @@ const TERMINAL: SuggestionPhase[] = ["done", "failed"];
 // Per §8 the stream is a latency optimisation, never the source of truth. The phases ride
 // the stream; the proposal rides the list. This hook only tracks the phase for the
 // stepper — it does NOT refetch the list itself, because the app-lifetime stream already
-// does: useLoomarrEvents invalidates the `/v1/suggestions` prefix on every suggestion
+// does: useLoomarrEvents invalidates the `/v1/proposals` prefix on every suggestion
 // frame (events.ts), and the proposals query lives under that prefix, so the proposal is
 // pulled in as the run progresses. A dropped frame therefore costs a beat, not a proposal
 // — the next frame (or a manual reload) still surfaces it.
@@ -28,8 +28,8 @@ const useSuggestionRun = (): SuggestionRun => {
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
 
-  const submit = suggestionsApi.useSubmitSuggestion();
-  const proposals = suggestionsApi.useListProposals(
+  const submit = proposalsApi.useSubmitProposal();
+  const proposals = proposalsApi.useListProposals(
     { status: "submitted" },
     { query: { enabled: jobId !== undefined } },
   );

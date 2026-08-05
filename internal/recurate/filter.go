@@ -162,6 +162,11 @@ func filterAcquisitions(p store.Proposal, ch store.Channel, minScorePct, maxTitl
 	}
 
 	body.Acquisitions = kept
+	// ⚠ The retirements ride the PROPOSAL to the binder, which is the only writer of a
+	// channel's lineup (§8.2a). This subsystem used to trim `ch.Lineup` and persist the channel
+	// itself, which made it a second writer racing the binder's additive union — ordered against
+	// each other by a comment rather than by anything the compiler or a test could check.
+	body.Retired = res.RetiredKey
 	blob, merr := json.Marshal(body)
 	if merr != nil {
 		return filterResult{}, fmt.Errorf("recurate: re-marshal proposal %s: %w", p.ID, merr)

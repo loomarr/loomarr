@@ -103,7 +103,7 @@ func (s *Service) WithAutoCurate(c ChannelAutoCurator) *Service {
 
 // ProgressEmitter publishes a job's generation-progress frames to the SSE bus
 // (§7, type=suggestion). Optional and best-effort: a dropped frame is a latency
-// bug, never a correctness bug — GET /v1/suggestions/{id} stays the source of
+// bug, never a correctness bug — GET /v1/proposals/{id} stays the source of
 // truth. The composition root implements it over events.Bus; unit tests leave it
 // nil. Kept as a narrow interface so the suggest package doesn't import events.
 // round is the 1-based tool-loop iteration (0 outside the loop) — it lets the UI

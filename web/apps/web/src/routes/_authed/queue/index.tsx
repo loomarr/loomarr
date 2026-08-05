@@ -1,4 +1,4 @@
-import { suggestionsApi } from "@loomarr/api";
+import { proposalsApi } from "@loomarr/api";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth";
 
@@ -18,7 +18,7 @@ const Route = createFileRoute("/_authed/queue/")({
     if (!isAdmin) throw redirect({ to: "/queue/flight" });
 
     const proposals = await context.queryClient.ensureQueryData(
-      suggestionsApi.getListProposalsQueryOptions({ status: "submitted" }),
+      proposalsApi.getListProposalsQueryOptions({ status: "submitted" }),
     );
     const pendingCount = proposals.status === 200 ? (proposals.data.proposals?.length ?? 0) : 0;
     throw redirect({ to: pendingCount > 0 ? "/queue/approval" : "/queue/flight" });
