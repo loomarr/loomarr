@@ -94,7 +94,7 @@ func (s *Server) registerChannels(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "refine-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/refine",
 		Summary:     "Refine a channel with the LLM",
-		Description: "Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/suggestions for the proposal, review the diff, and approve to apply (patches THIS channel).",
+		Description: "Admin only. Describe a change; the LLM re-proposes using the channel's current lineup as context, grounded like any suggestion. Returns a jobId — poll /v1/proposals for the proposal, review the diff, and approve to apply (patches THIS channel).",
 		Tags:        []string{"channels", "suggestions"},
 	}, RoleAdmin), s.refineChannel)
 
@@ -434,7 +434,7 @@ type refineChannelInput struct {
 }
 type refineChannelOutput struct {
 	Body struct {
-		JobID string `json:"jobId" doc:"Poll /v1/suggestions for the refined proposal (matched on this jobId), then approve to apply."`
+		JobID string `json:"jobId" doc:"Poll /v1/proposals for the refined proposal (matched on this jobId), then approve to apply."`
 	}
 }
 

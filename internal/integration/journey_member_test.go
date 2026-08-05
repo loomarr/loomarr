@@ -31,11 +31,11 @@ func TestJourney_Member(t *testing.T) {
 	// B2: members MAY do member things (auth passes → not 401/403).
 	allowed := []struct{ method, path, body string }{
 		{http.MethodGet, "/v1/search?q=matrix", ""},
-		{http.MethodGet, "/v1/suggestions", ""},
+		{http.MethodGet, "/v1/proposals", ""},
 		{http.MethodGet, "/v1/channels", ""},
 		{http.MethodGet, "/v1/titles?state=wanted", ""},
 		{http.MethodGet, "/v1/filler", ""},
-		{http.MethodPost, "/v1/suggestions", `{"description":"a cozy mystery channel"}`},
+		{http.MethodPost, "/v1/proposals", `{"description":"a cozy mystery channel"}`},
 	}
 	for _, r := range allowed {
 		if code := h.status(r.method, r.path, r.body, member); code == http.StatusForbidden || code == http.StatusUnauthorized {
@@ -65,8 +65,8 @@ func TestJourney_Member(t *testing.T) {
 		{http.MethodPost, "/v1/channels", `{"id":"x","name":"X","number":1,"strategy":"shuffle"}`},
 		{http.MethodDelete, "/v1/channels/x", ""},
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
-		{http.MethodPost, "/v1/suggestions/x/approve", ""},
-		{http.MethodPost, "/v1/suggestions/x/deny", `{}`},
+		{http.MethodPost, "/v1/proposals/x/approve", ""},
+		{http.MethodPost, "/v1/proposals/x/deny", `{}`},
 		{http.MethodPost, "/v1/filler/sync", ""},
 		{http.MethodPost, "/v1/filler/tag", ""},
 		{http.MethodPatch, "/v1/filler/x", `{"era":1990}`},

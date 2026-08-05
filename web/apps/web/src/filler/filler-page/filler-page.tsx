@@ -33,7 +33,7 @@ import type { FillerSearch } from "@/routes/_authed/filler";
 import { ClipTagDialog } from "../clip-tag-dialog";
 import { IncomingTab } from "../incoming-tab";
 import { PinClipDialog } from "../pin-clip-dialog";
-import { SourcesPanel } from "../sources-panel";
+import { SourcesTab } from "../sources-tab";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
@@ -153,13 +153,12 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
   // still fires is how a page keeps paying for a feature nobody can reach.
 
-  // ⚠ Every hook stays ABOVE the `fillerConfigured` early return below. Placing these two
+  // ⚠ Every hook stays ABOVE the `fillerConfigured` early return below. Placing these
   // after it skipped them on the unconfigured path and crashed the page with "rendered more
   // hooks than during the previous render" — the whole catalog replaced by an error boundary.
   //
-  // Sources are admin-only on the server, so a member's request would 403. Gating the QUERY
-  // (not just the tab) keeps a member's console clean.
-  const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: isAdmin } });
+  // ⚠ The SOURCES query moved into `SourcesTab`. Mounting the tab is now the admin gate that
+  // `enabled: isAdmin` used to be, and the header does not read it (see `statusLine`).
 
   // The header's live status (§10 V38c). ⚠ Member-readable, deliberately: it carries counts and a
   // verdict but no paths, targets or ids, so a member sees whether filler is working without
@@ -346,7 +345,6 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
-  const sourceRows = unwrap(sourcesQuery.data, (b) => b.sources) ?? [];
 
   const filtered = Boolean(q || kind || audience || untagged);
 
@@ -453,7 +451,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         // They used to live up here, so the Catalog tab mounted the whole Incoming queue too.
         <IncomingTab onEditTags={setTagging} />
       ) : tab === "sources" ? (
-        <SourcesPanel sources={sourceRows} sourcesError={sourcesQuery.error?.detail} />
+        // ⚠ The tab owns its own query. The header does NOT read it — the status line comes
+        // from `/v1/filler/watch`, counts and verdict both (see `statusLine`) — so moving it
+        // out of the shell costs the header nothing.
+        <SourcesTab />
       ) : (
         <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog" className="flex flex-col gap-6">
           {split.error != null && <ErrorState error={split.error} />}

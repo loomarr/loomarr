@@ -68,7 +68,6 @@ const KNOWN_GAPS = new Set([
   "filler/channel-filler/filler-criteria/filler-criteria.tsx",
   "filler/channel-filler/use-filler-catalog/use-filler-catalog.ts",
   "filler/clip-tag-dialog/clip-tag-dialog.tsx",
-  "filler/filler-page/filler-page.tsx",
   "help/help-page/help-page.tsx",
   "help/search-docs/search-docs.ts",
   "lib/use-document-title/use-document-title.ts",

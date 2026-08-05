@@ -55,7 +55,7 @@ func (e *eventEmitter) Emit(ctx context.Context, ev provision.DomainEvent) {
 // so the workspace's GenerationProgress advances searching→reasoning→scoring→
 // done/failed live. Satisfies suggest.ProgressEmitter. Best-effort like the
 // title sink: a dropped frame is a latency bug, never a correctness bug — GET
-// /v1/suggestions/{id} is the source of truth on reconnect.
+// /v1/proposals/{id} is the source of truth on reconnect.
 // round carries the tool-loop iteration so the UI can show a long run progressing;
 // it is stringified because the SSE payload is a flat map[string]string, and 0
 // (outside the loop) is sent as "0" rather than omitted so the frame shape never

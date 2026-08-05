@@ -16,6 +16,11 @@ RETIRED=(
   # the odd one out once Sources had registration, per-row search, pulls and auto-fetch — and
   # leaving its name in help text would send an operator hunting a box that is not there.
   'IngestPanel|the paste-a-URL box was retired (V38b); clips arrive from a registered source — add one under Filler → Sources'
+  # V41: CONTEXT.md defines the artifact as a PROPOSAL and explicitly bans "suggestion", but the
+  # routes said /v1/suggestions and one operationId (submit-suggestion) sat among five
+  # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
+  # back in help text an operator would follow to a 404.
+  'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how

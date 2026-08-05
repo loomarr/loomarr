@@ -123,7 +123,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	var submitted struct {
 		JobID string `json:"jobId"`
 	}
-	submitResp := h.do(http.MethodPost, "/v1/suggestions", `{"description":"90s Saturday morning cartoons for kids"}`, admin)
+	submitResp := h.do(http.MethodPost, "/v1/proposals", `{"description":"90s Saturday morning cartoons for kids"}`, admin)
 	decodeBody(t, submitResp, &submitted)
 	if submitted.JobID == "" {
 		t.Fatal("submit returned no jobId")
@@ -137,7 +137,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	}
 
 	// A9: APPROVE (the real gate) → in-library picks become `available` titles.
-	if code := h.status(http.MethodPost, "/v1/suggestions/"+propID+"/approve", "", admin); code != http.StatusOK {
+	if code := h.status(http.MethodPost, "/v1/proposals/"+propID+"/approve", "", admin); code != http.StatusOK {
 		t.Fatalf("approve → %d, want 200", code)
 	}
 	for _, key := range []string{"movie:tmdb:5001", "movie:tmdb:5002", "movie:tmdb:5003"} {

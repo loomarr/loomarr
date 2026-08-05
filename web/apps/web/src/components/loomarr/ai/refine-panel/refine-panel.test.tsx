@@ -56,7 +56,7 @@ const proposal: Proposal = {
   scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
 };
 
-// Dispatches by method+path: POST .../refine starts the run, GET /v1/suggestions is the
+// Dispatches by method+path: POST .../refine starts the run, GET /v1/proposals is the
 // approval-queue poll that lands the proposal, POST .../approve applies it.
 const stubFetch = (opts: { proposals: unknown[]; approveStatus?: number }) =>
   vi.stubGlobal(

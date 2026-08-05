@@ -451,7 +451,7 @@ why. **New defect: `A1`** (capability-without-UI, the §12 surface-map rule agai
 
 ### 2h.3 Board shows no proposals at all
 
-`board.tsx` never queries `/v1/suggestions` — it fans `GET /v1/titles?state=…` across five states.
+`board.tsx` never queries `/v1/proposals` — it fans `GET /v1/titles?state=…` across five states.
 Consequence: **a member cannot see their own submitted or denied requests anywhere.** The mock's
 "My requests" is a two-tier surface (request cards → title table) whose entire first tier has no data
 source. `approvedBy` is stored but rendered nowhere in the web app. **New defect: `A2`.**
@@ -1068,7 +1068,7 @@ Nothing here starts before its dependency lands.
 | **V23** | **`A1`** — deny-reason UI (the API field already exists, unused) | — | Denying requires or offers a reason; it reaches `Proposal.DenyReason`; the requester sees it. No call site sends `data: {}` |
 | **V24** | **`A3`** — surface existing-but-hidden proposal data | — | `channelName`, `eraBalance`, `overall` render; `mustInclude`/`mustExclude` get inputs; the dead `onEditItem` prop is either wired (V25) or removed |
 | **V25** | **`D-K`** — edit-before-approve, one chokepoint | V4, V24 | `POST /approve` takes a body; **`suggest.Approve` remains the sole implementation** (a test asserts no second acquisition path); `modSummary`+`note`+`approvedBy` persist; §19 negatives still hold (member 403s on approve) |
-| **V26** | **`A2`** — "My requests": per-user proposal list + admin-edit provenance | V25 | A member sees their own submitted/denied/edited requests; *"CHANGED BY … "* renders; the denial line shows; `GET /v1/suggestions` supports a per-user scope |
+| **V26** | **`A2`** — "My requests": per-user proposal list + admin-edit provenance | V25 | A member sees their own submitted/denied/edited requests; *"CHANGED BY … "* renders; the denial line shows; `GET /v1/proposals` supports a per-user scope |
 | **V27** | Approvals queue as its own surface: tabs (pending/in-flight/history), bulk approve, audit rows | V25, V26 | Tab counts correct; bulk approve goes through the same chokepoint; history rows carry timestamps (`approvedAt` — not currently in the DTO) |
 | **V28** | Filler `sources` entity + clip metadata columns | V4, V17a | Migration `00013`; sources CRUD + per-source `Fetch now`; clip thumbnail/quality/usage populated; `ClipDTO.Source` becomes a real reference |
 | **V29** | Filler **Coverage** meter (F2 banner) | V28 | **Consumes `internal/filler/ladder.go`** — a test asserts the meter and pod assembly agree; thin coverage routes to Discover |
