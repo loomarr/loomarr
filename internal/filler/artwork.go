@@ -240,10 +240,7 @@ func removeIfEmpty(path string) {
 //     elements the browser must decode and keep alive; an <img> is a decode the browser already
 //     manages, and it swaps with the still without a second element.
 func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
-	bin := ffmpegPath
-	if bin == "" {
-		bin = "ffmpeg"
-	}
+	bin := ffmpegOr(ffmpegPath)
 	return func(ctx context.Context, src, stillDst, animDst string, startSeconds float64) error {
 		// ⚠ **`-ss` BEFORE `-i`** seeks by keyframe without decoding everything up to that point,
 		// which on a 30s clip is the difference between milliseconds and a full decode pass.
