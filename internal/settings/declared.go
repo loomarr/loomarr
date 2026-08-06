@@ -490,11 +490,31 @@ func declared() []Setting {
 			Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
 			Doc: "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
 		},
-		// ⚠ `filler.autofile.normalize_loudness` is NOT declared here yet, deliberately. The
-		// loudness pass (ffmpeg `loudnorm`) is real work that is not built, and §15's rule is that
-		// a setting nothing READS does not exist — the exact defect that got the two keys above
-		// removed in V35's review. Declaring the toggle first would repeat it inside the very
-		// phase that records the lesson. It lands with its consumer.
+		{
+			// On-file loudness normalisation (§10 V42, maintainer decision). Declared NOW rather
+			// than earlier because §15's rule is that a setting nothing READS does not exist —
+			// this one lands with its consumer (`filler.NormalizeInPlace`, called from the
+			// auto-file step), which is why the note that used to sit here is gone.
+			//
+			// ⚠ DEFAULT OFF, and the default is the safety property rather than a preference.
+			// This REWRITES the operator's file in FILLER_DIR: the original is unrecoverable.
+			// V40 chose playout-only normalisation for exactly that reason and it remains the
+			// default path; this is an explicit opt-in for operators who want the correction
+			// baked in.
+			//
+			// ⚠ There is deliberately NO separate target here. The pass reuses
+			// `filler.target_lufs` (−23), because two targets in one system means a clip
+			// normalised on file gets corrected again at playout toward a different number —
+			// double processing, and quieter than either setting asks for.
+			//
+			// ⚠ Idempotency is NOT optional for this one. A re-scan cannot tell by looking that
+			// a file was already normalised, so without the sidecar's `normalizedLufs` marker
+			// every pass would normalise an already-normalised file and walk the loudness down
+			// run after run. `NormalizeInPlace` skips anything already marked at the target.
+			Key: "filler.autofile.normalize_loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
+			Group: GroupFiller, Kind: KindBool, Default: false,
+			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
+		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
 		// survives as these bounds rather than as a prohibition.
