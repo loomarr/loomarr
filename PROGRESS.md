@@ -4,6 +4,78 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V41 — the audit pass: three live defects, six cleanups (2026-08-05, `aba3b22`, PRs #169–#175).**
+Gate, per PR: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
+`retired-verify`; the web PRs additionally `make fe` (**1116 tests**, up from 1108) + `fe-visual`
+(**716 passed, 0 axe**, on CLEAN verify runs, never `--update-snapshots`) + `make e2e` (7).
+
+Started as "what needs refactoring?" and found working code was the smaller half of the answer.
+
+⚠ **THE AI TAGGER HAD NEVER TAGGED A CLIP, and play counters had never moved** (#169). V38c split
+clip identity (`Hash`) from location (`Path`); three callers kept passing the path into hash-keyed
+store methods. `UpdateClipTags` returns `ErrNotFound` and the tagger treats that as **fatal**, so
+every run aborted on its first taggable clip. Playout's `RecordClipPlay` swallowed the same miss as
+telemetry. `PATCH /v1/filler/{id}` 404'd from the UI. `PodEntry` had no `Hash` field at all — which
+is *why* playout had only a path to pass.
+
+⚠ **The reason it survived two releases is the durable half.** `clipAt`/`sampleClip` (store) and
+`untaggedClip` (filler) all set hash and path to the SAME STRING, so a hash-keyed call and a
+path-keyed one were indistinguishable to every test. **This is the identical blind spot that already
+shipped the `DeleteClipsNotIn` catastrophe** — the lesson was written into a comment and the fixture
+was never fixed. All three now derive one field from the other and are never equal; `tagMemStore`
+mirrors the real store's split (hash for tags, path for held) instead of accepting either. Making
+them honest surfaced **four tagger tests passing for the wrong reason**, including one whose comment
+documented the bug as the design, and a V28 play-count test still pinning the pre-V38c contract.
+
+Also #169: the **visual gate was asserting an error page** — all four `ChecklistItem` stories × both
+viewports were ONE byte-identical 1160-byte PNG of the words "Not Found", because `/wizard` was
+missing from `RouterHarness`'s `NAV_PATHS`. The error page satisfies every wait the spec does and is
+perfectly stable, so it passed forever. `RouterHarness` now **throws** on an unregistered path.
+And five endpoints loaded the whole catalog to produce an integer (`CountClips`,
+`CountClipsBySource`, `AutoFiledOnly`; `Pool` went from one full-table read *per channel* to one).
+
+**The cleanups.** `recurate` was a **second lineup writer** — it trimmed `ch.Lineup` and persisted
+the channel moments before the binder's additive union ran over the same field, the two ordered
+against each other by a code comment (#171). Retirements now ride the proposal (`Proposal.Retired`)
+and the binder applies them through the one `schedule.ApplyLineup` primitive; `UpsertChannel` is
+**gone from `CuratorStore`**, so the two-writer arrangement is unexpressible rather than merely
+discouraged. Incoming and Sources own their own queries (#170, #172). `/v1/suggestions` →
+**`/v1/proposals`** (#172), the glossary's own rule finally followed — with three deliberate
+survivors recorded in `CONTEXT.md` (the persisted job kind `"suggest"`, the SSE phase frame, the
+`FeatureSuggestions` capability: all the verb, never the artifact). Dead `schedule/backfill.go`
+deleted, two indexed lookups replacing full-table scans (migration `00037`), and `conformance.go`
+split 2,650 lines → an 89-line runner + five domain files, **verified by diffing the subtest names
+the suite actually runs: 39 before, 40 after, zero dropped** (#173).
+
+⚠ **Every fix was sabotage-verified** — reintroduce the bug, confirm the tests go red. That is what
+caught the near-miss: the first fixture fix left the suite GREEN, which proved the tests had never
+exercised the distinction at all. It also stopped a wrong deletion (the shell's `confirmEra` looks
+redundant but serves the Catalog's tag-cycling) and it is how the ffmpeg helper's **total absence of
+coverage** was found (#174): the two language backends carried byte-identical copies of one ffmpeg
+invocation, and changing `-ar 16000` to `-ar 8000` failed **nothing**.
+
+**CI now installs ffmpeg** (#175), measured rather than assumed — a probe reported `ffmpeg: MISSING`
+with three tests reporting SKIP while the job stayed green. Cached debs: ~38s → **~14s** on a hit.
+⚠ Cache apt's **delta** (87 debs / 61MB), never the `--recurse` closure (298 packages / **244MB** —
+it includes base packages the runner already has, and would cost more of the 10GB budget than it
+saves). `--no-download` makes a broken cache FAIL rather than silently re-fetch.
+
+**Deliberately NOT done, and each argued rather than skipped:** `app.go`'s 1,187 lines and
+`api.Server`'s 44 fields (§14.1 examined and kept both; `architecture_test.go` encodes it), the 75
+in-body `requireAdmin` calls (defence-in-depth on an authorization boundary — the wrong direction to
+tidy), and extracting the Catalog tab (its query feeds the shell's own badge and it is what renders
+when no other tab does, so extraction buys no runtime saving and costs a ~10-prop interface).
+
+**V40 — language detection, two backends behind one seam (2026-08-05, `b7ef76a`, PR #167).** The
+detection §10 designed and the V40 quality-gate entry below records as *unbuilt*. A scheduled job
+over a ~10s span (never an inline scan pass — `whisper-cli` is ~3s natively but **~341s under
+QEMU**), with two interchangeable backends: local `whisper-cli`, or an audio-capable hosted model
+through the §8.1 provider. ⚠ The silence guard is the load-bearing part: a 978s recorded ad break
+whose first 10s measure −70 LUFS was answered `ar` and **tombstoned**. Asked what language silence
+is in, a model does not decline — it guesses, and re-asked it answered `en`. Two fixes: `LanguageSpan`
+samples long recordings from the MIDDLE (where we look), and `spanIsSilent` refuses to ask below the
+floor (holds wherever we land). Parser pinned to REAL whisper output, not remembered field names.
+
 **V40 — the quality gate: reject the broken, normalise the quiet (2026-08-03, PR #166).** Gate:
 `make check` (0 lint, `-race`) + the settings suite green **with ffmpeg hidden from PATH** + the
 filler/playout/api suites. Automatic by maintainer decision — no badges, no review step, no
