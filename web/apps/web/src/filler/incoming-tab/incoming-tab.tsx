@@ -2,6 +2,7 @@ import { fillerApi, toProblem, unwrap } from "@loomarr/api";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState, IncomingPanel } from "@/components/loomarr";
+import { TunePanel } from "../tune-panel";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { IncomingTabProps } from "./incoming-tab.type";
 
@@ -69,6 +70,10 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
       {incomingQuery.error != null && (
         <ErrorState error={incomingQuery.error} onRetry={() => incomingQuery.refetch()} />
       )}
+      {/* ⚠ ABOVE the queue, matching the mock: the policy is the context the rows below are
+          read in. Its counts come from this tab's query rather than a second one — the panel
+          reports on the queue it sits over. */}
+      <TunePanel filed={recentlyFiled.length} needsYou={asks.length} />
       <IncomingPanel
         asks={asks}
         reels={reels}
