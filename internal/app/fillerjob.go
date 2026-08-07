@@ -64,3 +64,27 @@ func fillerLanguageJob(j *filler.LanguageJob) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }
+
+// fillerSplitJob declares the scheduled compilation split (§10 V43).
+//
+// ⚠ **This job PROPOSES; it does not confirm.** That separation is what lets it be on by
+// default: an unconfirmed proposal writes no clips and consumes no file, so the cost of it
+// running on a recording the operator did not care about is a review they ignore. Confirming
+// without a human is the separate opt-in behind `filler.autosplit.enabled`.
+//
+// ⚠ Its own row on the Tasks page, like the fetch, and for the same reason: detection is minutes
+// per file and can fail per-recording. Folding it into the sync would report "the filler catalog
+// sync failed" when what actually happened is that whisper could not read one file — and an
+// operator pausing the sync to stop the CPU load would also stop their dropped-in clips being
+// noticed.
+//
+// ⚠ Hourly rather than every 15 minutes, unlike the sync. This one is expensive (ffmpeg, then
+// whisper) and bounded to a few recordings per pass, so a backlog drains over cycles by design.
+func fillerSplitJob(r *filler.SplitRunner) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-split", Title: "Find adverts inside long recordings",
+		Description: "Looks through long recordings in your catalog and works out where each advert inside them starts and ends, so they're ready for you to check under Filler → Incoming.",
+		DefaultCron: "0 45 * * * *", ScheduleKey: "job.filler_split.schedule",
+		Run: func(ctx context.Context) error { _, err := r.Run(ctx); return err },
+	}
+}

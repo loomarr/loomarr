@@ -868,6 +868,34 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
+
+		// Scheduled compilation splitting (§10 V43). Proposes cuts for over-long catalog clips
+		// so review is waiting when the operator looks, instead of costing a click and minutes
+		// of ffmpeg once they decide to.
+		//
+		// ⚠ Registered only when a splitter exists — it needs media tools and an LLM provider.
+		// An install without them gets no row rather than a job that fails every hour.
+		if splitter != nil {
+			splitRunner := filler.NewSplitRunner(
+				fillerSplitRunStoreAdapter{st},
+				splitter,
+				func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+				log,
+			).WithAutoConfirm(filler.AutoSplitPolicy{
+				// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn` — the same polarity
+				// `AutoFilePolicy.Enabled` uses and for a sharper reason. When settings cannot
+				// answer, the safe answer is "don't cut": failing open would consume the
+				// operator's compilations unattended precisely when the install is degraded.
+				Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
+				MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
+				MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+			}, func() time.Duration { return set.dur("filler.min_duration") })
+			jobReg.Add(fillerSplitJob(splitRunner))
+			log.Info("filler auto-split registered",
+				"every", set.dur("filler.split.every"),
+				"autoconfirm", set.boolv("filler.autosplit.enabled"),
+				"max_duration", set.dur("filler.autosplit.max_duration"))
+		}
 	}
 
 	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`

@@ -845,3 +845,30 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
 }
+
+// fillerSplitRunStoreAdapter bridges the store → filler.SplitRunStore (the scheduled split, V43).
+type fillerSplitRunStoreAdapter struct{ st store.Store }
+
+// ListClips is the runner's candidate list: the catalog, never the held queue.
+//
+// ⚠ `IncludeHeld` is deliberately NOT honoured, unlike the language gate's adapter. A held clip
+// is waiting for a human to decide whether it belongs at all; spending minutes of ffmpeg and
+// whisper detecting cuts inside something that may be about to be dropped is work done for a
+// file that might never enter the catalog.
+func (a fillerSplitRunStoreAdapter) ListClips(ctx context.Context, _ filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+// ListSplitProposals is the pending-review queue, read once per pass so the runner does not
+// re-detect a recording whose proposal an operator may be halfway through editing.
+func (a fillerSplitRunStoreAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
+}

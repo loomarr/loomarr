@@ -515,6 +515,45 @@ func declared() []Setting {
 			Group: GroupFiller, Kind: KindBool, Default: false,
 			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
 		},
+
+		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
+		// its result always required a human, which made compilations the most manual part of a
+		// system whose claim is that it maintains itself — while the tagger beside it files
+		// clips unattended above a threshold.
+		{
+			// ⚠ ON by default, because PROPOSING costs nothing an operator must undo: an
+			// unconfirmed proposal writes no clips. What it removes is the click and the
+			// minutes of ffmpeg an operator otherwise waits through once they decide to look.
+			Key: "filler.split.every", EnvVar: "FILLER_SPLIT_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Default: "6h",
+			Doc: "How often Loomarr looks for long recordings in your catalog and works out where the adverts inside them start and end. Set to 0 to only split when you ask.",
+		},
+		{
+			// ⚠ OFF by default, unlike `filler.autofile.enabled` which is ON. Cutting is
+			// destructive in a way tagging is not: a mis-tagged clip plays in the wrong break,
+			// a mis-cut clip plays HALF AN ADVERT, and the source is consumed either way.
+			Key: "filler.autosplit.enabled", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
+		},
+		{
+			// ⚠ A SEPARATE number from `filler.autofile.min_confidence`, and the separation is
+			// the point: one dial would force the stricter of two different failure modes to
+			// govern both. Bounded by the same range for the same reason — an ungrounded era is
+			// capped below 95, so no settable value can auto-confirm a fabricated one.
+			Key: "filler.autosplit.min_confidence", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
+			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
+			Doc: "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
+		},
+		{
+			// ⚠ ONE key doing two jobs on purpose. It selects which clips the split job even
+			// looks at (longer than this ⇒ a compilation worth detecting) AND it is the ceiling
+			// every segment must clear to auto-confirm. Two keys could disagree — a clip the job
+			// considers too long to be an advert must not then auto-confirm as one.
+			Key: "filler.autosplit.max_duration", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
+			Group: GroupFiller, Kind: KindDuration, Default: "120s",
+			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
+		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
 		// survives as these bounds rather than as a prohibition.
@@ -796,6 +835,19 @@ func declared() []Setting {
 			Key: "job.filler_language.schedule", EnvVar: "JOB_FILLER_LANGUAGE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 30 * * * *",
 			Doc: "How often Loomarr checks what language new filler clips are spoken in (cron).",
+		},
+		{
+			// ⚠ Hourly, and off-phase from the language gate (:45 vs :30). Both are expensive —
+			// ffmpeg then whisper — and overlapping them would put two multi-minute media jobs
+			// on the same runner at the same time, on a box that is also streaming.
+			//
+			// ⚠ Every job needs this key declared or the settings service PANICS at startup on
+			// `Resolve` of an undeclared key. That is the right failure — it caught this
+			// omission at boot rather than at 45 minutes past the hour — but it means a new job
+			// and its schedule key land in the same change, always.
+			Key: "job.filler_split.schedule", EnvVar: "JOB_FILLER_SPLIT_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 * * * *",
+			Doc: "How often Loomarr looks for adverts inside long recordings in your catalog (cron).",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,

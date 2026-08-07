@@ -44,6 +44,7 @@ func TestJobSet(t *testing.T) {
 		// Hourly, not the sync's 15 minutes: on the local backend a batch is minutes natively and
 		// hours under QEMU, so it drains a catalog steadily rather than overlapping itself.
 		"filler-language | 0 30 * * * * | job.filler_language.schedule",
+		"filler-split | 0 45 * * * * | job.filler_split.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",

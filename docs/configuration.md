@@ -93,6 +93,7 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.filler_sync.schedule` (`JOB_FILLER_SYNC_SCHEDULE`) | cron | `0 */15 * * * *` | How often Loomarr syncs the filler catalog (cron). |
 | `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.filler_language.schedule` (`JOB_FILLER_LANGUAGE_SCHEDULE`) | cron | `0 30 * * * *` | How often Loomarr checks what language new filler clips are spoken in (cron). |
+| `job.filler_split.schedule` (`JOB_FILLER_SPLIT_SCHEDULE`) | cron | `0 45 * * * *` | How often Loomarr looks for adverts inside long recordings in your catalog (cron). |
 | `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
@@ -138,6 +139,10 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.autofile.enabled` (`FILLER_AUTOFILE_ENABLED`) | bool | `true` | File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming. |
 | `filler.autofile.min_confidence` (`FILLER_AUTOFILE_MIN_CONFIDENCE`) | int | `85` | How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check. |
 | `filler.autofile.normalize_loudness` (`FILLER_AUTOFILE_NORMALIZE_LOUDNESS`) | bool | `false` | Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk. |
+| `filler.split.every` (`FILLER_SPLIT_EVERY`) | duration | `6h` | How often Loomarr looks for long recordings in your catalog and works out where the adverts inside them start and end. Set to 0 to only split when you ask. |
+| `filler.autosplit.enabled` (`FILLER_AUTOSPLIT_ENABLED`) | bool | `false` | Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming. |
+| `filler.autosplit.min_confidence` (`FILLER_AUTOSPLIT_MIN_CONFIDENCE`) | int | `85` | How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95). |
+| `filler.autosplit.max_duration` (`FILLER_AUTOSPLIT_MAX_DURATION`) | duration | `120s` | The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about. |
 | `filler.fetch.every` (`FILLER_FETCH_EVERY`) | duration | `6h` | How often Loomarr checks your sources for new clips. Set to 0 to stop fetching automatically — you can still queue clips yourself. |
 | `filler.fetch.max_per_run` (`FILLER_FETCH_MAX_PER_RUN`) | int | `10` | How many clips one source may download each time it's checked. Keeps a big collection trickling in instead of arriving all at once. |
 | `filler.fetch.max_catalog_clips` (`FILLER_FETCH_MAX_CATALOG_CLIPS`) | int | `2000` | Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand. |
