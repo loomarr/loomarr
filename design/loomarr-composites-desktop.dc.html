@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;}
+*{box-sizing:border-box;}
+a{color:#4CC9E8;text-decoration:none;} a:hover{color:#7FD9EF;text-decoration:underline;}
+@keyframes lmPulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+@keyframes lmIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#0B0C0E;color:#E7EAF0;font-family:'Geist',sans-serif;font-size:14px;line-height:1.5;">
+<div style="max-width:1240px;margin:0 auto;padding:26px 36px 70px;">
+
+  <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:300px;">
+      <div style="font-size:21px;font-weight:700;letter-spacing:.01em;">Filler</div>
+      <div style="color:#8B93A3;margin-top:4px;font-size:13.5px;">Commercials, bumpers and station IDs — the thing that makes a channel feel like real TV.</div>
+    </div>
+    <div title="Loomarr watches the filler library and picks up whatever the media server scans in." style="display:flex;align-items:center;gap:9px;background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:8px 13px;white-space:nowrap;">
+      <span style="width:7px;height:7px;border-radius:50%;background:#3DD68C;animation:lmPulse 2.4s ease-in-out infinite;"></span>
+      <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">watching /media/filler · last scan 40s ago</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:4px;margin-top:16px;border-bottom:1px solid #2A2E37;">
+    <sc-for list="{{ fillerTabs }}" as="ft" hint-placeholder-count="3">
+      <button onClick="{{ ft.pick }}" style="display:flex;align-items:center;gap:7px;background:transparent;border:none;border-bottom:2px solid {{ ft.underline }};border-radius:0;padding:9px 13px;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;color:{{ ft.color }};font-weight:{{ ft.weight }};margin-bottom:-1px;">
+        {{ ft.label }}<sc-if value="{{ ft.hasCount }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ ft.countColor }};background:{{ ft.countBg }};border-radius:999px;padding:1px 7px;">{{ ft.count }}</span></sc-if>
+      </button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ showPool }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:30px;background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:14px 18px;margin-top:18px;flex-wrap:wrap;">
+      <sc-for list="{{ poolStats }}" as="ps" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;letter-spacing:.07em;text-transform:uppercase;">{{ ps.label }}</span>
+          <span style="font-size:16px;font-weight:600;color:{{ ps.color }};font-family:'Geist Mono',monospace;">{{ ps.value }}</span>
+          <span style="font-size:11.5px;color:#8B93A3;">{{ ps.note }}</span>
+        </div>
+      </sc-for>
+      <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;">breaks are containers — only their ads air</span>
+    </div>
+  </sc-if>
+
+  <!-- ============ CATALOG ============ -->
+  <sc-if value="{{ ftCatalog }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Filler — Catalog" style="display:flex;flex-direction:column;gap:13px;margin-top:18px;">
+
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+        <input value="{{ catQ }}" onInput="{{ setCatQ }}" placeholder="Search clips, brands, breaks…" style="flex:1;min-width:220px;background:#131519;border:1px solid #2A2E37;border-radius:8px;padding:9px 12px;color:#E7EAF0;font-size:13px;outline:none;font-family:'Geist',sans-serif;" style-focus="border-color:#FFB020;" />
+        <sc-for list="{{ catChips }}" as="cc" hint-placeholder-count="3">
+          <button onClick="{{ cc.pick }}" style="background:{{ cc.bg }};color:{{ cc.color }};border:1px solid {{ cc.border }};border-radius:999px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;white-space:nowrap;">{{ cc.label }}</button>
+        </sc-for>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;">{{ catCount }}</div>
+
+      <sc-if value="{{ showBreaks }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;letter-spacing:.07em;">BREAKS — CONTAINERS, NOT AIRABLE</div>
+          <sc-for list="{{ catBreaks }}" as="br" hint-placeholder-count="2">
+            <div style="background:#131519;border:1px solid {{ br.border }};border-radius:12px;overflow:hidden;">
+              <button onClick="{{ br.toggle }}" style="display:grid;grid-template-columns:66px 1fr auto;gap:14px;align-items:center;width:100%;background:transparent;border:none;padding:13px 16px;cursor:pointer;text-align:left;color:#E7EAF0;font-family:'Geist',sans-serif;" style-hover="background:#16181D;">
+                <span style="position:relative;display:block;width:66px;height:44px;">
+                  <span style="position:absolute;top:0;left:8px;right:0;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl({{ br.hue }} 30% 15%) 0 5px,hsl({{ br.hue }} 30% 11%) 5px 10px);border:1px solid #2A2E37;"></span>
+                  <span style="position:absolute;top:4px;left:4px;right:4px;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl({{ br.hue }} 35% 19%) 0 5px,hsl({{ br.hue }} 35% 14%) 5px 10px);border:1px solid #2A2E37;"></span>
+                  <span style="position:absolute;top:8px;left:0;right:8px;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl({{ br.hue }} 40% 24%) 0 5px,hsl({{ br.hue }} 40% 18%) 5px 10px);border:1px solid #2A2E37;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-family:'Geist Mono',monospace;font-size:8.5px;color:rgba(255,255,255,.55);letter-spacing:.06em;">{{ br.cutsShort }}</span>
+                  </span>
+                </span>
+                <span style="display:flex;flex-direction:column;gap:5px;min-width:0;">
+                  <span style="font-size:13.5px;font-weight:600;line-height:1.3;">{{ br.title }}</span>
+                  <span style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                    <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:.05em;color:#FFB020;background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.4);border-radius:4px;padding:2px 7px;">COMPOSITE · NOT AIRABLE</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;letter-spacing:.04em;">{{ br.context }}</span>
+                    <sc-if value="{{ br.hasMatch }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#4CC9E8;background:rgba(76,201,232,.1);border:1px solid rgba(76,201,232,.35);border-radius:4px;padding:2px 7px;">{{ br.matchLine }}</span>
+                    </sc-if>
+                  </span>
+                </span>
+                <span style="display:flex;align-items:center;gap:12px;">
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;white-space:nowrap;">{{ br.countLine }}</span>
+                  <span style="color:#5A6170;font-size:11px;transform:rotate({{ br.chev }}deg);transition:transform .3s;">▼</span>
+                </span>
+              </button>
+
+              <div style="display:grid;grid-template-rows:{{ br.rows }};transition:grid-template-rows .5s cubic-bezier(.16,1,.3,1);">
+                <div style="overflow:hidden;min-height:0;">
+                  <div style="padding:2px 16px 16px;border-top:1px solid #1B1E24;">
+
+                    <div style="display:flex;align-items:center;gap:12px;padding:11px 0 10px;flex-wrap:wrap;">
+                      <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;letter-spacing:.07em;">THE BREAK · {{ br.total }} · KEPT FOR PROVENANCE</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ br.source }}</span>
+                      <button onClick="{{ br.resplit }}" style="background:transparent;color:#8B93A3;border:1px dashed #2A2E37;border-radius:6px;padding:4px 11px;font-size:11px;cursor:pointer;font-family:'Geist Mono',monospace;" style-hover="color:#E7EAF0;border-color:#8B93A3;">re-split</button>
+                    </div>
+
+                    <div ref="{{ br.setStripRef }}" onMouseLeave="{{ clearTip }}" style="position:relative;">
+                      <div style="display:flex;gap:2px;height:62px;">
+                        <sc-for list="{{ br.blocks }}" as="sg" hint-placeholder-count="10">
+                          <button onClick="{{ sg.pick }}" onMouseEnter="{{ sg.enter }}" title="{{ sg.title }}" style="flex:{{ sg.flex }} 1 0px;min-width:7px;position:relative;display:flex;flex-direction:column;align-items:stretch;background:{{ sg.bg }};opacity:{{ sg.op }};border:none;border-radius:3px;padding:0;cursor:pointer;overflow:hidden;box-shadow:{{ sg.ring }};transform:{{ sg.lift }};transition:transform .15s,box-shadow .15s,filter .15s;" style-hover="filter:brightness(1.35);">
+                            <span style="display:block;height:3px;background:{{ sg.bar }};flex-shrink:0;"></span>
+                            <sc-if value="{{ sg.showLabel }}" hint-placeholder-val="{{ false }}">
+                              <span style="display:block;padding:5px 5px 0;font-family:'Geist Mono',monospace;font-size:9px;color:rgba(231,234,240,.85);text-align:left;white-space:nowrap;overflow:hidden;">{{ sg.label }}</span>
+                            </sc-if>
+                            <sc-if value="{{ sg.showDur }}" hint-placeholder-val="{{ false }}">
+                              <span style="display:block;padding:2px 5px 0;font-family:'Geist Mono',monospace;font-size:8.5px;color:#8B93A3;text-align:left;">{{ sg.dur }}</span>
+                            </sc-if>
+                          </button>
+                        </sc-for>
+                      </div>
+                      <div style="position:relative;height:17px;margin-top:5px;">
+                        <sc-for list="{{ br.ruler }}" as="rm">
+                          <span style="position:absolute;left:{{ rm.left }};transform:translateX({{ rm.tx }});display:flex;flex-direction:column;align-items:{{ rm.align }};gap:1px;">
+                            <span style="width:1px;height:4px;background:#2A2E37;"></span>
+                            <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#5A6170;">{{ rm.label }}</span>
+                          </span>
+                        </sc-for>
+                      </div>
+                      <sc-if value="{{ br.tipOn }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;bottom:calc(100% + 9px);left:{{ br.tipX }}px;transform:translateX(-50%);width:226px;background:#1B1E24;border:1px solid #2A2E37;border-radius:8px;padding:9px;pointer-events:none;z-index:30;box-shadow:0 14px 34px rgba(0,0,0,.55);animation:lmIn .14s ease-out;">
+                          <div style="position:relative;height:72px;border-radius:4px;overflow:hidden;background-image:repeating-linear-gradient(135deg,hsl({{ br.tipHue }} 40% 24%) 0 6px,hsl({{ br.tipHue }} 40% 18%) 6px 12px);display:flex;align-items:center;justify-content:center;">
+                            <span style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px);"></span>
+                            <span style="font-family:'Geist Mono',monospace;font-size:9px;color:rgba(255,255,255,.6);letter-spacing:.08em;">TAPE PREVIEW</span>
+                          </div>
+                          <div style="font-size:12px;font-weight:500;line-height:1.35;margin-top:7px;">{{ br.tipName }}</div>
+                          <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+                            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">{{ br.tipRange }}</span>
+                            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ br.tipConfColor }};margin-left:auto;">{{ br.tipConf }}</span>
+                          </div>
+                        </div>
+                      </sc-if>
+                    </div>
+
+                    <sc-if value="{{ br.selOn }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:170px 1fr;gap:14px;background:#0F1114;border:1px solid #2A2E37;border-radius:10px;padding:13px;margin-top:12px;animation:lmIn .22s ease-out;">
+                        <div style="position:relative;height:96px;border-radius:6px;overflow:hidden;background-image:repeating-linear-gradient(135deg,hsl({{ br.selHue }} 40% 24%) 0 6px,hsl({{ br.selHue }} 40% 18%) 6px 12px);">
+                          <span style="position:absolute;bottom:5px;right:5px;font-family:'Geist Mono',monospace;font-size:10px;color:#E7EAF0;background:rgba(11,12,14,.8);border-radius:3px;padding:1px 6px;">{{ br.selDur }}</span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+                          <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <div style="font-size:13.5px;font-weight:600;flex:1;line-height:1.35;">{{ br.selName }}</div>
+                            <button onClick="{{ br.selClose }}" title="Close" style="background:none;border:none;color:#5A6170;font-size:14px;cursor:pointer;padding:0 2px;font-family:'Geist',sans-serif;" style-hover="color:#E7EAF0;">✕</button>
+                          </div>
+                          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <sc-for list="{{ br.selChips }}" as="tc"><span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ tc.color }};border:1px solid {{ tc.border }};border-radius:4px;padding:2px 8px;background:{{ tc.bg }};">{{ tc.label }}</span></sc-for>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:9px;">
+                            <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;letter-spacing:.06em;">CONF</span>
+                            <span style="width:110px;height:4px;background:#0B0C0E;border-radius:999px;overflow:hidden;"><span style="display:block;height:100%;width:{{ br.selConfW }};background:{{ br.selConfColor }};border-radius:999px;"></span></span>
+                            <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ br.selConfColor }};">{{ br.selConf }}</span>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:8px;border-top:1px solid #1B1E24;padding-top:8px;flex-wrap:wrap;">
+                            <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;letter-spacing:.06em;">FROM</span>
+                            <a href="#" onClick="{{ br.backToBreak }}" style="font-family:'Geist Mono',monospace;font-size:11px;">{{ br.selFrom }}</a>
+                            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;">· at {{ br.selRange }}</span>
+                            <button onClick="{{ br.selWhere }}" style="margin-left:auto;background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:5px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:'Geist',sans-serif;">Where it plays</button>
+                          </div>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px;margin-top:14px;">
+                      <sc-for list="{{ br.cards }}" as="sg" hint-placeholder-count="8">
+                        <button ref="{{ sg.setRef }}" onClick="{{ sg.pick }}" style="text-align:left;background:{{ sg.cardBg }};border:1px solid {{ sg.cardBorder }};border-radius:9px;padding:0;overflow:hidden;cursor:pointer;color:#E7EAF0;font-family:'Geist',sans-serif;opacity:{{ sg.dim }};transition:opacity .2s,border-color .15s;display:flex;flex-direction:column;">
+                          <span style="position:relative;display:block;height:52px;background:{{ sg.thumbBg }};">
+                            <span style="position:absolute;bottom:4px;right:4px;font-family:'Geist Mono',monospace;font-size:9.5px;color:#E7EAF0;background:rgba(11,12,14,.8);border-radius:3px;padding:0 5px;">{{ sg.dur }}</span>
+                            <span style="position:absolute;bottom:0;left:0;right:0;height:2px;background:{{ sg.bar }};"></span>
+                          </span>
+                          <span style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;">
+                            <span style="font-size:11.5px;line-height:1.35;display:block;overflow:hidden;max-height:31px;">{{ sg.name }}</span>
+                            <span style="display:flex;align-items:center;gap:6px;font-family:'Geist Mono',monospace;font-size:9.5px;color:#5A6170;">at {{ sg.at }}<span style="margin-left:auto;color:{{ sg.confColor }};">{{ sg.confLabel }}</span></span>
+                          </span>
+                        </button>
+                      </sc-for>
+                    </div>
+
+                    <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;margin-top:13px;line-height:1.6;">break file kept · every ad above links back here · dropped slivers stay in the file, never air</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showSingles }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;letter-spacing:.07em;">SINGLE CLIPS</div>
+          <div style="background:#131519;border:1px solid #2A2E37;border-radius:10px;overflow:hidden;">
+            <sc-for list="{{ catSingles }}" as="cl" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:54px 1fr 92px 52px 74px 46px 190px;gap:11px;align-items:center;padding:8px 12px;border-bottom:1px solid #1B1E24;">
+                <div style="height:30px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl({{ cl.hue }} 40% 22%) 0 5px,hsl({{ cl.hue }} 40% 17%) 5px 10px);"></div>
+                <span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cl.n }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ cl.kindColor }};">{{ cl.kind }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;">{{ cl.era }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;">{{ cl.aud }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;">{{ cl.dur }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ cl.usedColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cl.used }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ catNone }}" hint-placeholder-val="{{ false }}">
+        <div style="border:1px dashed #2A2E37;border-radius:12px;padding:40px;text-align:center;font-size:13px;color:#8B93A3;">Nothing matches that — try a brand, a station, or a year.</div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ============ INCOMING ============ -->
+  <sc-if value="{{ ftIncoming }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Filler — Incoming" style="display:flex;flex-direction:column;gap:16px;margin-top:18px;">
+
+      <div style="display:flex;align-items:center;gap:11px;background:#131519;border:1px solid #2A2E37;border-radius:12px;padding:14px 18px;flex-wrap:wrap;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#D6409F;animation:lmPulse 1.8s ease-in-out infinite;flex-shrink:0;"></span>
+        <span style="font-size:13.5px;font-weight:600;">{{ workLine }}</span>
+        <span style="margin-left:auto;font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;">Loomarr files what it recognises — this is the rest</span>
+      </div>
+
+      <sc-if value="{{ showReview }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#131519;border:1px solid rgba(255,176,32,.3);border-radius:12px;padding:16px 18px;">
+          <div style="display:grid;grid-template-columns:66px 1fr auto;gap:14px;align-items:center;">
+            <span style="position:relative;display:block;width:66px;height:44px;">
+              <span style="position:absolute;top:0;left:8px;right:0;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl(190 30% 15%) 0 5px,hsl(190 30% 11%) 5px 10px);border:1px solid #2A2E37;"></span>
+              <span style="position:absolute;top:4px;left:4px;right:4px;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl(190 35% 19%) 0 5px,hsl(190 35% 14%) 5px 10px);border:1px solid #2A2E37;"></span>
+              <span style="position:absolute;top:8px;left:0;right:8px;height:36px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl(190 40% 24%) 0 5px,hsl(190 40% 18%) 5px 10px);border:1px solid #2A2E37;"></span>
+            </span>
+            <div style="display:flex;flex-direction:column;gap:5px;min-width:0;">
+              <div style="font-size:14px;font-weight:600;">{{ revTitle }}</div>
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:.05em;color:#FFB020;background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.4);border-radius:4px;padding:2px 7px;">COMPOSITE · NOT AIRABLE</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:.05em;color:#D6409F;background:rgba(214,64,159,.08);border:1px solid rgba(214,64,159,.4);border-radius:4px;padding:2px 7px;">SPLIT BY AI</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;letter-spacing:.04em;">{{ revContext }}</span>
+              </div>
+            </div>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#8B93A3;white-space:nowrap;">{{ revMeta }}</span>
+          </div>
+
+          <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#D6409F;margin:12px 0 10px;">{{ revAiLine }}</div>
+
+          <div ref="{{ setRevStripRef }}" onMouseLeave="{{ clearTip }}" style="position:relative;">
+            <div style="display:flex;gap:2px;height:62px;">
+              <sc-for list="{{ revBlocks }}" as="sg" hint-placeholder-count="10">
+                <button onClick="{{ sg.pick }}" onMouseEnter="{{ sg.enter }}" title="{{ sg.title }}" style="flex:{{ sg.flex }} 1 0px;min-width:7px;position:relative;display:flex;flex-direction:column;align-items:stretch;background:{{ sg.bg }};opacity:{{ sg.op }};border:none;border-radius:3px;padding:0;cursor:pointer;overflow:hidden;box-shadow:{{ sg.ring }};transform:{{ sg.lift }};transition:transform .15s,box-shadow .15s,filter .15s;" style-hover="filter:brightness(1.35);">
+                  <span style="display:block;height:3px;background:{{ sg.bar }};flex-shrink:0;"></span>
+                  <sc-if value="{{ sg.showLabel }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:block;padding:5px 5px 0;font-family:'Geist Mono',monospace;font-size:9px;color:rgba(231,234,240,.85);text-align:left;white-space:nowrap;overflow:hidden;">{{ sg.label }}</span>
+                  </sc-if>
+                  <sc-if value="{{ sg.showDur }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:block;padding:2px 5px 0;font-family:'Geist Mono',monospace;font-size:8.5px;color:#8B93A3;text-align:left;">{{ sg.dur }}</span>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+            <div style="position:relative;height:17px;margin-top:5px;">
+              <sc-for list="{{ revRuler }}" as="rm">
+                <span style="position:absolute;left:{{ rm.left }};transform:translateX({{ rm.tx }});display:flex;flex-direction:column;align-items:{{ rm.align }};gap:1px;">
+                  <span style="width:1px;height:4px;background:#2A2E37;"></span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#5A6170;">{{ rm.label }}</span>
+                </span>
+              </sc-for>
+            </div>
+            <sc-if value="{{ revTipOn }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;bottom:calc(100% + 9px);left:{{ revTipX }}px;transform:translateX(-50%);width:226px;background:#1B1E24;border:1px solid #2A2E37;border-radius:8px;padding:9px;pointer-events:none;z-index:30;box-shadow:0 14px 34px rgba(0,0,0,.55);animation:lmIn .14s ease-out;">
+                <div style="font-size:12px;font-weight:500;line-height:1.35;">{{ revTipName }}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+                  <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;">{{ revTipRange }}</span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ revTipConfColor }};margin-left:auto;">{{ revTipConf }}</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:7px;margin-top:11px;flex-wrap:wrap;">
+            <sc-for list="{{ revSummary }}" as="rs">
+              <span style="font-family:'Geist Mono',monospace;font-size:10px;color:{{ rs.color }};background:{{ rs.bg }};border:1px solid {{ rs.border }};border-radius:999px;padding:3px 10px;">{{ rs.label }}</span>
+            </sc-for>
+            <button onClick="{{ revReset }}" style="margin-left:auto;background:none;border:none;color:#8B93A3;font-size:11.5px;cursor:pointer;font-family:'Geist',sans-serif;padding:0;" style-hover="color:#E7EAF0;">Reset cuts</button>
+          </div>
+
+          <sc-if value="{{ edOn }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#0F1114;border:1px solid #2A2E37;border-radius:10px;padding:13px;margin-top:12px;display:flex;flex-direction:column;gap:10px;animation:lmIn .22s ease-out;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;">at {{ edRange }}</span>
+                <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ edConfColor }};">{{ edConf }}</span>
+                <sc-if value="{{ edHasWhy }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#F5D90A;flex:1;min-width:200px;">{{ edWhy }}</span></sc-if>
+                <button onClick="{{ edClose }}" title="Close" style="margin-left:auto;background:none;border:none;color:#5A6170;font-size:14px;cursor:pointer;padding:0 2px;font-family:'Geist',sans-serif;" style-hover="color:#E7EAF0;">✕</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <input ref="{{ setRenameRef }}" value="{{ edName }}" onInput="{{ edSetName }}" style="flex:1;min-width:240px;background:#0B0C0E;border:1px solid #2A2E37;border-radius:6px;padding:8px 11px;color:#E7EAF0;font-size:12.5px;outline:none;font-family:'Geist',sans-serif;" style-focus="border-color:#FFB020;" />
+                <sc-if value="{{ edCanMerge }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ edMerge }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:6px;padding:8px 13px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;white-space:nowrap;" style-hover="border-color:#8B93A3;">Merge with next ▸</button>
+                </sc-if>
+                <button onClick="{{ edDrop }}" style="background:transparent;color:{{ edDropColor }};border:1px solid {{ edDropBorder }};border-radius:6px;padding:8px 13px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;white-space:nowrap;">{{ edDropLabel }}</button>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <span style="font-family:'Geist Mono',monospace;font-size:9.5px;color:#D6409F;letter-spacing:.05em;">AI PROPOSED</span>
+                <sc-for list="{{ edChips }}" as="tc"><span style="font-family:'Geist Mono',monospace;font-size:10px;color:#8B93A3;border:1px solid #2A2E37;border-radius:4px;padding:2px 8px;">{{ tc.label }}</span></sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasFlags }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:7px;">
+              <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#F5D90A;letter-spacing:.07em;">NEEDS A LOOK ({{ flagCount }})</div>
+              <sc-for list="{{ revFlags }}" as="fg" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:12px;background:rgba(245,217,10,.04);border:1px solid rgba(245,217,10,.22);border-radius:9px;padding:10px 13px;flex-wrap:wrap;">
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;color:{{ fg.color }};width:34px;">{{ fg.pct }}</span>
+                  <div style="flex:1;min-width:230px;">
+                    <div style="font-size:12.5px;font-weight:500;">{{ fg.name }}</div>
+                    <div style="font-size:11.5px;color:#8B93A3;line-height:1.45;">{{ fg.why }}</div>
+                  </div>
+                  <div style="display:flex;gap:7px;">
+                    <button onClick="{{ fg.ok }}" style="background:rgba(61,214,140,.14);color:#3DD68C;border:1px solid rgba(61,214,140,.4);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;">Looks right</button>
+                    <button onClick="{{ fg.open }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="color:#E7EAF0;border-color:#8B93A3;">Open in strip</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;gap:16px;border-top:1px solid #1B1E24;margin-top:16px;padding-top:14px;flex-wrap:wrap;">
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;line-height:1.7;">the break file is kept — re-split any time<br />segments stay linked to it · nothing is deleted</div>
+            <button onClick="{{ revConfirm }}" style="margin-left:auto;background:#FFB020;color:#0B0C0E;border:none;border-radius:8px;padding:11px 20px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:'Geist',sans-serif;white-space:nowrap;">{{ confirmLabel }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showConfirmed }}" hint-placeholder-val="{{ false }}">
+        <div style="background:rgba(61,214,140,.05);border:1px solid rgba(61,214,140,.3);border-radius:12px;padding:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;animation:lmIn .3s ease-out;">
+          <span style="width:26px;height:26px;border-radius:50%;background:rgba(61,214,140,.15);color:#3DD68C;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">✓</span>
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:13.5px;font-weight:600;">{{ confirmedLine }}</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8B93A3;margin-top:3px;">linked both ways — every ad shows its break · the break lists its ads</div>
+          </div>
+          <button onClick="{{ goCatalogKiro }}" style="background:transparent;color:#E7EAF0;border:1px solid #2A2E37;border-radius:8px;padding:9px 16px;font-size:12.5px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="border-color:#8B93A3;">View in catalog →</button>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="font-family:'Geist Mono',monospace;font-size:10px;color:#5A6170;letter-spacing:.07em;">ALSO WAITING — SINGLE CLIPS</div>
+        <sc-for list="{{ askRows }}" as="ak" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:12px;background:#131519;border:1px solid #2A2E37;border-radius:9px;padding:10px 13px;flex-wrap:wrap;">
+            <div style="width:44px;height:28px;border-radius:3px;background-image:repeating-linear-gradient(135deg,hsl({{ ak.hue }} 40% 22%) 0 5px,hsl({{ ak.hue }} 40% 17%) 5px 10px);flex-shrink:0;"></div>
+            <div style="flex:1;min-width:230px;">
+              <div style="font-size:12.5px;font-weight:500;">{{ ak.n }}</div>
+              <div style="font-size:11.5px;color:#8B93A3;line-height:1.45;">{{ ak.why }}</div>
+            </div>
+            <sc-if value="{{ ak.pending }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:7px;">
+                <button onClick="{{ ak.ok }}" style="background:rgba(61,214,140,.14);color:#3DD68C;border:1px solid rgba(61,214,140,.4);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Geist',sans-serif;">Looks right</button>
+                <button onClick="{{ ak.no }}" style="background:transparent;color:#8B93A3;border:1px solid #2A2E37;border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:'Geist',sans-serif;" style-hover="color:#E7EAF0;border-color:#8B93A3;">Not right</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ak.done }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ ak.doneColor }};">{{ ak.doneLine }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ============ SOURCES ============ -->
+  <sc-if value="{{ ftSources }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Filler — Sources" style="display:flex;flex-direction:column;gap:10px;margin-top:18px;">
+      <div style="background:#131519;border:1px solid #2A2E37;border-radius:12px;overflow:hidden;">
+        <sc-for list="{{ sourceRows }}" as="sv" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:13px;padding:13px 16px;border-bottom:1px solid #1B1E24;">
+            <button onClick="{{ sv.flip }}" style="width:34px;height:19px;border-radius:999px;border:1px solid {{ sv.tBorder }};background:{{ sv.tBg }};position:relative;cursor:pointer;padding:0;flex-shrink:0;">
+              <span style="position:absolute;top:2px;left:{{ sv.knob }};width:13px;height:13px;border-radius:50%;background:{{ sv.knobBg }};transition:left .2s;"></span>
+            </button>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:500;color:{{ sv.nameColor }};">{{ sv.name }}</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;margin-top:2px;">{{ sv.detail }}</div>
+            </div>
+            <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:{{ sv.statColor }};white-space:nowrap;">{{ sv.stat }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#5A6170;">composites are detected on import from any source — a file over ~3 minutes with repeated scene cuts is treated as a break</div>
+    </div>
+  </sc-if>
+
+</div>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:60;background:#1B1E24;border:1px solid {{ toastColor }};border-radius:9px;padding:11px 18px;font-size:12.5px;color:#E7EAF0;box-shadow:0 16px 40px rgba(0,0,0,.55);max-width:560px;animation:lmIn .2s ease-out;">{{ toastMsg }}</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:960},&quot;confidenceTint&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Filmstrip&quot;},&quot;stripLabels&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Filmstrip&quot;},&quot;reviewThreshold&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:70,&quot;min&quot;:50,&quot;max&quot;:90,&quot;step&quot;:5,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Split review&quot;}}">
+class Component extends DCLogic {
+  state = { data: null, tab: 'catalog', chip: 'all', q: '', exp: { kcpq: true }, selSeg: null, tip: null,
+    revSel: null, revSegs: null, confirmed: false, asks: {}, srcOff: { yt: true, packs: true }, toastMsg: '', toastColor: '#3DD68C' };
+  nodes = {}; stripRefs = {}; renameNode = null; toastTimer = null;
+
+  async componentDidMount() {
+    const m = await import('./composites-data.js');
+    const kiro = m.BREAKS.find(b => b.id === 'kiro');
+    this.setState({ data: m, revSegs: kiro.segs.map(x => ({ ...x })) });
+  }
+  toast(msg, color) { clearTimeout(this.toastTimer); this.setState({ toastMsg: msg, toastColor: color || '#3DD68C' }); this.toastTimer = setTimeout(() => this.setState({ toastMsg: '' }), 3800); }
+  mmss(t) { return Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0'); }
+  tc(t) { return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(Math.round(t % 60)).padStart(2, '0'); }
+  confMeta(sg, thr) {
+    if (sg.drop) return { color: '#5A6170', wash: 'repeating-linear-gradient(135deg,#1B1E24 0 4px,#14161A 4px 8px)' };
+    const c = sg.ok ? 86 : sg.conf;
+    if (c >= 85) return { color: '#3DD68C', wash: 'rgba(61,214,140,.20)' };
+    if (c >= thr) return { color: '#FFB020', wash: 'rgba(255,176,32,.18)' };
+    return { color: '#F5D90A', wash: 'rgba(245,217,10,.20)' };
+  }
+  buildStrip(key, segs, opts) {
+    const p = this.props, thr = p.reviewThreshold ?? 70, tint = p.confidenceTint ?? true, labels = p.stripLabels ?? true;
+    const total = segs.reduce((a, x) => a + x.d, 0);
+    const starts = []; let t = 0; segs.forEach(x => { starts.push(t); t += x.d; });
+    const blocks = segs.map((sg, i) => {
+      const meta = this.confMeta(sg, thr), pct = sg.d / total * 100, sel = opts.sel === i;
+      return {
+        flex: String(sg.d),
+        bg: sg.drop ? meta.wash : (tint ? meta.wash : '#1B1E24'),
+        bar: sg.drop ? '#5A6170' : (tint ? meta.color : '#8B93A3'),
+        op: sg.drop ? '.5' : '1',
+        ring: sel ? '0 0 0 1.5px #FFB020' : 'none', lift: sel ? 'translateY(-2px)' : 'none',
+        showLabel: labels && pct >= 3.4 && !sg.drop, label: sg.b || sg.n.split(' ')[0],
+        showDur: labels && pct >= 6.2, dur: this.mmss(sg.d),
+        title: sg.n + ' · ' + this.mmss(sg.d),
+        pick: opts.pick(i),
+        enter: (e) => {
+          const st = this.stripRefs[key]; if (!st) return;
+          const r = e.currentTarget.getBoundingClientRect(), sr = st.getBoundingClientRect();
+          const x = Math.max(118, Math.min(sr.width - 118, r.left - sr.left + r.width / 2));
+          this.setState({ tip: { key, i, x } });
+        },
+      };
+    });
+    const step = total > 620 ? 240 : 60, ruler = [];
+    for (let m = 0; m < total - step * 0.35; m += step) ruler.push({ left: (m / total * 100).toFixed(2) + '%', tx: '0', align: 'flex-start', label: this.mmss(m) });
+    ruler.push({ left: '100%', tx: '-100%', align: 'flex-end', label: this.mmss(total) });
+    return { blocks, ruler, total, starts };
+  }
+  renderVals() {
+    const s = this.state, p = this.props;
+    const thr = p.reviewThreshold ?? 70;
+    const M = s.data, BR = M ? M.BREAKS : [], SINGLES = M ? M.SINGLES : [], ASKS = M ? M.ASKS : [];
+    const q = s.q.trim().toLowerCase();
+    const segsOf = (br) => br.id === 'kiro' ? (s.revSegs || br.segs) : br.segs;
+    const clearTip = () => { if (s.tip) this.setState({ tip: null }); };
+
+    // ---- catalog breaks ----
+    const filedBreaks = BR.filter(b => b.filed || (b.id === 'kiro' && s.confirmed));
+    const catBreaks = filedBreaks.map(br => {
+      const segs = segsOf(br);
+      const total = segs.reduce((a, x) => a + x.d, 0);
+      const ads = segs.filter(x => !x.drop).length;
+      const segMatch = (sg) => !q || (sg.n + ' ' + sg.b + ' ' + sg.c).toLowerCase().includes(q);
+      const matches = q ? segs.filter(x => !x.drop && segMatch(x)) : [];
+      const titleMatch = q && (br.title + ' ' + br.network + ' ' + br.station + ' ' + br.market + ' ' + br.date).toLowerCase().includes(q);
+      const visible = !q || matches.length > 0 || titleMatch;
+      const open = q ? (matches.length > 0 || titleMatch) : !!s.exp[br.id];
+      const selHere = s.selSeg && s.selSeg.key === br.id ? s.selSeg.i : -1;
+      const strip = this.buildStrip(br.id, segs, {
+        sel: selHere,
+        pick: (i) => () => {
+          this.setState({ selSeg: { key: br.id, i } });
+          setTimeout(() => { const n = this.nodes[br.id + '-' + i]; if (n) window.scrollTo({ top: n.getBoundingClientRect().top + window.scrollY - 250, behavior: 'smooth' }); }, 80);
+        },
+      });
+      const tipOn = !!(s.tip && s.tip.key === br.id && open);
+      const tipSeg = tipOn ? segs[s.tip.i] : null;
+      const sel = selHere >= 0 ? segs[selHere] : null;
+      const selMeta = sel ? this.confMeta(sel, thr) : null;
+      return {
+        id: br.id, title: br.title, hue: br.hue, source: String(br.source),
+        context: br.network + ' · ' + br.market + ' · ' + br.date,
+        countLine: ads + ' ads · ' + this.mmss(total), cutsShort: segs.length + ' CUTS',
+        border: open ? '#3A3F4B' : '#2A2E37', chev: open ? 180 : 0, rows: open ? '1fr' : '0fr',
+        total: this.mmss(total),
+        hasMatch: q.length > 0 && matches.length > 0, matchLine: matches.length + ' ads match “' + s.q.trim() + '”',
+        visible,
+        toggle: () => { const o = !!s.exp[br.id]; this.setState({ exp: { ...s.exp, [br.id]: !o }, selSeg: o ? (s.selSeg && s.selSeg.key === br.id ? null : s.selSeg) : s.selSeg, tip: null }); },
+        resplit: () => this.toast('Re-split queued — new cuts land in Incoming for review. Filed ads are untouched.', '#4CC9E8'),
+        setStripRef: (el) => { this.stripRefs[br.id] = el; },
+        blocks: strip.blocks, ruler: strip.ruler,
+        tipOn, tipX: tipOn ? s.tip.x : 0, tipHue: (br.hue + (tipOn ? s.tip.i * 29 : 0)) % 360,
+        tipName: tipSeg ? tipSeg.n : '', tipRange: tipSeg ? this.tc(strip.starts[s.tip.i]) + ' → ' + this.tc(strip.starts[s.tip.i] + tipSeg.d) : '',
+        tipConf: tipSeg ? (tipSeg.drop ? 'DROPPED' : (tipSeg.ok ? 86 : tipSeg.conf) + '% conf') : '', tipConfColor: tipSeg ? this.confMeta(tipSeg, thr).color : '#8B93A3',
+        selOn: !!sel, selHue: sel ? (br.hue + selHere * 29) % 360 : 0, selName: sel ? sel.n : '', selDur: sel ? this.mmss(sel.d) : '',
+        selChips: sel ? [
+          { label: sel.drop ? 'dropped sliver' : 'commercial', color: sel.drop ? '#5A6170' : '#8B93A3', border: '#2A2E37', bg: 'transparent' },
+          { label: br.year, color: '#8B93A3', border: '#2A2E37', bg: 'transparent' },
+          ...(sel.a ? [{ label: sel.a, color: '#8B93A3', border: '#2A2E37', bg: 'transparent' }] : []),
+          ...(sel.c ? [{ label: sel.c, color: '#8B93A3', border: '#2A2E37', bg: 'transparent' }] : []),
+          { label: 'TAGGED BY AI', color: '#D6409F', border: 'rgba(214,64,159,.4)', bg: 'rgba(214,64,159,.08)' },
+        ] : [],
+        selConf: sel ? (sel.drop ? '—' : (sel.ok ? 86 : sel.conf) + '%') : '', selConfW: sel ? (sel.drop ? '0%' : (sel.ok ? 86 : sel.conf) + '%') : '0%',
+        selConfColor: selMeta ? selMeta.color : '#8B93A3',
+        selFrom: br.station + '/' + br.network + ' · ' + br.date,
+        selRange: sel ? this.tc(strip.starts[selHere]) + ' → ' + this.tc(strip.starts[selHere] + sel.d) : '',
+        selClose: () => this.setState({ selSeg: null }),
+        selWhere: () => this.toast('Plays on CH 7, CH 12 · matched by tags (' + br.year + ' · general) — override from the full catalog card.', '#4CC9E8'),
+        backToBreak: (e) => { e.preventDefault(); const n = this.stripRefs[br.id]; if (n) window.scrollTo({ top: n.getBoundingClientRect().top + window.scrollY - 190, behavior: 'smooth' }); },
+        cards: segs.map((sg, i) => {
+          const meta = this.confMeta(sg, thr);
+          return {
+            name: sg.n, dur: this.mmss(sg.d), at: this.tc(strip.starts[i]), bar: meta.color,
+            thumbBg: sg.drop ? 'repeating-linear-gradient(135deg,#1B1E24 0 4px,#14161A 4px 8px)' : 'repeating-linear-gradient(135deg,hsl(' + ((br.hue + i * 29) % 360) + ' 40% 22%) 0 6px,hsl(' + ((br.hue + i * 29) % 360) + ' 40% 17%) 6px 12px)',
+            confLabel: sg.drop ? 'dropped' : (sg.ok ? 86 : sg.conf) + '%', confColor: meta.color,
+            cardBg: selHere === i ? '#1B1E24' : '#0F1114', cardBorder: selHere === i ? '#FFB020' : '#1B1E24',
+            dim: q && !(segMatch(sg) && !sg.drop) ? '.25' : (sg.drop ? '.55' : '1'),
+            setRef: (el) => { this.nodes[br.id + '-' + i] = el; },
+            pick: () => this.setState({ selSeg: { key: br.id, i } }),
+          };
+        }),
+      };
+    }).filter(b => b.visible);
+
+    // ---- catalog singles ----
+    const catSingles = SINGLES.filter(c => !q || (c.n + ' ' + c.cat + ' ' + c.era).toLowerCase().includes(q)).map(c => ({
+      ...c, dur: this.mmss(c.d),
+      kindColor: c.kind === 'bumper' ? '#FFB020' : c.kind === 'psa' ? '#4CC9E8' : '#8B93A3',
+      usedColor: c.used.includes('override') ? '#4CC9E8' : '#5A6170',
+    }));
+    const showBreaks = s.chip !== 'singles' && catBreaks.length > 0;
+    const showSingles = s.chip !== 'breaks' && catSingles.length > 0;
+
+    // ---- pool ----
+    const filedAds = filedBreaks.reduce((a, br) => a + segsOf(br).filter(x => !x.drop).length, 0);
+    const poolSecs = filedBreaks.reduce((a, br) => a + segsOf(br).filter(x => !x.drop).reduce((y, x) => y + x.d, 0), 0) + SINGLES.reduce((a, x) => a + x.d, 0);
+    const clipCount = filedAds + SINGLES.length;
+    const repeatMin = Math.round(poolSecs / 2400 * 60);
+
+    // ---- review ----
+    const rSegs = s.revSegs || [];
+    const rStrip = this.buildStrip('rev', rSegs, { sel: s.revSel === null ? -1 : s.revSel, pick: (i) => () => this.setState({ revSel: s.revSel === i ? null : i }) });
+    const rAds = rSegs.filter(x => !x.drop).length;
+    const isFlag = (x) => !x.drop && !x.ok && x.conf < thr;
+    const flags = rSegs.map((x, i) => ({ x, i })).filter(o => isFlag(o.x));
+    const good = rSegs.filter(x => !x.drop && !isFlag(x)).length;
+    const dropped = rSegs.filter(x => x.drop).length;
+    const setRev = (i, patch) => this.setState({ revSegs: rSegs.map((x, j) => j === i ? { ...x, ...patch } : x) });
+    const ed = s.revSel !== null ? rSegs[s.revSel] : null;
+    const kiroData = M ? BR.find(b => b.id === 'kiro') : null;
+    const rTipOn = !!(s.tip && s.tip.key === 'rev' && !s.confirmed);
+    const rTipSeg = rTipOn ? rSegs[s.tip.i] : null;
+    const asksPending = ASKS.filter(a => !s.asks[a.n]).length;
+
+    return {
+      hasData: !!M,
+      fillerTabs: [['catalog', 'Catalog', String(clipCount), false], ['incoming', 'Incoming', String((s.confirmed ? 0 : 1) + asksPending), true], ['sources', 'Sources', null, false]].map(([id, label, count, warn]) => ({
+        label, count: count === null ? '' : count, hasCount: count !== null,
+        pick: () => this.setState({ tab: id, tip: null }),
+        color: s.tab === id ? '#E7EAF0' : '#8B93A3', weight: s.tab === id ? '500' : '400',
+        underline: s.tab === id ? '#FFB020' : 'transparent',
+        countColor: warn && count !== '0' ? '#FFB020' : '#8B93A3', countBg: warn && count !== '0' ? 'rgba(255,176,32,.14)' : '#1B1E24',
+      })),
+      ftCatalog: s.tab === 'catalog', ftIncoming: s.tab === 'incoming', ftSources: s.tab === 'sources',
+      showPool: s.tab !== 'sources',
+      poolStats: [
+        { label: 'Clips', value: String(clipCount), note: 'airable, in the shared catalog', color: '#E7EAF0' },
+        { label: 'Breaks kept', value: String(filedBreaks.length), note: 'containers · provenance', color: '#E7EAF0' },
+        { label: 'Pool', value: this.mmss(poolSecs), note: 'of unique filler', color: '#E7EAF0' },
+        { label: 'Repeats', value: 'every ' + repeatMin + ' min', note: repeatMin < 90 ? 'thin — pull more breaks' : 'before a viewer sees one twice', color: repeatMin < 90 ? '#F5D90A' : '#3DD68C' },
+      ],
+      clearTip,
+      // catalog
+      catQ: s.q, setCatQ: (e) => this.setState({ q: e.target.value }),
+      catChips: [['all', 'All'], ['singles', 'Singles'], ['breaks', 'Breaks']].map(([id, label]) => ({
+        label, pick: () => this.setState({ chip: id }),
+        bg: s.chip === id ? 'rgba(255,176,32,.12)' : 'transparent', color: s.chip === id ? '#FFB020' : '#8B93A3', border: s.chip === id ? 'rgba(255,176,32,.45)' : '#2A2E37',
+      })),
+      catCount: (q ? 'matching “' + s.q.trim() + '” — ' : '') + catBreaks.length + ' breaks · ' + catSingles.length + ' singles shown',
+      catBreaks, catSingles, showBreaks, showSingles,
+      catNone: !showBreaks && !showSingles,
+      // incoming
+      workLine: (s.confirmed ? 'Nothing waiting for split review' : '1 break waiting for split review') + ' · ' + asksPending + ' clips need a look',
+      showReview: !s.confirmed && !!M,
+      revTitle: kiroData ? kiroData.title : '', revContext: kiroData ? kiroData.network + ' · ' + kiroData.market + ' · ' + kiroData.date : '',
+      revMeta: rSegs.length + ' cuts · ' + this.mmss(rStrip.total),
+      revAiLine: 'proposed ' + rSegs.length + ' cuts · scene-change + audio silence · ' + flags.length + ' below ' + thr + '% confidence · sliver auto-dropped',
+      setRevStripRef: (el) => { this.stripRefs['rev'] = el; },
+      revBlocks: rStrip.blocks, revRuler: rStrip.ruler,
+      revTipOn: rTipOn, revTipX: rTipOn ? s.tip.x : 0,
+      revTipName: rTipSeg ? rTipSeg.n : '', revTipRange: rTipSeg ? this.tc(rStrip.starts[s.tip.i]) + ' → ' + this.tc(rStrip.starts[s.tip.i] + rTipSeg.d) : '',
+      revTipConf: rTipSeg ? (rTipSeg.drop ? 'DROPPED' : (rTipSeg.ok ? 86 : rTipSeg.conf) + '% conf') : '', revTipConfColor: rTipSeg ? this.confMeta(rTipSeg, thr).color : '#8B93A3',
+      revSummary: [
+        { label: good + ' look right', color: '#3DD68C', bg: 'rgba(61,214,140,.08)', border: 'rgba(61,214,140,.3)' },
+        { label: flags.length + ' need a look', color: flags.length ? '#F5D90A' : '#5A6170', bg: flags.length ? 'rgba(245,217,10,.07)' : 'transparent', border: flags.length ? 'rgba(245,217,10,.3)' : '#2A2E37' },
+        { label: dropped + ' sliver dropped', color: '#8B93A3', bg: 'transparent', border: '#2A2E37' },
+      ],
+      revReset: () => { const kiro = BR.find(b => b.id === 'kiro'); this.setState({ revSegs: kiro.segs.map(x => ({ ...x })), revSel: null }); this.toast('Cuts reset to the proposed split.', '#8B93A3'); },
+      edOn: !!ed,
+      edRange: ed ? this.tc(rStrip.starts[s.revSel]) + ' → ' + this.tc(rStrip.starts[s.revSel] + ed.d) + ' · ' + this.mmss(ed.d) : '',
+      edConf: ed ? (ed.drop ? 'dropped' : (ed.ok ? '86% conf · confirmed by you' : ed.conf + '% conf')) : '',
+      edConfColor: ed ? this.confMeta(ed, thr).color : '#8B93A3',
+      edHasWhy: !!(ed && ed.why && !ed.ok), edWhy: ed && ed.why ? ed.why : '',
+      edName: ed ? ed.n : '', edSetName: (e) => setRev(s.revSel, { n: e.target.value }),
+      setRenameRef: (el) => { this.renameNode = el; },
+      edCanMerge: !!(ed && s.revSel < rSegs.length - 1 && !ed.drop && !rSegs[s.revSel + 1].drop),
+      edMerge: () => {
+        const i = s.revSel, a = rSegs[i], b = rSegs[i + 1];
+        const merged = { ...a, d: a.d + b.d, n: a.n.replace(/\s*[—–-]\s*pt\s*\d+$/i, ''), conf: 92, ok: true, why: null };
+        const next = rSegs.slice(0, i).concat([merged], rSegs.slice(i + 2));
+        this.setState({ revSegs: next });
+        this.toast('Merged into one ' + this.mmss(merged.d) + ' spot — “' + merged.n + '”.', '#3DD68C');
+      },
+      edDrop: () => { const wasDrop = ed.drop; setRev(s.revSel, { drop: !wasDrop, ok: false }); this.toast(wasDrop ? 'Restored — it files with the rest.' : 'Dropped — it stays in the break file, just never airs.', wasDrop ? '#3DD68C' : '#8B93A3'); },
+      edDropLabel: ed && ed.drop ? 'Restore' : 'Drop', edDropColor: ed && ed.drop ? '#3DD68C' : '#E85A5F', edDropBorder: ed && ed.drop ? 'rgba(61,214,140,.4)' : 'rgba(229,72,77,.35)',
+      edClose: () => this.setState({ revSel: null }),
+      edChips: ed ? [{ label: ed.b || 'brand —' }, { label: '1997' }, { label: ed.a || 'audience —' }, { label: ed.c || 'category —' }, { label: this.mmss(ed.d) }] : [],
+      hasFlags: flags.length > 0, flagCount: String(flags.length),
+      revFlags: flags.map(({ x, i }) => ({
+        pct: x.conf + '%', color: this.confMeta(x, thr).color, name: x.n, why: x.why || 'low confidence',
+        ok: () => { setRev(i, { ok: true }); this.toast('Marked good — “' + x.n + '” files with the rest.', '#3DD68C'); },
+        open: () => { this.setState({ revSel: i }); setTimeout(() => { if (this.renameNode) this.renameNode.focus(); }, 90); },
+      })),
+      confirmLabel: 'Confirm — file ' + rAds + ' ads under this break',
+      revConfirm: () => { this.setState({ confirmed: true, revSel: null, tip: null }); this.toast('Filed ' + rAds + ' ads under “KIRO/CBS 3/14/1997” — they’re in the catalog, linked back to the break.', '#3DD68C'); },
+      showConfirmed: s.confirmed,
+      confirmedLine: rAds + ' ads filed under KIRO/CBS commercials, 3/14/1997',
+      goCatalogKiro: () => { this.setState({ tab: 'catalog', chip: 'all', q: '', exp: { kiro: true }, selSeg: null }); window.scrollTo({ top: 0, behavior: 'smooth' }); },
+      askRows: ASKS.map(a => ({
+        ...a, pending: !s.asks[a.n], done: !!s.asks[a.n],
+        doneLine: s.asks[a.n] === 'filed' ? 'filed ✓' : 'held for a closer look',
+        doneColor: s.asks[a.n] === 'filed' ? '#3DD68C' : '#F5D90A',
+        ok: () => { this.setState({ asks: { ...s.asks, [a.n]: 'filed' } }); this.toast('Filed “' + a.n + '” — retag any time from the catalog.', '#3DD68C'); },
+        no: () => { this.setState({ asks: { ...s.asks, [a.n]: 'held' } }); this.toast('Held back — it stays here until you sort it out.', '#F5D90A'); },
+      })),
+      // sources
+      sourceRows: [
+        ['ms', 'Media server library', '/media/filler · scanned by Jellyfin', '2,140 files'],
+        ['drop', 'Drop folder', '/media/filler/_drop · anything you copy in', 'watched'],
+        ['ia', 'Internet Archive', '11 collections · classic_tv_commercials + 10 more', 'last pull 2d ago'],
+        ['yt', 'YouTube playlists', 'paste a playlist URL to add one', 'off'],
+        ['packs', 'Community packs', 'curated era bundles, checksummed', 'off'],
+      ].map(([id, name, detail, stat]) => {
+        const on = !s.srcOff[id];
+        return {
+          name, detail, stat, nameColor: on ? '#E7EAF0' : '#8B93A3', statColor: on ? '#3DD68C' : '#5A6170',
+          tBg: on ? '#FFB020' : 'transparent', tBorder: on ? '#FFB020' : '#2A2E37', knob: on ? '17px' : '2px', knobBg: on ? '#0B0C0E' : '#5A6170',
+          flip: () => { this.setState({ srcOff: { ...s.srcOff, [id]: on } }); this.toast(on ? name + ' switched off — nothing already in the catalog is touched.' : name + ' switched on.', on ? '#8B93A3' : '#3DD68C'); },
+        };
+      }),
+      hasToast: !!s.toastMsg, toastMsg: s.toastMsg, toastColor: s.toastColor,
+    };
+  }
+}
+</script>
+</body>
+</html>
