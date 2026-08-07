@@ -1,9 +1,10 @@
 import type { SplitSegment } from "@loomarr/api";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core";
 import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
+import { SegmentFilmstrip } from "../segment-filmstrip";
 import type { SplitReviewEditorProps } from "./split-review-editor.type";
 
 // SplitReviewEditor — the §10 V34 review gate. Detection quality is a property of the
@@ -71,6 +72,10 @@ const SplitReviewEditor = ({
   className,
 }: SplitReviewEditorProps) => {
   const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
+  // Which block the strip has focused. Local, not URL state: it is a pointer at a row on screen,
+  // and a shared link carrying it would deep-link someone to a segment index that a merge or a
+  // drop has since renumbered.
+  const [focusedKey, setFocusedKey] = useState<string>();
 
   const setSegment = (i: number, patch: Partial<DraftSegment>) =>
     setDraft((prev) => prev.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -103,14 +108,38 @@ const SplitReviewEditor = ({
 
   const confirmable = draft.length > 0 && draft.every(isValid);
 
+  // ⚠ The strip reads the DRAFT's edited timecodes, not the proposal's original spans, so a
+  // merge widens a block and a retyped cut point moves one AS IT HAPPENS. Reading the server's
+  // copy would leave the picture describing a split the operator already changed.
+  //
+  // ⚠ Parsed with a FALLBACK to the committed ms. `startText`/`endText` are free text the
+  // operator is mid-way through typing — "1:" is not a time yet — and letting an in-progress
+  // keystroke collapse a block to zero would make the strip flicker on every character.
+  const stripSegments = draft.map((d) => ({
+    key: d.key,
+    startMs: parseMmSs(d.startText) ?? d.startMs,
+    endMs: parseMmSs(d.endText) ?? d.endMs,
+    ...(d.name ? { name: d.name } : {}),
+    ...(d.unsplittable ? { unsplittable: d.unsplittable } : {}),
+  }));
+
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+      {/* The reel at a glance, above the rows it describes (the v2 mock's `rl.strip`). Clicking
+          a block focuses that segment's row — the strip is a map, the rows are the work. */}
+      <SegmentFilmstrip
+        segments={stripSegments}
+        {...(focusedKey ? { activeKey: focusedKey } : {})}
+        onFocus={setFocusedKey}
+      />
+
       {draft.map((seg, i) => (
         <SegmentRow
           key={seg.key}
           segment={seg}
           position={i}
           last={i === draft.length - 1}
+          focused={focusedKey === seg.key}
           onChange={(patch) => setSegment(i, patch)}
           onDrop={() => drop(i)}
           onMergeWithNext={() => mergeWithNext(i)}
@@ -145,19 +174,36 @@ interface SegmentRowProps {
   segment: DraftSegment;
   position: number;
   last: boolean;
+  focused: boolean;
   onChange: (patch: Partial<DraftSegment>) => void;
   onDrop: () => void;
   onMergeWithNext: () => void;
 }
 
-const SegmentRow = ({ segment, position, last, onChange, onDrop, onMergeWithNext }: SegmentRowProps) => {
+const SegmentRow = ({
+  segment,
+  position,
+  last,
+  focused,
+  onChange,
+  onDrop,
+  onMergeWithNext,
+}: SegmentRowProps) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
+  // its segments off-screen, so a highlight the operator has to go hunting for is the same as no
+  // response at all. `block: "nearest"` avoids yanking the page when the row is already visible.
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [focused]);
 
   return (
-    <Card>
+    <Card ref={ref} className={cn(focused && "ring-1 ring-signal-300")}>
       <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <span className="font-mono text-muted-foreground text-sm tabular-nums">#{n}</span>
