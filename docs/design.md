@@ -460,12 +460,12 @@ See §8. Provider-neutral; Ollama (local) or any OpenAI-compatible endpoint (hos
 | POST | `/v1/proposals/{id}/approve` | Approve (admin) → enqueue acquisitions **+ create/patch the channel**, returning its id. This is the primary path from an approved intent to a live channel — §13's flow is describe → review → approve, so **the everyday way to make a channel is to describe one, not fill out a form** (the two other origination seeds — a hand-made single-series or empty channel via `POST /v1/channels` — are express doors into the same object, not a separate "create screen" model; see §12 origination-vs-evolution). **Idempotent on `intentRef`** (the suggestion job id): re-approving the same intent patches that channel rather than minting a second one. The channel is created `building` with the proposal's lineup + grounded policy, then reconciled immediately (§9 "live immediately — never dead air"). **Number** = the lowest free positive integer, so an operator never has to think about numbering to get on air; **name** = the intent description, trimmed to a channel-sized label. Both are ordinary editable fields afterwards (§7 `PATCH /v1/channels/{id}`) — the point is that approving is *sufficient*, not that the derived values are final. A channel is **shaped over time** after creation: direct edits (name/number/rules/lineup) via `PATCH`, or by *refining* it with the LLM (`POST /v1/channels/{id}/refine` → review the diff → approve → the same idempotent patch). |
 | POST | `/v1/proposals/{id}/deny` | Deny (admin) with optional reason; proposal → `denied`, member sees it in My proposals. |
 | GET | `/v1/filler` | List clip catalog; filter by kind/era/audience/category/untagged, plus `q` for a `name LIKE` search (§7.2 — clip search lives here, not in `/v1/search`). |
-| PATCH | `/v1/filler/{id}` | Edit a clip's tags — including **confirming an era suggestion** (§10): setting `era` on a clip that carries one clears the suggestion. The suggestion itself is never settable directly; only the tagger writes it, and only when the year is not in the source text. |
+| PATCH | `/v1/filler/tags` | Edit a clip's tags — including **confirming an era suggestion** (§10): setting `era` on a clip that carries one clears the suggestion. The suggestion itself is never settable directly; only the tagger writes it, and only when the year is not in the source text. ⚠ **The clip is identified by its content `hash` in the BODY** (V45a) — completing the V38c identity change up through the API. The wire identity is the hash (hex, no slashes), NOT the path: the path is a disk *location* the server keeps to itself, and putting a slash-bearing path in a URL or body was the source of a routing/proxy 404. Every clip-addressing route (this, split, and the byte routes below) takes the hash. |
 | GET | `/v1/filler/discover` | Browse clips the operator could add, **downloading nothing** (admin, §10 V33/V17d). Two mutually exclusive modes: `q` searches archive.org by keyword; `collection` lists one named collection (a URL, a `/details/<id>` path, or a bare identifier). The `collection` mode is what a **starter pack** is — a curated collection listed for keep/exclude before anything is fetched — so browsing a suggested pack and browsing a search result are one code path, not two. Neither mode requires the ingest tooling: listing is plain `net/http`, so an operator on a degraded install can still see what exists and learn why the fetch is unavailable. Licence availability is stated **once, about the search** — archive.org declares one on ~8% of items, so a per-row chip would imply a check that never happened (build plan §6.3). |
 | POST | `/v1/filler/sync` | Sync catalog from the Tunarr `local` filler source (§10). |
 | POST | `/v1/filler/ingest` | Download clips into the drop-folder from a playlist/collection/video URL (admin). Runs as a job; progress on `/v1/events`. 409 `feature_not_configured` if the vendored ingest tooling isn't runnable — it ships in the single image (§10, §16), so this is a degraded-install signal, not an opt-in gate. |
 | POST | `/v1/filler/tag` | Start an AI-tagging job over untagged clips (§10). |
-| POST | `/v1/filler/{id}/split` | Propose splits for a compilation clip (admin, §10 V34). Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as a **job** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
+| POST | `/v1/filler/split` | Propose splits for a compilation clip (admin, §10 V34). ⚠ The clip is identified by its content `hash` in the BODY — same wire-identity rule as `PATCH /v1/filler/tags` above. Runs detection — chapters → `blackdetect`/`silencedetect` → transcript rescue for over-long segments — as a **job** (minutes per file; progress on `/v1/events`), producing a persisted **split proposal**: the cut points, per-segment duration/tags (era suggestions marked unconfirmed when the year is not in the text), and dedup flags (a segment whose dHash matches an existing clip). **Nothing enters the catalog here** — review is not optional, because detection quality is a property of the source (§10). |
 | GET | `/v1/filler/splits/{proposalId}` | Read a split proposal (admin, §10 V34) — the source of truth on SSE reconnect, the same pattern as `/v1/proposals/{id}`. |
 | POST | `/v1/filler/splits/{proposalId}/confirm` | Commit a reviewed split (admin, §10 V34). The body is the operator's confirmed cut list — the proposal as returned, possibly edited (cuts moved, merged, or dropped; era suggestions accepted or rejected; dedup-flagged segments kept or skipped). Only now do segments become catalog clips: cut with ffmpeg stream copy (no re-encode), classified from their transcripts, written into the drop-folder, and the **original compilation row removed** — its identity is a path that now means twenty clips, not one. |
 | GET | `/v1/filler/media/{path...}` | Stream a clip's own bytes for in-app preview (§10 V35). Sibling of `/v1/filler/thumb/{path...}` and confined the same way — the path is resolved inside `FILLER_DIR` and anything escaping it is refused before the file is opened. Served with `http.ServeContent`, so Range and conditional requests work and a `<video>` element can seek. ⚠ **Deliberately not named `preview`**, for the reason `/thumb` is not: "preview" already means a pod listing in two places (build plan §6.2). |
@@ -904,7 +904,7 @@ Titles come from TMDB via Seerr/Sonarr/Radarr. Commercials, bumpers, and station
   ⚠ **What changed (V38c).** This bullet previously said the media server was out of the filler path *entirely* and that the operator "never creates or manages a commercials library in their media server". That is now too strong: an operator who ALREADY keeps commercials in an Emby/Jellyfin library can register it as a filler source, and Loomarr scans it (§10, "the media-server library row is scanned again"). What has not changed is the ownership model — a library scan is an **acquisition** path feeding the same intake as every other source, so clips are copied into the clip folder rather than played out of the library in place, and Loomarr never modifies the library. The original rationale still holds for the DEFAULT: commercials aren't "library titles", so nothing requires an operator to curate one. It is now an option rather than a prohibition.
 
   ⚠ **The dependency §9.1 removed stays removed.** A library is never the catalog's only route: an install with no media server, or one whose media server is down, still gets a full catalog from its folders and remotes. "No media server ⇒ no commercials" must not come back.
-- **Catalog sync (core) — revised by §9.1.** Loomarr scans **`FILLER_DIR` itself** and probes each clip's duration with `ffprobe`. **Clip identity = the clip's path relative to `FILLER_DIR`** (e.g. `1994/toys-transformers.mp4`).
+- **Catalog sync (core) — revised by §9.1, then V38c.** Loomarr scans **`FILLER_DIR` itself** and probes each clip's duration with `ffprobe`. ⚠ **Clip identity is the content HASH** (V38c, "Clip identity is a content hash" below) — the path relative to `FILLER_DIR` (`14/36/<hash>.mp4`) is a disk *location*, not identity. The store keyed on hash since V38c; V45a completes it by making the **API wire identity the hash too** (ClipDTO carries `hash`, mutation routes take `hash`, byte routes take `{hash}` and resolve the path server-side) — the path never crosses the wire, which is what removed the slash-in-URL 404 class.
 
   *This reverses the previous design, in which Tunarr scanned the folder, assigned each clip a program id, probed its duration, and Loomarr synced that back — clip identity being the Tunarr program id.* Two things forced the change, both traceable to §9.1:
 
@@ -944,7 +944,7 @@ Tiers 0–2 are pre-V44 (text-only classification via the configured LLM — fil
 
 **Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
 
-**Era must be grounded in the source text — a measured §8 hole, closed by V34 (maintainer's call: both halves, not one).** Running the real tagging prompt over real transcripts invented an era on 2 of 10 clips — `1980` and `1970` with no year anywhere in the text, inferred from tone — and the validator had no way to tell an inferred year from a read one (plan §6.4). So: an `era` tag is accepted **only when that year appears literally in the clip's text signals** (filename, sidecar text, or transcript); otherwise it is **not persisted as fact** and is instead recorded as a **suggestion** the operator confirms (`PATCH /v1/filler/{id}` setting `era` confirms and clears it). This applies to **every** tagging path, not just transcripts — the sidecar path has always been able to hit it; transcripts merely made it frequent enough to measure.
+**Era must be grounded in the source text — a measured §8 hole, closed by V34 (maintainer's call: both halves, not one).** Running the real tagging prompt over real transcripts invented an era on 2 of 10 clips — `1980` and `1970` with no year anywhere in the text, inferred from tone — and the validator had no way to tell an inferred year from a read one (plan §6.4). So: an `era` tag is accepted **only when that year appears literally in the clip's text signals** (filename, sidecar text, or transcript); otherwise it is **not persisted as fact** and is instead recorded as a **suggestion** the operator confirms (`PATCH /v1/filler/tags` setting `era` confirms and clears it). This applies to **every** tagging path, not just transcripts — the sidecar path has always been able to hit it; transcripts merely made it frequent enough to measure.
 
 ### Sources fetch on their own (V38b)
 
@@ -1417,18 +1417,46 @@ Four properties make it robust, curation-ready, and LLM-friendly:
 
 ⚠ **Rollups are stored DENORMALISED** (a tag of `beer` writes `beer`+`alcohol`+`drinks` rows, each
 flagged leaf-vs-rollup), so `WHERE taxon = 'food'` is one index hit — pod assembly runs it per break
-per reconcile, so the read must be cheap. The cost accepted: a **reindex job** recomputes rollup rows
+per reconcile, so the read must be cheap. The cost accepted: a **reindex** recomputes rollup rows
 when a clip is re-tagged or the graph changes; the graph is source of truth, the denormalised rows a
-derived cache (the same "synced cache" shape `clips` already is). `category` survives as a **derived
-shadow** (the primary product leaf) so existing readers do not break during the migration.
+derived cache (the same "synced cache" shape `clips` already is).
+
+⚠ **The reindex is a SET-BASED rebuild, not a per-clip loop, because the catalog is not bounded to a
+few thousand.** The `filler.fetch.max_catalog_clips` ceiling (§14, default 2000) only throttles
+*auto-fetch* — an operator who raises it or bulk-imports a large archive can reach tens of thousands
+of clips, at which point a Go loop issuing one write transaction per clip is an N+1 that holds a job
+worker for the whole pass. So the rollup rebuild is **one bulk `INSERT … SELECT`** per graph change,
+and it must be dialect-neutral (one statement on SQLite *and* Postgres — the store does not fork it).
+The obstacle to plain-SQL is that `taxa` is an **adjacency list** (`parent` points one level up), so
+computing a clip's ancestors would need a recursive walk — the exact dual-dialect divergence §7.2's
+search decision refused. **A `taxa_closure` table dissolves it:** one row per (ancestor, descendant)
+pair — the graph's transitive closure, ~55 taxa so a few hundred rows — rebuilt from the Go `Forest`
+whenever the *graph* edits (rare; `Forest.Ancestors` stays the single owner of the walk). With the
+closure materialised, the clip rebuild is a flat join —
+`INSERT INTO clip_tags SELECT clip_hash, ancestor, (ancestor = leaf) FROM (asserted leaves) JOIN
+taxa_closure ON descendant = leaf` — identical SQL on both dialects, O(closure ⋈ leaves) in the
+engine, no per-clip round trip. The graph-walk logic therefore lives in Go *once* (to fill the
+closure) and never in two SQL dialects; the hot rebuild path touches no recursion.
+
+⚠ **This IS still a background job** (cron, off by default, a sibling of the transcribe/vision jobs
+in shape and wiring) — the *trigger* is "the graph changed / clips were re-tagged", the *work* runs
+decoupled on the scheduler, same reconcile-on-a-timer shape the provisioner uses. What changed from
+the earlier framing is only the job's *body*: it calls the store's set-based `RebuildRollups`, it
+does not iterate clips. `category` survives as a **derived shadow** (the primary product leaf) so
+existing readers do not break during the migration.
 
 ⚠ **The taxonomy SHRINKS the embedding's job (#4), it does not compete with it.** The taxonomy is the
 *structured, deterministic* half of thematic matching (topic/season/product family — what the
 embedding prototype failed at); the embedding is left the *fuzzy residue* (vibe similarity, dedup).
 When the embedding lands, it embeds *tags + transcript* (grounded tags anchor the fuzzy text), and its
 re-embed job is a SIBLING of this reindex job — both "derived-from-clip, rebuilt-on-change" background
-jobs sharing the transcribe/vision pattern. The reindex job is written so the re-embed slots beside
-it. Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
+jobs (cron, off by default, wired like the transcribe/vision jobs). ⚠ **The two diverge in their
+body, and the reason is instructive:** the reindex work is a set-based SQL rebuild (the derivation —
+ancestor rollup — is expressible as a join over the closure table), so it does no per-clip loop; the
+re-embed work is a per-clip *model call* (`nomic-embed-text` over each clip's tags+transcript), which
+is not set-based and DOES loop-and-batch like transcribe/vision. So "sibling" means *same wiring and
+lifecycle*, not *same body* — a derivation that SQL can express in bulk should be, and one that needs
+a model per clip is batched. Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
 
 #### The curation confidence this produces
 
@@ -2466,7 +2494,7 @@ Recorded after a full sweep of `internal/`, because two of the rules below exist
 
 ### 14.2 The package map
 
-`internal/` is **32 flat packages, deliberately** — the grouping below is prose, not directories.
+`internal/` is **35 flat packages, deliberately** — the grouping below is prose, not directories.
 
 Nesting them under `internal/{domain,adapters,platform}/` was considered and rejected on evidence: four of the six would-be "adapters" import domain packages (`tmdb`→`provision`, `requester`→`provision`, `programmer`→`schedule`, `library`→`filler`), so the folder would announce a layering the code correctly violates. And it violates it correctly — a requester must speak `provision.Key`, because requesting a title *is* a provisioning operation. The domain half has no clusters either: it is a core (`provision`, `schedule`, `store` — imported by 7, 5 and 5 of 9) with satellites.
 
@@ -2486,6 +2514,7 @@ Go packages already carry a name, a compiler-enforced import list, and a doc. A 
 | `reconcile` | The provisioning backstop when a webhook never arrives (§4, §7, §18) |
 | `retention` | What may be purged, in what order, after how long (§5, §18.1) — the policy; `store` owns the SQL |
 | `filler` | Commercials: the clip catalog and seeded pod assembly (§10) |
+| `taxonomy` | The clip tag vocabulary — the operator-editable graph filler grounds tags against and curation matches over (§10 V45a) |
 | `playout` | Loomarr's own streaming engine — lineup to MPEG-TS (§9.1) |
 
 **The ports** — everything that talks to something outside the process. Each is a boundary with one implementation today and a second one plausible tomorrow:

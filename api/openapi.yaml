@@ -372,7 +372,8 @@ components:
           format: uri
           readOnly: true
           type: string
-        paths:
+        hashes:
+          description: Clip identities (content hashes, §10 V45a)
           items:
             type: string
           minItems: 1
@@ -383,7 +384,7 @@ components:
           description: Put the clips back in the catalog instead of removing them
           type: boolean
       required:
-        - paths
+        - hashes
       type: object
     BulkResultOutputBody:
       additionalProperties: false
@@ -424,23 +425,25 @@ components:
             - general
             - late_night
           type: string
-        category:
-          description: Omit to leave it alone.
-          type: string
         era:
           description: Set the era on every selected clip. Omit to leave it alone.
           format: int64
           type: integer
-        paths:
-          description: Clip identities (paths relative to FILLER_DIR)
+        hashes:
+          description: Clip identities (content hashes, §10 V45a)
           items:
             type: string
           minItems: 1
           type:
             - array
             - "null"
+        tags:
+          description: Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a).
+          items:
+            type: string
+          type: array
       required:
-        - paths
+        - hashes
       type: object
     ChangePasswordInputBody:
       additionalProperties: false
@@ -674,6 +677,7 @@ components:
             - ""
           type: string
         category:
+          description: Derived primary product-leaf tag; the full set is in tags (§10 V45a)
           type: string
         durationMs:
           format: int64
@@ -681,6 +685,8 @@ components:
         era:
           format: int64
           type: integer
+        hash:
+          type: string
         isComposite:
           description: A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)
           type: boolean
@@ -700,8 +706,6 @@ components:
           type: string
         parentHash:
           description: The composite this clip was split from; absent for a non-segment clip (§10 V45)
-          type: string
-        path:
           type: string
         playCount:
           format: int64
@@ -724,12 +728,19 @@ components:
         tagged:
           description: Whether the clip has all match tags (era+audience+category)
           type: boolean
+        tags:
+          description: The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         thumbnail:
           type: string
         tunarrProgramId:
           type: string
       required:
-        - path
+        - hash
         - name
         - kind
         - durationMs
@@ -2041,12 +2052,15 @@ components:
           type: integer
         from:
           type: string
+        hash:
+          description: Clip identity — its content hash
+          type: string
         kind:
           type: string
         name:
           type: string
         path:
-          description: Clip identity — the path relative to FILLER_DIR
+          description: The clip's disk path — used by the array-keyed hold/file/remove ops
           type: string
         reason:
           type: string
@@ -2056,6 +2070,7 @@ components:
         thumbnail:
           type: string
       required:
+        - hash
         - path
         - name
         - durationMs
@@ -2508,6 +2523,25 @@ components:
       required:
         - proposals
       type: object
+    ListTaxonomyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListTaxonomyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        taxa:
+          items:
+            $ref: "#/components/schemas/TaxonDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - taxa
+      type: object
     ListUserSessionsOutputBody:
       additionalProperties: false
       properties:
@@ -2680,11 +2714,12 @@ components:
             - late_night
             - ""
           type: string
-        category:
-          type: string
         era:
           format: int64
           type: integer
+        hash:
+          description: The clip's content hash (its identity)
+          type: string
         kind:
           enum:
             - commercial
@@ -2695,6 +2730,13 @@ components:
             - interstitial
             - ""
           type: string
+        tags:
+          description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
+          items:
+            type: string
+          type: array
+      required:
+        - hash
       type: object
     PatchUserInputBody:
       additionalProperties: false
@@ -4058,6 +4100,22 @@ components:
       required:
         - checks
       type: object
+    SplitFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SplitFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hash:
+          description: The compilation clip's content hash (its identity, §10)
+          type: string
+      required:
+        - hash
+      type: object
     SplitFillerOutputBody:
       additionalProperties: false
       properties:
@@ -4129,6 +4187,12 @@ components:
         suggestedEra:
           format: int64
           type: integer
+        tags:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         transcript:
           type: string
         unsplittable:
@@ -4490,6 +4554,51 @@ components:
         - tagged
         - partial
         - skipped
+      type: object
+    TaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          description: The independent dimension this taxon lives on
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          description: Human display form
+          type: string
+        parent:
+          description: Parent slug on the same axis; empty for an axis root
+          type: string
+        retiredAliases:
+          description: Former slugs that still resolve here after a rename (§10)
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        slug:
+          description: Stable machine id — the token the tagger emits and clip_tags references
+          type: string
+        synonyms:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - slug
+        - label
+        - axis
       type: object
     TitleDTO:
       additionalProperties: false
@@ -5969,6 +6078,32 @@ paths:
       summary: Switch a source on or off, and tune how often it is fetched
       tags:
         - filler
+  /v1/filler/split:
+    post:
+      description: "Admin only (§10, V34). The clip is identified by `path` in the body (§10 V45a). Runs detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: review is not optional, because detection quality is a property of the source."
+      operationId: split-filler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Propose splits for a compilation clip
+      tags:
+        - filler
   /v1/filler/splits/{proposalId}:
     get:
       description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/proposals/{id}.
@@ -6067,36 +6202,10 @@ paths:
       summary: AI-tag untagged clips
       tags:
         - filler
-  /v1/filler/watch:
-    get:
-      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
-      operationId: filler-watch
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerWatchOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Is filler working right now
-      tags:
-        - filler
-  /v1/filler/{id}:
+  /v1/filler/tags:
     patch:
-      description: Admin only.
+      description: Admin only. The clip is identified by `path` in the body (§10 V45a).
       operationId: tag-filler-clip
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
       requestBody:
         content:
           application/json:
@@ -6119,24 +6228,16 @@ paths:
       summary: Edit a clip's tags
       tags:
         - filler
-  /v1/filler/{id}/split:
-    post:
-      description: "Admin only (§10, V34). Runs detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: review is not optional, because detection quality is a property of the source."
-      operationId: split-filler
-      parameters:
-        - description: The compilation clip's path (its identity, §10)
-          in: path
-          name: id
-          required: true
-          schema:
-            description: The compilation clip's path (its identity, §10)
-            type: string
+  /v1/filler/watch:
+    get:
+      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
+      operationId: filler-watch
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SplitFillerOutputBody"
+                $ref: "#/components/schemas/FillerWatchOutputBody"
           description: OK
         default:
           content:
@@ -6144,7 +6245,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Propose splits for a compilation clip
+      summary: Is filler working right now
       tags:
         - filler
   /v1/guide:
@@ -7225,6 +7326,104 @@ paths:
       summary: Version and readiness of this instance
       tags:
         - system
+  /v1/taxonomy:
+    get:
+      description: The operator-editable tag graph the filler tagger grounds against and curation matches over (§10 V45a). Ordered by axis then slug. Read-only, so any authenticated user may call it.
+      operationId: list-taxonomy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTaxonomyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The clip tag vocabulary (the taxonomy graph)
+      tags:
+        - filler
+    post:
+      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      operationId: create-taxon
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxonDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxonDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a taxon
+      tags:
+        - filler
+  /v1/taxonomy/{slug}:
+    delete:
+      description: Admin only. Children are reparented to the grandparent; reindexes (§10 V45a).
+      operationId: delete-taxon
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a taxon
+      tags:
+        - filler
+    put:
+      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      operationId: update-taxon
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxonDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxonDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a taxon
+      tags:
+        - filler
   /v1/titles:
     get:
       operationId: list-titles

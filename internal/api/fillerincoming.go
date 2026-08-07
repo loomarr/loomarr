@@ -38,7 +38,11 @@ import (
 
 // IncomingAskDTO is one clip waiting on a human decision about its tags.
 type IncomingAskDTO struct {
-	Path string `json:"path" doc:"Clip identity — the path relative to FILLER_DIR"`
+	// Hash is the clip's identity (V45a) — used by the single-clip tag PATCH (`/v1/filler/tags`).
+	Hash string `json:"hash" doc:"Clip identity — its content hash"`
+	// Path is retained for the ARRAY-keyed ops (hold/file/remove take `paths: []` — SetClipsHeld/
+	// SetClipsRemoved are path-keyed by design, V38). Not the tag-edit identity; that is Hash.
+	Path string `json:"path" doc:"The clip's disk path — used by the array-keyed hold/file/remove ops"`
 	Name string `json:"name"`
 	// From is where the clip came from, so an operator reviewing forty of them can tell which
 	// source is producing junk.
@@ -187,7 +191,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 // cannot drift into describing the same clip differently.
 func incomingDTO(c store.Clip, reason string) IncomingAskDTO {
 	return IncomingAskDTO{
-		Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
+		Hash: c.Hash, Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
 		Thumbnail: c.Thumbnail, Kind: string(c.Kind), Era: c.Era,
 		Audience: string(c.Audience), Category: c.Category,
 		SuggestedEra: c.SuggestedEra, Reason: reason,

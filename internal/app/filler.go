@@ -18,6 +18,7 @@ import (
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // fillerSourceAdapter bridges the Tunarr client → filler.FillerSource (§10): it
@@ -176,6 +177,18 @@ func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string,
 	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
 
+// The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
+// the grounded leaf set. All three forward straight to the store — the taxonomy is store-owned.
+func (a fillerTagStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
+}
+func (a fillerTagStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
+	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
+}
+func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves, forest, at)
+}
+
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
 type fillerLanguageStoreAdapter struct{ st store.Store }
 
@@ -245,6 +258,11 @@ func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQu
 
 func (a fillerVisionStoreAdapter) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
 	return a.st.SetClipVisionTags(ctx, path, brand, visibleText, era, suggestedEra, category, at)
+}
+
+// ListTaxa: the vision tier grounds its category against the taxonomy graph (§10 V45a).
+func (a fillerVisionStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
 }
 
 // fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
@@ -365,6 +383,11 @@ func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) erro
 }
 func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
 	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+
+// ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
+func (a fillerSplitStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
 }
 func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
 	return a.st.UpsertSplitProposal(ctx, p)

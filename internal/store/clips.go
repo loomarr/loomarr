@@ -156,7 +156,22 @@ const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audie
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
+}
+
+// clipWithTags fills a single clip's taxonomy Tags (§10 V45a). Wraps attachTags for the two
+// single-row readers so they load tags the same way the listing does — one clip is a one-element
+// batch, so there is no separate query shape to keep in step.
+func (s *sqlStore) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
+	batch := []Clip{c}
+	if err := s.attachTags(ctx, batch); err != nil {
+		return Clip{}, err
+	}
+	return batch[0], nil
 }
 
 // GetClipByPath looks a clip up by its location under FILLER_DIR.
@@ -172,7 +187,11 @@ func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 // The media route needs this one rather than the hash lookup because its URL carries the path —
 // which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.
 func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
 }
 
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
@@ -190,7 +209,14 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanClips(rows)
+	clips, err := scanClips(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachTags(ctx, clips); err != nil {
+		return nil, err
+	}
+	return clips, nil
 }
 
 // CountClips answers "how many match?" without materialising the rows.
@@ -494,6 +520,45 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// attachTags loads the taxonomy tag set (§10 V45a) for a batch of clips and fills each Clip.Tags.
+//
+// ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
+// the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
+// (the class [[loomarr-perf-cpu-profile-blind-to-waiting]] warns about). The full leaf+rollup set is
+// loaded (leaf and rollup rows alike), because that is what curation matches against; `Category` is
+// derived from it separately at write time, not here.
+//
+// A clip with no tag rows keeps Tags == nil, which is the honest "tagger has not reached it" state.
+func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
+	if len(clips) == 0 {
+		return nil
+	}
+	idx := make(map[string]int, len(clips)) // hash → position in clips, so we can fill in place
+	placeholders := make([]string, len(clips))
+	args := make([]any, len(clips))
+	for i, c := range clips {
+		idx[c.Hash] = i
+		placeholders[i] = "?"
+		args[i] = c.Hash
+	}
+	q := `SELECT clip_hash, taxon FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return fmt.Errorf("attach clip tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var hash, taxon string
+		if err := rows.Scan(&hash, &taxon); err != nil {
+			return err
+		}
+		if i, ok := idx[hash]; ok {
+			clips[i].Tags = append(clips[i].Tags, taxon)
+		}
+	}
+	return rows.Err()
 }
 
 // ⚠ `boolToInt` was here and is DELETED (V38c). Every bool column is BOOLEAN on Postgres now that
