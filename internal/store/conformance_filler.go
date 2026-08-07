@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // Filler (§10): clips, their lifecycle, the source registry, pulls and split proposals.
@@ -619,6 +620,84 @@ func containsHash(clips []Clip, hash string) bool {
 		}
 	}
 	return false
+}
+
+// testTaxonomy pins the V45a taxonomy store: the default forest is seeded on open, tagging a clip
+// expands to denormalised rollups, and re-tagging REPLACES (never accumulates) leaves while rollups
+// track the current graph.
+func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	// ⚠ Seeded on open: a fresh store already has the default forest (the boot seeder ran in Open).
+	taxa, err := s.ListTaxa(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(taxa) < 40 {
+		t.Fatalf("taxonomy not seeded on open: %d taxa, want the default forest (~55)", len(taxa))
+	}
+	forest := taxonomy.New(taxa)
+	if _, ok := forest.Get("beer"); !ok {
+		t.Fatal("seeded forest missing 'beer' — the seed did not load from SeedForest")
+	}
+
+	// Tag a clip `beer` → the denormalised set must be beer(leaf) + alcohol + drinks (rollups).
+	if err := s.SetClipTags(ctx, "clipA", []string{"beer"}, forest, now); err != nil {
+		t.Fatal(err)
+	}
+	full, _ := s.GetClipTags(ctx, "clipA", false)
+	assertSet(t, "clipA full tags", full, []string{"alcohol", "beer", "drinks"})
+	leaves, _ := s.GetClipTags(ctx, "clipA", true)
+	assertSet(t, "clipA leaves", leaves, []string{"beer"})
+
+	// Two leaves sharing an ancestor: beer + spirits → alcohol/drinks stored ONCE (as rollups).
+	if err := s.SetClipTags(ctx, "clipB", []string{"beer", "spirits"}, forest, now); err != nil {
+		t.Fatal(err)
+	}
+	full, _ = s.GetClipTags(ctx, "clipB", false)
+	assertSet(t, "clipB full tags", full, []string{"alcohol", "beer", "drinks", "spirits"})
+
+	// ⚠ Re-tag REPLACES, never accumulates: clipA re-tagged `cereal` must lose beer/alcohol/drinks and
+	// gain cereal/food — not keep the old alcohol lineage.
+	if err := s.SetClipTags(ctx, "clipA", []string{"cereal"}, forest, now); err != nil {
+		t.Fatal(err)
+	}
+	full, _ = s.GetClipTags(ctx, "clipA", false)
+	assertSet(t, "clipA after re-tag", full, []string{"cereal", "food"})
+
+	// The reindex work list: every clip's asserted leaves (clipA→cereal, clipB→beer,spirits).
+	leavesByClip, _ := s.ListClipHashesLeaves(ctx)
+	assertSet(t, "clipA leaves in worklist", leavesByClip["clipA"], []string{"cereal"})
+	assertSet(t, "clipB leaves in worklist", leavesByClip["clipB"], []string{"beer", "spirits"})
+
+	// Operator edit: add a taxon; it must appear in ListTaxa (the CRUD path).
+	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "energy-drink", Label: "Energy drink", Parent: "drinks", Axis: taxonomy.AxisProduct}, now); err != nil {
+		t.Fatal(err)
+	}
+	taxa2, _ := s.ListTaxa(ctx)
+	if _, ok := taxonomy.New(taxa2).Get("energy-drink"); !ok {
+		t.Error("UpsertTaxon did not persist the new taxon")
+	}
+}
+
+// assertSet compares two string slices as SETS (order-independent), for the tag assertions above.
+func assertSet(t *testing.T, what string, got, want []string) {
+	t.Helper()
+	gm := map[string]bool{}
+	for _, g := range got {
+		gm[g] = true
+	}
+	if len(got) != len(want) {
+		t.Errorf("%s = %v, want %v (set)", what, got, want)
+		return
+	}
+	for _, w := range want {
+		if !gm[w] {
+			t.Errorf("%s = %v, missing %q (want %v)", what, got, w, want)
+		}
+	}
 }
 
 // testClipCounts pins the count queries against the listing they replaced.

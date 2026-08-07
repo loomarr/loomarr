@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound is returned by Get* methods when no row matches.
@@ -201,6 +202,20 @@ type ClipStore interface {
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
+	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+	// UpsertTaxon / DeleteTaxon are the operator-edit path; the caller reindexes after a graph edit.
+	UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error
+	DeleteTaxon(ctx context.Context, slug string) error
+	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
+	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
+	// SetClipTags REPLACES a clip's tags with the rollup expansion of the given leaves (single writer
+	// of clip_tags for a clip). GetClipTags reads them (leavesOnly = the asserted set, else full).
+	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	// ListClipHashesLeaves is the reindex work list: every clip's asserted leaves.
+	ListClipHashesLeaves(ctx context.Context) (map[string][]string, error)
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:

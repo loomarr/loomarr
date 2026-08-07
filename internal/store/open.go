@@ -4,7 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
+
+// seedAfterMigrate runs idempotent boot seeds that must live in Go rather than SQL (the taxonomy, so
+// its graph and taxonomy.SeedForest() cannot drift — §10 V45a). Each is guarded to no-op when already
+// present, so it is safe on every open including test stores.
+func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
+	return s.SeedTaxonomy(ctx, taxonomy.SeedForest(), time.Now())
+}
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when
 // autoMigrate is set, runs forward-only migrations (with the downgrade guard).
@@ -26,6 +36,10 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 				_ = s.Close()
 				return nil, err
 			}
+			if err := seedAfterMigrate(ctx, s); err != nil {
+				_ = s.Close()
+				return nil, err
+			}
 		}
 		return s, nil
 
@@ -36,6 +50,10 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 		}
 		if autoMigrate {
 			if err := migrate(s.db, "postgres", "migrations/postgres"); err != nil {
+				_ = s.Close()
+				return nil, err
+			}
+			if err := seedAfterMigrate(ctx, s); err != nil {
 				_ = s.Close()
 				return nil, err
 			}
