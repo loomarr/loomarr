@@ -109,6 +109,19 @@ type SidecarTags struct {
 	// separately for the same reason the column is separate: restoring it as `Era` would
 	// launder a guess into a fact, which is the §8 failure the grounding rule exists to prevent.
 	SuggestedEra int `json:"suggestedEra,omitempty"`
+	// NormalizedLUFS records that this clip's AUDIO WAS REWRITTEN to that target (§10 V42),
+	// set only by the opt-in on-file loudness pass.
+	//
+	// ⚠ This is an IDEMPOTENCY MARKER, not a measurement, and the pass is broken without it. A
+	// normalised file looks like any other file — a re-scan cannot tell by inspection that the
+	// work already happened — so every pass would normalise an already-normalised clip and walk
+	// its loudness down run after run. Compared against the CURRENT target, so lowering
+	// `filler.target_lufs` re-normalises once and then stops.
+	//
+	// ⚠ It lives in the sidecar rather than the database for the same reason `originalName`
+	// does: it must survive a catalog rebuild. A restored install that lost this marker would
+	// re-normalise the whole folder.
+	NormalizedLUFS float64 `json:"normalizedLufs,omitempty"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
@@ -119,9 +132,14 @@ type SidecarTags struct {
 // delete every key yt-dlp wrote that we do not name: formats, thumbnails, chapters, view counts.
 // Writing into someone else's file means preserving what you do not understand.
 //
-// ⚠ **This is the only place Loomarr writes into the operator's media folder**, and the promise
-// it must keep is narrower than "never write": it may create or update `*.info.json` and nothing
-// else. The media files themselves stay byte-for-byte untouched (§10).
+// ⚠ **This writes only `*.info.json`** — never the media file beside it.
+//
+// ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
+// V42 made the unqualified version false: `filler.autofile.normalize_loudness` (default OFF,
+// opt-in) rewrites the clip's audio in place. `NormalizeInPlace` is the ONE function that may
+// touch a media file, and it is reached only through that setting. The guarantee this function
+// keeps is unchanged; the guarantee the PACKAGE keeps is now conditional, and a comment claiming
+// otherwise would be the drift the repo's do-not rules exist to catch.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	path := sidecarPathFor(mediaPath)
 
