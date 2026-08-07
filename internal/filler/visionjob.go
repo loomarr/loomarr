@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The vision-tagging job (§10 V44) — the EXPENSIVE LAST TIER.
@@ -40,6 +41,10 @@ import (
 // store; the adapter in main bridges them.
 type VisionStore interface {
 	ListClips(ctx context.Context, f ClipQuery) ([]StoreClip, error)
+	// ListTaxa is the taxonomy vocabulary (§10 V45a): the vision tier grounds its category against
+	// the graph (resolve-or-drop) instead of the deleted hardcoded knownCategories map — one
+	// vocabulary for text and vision alike. Loaded once per run (the reindex pattern).
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	// SetClipVisionTags records what the vision pass GROUNDED — the on-screen text it read, plus a
 	// brand/era/category only where visibleText supported them — and stamps vision_tagged. It is the
 	// single writer of visible_text/vision_tagged on the branch (it SHARES `brand` with the text
@@ -128,6 +133,15 @@ func (j *VisionJob) Run(ctx context.Context) (VisionResult, error) {
 		return res, nil
 	}
 
+	// Load the taxonomy ONCE per run (§10 V45a) — the vocabulary the vision tier grounds its category
+	// against, the same forest the text tagger uses. A nil/empty forest grounds no category (the safe
+	// direction), matching every other grounding gate here.
+	taxa, err := j.store.ListTaxa(ctx)
+	if err != nil {
+		return res, err
+	}
+	forest := taxonomy.New(taxa)
+
 	// ⚠ IncludeHeld, like every other clip job: a clip awaiting review is a fine candidate. Reading
 	// its logo before a human looks is strictly more useful than after — the reviewer files it from
 	// exactly the tags this pass grounds.
@@ -189,7 +203,7 @@ func (j *VisionJob) Run(ctx context.Context) (VisionResult, error) {
 
 		// GROUND against the on-screen text the model says it read — the pixel analogue of
 		// validateTags grounding a text tag against the clip's text signals.
-		v := groundVisionTags(out)
+		v := groundVisionTags(out, forest)
 
 		// The free frame-heuristic tier (§10 V44): if the model grounded NO era, read one off the
 		// pixels we already decoded — a monochrome 4:3 transfer is a "pre-1970s?" hint no text or
@@ -273,7 +287,7 @@ type visionOutput struct {
 // what the pass read off the frame, kept verbatim so a reviewer can see WHY a tag was (or was not)
 // grounded. Category is still enum-validated on top of grounding (an out-of-set category is dropped
 // exactly as validateTags drops one), and era must be both a plausible year AND present in the text.
-func groundVisionTags(out visionOutput) visionTags {
+func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	var v visionTags
 	// The visibleText is the record of what vision saw — kept verbatim, whitespace-trimmed only. It
 	// is what every other field is grounded against below.
@@ -296,13 +310,23 @@ func groundVisionTags(out visionOutput) visionTags {
 	if out.Era >= 1930 && out.Era <= 2035 && strings.Contains(v.VisibleText, strconv.Itoa(out.Era)) {
 		v.Era = out.Era
 	}
-	// CATEGORY — enum-validated like validateTags AND grounded: the model must both pick a known
-	// category and have read text supporting it off the frame. The enum check alone is not enough
-	// here — a vision model naming "cereal" for a box it cannot actually read the label on is the
-	// same inference the grounding rule rejects everywhere else.
-	if cat := strings.ToLower(strings.TrimSpace(out.Category)); knownCategories[cat] &&
-		strings.Contains(haystack, cat) {
-		v.Category = cat
+	// CATEGORY — TAXONOMY-grounded (§10 V45a) AND read off the frame: the model's category slug must
+	// both RESOLVE against the taxonomy graph (forest.Resolve — the same resolve-or-drop gate the text
+	// tagger uses, replacing the deleted hardcoded knownCategories map) AND appear in the visibleText.
+	// The resolve check alone is not enough here — a vision model naming "cereal" for a box it cannot
+	// actually read the label on is the same inference the grounding rule rejects everywhere else.
+	// `v.Category` is the resolved canonical slug (the derived product-leaf shadow for this clip); the
+	// vision tier records one category, and the tag job later fills the full taxonomy tag set.
+	// ⚠ Grounded on the RAW claim, resolved for STORAGE. The visibleText check uses what the model
+	// SAID it read (`raw`), because that is the token that could actually appear on a frame — a slug
+	// like `fast_food` is a machine id, not on-screen text. Only after the raw claim is confirmed
+	// present is it canonicalised via Resolve. So the anti-fabrication guarantee is unchanged (the
+	// category must be in the text the model read) while resolution still maps `burgers`→`fast_food`.
+	if raw := strings.TrimSpace(out.Category); raw != "" && forest != nil &&
+		strings.Contains(haystack, strings.ToLower(raw)) {
+		if slug, ok := forest.Resolve(raw); ok {
+			v.Category = slug
+		}
 	}
 	return v
 }

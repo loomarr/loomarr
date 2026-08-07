@@ -39,15 +39,15 @@ func TestResolve(t *testing.T) {
 		wantSlug string
 		wantOK   bool
 	}{
-		{"beer", "beer", true},                // exact slug
-		{"BEER", "beer", true},                // case-insensitive
-		{"  beer  ", "beer", true},            // trimmed
-		{"brew", "beer", true},                // synonym rescue — the LLM-friendly path
-		{"lager", "beer", true},               // another synonym
-		{"beverage", "drinks", true},          // synonym on a root
-		{"soft-drink", "soda", true},          // synonym on a leaf
-		{"nonsense-widget", "", false},        // off-vocabulary → DROPPED, never a new taxon
-		{"", "", false},                       // empty → dropped
+		{"beer", "beer", true},         // exact slug
+		{"BEER", "beer", true},         // case-insensitive
+		{"  beer  ", "beer", true},     // trimmed
+		{"brew", "beer", true},         // synonym rescue — the LLM-friendly path
+		{"lager", "beer", true},        // another synonym
+		{"beverage", "drinks", true},   // synonym on a root
+		{"soft-drink", "soda", true},   // synonym on a leaf
+		{"nonsense-widget", "", false}, // off-vocabulary → DROPPED, never a new taxon
+		{"", "", false},                // empty → dropped
 	}
 	for _, c := range cases {
 		gotSlug, gotOK := f.Resolve(c.raw)
@@ -97,6 +97,29 @@ func TestAncestors_CycleGuard(t *testing.T) {
 	got := f.Ancestors("a") // must terminate; the exact contents matter less than "does not hang"
 	if len(got) > 2 {
 		t.Errorf("Ancestors on a cycle returned %v — the guard failed to stop", got)
+	}
+}
+
+// ⚠ Dangling-parent guard (§10 V45a): a child whose `parent` names a taxon NOT in the graph — the
+// state a deleted-but-not-reparented node leaves, or a typo'd Upsert parent. Ancestors must STOP at
+// the missing parent, never emit it as a phantom rollup. This is the bug the reindex conformance
+// surfaced: a phantom ancestor is a rollup to a node curation can never match. DeleteTaxon avoids
+// creating this state (it reparents), but this is the source-level safety net for every other path.
+func TestAncestors_DanglingParent(t *testing.T) {
+	f := taxonomy.New([]taxonomy.Taxon{
+		{Slug: "beer", Parent: "", Axis: taxonomy.AxisProduct},
+		{Slug: "lager", Parent: "ghost", Axis: taxonomy.AxisProduct}, // parent 'ghost' is not in the graph
+	})
+	if got := f.Ancestors("lager"); len(got) != 0 {
+		t.Errorf("Ancestors(lager) = %v, want none — a dangling parent is not a real ancestor", got)
+	}
+	// A real chain with a dangling END still yields the real prefix, then stops.
+	f2 := taxonomy.New([]taxonomy.Taxon{
+		{Slug: "lager", Parent: "beer", Axis: taxonomy.AxisProduct},
+		{Slug: "beer", Parent: "ghost", Axis: taxonomy.AxisProduct}, // beer exists; its parent does not
+	})
+	if got := f2.Ancestors("lager"); !reflect.DeepEqual(got, []string{"beer"}) {
+		t.Errorf("Ancestors(lager) = %v, want [beer] — real prefix kept, dangling tail dropped", got)
 	}
 }
 

@@ -82,9 +82,18 @@ type Clip struct {
 	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
 	Era             int      // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience // kids | family | general | late_night; "" = untagged
-	Category        string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
-	DurationMs      int64    // from ffprobe (the core probes now — §14 bundles it for playout)
-	Rating          string   // optional content rating
+	// Category is the DERIVED SHADOW of the taxonomy tags (§10 V45a): the primary product leaf of
+	// `Tags`, computed at the single tag-write site (forest.PrimaryProductLeaf) and stored so the
+	// hot pod-selection read path stays a plain column read. ⚠ Never an input any more — it is
+	// always `PrimaryProductLeaf(Tags)`; the conformance suite pins the invariant. "" = no product
+	// tag (a clip tagged only `psa`/`christmas` has no product category, which is honest).
+	Category string
+	// Tags is the clip's DENORMALISED taxonomy tag set (§10 V45a): the full leaf+rollup expansion
+	// from `clip_tags`, loaded alongside the row. This is the source of truth for curation matching
+	// and selection; `Category` is derived from it. Empty for a clip the tagger has not reached.
+	Tags       []string
+	DurationMs int64  // from ffprobe (the core probes now — §14 bundles it for playout)
+	Rating     string // optional content rating
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//
@@ -257,6 +266,11 @@ func (c Clip) ID() string { return c.Hash }
 // Tagged reports whether a clip has the metadata pod matching needs (§10). An
 // untagged clip can't be era/audience-matched, so it's only usable as a generic
 // bumper/flex fill, never as a matched commercial.
+//
+// ⚠ `Category` here is the DERIVED product-leaf shadow of the taxonomy tags (§10 V45a), so
+// `Category != ""` means "has at least one product tag" — the same completeness the flat category
+// string used to assert, now sourced from the graph. A clip tagged only on non-product axes
+// (`psa`, `christmas`) is correctly NOT "tagged" for matched-commercial purposes.
 func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""
 }

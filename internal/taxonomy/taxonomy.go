@@ -101,17 +101,27 @@ func (f *Forest) Resolve(raw string) (string, bool) {
 }
 
 // Ancestors returns slug's parent chain, nearest first, EXCLUDING slug itself — the rollup tags a
-// leaf tag implies. `beer` → [alcohol, drinks]. An unknown or root slug returns nil. Guards against a
-// cycle in an operator-edited graph (a malformed remap must not loop forever): it stops if it revisits
-// a slug.
+// leaf tag implies. `beer` → [alcohol, drinks]. An unknown or root slug returns nil.
+//
+// Two malformations of an operator-edited graph are guarded, and both matter for the rollup cache:
+//   - A CYCLE (a malformed remap A→B→A) must not loop forever: it stops if it revisits a slug.
+//   - A DANGLING PARENT (a child whose `parent` names a taxon NOT in the graph — the state
+//     DeleteTaxon leaves an un-reparented child in, or a typo'd UpsertTaxon parent) must not emit
+//     that dead slug as a phantom ancestor. The chain STOPS at the first parent that does not exist,
+//     so a dangling reference contributes no rollup rather than a rollup to a node curation can never
+//     match. Only REAL nodes are followed.
 func (f *Forest) Ancestors(slug string) []string {
 	var out []string
 	seen := map[string]bool{slug: true}
 	cur := f.bySlug[slug].Parent
 	for cur != "" && !seen[cur] {
+		parent, ok := f.bySlug[cur]
+		if !ok {
+			break // dangling parent — a slug not in the graph is not a real ancestor
+		}
 		out = append(out, cur)
 		seen[cur] = true
-		cur = f.bySlug[cur].Parent
+		cur = parent.Parent
 	}
 	return out
 }
@@ -155,4 +165,52 @@ func (f *Forest) All() []Taxon {
 		return out[i].Slug < out[j].Slug
 	})
 	return out
+}
+
+// PrimaryProductLeaf picks the single product-axis slug to use as a clip's derived `category` shadow
+// (§10 V45a) — the MOST SPECIFIC product tag among the given leaves. `category` is no longer an input;
+// it is computed from the taxonomy tags so existing category readers keep working during the
+// transition, with the taxonomy graph as the one source of truth.
+//
+// "Most specific" = the product-axis leaf with the longest ancestor chain (deepest in the tree); ties
+// break on slug order for determinism. Returns "" when no leaf is on the product axis (a clip tagged
+// only `psa` (format) or `christmas` (seasonal) has no product category — which is correct, and is a
+// state the flat string could not represent honestly).
+func (f *Forest) PrimaryProductLeaf(leaves []string) string {
+	best, bestDepth := "", -1
+	for _, slug := range leaves {
+		t, ok := f.bySlug[slug]
+		if !ok || t.Axis != AxisProduct {
+			continue
+		}
+		depth := len(f.Ancestors(slug))
+		if depth > bestDepth || (depth == bestDepth && slug < best) {
+			best, bestDepth = slug, depth
+		}
+	}
+	return best
+}
+
+// Vocab renders the taxonomy as a compact per-axis prompt fragment the tagger serves to the model
+// (§10 V45a) — the same "BE is the single source of the vocabulary" discipline schedule.BuildVocabulary
+// gives the suggester, so the model never guesses a slug blind and every slug it CAN emit is one the
+// grounding will accept. One line per axis: `product: beer, cereal, cars, …` using slugs (the tokens
+// Resolve grounds against), so the served list and the accepted list are the same list by construction.
+func (f *Forest) Vocab() string {
+	byAxis := map[Axis][]string{}
+	var order []Axis
+	for _, t := range f.All() { // All() is axis-then-slug sorted, so each axis's slugs come out stable
+		if _, seen := byAxis[t.Axis]; !seen {
+			order = append(order, t.Axis)
+		}
+		byAxis[t.Axis] = append(byAxis[t.Axis], t.Slug)
+	}
+	var b strings.Builder
+	for _, ax := range order {
+		b.WriteString(string(ax))
+		b.WriteString(": ")
+		b.WriteString(strings.Join(byAxis[ax], ", "))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }

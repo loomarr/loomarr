@@ -10,6 +10,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
@@ -130,8 +131,20 @@ func (m *splitMemStore) DeleteSplitProposal(_ context.Context, id string) error 
 	return nil
 }
 
+// ListTaxa serves the REAL seed forest (§10 V45a), like tagMemStore — the splitter grounds each
+// segment's tags against it, so a segment tagged `toys` resolves and an off-vocabulary slug is dropped
+// exactly as a directly-tagged clip is. An empty graph would ground nothing and prove nothing.
+func (m *splitMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
+}
+
 func seedCompilation(st *splitMemStore, path string, durationMs int64) {
 	c := filler.StoreClip{}
+	// ⚠ Hash is the IDENTITY (§10 V38c) SetClipComposite/ParentHash key on, and it must be NON-EMPTY
+	// and DISTINCT from the path. Leaving it "" made SetClipComposite(clip.Hash=="") match whichever
+	// empty-hash clip the map iteration reached first — the compilation OR a freshly-cut segment — an
+	// intermittent "compilation not marked composite" flake ([[loomarr-fixture-collapsed-keys]]).
+	c.Hash = "hash-of-" + path
 	c.Path = path
 	c.Name = filepath.Base(path)
 	c.Kind = filler.Commercial
@@ -162,8 +175,8 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 		{StartMs: 30000, EndMs: 61000, Title: "Lego"},
 	}}
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"fast_food"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"toys"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["fast_food"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["toys"]}`),
 	)
 	drop := t.TempDir()
 	sp := newSplitter(st, tools, llmMock, drop)
@@ -197,9 +210,9 @@ func TestPropose_CoarseSplit(t *testing.T) {
 		silences: []filler.Interval{{StartMs: 59900, EndMs: 60100}},
 	}
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1987,"audience":"general","category":"cars"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"cereal"}`),
+		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["cars"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["cereal"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -241,9 +254,9 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 			{"start":"00:54","end":"02:29","product":"amazing knife set"}]}`),
 		// 2-4: classify each rescued segment. The Aqua Globes era is grounded
 		// ("since 1987" IS in the transcript); the knife era is INVENTED.
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":1987,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":1950,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":1950,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -279,7 +292,7 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 	}
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"adverts":[{"start":"00:00","end":"02:01","product":"amazing knife"}]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -394,13 +407,15 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	tools := &fakeTools{}
 	sp := newSplitter(st, tools, nil, drop)
-	if _, err := sp.Propose(context.Background(), "comps/1987.mp4"); err != nil {
+	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map
+	// order, so if the store ever holds >1 proposal the range picked an arbitrary one and Confirm ran
+	// against the wrong id (an intermittent "compilation not marked composite" flake, now fixed
+	// deterministically). See [[loomarr-splitjob-test-map-order-flake]].
+	prop, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	if err != nil {
 		t.Fatal(err)
 	}
-	var propID string
-	for id := range st.proposals {
-		propID = id
-	}
+	propID := prop.ID
 
 	// The operator's EDITED list: era suggestion accepted on the second segment,
 	// and a third segment they added by hand.

@@ -659,6 +659,42 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	full, _ = s.GetClipTags(ctx, "clipB", false)
 	assertSet(t, "clipB full tags", full, []string{"alcohol", "beer", "drinks", "spirits"})
 
+	// ⚠ The READ PATH loads Tags (§10 V45a): a real clip row, tagged, must come back from GetClip and
+	// ListClips with its full leaf+rollup set in Clip.Tags — the batched attachTags load. Without this
+	// the whole pod/DTO layer would read empty tags off every clip. Seed an actual clip (the tag rows
+	// above are bare taxon rows with no clip); tag it; read it back both ways.
+	realClip := Clip{UpdatedAt: now}
+	realClip.Hash = "clipReal"
+	realClip.Path = "cr/clipReal.mp4"
+	realClip.Name = "Real"
+	realClip.Kind = filler.Commercial
+	realClip.DurationMs = 30000
+	if err := s.UpsertClip(ctx, realClip); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipTags(ctx, "clipReal", []string{"beer"}, forest, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetClip(ctx, "clipReal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSet(t, "GetClip loads Tags (full rollup set)", got.Tags, []string{"alcohol", "beer", "drinks"})
+	listed, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, c := range listed {
+		if c.Hash == "clipReal" {
+			found = true
+			assertSet(t, "ListClips loads Tags (full rollup set)", c.Tags, []string{"alcohol", "beer", "drinks"})
+		}
+	}
+	if !found {
+		t.Error("clipReal missing from ListClips")
+	}
+
 	// ⚠ Re-tag REPLACES, never accumulates: clipA re-tagged `cereal` must lose beer/alcohol/drinks and
 	// gain cereal/food — not keep the old alcohol lineage.
 	if err := s.SetClipTags(ctx, "clipA", []string{"cereal"}, forest, now); err != nil {
@@ -680,6 +716,93 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if _, ok := taxonomy.New(taxa2).Get("energy-drink"); !ok {
 		t.Error("UpsertTaxon did not persist the new taxon")
 	}
+
+	testReindex(t, s, ctx, now)
+}
+
+// testReindex pins the V45a bulk reindex (§10): the set-based RebuildClosure+RebuildRollups must
+// produce the SAME rollups the per-clip SetClipTags does (the two-writer equivalence), and a graph
+// edit followed by a reindex must re-derive rollups against the NEW graph. Runs on the store
+// testTaxonomy leaves behind (default forest, clipA=cereal, clipB=beer+spirits).
+func testReindex(t *testing.T, s Store, ctx context.Context, now time.Time) {
+	// Snapshot what the per-clip writer produced, before the bulk writer touches anything.
+	beforeA, _ := s.GetClipTags(ctx, "clipA", false)
+	beforeB, _ := s.GetClipTags(ctx, "clipB", false)
+
+	// ⚠ TWO-WRITER EQUIVALENCE. Rebuild the closure from the current graph, then rebuild ALL rollups
+	// in one set-based statement. The result must MATCH what SetClipTags wrote per clip — if the bulk
+	// SQL join and the Go WithRollups loop ever disagreed, a re-tag and a reindex would race to
+	// different answers. This is the invariant the whole closure-table design turns on.
+	taxa, _ := s.ListTaxa(ctx)
+	if err := s.RebuildClosure(ctx, taxonomy.New(taxa), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RebuildRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	afterA, _ := s.GetClipTags(ctx, "clipA", false)
+	afterB, _ := s.GetClipTags(ctx, "clipB", false)
+	assertSet(t, "clipA rollups: bulk reindex == per-clip write", afterA, beforeA)
+	assertSet(t, "clipB rollups: bulk reindex == per-clip write", afterB, beforeB)
+
+	// ⚠ Leaves must SURVIVE the rollup rebuild — RebuildRollups deletes only rollup rows (leaf=false)
+	// and re-derives the rest; an asserted leaf is never touched. (Sabotage check: if RebuildRollups
+	// deleted leaves too, these go empty and the equivalence above would also have failed.)
+	leavesA, _ := s.GetClipTags(ctx, "clipA", true)
+	assertSet(t, "clipA leaves survive reindex", leavesA, []string{"cereal"})
+	leavesB, _ := s.GetClipTags(ctx, "clipB", true)
+	assertSet(t, "clipB leaves survive reindex", leavesB, []string{"beer", "spirits"})
+
+	// ⚠ GRAPH EDIT → REINDEX picks up the new lineage. Insert a taxon BETWEEN an existing leaf and its
+	// parent, so the rollup set genuinely changes. `lager` under a new `ale-family` under `beer`.
+	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "ale-family", Label: "Ale family", Parent: "beer", Axis: taxonomy.AxisProduct}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTaxon(ctx, taxonomy.Taxon{Slug: "lager", Label: "Lager", Parent: "ale-family", Axis: taxonomy.AxisProduct}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipTags(ctx, "clipC", []string{"lager"}, taxonomy.New(mustList(t, s, ctx)), now); err != nil {
+		t.Fatal(err)
+	}
+	// With the ale-family hop present: lager → ale-family → beer → alcohol → drinks.
+	afterC, _ := s.GetClipTags(ctx, "clipC", false)
+	assertSet(t, "clipC rollups with ale-family hop", afterC, []string{"lager", "ale-family", "beer", "alcohol", "drinks"})
+
+	// ⚠ DELETE the MIDDLE taxon: DeleteTaxon REPARENTS lager to the grandparent (beer), so the lineage
+	// survives minus the removed level — it does NOT orphan lager or leave a phantom 'ale-family'
+	// rollup. This is the "remove a middle category" behaviour, and the direction a stale closure OR a
+	// dangling-parent Ancestors would get wrong.
+	if err := s.DeleteTaxon(ctx, "ale-family"); err != nil {
+		t.Fatal(err)
+	}
+	// Confirm the reparent landed at the graph level before reindexing.
+	if lg, ok := taxonomy.New(mustList(t, s, ctx)).Get("lager"); !ok || lg.Parent != "beer" {
+		t.Fatalf("DeleteTaxon did not reparent lager to beer: got parent %q (ok=%v)", lg.Parent, ok)
+	}
+	taxa2 := mustList(t, s, ctx)
+	if err := s.RebuildClosure(ctx, taxonomy.New(taxa2), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RebuildRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	afterC, _ = s.GetClipTags(ctx, "clipC", false)
+	// ale-family is GONE (reparented away, not a phantom ancestor); the rest of the lineage survives.
+	assertSet(t, "clipC rollups after middle-taxon delete", afterC, []string{"lager", "beer", "alcohol", "drinks"})
+	// lager itself (the asserted leaf) survives the graph edit.
+	leavesC, _ := s.GetClipTags(ctx, "clipC", true)
+	assertSet(t, "clipC leaf survives ancestor deletion", leavesC, []string{"lager"})
+}
+
+// mustList fetches the whole taxonomy or fails the test — a small helper for the reindex assertions
+// that rebuild a forest from the live graph.
+func mustList(t *testing.T, s Store, ctx context.Context) []taxonomy.Taxon {
+	t.Helper()
+	taxa, err := s.ListTaxa(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return taxa
 }
 
 // assertSet compares two string slices as SETS (order-independent), for the tag assertions above.

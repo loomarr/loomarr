@@ -237,9 +237,12 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 	if len(w.Pinned) == 0 {
 		return nil
 	}
+	// ⚠ Keyed by HASH (= Clip.ID()), the wire identity `w.Pinned` carries (§10 V45a). This was keyed
+	// on Path and silently never matched after identity moved off the path — a pinned clip was dropped
+	// from every pod. The `used` reservation map is hash-keyed throughout for the same reason.
 	byID := make(map[string]Clip, len(catalog))
 	for _, c := range catalog {
-		byID[c.Path] = c
+		byID[c.ID()] = c
 	}
 	budget := w.GapMs - 12000 // same bumper headroom as fillCommercials
 	if budget < 0 {
@@ -268,8 +271,11 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 func (p *Pod) append(e PodEntry, used map[string]bool) {
 	p.Entries = append(p.Entries, e)
 	p.TotalMs += e.DurationMs
-	if e.Path != "" {
-		used[e.Path] = true
+	// ⚠ Reserve by HASH — the identity `used` is keyed on everywhere (pinned/excluded seed it with
+	// hashes). PodEntry carries both; keying on Path here let a clip pinned/excluded by hash slip the
+	// reservation (it never matched), so no-repeat and exclusion were both silently broken (§10 V45a).
+	if e.Hash != "" {
+		used[e.Hash] = true
 	}
 }
 
@@ -289,7 +295,7 @@ func clipToEntry(c Clip) PodEntry {
 func pickBumper(catalog []Clip, w Window, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.Path] {
+		if c.IsBumper() && !used[c.ID()] {
 			bumpers = append(bumpers, c)
 		}
 	}

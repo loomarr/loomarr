@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // ErrSplitValidation marks a rejected confirm edit (out-of-clip bounds,
@@ -34,6 +35,13 @@ type SplitStore interface {
 	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
+	// grounds the answer against it. ⚠ The split job does NOT call SetClipTags — a segment clip has
+	// no content hash at confirm time (it gets one from the intake pipeline when its cut file is
+	// hashed), and SetClipTags is hash-keyed, so persisting here would orphan the tag rows. The
+	// segment carries its grounded Tags on the proposal for the reviewer; the TAG JOB persists the
+	// taxonomy tags once the segment file is intaken and hashed — the one hash-keyed tag writer.
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
@@ -201,12 +209,22 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 // classify tags every segment with the existing tagger. A classify failure
 // leaves the segment untagged — the review shows that, and the tag job can
 // retry after confirm.
+//
+// ⚠ Loads the taxonomy ONCE (§10 V45a) and serves/grounds every segment against it — the same forest
+// the tag job uses, so a split segment and a directly-tagged clip are grounded identically. A ListTaxa
+// failure leaves the forest nil, which grounds no tags (segments come out untagged) rather than
+// failing the whole split — the honest degradation, matching the nil-provider case.
 func (sp *Splitter) classify(ctx context.Context, segs []SplitSegment) {
 	if sp.provider == nil {
 		return
 	}
+	taxa, err := sp.store.ListTaxa(ctx)
+	if err != nil && sp.log != nil {
+		sp.log.Warn("split classify: could not load taxonomy; segments will be untagged", "err", err)
+	}
+	forest := taxonomy.New(taxa)
 	for i := range segs {
-		sug, err := Classify(ctx, sp.provider, segs[i].Name, segs[i].Transcript)
+		sug, err := Classify(ctx, sp.provider, forest, segs[i].Name, segs[i].Transcript)
 		if err != nil {
 			if sp.log != nil {
 				sp.log.Warn("segment classify failed", "segment", segs[i].Name, "err", err)
@@ -216,6 +234,7 @@ func (sp *Splitter) classify(ctx context.Context, segs []SplitSegment) {
 		segs[i].Era = sug.Era
 		segs[i].SuggestedEra = sug.SuggestedEra
 		segs[i].Audience = sug.Audience
+		segs[i].Tags = sug.Tags
 		segs[i].Category = sug.Category
 	}
 }
@@ -338,8 +357,10 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		nc.Quality = clip.Quality
 		nc.Rating = clip.Rating
 		// The tags came from AI classification — operator-REVIEWED, but the AI
-		// flag records origin, not approval (a manual PATCH still clears it).
-		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != ""
+		// flag records origin, not approval (a manual PATCH still clears it). Includes the taxonomy
+		// tag set (§10 V45a): a segment grounded only on a non-product axis (`psa`, `christmas`) has
+		// an empty Category shadow but real tags, and is still AI-tagged.
+		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != "" || len(c.seg.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return err
 		}

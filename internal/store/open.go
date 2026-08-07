@@ -13,7 +13,22 @@ import (
 // its graph and taxonomy.SeedForest() cannot drift — §10 V45a). Each is guarded to no-op when already
 // present, so it is safe on every open including test stores.
 func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
-	return s.SeedTaxonomy(ctx, taxonomy.SeedForest(), time.Now())
+	now := time.Now()
+	if err := s.SeedTaxonomy(ctx, taxonomy.SeedForest(), now); err != nil {
+		return err
+	}
+	// ⚠ Rebuild the closure on EVERY open, unlike the seed's empty-guard. The closure is a derived
+	// cache of `taxa` that a fresh migration creates empty; an operator-edited graph needs its closure
+	// present just as a seeded one does. It is a full idempotent replace over ~55 taxa (a few hundred
+	// rows), so running it unconditionally at boot keeps the closure in sync with whatever graph is
+	// live — seeded default or operator's — at negligible cost. RebuildRollups is NOT run here: clip
+	// rollups only go stale on a GRAPH EDIT (the CRUD path rebuilds them) or a re-tag (SetClipTags),
+	// not on a plain re-open where the graph is unchanged.
+	taxa, err := s.ListTaxa(ctx)
+	if err != nil {
+		return err
+	}
+	return s.RebuildClosure(ctx, taxonomy.New(taxa), now)
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when

@@ -161,6 +161,13 @@ func TestValidate(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Errorf("valid policy rejected: %v", err)
 	}
+	// ⚠ §10 V45a: a category slug this package has never heard of is ACCEPTED — categories are opaque
+	// taxonomy slugs validated at the API boundary, not here (like Pinned/Excluded ids). This pins the
+	// deliberate removal of the fillerCategories enum check so a future edit does not silently re-add it.
+	openSlug := ChannelPolicy{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Categories: []string{"energy-drink", "any-operator-slug"}}}}
+	if err := openSlug.Validate(); err != nil {
+		t.Errorf("an operator category slug was rejected by schedule.Validate — categories must be opaque here (§10 V45a): %v", err)
+	}
 	bad := []ChannelPolicy{
 		{ProposalPolicy: ProposalPolicy{Ordering: "backwards"}},
 		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-BOGUS"}}},
@@ -168,8 +175,13 @@ func TestValidate(t *testing.T) {
 		{ProposalPolicy: ProposalPolicy{Seasonal: SeasonalPolicy{Mode: "sometimes"}}},
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
-		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Categories: []string{"widgets"}}}},   // unknown category
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
+		// ⚠ NOTE (§10 V45a): an unknown CATEGORY is no longer rejected here. Categories became taxonomy
+		// slugs — an open, operator-editable set this pure domain package cannot know — so they are
+		// opaque like Pinned/Excluded ids (a stale slug matches nothing at assembly). The API layer,
+		// which can read the live graph, rejects an unknown slug on write; that is covered by
+		// TestTaxonomy_ClipPatchRejectsUnknownTag in internal/api. The old `["widgets"]` bad-case was
+		// removed for that reason, not weakened.
 	}
 	for i, p := range bad {
 		if err := p.Validate(); err == nil {
