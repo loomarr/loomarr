@@ -483,6 +483,34 @@ func declared() []Setting {
 			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
 		},
 		{
+			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
+			// the language gate (~341s per clip under QEMU), so it is a deliberate opt-in, not a
+			// silent background cost. The job is SELECTIVE even when on — it only transcribes clips
+			// whose source described them thinly, never the whole catalog.
+			Key: "filler.transcribe.enabled", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection.",
+		},
+		{
+			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
+			// hosted path spends multimodal tokens per clip and sends frames off the box, the local
+			// path needs an Ollama vision model. Off, or with no vision model, the job is inert.
+			Key: "filler.vision.enabled", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
+		},
+		{
+			// ⚠ Its OWN model knob, exactly like filler.language_model — and the live test that
+			// added it found why: the tagging model (`llm.model`) is often a TEXT model with no
+			// vision path (qwen3 in dev), while the box has a separate vision-capable one (gemma-4).
+			// Tying vision to `llm.model` would force an operator to switch their whole LLM to a
+			// vision model just to tag clips. Empty ⇒ fall back to `llm.model`, so an install whose
+			// main model already sees images needs no second setting.
+			Key: "filler.vision.model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
+		},
+		{
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
@@ -848,6 +876,21 @@ func declared() []Setting {
 			Key: "job.filler_split.schedule", EnvVar: "JOB_FILLER_SPLIT_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 45 * * * *",
 			Doc: "How often Loomarr looks for adverts inside long recordings in your catalog (cron).",
+		},
+		{
+			// §10 V44. Off-phase from its expensive siblings (:15 vs the language gate's :30 and
+			// split's :45) so three multi-minute media jobs never share the runner at once — the
+			// same scheduling discipline the split key's comment above states.
+			Key: "job.filler_transcribe.schedule", EnvVar: "JOB_FILLER_TRANSCRIBE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 15 * * * *",
+			Doc: "How often Loomarr transcribes filler clips whose source told us little (cron). Only runs when transcription is enabled.",
+		},
+		{
+			// §10 V44. Latest phase (:50) — vision is the most expensive tier and runs last, on the
+			// clips the cheaper passes could not identify.
+			Key: "job.filler_vision.schedule", EnvVar: "JOB_FILLER_VISION_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 50 * * * *",
+			Doc: "How often Loomarr reads filler clips' frames to identify them (cron). Only runs when vision tagging is enabled.",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,

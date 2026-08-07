@@ -441,6 +441,91 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Language != "en" {
 		t.Errorf("language = %q, want %q — SetClipLanguage is keyed WHERE path = ?", got.Language, "en")
 	}
+
+	// SetClipTranscript joins the path-keyed job writers (§10 V44). Same split, same reason.
+	if err := s.SetClipTranscript(ctx, c.Path, "buy our cereal today", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Transcript != "buy our cereal today" {
+		t.Errorf("transcript = %q, want the recorded text — SetClipTranscript is keyed WHERE path = ?", got.Transcript)
+	}
+
+	// SetClipBrand is the TEXT tagger's grounded brand writer (§10 V44) — path-keyed like the
+	// transcript writer, and it must write `brand` WITHOUT stamping `vision_tagged`: a brand grounded
+	// in the transcript is not a brand a vision pass read off a frame, and conflating the two would
+	// make a re-run skip the vision it never actually ran.
+	if err := s.SetClipBrand(ctx, c.Path, "Post", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Brand != "Post" {
+		t.Errorf("brand = %q, want %q — SetClipBrand is keyed WHERE path = ?", got.Brand, "Post")
+	}
+	if got.VisionTagged {
+		t.Errorf("vision_tagged set by a TEXT brand write — SetClipBrand must not masquerade as a vision pass")
+	}
+
+	// SetClipVisionTags records the on-screen text, a grounded brand, and (here) a category. era is
+	// passed 0, so the era set by UpdateClipTags above (1994) must SURVIVE — the CASE guard, not a
+	// blanket overwrite. It overwrites the text-grounded brand above, which is fine — both are
+	// grounded writers of the same column.
+	if err := s.SetClipVisionTags(ctx, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 0, "cereal", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" || !got.VisionTagged {
+		t.Errorf("vision tags = {brand:%q visible:%q tagged:%v}, want them recorded", got.Brand, got.VisibleText, got.VisionTagged)
+	}
+	if got.Era != 1994 {
+		t.Errorf("era = %d after a vision write with era=0, want 1994 preserved — the CASE guard must not blank an existing era", got.Era)
+	}
+	// ⚠ A grounded era SUPPRESSES the frame-heuristic suggestion: this clip already has era 1994, so
+	// passing suggestedEra=1960 must NOT set suggested_era — a clip with a known era has no question
+	// to ask. This pins the "era = 0" precondition in the store's CASE guard.
+	if err := s.SetClipVisionTags(ctx, c.Path, "Kellogg's", "KELLOGG'S FROSTED FLAKES", 0, 1960, "cereal", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.SuggestedEra != 0 {
+		t.Errorf("suggested_era = %d, want 0 — a frame hint must not seed a suggestion when the clip already has a grounded era", got.SuggestedEra)
+	}
+
+	// The frame-heuristic path on a clip with NO era: a fresh clip, vision grounds no era, the hint
+	// seeds a suggestion. This is the one write that turns a monochrome-4:3 measurement into the
+	// operator-confirms field.
+	hintClip := sampleClip("vhint", "wordless.mp4", filler.Commercial, 0, "", "")
+	if err := s.UpsertClip(ctx, hintClip); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipVisionTags(ctx, hintClip.Path, "", "", 0, 1960, "", now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, hintClip.Hash)
+	if got.SuggestedEra != 1960 {
+		t.Errorf("suggested_era = %d, want 1960 — a frame hint must seed the suggestion when the clip has no grounded era", got.SuggestedEra)
+	}
+	if got.Era != 0 {
+		t.Errorf("era = %d, want 0 — a frame hint is a SUGGESTION, never a grounded era", got.Era)
+	}
+
+	// ⚠ The load-bearing property: a re-sync (UpsertClip) must NOT clobber the job-written columns.
+	// The scan re-upserts every file it finds carrying a ZERO transcript/brand — if any of these
+	// rode UpsertClip's DO UPDATE list, this upsert would wipe the work above and re-trigger Whisper
+	// / a paid vision call on the next pass. This is the same discipline the language/held/counter
+	// columns already pin; without it a green suite would hide the exact regression 00038 guards.
+	resync := c
+	resync.Transcript, resync.Brand, resync.VisibleText, resync.VisionTagged = "", "", "", false
+	if err := s.UpsertClip(ctx, resync); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, c.Hash)
+	if got.Transcript != "buy our cereal today" {
+		t.Errorf("transcript = %q after a re-sync, want it PRESERVED — UpsertClip must omit transcript from DO UPDATE", got.Transcript)
+	}
+	if got.Brand != "Kellogg's" || got.VisibleText != "KELLOGG'S FROSTED FLAKES" || !got.VisionTagged {
+		t.Errorf("vision tags lost on re-sync {brand:%q visible:%q tagged:%v} — UpsertClip must omit them from DO UPDATE", got.Brand, got.VisibleText, got.VisionTagged)
+	}
 }
 
 // testClipCounts pins the count queries against the listing they replaced.

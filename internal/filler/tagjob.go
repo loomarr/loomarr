@@ -62,11 +62,37 @@ func (t *Tagger) displayName(clip StoreClip) string {
 // filed under a content hash there is nothing to fuzzily match, and a helper whose only caller is
 // gone is dead weight that reads as a capability.)
 
+// sourceSignals joins the sidecar text and the clip's persisted transcript into the one
+// `sourceText` string Classify grounds against (§10 V44). Both are optional and either may be
+// empty — a drop-folder clip has no sidecar, a wordless or not-yet-transcribed clip has no
+// transcript — so it drops the empties rather than emitting blank lines that would read as signal.
+//
+// ⚠ The transcript is a GROUNDING signal, not decoration. `validateTags` accepts a brand or an era
+// only when it appears literally in exactly this text; a cereal advert with an empty sidecar
+// grounds its "Kellogg's" here or nowhere. Joined with a newline so a year or a name that ends one
+// signal and abuts the next cannot fuse into a token that matches neither.
+func sourceSignals(sidecar, transcript string) string {
+	parts := make([]string, 0, 2)
+	if s := strings.TrimSpace(sidecar); s != "" {
+		parts = append(parts, s)
+	}
+	if tr := strings.TrimSpace(transcript); tr != "" {
+		parts = append(parts, tr)
+	}
+	return strings.Join(parts, "\n")
+}
+
 // TagStore is the slice of the store the tagging job needs.
 type TagStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags (the work list).
 	ListUntaggedCommercials(ctx context.Context) ([]StoreClip, error)
 	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
+	// SetClipBrand records a GROUNDED advertiser from the TEXT tagger (§10 V44). Separate from
+	// UpdateClipTags because brand has a different key and a different writer story: it is
+	// PATH-keyed (like the transcript/vision writers it sits beside), while UpdateClipTags is
+	// hash-keyed. Only a brand `Classify` already grounded reaches here — the store call writes
+	// what it is given, the grounding lives in validateTags.
+	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
 	// SetClipsHeld files a clip into the catalog (§10 V38). The tagger calls it only to FILE
 	// (held=false, autoFiled=true) — sending a clip back for review is a human's decision,
 	// made from Incoming, never the job's.
@@ -182,7 +208,14 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// GROUNDED if the year appears literally in a text signal, and after intake renames a
 		// clip to its hash the only surviving copy of `Frosted Flakes 1993.mp4` is the
 		// sidecar's `originalName`.
-		sug, err := Classify(ctx, t.provider, t.displayName(clip), t.sidecarText(clip))
+		//
+		// The clip's persisted TRANSCRIPT is a THIRD text signal (§10 V44), concatenated after the
+		// sidecar. It is where a brand or an era grounds for the wordless-description case the
+		// archive.org walker leaves behind — a cereal advert with an empty sidecar still SAYS
+		// "Kellogg's · since 1978", and until V44 that copy was thrown away after the split. Empty
+		// when the clip was never transcribed (or was and is wordless); `Classify` degrades to the
+		// signals it does have, exactly as it does for a missing sidecar.
+		sug, err := Classify(ctx, t.provider, t.displayName(clip), sourceSignals(t.sidecarText(clip), clip.Transcript))
 		if err != nil {
 			if t.log != nil {
 				t.log.Warn("clip classify failed", "clip", clip.Path, "err", err)
@@ -204,6 +237,14 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		if category == "" {
 			category = sug.Category
 		}
+		// Brand fills a gap the same way, and never clears a set one (§10 V44). A vision pass or an
+		// earlier run may already have grounded a brand off the frame; a text run that reads none
+		// must not blank it. `sug.Brand` is empty unless it appeared literally in the text signals —
+		// validateTags saw to that — so an ungrounded advertiser never reaches this merge at all.
+		brand := clip.Brand
+		if brand == "" {
+			brand = sug.Brand
+		}
 		// An UNGROUNDED era (§10, V34) is never written to era — it rides along as
 		// a suggestion for the operator, and only while the clip has no era at all
 		// (a known era needs no suggestion). A suggestion alone is still worth the
@@ -212,7 +253,12 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		if era == 0 {
 			suggestedEra = sug.SuggestedEra
 		}
-		if era == 0 && audience == "" && category == "" && suggestedEra == 0 {
+		// A newly-grounded brand counts as usable output even when nothing else did (§10 V44): a
+		// wordless spot whose transcript only yields "Kellogg's" is still worth recording, and the
+		// searchable brand is the whole reason V44 persists transcripts. Without brand in this guard
+		// a brand-only clip would be skipped and its one grounded fact thrown away.
+		newBrand := clip.Brand == "" && brand != ""
+		if era == 0 && audience == "" && category == "" && suggestedEra == 0 && !newBrand {
 			res.Skipped++
 			continue // nothing usable
 		}
@@ -223,6 +269,15 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// ever AI-tagged. Invisible to tests because the store fixtures set hash == path.
 		if err := t.store.UpdateClipTags(ctx, clip.Hash, era, audience, category, suggestedEra, true, t.now()); err != nil {
 			return res, err
+		}
+		// The grounded brand is written separately (§10 V44), and only when this run newly grounded
+		// one — re-writing an unchanged brand every pass is pointless churn on `updated_at`. PATH-
+		// keyed, unlike the tag write just above: `SetClipBrand` sits with the transcript/vision
+		// writers, which the job addresses by path, not by hash.
+		if newBrand {
+			if err := t.store.SetClipBrand(ctx, clip.Path, brand, t.now()); err != nil {
+				return res, err
+			}
 		}
 		// The filing decision (§10 V38). Only HELD clips are candidates: a clip already in the
 		// catalog was filed by a human or by an earlier run, and re-filing it would flip its

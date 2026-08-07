@@ -25,10 +25,17 @@ type tagMemStore struct {
 	// read this rather than inspecting clips, so a test says "this was filed" rather than
 	// "this ended up not-held", which a bug could also produce.
 	filed []string
+	// brands records SetClipBrand writes keyed by PATH (the key the real store uses), so a test can
+	// assert a GROUNDED brand was written — and, by its absence, that an ungrounded one never was.
+	brands map[string]string
 }
 
 func newTagMemStore() *tagMemStore {
-	return &tagMemStore{clips: map[string]filler.StoreClip{}, updates: map[string]filler.StoreClip{}}
+	return &tagMemStore{
+		clips:   map[string]filler.StoreClip{},
+		updates: map[string]filler.StoreClip{},
+		brands:  map[string]string{},
+	}
 }
 
 // seed adds a clip keyed by its own identity. ⚠ Use this rather than assigning into `clips`
@@ -67,6 +74,28 @@ func (m *tagMemStore) SetClipsHeld(_ context.Context, paths []string, held, auto
 		}
 	}
 	return n, nil
+}
+
+// SetClipBrand is keyed by PATH (the real store is `WHERE path = ?`), like SetClipsHeld and unlike
+// the hash-keyed UpdateClipTags — so it MISSES on a wrong key rather than quietly succeeding, which
+// is what would let a caller passing the hash slip through. It writes only `brand`, never
+// `VisionTagged`: a text-grounded brand is not a vision-read one.
+func (m *tagMemStore) SetClipBrand(_ context.Context, path, brand string, _ time.Time) error {
+	hash, ok := m.hashByPath(path)
+	if !ok {
+		return errTagClipNotFound
+	}
+	m.brands[path] = brand
+	c := m.clips[hash]
+	c.Brand = brand
+	m.clips[hash] = c
+	// Reflect into `updates` too, so an assertion reading the tag-write map (where the era/audience
+	// merge lands) sees the brand a run grounded in the same loop iteration.
+	if u, ok := m.updates[hash]; ok {
+		u.Brand = brand
+		m.updates[hash] = u
+	}
+	return nil
 }
 
 // hashByPath resolves a clip's location to its identity, the lookup the real store does in SQL.
@@ -292,6 +321,195 @@ func TestTagger_NoSuggestionWhenEraKnown(t *testing.T) {
 	got := st.updates["c1"]
 	if got.Era != 1985 || got.SuggestedEra != 0 {
 		t.Errorf("known era disturbed by an ungrounded guess: era=%d suggestedEra=%d", got.Era, got.SuggestedEra)
+	}
+}
+
+// --- V44: grounded brand --------------------------------------------------------
+//
+// Brand follows the era rule generalised (§10 V44): the advertiser set is open, so there is no enum
+// to validate against — the only defence against a fabricated brand is the text. A brand is a tag
+// ONLY when it appears literally in the clip's text signals; otherwise it is dropped (no "suggested
+// brand" — an ungrounded advertiser is a guess, not a question).
+
+// The advertiser's name is literally in the source text → the brand is GROUNDED and kept.
+func TestClassify_BrandGroundedInText(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":1992,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+	)
+	sug, err := filler.Classify(context.Background(), llmMock, "cereal-ad-1992",
+		"Transcript: Kellogg's Frosted Flakes, they're grrreat!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Brand != "Kellogg's" {
+		t.Errorf("brand grounded in the text was dropped: %+v", sug)
+	}
+}
+
+// ⚠ THE anti-fabrication property for brand (§8/§10 V44). The model asserts a brand that appears
+// NOWHERE in the text — inferred from the category. It must be dropped, exactly as an ungrounded era
+// is demoted. If this persisted, matching would carry a confidently-wrong advertiser.
+func TestClassify_DropsUngroundedBrand(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		// "cereal" is in the category, but no advertiser name is anywhere in the text.
+		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+	)
+	sug, err := filler.Classify(context.Background(), llmMock, "a-cereal-ad",
+		"Transcript: the crunchiest breakfast in town, part of a balanced morning")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Brand != "" {
+		t.Errorf("ungrounded brand %q was kept — §8 breach: a fabricated advertiser reached the tags", sug.Brand)
+	}
+	// The grounded fields still land — dropping the brand demotes brand ONLY.
+	if sug.Audience != filler.Kids || sug.Category != "cereal" {
+		t.Errorf("valid fields dropped with the brand: %+v", sug)
+	}
+}
+
+// Grounding is case-INSENSITIVE (unlike era, which has no case): "KELLOGG'S" shouted on screen
+// grounds a model that answered "Kellogg's", and vice-versa.
+func TestClassify_BrandGroundingIsCaseInsensitive(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+	)
+	sug, err := filler.Classify(context.Background(), llmMock, "shouty-ad",
+		"Transcript: KELLOGG'S FROSTED FLAKES")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Brand != "Kellogg's" {
+		t.Errorf("case-different brand not grounded: %+v", sug)
+	}
+}
+
+// ⚠ THE live-found case (§10 V44): the model answers "Campbell's" (apostrophe) but the archive.org
+// identifier is "CampbellsSoupAdvert" (none). A raw substring check dropped this CORRECT brand; the
+// punctuation-folded check grounds it. Found running the real tagger against the dev catalog — no
+// unit fixture hit it because they all spelled the brand and the text identically.
+func TestClassify_BrandGroundsAcrossPunctuation(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":0,"audience":"family","category":"fast_food","brand":"Campbell's"}`),
+	)
+	// The only text signal is the apostrophe-less filename, exactly as archive.org files it.
+	sug, err := filler.Classify(context.Background(), llmMock, "CampbellsSoupAdvert", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Brand != "Campbell's" {
+		t.Errorf("brand = %q, want %q grounded across the apostrophe — a real filename strips it", sug.Brand, "Campbell's")
+	}
+}
+
+// ⚠ Folding must NOT admit fabrication: a brand whose letters are absent still fails, so the
+// anti-§8 guarantee is intact. "Coca-Cola" cannot fold into a Campbell's filename.
+func TestClassify_FoldingStillDropsAbsentBrand(t *testing.T) {
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":0,"audience":"family","category":"fast_food","brand":"Coca-Cola"}`),
+	)
+	sug, err := filler.Classify(context.Background(), llmMock, "CampbellsSoupAdvert", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sug.Brand != "" {
+		t.Errorf("brand = %q, want it DROPPED — Coca-Cola is nowhere in the text, folding must not invent it", sug.Brand)
+	}
+}
+
+// ⚠ Brand must NOT raise the grounded confidence ceiling (§10 V44). A clip with a grounded brand but
+// a dropped audience is still PARTIAL, and its score is the partial ceiling — a brand riding along
+// cannot buy a clip past the auto-file gate. (Belt-and-braces to the Score asymmetry: brand isn't in
+// Score at all, so a grounded brand and no brand must score identically for the same other fields.)
+func TestClassify_BrandDoesNotRaiseConfidence(t *testing.T) {
+	withBrand := filler.TagSuggestion{Era: 1985, Audience: "kids", Category: "toys", Brand: "Lego"}
+	without := filler.TagSuggestion{Era: 1985, Audience: "kids", Category: "toys"}
+	if withBrand.Score(0) != without.Score(0) {
+		t.Errorf("a grounded brand changed the score (%d vs %d) — brand must ride the existing ceiling",
+			withBrand.Score(0), without.Score(0))
+	}
+	// A partial clip stays partial even with a grounded brand.
+	partial := filler.TagSuggestion{Era: 1985, Audience: "", Category: "", Brand: "Lego"}
+	if partial.Score(0) >= filler.MaxAutoFileConfidence {
+		t.Errorf("a grounded brand lifted a PARTIAL clip's score to %d — it must not clear the gate", partial.Score(0))
+	}
+}
+
+// End to end: a brand grounded ONLY in the persisted TRANSCRIPT (empty sidecar, no year, no
+// advertiser in the filename) is written to the clip via the path-keyed SetClipBrand. This is the
+// V44 case that motivates persisting transcripts — the archive.org wordless-description clip that
+// still SAYS its advertiser.
+func TestTagger_PersistsBrandGroundedInTranscript(t *testing.T) {
+	st := newTagMemStore()
+	clip := untaggedClip("c1", "clip-0001") // filename carries no brand
+	clip.Transcript = "Have a Coke and a smile — the real thing."
+	st.seed(clip)
+
+	llmMock := testkit.NewLLM(
+		testkit.FinalResponse(`{"era":0,"audience":"general","category":"general","brand":"Coke"}`),
+	)
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Written by PATH (SetClipBrand is `WHERE path = ?`), which is what the mock records.
+	if got := st.brands[clip.Path]; got != "Coke" {
+		t.Errorf("brand grounded in the transcript was not persisted (brands[%q] = %q)", clip.Path, got)
+	}
+	if st.clips["c1"].Brand != "Coke" {
+		t.Errorf("clip brand = %q, want Coke", st.clips["c1"].Brand)
+	}
+}
+
+// The transcript reaches the model as a text signal (§10 V44) — the whole reason a brand can ground
+// for a description-less clip. Asserts on the PROMPT, because that is where the plumbing lives.
+func TestTagger_TranscriptIsAThirdTextSignal(t *testing.T) {
+	st := newTagMemStore()
+	clip := untaggedClip("c1", "clip-0002")
+	clip.Transcript = "Ford Mustang — built for the open road, since 1979."
+	st.seed(clip)
+
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1979,"audience":"general","category":"cars","brand":"Ford"}`))
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(llmMock.Prompt(), "Ford Mustang") {
+		t.Errorf("the persisted transcript never reached the prompt:\n%s", llmMock.Prompt())
+	}
+	// And it grounds both the brand and the era it literally contains.
+	got := st.updates["c1"]
+	if got.Era != 1979 {
+		t.Errorf("era 1979 (in the transcript) not grounded: %+v", got.Clip)
+	}
+	if st.brands[clip.Path] != "Ford" {
+		t.Errorf("brand Ford (in the transcript) not persisted: %q", st.brands[clip.Path])
+	}
+}
+
+// Brand is a FILL-GAP merge, never a clear (§10 V44). A clip that already has a brand — from a
+// vision pass or an earlier run — must keep it when a text run reads none.
+func TestTagger_DoesNotClearASetBrand(t *testing.T) {
+	st := newTagMemStore()
+	clip := untaggedClip("c1", "some-ad-1990")
+	clip.Brand = "Pepsi" // already grounded, e.g. off a frame by the vision pass
+	st.seed(clip)
+
+	// The text model returns NO brand (empty) — a text signal with no advertiser in it.
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","category":"general","brand":""}`))
+	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
+
+	if _, err := tagger.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if st.clips["c1"].Brand != "Pepsi" {
+		t.Errorf("a set brand was cleared by a text run that read none: %q", st.clips["c1"].Brand)
+	}
+	// And SetClipBrand was NOT called — nothing new was grounded, so there is nothing to write.
+	if _, wrote := st.brands[clip.Path]; wrote {
+		t.Errorf("SetClipBrand was called with an unchanged brand — pointless churn on updated_at")
 	}
 }
 

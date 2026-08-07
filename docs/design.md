@@ -923,9 +923,26 @@ Each clip carries metadata so the scheduler can place it well, persisted in the 
 - `era`: decade / year (e.g., 1994)
 - `audience`: kids | family | general | late_night
 - `category`: toys | cereal | cars | tech | fast_food | movie_trailer | …
-- `duration` (from the media server), `rating`, `source`
+- `brand`: the advertiser, when it appears in a text or visual signal (e.g. `Kellogg's`) — free text, grounded (V44)
+- `duration` (from Loomarr's own `ffprobe` scan — see §9.1; the "from the media server" note was true only under the pre-§9.1 identity, when Tunarr probed), `rating`, `source`
+- `transcript`: the clip's spoken text, when transcribed (V44). Persisted, not transient — it is both a searchable metadata field and the richest input to tagging
 
-Tagging options, in increasing order of leverage: filename/folder convention → sidecar metadata → **AI-assisted classification**. AI tagging classifies a clip's **text signals** — filename, the source title/description that yt-dlp/Archive provide (the ingest job preserves these as info-JSON sidecar files next to each clip), and, for clips produced by compilation splitting, the segment's **transcript** (V34; whisper.cpp, §14) — into era/audience/category via the configured LLM. Vision-based tagging remains future work (§20). Even text-only tagging is what makes thousands of clips practical, and is where Loomarr beats hand-curated filler lists.
+Tagging options form a **grounding ladder** — cheapest, most-trusted signal first, each tier running only where the ones above left a gap (V44). Every tier obeys the same rule: **a tag is a fact only when the signal literally contains it** — the anti-fabrication discipline the era grounding rule (below) generalises to brand and to visual tags.
+
+| Tier | Signal | Cost | Catches |
+| --- | --- | --- | --- |
+| 0 | filename / folder convention | free | eras and kinds encoded in names |
+| 1 | source sidecar text (yt-dlp/Archive title, description, uploader) | free | archive.org clips that describe themselves |
+| 2 | **LLM over the text signals** → era / audience / category / **brand** | cheap | text-described adverts |
+| 3 | **Whisper transcript** → fed into tier 2 | moderate | adverts that *speak* their brand but carry no source description |
+| 4 | frame heuristics (black-and-white, aspect ratio) | free | era hints for clips with no usable text |
+| 5 | **vision LLM over keyframes** → brand / category / on-screen text | expensive | **silent visual adverts and on-screen logos a transcript never hears** |
+
+Tiers 0–2 are pre-V44 (text-only classification via the configured LLM — filename, the source title/description that yt-dlp/Archive preserve as info-JSON sidecars, and, for split segments, the segment transcript, V34; whisper.cpp, §14). **V44 adds tiers 3–5**: persisting transcripts and running them on demand (`transcribe` job below), a grounded `brand` field, cheap frame heuristics, and vision-based tagging. Vision is no longer future work — it is the only tier that reads a *wordless* clip, and it fits the same grounding discipline (a model reading `KELLOGG'S` off an on-screen box is grounded exactly as an era is grounded when its year appears in the filename). Even text-only tagging is what makes thousands of clips practical; the visual tier closes the silent-advert gap that no amount of text ever could.
+
+**On-demand transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would be a ~9.5-hour scan on arm64. The `transcribe` job (below, modelled on the language gate) is therefore opt-in, timer-driven, batched, and **selective**: it transcribes only clips whose source text is *thin OR that remain untagged after a text-only pass* — a clip with a rich archive.org description never pays for Whisper. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
+
+**Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
 
 **Era must be grounded in the source text — a measured §8 hole, closed by V34 (maintainer's call: both halves, not one).** Running the real tagging prompt over real transcripts invented an era on 2 of 10 clips — `1980` and `1970` with no year anywhere in the text, inferred from tone — and the validator had no way to tell an inferred year from a read one (plan §6.4). So: an `era` tag is accepted **only when that year appears literally in the clip's text signals** (filename, sidecar text, or transcript); otherwise it is **not persisted as fact** and is instead recorded as a **suggestion** the operator confirms (`PATCH /v1/filler/{id}` setting `era` confirms and clears it). This applies to **every** tagging path, not just transcripts — the sidecar path has always been able to hit it; transcripts merely made it frequent enough to measure.
 
@@ -1130,6 +1147,70 @@ YAVG 64–127 against a mid-grey of 128, and the dim end is what an eighties VHS
 looks like. Auto-brightening would invent a picture the source never had — and unlike loudness it
 is not recoverable at playout, because the correction would be baked into what the viewer sees with
 no original to fall back to.
+
+### Richer metadata: transcripts, brand, and vision (V44)
+
+Three jobs join the background family above (language, tagging, normalisation), all sharing its
+shape — opt-in, timer-driven, batched, running **after** the clip is catalogued so a slow pass never
+blocks the scan, and recording **every** outcome so a clip is never re-processed forever.
+
+**`transcribe` — persist what a clip says.** The splitter already runs Whisper to rescue over-long
+segments (`MediaTools.Transcribe`, §10 V34), then discards the result. V44 stops discarding it: a
+confirmed segment carries its transcript onto the clip row, and the `transcribe` job backfills the
+rest. It is **selective by design** (the on-demand decision, §10 above): it transcribes a clip only
+when its source text is *thin* (an empty or near-empty sidecar description — the archive.org common
+case) **or** it is still untagged after a text-only pass. A clip whose source already describes it
+never pays for Whisper. The transcript is a first-class metadata field: searchable, and the richest
+input the tagger gets — a cereal advert with no description still *says* "Kellogg's".
+
+⚠ **Same backend seam and same arm64 reality as the language gate.** Transcription is
+`MediaTools.Transcribe`, whisper local (~341s under QEMU) or the §8.1 hosted audio model — so an
+arm64 install effectively has only the hosted path here too, and the job is off by default.
+
+**`brand` — grounded, like era.** The tagger gains a `brand` field (the advertiser: `Kellogg's`,
+`Ford`). It obeys the era rule generalised: **a brand is accepted only when it appears literally in
+a text signal** (filename, sidecar, or the now-persisted transcript). A brand the model proposes but
+cannot ground is dropped, never persisted — the same anti-fabrication asymmetry (§8) that keeps an
+inferred era out of the catalog. No brand is the honest common case, not a failure.
+
+**`vision` — read the clip nobody narrates.** A wordless spot (a car on a coast road, a station
+ident) gives Whisper nothing to hear and the tagger nothing to read, yet the *image* is full of
+signal: an on-screen logo, visible text, a black-and-white transfer that dates it. V44 adds a visual
+tier that samples a few keyframes and asks a vision model for `brand`, `category`, and the
+`visibleText` it can read off the frame.
+
+⚠ **The grounding rule holds for pixels too.** A model reading `KELLOGG'S` off a box on screen is
+*grounded* — the text is literally in the frame — exactly as an era is grounded when its year is in
+the filename. A brand or category the model asserts without the frame showing it is dropped. The
+`visibleText` field is what makes this auditable: it is the on-screen text the model claims to have
+read, and a brand not supported by it does not persist.
+
+⚠ **Keyframes come from `ffmpeg` stills, not the dHash frames.** `FFmpegArtwork` already produces a
+viewable 320px JPEG; the `GrayFrames` path is 9×8 grayscale for perceptual-hash dedup and is
+useless for vision. A new `MediaTools.Keyframes` seam returns JPEG bytes for several frames across
+the clip — the same seam pattern as `Transcribe`.
+
+⚠ **Hosted-first, with a local path — and the local path is the one careful change.** The hosted
+implementation follows `internal/llm/audio.go`: a separate `AskAboutImages` building `image_url`
+content parts with `data:image/jpeg;base64,…`, **not** a widening of `Message.Content` (that string
+is on the hot path of every text request, §8 provider abstraction). The **local** path wires
+Ollama's per-message `images` field — Ollama *does* report a `vision` capability (probed live
+2026-08-03, §10 quality gate; it is images-only, which is exactly what this needs), so a fully-local
+install gets visual tagging too. That is the single V44 change that touches the shared `Chat` path,
+so it is guarded by tests proving an image-free text request is byte-for-byte unchanged.
+
+⚠ **A frame-heuristic tier sits below vision and costs nothing.** Black-and-white detection and
+aspect ratio (4:3 vs 16:9) are era *hints* an LLM never needs to see — computed from the same
+frames, deterministic, no API call. They never override a grounded tag; they seed `suggestedEra`
+for a clip that has no other era signal, which a human confirms exactly like an AI suggestion.
+
+⚠ **Vision spends money per clip and can leave the house — off by default.** Like hosted audio, the
+hosted vision path is a deliberate opt-in with a key; the local Ollama path keeps it in the house
+for installs that want visual tagging without the cost or the egress. Recorded in §14.
+
+Everything the three jobs learn — transcript, brand, visible text — persists to the **sidecar** as
+well as the store (§10 V38c, "metadata travels with the clip"), so a catalog rebuild does not
+re-run Whisper or the vision model over the whole folder.
 
 ### Tagging confidence, and auto-filing (V38)
 
@@ -2055,6 +2136,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
   - **`ffmpeg` is a core runtime dependency, not an ingest-only tool** (revised — §9.1). It serves two callers now: yt-dlp's stream merging, and **internal playout's encoder**. A Loomarr that can't encode can't play out, so the previous opt-in-variant model (below) no longer describes a coherent artifact.
   - **`ffprobe` is bundled** (revised — it was previously excluded to save ~99MB, on the grounds that *"Loomarr never probes media — Tunarr assigns duration during its `local`-source scan"*). Internal playout owns duration and cut points, so the premise is gone. Both reversals trace to the same root cause: §9.1.
   - **`whisper-cli` (whisper.cpp) transcribes filler audio for compilation splitting** (§10, V34 — a maintainer-approved §14 addition, 2026-07-31). The transcript is the only signal that sees an ad boundary with no black frame and no silence: measured, one 149s block defeated every A/V detector while holding three complete adverts whose cuts exist only in language (plan §6.4). It matches the vendored-binary pattern in the ways that matter — exec'd, no cgo, no service — and ships in the single image with its model file like the rest of the tooling. ⚠ **It is NOT self-contained the way `yt-dlp` is** (this line used to say it was): whisper-cli links `libwhisper` + `libggml`, so those ship beside it, and **ggml `dlopen()`s its compute backend from the executable's own directory** — hence the binary lives in `/usr/local/lib/whisper` with a symlink on `PATH`. Getting that layout wrong produces a binary where `--help` succeeds and the first real transcription aborts (`GGML_ASSERT(device) failed`), so the image proves whisper by **transcribing at build time**, never by `--help`. On amd64 upstream ships 15 `libggml-cpu-*` microarchitecture variants selected at run time; copy the whole set or it fails only on untested host CPUs. ⚠ **Model size is a correctness property, not a tuning preference:** verified against the vendored **v1.9.1** binary on a real 244s commercial break — `tiny.en` dropped a complete 20s advert at the file's average loudness and `base.en` dropped 7s of equally audible speech, while **`small.en`** had no gap over audible content (its only gap is true near-silence). `small.en` therefore ships, at **466MB** — the single largest item in the image. Full method and table: plan §6.4.
+  - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
 

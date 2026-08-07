@@ -849,6 +849,62 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		log.Info("filler language gate registered",
 			"provider", set.str("filler.language_provider"), "want", set.str("filler.language"))
 
+		// Richer metadata jobs (§10 V44): transcribe + vision. Both share the ffmpeg tooling the
+		// splitter built above (a core runtime dep — NOT the ingest pair, so they run on files
+		// already on disk regardless of whether yt-dlp is present). Registered UNCONDITIONALLY so
+		// their rows stay visible on the Tasks page; each is a no-op inside Run unless its own
+		// opt-in setting is on (and, for vision, unless a vision model is configured) — the same
+		// visible-but-idle contract the language gate and auto-fetch use.
+		fillerTools := filler.NewFFmpegTools(
+			set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
+			set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+
+		// Transcribe: whisper over clips whose source text is thin. `drop` is the drop-folder FS so
+		// the job can measure source-text thinness from the sidecar (nil ⇒ every clip reads as thin,
+		// which only ever transcribes more, the safe direction).
+		var transcribeDrop fs.FS
+		if dir := set.str("filler.dir"); dir != "" {
+			transcribeDrop = os.DirFS(dir)
+		}
+		jobReg.Add(fillerTranscribeJob(filler.NewTranscribeJob(
+			fillerTranscribeStoreAdapter{st}, fillerTools,
+			func() string { return set.str("filler.dir") }, transcribeDrop,
+			func() bool { return set.boolv("filler.transcribe.enabled") },
+			time.Now, log)))
+
+		// Vision: keyframes → a multimodal model. The provider is nil unless a vision model is
+		// configured AND the wired LLM actually implements llm.VisionProvider — the same type
+		// assertion the model Warmer uses (§8.2). A nil provider makes the job a no-op, so an
+		// install without a vision model never touches ffmpeg or spends a token.
+		var visionProvider llm.VisionProvider
+		if set.boolv("filler.vision.enabled") && set.str("llm.url") != "" {
+			// ⚠ `filler.vision.model` when set, ELSE `llm.model` — vision needs an images-capable
+			// model, which the tagging model often is not (a text model like qwen3). The dedicated
+			// knob lets an operator point vision at a vision model without switching their whole LLM;
+			// empty reuses the main model for installs whose model already sees images. Same
+			// separation `filler.language_model` makes for the audio gate.
+			visionModel := set.str("filler.vision.model")
+			if visionModel == "" {
+				visionModel = set.str("llm.model")
+			}
+			p := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), visionModel, set.str("llm.api_key"))
+			if vp, ok := p.(llm.VisionProvider); ok {
+				visionProvider = vp
+			} else {
+				log.Warn("filler vision enabled but the configured LLM provider has no vision path; job will no-op",
+					"provider", set.str("llm.provider"))
+			}
+			log.Info("filler vision provider wired", "model", visionModel)
+		}
+		jobReg.Add(fillerVisionJob(filler.NewVisionJob(
+			fillerVisionStoreAdapter{st}, fillerTools, visionProvider,
+			func() string { return set.str("filler.dir") },
+			func() bool { return set.boolv("filler.vision.enabled") },
+			time.Now, log)))
+		log.Info("filler metadata jobs registered",
+			"transcribe", set.boolv("filler.transcribe.enabled"),
+			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil)
+
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
 		// next run to honour it, not the next restart.

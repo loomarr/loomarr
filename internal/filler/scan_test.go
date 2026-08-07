@@ -67,6 +67,38 @@ func TestScanDir_IdentityIsTheRelativePath(t *testing.T) {
 	}
 }
 
+// ⚠ THE display-vs-grounding split (§10 V44, live-found): the Archive downloader files a clip as
+// "<archive-id> - <title>.mp4" to dodge id collisions, so `originalName` reads
+// "CampbellsSoupAdvert - Campbell's Soup Advert" — which the guide showed verbatim. The scan must
+// prefer the sidecar's clean `title` for the DISPLAY name, while still reading the era off the
+// filename (the clean title has no year). This pins both halves: nice name, era still grounds.
+func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ab/cd/hash.mp4")
+	// A sidecar with a clean title AND a mangled originalName that carries the year 1993.
+	sidecar := `{"title":"Campbell's Soup Advert","loomarr":{"originalName":"CampbellsSoupAdvert - Campbell's Soup Advert 1993.mp4"}}`
+	if err := os.WriteFile(filepath.Join(dir, "ab/cd/hash.info.json"), []byte(sidecar), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 {
+		t.Fatalf("got %d clips, want 1", len(clips))
+	}
+	c := clips[0]
+	if c.Name != "Campbell's Soup Advert" {
+		t.Errorf("display Name = %q, want the clean sidecar title, not the doubled filename", c.Name)
+	}
+	// ⚠ The load-bearing half: era must still ground off the filename's 1993, even though the clean
+	// display title has no year. If naming used the title for BOTH, this era would be silently lost.
+	if c.Era != 1993 {
+		t.Errorf("Era = %d, want 1993 grounded from the filename — the display-name change must not break era grounding", c.Era)
+	}
+}
+
 // A drop-folder accumulates junk. Non-media files must be ignored silently rather than probed.
 func TestScanDir_IgnoresNonMediaFiles(t *testing.T) {
 	dir := t.TempDir()

@@ -88,3 +88,36 @@ func fillerSplitJob(r *filler.SplitRunner) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := r.Run(ctx); return err },
 	}
 }
+
+// fillerTranscribeJob declares the on-demand transcribe job (§10 V44) — persisting what a clip
+// SAYS so the tagger can ground a brand or era for a clip whose source described it thinly.
+//
+// ⚠ Its own row, on the same slow cadence as the language gate and for the same reason: it shares
+// the `MediaTools.Transcribe` seam (whisper ~341s per clip under QEMU), so it is expensive and
+// batched. Off unless `filler.transcribe.enabled` — the job's own opt-in, read live inside Run, so
+// the row stays visible on the Tasks page even when it is doing nothing (an omitted row reads as a
+// job that has never failed, which is a different fact).
+func fillerTranscribeJob(j *filler.TranscribeJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-transcribe", Title: "Transcribe filler clips",
+		Description: "Listens to clips whose source told us almost nothing and writes down what they say, so we can work out the brand and era. Only runs on clips that need it.",
+		DefaultCron: "0 15 * * * *", ScheduleKey: "job.filler_transcribe.schedule",
+		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}
+
+// fillerVisionJob declares the vision tagging job (§10 V44) — reading a clip's KEYFRAMES for the
+// brand, category, and on-screen text a wordless spot never says out loud.
+//
+// ⚠ The most expensive tier and the last one, so it runs only where cheaper signals left a gap
+// (especially silent clips). Off unless a vision model is configured AND `filler.vision.enabled`;
+// a nil provider makes Run a no-op, so an install without one never touches ffmpeg or spends a
+// multimodal token. Its own row for the same reason as its siblings.
+func fillerVisionJob(j *filler.VisionJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-vision", Title: "Read filler clips' pictures",
+		Description: "Looks at a few frames of clips we still can't identify — reading on-screen logos and text — to work out the brand and what they're advertising, even when nobody says it.",
+		DefaultCron: "0 50 * * * *", ScheduleKey: "job.filler_vision.schedule",
+		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}

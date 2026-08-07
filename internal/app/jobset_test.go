@@ -46,6 +46,12 @@ func TestJobSet(t *testing.T) {
 		"filler-language | 0 30 * * * * | job.filler_language.schedule",
 		"filler-split | 0 45 * * * * | job.filler_split.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
+		// ⚠ The V44 metadata jobs. Both registered UNCONDITIONALLY (present even when their opt-in
+		// is off) so their Tasks-page rows stay visible — which is exactly why they appear here
+		// regardless of the default-off settings. Off-phase from the other media jobs (:15 and :50
+		// vs language's :30 and split's :45) so no two multi-minute passes share the runner.
+		"filler-transcribe | 0 15 * * * * | job.filler_transcribe.schedule",
+		"filler-vision | 0 50 * * * * | job.filler_vision.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",
 		"reconcile | 0 */5 * * * * | job.reconcile.schedule",

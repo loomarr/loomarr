@@ -1,9 +1,11 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,10 +45,14 @@ type guideBody struct {
 				MatchLevel string `json:"matchLevel"`
 				TotalMs    int64  `json:"totalMs"`
 				Entries    []struct {
-					Name    string `json:"name"`
-					Kind    string `json:"kind"`
-					Era     int    `json:"era"`
-					Quality string `json:"quality"`
+					Name        string `json:"name"`
+					Kind        string `json:"kind"`
+					Era         int    `json:"era"`
+					Quality     string `json:"quality"`
+					Brand       string `json:"brand"`
+					Audience    string `json:"audience"`
+					Category    string `json:"category"`
+					VisibleText string `json:"visibleText"`
 				} `json:"entries"`
 			} `json:"pod"`
 		} `json:"airings"`
@@ -402,6 +408,81 @@ func TestGuide_FillerBlocksCarryTheirPodComposition(t *testing.T) {
 	}
 	if pod.Entries[0].Quality == "" || pod.Entries[0].Era == 0 {
 		t.Errorf("entry lacks era/quality context: %+v", pod.Entries[0])
+	}
+}
+
+// V44: the richer clip metadata (brand, audience, category, visibleText) rides the hover card
+// alongside era/quality, so the break can explain what it is FOR ("Kellogg's · cereal · kids"),
+// not just when it is from. These are display-only passengers carried straight from the catalog
+// row — the mapper must not drop them, or the whole V44 surfacing is invisible to the guide.
+func TestGuide_FillerPodCarriesRicherClipMetadata(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		MatchLevel: filler.MatchExact,
+		TotalMs:    30000,
+		Entries: []filler.PodEntry{{
+			Name: "Frosted Flakes", Kind: filler.Commercial, DurationMs: 30000,
+			Era: 1994, Quality: "480p",
+			// Grounded at the source (§8): each of these persisted on the clip only because a
+			// text/visual signal literally contained it. Here the mapper merely carries them.
+			Brand: "Kellogg's", Audience: filler.Kids, Category: "cereal",
+			VisibleText: "KELLOGG'S FROSTED FLAKES",
+		}},
+	}}
+	srv, st := newGridServerWithPods(t, g, fp)
+	seedGridChannel(t, st, "ch1", 1)
+
+	airings := getGuide(t, srv, "").Channels[0].Airings
+	if len(airings) != 1 || airings[0].Pod == nil || len(airings[0].Pod.Entries) != 1 {
+		t.Fatalf("filler block has no pod entry: %+v", airings)
+	}
+	e := airings[0].Pod.Entries[0]
+	// Each field must survive the Clip → PodEntry → PodEntryDTO trip. Sabotage check: drop any
+	// one of these in podToPoolDTO and exactly its assertion goes red.
+	if e.Brand != "Kellogg's" {
+		t.Errorf("brand = %q, want it carried to the hover card", e.Brand)
+	}
+	if e.Audience != "kids" {
+		t.Errorf("audience = %q, want it carried through as the Audience string", e.Audience)
+	}
+	if e.Category != "cereal" {
+		t.Errorf("category = %q, want it carried to the hover card", e.Category)
+	}
+	if e.VisibleText != "KELLOGG'S FROSTED FLAKES" {
+		t.Errorf("visibleText = %q, want the on-screen text that grounds the brand (auditable, §8)",
+			e.VisibleText)
+	}
+}
+
+// V44 omitempty: an untagged/ungrounded clip carries NONE of the richer fields, and the wire
+// must OMIT them rather than ship empty strings. "" is the honest common case (§8 — no brand is
+// not a failure), and a present-but-empty `brand` would read as "we looked and found none" when
+// we simply never grounded one. Proven at the JSON level, since that is where omitempty acts.
+func TestGuide_UntaggedClipOmitsRicherMetadata(t *testing.T) {
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {gridBlock(schedule.SlotFiller, "Break", 0, 4)},
+	}}
+	fp := &fakePods{pod: filler.Pod{
+		Entries: []filler.PodEntry{{Name: "Mystery spot", Kind: filler.Commercial, DurationMs: 30000}},
+	}}
+	srv, st := newGridServerWithPods(t, g, fp)
+	seedGridChannel(t, st, "ch1", 1)
+
+	// Read the RAW JSON, not the decoded struct: omitempty is a wire fact, and decoding into a
+	// struct with the fields present would hide a missing key behind its zero value.
+	resp := do(t, srv, http.MethodGet, "/v1/guide", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"brand"`, `"audience"`, `"category"`, `"visibleText"`} {
+		if bytes.Contains(raw, []byte(key)) {
+			t.Errorf("untagged clip shipped %s — an empty value reads as 'we found none' rather "+
+				"than 'never grounded' (§8)", key)
+		}
 	}
 }
 

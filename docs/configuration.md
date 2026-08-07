@@ -94,6 +94,8 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.filler_fetch.schedule` (`JOB_FILLER_FETCH_SCHEDULE`) | cron | `0 0 */6 * * *` | How often Loomarr checks your filler sources for new clips (cron). |
 | `job.filler_language.schedule` (`JOB_FILLER_LANGUAGE_SCHEDULE`) | cron | `0 30 * * * *` | How often Loomarr checks what language new filler clips are spoken in (cron). |
 | `job.filler_split.schedule` (`JOB_FILLER_SPLIT_SCHEDULE`) | cron | `0 45 * * * *` | How often Loomarr looks for adverts inside long recordings in your catalog (cron). |
+| `job.filler_transcribe.schedule` (`JOB_FILLER_TRANSCRIBE_SCHEDULE`) | cron | `0 15 * * * *` | How often Loomarr transcribes filler clips whose source told us little (cron). Only runs when transcription is enabled. |
+| `job.filler_vision.schedule` (`JOB_FILLER_VISION_SCHEDULE`) | cron | `0 50 * * * *` | How often Loomarr reads filler clips' frames to identify them (cron). Only runs when vision tagging is enabled. |
 | `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
@@ -137,6 +139,9 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `filler.source.folder.enabled` (`FILLER_SOURCE_FOLDER_ENABLED`) | bool | `true` | Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay. |
 | `filler.ai_tagging` (`FILLER_AI_TAGGING`) | bool | `false` | Enable AI tagging of untagged commercials (era/audience/category). |
 | `filler.autofile.enabled` (`FILLER_AUTOFILE_ENABLED`) | bool | `true` | File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming. |
+| `filler.transcribe.enabled` (`FILLER_TRANSCRIBE_ENABLED`) | bool | `false` | Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection. |
+| `filler.vision.enabled` (`FILLER_VISION_ENABLED`) | bool | `false` | Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model. |
+| `filler.vision.model` (`FILLER_VISION_MODEL`) | string | — | Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images. _(advanced)_ |
 | `filler.autofile.min_confidence` (`FILLER_AUTOFILE_MIN_CONFIDENCE`) | int | `85` | How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check. |
 | `filler.autofile.normalize_loudness` (`FILLER_AUTOFILE_NORMALIZE_LOUDNESS`) | bool | `false` | Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk. |
 | `filler.split.every` (`FILLER_SPLIT_EVERY`) | duration | `6h` | How often Loomarr looks for long recordings in your catalog and works out where the adverts inside them start and end. Set to 0 to only split when you ask. |

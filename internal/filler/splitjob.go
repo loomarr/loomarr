@@ -319,6 +319,11 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		nc.SuggestedEra = c.seg.SuggestedEra
 		nc.Audience = c.seg.Audience
 		nc.Category = c.seg.Category
+		// Persist the transcript the rescue step already produced (§10 V44). Pre-V44 this was
+		// computed to find ad boundaries and then thrown away; it is the richest metadata signal a
+		// split segment has — a segment with no source description still SAYS its brand — so it
+		// carries onto the clip row instead of being re-derived by the transcribe job later.
+		nc.Transcript = c.seg.Transcript
 		// Provenance inherits from the compilation: same source, same declared
 		// licence (the segments ARE the source's content), same resolution.
 		nc.Source = clip.Source

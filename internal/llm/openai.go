@@ -1,9 +1,12 @@
 package llm
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -216,6 +219,76 @@ func fromOpenAIToolCalls(tcs []openaiToolCall) []ToolCall {
 		})
 	}
 	return out
+}
+
+// AskAboutImages sends one question about a clip's keyframes and returns the model's answer
+// (§10 V44 vision tier). It follows AskAboutAudio's precedent exactly: a multimodal chat
+// completion whose user message carries `image_url` content parts alongside the text prompt,
+// deliberately NOT a widening of `Message.Content` (that string is on the hot path of every
+// text request, §8). The frames ride as full `data:image/jpeg;base64,…` URIs — the image
+// part's shape, unlike the audio part's bare base64 (see vision.go / audio.go).
+//
+// Like AskAboutAudio it does NOT use the Provider interface: that models a tool-calling chat
+// loop, and this is a single stateless question whose answer is a small tagging JSON.
+func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (Response, error) {
+	if len(jpegs) == 0 {
+		return Response{}, fmt.Errorf("vision request carries no images")
+	}
+
+	// text prompt first, then one image_url part per keyframe — the order the spec shows.
+	parts := make([]visionPart, 0, len(jpegs)+1)
+	parts = append(parts, visionPart{Type: "text", Text: prompt})
+	for _, jpg := range jpegs {
+		parts = append(parts, visionPart{Type: "image_url", ImageURL: &visionPartImage{
+			URL: "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(jpg),
+		}})
+	}
+
+	body, err := json.Marshal(visionChatReq{
+		Model:    o.model,
+		Messages: []visionMessage{{Role: "user", Content: parts}},
+	})
+	if err != nil {
+		return Response{}, fmt.Errorf("marshal vision request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		o.baseURL+"/chat/completions", strings.NewReader(string(body)))
+	if err != nil {
+		return Response{}, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
+
+	resp, err := o.http.Do(httpReq)
+	if err != nil {
+		return Response{}, fmt.Errorf("vision chat: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// ⚠ The body carries WHY, and it matters more here than on the text path: the common
+		// failures are "this model has no image input" and "your key has no credit", which are
+		// an operator's to fix and are indistinguishable from a bare status code (audio.go's
+		// same reasoning).
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
+		return Response{}, fmt.Errorf("vision chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
+	}
+
+	var out openaiChatResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return Response{}, fmt.Errorf("decode vision response: %w", err)
+	}
+	if out.Error != nil {
+		return Response{}, fmt.Errorf("vision chat: %s", out.Error.Message)
+	}
+	if len(out.Choices) == 0 {
+		return Response{}, fmt.Errorf("vision chat: no choices")
+	}
+	metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens) // §17: no-op on 0
+	return Response{Content: strings.TrimSpace(out.Choices[0].Message.Content)}, nil
 }
 
 var _ Provider = (*OpenAI)(nil)
