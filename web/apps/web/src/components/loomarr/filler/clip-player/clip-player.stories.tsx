@@ -26,10 +26,11 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-// ⚠ `path` carries the inline fixture rather than a real clip path, and that is what makes this
-// story work offline: `clipMediaURL` passes a `data:` value through UNCHANGED (and only `data:` —
-// never `http(s):`, which would turn a clip path into a request to an arbitrary origin). The
-// visual suite runs against `storybook-static` with no server, so a real path would 404.
+// ⚠ `hash` carries the inline fixture rather than a real content hash, and that is what makes
+// this story work offline: `clipMediaURL` passes a `data:` value through UNCHANGED (and only
+// `data:` — never `http(s):`, which would turn a clip's identity into a request to an arbitrary
+// origin). The visual suite runs against `storybook-static` with no server, so a real hash would
+// 404.
 const clip: ClipDTO = {
   name: "CTV-LifewithBonnie.mkv — CTV Life with Bonnie",
   kind: "commercial",
@@ -41,7 +42,7 @@ const clip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: TINY_MP4,
+  hash: TINY_MP4,
   tunarrProgramId: "story-clip",
 };
 

@@ -247,7 +247,7 @@ const stubFetch = () => {
         json({
           clips: [
             {
-              path: "comp.mp4",
+              hash: "hash-comp",
               name: "80s compilation",
               kind: "commercial",
               durationMs: 900000,

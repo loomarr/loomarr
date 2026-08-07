@@ -65,6 +65,7 @@ const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0,
 // proposed answer the operator confirms or rejects.
 const guessedEraAsk: IncomingAskDTO = {
   path: "1988/toys.mp4",
+  hash: "hash-guessed-era-ask",
   name: "Transformers holiday spot",
   from: "archive",
   durationMs: 30_000,
@@ -78,6 +79,7 @@ const guessedEraAsk: IncomingAskDTO = {
 // ⚠ A DIFFERENT question from the one above: nothing to confirm, so no proposed answer.
 const untaggedAsk: IncomingAskDTO = {
   path: "mystery.mp4",
+  hash: "hash-untagged-ask",
   name: "mystery.mp4",
   durationMs: 25_000,
   kind: "commercial",
@@ -148,7 +150,7 @@ const bumperClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-bumper-open.mp4",
+  hash: "hash-bumper-open",
   tunarrProgramId: "clip-bumper-open",
 };
 
@@ -212,7 +214,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-sunnyd.mp4",
+    hash: "hash-sunnyd",
     tunarrProgramId: "clip-sunnyd",
   },
   {
@@ -225,7 +227,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-gushers.mp4",
+    hash: "hash-gushers",
     tunarrProgramId: "clip-gushers",
   },
   {
@@ -238,7 +240,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-bumper-close.mp4",
+    hash: "hash-bumper-close",
     tunarrProgramId: "clip-bumper-close",
   },
 ];
@@ -254,12 +256,12 @@ const taggedClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-sunnyd-tagged.mp4",
+  hash: "hash-sunnyd-tagged",
   tunarrProgramId: "clip-sunnyd-tagged",
 };
 
-// A clip whose frame was extracted (V17b/V30). The `path` carries an inline data URI rather
-// than a real clip path because `clipThumbURL` passes those through unchanged — stories render
+// A clip whose frame was extracted (V17b/V30). The `hash` carries an inline data URI rather
+// than a real content hash because `clipThumbURL` passes those through unchanged — stories render
 // offline against storybook-static with no server behind them, so a `/v1/filler/thumb/…` src
 // would be a broken image in the gallery and a flaky pixel in the visual suite.
 //
@@ -268,7 +270,7 @@ const taggedClip: ClipDTO = {
 const thumbnailedClip: ClipDTO = {
   ...taggedClip,
   name: "Frosted Flakes — They're Grrreat!",
-  path: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+  hash: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
   thumbnail: "clip-frosted.jpg",
   tunarrProgramId: "clip-frosted",
 };
@@ -281,7 +283,7 @@ const untaggedClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-unlabeled.mp4",
+  hash: "hash-unlabeled",
   tunarrProgramId: "clip-unlabeled",
 };
 
@@ -291,7 +293,7 @@ const aiTaggedClip: ClipDTO = {
   aiTagged: true,
   playCount: 0,
   playsCounted: true,
-  path: "clip-ai.mp4",
+  hash: "hash-ai",
   tunarrProgramId: "clip-ai",
 };
 
@@ -304,7 +306,7 @@ const suggestedEraClip: ClipDTO = {
   audience: "general",
   category: "tech",
   suggestedEra: 1985,
-  path: "clip-suggested-era.mp4",
+  hash: "hash-suggested-era",
   tunarrProgramId: "clip-suggested-era",
 };
 

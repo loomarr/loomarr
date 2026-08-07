@@ -22,8 +22,8 @@ import { FillerPage } from "./filler-page";
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const clip = (path: string, name: string) => ({
-  path,
+const clip = (hash: string, name: string) => ({
+  hash,
   name,
   kind: "commercial",
   era: 1990,
@@ -87,7 +87,7 @@ const stubFetch = (over: { clips?: unknown[]; incomingTotal?: number } = {}) => 
       }
       if (u.includes("/v1/filler")) {
         return Promise.resolve(
-          jsonResponse(200, { clips: over.clips ?? [clip("a/1.mp4", "One"), clip("a/2.mp4", "Two")] }),
+          jsonResponse(200, { clips: over.clips ?? [clip("hash-a1", "One"), clip("hash-a2", "Two")] }),
         );
       }
       return Promise.resolve(jsonResponse(200, {}));

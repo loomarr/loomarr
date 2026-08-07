@@ -51,7 +51,7 @@ const usePaletteResults = (query: string) => {
   if (clips.data?.status === 200) {
     for (const clip of (clips.data.data.clips ?? []).slice(0, 6)) {
       results.push({
-        id: clip.path,
+        id: clip.hash,
         scope: "clips",
         name: clip.name,
         ...(clip.era ? { meta: `${clip.era}s` } : {}),

@@ -73,6 +73,20 @@ const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
         patches.push(body);
         return Promise.resolve(jsonResponse(opts.patchStatus ?? 200, { id: "ch-1" }));
       }
+      // GET /v1/taxonomy — the category vocabulary the criteria's product chips are now FETCHED from
+      // (§10 V45a; the hardcoded list is gone). A minimal product forest with the taxa these tests
+      // toggle (Toys, Candy) so the chips render for the interaction.
+      if (u.includes("/v1/taxonomy")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            taxa: [
+              { slug: "toys", label: "Toys", axis: "product" },
+              { slug: "candy", label: "Candy", axis: "product" },
+              { slug: "cars", label: "Cars", axis: "product" },
+            ],
+          }),
+        );
+      }
       // GET /v1/filler — catalog + add-search.
       return Promise.resolve(jsonResponse(200, { clips: opts.clips ?? [] }));
     }),
@@ -148,7 +162,7 @@ describe("ChannelFiller", () => {
     stubFetch({
       clips: [
         {
-          path: "p9.mp4",
+          hash: "p9-hash",
           tunarrProgramId: "p9",
           name: "Frosted Flakes",
           kind: "commercial",
@@ -158,7 +172,7 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9.mp4"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
   });

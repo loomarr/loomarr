@@ -85,6 +85,9 @@ const SplitReviewEditor = ({
   // Merge with next CONCATENATES THE SPANS (end becomes the next segment's end). Tags keep
   // the first segment's, inheriting from the next only what the first lacks; transcripts
   // join so the reviewer keeps the evidence for the new, longer span.
+  // ⚠ `category` (kept here as first-wins, matching every other single-value field) is a
+  // DERIVED shadow (§10 V45a) — this review gate never writes it directly, so first-wins is
+  // just which half's shadow happens to display until the confirmed segment is re-tagged.
   const mergeWithNext = (i: number) =>
     setDraft((prev) => {
       if (i + 1 >= prev.length) return prev;
@@ -269,7 +272,19 @@ const SegmentRow = ({
           {segment.audience ? (
             <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
           ) : null}
+          {/* Tags (§10 V45a), same read-only rendering as ClipCard: the headline badge is the
+              derived primary product leaf (`category`); a "+N" chip signals more taxonomy tags
+              exist without listing the full rollup set. No inline cycle — a segment's tags ride
+              along from detection/grounding, not something this review gate edits directly. */}
           {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+          {(() => {
+            const extra = (segment.tags ?? []).filter((t) => t !== segment.category).length;
+            return extra > 0 ? (
+              <Badge variant="neutral" title="This segment has more tags">
+                +{extra}
+              </Badge>
+            ) : null;
+          })()}
 
           {/* An unconfirmed era (§10 grounding): the classifier guessed a year that appears
               in NO text signal. Accept grounds it as the operator's tag; reject drops the

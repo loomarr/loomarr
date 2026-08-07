@@ -10,15 +10,17 @@ import { IncomingTab } from "./incoming-tab";
 // still paid for a queue that is admin-only server-side.
 //
 // ⚠ These tests assert the REQUEST BODIES, not just that a click did something. The BE's
-// `UpdateClipTags` writes era, audience AND category unconditionally, so a confirm that sends a
-// bare `{era}` silently wipes the other two. That is a data-loss bug no rendering assertion can
-// see, and this call site reproduced it once already.
+// `UpdateClipTags` writes era and audience unconditionally, so a confirm that sends a bare
+// `{era}` silently wipes audience. That is a data-loss bug no rendering assertion can see, and
+// this call site reproduced it once already. `category` is NOT part of the body (§10 V45a): it
+// is a derived shadow of the taxonomy tags, and this confirm never touches tags at all.
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const ASK = {
   path: "a3/f9/abc.mp4",
+  hash: "hash-abc",
   name: "Toy ad",
   suggestedEra: 1993,
   audience: "kids",
@@ -72,9 +74,11 @@ describe("IncomingTab", () => {
     expect(await screen.findByText("Toy ad")).toBeInTheDocument();
   });
 
-  // ⚠ THE regression this file exists for. A bare `{era}` blanks audience and category on the
-  // server, so the confirm must carry the clip's current values alongside the era.
-  it("confirming an era sends audience and category too, never era alone", async () => {
+  // ⚠ THE regression this file exists for. A bare `{era}` blanks audience on the server, so the
+  // confirm must carry the clip's current audience alongside the era. `category` must NOT be in
+  // the body — it's a derived shadow (§10 V45a), and `PatchClipInputBody` has no such field any
+  // more; sending it would be a stale field the server ignores at best.
+  it("confirming an era sends audience too, never era alone, and never category", async () => {
     const calls = stubFetch();
     renderTab();
     await screen.findByText("Toy ad");
@@ -84,7 +88,11 @@ describe("IncomingTab", () => {
 
     await waitFor(() => {
       const patch = calls.find((c) => c.method === "PATCH");
-      expect(patch?.body).toEqual({ era: 1993, audience: "kids", category: "toys" });
+      // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment) — this
+      // PATCH goes through the single-clip tag route, which is hash-keyed. `ask.path` stays
+      // the local UI key for `onEditTags`/`busyClip` (see the test below and the mixed-model
+      // note in incoming-tab.tsx itself).
+      expect(patch?.body).toEqual({ hash: "hash-abc", era: 1993, audience: "kids" });
     });
   });
 
