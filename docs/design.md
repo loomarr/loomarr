@@ -1212,6 +1212,266 @@ Everything the three jobs learn — transcript, brand, visible text — persists
 well as the store (§10 V38c, "metadata travels with the clip"), so a catalog rebuild does not
 re-run Whisper or the vision model over the whole folder.
 
+### Composites, lineage, and curation-grade metadata (V45 — design)
+
+A clip like **"KCPQ/Fox commercials, 5/28/1996 part 1"** (16 minutes, ~30 adverts) is not one
+commercial, but V44 catalogues it as one — it lands `kind=commercial, category=movie_trailer`, a
+single wrong tag over a whole break. V45 fixes this at the root and turns the split segments into
+clips a channel can be **automatically, confidently curated** to match. Four parts, each building on
+V44's signals.
+
+#### 1. Composite is a first-class kind, detected at intake
+
+A **composite** is a recorded break — many adverts in one file. It is detected when the clip is
+pulled in (not left to be mis-tagged as a single advert), from cheap deterministic signals: duration
+past `OverlongSegmentMs` (§10 V34, 120s — no single advert runs that long) AND multiple
+black/silence boundaries (the fades between spots, which `blackdetect` already finds — measured
+present on the KCPQ clip: black at 0s, 6.1s, 15s…). A composite is **not airable**: it is never
+matched into a pod, exactly like a `held` clip, because airing a 16-minute block as one "commercial"
+is the bug this section removes.
+
+⚠ **`IsComposite` is a distinct axis from `Kind`, deliberately.** A composite's *segments* are
+commercials/bumpers/PSAs; the composite itself is a container. Overloading `Kind` with a `composite`
+value would make every `filterKinds` call site have to special-case it, which is how a container
+leaks into a pod. A boolean the pod filter excludes once (like `held`/`removed_at`) is the safe
+polarity.
+
+#### 2. Auto-detect, auto-split, review to confirm — and KEEP THE PARENT
+
+Intake flags a composite and **immediately** runs the existing split detection (§10 V34/V43:
+chapters → black/silence → transcript rescue → classify → dedup). Segments arrive as a
+`SplitProposal` in the review queue — **nothing unreviewed airs** (detection quality is a property of
+the source, measured 69–100%, §10 V34), but the operator gets instant proposals rather than a 6-hour
+wait.
+
+⚠ **Validated by prototype on the KCPQ clip (scratchpad, 2026-08-07).** Black-frame detection over
+the full 16 minutes found 45 fades, yielding **41 advert-shaped segments (mostly clean 30s/45s
+durations — the real TV ad grid) with ZERO over-long segments needing transcript rescue.** The
+failure modes were all conservative: a handful of 3–8s slivers that squeaked past the `MinSegmentMs`
+floor (inter-ad gaps/bumpers) and one or two missed boundaries (a 57s span the prototype confirmed
+was two ads — A&W root beer + a Paramount "Phantom" trailer). ~90% correct.
+
+#### Multi-signal boundary fusion (V45 — prototype-driven upgrade of the V34 detector)
+
+The prototype's diagnosis of the imperfections led to a better detector than "black/silence →
+rescue-only-if-over-long". Each signal has a DISTINCT, complementary failure mode — measured on the
+KCPQ clip:
+
+| Signal | Precision | Recall | Failure mode |
+| --- | --- | --- | --- |
+| **black-fade + silence** | high | misses soft cuts | broadcaster-inserted separators, but not every ad has a fade → **under-cuts** |
+| **scene-cut** (`scdet`) | ~11% (88 cuts / ~10 boundaries in 5 min) | high | fires on every internal camera cut → **over-cuts** |
+| **transcript topic-shift** | high (semantic) | catches what A/V misses | fuzzy timing (±2–3s), blind to wordless ads |
+| **duration ≈ 30/60s** | — | — | a corroborating prior, not a detector |
+
+⚠ **Scene detection is a corroborating VOTE, never a boundary source — this is the load-bearing
+insight.** Its precision is terrible *alone* (a KFC→Snapple cut is pixel-identical to a cut inside
+the KFC ad; `scdet` sees pixels changing, not "the advert changed"). Black-fade and silence have high
+precision because they are *deliberately inserted by the broadcaster to separate spots* — signal by
+design; scene-cuts are an *editing byproduct* — noise by design. So the fusion is:
+
+1. **Black-fade + silence PROPOSE** candidate boundaries at precise times.
+2. **Scene-cut co-location VOTES** — a strong scene-cut within ~2s of a candidate raises its
+   confidence; scene-cuts *alone* are ignored (that is where the 89% noise lives). Measured: 9 of 12
+   black-fades in the first 5 min were corroborated by silence and/or a scene-cut.
+3. **Transcript topic-shift ADDS** the boundaries all three A/V signals missed (the soft cut) AND
+   labels each segment with its product. Measured: a 105s span the A/V pass split weakly actually
+   held 6 distinct ads (Fannie Mae, a car ad, US Navy, Dove, Subway, blue M&M's) — the transcript
+   found the ones the fades did not.
+4. **Duration ≈ a standard ad length** (30/60s ±2s) is the final confidence prior.
+
+⚠ **The transcript-rescue trigger drops from "over-long (>120s)" to "longer than a typical spot".**
+The V34 detector only ran the LLM boundary check on >120s segments, so the 57s A&W+Phantom merge was
+never rescued — the A/V missed the cut AND the segment was not "over-long enough" to trigger the
+transcript pass. A segment materially longer than one spot (~>45–60s) now gets the transcript check
+too. The prototype proved the LLM cleanly splits it (`{A&W root beer @0s, Paramount @11s}`).
+
+**The slivers are dropped, not reviewed.** A sub-`MinSegmentMs`-ish fragment whose transcript is only
+`[MUSIC]`/empty is an inter-ad stinger, never a real advert — measured on the 3–8s fragments. No
+transcript ⇒ drop.
+
+**This produces a per-segment CONFIDENCE from signal agreement**, which is what makes
+confidence-gated auto-confirm principled rather than a guess: a boundary confirmed by black + silence
++ scene-cut + a coherent single-product transcript, at a ~30s duration, auto-confirms; a 1-signal
+boundary at an odd duration goes to review. This replaces "review all 41" with "auto-confirm the ~30
+obvious spots, review the ~11 uncertain ones" — the concrete mechanism behind "automatic curation
+with high confidence".
+
+⚠ **Confirm no longer deletes the parent — this reverses V34's delete-on-confirm.** V34 removed the
+compilation's row and file on confirm ("its identity is a path that now means twenty clips");
+V45 keeps it as a **composite entity** and gives each segment a `parent_hash` pointing back. This is
+the load-bearing change, and it buys three things V34 threw away:
+
+1. **Provenance** — "which break did this Coca-Cola ad air in?" is answerable, which channel theming
+   ("a real 1996 Fox evening") depends on.
+2. **Re-splitting** — detection improves (a better rescue model, a new boundary heuristic); with the
+   parent gone that is impossible, and with it kept it is a re-run.
+3. **Segments inherit the parent's broadcast context** (below) for free — they came from the same
+   tape, so the same network/market/date applies to all of them.
+
+The parent stays on disk and in the store, marked composite (not airable); its segments are the
+airable clips. `parent_hash` is nullable — a hand-dropped single advert has none.
+
+#### 3. Structured broadcast context — a parser over text we already have
+
+The archive.org title/filename encodes **network, station, market, and exact air date** in plain
+text that V44 discards after pulling the year for era grounding: "KCPQ/Fox commercials, **5/28/1996**"
+and "**CLE**-B23… CBS-**WJW-8**…**1993-01-10**". A structured parser (Go `regexp` + a
+station-callsign→market table, e.g. `KCPQ`→Seattle/Fox, `WJW`→Cleveland/CBS) extracts:
+
+- `network` (Fox, CBS, NBC…) — from the callsign table or the title
+- `station` (KCPQ, WJW-8) — the callsign
+- `market` (Seattle, Cleveland) — from the callsign table
+- `air_date` (full date, not just the year `era` grounds) — parsed from the date in the text
+
+⚠ **Grounded like every other tag: parsed only when it literally appears in the text.** A callsign
+not in the table, or a title with no date, yields empty — never a guess. This is the cheapest tier
+on the whole ladder (no model, no network) and the one that makes period/regional authenticity
+possible. The parser runs on the **composite** and its output propagates to every segment.
+
+#### 4. Semantic metadata + an embedding column, for confident channel matching
+
+The end goal — "automatically curate clips with high confidence they match a channel" — needs a
+signal the enum tags cannot give: **thematic/tonal matching**. The shape of this was decided by a
+**throwaway prototype on real KCPQ segments** (scratchpad, 2026-08-07), not by assumption — and the
+prototype changed the plan, so its findings are recorded here:
+
+- ⚠ **LLM-extracted closed-vocabulary tags are the thematic engine — NOT embeddings.** The tagger
+  extracts `mood`/`tone` (nostalgic, energetic, calm), a `topic` hierarchy above the flat 12-value
+  `category`, `channelFit` theme labels, and `sensitivity` flags (political, alcohol) from the
+  per-segment transcript + vision text. All grounded, all from a closed vocabulary the operator's
+  channel rules can match and AUDIT. This is the primary "does this clip fit channel X" signal.
+⚠ **Vision model + frame extraction, decided by prototype (scratchpad, 2026-08-07).** Two findings
+from testing llava:7b vs qwen2.5vl:7b on real KCPQ frames with known on-screen text ("Deferred
+Payment Offer Ends 6/2", six red cars):
+
+- **`qwen2.5vl:7b` is the default vision model, not llava.** On the Dodge frame llava CONFIDENTLY
+  FABRICATED a date ("ENDS 2/9/03" — not on screen); qwen read it correctly ("...Payment Ends 6/2")
+  and, when it could not read cleanly, returned honest FRAGMENTS ("Del Pay / Effer / End") rather
+  than inventing. Honest-partial is far safer than confident-wrong for the grounding gate: the gate
+  catches a brand invented out of nowhere, but it CANNOT catch a model that misreads text and then
+  grounds a tag against its own misreading (llava's "2/9/03" would self-consistently ground a wrong
+  air date). qwen's failure mode drops cleanly; llava's launders fiction into a grounded fact.
+- **Vision keyframes must be FULL/near-full resolution, NOT the 320px `FFmpegArtwork` thumbnail
+  path.** The SAME model on the SAME frame went from unreadable ("Del Pay / Effer / End") at 640px to
+  correct ("Payment Ends 6/2") at full resolution. Resolution was a bigger lever than the model for
+  OCR. The V44 vision tier reused the 320px still (fine for thumbnails); V45 vision extracts at full
+  res for text reading.
+- **Sample MULTIPLE frames per segment, timed toward the end-card.** A single mid-ad keyframe lands on
+  narrative (the KFC frame at 4:05 was two people talking — no logo), because an ad shows its brand
+  for only ~3–5s (the closing logo card). `MediaTools.Keyframes(n)` already takes a count; V45 uses
+  several frames biased toward the segment's end, where branding lives, rather than one.
+
+- ⚠ **Embeddings are DEMOTED to a secondary role: content-dedup and lexical search only — never the
+  primary curation signal.** The prototype embedded 10 real ad transcripts (`nomic-embed-text`, 768d)
+  and ranked them against channel-theme queries. It matched well where the transcript shared
+  VOCABULARY with the query (a Dove body-wash ad scored 0.728 against "personal care", cleanly #1)
+  and FAILED on abstract theme (a genuine sci-fi/X-Files promo ranked #4, *below* a Christmas candy
+  ad, against a "sci-fi channel" query — 0.48 vs 0.55). Scores compressed into 0.40–0.55, so the
+  ranking is fragile. `nomic-embed-text` matches literal topical words, not inferred theme, which is
+  exactly the case structured tags already cover — so an embedding buys little as a curation axis and
+  actively misleads where the tags are absent. It keeps a place only for what it IS good at:
+  near-duplicate detection by content and a "clips lexically like this" search, both supplementary.
+
+If the embedding column is built at all, the same constraints hold: stored *in* the existing store
+via `sqlite-vec` / `pgvector` (a column, not a second datastore — §14 keeps "one binary, one store"),
+generated by the already-running Ollama `nomic-embed-text` (no new service, no key). But it is a
+dedup/search helper, not the thematic matcher, and Part 4 leads with the LLM tags.
+
+⚠ **Structured filters stay structured and deterministic — the thematic layer only RANKS.** The pod
+assembler's core queries — era, audience, category, no-repeat-brand, network/market — are exact
+`WHERE` clauses and must stay deterministic (pod assembly is seeded so the guide can promise what
+airs, §10/§19). The LLM theme tags (and, if present, embeddings) are a *ranking* signal over an
+already-eligible structured candidate set — they order the pool toward the channel's theme, they
+never decide *which* clips are eligible.
+
+#### The curation confidence this produces
+
+With brand (V44), broadcast context (#3), and semantic embedding (#4), the assembler gains new match
+and variety axes: **no repeat advertiser in a break** (Brand, today carried but unused), **network/
+market/era-window** filters (a "1996 Seattle Fox" channel), **loudness-aware ordering** (the LUFS
+V42 measures, used to pace a break instead of only to normalise), and a **thematic match score** (the
+embedding). "High confidence this segment fits channel X" becomes a real number: the grounding gate
+(is the metadata fact or guess?) times the thematic distance (does it fit the theme?). The operator
+rules layer (`internal/schedule`'s `SchedulingRule` WHEN/WHAT/HOW, borrowed rather than reinvented)
+expresses the exclusions and quotas.
+
+⚠ **New dependencies (§14 records them): `sqlite-vec` / `pgvector` for the embedding column, and the
+Ollama `nomic-embed-text` model for generating embeddings.** Both stay inside the "one store, one
+binary" boundary — a store extension and an already-present local model — which is why they earn
+their place where a standalone vector database (Qdrant/Weaviate) would not: at a catalog of thousands
+(the `filler.fetch.max_catalog_clips` ceiling is 2000), a second datastore to back up and reconcile
+buys nothing a column does not.
+
+#### Frontend implications (V45 — governed by §12/§13 and `docs/frontend-design.md`)
+
+The keep-parent model **inverts a user-facing flow**, so V45's FE work is not all additive — two
+things it makes actively *wrong* must be corrected in the SAME change as the backend, not deferred:
+
+1. ⚠ **The split-review UI asserts the compilation is DELETED on confirm** — the exact opposite of
+   V45. `split-review-page.tsx` reads "the compilation row is gone" / "Nothing is in the catalog
+   yet"; `split-review-editor.tsx`'s empty state says "Go back to keep the compilation whole" — a
+   framing where the parent survives ONLY if you *don't* confirm. Under V45 confirm KEEPS the
+   parent (as a composite) and creates segments that point back to it. The copy and the mental model
+   both flip: confirm now means "file these segments under this break", and the parent is always
+   kept. This lives in the review-gate route and editor, and it is coupled to the backend Confirm
+   change — shipping one without the other leaves the UI lying about what the button does.
+2. ⚠ **`kind` is a closed 6-value enum on the frontend with no `composite`** — the catalog kind
+   filter, the `KIND_LABEL`/`CLIP_DOT` maps, and the `FillerSearch.kind` route validation all drop
+   or mis-render an unknown value. Adding `composite` to the OpenAPI enum without the FE additions
+   SILENTLY breaks the catalog filter, so the enum extension is a coupled BE+FE unit (regenerate the
+   orval client, extend the label maps and the route-param validator together).
+
+**The FE already anticipated the composite problem, which is why these additions complete an existing
+design rather than fight it.** `pool-health` warns in-tree that "a catalog of five hundred
+fifteen-minute compilations reads as healthy by clip count and can fill nothing" — the non-airable
+composite kind is the fix for exactly that. The reusable pieces exist: a `ConfidenceMeter` (used in
+Incoming) for a per-clip/per-pod curation-confidence score; the `ClipCard` badge/chip row for a
+"composite / not airable" badge and for broadcast-context (network · market · air date); the
+`incoming-panel` reel rows, which already model "a compilation → its segments", as the home for the
+kept-parent lineage view; and `GuideDetailCard`'s per-clip pod lines (already era/quality) for
+broadcast context and the match-level ("why this clip") explanation.
+
+**New additive surfaces**, each with an identified home: a `composite` badge + catalog filter value;
+a lineage view (segment ↔ parent break) in the review editor header and the clip card; broadcast
+context (network/market/air-date) on the card, guide hover, and as new catalog filters; a
+curation-confidence indicator (reusing `ConfidenceMeter`); and mood/topic/sensitivity chips on the
+card and filter bar. All require the new fields on `ClipDTO`/`SplitSegment` first (so the OpenAPI
+regen is the gate for each), and all fit the stable three-tab filler IA (Catalog · Incoming ·
+Sources) without new top-level navigation.
+
+**Cleanup the audit surfaced** (do in a V45 PR, not silently): `ClipDTO.source` and
+`tunarrProgramId` exist on the FE type but are rendered nowhere — either surface them or drop them
+from the display path, rather than carrying dead fields that read as capability.
+
+#### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
+
+⚠ **The system now runs FOUR model roles, but the AI settings page only lets you choose ONE.** Text
+(qwen3), vision (qwen2.5vl), audio/transcribe (whisper), and embedding (nomic-embed-text) are
+distinct models, yet `/settings/ai`'s model picker binds only `llm.model`; `filler.vision.model` is a
+bare text field on the *Filler* page, whisper is `INGEST_WHISPER_*` env-only, and embeddings would
+have no control at all. Model selection fragmented as roles multiplied. V45 fixes the IA:
+
+- **A "Model roles" section on the AI page** — text / vision / audio / embedding, each a reusable
+  `ModelPicker` (the component is already props-driven — `catalog`/`active`/`onSelect`, not hardwired
+  to `llm.model`), each pointed at its own settings key. The one backend addition is filtering the
+  ranked model catalog **by role capability** (Ollama's `/api/show` reports `vision`/`embedding`/…,
+  which §8.1 model selection already reads) so the vision picker only offers vision-capable models.
+- **The organising principle: models live on the AI page; feature toggles and behavior live on the
+  Filler page.** So `filler.vision.model` and a new `filler.embed.model` move to / are exposed on the
+  AI page; `filler.vision.enabled` / `filler.transcribe.enabled` / a new `filler.embed.enabled` and
+  the split/curation behavior knobs stay on Filler.
+
+**Setting to change immediately, independent of the phase:** `filler.vision.model` default becomes
+**`qwen2.5vl:7b`** — the prototype proved llava:7b's confident-fabrication (a misread date grounded as
+fact) is unsafe for the grounding gate, while qwen reads OCR accurately and fails honestly.
+
+**New V45 settings** (all §15-declared, config-docs regenerated): `filler.embed.enabled` (opt-in),
+`filler.embed.model` (default `nomic-embed-text`), `filler.split.autoconfirm_confidence` (the
+signal-agreement bar for auto-confirming a segment), `filler.split.rescue_over_ms` (the "longer than
+a typical spot" transcript-rescue trigger, default ~45–60s, replacing the fixed 120s over-long gate),
+and a no-repeat-brand curation toggle.
+
 ### Tagging confidence, and auto-filing (V38)
 
 The tagger records a **confidence score** (0–100) alongside the tags. It exists for one job: to
