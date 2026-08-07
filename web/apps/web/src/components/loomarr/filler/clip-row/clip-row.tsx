@@ -45,7 +45,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, className }: ClipRowProps) =>
         name column against its neighbours. An empty box is the honest "no frame" here. */}
     <div className="h-[30px] w-[54px] overflow-hidden rounded-sm bg-static-800">
       {clip.thumbnail && (
-        <img src={clipThumbURL(clip.path)} alt="" className="size-full object-cover" loading="lazy" />
+        <img src={clipThumbURL(clip.hash)} alt="" className="size-full object-cover" loading="lazy" />
       )}
     </div>
 

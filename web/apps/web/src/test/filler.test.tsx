@@ -9,7 +9,7 @@ const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disable
 const MEMBER = { ...ADMIN, role: "member" };
 
 const clip = (over: Record<string, unknown> = {}) => ({
-  path: "c1.mp4",
+  hash: "c1-hash",
   tunarrProgramId: "c1",
   name: "Frosted Flakes",
   kind: "commercial",
@@ -159,7 +159,9 @@ describe("Filler page", () => {
     stubFetch();
     renderAt("/filler");
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
-    expect(screen.getByText("1992s")).toBeInTheDocument();
+    // §10 V45a era label: a SPECIFIC year renders plain (the tagger grounds a literal year, §8), only
+    // a decade boundary gets the "s". 1992 → "1992", not the old nonsense "1992s".
+    expect(screen.getByText("1992")).toBeInTheDocument();
   });
 
   // Search is executed SERVER-side (§7.2 name LIKE) rather than filtering in memory —
@@ -168,7 +170,7 @@ describe("Filler page", () => {
     const fetchMock = stubFetch({
       clips: [
         clip(),
-        clip({ path: "c2.mp4", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
+        clip({ hash: "c2-hash", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
       ],
     });
     renderAt("/filler");
@@ -282,9 +284,10 @@ describe("Filler page", () => {
   });
 
   // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the
-  // admin's one-click confirm PATCHes it — carrying the clip's existing audience/category,
-  // because the BE's UpdateClipTags writes all three columns unconditionally and a bare
-  // {era} would wipe the other two.
+  // admin's one-click confirm PATCHes it — carrying the clip's existing audience, because the
+  // BE's UpdateClipTags writes era and audience unconditionally and a bare {era} would wipe
+  // audience. `category` is NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags,
+  // and this confirm never touches tags.
   it("confirms an era suggestion, keeping the clip's other tags", async () => {
     const fetchMock = stubFetch({
       clips: [clip({ era: 0, suggestedEra: 1985, audience: "kids", category: "cereal", tagged: false })],
@@ -297,13 +300,16 @@ describe("Filler page", () => {
 
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "the confirm should PATCH the clip").toBeDefined();
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ era: 1985, audience: "kids", category: "cereal" });
+    // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment).
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ hash: "c1-hash", era: 1985, audience: "kids" });
   });
 
-  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era, audience AND
-  // category on every call, so a cycle that PATCHed only the clicked field would silently
-  // wipe the other two — once per click, not once per dialog. This asserts the whole tag row
-  // travels with a single cycled chip.
+  // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era and audience on
+  // every call, so a cycle that PATCHed only the clicked field would silently wipe the other —
+  // once per click, not once per dialog. This asserts the whole tag row travels with a single
+  // cycled chip. `category` is NOT part of the body (§10 V45a): it's a derived shadow, and a
+  // cycle never touches the clip's taxonomy tags — omitting `tags` leaves them, and therefore
+  // the shadow, unchanged server-side.
   it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
     const fetchMock = stubFetch({
       clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
@@ -315,11 +321,12 @@ describe("Filler page", () => {
 
     const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
     expect(patch, "cycling a chip should PATCH the clip").toBeDefined();
-    // era and category ride along UNCHANGED; only audience advances.
+    // era rides along UNCHANGED; only audience advances; category/tags are absent entirely.
+    // §10 V45a: the clip is identified by `hash` in the body.
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      hash: "c1-hash",
       era: 1990,
       audience: "family",
-      category: "cereal",
     });
   });
 
@@ -346,7 +353,9 @@ describe("Filler page", () => {
       ([u, i]) => String(u).endsWith("/split") && String(i?.method) === "POST",
     );
     expect(posted, "the action should POST the split job").toBeDefined();
-    expect(await screen.findByText(/detecting cuts in c1\.mp4/i)).toBeInTheDocument();
+    // The status line now reads the clip's NAME (§10 V45a): `ClipDTO` carries no path any more,
+    // and a content hash is meaningless to read in a sentence.
+    expect(await screen.findByText(/detecting cuts in frosted flakes/i)).toBeInTheDocument();
 
     act(() => {
       fireFrame("filler_split", { jobId: "job-split-1", clipPath: "c1.mp4", status: "running" });
@@ -421,7 +430,9 @@ describe("Filler page", () => {
 
     const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/remove"));
     expect(call).toBeDefined();
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"] });
+    // §10 V45a: the bulk endpoint takes HASHES (the wire identity `selected` is built from), matching
+    // the single-clip PATCH. The backend resolves hash → path internally for the path-keyed tombstone.
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ hashes: ["c1-hash"] });
   });
 
   // ⚠ Each dropdown sends ONLY its own field. A bar that posted all three would blank whatever
@@ -441,7 +452,8 @@ describe("Filler page", () => {
 
     const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/tag"));
     expect(call).toBeDefined();
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ paths: ["c1.mp4"], audience: "family" });
+    // §10 V45a: bulk edit is hash-keyed (see the bulk-remove test above).
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ hashes: ["c1-hash"], audience: "family" });
   });
 
   // A member cannot bulk-edit, so the control that would 403 is simply absent rather than

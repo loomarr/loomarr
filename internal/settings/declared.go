@@ -500,6 +500,17 @@ func declared() []Setting {
 			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
 		},
 		{
+			// Taxonomy reindex (§10 V45a). ⚠ OFF by default like its siblings, but for a DIFFERENT
+			// reason: not cost (it is two cheap bulk SQL statements, no whisper/vision), but relevance
+			// — clip rollups only go stale when an operator EDITS the tag graph. An install that never
+			// hand-edits the taxonomy never needs it; one that does turns it on so the derived rollups
+			// re-converge on the current graph. When the taxonomy CRUD API can kick a rebuild directly,
+			// this job remains the eventual-convergence guarantee.
+			Key: "filler.reindex.enabled", EnvVar: "FILLER_REINDEX_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary.",
+		},
+		{
 			// ⚠ Its OWN model knob, exactly like filler.language_model — and the live test that
 			// added it found why: the tagging model (`llm.model`) is often a TEXT model with no
 			// vision path (qwen3 in dev), while the box has a separate vision-capable one (gemma-4).
@@ -891,6 +902,15 @@ func declared() []Setting {
 			Key: "job.filler_vision.schedule", EnvVar: "JOB_FILLER_VISION_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 50 * * * *",
 			Doc: "How often Loomarr reads filler clips' frames to identify them (cron). Only runs when vision tagging is enabled.",
+		},
+		{
+			// §10 V45a. At :05, CLEAR of the expensive media-job cluster (:15/:30/:45/:50) rather than
+			// phase-offset FROM it — this job is two cheap bulk SQL statements, not a whisper/vision
+			// pass, so it does not contend for the runner the way they do. Only runs when reindex is
+			// enabled (an install that hand-edits the tag graph).
+			Key: "job.filler_reindex.schedule", EnvVar: "JOB_FILLER_REINDEX_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 5 * * * *",
+			Doc: "How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled.",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,

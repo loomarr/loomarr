@@ -40,6 +40,11 @@ func randomCatalog(rng *rand.Rand, maxN int) []filler.Clip {
 	cat := make([]filler.Clip, 0, n)
 	for i := 0; i < n; i++ {
 		cat = append(cat, filler.Clip{
+			// ⚠ Hash is the IDENTITY (Clip.ID()) pod assembly keys pinned/excluded/no-repeat on, and it
+			// is DISTINCT from Path — a clip's hash is not its location (§10 V38c/V45a). Omitting it made
+			// every clip share the empty-string key, so hash-keyed no-repeat collided on "" and passed
+			// for the wrong reason ([[loomarr-fixture-collapsed-keys]]). Derive, never equate.
+			Hash:       "h" + strconv.Itoa(i),
 			Path:       "p" + strconv.Itoa(i),
 			Name:       "clip-" + strconv.Itoa(i),
 			Kind:       propKinds[rng.Intn(len(propKinds))],
@@ -220,9 +225,11 @@ func TestProp_Density(t *testing.T) {
 // exact-match catalog so the cap, not scarcity, is what bounds the count.
 func TestProp_DensityDefaultPodMax(t *testing.T) {
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{Hash: "hbump", Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 12; i++ {
 		cat = append(cat, filler.Clip{
+			// Hash distinct from Path — the identity pod assembly keys on (§10 V45a).
+			Hash: "had" + strconv.Itoa(i),
 			Path: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "c" + strconv.Itoa(i), DurationMs: 20000,
 		})

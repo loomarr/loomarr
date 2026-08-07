@@ -58,10 +58,10 @@ func (s *Server) serveFillerThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The clip id is its path relative to FILLER_DIR, so it arrives with slashes and must be
-	// matched by a wildcard segment rather than a plain {id}.
-	clipPath := r.PathValue("path")
-	if clipPath == "" {
+	// The clip is addressed by its content HASH (V45a); resolve it to the disk path (server-internal
+	// now) to locate the thumbnail. A missing clip is an ordinary 404, like a missing thumbnail.
+	clipPath, ok := s.clipPathByHash(r.Context(), r.PathValue("hash"))
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}

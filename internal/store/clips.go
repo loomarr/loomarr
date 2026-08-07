@@ -59,6 +59,20 @@ type ClipFilter struct {
 	// catalog". Added because the audit list was loading every clip in the install and dropping
 	// all but the auto-filed ones in Go; the predicate belongs beside the column it reads.
 	AutoFiledOnly bool
+	// IncludeComposites lifts the default exclusion of COMPOSITE clips (§10 V45).
+	//
+	// ⚠ Same polarity and same reason as IncludeHeld. A composite is a recorded break, NOT airable —
+	// pod assembly loads the catalog through this same call with a ZERO filter, so an opt-OUT would
+	// put a 16-minute block into a channel's break as one "commercial". Its segments air, it does
+	// not. Opt-in means only a caller that explicitly wants to SEE composites (the catalog listing,
+	// a lineage view) passes this.
+	IncludeComposites bool
+	// CompositesOnly restricts to composites — the "recorded breaks awaiting split" work list and the
+	// lineage parent lookup. The inverse of the default exclusion, like HeldOnly.
+	CompositesOnly bool
+	// ParentHash restricts to the SEGMENTS of one composite (§10 V45) — the lineage query
+	// ("show me the adverts split out of this break").
+	ParentHash string
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
@@ -99,8 +113,13 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// writers are the job methods below — SetClipTranscript owns `transcript`, SetClipVisionTags
 		// owns `visible_text`/`vision_tagged`, and `brand` is written by whichever grounded it
 		// (SetClipBrand from text, SetClipVisionTags from the frame).
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		//
+		// ⚠ is_composite / parent_hash (§10 V45, migration 00039) are also INSERTed but OMITTED from
+		// DO UPDATE. Set by intake/detection and by split Confirm; the folder scan does not know a
+		// file is a composite or whose segment it is, so a re-sync must not flip a confirmed composite
+		// back or blank a segment's lineage. Written by SetClipComposite / SetClipParent below.
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -121,6 +140,7 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// line is the fourth time it has bitten this session. `vision_tagged` joins them (00038).
 		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
 		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
+		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
 	if err != nil {
@@ -131,11 +151,27 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
 	rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged,
+	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
+}
+
+// clipWithTags fills a single clip's taxonomy Tags (§10 V45a). Wraps attachTags for the two
+// single-row readers so they load tags the same way the listing does — one clip is a one-element
+// batch, so there is no separate query shape to keep in step.
+func (s *sqlStore) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
+	batch := []Clip{c}
+	if err := s.attachTags(ctx, batch); err != nil {
+		return Clip{}, err
+	}
+	return batch[0], nil
 }
 
 // GetClipByPath looks a clip up by its location under FILLER_DIR.
@@ -151,7 +187,11 @@ func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 // The media route needs this one rather than the hash lookup because its URL carries the path —
 // which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.
 func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
 }
 
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
@@ -169,7 +209,14 @@ func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanClips(rows)
+	clips, err := scanClips(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachTags(ctx, clips); err != nil {
+		return nil, err
+	}
+	return clips, nil
 }
 
 // CountClips answers "how many match?" without materialising the rows.
@@ -270,6 +317,21 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 	} else if !f.IncludeHeld {
 		where = append(where, "held = ?")
 		args = append(args, false)
+	}
+	// ⚠ THE composite chokepoint (§10 V45), the same shape as the held block above and for the same
+	// reason: pod assembly loads the catalog here with a zero filter, so a composite excluded ONCE
+	// here can never air. Bound, never a literal — `is_composite` is BOOLEAN on Postgres and INTEGER
+	// on sqlite (00039), the recurring dialect trap.
+	if f.CompositesOnly {
+		where = append(where, "is_composite = ?")
+		args = append(args, true)
+	} else if !f.IncludeComposites {
+		where = append(where, "is_composite = ?")
+		args = append(args, false)
+	}
+	if f.ParentHash != "" {
+		where = append(where, "parent_hash = ?")
+		args = append(args, f.ParentHash)
 	}
 	if f.UntaggedOnly {
 		// "Untagged" = a COMMERCIAL missing any match tag. Bumpers/station-ids/PSAs
@@ -417,11 +479,14 @@ func scanClip(sc scannable) (Clip, error) {
 		// vision_tagged is BOOLEAN (00038), the same side of the dialect split as its three
 		// neighbours above — scanned into a bool, never an int.
 		visionTagged bool
-		updatedAt    int64
+		// is_composite is BOOLEAN (00039), the same side again.
+		isComposite bool
+		updatedAt   int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
+		&isComposite, &c.ParentHash,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
@@ -434,6 +499,7 @@ func scanClip(sc scannable) (Clip, error) {
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged
 	c.VisionTagged = visionTagged
+	c.IsComposite = isComposite
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
 	if removedAt != 0 {
 		c.RemovedAt = fromEpoch(removedAt)
@@ -454,6 +520,45 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// attachTags loads the taxonomy tag set (§10 V45a) for a batch of clips and fills each Clip.Tags.
+//
+// ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
+// the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
+// (the class [[loomarr-perf-cpu-profile-blind-to-waiting]] warns about). The full leaf+rollup set is
+// loaded (leaf and rollup rows alike), because that is what curation matches against; `Category` is
+// derived from it separately at write time, not here.
+//
+// A clip with no tag rows keeps Tags == nil, which is the honest "tagger has not reached it" state.
+func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
+	if len(clips) == 0 {
+		return nil
+	}
+	idx := make(map[string]int, len(clips)) // hash → position in clips, so we can fill in place
+	placeholders := make([]string, len(clips))
+	args := make([]any, len(clips))
+	for i, c := range clips {
+		idx[c.Hash] = i
+		placeholders[i] = "?"
+		args[i] = c.Hash
+	}
+	q := `SELECT clip_hash, taxon FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return fmt.Errorf("attach clip tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var hash, taxon string
+		if err := rows.Scan(&hash, &taxon); err != nil {
+			return err
+		}
+		if i, ok := idx[hash]; ok {
+			clips[i].Tags = append(clips[i].Tags, taxon)
+		}
+	}
+	return rows.Err()
 }
 
 // ⚠ `boolToInt` was here and is DELETED (V38c). Every bool column is BOOLEAN on Postgres now that
@@ -661,6 +766,27 @@ func (s *sqlStore) SetClipVisionTags(ctx context.Context, path, brand, visibleTe
 		epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip vision tags %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipComposite marks (or unmarks) a clip as a composite — a recorded break, not airable (§10
+// V45). Called by intake/detection when a 16-minute file is recognised as a break, and by split
+// Confirm on the PARENT (which V45 keeps and marks composite rather than deleting).
+//
+// ⚠ **The ONLY writer of `is_composite`**, exactly like SetClipLanguage owns `language`: UpsertClip
+// omits it, so a re-sync finding the original file on disk cannot flip a confirmed composite back to
+// an airable clip. Keyed by HASH — a composite is identified by its content, and the detection/
+// confirm paths hold the hash.
+func (s *sqlStore) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET is_composite = ?, updated_at = ? WHERE hash = ?`),
+		composite, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip composite %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

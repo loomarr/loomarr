@@ -48,8 +48,8 @@ const ClipPlayer = ({ clip, onClose, className }: ClipPlayerProps) => (
             // ⚠ `key` on the clip's identity: without it, reopening the dialog on a DIFFERENT
             // clip reuses the same element and React keeps its state, so the new clip inherits
             // the previous one's playhead. The key forces a fresh player per clip.
-            key={clip.path}
-            src={clipMediaURL(clip.path)}
+            key={clip.hash}
+            src={clipMediaURL(clip.hash)}
             title={clip.name}
             // The operator clicked a play button to get here, so the gesture that permits
             // autoplay has already happened.

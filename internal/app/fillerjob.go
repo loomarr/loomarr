@@ -121,3 +121,21 @@ func fillerVisionJob(j *filler.VisionJob) scheduler.Job {
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }
+
+// fillerReindexJob declares the taxonomy reindex (§10 V45a) — recomputing every clip's rolled-up tags
+// from the current tag graph.
+//
+// ⚠ A lifecycle sibling of the media jobs above (its own Tasks-page row, off by default, read live
+// inside Run) but NOT an expensive one: its body is two bulk SQL statements (rebuild the closure, then
+// the rollups), no whisper/vision/ffmpeg, no per-clip loop. It exists because clip rollups are a
+// DERIVED cache of (clips × graph) that goes stale when an operator edits the graph — this is the job
+// that re-converges them. Its own row, like its siblings, so an operator can see it ran and connect a
+// tag change to it.
+func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-reindex", Title: "Update clip tags to match the vocabulary",
+		Description: "Recomputes every clip's rolled-up tags so they match the current tag categories. Runs after you edit the tag vocabulary yourself.",
+		DefaultCron: "0 5 * * * *", ScheduleKey: "job.filler_reindex.schedule",
+		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
+	}
+}

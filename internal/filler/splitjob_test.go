@@ -10,6 +10,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
@@ -96,6 +97,19 @@ func (m *splitMemStore) DeleteClip(_ context.Context, id string) error {
 	delete(m.clips, id)
 	return nil
 }
+
+// SetClipComposite marks the parent composite by HASH (§10 V45) — the real store keys it by hash, so
+// the mock searches by hash rather than assuming the map key (which is the path here).
+func (m *splitMemStore) SetClipComposite(_ context.Context, hash string, composite bool, _ time.Time) error {
+	for k, c := range m.clips {
+		if c.Hash == hash {
+			c.IsComposite = composite
+			m.clips[k] = c
+			return nil
+		}
+	}
+	return fmt.Errorf("composite target not found: %s", hash)
+}
 func (m *splitMemStore) UpsertSplitProposal(_ context.Context, p filler.SplitProposal) error {
 	for id, existing := range m.proposals {
 		if existing.ClipPath == p.ClipPath && id != p.ID {
@@ -117,8 +131,20 @@ func (m *splitMemStore) DeleteSplitProposal(_ context.Context, id string) error 
 	return nil
 }
 
+// ListTaxa serves the REAL seed forest (§10 V45a), like tagMemStore — the splitter grounds each
+// segment's tags against it, so a segment tagged `toys` resolves and an off-vocabulary slug is dropped
+// exactly as a directly-tagged clip is. An empty graph would ground nothing and prove nothing.
+func (m *splitMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
+}
+
 func seedCompilation(st *splitMemStore, path string, durationMs int64) {
 	c := filler.StoreClip{}
+	// ⚠ Hash is the IDENTITY (§10 V38c) SetClipComposite/ParentHash key on, and it must be NON-EMPTY
+	// and DISTINCT from the path. Leaving it "" made SetClipComposite(clip.Hash=="") match whichever
+	// empty-hash clip the map iteration reached first — the compilation OR a freshly-cut segment — an
+	// intermittent "compilation not marked composite" flake ([[loomarr-fixture-collapsed-keys]]).
+	c.Hash = "hash-of-" + path
 	c.Path = path
 	c.Name = filepath.Base(path)
 	c.Kind = filler.Commercial
@@ -149,8 +175,8 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 		{StartMs: 30000, EndMs: 61000, Title: "Lego"},
 	}}
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"fast_food"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"toys"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["fast_food"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["toys"]}`),
 	)
 	drop := t.TempDir()
 	sp := newSplitter(st, tools, llmMock, drop)
@@ -184,9 +210,9 @@ func TestPropose_CoarseSplit(t *testing.T) {
 		silences: []filler.Interval{{StartMs: 59900, EndMs: 60100}},
 	}
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1987,"audience":"general","category":"cars"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"cereal"}`),
+		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["cars"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["cereal"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -228,9 +254,9 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 			{"start":"00:54","end":"02:29","product":"amazing knife set"}]}`),
 		// 2-4: classify each rescued segment. The Aqua Globes era is grounded
 		// ("since 1987" IS in the transcript); the knife era is INVENTED.
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":1987,"audience":"general","category":"tech"}`),
-		testkit.FinalResponse(`{"era":1950,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":1987,"audience":"general","tags":["tech"]}`),
+		testkit.FinalResponse(`{"era":1950,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -266,7 +292,7 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 	}
 	llmMock := testkit.NewLLM(
 		testkit.FinalResponse(`{"adverts":[{"start":"00:00","end":"02:01","product":"amazing knife"}]}`),
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`),
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
@@ -381,13 +407,15 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	tools := &fakeTools{}
 	sp := newSplitter(st, tools, nil, drop)
-	if _, err := sp.Propose(context.Background(), "comps/1987.mp4"); err != nil {
+	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map
+	// order, so if the store ever holds >1 proposal the range picked an arbitrary one and Confirm ran
+	// against the wrong id (an intermittent "compilation not marked composite" flake, now fixed
+	// deterministically). See [[loomarr-splitjob-test-map-order-flake]].
+	prop, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	if err != nil {
 		t.Fatal(err)
 	}
-	var propID string
-	for id := range st.proposals {
-		propID = id
-	}
+	propID := prop.ID
 
 	// The operator's EDITED list: era suggestion accepted on the second segment,
 	// and a third segment they added by hand.
@@ -402,32 +430,44 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	if len(tools.cutCalls) != 2 {
 		t.Fatalf("cuts = %v", tools.cutCalls)
 	}
-	// The compilation row AND file are gone…
-	if _, found, _ := st.GetClip(context.Background(), "comps/1987.mp4"); found {
-		t.Error("compilation row survived confirm")
+	// ⚠ V45: the compilation is KEPT and marked a composite (NOT deleted — the reversal of V34). Its
+	// row survives, flagged is_composite so pod assembly excludes it, and its file stays for re-split.
+	comp, found, _ := st.GetClip(context.Background(), "comps/1987.mp4")
+	if !found {
+		t.Fatal("compilation row was deleted on confirm — V45 keeps the parent as a composite")
 	}
-	if _, err := os.Stat(src); !os.IsNotExist(err) {
-		t.Error("compilation file survived confirm — the next sync would resurrect it")
+	if !comp.IsComposite {
+		t.Error("compilation survived but was not marked is_composite — it would still be airable")
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Error("compilation file was removed on confirm — V45 keeps it for re-splitting")
 	}
 	// …the proposal is consumed…
 	if _, err := st.GetSplitProposal(context.Background(), propID); err == nil {
 		t.Error("proposal survived confirm")
 	}
-	// …and the segments are real clips with tags, durations, and provenance.
-	var names []string
+	// …and the segments are real clips with tags, durations, provenance, AND lineage back to the
+	// composite. Skip the kept composite itself when counting segments.
+	var segments []filler.StoreClip
 	for path, c := range st.clips {
+		if c.IsComposite {
+			continue // the kept parent, not a segment
+		}
 		if c.DurationMs <= 0 || c.Kind != filler.Commercial || c.License == "" || c.Source != "archive" {
 			t.Errorf("clip %s missing duration/kind/provenance: %+v", path, c.Clip)
 		}
-		names = append(names, c.Name)
+		if c.ParentHash != comp.Hash {
+			t.Errorf("segment %s parent_hash = %q, want the composite's hash %q — lineage is the point of V45", c.Name, c.ParentHash, comp.Hash)
+		}
+		segments = append(segments, c)
 	}
-	if len(names) != 2 {
-		t.Fatalf("catalog = %+v", st.clips)
+	if len(segments) != 2 {
+		t.Fatalf("segments = %+v", segments)
 	}
-	// The cut files exist at cataloged paths.
-	for path := range st.clips {
-		if _, err := os.Stat(filepath.Join(drop, path)); err != nil {
-			t.Errorf("cataloged clip %s has no file: %v", path, err)
+	// The cut files exist at cataloged paths (segments only; the composite keeps its own file).
+	for _, seg := range segments {
+		if _, err := os.Stat(filepath.Join(drop, seg.Path)); err != nil {
+			t.Errorf("cataloged segment %s has no file: %v", seg.Path, err)
 		}
 	}
 }

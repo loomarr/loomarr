@@ -17,7 +17,7 @@ import type { VideoPlayerProps } from "./video-player.type";
 // short.
 //
 // ⚠ **Deliberately knows NOTHING about clips.** It takes a `src` and a `title`, both plain
-// strings. The filler catalog wraps it in a dialog and hands it `clipMediaURL(clip.path)`; the
+// strings. The filler catalog wraps it in a dialog and hands it `clipMediaURL(clip.hash)`; the
 // channel-watch surface the mock sketches plays a live stream through the same component. Putting
 // `ClipDTO` in here would make "core primitive" a lie the first time something that is not a clip
 // needed a player.

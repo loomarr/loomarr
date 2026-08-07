@@ -19,7 +19,7 @@ const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const clip: ClipDTO = {
-  path: "clip-9.mp4",
+  hash: "clip-9-hash",
   tunarrProgramId: "clip-9",
   name: "Frosted Flakes",
   kind: "commercial",
@@ -105,7 +105,7 @@ describe("PinClipDialog", () => {
     await waitFor(() => expect(patches).toHaveLength(1));
     // The new pin is appended to the existing one (not replacing it)…
     expect(patches[0]).toMatchObject({
-      policy: { filler: { pinned: ["already-here", "clip-9.mp4"], audience: "general" } },
+      policy: { filler: { pinned: ["already-here", "clip-9-hash"], audience: "general" } },
     });
     // …and the rest of the policy survives.
     expect(patches[0]).toMatchObject({
@@ -125,7 +125,7 @@ describe("PinClipDialog", () => {
 
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toMatchObject({
-      policy: { filler: { pinned: ["already-here"], excluded: ["clip-9.mp4"] } },
+      policy: { filler: { pinned: ["already-here"], excluded: ["clip-9-hash"] } },
     });
   });
 

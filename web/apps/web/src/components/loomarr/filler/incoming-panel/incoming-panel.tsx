@@ -104,6 +104,9 @@ const AskRow = ({
           {guessed && <Badge variant="suggest">{`guessed ${ask.suggestedEra}`}</Badge>}
           {ask.era ? <Badge variant="neutral">{String(ask.era)}</Badge> : null}
           {ask.audience && <Badge variant="neutral">{ask.audience}</Badge>}
+          {/* `IncomingAskDTO.category` is the same DERIVED primary-product-leaf shadow as
+              `ClipDTO.category` (§10 V45a) — this queue's summary DTO carries no `tags` array
+              of its own, so the shadow is the only tag signal there is to show, read-only. */}
           {ask.category && <Badge variant="neutral">{ask.category}</Badge>}
         </div>
 

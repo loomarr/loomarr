@@ -44,13 +44,17 @@ type SplitSegment struct {
 	// Name is the proposed clip name (from the LLM's product label, or
 	// "<compilation> part N"). It becomes the clip's filename on confirm.
 	Name string `json:"name"`
-	// Era/Audience/Category come from the SAME Classify the tag job uses, over the
+	// Era/Audience/Tags come from the SAME Classify the tag job uses, over the
 	// segment's transcript. Era is grounded (year in the text) or zero — an
 	// ungrounded guess is carried ONLY as SuggestedEra (§10 era rule).
 	Era          int      `json:"era,omitempty"`
 	SuggestedEra int      `json:"suggestedEra,omitempty"`
 	Audience     Audience `json:"audience,omitempty"`
-	Category     string   `json:"category,omitempty"`
+	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
+	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
+	// the same Classify the tag job uses.
+	Tags     []string `json:"tags,omitempty"`
+	Category string   `json:"category,omitempty"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
 	// (dHash, measured 25× separation). ⚠ A FLAG, never a silent drop — the
 	// reviewer sees "already in the catalog" and decides.

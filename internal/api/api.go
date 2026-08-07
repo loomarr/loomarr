@@ -112,6 +112,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
 	srv.registerFillerFile(humaAPI)
+	srv.registerTaxonomy(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerSystemLLM(humaAPI)
@@ -147,23 +148,23 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
 	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
 
-	// Clip thumbnails (V30) — image bytes, so a plain handler like the icon above. The
-	// `{path...}` wildcard is required, not stylistic: a clip's id is its path relative to
-	// FILLER_DIR and therefore contains slashes, which a plain {path} would not match.
+	// Clip thumbnails (V30) — image bytes, so a plain handler like the icon above. ⚠ Keyed by the
+	// clip's content HASH (V45a), a plain `{hash}` segment — hex, no slashes, so no wildcard and no
+	// encoding. The handler resolves hash → the clip's disk path (the path is server-internal now).
 	// ⚠ Called `thumb`, not `preview` — /channels/{id}/filler/preview is a different thing
 	// entirely (the pod pool a channel would get, as JSON).
-	mux.HandleFunc("GET /v1/filler/thumb/{path...}", srv.serveFillerThumb)
+	mux.HandleFunc("GET /v1/filler/thumb/{hash}", srv.serveFillerThumb)
 
 	// Clip media (V35) — the clip's own bytes, so the operator can watch one before deciding
-	// about it. Same wildcard reason as thumbnails, and the same naming rule: `media`, never
+	// about it. Same hash-keying as thumbnails, and the same naming rule: `media`, never
 	// `preview`. Range-capable, so a <video> element can seek.
-	mux.HandleFunc("GET /v1/filler/media/{path...}", srv.serveFillerMedia)
+	mux.HandleFunc("GET /v1/filler/media/{hash}", srv.serveFillerMedia)
 
 	// Clip hover previews (V39) — a few seconds of silent animation per clip, so a grid of
 	// stills can answer "is this actually the advert it says it is?" without opening anything.
 	// ⚠ `hover`, not `preview`, for the third time on this surface: /channels/{id}/filler/preview
 	// and PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
-	mux.HandleFunc("GET /v1/filler/hover/{path...}", srv.serveFillerHover)
+	mux.HandleFunc("GET /v1/filler/hover/{hash}", srv.serveFillerHover)
 
 	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
 	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with

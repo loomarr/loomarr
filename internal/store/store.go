@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound is returned by Get* methods when no row matches.
@@ -197,6 +198,33 @@ type ClipStore interface {
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
 	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
+	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
+	// composite back to an airable clip. Keyed by hash.
+	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
+	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+	// UpsertTaxon / DeleteTaxon are the operator-edit path; the caller reindexes after a graph edit.
+	UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error
+	DeleteTaxon(ctx context.Context, slug string) error
+	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
+	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
+	// SetClipTags REPLACES one clip's tags with the rollup expansion of the given leaves (the per-clip
+	// re-tag path — the tagger writing a single clip). GetClipTags reads them (leavesOnly = the asserted
+	// set, else full). ⚠ It must produce the SAME rows RebuildRollups would for the same leaves; the
+	// conformance suite pins the two writers as equivalent.
+	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	// ListClipHashesLeaves returns every clip's asserted leaves — a work list for a per-clip job (the
+	// future re-embed sibling). The bulk rollup reindex does NOT use it: it is a set-based SQL rebuild.
+	ListClipHashesLeaves(ctx context.Context) (map[string][]string, error)
+	// RebuildClosure recomputes taxa_closure from the forest — the ONLY writer of the closure, run when
+	// the GRAPH edits (rare). The graph walk stays in Go; the closure makes the rollup rebuild plain SQL.
+	RebuildClosure(ctx context.Context, forest *taxonomy.Forest, at time.Time) error
+	// RebuildRollups recomputes EVERY clip's rollup rows from the closure in one set-based statement —
+	// the reindex (§10 V45a). Preserves asserted leaves; call after RebuildClosure on a graph edit.
+	RebuildRollups(ctx context.Context) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
