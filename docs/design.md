@@ -1031,12 +1031,34 @@ spread was **−21.8 to −32.6 LUFS** — about 11 dB, which is the clip-to-cli
 hears as "some of these are too quiet". The target is **−23 LUFS**, what broadcast uses. The
 measurement rides the decode that already happens for artwork (§10 V39), so it costs no extra pass.
 
-⚠ **Normalisation happens in the PLAYOUT chain — Loomarr never rewrites the operator's file.**
-`FILLER_DIR` and the watch folder hold files a person put there, and the pipeline has never
-modified them. Normalising in place is destructive and unrepeatable: the original cannot be
-recovered, and a re-scan cannot tell it has already happened, so a second pass would normalise a
-normalised file. At playout it is one filter on a stream already being encoded, it is reversible,
-and changing the target later simply works.
+⚠ **Normalisation happens in the PLAYOUT chain by default — and that remains the default.** At
+playout it is one filter on a stream already being encoded, it is reversible, and changing the
+target later simply works. `FILLER_DIR` and the watch folder hold files a person put there, so
+rewriting them is never something Loomarr does unasked.
+
+**On-file normalisation is available as an explicit opt-in** (`filler.autofile.normalize_loudness`,
+default **off**, V42 — maintainer decision, surfacing the mock's Tune-panel toggle). When enabled,
+the auto-file step rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` before it enters the
+catalog.
+
+⚠ **It uses the SAME `filler.target_lufs` (−23) as the playout pass, not a second target.** Two
+targets in one system means a clip normalised on file is then corrected again downstream toward a
+different number — double processing, and a quieter result than either setting asks for. One
+target, whichever stage applies it.
+
+⚠ **It is DESTRUCTIVE and the operator is told so.** The original cannot be recovered; that is
+inherent to rewriting in place and is why this is opt-in rather than the default. What it must not
+also be is *repeating*: a re-scan cannot tell by looking that a file has already been normalised,
+so without a marker every pass would normalise an already-normalised file, walking the loudness
+down on each run. The sidecar records `normalizedLufs` beside the clip, and the pass **skips any
+file already carrying that marker at the current target**. The marker travels with the clip the
+same way `originalName` does, so a restored catalog does not re-do the work either.
+
+⚠ **Playout still normalises, and that is deliberate rather than redundant.** A file normalised on
+disk measures at target already, so the playout filter is a no-op for it — while clips that arrived
+before the toggle was turned on, or from a source that bypassed auto-file, are still corrected. The
+guarantee "every break plays at a consistent level" cannot depend on which clips happened to pass
+through one optional step.
 
 **Language is a job, not an inline check**, and it REJECTS rather than holding (maintainer,
 2026-08-03) — consistent with the other two gates, which drop a file at the boundary and leave a
@@ -2194,7 +2216,8 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
 | `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
 | `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog |
-| `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target the playout chain normalises filler to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT, never written back to the file** — the drop-folder holds the operator's own files, and in-place normalisation is destructive, unrepeatable, and would be re-applied on every re-scan. Set empty to disable |
+| `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target filler is normalised to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT by default** — the drop-folder holds the operator's own files, so Loomarr does not rewrite them unasked. ⚠ **ONE target for both stages**: `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` reuses this value rather than declaring its own, or a clip normalised on file would be corrected again at playout toward a different number. Set empty to disable |
+| `FILLER_AUTOFILE_NORMALIZE_LOUDNESS` | `false` (V42) — when on, auto-file rewrites the clip in `FILLER_DIR` with ffmpeg `loudnorm` at `FILLER_TARGET_LUFS` before it enters the catalog. ⚠ **DESTRUCTIVE and opt-in for that reason**: the original is unrecoverable. The sidecar records `normalizedLufs` so a re-scan skips a file already normalised at the current target — without that marker every pass would re-normalise, walking the loudness down each run |
 | `FILLER_LANGUAGE` | `en` — the language filler is expected to be in (§10 V40). A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty disables the language gate entirely |
 | `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
