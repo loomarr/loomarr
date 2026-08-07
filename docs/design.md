@@ -1385,6 +1385,51 @@ airs, §10/§19). The LLM theme tags (and, if present, embeddings) are a *rankin
 already-eligible structured candidate set — they order the pool toward the channel's theme, they
 never decide *which* clips are eligible.
 
+#### The clip taxonomy (V45a — replaces the flat category enum)
+
+⚠ **The flat 12-value `category` string cannot express curation.** A rule like "one **food** ad per
+break" cannot ask "is `cereal` a kind of food?", and a free-text set drifts (`drinks` vs
+`beverages`, the model emitting `soda`). V45a replaces it with a **multi-tag model over an
+operator-editable taxonomy graph** (full design: `design/TAXONOMY-DESIGN-2026-08-07.md`). This is
+its own sub-phase, landing BEFORE the composites UI so the UI renders tags from the start.
+
+**A clip carries a SET of tags, each a `taxon`** — `{slug, label, parent, synonyms, kind}` — where
+`parent` forms a **forest by axis**, not one tree, because a clip is tagged on independent axes at
+once: **product** (`beer` → `alcohol` → `drinks`), **format** (`psa`, `movie_trailer`, `ident`),
+**seasonal** (`christmas`, reusing the §10 holiday keyword IDs), **audience-cue** (hints, kept
+separate from the `audience` enum). A Christmas beer ad is `{beer, alcohol, christmas}`.
+
+Four properties make it robust, curation-ready, and LLM-friendly:
+
+- **The parent graph makes rollups QUERYABLE.** "One food ad per break" is `count(tags ∋
+  descendants(food)) ≤ 1` — impossible on a flat set.
+- **The model emits only LEAF tags; rollups are DERIVED from the graph.** The LLM's one job is "this
+  is a beer ad"; "therefore a drink/alcohol" is the graph's job — fewer ways for the model to be
+  wrong.
+- **Grounding = resolve-or-drop with synonym rescue.** Each returned tag resolves: exact slug → keep;
+  a `synonym`/retired alias → map to canonical (`brew` → `beer`); anything else → DROPPED, never a
+  new taxon. Same anti-fabrication discipline as era/brand (§8); only an OPERATOR adds a taxon. The
+  vocabulary is SERVED to the model (BE the single source, mirroring `schedule.BuildVocabulary()`),
+  so it never guesses a slug blind.
+- **Operator-editable, DB-backed.** New tables `taxa` (the graph) + `clip_tags` (many-to-many), seeded
+  with a default forest, forward-only migration. An operator adds `energy-drink` under `drinks`
+  without a code change.
+
+⚠ **Rollups are stored DENORMALISED** (a tag of `beer` writes `beer`+`alcohol`+`drinks` rows, each
+flagged leaf-vs-rollup), so `WHERE taxon = 'food'` is one index hit — pod assembly runs it per break
+per reconcile, so the read must be cheap. The cost accepted: a **reindex job** recomputes rollup rows
+when a clip is re-tagged or the graph changes; the graph is source of truth, the denormalised rows a
+derived cache (the same "synced cache" shape `clips` already is). `category` survives as a **derived
+shadow** (the primary product leaf) so existing readers do not break during the migration.
+
+⚠ **The taxonomy SHRINKS the embedding's job (#4), it does not compete with it.** The taxonomy is the
+*structured, deterministic* half of thematic matching (topic/season/product family — what the
+embedding prototype failed at); the embedding is left the *fuzzy residue* (vibe similarity, dedup).
+When the embedding lands, it embeds *tags + transcript* (grounded tags anchor the fuzzy text), and its
+re-embed job is a SIBLING of this reindex job — both "derived-from-clip, rebuilt-on-change" background
+jobs sharing the transcribe/vision pattern. The reindex job is written so the re-embed slots beside
+it. Full interaction: `design/TAXONOMY-DESIGN-2026-08-07.md`.
+
 #### The curation confidence this produces
 
 With brand (V44), broadcast context (#3), and semantic embedding (#4), the assembler gains new match
