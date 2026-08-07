@@ -528,6 +528,99 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testCompositeLineage pins the V45 composite/lineage invariants (§10): a composite is excluded from
+// the default listing (the pod-assembly path), its segments link back via parent_hash, and neither
+// is_composite nor parent_hash is clobbered by a re-sync.
+func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+
+	// A composite (the recorded break) and two segments split out of it.
+	comp := sampleClip("break1", "kcpq-1996.mp4", filler.Commercial, 1996, filler.General, "")
+	comp.DurationMs = 971_000
+	if err := s.UpsertClip(ctx, comp); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetClipComposite(ctx, comp.Hash, true, now); err != nil {
+		t.Fatal(err)
+	}
+	seg1 := sampleClip("seg1", "aw-root-beer.mp4", filler.Commercial, 1996, filler.General, "fast_food")
+	seg1.ParentHash = comp.Hash
+	seg2 := sampleClip("seg2", "kfc.mp4", filler.Commercial, 1996, filler.General, "fast_food")
+	seg2.ParentHash = comp.Hash
+	if err := s.UpsertClip(ctx, seg1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertClip(ctx, seg2); err != nil {
+		t.Fatal(err)
+	}
+
+	// ⚠ THE load-bearing exclusion: a composite must NOT appear in the default (pod-assembly) listing.
+	// Airing a 16-minute break as one "commercial" is the bug the flag removes.
+	def, _ := s.ListClips(ctx, ClipFilter{})
+	for _, c := range def {
+		if c.Hash == comp.Hash {
+			t.Errorf("composite %q appeared in the default listing — pod assembly would air a 16-min block as one commercial", comp.Hash)
+		}
+	}
+	// The two segments ARE airable and present by default.
+	if !containsHash(def, seg1.Hash) || !containsHash(def, seg2.Hash) {
+		t.Errorf("segments missing from the default listing — they are the airable clips")
+	}
+
+	// Opt-in surfaces the composite (the catalog/lineage view).
+	withComp, _ := s.ListClips(ctx, ClipFilter{IncludeComposites: true})
+	if !containsHash(withComp, comp.Hash) {
+		t.Errorf("IncludeComposites did not surface the composite")
+	}
+	only, _ := s.ListClips(ctx, ClipFilter{CompositesOnly: true})
+	if len(only) != 1 || only[0].Hash != comp.Hash {
+		t.Errorf("CompositesOnly = %d clips, want just the composite", len(only))
+	}
+
+	// Lineage: the segments of one composite, by parent_hash.
+	kids, _ := s.ListClips(ctx, ClipFilter{ParentHash: comp.Hash})
+	if len(kids) != 2 {
+		t.Errorf("parent_hash query returned %d segments, want 2", len(kids))
+	}
+	for _, k := range kids {
+		if k.ParentHash != comp.Hash {
+			t.Errorf("segment %q parent_hash = %q, want %q", k.Hash, k.ParentHash, comp.Hash)
+		}
+	}
+
+	// ⚠ A re-sync (the folder scan finding the original file) must NOT flip the composite back to
+	// airable, nor blank a segment's lineage — is_composite/parent_hash are omitted from DO UPDATE.
+	resync := comp
+	resync.IsComposite = false // the scan-built Clip knows nothing of the composite mark
+	if err := s.UpsertClip(ctx, resync); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetClip(ctx, comp.Hash)
+	if !got.IsComposite {
+		t.Errorf("is_composite lost on re-sync — UpsertClip must omit it from DO UPDATE, else a confirmed break re-airs")
+	}
+	resyncSeg := seg1
+	resyncSeg.ParentHash = "" // the scan does not know whose segment this is
+	if err := s.UpsertClip(ctx, resyncSeg); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetClip(ctx, seg1.Hash)
+	if got.ParentHash != comp.Hash {
+		t.Errorf("parent_hash = %q after re-sync, want it PRESERVED — UpsertClip must omit it from DO UPDATE", got.ParentHash)
+	}
+}
+
+func containsHash(clips []Clip, hash string) bool {
+	for _, c := range clips {
+		if c.Hash == hash {
+			return true
+		}
+	}
+	return false
+}
+
 // testClipCounts pins the count queries against the listing they replaced.
 //
 // ⚠ Every assertion compares COUNT(*) against len(ListClips(sameFilter)) rather than a literal.

@@ -73,6 +73,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipCounts", func(t *testing.T) { testClipCounts(t, newStore) })
 		t.Run("ClipLicense", func(t *testing.T) { testClipLicense(t, newStore) })
 		t.Run("ClipHeldLifecycle", func(t *testing.T) { testClipHeld(t, newStore) })
+		t.Run("CompositeLineage", func(t *testing.T) { testCompositeLineage(t, newStore) })
 		t.Run("FillerSourceRegistry", func(t *testing.T) { testFillerSources(t, newStore) })
 		t.Run("SeededDefaultSources", func(t *testing.T) { testSeededDefaultSources(t, newStore) })
 		t.Run("FillerPulls", func(t *testing.T) { testFillerPulls(t, newStore) })

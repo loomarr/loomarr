@@ -681,6 +681,9 @@ components:
         era:
           format: int64
           type: integer
+        isComposite:
+          description: A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)
+          type: boolean
         kind:
           enum:
             - commercial
@@ -694,6 +697,9 @@ components:
           description: RFC3339; absent if never played (or not counted)
           type: string
         name:
+          type: string
+        parentHash:
+          description: The composite this clip was split from; absent for a non-segment clip (§10 V45)
           type: string
         path:
           type: string

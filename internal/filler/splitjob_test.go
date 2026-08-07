@@ -96,6 +96,19 @@ func (m *splitMemStore) DeleteClip(_ context.Context, id string) error {
 	delete(m.clips, id)
 	return nil
 }
+
+// SetClipComposite marks the parent composite by HASH (§10 V45) — the real store keys it by hash, so
+// the mock searches by hash rather than assuming the map key (which is the path here).
+func (m *splitMemStore) SetClipComposite(_ context.Context, hash string, composite bool, _ time.Time) error {
+	for k, c := range m.clips {
+		if c.Hash == hash {
+			c.IsComposite = composite
+			m.clips[k] = c
+			return nil
+		}
+	}
+	return fmt.Errorf("composite target not found: %s", hash)
+}
 func (m *splitMemStore) UpsertSplitProposal(_ context.Context, p filler.SplitProposal) error {
 	for id, existing := range m.proposals {
 		if existing.ClipPath == p.ClipPath && id != p.ID {
@@ -402,32 +415,44 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	if len(tools.cutCalls) != 2 {
 		t.Fatalf("cuts = %v", tools.cutCalls)
 	}
-	// The compilation row AND file are gone…
-	if _, found, _ := st.GetClip(context.Background(), "comps/1987.mp4"); found {
-		t.Error("compilation row survived confirm")
+	// ⚠ V45: the compilation is KEPT and marked a composite (NOT deleted — the reversal of V34). Its
+	// row survives, flagged is_composite so pod assembly excludes it, and its file stays for re-split.
+	comp, found, _ := st.GetClip(context.Background(), "comps/1987.mp4")
+	if !found {
+		t.Fatal("compilation row was deleted on confirm — V45 keeps the parent as a composite")
 	}
-	if _, err := os.Stat(src); !os.IsNotExist(err) {
-		t.Error("compilation file survived confirm — the next sync would resurrect it")
+	if !comp.IsComposite {
+		t.Error("compilation survived but was not marked is_composite — it would still be airable")
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Error("compilation file was removed on confirm — V45 keeps it for re-splitting")
 	}
 	// …the proposal is consumed…
 	if _, err := st.GetSplitProposal(context.Background(), propID); err == nil {
 		t.Error("proposal survived confirm")
 	}
-	// …and the segments are real clips with tags, durations, and provenance.
-	var names []string
+	// …and the segments are real clips with tags, durations, provenance, AND lineage back to the
+	// composite. Skip the kept composite itself when counting segments.
+	var segments []filler.StoreClip
 	for path, c := range st.clips {
+		if c.IsComposite {
+			continue // the kept parent, not a segment
+		}
 		if c.DurationMs <= 0 || c.Kind != filler.Commercial || c.License == "" || c.Source != "archive" {
 			t.Errorf("clip %s missing duration/kind/provenance: %+v", path, c.Clip)
 		}
-		names = append(names, c.Name)
+		if c.ParentHash != comp.Hash {
+			t.Errorf("segment %s parent_hash = %q, want the composite's hash %q — lineage is the point of V45", c.Name, c.ParentHash, comp.Hash)
+		}
+		segments = append(segments, c)
 	}
-	if len(names) != 2 {
-		t.Fatalf("catalog = %+v", st.clips)
+	if len(segments) != 2 {
+		t.Fatalf("segments = %+v", segments)
 	}
-	// The cut files exist at cataloged paths.
-	for path := range st.clips {
-		if _, err := os.Stat(filepath.Join(drop, path)); err != nil {
-			t.Errorf("cataloged clip %s has no file: %v", path, err)
+	// The cut files exist at cataloged paths (segments only; the composite keeps its own file).
+	for _, seg := range segments {
+		if _, err := os.Stat(filepath.Join(drop, seg.Path)); err != nil {
+			t.Errorf("cataloged segment %s has no file: %v", seg.Path, err)
 		}
 	}
 }

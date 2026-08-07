@@ -363,6 +363,9 @@ func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreC
 func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.st.DeleteClip(ctx, id)
 }
+func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
 func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
 	return a.st.UpsertSplitProposal(ctx, p)
 }

@@ -211,7 +211,29 @@ type Clip struct {
 	// became playable. Not telemetry: it is what makes an unattended decision reversible, and
 	// the only thing that can answer "which of these did I never see?" after the fact.
 	AutoFiled bool
+	// IsComposite marks a clip that is a RECORDED BREAK — many adverts in one file, like
+	// "KCPQ/Fox commercials, 5/28/1996" (§10 V45). A composite is NOT airable: it is excluded from
+	// pod assembly exactly like Held/RemovedAt, because airing a 16-minute block as one "commercial"
+	// is the bug this flag removes. Its SEGMENTS (produced by splitting) are the airable clips.
+	//
+	// ⚠ A distinct axis from Kind, deliberately. A composite's segments are commercials/bumpers/PSAs;
+	// the composite itself is a CONTAINER. Overloading Kind with a `composite` value would force every
+	// `filterKinds` call site to special-case it — which is how a container leaks into a pod. A
+	// boolean the pod filter excludes ONCE (the same polarity as Held) is the safe shape.
+	IsComposite bool
+	// ParentHash is the identity of the COMPOSITE this clip was split out of (§10 V45), or "" for a
+	// clip that is not a split segment (a hand-dropped single advert, or a composite itself).
+	//
+	// ⚠ This is the lineage V45 keeps that V34 threw away. V34 deleted the compilation on confirm
+	// ("its identity is a path that now means twenty clips"); V45 keeps the parent as a composite and
+	// points each segment back at it. That is what makes "which break did this advert air in?"
+	// answerable (channel theming needs it), a re-split possible (detection improves), and the
+	// parent's broadcast context (network/market/date) inheritable by every segment for free.
+	ParentHash string
 }
+
+// IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.
+func (c Clip) IsSegment() bool { return c.ParentHash != "" }
 
 // At builds a clip whose identity and location are the same string.
 //

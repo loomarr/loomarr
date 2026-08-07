@@ -184,6 +184,15 @@ type ClipDTO struct {
 	// question for the operator, not a tag. Confirming = PATCHing era (clears this);
 	// 0/absent = no suggestion. Nothing in pod matching ever reads it.
 	SuggestedEra int `json:"suggestedEra,omitempty" doc:"AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion."`
+	// IsComposite marks a recorded break — many adverts in one file — which is NOT airable (§10 V45).
+	// The client renders it as a container (the "COMPOSITE · NOT AIRABLE" row that expands to its
+	// segments), never as a playable clip. Its segments (ParentHash == this clip's identity) are the
+	// airable clips.
+	IsComposite bool `json:"isComposite,omitempty" doc:"A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)"`
+	// ParentHash is the identity of the composite this clip was split out of (§10 V45), or absent for
+	// a clip with no parent. The lineage link: a segment card shows "from <break>", and a composite's
+	// segments are fetched by this value.
+	ParentHash string `json:"parentHash,omitempty" doc:"The composite this clip was split from; absent for a non-segment clip (§10 V45)"`
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -204,6 +213,7 @@ func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 		Thumbnail: c.Thumbnail, Preview: c.Preview,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
+		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 	}
 	if !c.LastPlayedAt.IsZero() {
 		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)

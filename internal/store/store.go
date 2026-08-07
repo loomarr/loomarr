@@ -197,6 +197,10 @@ type ClipStore interface {
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
 	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
+	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
+	// composite back to an airable clip. Keyed by hash.
+	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
