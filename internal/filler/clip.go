@@ -137,7 +137,39 @@ type Clip struct {
 	// "not counted here" are different facts and a UI must not conflate them.
 	PlayCount    int64
 	LastPlayedAt time.Time
-	AITagged     bool // whether the era/audience/category came from AI classification
+	// Brand is the advertiser the clip is FOR — "Kellogg's", "Ford" (§10 V44). Free text, not an
+	// enum: the set of advertisers is open in a way the category set is not.
+	//
+	// ⚠ GROUNDED like era, and for the same reason. A brand is accepted only when it appears
+	// literally in a text signal (filename, sidecar, or the persisted Transcript) or in the
+	// VisibleText a vision pass read off the frame — never inferred from a category or a tone. An
+	// ungrounded brand is dropped, not persisted: "" is the honest common case, and a fabricated
+	// advertiser is exactly the confidently-wrong metadata §8's grounding rule exists to keep out.
+	Brand string
+	// Transcript is the clip's spoken text, when it has been transcribed (§10 V44) — persisted here
+	// rather than discarded after tagging (the splitter produced it and threw it away pre-V44).
+	//
+	// It is BOTH a searchable metadata field AND the richest input the tagger gets: a cereal advert
+	// with an empty source description still SAYS "Kellogg's", which is the only place a brand or
+	// era can be grounded for such a clip. "" has two meanings the transcribe job distinguishes the
+	// same way the language gate does — not-yet-transcribed vs transcribed-and-wordless — but the
+	// clip row does not need to; a wordless clip simply carries no transcript and is tagged from its
+	// other signals.
+	Transcript string
+	// VisibleText is the on-screen text a vision pass read off the keyframes (§10 V44) — a logo, a
+	// product name, a "1987" burned into the corner.
+	//
+	// ⚠ This is what makes vision AUDITABLE, and it is load-bearing, not display trivia. A brand or
+	// era the vision model asserts is grounded only if it is supported by text the model also says
+	// it can SEE here — reading "KELLOGG'S" off a box grounds the brand exactly as a year in the
+	// filename grounds the era. A vision-proposed tag with no VisibleText backing does not persist.
+	VisibleText string
+	// VisionTagged records that a VISION pass (keyframes → multimodal model) contributed to this
+	// clip's tags, distinct from AITagged (text-only classification). Separate because the two have
+	// different trust and different cost: a human reviewing Incoming wants to know a tag came from
+	// pixels, and a re-run wants to avoid paying for vision twice.
+	VisionTagged bool
+	AITagged     bool // whether the era/audience/category came from AI classification (text signals)
 	// SuggestedEra is an AI-proposed era whose year did NOT appear in the clip's
 	// text signals (§10 era grounding, V34) — demoted from Era by validateTags so
 	// an inferred-from-tone year is never persisted as fact.

@@ -51,6 +51,16 @@ type PodEntry struct {
 	// Assembly never reads them; they ride along from the catalog row.
 	Era     int
 	Quality string
+	// Brand, Audience, Category and VisibleText join Era/Quality as DISPLAY-ONLY passengers
+	// (§10 V44): the hover card explains a break with what the clip is FOR ("Kellogg's · cereal")
+	// as well as when it is from. Like Era/Quality, assembly never reads them — they ride along
+	// from the catalog row so a clip cannot reach the guide with its metadata mysteriously absent.
+	// Grounded at the SOURCE (a brand/category persists on the Clip only when a text or visual
+	// signal literally contained it, §8); here they are merely carried, never derived.
+	Brand       string
+	Audience    Audience
+	Category    string
+	VisibleText string
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -268,8 +278,9 @@ func clipToEntry(c Clip) PodEntry {
 		Path: c.Path, Hash: c.Hash, TunarrProgramID: c.TunarrProgramID,
 		Name: c.Name, Kind: c.Kind, DurationMs: c.DurationMs,
 		// Display-only passengers (see PodEntry) — every entry gets them from one place, so
-		// a clip cannot reach the hover card with its era and quality mysteriously absent.
+		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
+		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
 	}
 }
 

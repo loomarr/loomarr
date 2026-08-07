@@ -29,6 +29,15 @@ type MediaTools interface {
 	// GrayFrames decodes the span at 1/3fps to 9x8 grayscale frames (dHash input,
 	// ~30 lines of pure Go over the bytes — no library).
 	GrayFrames(ctx context.Context, file string, startMs, endMs int64) ([][]byte, error)
+	// Keyframes samples n viewable JPEG frames spread across the clip — the vision
+	// tier's input (§10 V44) and the frame-heuristic tier's (framehints.go).
+	//
+	// ⚠ **Deliberately NOT GrayFrames.** GrayFrames is 9x8 grayscale dHash food —
+	// it has thrown away colour (so it cannot see a B&W transfer) and resolution
+	// (so it cannot read a logo), the two things both V44 tiers exist to read. This
+	// returns real ~320px JPEGs, the same asset FFmpegArtwork produces, but N of
+	// them across the duration rather than one still. Order is start→end of clip.
+	Keyframes(ctx context.Context, file string, n int) ([][]byte, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
@@ -134,6 +143,60 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 		raw = raw[frameBytes:]
 	}
 	return frames, nil
+}
+
+func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]byte, error) {
+	// n frames spread ACROSS the clip, decoded to real JPEGs — mirrors the
+	// FFmpegArtwork still (scale ~320px wide, JPEG at -q:v) but produces several
+	// samples rather than one. A commercial's brand card, its B&W transfer, its
+	// end slate can each fall in a different part of the runtime, so one frame is
+	// not enough signal for either V44 tier (vision or framehints).
+	if n <= 0 {
+		return nil, nil
+	}
+	// `thumbnail=n=…` is ffmpeg's own "most representative frame of a group"
+	// selector: it scores frames within each window and picks the least-blurry,
+	// most-distinct one, which beats a flat every-Kth-frame sample for a clip that
+	// opens on a black fade. We ask for `n` groups by sizing the window to the
+	// clip's frame count / n — but we do not know the frame count without probing,
+	// so we use `select` on a normalised timeline instead: `n` evenly-spaced picks.
+	//
+	// The expression selects a frame when its presentation time crosses one of n
+	// evenly-spaced marks over the (probed) duration. We avoid a second probe by
+	// letting ffmpeg compute it: `select='isnan(prev_selected_t)+gte(t-prev_selected_t\,DUR/n)'`
+	// is fragile across builds, so the robust portable form is fps-based — sample
+	// at a rate that yields ~n frames, capped by `-frames:v n`. A clip's exact
+	// length is unknown here, so we oversample slightly and let the frame cap trim.
+	//
+	// ⚠ `-vsync vfr` (a.k.a `-fps_mode vfr`) keeps the selected frames at their own
+	// timestamps rather than duplicating to a constant rate — without it a short
+	// clip sampled sparsely gets padded with repeats, and the heuristics would then
+	// score the same frame n times.
+	var stdout bytes.Buffer
+	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+		"-nostdin",
+		"-i", file,
+		"-an",
+		// thumbnail=n groups the decode into n buckets and emits the single most
+		// representative frame of each — exactly n frames for a clip long enough to
+		// fill the buckets, fewer for a very short one, which is fine (the caller
+		// tolerates <n).
+		"-vf", fmt.Sprintf("thumbnail=n=%d,scale=%d:-1", n, previewWidth),
+		"-frames:v", fmt.Sprintf("%d", n),
+		// mjpeg over image2pipe streams the JPEGs back to us concatenated; -q:v 6
+		// matches the still's quality (artwork.go) — a vision model does not need
+		// archival frames, and a B&W/aspect check needs even less.
+		"-q:v", "6",
+		"-f", "image2pipe", "-c:v", "mjpeg", "-",
+	)
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg keyframes %s: %w", file, err)
+	}
+	// image2pipe concatenates whole JPEGs; split on the SOI/EOI markers so each
+	// element is one decodable frame. A clip with no video stream yields nothing,
+	// which the caller reads as "no frames to look at" rather than an error.
+	return splitJPEGs(stdout.Bytes()), nil
 }
 
 func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64, out string) error {

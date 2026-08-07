@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/catalog"
+	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/provision"
 )
 
@@ -109,45 +110,12 @@ func parsePicks(content string) (finalOutput, error) {
 	return out, nil
 }
 
-// extractJSONObject returns the outermost {...} span in s, or s unchanged if there
-// is no balanced object. This unwraps a markdown code fence or strips stray prose
-// around the JSON without touching bare JSON (which is already a single {...} span).
-// It scans for balanced braces while respecting string literals + escapes, so a
-// brace inside a title/overview string can't end the object early.
+// extractJSONObject unwraps a code fence / strips prose around the model's JSON. It now delegates
+// to llm.ExtractJSONObject — the same logic the V44 filler tagger and vision tier need, promoted to
+// the `llm` package so one implementation serves every caller (this used to be a package-private
+// copy here). Kept as a thin local alias so the call sites in this file read unchanged.
 func extractJSONObject(s string) string {
-	start := strings.IndexByte(s, '{')
-	if start < 0 {
-		return s
-	}
-	depth := 0
-	inStr := false
-	escaped := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inStr {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return s[start : i+1]
-			}
-		}
-	}
-	return s // unbalanced — let json.Unmarshal report the real error
+	return llm.ExtractJSONObject(s)
 }
 
 // toolResult is the JSON the catalog tool returns to the model — a trimmed

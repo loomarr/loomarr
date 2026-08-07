@@ -61,24 +61,31 @@ func NewSplitter(store SplitStore, tools MediaTools, provider llm.Provider, drop
 
 // Propose detects cuts in one compilation clip and persists the resulting
 // proposal (§10). The catalog is untouched.
-func (sp *Splitter) Propose(ctx context.Context, clipPath string) (*SplitProposal, error) {
-	clip, found, err := sp.store.GetClip(ctx, clipPath)
+// ⚠ Takes the clip HASH, not its path — `GetClip` below is keyed `WHERE hash = ?`. The
+// parameter was named `clipPath` until V43, a leftover from the pre-V38c identity, and that
+// naming is the exact class that shipped the V41 tagger bug (a path handed to a hash-keyed
+// call, failing silently). The API passes `clipID`; so does the scheduled runner.
+func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposal, error) {
+	clip, found, err := sp.store.GetClip(ctx, clipHash)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("clip %s not found", clipPath)
+		return nil, fmt.Errorf("clip %s not found", clipHash)
 	}
 	if clip.DurationMs <= 0 {
-		return nil, fmt.Errorf("clip %s has no probed duration — sync the catalog first", clipPath)
+		return nil, fmt.Errorf("clip %s has no probed duration — sync the catalog first", clipHash)
 	}
-	file := filepath.Join(sp.dropDir, clipPath)
+	// ⚠ The LOCATION comes from the row, not from the argument. The argument is an identity
+	// (a hash); joining it onto the drop dir would build a path that does not exist. They were
+	// the same string before V38c, which is why one variable used to serve both.
+	file := filepath.Join(sp.dropDir, clip.Path)
 
 	// 1. Triage → coarse split. Chapters split for free; a chapter read failure
 	// is not fatal (the common case is NO chapters anyway — 6 of 8 measured).
 	segs := sp.triage(ctx, file, clip.DurationMs)
 	if len(segs) == 0 {
-		return nil, fmt.Errorf("no usable segments detected in %s (everything was under %dms)", clipPath, MinSegmentMs)
+		return nil, fmt.Errorf("no usable segments detected in %s (everything was under %dms)", clipHash, MinSegmentMs)
 	}
 
 	// 2. Names for the unnamed (chapters bring their own).
@@ -100,12 +107,13 @@ func (sp *Splitter) Propose(ctx context.Context, clipPath string) (*SplitProposa
 	sp.classify(ctx, segs)
 
 	// 5. Dedup against the catalog — a FLAG on the proposal, never a silent drop.
-	sp.dedup(ctx, file, clipPath, segs)
+	sp.dedup(ctx, file, clipHash, segs)
 
 	for i := range segs {
 		segs[i].Index = i
 	}
-	p := &SplitProposal{ID: sp.newID(), ClipPath: clipPath, CreatedAt: sp.now().UTC(), Segments: segs}
+	// ⚠ `ClipPath` is a PATH, per its name and per what Confirm joins onto the drop dir.
+	p := &SplitProposal{ID: sp.newID(), ClipPath: clip.Path, CreatedAt: sp.now().UTC(), Segments: segs}
 	if err := sp.store.UpsertSplitProposal(ctx, *p); err != nil {
 		return nil, err
 	}
@@ -311,6 +319,11 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		nc.SuggestedEra = c.seg.SuggestedEra
 		nc.Audience = c.seg.Audience
 		nc.Category = c.seg.Category
+		// Persist the transcript the rescue step already produced (§10 V44). Pre-V44 this was
+		// computed to find ad boundaries and then thrown away; it is the richest metadata signal a
+		// split segment has — a segment with no source description still SAYS its brand — so it
+		// carries onto the clip row instead of being re-derived by the transcribe job later.
+		nc.Transcript = c.seg.Transcript
 		// Provenance inherits from the compilation: same source, same declared
 		// licence (the segments ARE the source's content), same resolution.
 		nc.Source = clip.Source

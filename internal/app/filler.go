@@ -168,6 +168,10 @@ func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, er
 	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
 }
 
+func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
+	return a.st.SetClipBrand(ctx, path, brand, at)
+}
+
 func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
 	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
@@ -198,6 +202,49 @@ func (a fillerLanguageStoreAdapter) SetClipLanguage(ctx context.Context, path, l
 
 func (a fillerLanguageStoreAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+
+// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeStore (§10 V44).
+//
+// ⚠ Like the language adapter above, it lists WITH held (a held clip is a fine candidate — knowing
+// what it says before a human files it is strictly more useful) but does NOT include removed clips:
+// a tombstoned clip must never come back round as work to be re-transcribed at ~341s a time.
+type fillerTranscribeStoreAdapter struct{ st store.Store }
+
+func (a fillerTranscribeStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	return a.st.SetClipTranscript(ctx, path, transcript, at)
+}
+
+// fillerVisionStoreAdapter bridges the store → filler.VisionStore (§10 V44). Same list polarity as
+// the transcribe adapter — held candidates in, removed clips out.
+type fillerVisionStoreAdapter struct{ st store.Store }
+
+func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+func (a fillerVisionStoreAdapter) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
+	return a.st.SetClipVisionTags(ctx, path, brand, visibleText, era, suggestedEra, category, at)
 }
 
 // fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
@@ -844,4 +891,31 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 		Model: req.Model, Prompt: req.Prompt, Audio: req.Audio,
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
+}
+
+// fillerSplitRunStoreAdapter bridges the store → filler.SplitRunStore (the scheduled split, V43).
+type fillerSplitRunStoreAdapter struct{ st store.Store }
+
+// ListClips is the runner's candidate list: the catalog, never the held queue.
+//
+// ⚠ `IncludeHeld` is deliberately NOT honoured, unlike the language gate's adapter. A held clip
+// is waiting for a human to decide whether it belongs at all; spending minutes of ffmpeg and
+// whisper detecting cuts inside something that may be about to be dropped is work done for a
+// file that might never enter the catalog.
+func (a fillerSplitRunStoreAdapter) ListClips(ctx context.Context, _ filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+// ListSplitProposals is the pending-review queue, read once per pass so the runner does not
+// re-detect a recording whose proposal an operator may be halfway through editing.
+func (a fillerSplitRunStoreAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
 }
