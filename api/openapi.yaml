@@ -2752,6 +2752,20 @@ components:
     PodEntryDTO:
       additionalProperties: false
       properties:
+        audience:
+          description: Who the clip suits; empty when untagged
+          enum:
+            - kids
+            - family
+            - general
+            - late_night
+          type: string
+        brand:
+          description: The advertiser the clip is for (Kellogg's, Ford); empty when ungrounded/untagged (V44)
+          type: string
+        category:
+          description: The clip's category (cereal, toys, cars, …); empty when untagged
+          type: string
         durationMs:
           format: int64
           type: integer
@@ -2781,6 +2795,9 @@ components:
           type: string
         tunarrProgramId:
           description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this.
+          type: string
+        visibleText:
+          description: On-screen text a vision pass read off the frame (V44); empty when none
           type: string
       required:
         - name

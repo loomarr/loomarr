@@ -483,6 +483,34 @@ func declared() []Setting {
 			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
 		},
 		{
+			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
+			// the language gate (~341s per clip under QEMU), so it is a deliberate opt-in, not a
+			// silent background cost. The job is SELECTIVE even when on — it only transcribes clips
+			// whose source described them thinly, never the whole catalog.
+			Key: "filler.transcribe.enabled", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection.",
+		},
+		{
+			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
+			// hosted path spends multimodal tokens per clip and sends frames off the box, the local
+			// path needs an Ollama vision model. Off, or with no vision model, the job is inert.
+			Key: "filler.vision.enabled", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
+		},
+		{
+			// ⚠ Its OWN model knob, exactly like filler.language_model — and the live test that
+			// added it found why: the tagging model (`llm.model`) is often a TEXT model with no
+			// vision path (qwen3 in dev), while the box has a separate vision-capable one (gemma-4).
+			// Tying vision to `llm.model` would force an operator to switch their whole LLM to a
+			// vision model just to tag clips. Empty ⇒ fall back to `llm.model`, so an install whose
+			// main model already sees images needs no second setting.
+			Key: "filler.vision.model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
+		},
+		{
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
@@ -514,6 +542,45 @@ func declared() []Setting {
 			Key: "filler.autofile.normalize_loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
 			Group: GroupFiller, Kind: KindBool, Default: false,
 			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
+		},
+
+		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
+		// its result always required a human, which made compilations the most manual part of a
+		// system whose claim is that it maintains itself — while the tagger beside it files
+		// clips unattended above a threshold.
+		{
+			// ⚠ ON by default, because PROPOSING costs nothing an operator must undo: an
+			// unconfirmed proposal writes no clips. What it removes is the click and the
+			// minutes of ffmpeg an operator otherwise waits through once they decide to look.
+			Key: "filler.split.every", EnvVar: "FILLER_SPLIT_EVERY", Group: GroupFiller,
+			Kind: KindDuration, Default: "6h",
+			Doc: "How often Loomarr looks for long recordings in your catalog and works out where the adverts inside them start and end. Set to 0 to only split when you ask.",
+		},
+		{
+			// ⚠ OFF by default, unlike `filler.autofile.enabled` which is ON. Cutting is
+			// destructive in a way tagging is not: a mis-tagged clip plays in the wrong break,
+			// a mis-cut clip plays HALF AN ADVERT, and the source is consumed either way.
+			Key: "filler.autosplit.enabled", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
+		},
+		{
+			// ⚠ A SEPARATE number from `filler.autofile.min_confidence`, and the separation is
+			// the point: one dial would force the stricter of two different failure modes to
+			// govern both. Bounded by the same range for the same reason — an ungrounded era is
+			// capped below 95, so no settable value can auto-confirm a fabricated one.
+			Key: "filler.autosplit.min_confidence", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
+			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
+			Doc: "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
+		},
+		{
+			// ⚠ ONE key doing two jobs on purpose. It selects which clips the split job even
+			// looks at (longer than this ⇒ a compilation worth detecting) AND it is the ceiling
+			// every segment must clear to auto-confirm. Two keys could disagree — a clip the job
+			// considers too long to be an advert must not then auto-confirm as one.
+			Key: "filler.autosplit.max_duration", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
+			Group: GroupFiller, Kind: KindDuration, Default: "120s",
+			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
 		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
@@ -796,6 +863,34 @@ func declared() []Setting {
 			Key: "job.filler_language.schedule", EnvVar: "JOB_FILLER_LANGUAGE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 30 * * * *",
 			Doc: "How often Loomarr checks what language new filler clips are spoken in (cron).",
+		},
+		{
+			// ⚠ Hourly, and off-phase from the language gate (:45 vs :30). Both are expensive —
+			// ffmpeg then whisper — and overlapping them would put two multi-minute media jobs
+			// on the same runner at the same time, on a box that is also streaming.
+			//
+			// ⚠ Every job needs this key declared or the settings service PANICS at startup on
+			// `Resolve` of an undeclared key. That is the right failure — it caught this
+			// omission at boot rather than at 45 minutes past the hour — but it means a new job
+			// and its schedule key land in the same change, always.
+			Key: "job.filler_split.schedule", EnvVar: "JOB_FILLER_SPLIT_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 * * * *",
+			Doc: "How often Loomarr looks for adverts inside long recordings in your catalog (cron).",
+		},
+		{
+			// §10 V44. Off-phase from its expensive siblings (:15 vs the language gate's :30 and
+			// split's :45) so three multi-minute media jobs never share the runner at once — the
+			// same scheduling discipline the split key's comment above states.
+			Key: "job.filler_transcribe.schedule", EnvVar: "JOB_FILLER_TRANSCRIBE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 15 * * * *",
+			Doc: "How often Loomarr transcribes filler clips whose source told us little (cron). Only runs when transcription is enabled.",
+		},
+		{
+			// §10 V44. Latest phase (:50) — vision is the most expensive tier and runs last, on the
+			// clips the cheaper passes could not identify.
+			Key: "job.filler_vision.schedule", EnvVar: "JOB_FILLER_VISION_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 50 * * * *",
+			Doc: "How often Loomarr reads filler clips' frames to identify them (cron). Only runs when vision tagging is enabled.",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,

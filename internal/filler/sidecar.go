@@ -102,6 +102,17 @@ type SidecarTags struct {
 	Era          int    `json:"era,omitempty"`
 	Audience     string `json:"audience,omitempty"`
 	Category     string `json:"category,omitempty"`
+	// Brand is the GROUNDED advertiser (§10 V44) — carried here so a catalog rebuild restores it
+	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
+	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first
+	// place, so what round-trips here is a fact, never a guess — the same "metadata travels with
+	// the clip" rule `originalName`/`normalizedLufs` follow.
+	Brand string `json:"brand,omitempty"`
+	// Transcript is the clip's spoken text (§10 V44), persisted beside the file for the same reason
+	// as `normalizedLufs`: it must survive a catalog rebuild, because re-deriving it means re-running
+	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or
+	// not-yet-transcribed clip's sidecar unchanged.
+	Transcript string `json:"transcript,omitempty"`
 	// Confidence is the grounding-capped score (§10 V38). Carried so a restored catalog does not
 	// have to re-run the tagger to know what it already worked out.
 	Confidence int `json:"confidence,omitempty"`
@@ -251,6 +262,29 @@ func SidecarFetchedByUs(mediaPath string) bool {
 		return false
 	}
 	return doc.Loomarr.FetchedBy == fetchedByUs
+}
+
+// SidecarTitle reads the source-declared `title` from the info-JSON beside a clip (yt-dlp and the
+// Archive downloader both write it). Returns "" when there is no sidecar, it does not parse, or the
+// source declared no title.
+//
+// ⚠ This is the CLEAN display name, distinct from `SidecarTags.OriginalName` (§10 V44). The Archive
+// downloader files clips as `"<archive-id> - <title>.mp4"` so ids cannot collide (archive.go), and
+// `originalName` preserves that mangled filename — which is why the guide showed
+// "CampbellsSoupAdvert - Campbell's Soup Advert". The `title` field carries just "Campbell's Soup
+// Advert", so the scan prefers it for the DISPLAY name. It is deliberately NOT used for era
+// grounding: `originalName` stays the grounding text (the year lives in the filename), so the two
+// concerns — what a human READS vs what the tagger GROUNDS against — do not collapse into one field.
+func SidecarTitle(mediaPath string) string {
+	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	if err != nil {
+		return ""
+	}
+	var info sidecarInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(info.Title)
 }
 
 // SidecarText reads the info-JSON beside a clip and renders the text signals as a

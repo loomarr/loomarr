@@ -181,6 +181,22 @@ type ClipStore interface {
 	// what stops a folder scan blanking a detected language and making the job re-detect the whole
 	// catalog every sync (~341s per clip under QEMU on the local backend).
 	SetClipLanguage(ctx context.Context, path, language string, at time.Time) error
+	// SetClipTranscript records the transcribe job's result (§10 V44). The ONLY writer of
+	// `transcript`, like SetClipLanguage above: UpsertClip omits it so a re-sync cannot blank a
+	// transcribed clip and re-trigger Whisper (~341s per clip under QEMU).
+	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
+	// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44) — path-keyed,
+	// writes `brand` and nothing else. It SHARES the `brand` column with SetClipVisionTags (text
+	// grounds a brand in the filename/sidecar/transcript, vision grounds one in the on-screen text);
+	// UpsertClip omits `brand` from DO UPDATE so a re-sync cannot blank either. The caller has
+	// already applied the grounding rule, so this writes what it is given.
+	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
+	// SetClipVisionTags records a vision pass — the on-screen text it read, a grounded brand, and
+	// (when the frame supported them) an era/category (§10 V44). The ONLY writer of `visible_text`
+	// and `vision_tagged`; `brand` it shares with SetClipBrand above. UpsertClip omits them so a
+	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
+	// text tags intact.
+	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:

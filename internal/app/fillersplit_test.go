@@ -32,6 +32,9 @@ func (f splitFakeTools) Transcribe(context.Context, string, int64, int64) ([]fil
 func (f splitFakeTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
 	return nil, fmt.Errorf("no frames in tests")
 }
+func (f splitFakeTools) Keyframes(context.Context, string, int) ([][]byte, error) {
+	return nil, fmt.Errorf("no keyframes in tests")
+}
 func (f splitFakeTools) Cut(context.Context, string, int64, int64, string) error { return nil }
 
 func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, store.Store) {

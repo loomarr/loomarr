@@ -21,6 +21,7 @@ type fakeTools struct {
 	transcripts   map[string][]filler.TranscriptSegment // "start:end" → utterances
 	transcribeErr error
 	grayFrames    map[string][][]byte // "path|start|end" → frames
+	keyframes     map[string][][]byte // basename → JPEG frames (V44 vision/heuristic input)
 
 	chapterCalls     int
 	blackSilenceCall int
@@ -53,6 +54,12 @@ func (f *fakeTools) GrayFrames(_ context.Context, path string, start, end int64)
 		return nil, fmt.Errorf("no frames for %s", key3(path, start, end))
 	}
 	return frames, nil
+}
+
+func (f *fakeTools) Keyframes(_ context.Context, path string, _ int) ([][]byte, error) {
+	// Scripted per basename (the vision/heuristic tiers pass drop-dir-joined paths),
+	// so a unit test never shells ffmpeg for real JPEGs.
+	return f.keyframes[filepath.Base(path)], nil
 }
 
 func (f *fakeTools) Cut(_ context.Context, _ string, start, end int64, out string) error {

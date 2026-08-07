@@ -91,8 +91,16 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		// ⚠ transcript / brand / visible_text / vision_tagged are INSERTed (a new row starts empty)
+		// but deliberately OMITTED from DO UPDATE (§10 V44, migration 00038) — the same rule the
+		// block above states for language/removed_at/held/counters. The folder scan knows none of
+		// them; if they rode the update list, one re-sync would blank a transcribed or vision-tagged
+		// clip and re-trigger ~341s of Whisper or a paid vision call over work already done. Their
+		// writers are the job methods below — SetClipTranscript owns `transcript`, SetClipVisionTags
+		// owns `visible_text`/`vision_tagged`, and `brand` is written by whichever grounded it
+		// (SetClipBrand from text, SetClipVisionTags from the frame).
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -110,8 +118,9 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
-		// line is the fourth time it has bitten this session.
+		// line is the fourth time it has bitten this session. `vision_tagged` joins them (00038).
 		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
+		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
 	if err != nil {
@@ -121,7 +130,8 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 }
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era,
+	rating, source, ai_tagged, quality, license, thumbnail, preview, language, transcript, brand, visible_text, vision_tagged,
+	play_count, last_played_at, suggested_era,
 	removed_at, held, confidence, auto_filed, updated_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
@@ -404,10 +414,14 @@ func scanClip(sc scannable) (Clip, error) {
 		aiTagged  bool
 		held      bool
 		autoFiled bool
-		updatedAt int64
+		// vision_tagged is BOOLEAN (00038), the same side of the dialect split as its three
+		// neighbours above — scanned into a bool, never an int.
+		visionTagged bool
+		updatedAt    int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
+		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
@@ -419,6 +433,7 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Audience = filler.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged
+	c.VisionTagged = visionTagged
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
 	if removedAt != 0 {
 		c.RemovedAt = fromEpoch(removedAt)
@@ -561,6 +576,91 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 		language, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip language %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipTranscript records what the transcribe job heard (§10 V44, migration 00038).
+//
+// ⚠ **The ONLY writer of `transcript`**, exactly like SetClipLanguage owns `language` and for the
+// identical reason: `UpsertClip` deliberately omits the column, so the folder scan cannot blank a
+// transcribed clip by finding its file still on disk. Without that omission every sync would reset
+// the catalog to "not yet transcribed" and the job would re-run Whisper on everything — ~341s per
+// clip under QEMU.
+//
+// Keyed by PATH rather than hash, because that is what the job carries and what SetClipLanguage
+// beside it takes. An empty transcript is a legitimate write: it records "checked, wordless", which
+// is what stops the selective job from re-visiting a silent clip forever.
+func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET transcript = ?, updated_at = ? WHERE path = ?`),
+		transcript, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip transcript %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44, migration 00038).
+//
+// ⚠ Writes `brand` and nothing else — deliberately narrower than SetClipVisionTags, which also
+// stamps `vision_tagged` and owns `visible_text`. The text tagger grounds a brand in the clip's
+// text signals (filename, sidecar, or the persisted transcript); the vision pass grounds one in the
+// on-screen text. Both are legitimate writers of `brand`, and each writes only what it is entitled
+// to: this must NOT touch `vision_tagged`, or a text-tagged clip would masquerade as one a vision
+// pass had read, and a re-run would skip the frame it never actually looked at.
+//
+// The caller has already applied the grounding rule (validateTags keeps a brand only when it
+// appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
+// and vision writers it sits beside and unlike the hash-keyed UpdateClipTags — the job carries the
+// path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
+// other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.
+func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE path = ?`),
+		brand, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip brand %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipVisionTags records what a vision pass read off a clip's keyframes (§10 V44, migration
+// 00038): the on-screen text it saw, a grounded brand, and — when the frame supported them — an
+// era and category. It stamps `vision_tagged` so a re-run does not pay for the same clip twice.
+//
+// ⚠ **The ONLY writer of `visible_text` and `vision_tagged`.** `brand` it SHARES with SetClipBrand
+// (the text tagger's grounded writer) — both write `brand` and only `brand`, and this one must not
+// be confused for the sole owner or a text-grounded brand would look vision-read. Same rule as
+// every job column here: `UpsertClip` omits them so a re-sync cannot undo the pass. The caller has
+// already applied the grounding rule (a brand/era/category survives only if `visibleText` supports
+// it), so this method writes what it is given — the validation lives in the domain, not the SQL.
+//
+// era and category are written only when > 0 / non-empty, so a vision pass that grounded a brand
+// but no era leaves an existing text-tagged era untouched. Keyed by PATH, like its neighbours.
+func (s *sqlStore) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		// COALESCE-style guards inline: only overwrite era/category when the vision pass produced a
+		// grounded value, otherwise keep what text tagging already found. brand and visible_text are
+		// vision's own to own, so they are written unconditionally.
+		//
+		// ⚠ suggested_era is written ONLY when the pass grounded NO era (the ? > 0 guard on
+		// suggestedEra) AND does not clobber an existing suggestion: it is the frame-heuristic tier's
+		// output (B&W + 4:3 ⇒ "pre-1970s?"), a QUESTION for the operator, never a fact — the same
+		// role validateTags gives an ungrounded LLM year. A grounded era needs no suggestion, so a
+		// pass that read a year off the frame leaves suggested_era alone.
+		`UPDATE clips SET brand = ?, visible_text = ?, vision_tagged = ?,
+		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
+		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
+		   category = CASE WHEN ? <> '' THEN ? ELSE category END,
+		   updated_at = ? WHERE path = ?`),
+		brand, visibleText, true,
+		era, era,
+		era, suggestedEra, suggestedEra,
+		category, category,
+		epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip vision tags %s: %w", path, err)
 	}
 	return nil
 }

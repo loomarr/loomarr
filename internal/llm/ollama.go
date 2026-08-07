@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -87,6 +88,13 @@ type ollamaMessage struct {
 	Role      string           `json:"role"`
 	Content   string           `json:"content"`
 	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	// Images is Ollama's per-message multimodal field (§10 V44 vision tier): base64 frames,
+	// NO data-URI prefix (unlike the hosted image_url part). This is the ONE V44 change to the
+	// shared Chat wire type, so `omitempty` is load-bearing, not cosmetic: an image-free text
+	// request must serialise byte-for-byte as it did before this field existed. A nil slice on
+	// every text message keeps the field out of the body entirely — guarded by a test that
+	// marshals a text-only message and asserts no "images" key appears.
+	Images []string `json:"images,omitempty"`
 }
 
 type ollamaToolCall struct {
@@ -166,6 +174,62 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Content:   out.Message.Content,
 		ToolCalls: fromOllamaToolCalls(out.Message.ToolCalls),
 	}, nil
+}
+
+// AskAboutImages sends one question about a clip's keyframes and returns the model's answer
+// (§10 V44 vision tier, local path). Ollama's /api/chat takes the frames in the per-message
+// `images` array as bare base64 — no data-URI prefix (that is the hosted image_url shape,
+// vision.go) — so a fully-local install running a vision model (llava / llama-vision) gets
+// visual tagging without egress or per-clip cost. Ollama reports a `vision` capability
+// (probed live 2026-08-03, §10 quality gate); this is the wiring that uses it.
+//
+// It reuses the shared Chat wire type deliberately — the images ride on the same ollamaMessage
+// the text path uses, which is why that field carries omitempty (see ollamaMessage.Images):
+// no images ⇒ the field is absent ⇒ a text request is unchanged. NO tools, NO json format,
+// NO num_ctx block: vision is one stateless question, not the grounded tool loop, so it sends
+// the minimal request and returns the answer as a Response for the caller to parse tags from.
+func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (Response, error) {
+	if len(jpegs) == 0 {
+		return Response{}, fmt.Errorf("vision request carries no images")
+	}
+	imgs := make([]string, 0, len(jpegs))
+	for _, jpg := range jpegs {
+		imgs = append(imgs, base64.StdEncoding.EncodeToString(jpg))
+	}
+
+	body, err := json.Marshal(ollamaChatReq{
+		Model:     o.model,
+		Stream:    false,
+		KeepAlive: o.keepAlive,
+		Messages: []ollamaMessage{{
+			Role:    "user",
+			Content: prompt,
+			Images:  imgs,
+		}},
+	})
+	if err != nil {
+		return Response{}, fmt.Errorf("marshal ollama vision request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/chat", strings.NewReader(string(body)))
+	if err != nil {
+		return Response{}, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.http.Do(httpReq)
+	if err != nil {
+		return Response{}, fmt.Errorf("ollama vision: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return Response{}, fmt.Errorf("ollama vision: status %d", resp.StatusCode)
+	}
+	var out ollamaChatResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return Response{}, fmt.Errorf("decode ollama vision response: %w", err)
+	}
+	metrics.LLMTokens(out.PromptEvalCount, out.EvalCount) // §17: no-op on 0
+	return Response{Content: strings.TrimSpace(out.Message.Content)}, nil
 }
 
 // ollamaChatCtx is the context window we request for the grounded tool loop.

@@ -80,6 +80,36 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 	}
 }
 
+// Brand and transcript round-trip through the sidecar (§10 V44), so a catalog rebuild restores them
+// rather than re-running the tagger (brand) or Whisper (transcript) over the whole folder — the same
+// "metadata travels with the clip" rule originalName/normalizedLufs already follow.
+func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
+	dir := t.TempDir()
+	media := filepath.Join(dir, "coke.mp4")
+	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	want := filler.SidecarTags{
+		Kind:       "commercial",
+		Era:        1985,
+		Audience:   "general",
+		Category:   "general",
+		Brand:      "Coca-Cola",
+		Transcript: "Have a Coke and a smile — the real thing.",
+	}
+	if err := filler.WriteSidecarTags(media, want, false); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := filler.ReadSidecarTags(media)
+	if !ok {
+		t.Fatal("tags did not read back")
+	}
+	if got != want {
+		t.Errorf("brand/transcript round-trip lost data:\n got %+v\nwant %+v", got, want)
+	}
+}
+
 // ⚠ An UNGROUNDED era must round-trip as a SUGGESTION, never as a tag. Restoring it as `Era`
 // would launder a guess into a fact — the §8 failure the grounding rule exists to prevent, and
 // the reason the two are separate fields rather than one.
