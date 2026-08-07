@@ -14,7 +14,7 @@ const base: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-test.mp4",
+  hash: "hash-clip-test",
   tunarrProgramId: "clip-test",
 };
 
@@ -45,18 +45,18 @@ describe("ClipRow", () => {
     expect(onToggleSelect).toHaveBeenCalledOnce();
   });
 
-  // ⚠ The three-branch plays rule, shared with ClipCard via `playsLine`. `playsCounted:false`
-  // is NOT zero plays — it means this install cannot OBSERVE airings — so "Never played" here
-  // would be a falsehood, not a rounding. This is the branch worth pinning in both renderers.
-  it("says plays aren't counted rather than claiming zero, when the install can't observe them", () => {
+  // ⚠ The three-branch airings rule, shared with ClipCard via `playsLine` (§10 V45a: "aired", not
+  // "played" — the counter is broadcasts). `playsCounted:false` is NOT zero airings — it means this
+  // install cannot OBSERVE airings — so "Never aired" here would be a falsehood, not a rounding.
+  it("says airings aren't counted rather than claiming zero, when the install can't observe them", () => {
     render(<ClipRow clip={{ ...base, playsCounted: false, playCount: 0 }} />);
-    expect(screen.getByText(/plays aren't counted on this setup/i)).toBeInTheDocument();
-    expect(screen.queryByText(/never played/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/airings aren't counted on this setup/i)).toBeInTheDocument();
+    expect(screen.queryByText(/never aired/i)).not.toBeInTheDocument();
   });
 
-  it("distinguishes a genuinely never-played clip from an uncounted one", () => {
+  it("distinguishes a genuinely never-aired clip from an uncounted one", () => {
     render(<ClipRow clip={{ ...base, playsCounted: true, playCount: 0 }} />);
-    expect(screen.getByText(/never played/i)).toBeInTheDocument();
+    expect(screen.getByText(/never aired/i)).toBeInTheDocument();
   });
 
   // The thumbnail column holds its box either way — in a list, omitting the element would

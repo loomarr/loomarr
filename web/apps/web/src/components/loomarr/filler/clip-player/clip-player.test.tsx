@@ -18,7 +18,7 @@ const clip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "80s/toys/intro.mp4",
+  hash: "hash-intro",
   tunarrProgramId: "clip-1",
 };
 
@@ -36,9 +36,9 @@ describe("ClipPlayer", () => {
     render(<ClipPlayer clip={clip} onClose={() => {}} />);
 
     const video = document.querySelector("video");
-    // Built from the clip's PATH via clipMediaURL — per-segment encoded, so a clip called
-    // `back in 5?.mp4` requests the right file rather than truncating at the `?`.
-    expect(video).toHaveAttribute("src", "/v1/filler/media/80s/toys/intro.mp4");
+    // Built from the clip's HASH via clipMediaURL — per-segment encoded as belt-and-braces,
+    // though a hash needs no escaping the way a slash-bearing path once did.
+    expect(video).toHaveAttribute("src", "/v1/filler/media/hash-intro");
     // Autoplay is safe here: reaching this dialog required clicking a play button, so the gesture
     // that permits it has already happened.
     expect(video).toHaveAttribute("autoplay");

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The vision-tagging job (§10 V44) — the expensive LAST tier. Its risk is the same as the transcribe
@@ -48,6 +49,13 @@ func (f *fakeVisionStore) SetClipVisionTags(_ context.Context, path, brand, visi
 	f.setPaths = append(f.setPaths, path)
 	f.tags[path] = visionWrite{brand: brand, visibleText: visibleText, category: category, era: era, suggestedEra: suggestedEra}
 	return nil
+}
+
+// ListTaxa serves the REAL seed forest (§10 V45a): the vision tier grounds its category against it, so
+// a vision-read `toys` resolves and an off-vocabulary slug is dropped — the same resolve-or-drop gate
+// the text tier uses.
+func (f *fakeVisionStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
 }
 
 // scriptedVision is a MediaTools whose only real method is Keyframes, returning a fixed set of JPEG

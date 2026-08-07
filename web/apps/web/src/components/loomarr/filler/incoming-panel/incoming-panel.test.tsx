@@ -21,6 +21,7 @@ const renderReels = (ui: ReactElement) => render(<RouterHarness content={ui} ini
 
 const guessed: IncomingAskDTO = {
   path: "1988/toys.mp4",
+  hash: "hash-guessed",
   name: "toys.mp4",
   from: "archive",
   durationMs: 30_000,
@@ -33,6 +34,7 @@ const guessed: IncomingAskDTO = {
 
 const untagged: IncomingAskDTO = {
   path: "mystery.mp4",
+  hash: "hash-untagged",
   name: "mystery.mp4",
   durationMs: 25_000,
   kind: "commercial",
@@ -90,8 +92,10 @@ describe("IncomingPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Looks right" }));
 
-    // The caller needs audience + category to build a safe PATCH: the server writes all three
-    // tag columns unconditionally, so a confirm carrying only the era wipes the other two.
+    // The caller needs the whole ask (audience included) to build a safe PATCH: the server
+    // writes era and audience unconditionally, so a confirm carrying only the era would wipe
+    // audience. `category` rides along on the DTO too, but it's a derived shadow — the actual
+    // PATCH (built in `incoming-tab.tsx`) never sends it.
     expect(onConfirmEra).toHaveBeenCalledWith(guessed);
   });
 
@@ -132,6 +136,7 @@ describe("IncomingPanel", () => {
 describe("IncomingPanel confidence and filing", () => {
   const ask = (over: Partial<IncomingAskDTO> = {}): IncomingAskDTO => ({
     path: "a.mp4",
+    hash: "hash-a",
     name: "Toy ad",
     durationMs: 30_000,
     kind: "commercial",

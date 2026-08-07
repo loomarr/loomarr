@@ -78,10 +78,9 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The clip id IS its path relative to FILLER_DIR, so it arrives with slashes and needs a
-	// wildcard segment rather than a plain {id}.
-	clipPath := r.PathValue("path")
-	if clipPath == "" {
+	// The clip is addressed by its content HASH (V45a); resolve it to the disk path to read the file.
+	clipPath, ok := s.clipPathByHash(r.Context(), r.PathValue("hash"))
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}

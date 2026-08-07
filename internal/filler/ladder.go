@@ -109,12 +109,20 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// a repeat only if the pod would otherwise be short of clips. Variety wins
 	// WITHIN the chosen pool; we don't descend the ladder just to avoid a repeat
 	// (§10 — the ladder is the duration fallback, variety is a placement rule).
+	//
+	// ⚠ V45a: `c.Category` is now the DERIVED primary product leaf, so "no two back-to-back with the
+	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
+	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
+	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.
 	place := func(allowRepeat bool) {
 		for _, c := range cands {
 			if len(out) >= podMax {
 				return
 			}
-			if used[c.Path] || contains(out, c.Path) {
+			// ⚠ Keyed by HASH (Clip.ID()), not Path — `used` is seeded by hash-keyed pinned/excluded
+			// and reserved by hash everywhere (§10 V45a). Path keying here meant a pinned/excluded
+			// clip was never recognised as used, so it could be double-placed or ignore its exclusion.
+			if used[c.ID()] || contains(out, c.ID()) {
 				continue
 			}
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
@@ -141,17 +149,17 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 // hasUnused reports whether any clip in the pool isn't already used this window.
 func hasUnused(clips []Clip, used map[string]bool) bool {
 	for _, c := range clips {
-		if !used[c.Path] {
+		if !used[c.ID()] {
 			return true
 		}
 	}
 	return false
 }
 
-// contains reports whether a clip id is already in the pod-in-progress.
+// contains reports whether a clip id (its HASH) is already in the pod-in-progress.
 func contains(out []Clip, id string) bool {
 	for _, c := range out {
-		if c.Path == id {
+		if c.ID() == id {
 			return true
 		}
 	}
@@ -226,10 +234,16 @@ func filterKinds(clips []Clip, kinds []string) []Clip {
 	return out
 }
 
-// filterCategories keeps only clips whose category is in the selected set (§10
-// per-channel "categories"). Empty = any category. A clip with no category ("") is
-// dropped when a non-empty selection is given — an untagged clip can't be known to
-// match "toys", and the selection is an explicit narrowing.
+// filterCategories keeps only clips whose TAXONOMY TAG SET intersects the selected categories (§10
+// per-channel "categories", V45a). Empty selection = any category.
+//
+// ⚠ **Rollup-set intersection, not a single-string equality** (the flat-`category` model this
+// replaces). A clip's `Tags` is the full leaf+rollup expansion, so selecting `food` matches a clip
+// tagged `cereal` (cereal rolls up to food) — the question the flat string could NOT answer and the
+// whole reason the taxonomy exists. A clip with NO tags is dropped under a non-empty selection: an
+// untagged clip can't be known to match, and the selection is an explicit narrowing (unchanged from
+// the flat model's polarity). This is deterministic set membership — eligibility, not fuzzy ranking
+// (§10: structured filters stay deterministic; theme ranking never decides eligibility).
 func filterCategories(clips []Clip, cats []string) []Clip {
 	if len(cats) == 0 {
 		return clips
@@ -240,8 +254,11 @@ func filterCategories(clips []Clip, cats []string) []Clip {
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		if allow[c.Category] {
-			out = append(out, c)
+		for _, tag := range c.Tags {
+			if allow[tag] {
+				out = append(out, c)
+				break
+			}
 		}
 	}
 	return out

@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // registerFiller mounts /v1/filler* (§7/§10). List is visible to any
@@ -35,8 +38,8 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleMember), s.fillerPool)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/{id}",
-		Summary: "Edit a clip's tags", Description: "Admin only.", Tags: []string{"filler"},
+		OperationID: "tag-filler-clip", Method: http.MethodPatch, Path: "/v1/filler/tags",
+		Summary: "Edit a clip's tags", Description: "Admin only. The clip is identified by `path` in the body (§10 V45a).", Tags: []string{"filler"},
 	}, RoleAdmin), s.patchFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
@@ -105,12 +108,13 @@ func (s *Server) registerFiller(api huma.API) {
 	// per file); the proposal read and the confirm are synchronous. All admin:
 	// these routes write the catalog, which is the same trust level as ingest.
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "split-filler", Method: http.MethodPost, Path: "/v1/filler/{id}/split",
+		OperationID: "split-filler", Method: http.MethodPost, Path: "/v1/filler/split",
 		Summary: "Propose splits for a compilation clip",
-		Description: "Admin only (§10, V34). Runs detection — chapters → blackdetect/silencedetect → " +
-			"transcript rescue for over-long segments — as a background job (progress on /v1/events as " +
-			"filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: " +
-			"review is not optional, because detection quality is a property of the source.",
+		Description: "Admin only (§10, V34). The clip is identified by `path` in the body (§10 V45a). Runs " +
+			"detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — " +
+			"as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED " +
+			"split proposal. Nothing enters the catalog: review is not optional, because detection quality " +
+			"is a property of the source.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.splitFiller)
 
@@ -134,12 +138,14 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleAdmin), s.confirmFillerSplit)
 }
 
-// ClipDTO is the API view of a filler clip (§10). Identity is the clip's PATH relative to
-// FILLER_DIR (§9.1 moved it off the Tunarr program uuid — see Path below).
+// ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
+// store has keyed on hash since V38c, and V45a makes the wire identity the hash too, so a
+// slash-bearing path never crosses the API (the source of the routing/proxy 404 class).
 type ClipDTO struct {
-	// Path is the clip's IDENTITY (relative to FILLER_DIR) — what /v1/filler/{id} takes and
-	// what a channel's pinned/excluded lists reference (§9.1).
-	Path string `json:"path"`
+	// Hash is the clip's IDENTITY (its sparse content hash, V38c) — what every clip-addressing route
+	// takes (tags, split, and the byte routes). Hex, no slashes, so it is a clean URL/route id.
+	Hash string `json:"hash"`
+	// TunarrProgramID is informational since §9.1: it exists for Tunarr filler-lists and is
 	// TunarrProgramID is informational since §9.1: it exists for Tunarr filler-lists and is
 	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
@@ -147,9 +153,14 @@ type ClipDTO struct {
 	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
-	Category        string `json:"category,omitempty"`
-	DurationMs      int64  `json:"durationMs"`
-	Source          string `json:"source,omitempty"`
+	// Category is the DERIVED product-leaf shadow of Tags (§10 V45a) — kept for readers that show a
+	// single primary category; `Tags` is the full taxonomy set and the source of truth.
+	Category string `json:"category,omitempty" doc:"Derived primary product-leaf tag; the full set is in tags (§10 V45a)"`
+	// Tags is the clip's taxonomy tag set (§10 V45a) — the full leaf+rollup expansion, so a client can
+	// show every tag and a curation rule can match any ancestor. Empty for a clip not yet tagged.
+	Tags       []string `json:"tags,omitempty" doc:"The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)"`
+	DurationMs int64    `json:"durationMs"`
+	Source     string   `json:"source,omitempty"`
 	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
 	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
 	// it existed in the store for two phases with no way to see it.
@@ -184,6 +195,15 @@ type ClipDTO struct {
 	// question for the operator, not a tag. Confirming = PATCHing era (clears this);
 	// 0/absent = no suggestion. Nothing in pod matching ever reads it.
 	SuggestedEra int `json:"suggestedEra,omitempty" doc:"AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion."`
+	// IsComposite marks a recorded break — many adverts in one file — which is NOT airable (§10 V45).
+	// The client renders it as a container (the "COMPOSITE · NOT AIRABLE" row that expands to its
+	// segments), never as a playable clip. Its segments (ParentHash == this clip's identity) are the
+	// airable clips.
+	IsComposite bool `json:"isComposite,omitempty" doc:"A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)"`
+	// ParentHash is the identity of the composite this clip was split out of (§10 V45), or absent for
+	// a clip with no parent. The lineage link: a segment card shows "from <break>", and a composite's
+	// segments are fetched by this value.
+	ParentHash string `json:"parentHash,omitempty" doc:"The composite this clip was split from; absent for a non-segment clip (§10 V45)"`
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -194,16 +214,34 @@ type ClipDTO struct {
 // means the flag cannot drift from the behaviour it describes.
 func (s *Server) playsCounted() bool { return s.playoutResolver != nil }
 
+// clipPathByHash resolves a clip's content HASH (the wire identity, V45a) to its disk path (the disk
+// LOCATION, server-internal). The byte routes (thumb/media/hover) take the hash in the URL and need
+// the path to find the file. Returns ("", false) for a missing clip or a nil/unconfigured store — the
+// caller renders that as an ordinary 404, never an error (a missing clip and a missing thumbnail are
+// the same non-event to the client). ⚠ One store read per byte request: the tradeoff for a single
+// wire identity (V45a) — the path never crosses the API, so no slash-in-URL encoding hazard remains.
+func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool) {
+	if s.store == nil || hash == "" {
+		return "", false
+	}
+	clip, err := s.store.GetClip(ctx, hash)
+	if err != nil || clip.Path == "" {
+		return "", false
+	}
+	return clip.Path, true
+}
+
 // clipToDTO maps a stored clip. playsCounted comes from the caller because it is a property
 // of the INSTALL (does internal playout run here?), not of the clip.
 func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 	d := ClipDTO{
-		Path: c.Path, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
-		Era: c.Era, Audience: string(c.Audience), Category: c.Category,
+		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
+		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		Thumbnail: c.Thumbnail, Preview: c.Preview,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
+		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 	}
 	if !c.LastPlayedAt.IsZero() {
 		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)
@@ -249,11 +287,18 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 }
 
 type patchClipInput struct {
-	ID   string `path:"id"`
 	Body struct {
+		// Hash is the clip's identity (its content hash, V38c). ⚠ In the BODY (§10 V45a): the wire
+		// identity is the hash — hex, no slashes — so it needs no encoding and no {id} URL segment.
+		// Required.
+		Hash     string `json:"hash" doc:"The clip's content hash (its identity)"`
 		Era      int    `json:"era,omitempty"`
 		Audience string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
-		Category string `json:"category,omitempty"`
+		// Tags is the operator's chosen taxonomy tag set (§10 V45a) — REPLACES the old single
+		// `category` string. Each is grounded against the live taxonomy on write (an unknown slug is
+		// rejected), and `category` is DERIVED from the accepted set (the primary product leaf). A nil
+		// Tags means "leave the tags alone"; an explicit empty array clears them.
+		Tags *[]string `json:"tags,omitempty" doc:"The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a)."`
 		// Kind is correctable by hand (§10). Detection at sync gets it wrong in one
 		// direction often enough to matter — a trailer scanned as a commercial — and
 		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
@@ -269,25 +314,59 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	now := time.Now()
-	// ⚠ Resolve the wire identity (a PATH) to the storage identity (the HASH) once, here.
-	//
-	// `ClipDTO.Path` is the API's identity and stays that way: channel policy pinned/excluded
-	// lists reference paths, so changing the wire format would ripple through saved policy.
-	// But `UpdateClipTags`/`UpdateClipKind`/`GetClip` are all keyed `WHERE hash = ?`, so this
-	// handler passed a path into three hash-keyed calls and every PATCH 404'd from V38c until
-	// V41 — the UI simply could not edit a clip's tags. One lookup, then hashes below.
-	clip, err := s.store.GetClipByPath(ctx, in.ID)
+	if in.Body.Hash == "" {
+		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
+	}
+	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/`UpdateClipTags`/
+	// `UpdateClipKind`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
+	// to 404 a missing clip synchronously and to read the pre-edit tags below.
+	clip, err := s.store.GetClip(ctx, in.Body.Hash)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
 		return nil, err
 	}
+	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
+	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
+	// grounded (forest.Resolve) exactly as the tagger grounds the model — an unknown slug is a 422,
+	// never silently persisted — and `category` is DERIVED from the accepted set, never taken from the
+	// client, so the stored shadow always equals PrimaryProductLeaf(the persisted leaves).
+	category := clip.Category // unchanged unless Tags is being edited
+	if in.Body.Tags != nil {
+		taxa, err := s.store.ListTaxa(ctx)
+		if err != nil {
+			return nil, err
+		}
+		forest := taxonomy.New(taxa)
+		leaves := make([]string, 0, len(*in.Body.Tags))
+		seen := map[string]bool{}
+		for _, raw := range *in.Body.Tags {
+			slug, ok := forest.Resolve(raw)
+			if !ok {
+				return nil, errUnprocessable("Unknown tag",
+					fmt.Sprintf("The tag %q is not in the taxonomy vocabulary. Add it under Filler → Taxonomy first, or choose an existing tag.", raw))
+			}
+			if !seen[slug] {
+				seen[slug] = true
+				leaves = append(leaves, slug)
+			}
+		}
+		sort.Strings(leaves)
+		if err := s.store.SetClipTags(ctx, clip.Hash, leaves, forest, now); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
+			}
+			return nil, err
+		}
+		category = forest.PrimaryProductLeaf(leaves)
+	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
 	// CONFIRMS and clears any suggestion in the same write, while an era-less edit
-	// leaves the operator's unanswered question alone (§10, V34).
-	if err := s.store.UpdateClipTags(ctx, clip.Hash, in.Body.Era, in.Body.Audience, in.Body.Category, 0, false, now); err != nil {
+	// leaves the operator's unanswered question alone (§10, V34). `category` is the
+	// value derived from the tag edit above (or the clip's existing shadow, untouched).
+	if err := s.store.UpdateClipTags(ctx, clip.Hash, in.Body.Era, in.Body.Audience, category, 0, false, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}
@@ -634,7 +713,12 @@ func (s *Server) clipChannelFit(ctx context.Context, in *clipFitInput) (*clipFit
 // --- compilation splitting (§10, V34) ---
 
 type splitFillerInput struct {
-	ID string `path:"id" doc:"The compilation clip's path (its identity, §10)"`
+	Body struct {
+		// Hash identifies the compilation clip (its content hash, V38c). ⚠ In the BODY (§10 V45a):
+		// the wire identity is the hash. This is ALSO what Propose needs — it is keyed `WHERE hash = ?`
+		// — so passing the hash straight through fixes the "clip not found" the old path arg caused.
+		Hash string `json:"hash" doc:"The compilation clip's content hash (its identity, §10)"`
+	}
 }
 type splitFillerOutput struct {
 	Body struct {
@@ -653,7 +737,10 @@ func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitF
 		return nil, errNotImplemented("Filler isn't set up",
 			"Enable filler in Settings before splitting a compilation.")
 	}
-	jobID, err := s.filler.Split(ctx, in.ID)
+	if in.Body.Hash == "" {
+		return nil, errUnprocessable("Missing clip", "A split must name the compilation clip by its hash.")
+	}
+	jobID, err := s.filler.Split(ctx, in.Body.Hash)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 	}

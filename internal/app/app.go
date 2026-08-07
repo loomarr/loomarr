@@ -905,6 +905,14 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			"transcribe", set.boolv("filler.transcribe.enabled"),
 			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil)
 
+		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
+		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
+		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a
+		// path-vs-hash mismatch. Off unless `filler.reindex.enabled`, read live inside Run, so the row
+		// stays visible on the Tasks page even when idle.
+		jobReg.Add(fillerReindexJob(filler.NewReindexJob(
+			st, func() bool { return set.boolv("filler.reindex.enabled") }, time.Now, log)))
+
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
 		// next run to honour it, not the next restart.

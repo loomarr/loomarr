@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 	"github.com/mantonx/loomarr/internal/testkit"
 )
 
@@ -28,6 +29,11 @@ type tagMemStore struct {
 	// brands records SetClipBrand writes keyed by PATH (the key the real store uses), so a test can
 	// assert a GROUNDED brand was written — and, by its absence, that an ungrounded one never was.
 	brands map[string]string
+	// tags records SetClipTags writes keyed by HASH (§10 V45a) — the LEAVES the tagger persisted. A
+	// test asserts the grounded tag set here; hash-keyed like UpdateClipTags (and unlike the
+	// path-keyed brand map), so it MISSES a caller that passed a path, the same discipline the rest of
+	// this double keeps.
+	tags map[string][]string
 }
 
 func newTagMemStore() *tagMemStore {
@@ -35,8 +41,14 @@ func newTagMemStore() *tagMemStore {
 		clips:   map[string]filler.StoreClip{},
 		updates: map[string]filler.StoreClip{},
 		brands:  map[string]string{},
+		tags:    map[string][]string{},
 	}
 }
+
+// seedForest is the grounding graph a direct Classify test grounds against (§10 V45a) — the same
+// shipped vocabulary the tagger's store serves via ListTaxa, so a direct call and a full Run() ground
+// identically. `beer` resolves, `nonsense_widgets` is dropped.
+func seedForest() *taxonomy.Forest { return taxonomy.New(taxonomy.SeedForest()) }
 
 // seed adds a clip keyed by its own identity. ⚠ Use this rather than assigning into `clips`
 // directly: the map key IS the hash the store looks up, so seeding `clips["c1"]` with a clip
@@ -129,6 +141,31 @@ func (m *tagMemStore) UpdateClipTags(_ context.Context, id string, era int, audi
 	return nil
 }
 
+// ListTaxa serves the REAL seed forest (§10 V45a) — the tagger grounds against it, so a test that
+// served an empty graph would ground nothing and prove nothing. Grounding the double in the shipped
+// vocabulary is what lets a test assert that `beer` resolves and `nonsense` is dropped.
+func (m *tagMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
+	return taxonomy.SeedForest(), nil
+}
+
+// GetClipTags returns the LEAVES a clip already has — HASH-keyed like UpdateClipTags, so the union
+// the tagger does reads back exactly what it wrote. leavesOnly is honoured trivially: the double
+// stores only leaves (rollup expansion is the real store's job, not modelled here).
+func (m *tagMemStore) GetClipTags(_ context.Context, clipHash string, _ bool) ([]string, error) {
+	return m.tags[clipHash], nil
+}
+
+// SetClipTags records the persisted leaf set, HASH-keyed. Like UpdateClipTags it MISSES loudly on a
+// wrong key — a caller that passed a path finds no clip, the same not-quietly-succeed discipline the
+// rest of this double keeps ([[loomarr-fixture-collapsed-keys]]).
+func (m *tagMemStore) SetClipTags(_ context.Context, clipHash string, leaves []string, _ *taxonomy.Forest, _ time.Time) error {
+	if _, ok := m.clips[clipHash]; !ok {
+		return errTagClipNotFound
+	}
+	m.tags[clipHash] = leaves
+	return nil
+}
+
 // untaggedClip builds a catalog clip. ⚠ Since V38c the sidecar is found by PATH, so a fixture
 // giving a clip a sidecar must name it `<path minus extension>.info.json` — the shape intake
 // produces. Fuzzy name matching is gone; see TestTagger_ReadsTheSidecarBesideTheClip.
@@ -152,7 +189,7 @@ func TestTagger_WritesValidClassification(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = untaggedClip("c1", "Frosted Flakes ad 1992")
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1992,"audience":"kids","category":"cereal"}`),
+		testkit.FinalResponse(`{"era":1992,"audience":"kids","tags":["cereal"]}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
@@ -176,7 +213,7 @@ func TestTagger_DropsHallucinatedEnums(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = untaggedClip("c1", "some ad 1993")
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1993,"audience":"cyberpunk","category":"nonsense_widgets"}`),
+		testkit.FinalResponse(`{"era":1993,"audience":"cyberpunk","tags":["nonsense_widgets"]}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
@@ -187,6 +224,12 @@ func TestTagger_DropsHallucinatedEnums(t *testing.T) {
 	got := st.updates["c1"]
 	if got.Audience != "" {
 		t.Errorf("hallucinated audience %q was persisted — grounding breached", got.Audience)
+	}
+	// §10 V45a: the off-vocabulary tag is DROPPED by the resolve-or-drop gate, so it reaches neither
+	// the persisted leaf set nor the derived product-leaf shadow (`Category`). Both are proven empty —
+	// the tag set is the primary grounding assertion now, `Category` its shadow.
+	if len(st.tags["c1"]) != 0 {
+		t.Errorf("hallucinated tag %v was persisted — grounding breached", st.tags["c1"])
 	}
 	if got.Category != "" {
 		t.Errorf("hallucinated category %q was persisted — grounding breached", got.Category)
@@ -205,7 +248,7 @@ func TestTagger_RejectsBadYear(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = untaggedClip("c1", "ad")
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":9999,"audience":"kids","category":"toys"}`),
+		testkit.FinalResponse(`{"era":9999,"audience":"kids","tags":["toys"]}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 	_, _ = tagger.Run(context.Background())
@@ -217,9 +260,9 @@ func TestTagger_RejectsBadYear(t *testing.T) {
 // Classify directly: enum validation, with the era year present in the text.
 func TestClassify_ValidatesEnums(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1994,"audience":"late_night","category":"cars"}`),
+		testkit.FinalResponse(`{"era":1994,"audience":"late_night","tags":["cars"]}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "car ad 1994", "")
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "car ad 1994", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,10 +286,10 @@ func TestClassify_ValidatesEnums(t *testing.T) {
 // keeps era 0 so matching never sees it.
 func TestClassify_UngroundedEraBecomesSuggestion(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1980,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":1980,"audience":"general","tags":["tech"]}`),
 	)
 	// Ad copy full of period-sounding language, but no year — the §6.4 failure shape.
-	sug, err := filler.Classify(context.Background(), llmMock, "aqua-globes", "Transcript: the amazing new Aqua Globes water your plants for weeks...")
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "aqua-globes", "Transcript: the amazing new Aqua Globes water your plants for weeks...")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,9 +309,9 @@ func TestClassify_UngroundedEraBecomesSuggestion(t *testing.T) {
 // filename does.
 func TestClassify_EraGroundedBySourceText(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1978,"audience":"family","category":"cereal"}`),
+		testkit.FinalResponse(`{"era":1978,"audience":"family","tags":["cereal"]}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "rice-krispies-treats", "Transcript: making treats since 1978, so easy...")
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "rice-krispies-treats", "Transcript: making treats since 1978, so easy...")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +326,7 @@ func TestTagger_PersistsSuggestionNotEra(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = untaggedClip("c1", "swiffer")
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1999,"audience":"general","category":"tech"}`),
+		testkit.FinalResponse(`{"era":1999,"audience":"general","tags":["tech"]}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
@@ -311,7 +354,7 @@ func TestTagger_NoSuggestionWhenEraKnown(t *testing.T) {
 	clip.Era = 1985
 	st.clips["c1"] = clip
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1999,"audience":"kids","category":"toys"}`),
+		testkit.FinalResponse(`{"era":1999,"audience":"kids","tags":["toys"]}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
@@ -334,9 +377,9 @@ func TestTagger_NoSuggestionWhenEraKnown(t *testing.T) {
 // The advertiser's name is literally in the source text → the brand is GROUNDED and kept.
 func TestClassify_BrandGroundedInText(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":1992,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+		testkit.FinalResponse(`{"era":1992,"audience":"kids","tags":["cereal"],"brand":"Kellogg's"}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "cereal-ad-1992",
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "cereal-ad-1992",
 		"Transcript: Kellogg's Frosted Flakes, they're grrreat!")
 	if err != nil {
 		t.Fatal(err)
@@ -352,9 +395,9 @@ func TestClassify_BrandGroundedInText(t *testing.T) {
 func TestClassify_DropsUngroundedBrand(t *testing.T) {
 	llmMock := testkit.NewLLM(
 		// "cereal" is in the category, but no advertiser name is anywhere in the text.
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["cereal"],"brand":"Kellogg's"}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "a-cereal-ad",
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "a-cereal-ad",
 		"Transcript: the crunchiest breakfast in town, part of a balanced morning")
 	if err != nil {
 		t.Fatal(err)
@@ -372,9 +415,9 @@ func TestClassify_DropsUngroundedBrand(t *testing.T) {
 // grounds a model that answered "Kellogg's", and vice-versa.
 func TestClassify_BrandGroundingIsCaseInsensitive(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"kids","category":"cereal","brand":"Kellogg's"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"kids","tags":["cereal"],"brand":"Kellogg's"}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "shouty-ad",
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "shouty-ad",
 		"Transcript: KELLOGG'S FROSTED FLAKES")
 	if err != nil {
 		t.Fatal(err)
@@ -390,10 +433,10 @@ func TestClassify_BrandGroundingIsCaseInsensitive(t *testing.T) {
 // unit fixture hit it because they all spelled the brand and the text identically.
 func TestClassify_BrandGroundsAcrossPunctuation(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"family","category":"fast_food","brand":"Campbell's"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"family","tags":["fast_food"],"brand":"Campbell's"}`),
 	)
 	// The only text signal is the apostrophe-less filename, exactly as archive.org files it.
-	sug, err := filler.Classify(context.Background(), llmMock, "CampbellsSoupAdvert", "")
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "CampbellsSoupAdvert", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,9 +449,9 @@ func TestClassify_BrandGroundsAcrossPunctuation(t *testing.T) {
 // anti-§8 guarantee is intact. "Coca-Cola" cannot fold into a Campbell's filename.
 func TestClassify_FoldingStillDropsAbsentBrand(t *testing.T) {
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"family","category":"fast_food","brand":"Coca-Cola"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"family","tags":["fast_food"],"brand":"Coca-Cola"}`),
 	)
-	sug, err := filler.Classify(context.Background(), llmMock, "CampbellsSoupAdvert", "")
+	sug, err := filler.Classify(context.Background(), llmMock, seedForest(), "CampbellsSoupAdvert", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +489,7 @@ func TestTagger_PersistsBrandGroundedInTranscript(t *testing.T) {
 	st.seed(clip)
 
 	llmMock := testkit.NewLLM(
-		testkit.FinalResponse(`{"era":0,"audience":"general","category":"general","brand":"Coke"}`),
+		testkit.FinalResponse(`{"era":0,"audience":"general","tags":["general"],"brand":"Coke"}`),
 	)
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
@@ -470,7 +513,7 @@ func TestTagger_TranscriptIsAThirdTextSignal(t *testing.T) {
 	clip.Transcript = "Ford Mustang — built for the open road, since 1979."
 	st.seed(clip)
 
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1979,"audience":"general","category":"cars","brand":"Ford"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1979,"audience":"general","tags":["cars"],"brand":"Ford"}`))
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	if _, err := tagger.Run(context.Background()); err != nil {
@@ -498,7 +541,7 @@ func TestTagger_DoesNotClearASetBrand(t *testing.T) {
 	st.seed(clip)
 
 	// The text model returns NO brand (empty) — a text signal with no advertiser in it.
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","category":"general","brand":""}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","tags":["general"],"brand":""}`))
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	if _, err := tagger.Run(context.Background()); err != nil {
@@ -543,7 +586,7 @@ func TestTagger_SendsSidecarTextNotProvenance(t *testing.T) {
 			"uploader": "RetroAdVault"
 		}`,
 	})
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1994,"audience":"kids","category":"toys"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1994,"audience":"kids","tags":["toys"]}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	if _, err := tagger.Run(context.Background()); err != nil {
@@ -570,7 +613,7 @@ func TestTagger_FallsBackToFilenameWhenNoSidecar(t *testing.T) {
 	st.clips["c1"] = clip
 
 	// A drop-folder clip hand-copied by the operator: no sidecar anywhere.
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","category":"cars"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1990,"audience":"general","tags":["cars"]}`))
 	tagger := filler.NewTagger(st, llmMock, sidecarFS(nil), func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	res, err := tagger.Run(context.Background())
@@ -608,7 +651,7 @@ func TestTagger_ReadsTheSidecarBesideTheClip(t *testing.T) {
 	drop := sidecarFS(map[string]string{
 		"a3/f9/a3f9deadbeef.info.json": `{"title": "Cereal Prize Spot", "description": "Saturday morning."}`,
 	})
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1994,"audience":"kids","category":"cereal"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1994,"audience":"kids","tags":["cereal"]}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	if _, err := tagger.Run(context.Background()); err != nil {
@@ -640,7 +683,7 @@ func TestTagger_GroundsTheEraOnTheOriginalFilename(t *testing.T) {
 	drop := sidecarFS(map[string]string{
 		"a3/f9/a3f9deadbeef.info.json": `{"loomarr":{"originalName":"Frosted Flakes 1993.mp4"}}`,
 	})
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1993,"audience":"kids","category":"cereal"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1993,"audience":"kids","tags":["cereal"]}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	if _, err := tagger.Run(context.Background()); err != nil {
@@ -668,7 +711,7 @@ func TestTagger_MalformedSidecarDegradesToFilename(t *testing.T) {
 	// era 0: with no readable sidecar the year is nowhere in the text, so a nonzero
 	// era would now be demoted to a suggestion (§10 V34) — 0 keeps this test about
 	// the malformed-sidecar degradation, not the era rule covered above.
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":0,"audience":"general","category":"tech"}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":0,"audience":"general","tags":["tech"]}`))
 	tagger := filler.NewTagger(st, llmMock, drop, func() time.Time { return time.Unix(1, 0) }, discardLog())
 
 	res, err := tagger.Run(context.Background())
@@ -727,8 +770,8 @@ func TestScore_ModelCanOnlyLowerTheGroundedCeiling(t *testing.T) {
 func TestClassify_ClampsAnOutOfRangeModelConfidence(t *testing.T) {
 	for _, raw := range []string{"150", "-1"} {
 		llmMock := testkit.NewLLM(testkit.FinalResponse(
-			`{"era":1985,"audience":"kids","category":"toys","confidence":` + raw + `}`))
-		got, err := filler.Classify(context.Background(), llmMock, "Toy ad 1985", "A 1985 toy commercial")
+			`{"era":1985,"audience":"kids","tags":["toys"],"confidence":` + raw + `}`))
+		got, err := filler.Classify(context.Background(), llmMock, seedForest(), "Toy ad 1985", "A 1985 toy commercial")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -760,7 +803,7 @@ func TestTagger_FilesAHeldClipWhoseTagsAllVerify(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
 
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":90}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":90}`))
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
 		WithAutoFile(autoFileAt(85))
 
@@ -794,7 +837,7 @@ func TestTagger_NeverAutoFilesAnUngroundedEra(t *testing.T) {
 		// No year anywhere in the name — so era 1985 can only have been inferred from tone.
 		st.clips["c1"] = heldClip("c1", "Retro toy commercial")
 
-		llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+		llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
 		tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
 			WithAutoFile(autoFileAt(threshold))
 
@@ -825,7 +868,7 @@ func TestTagger_FilesNothingWhenAutoFilingIsOff(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = heldClip("c1", "Toy ad 1985")
 
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
 		WithAutoFile(filler.AutoFilePolicy{
 			Enabled:       func() bool { return false },
@@ -847,7 +890,7 @@ func TestTagger_DoesNotRefileAClipAHumanAlreadyFiled(t *testing.T) {
 	st := newTagMemStore()
 	st.clips["c1"] = untaggedClip("c1", "Toy ad 1985") // not held: already in the catalog
 
-	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","category":"toys","confidence":100}`))
+	llmMock := testkit.NewLLM(testkit.FinalResponse(`{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`))
 	tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
 		WithAutoFile(autoFileAt(85))
 

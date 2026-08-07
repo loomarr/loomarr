@@ -3,7 +3,7 @@ import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { formatRelative, pluralize } from "@loomarr/core";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import {
@@ -38,8 +38,10 @@ import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
 // One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
-// page cannot drift on what a retag carries.
-type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
+// page cannot drift on what a retag carries. ⚠ `category` is GONE (§10 V45a): it is a DERIVED
+// shadow of the taxonomy tags, not a directly-cycled field — the card cycles only era/audience now,
+// and tags are edited in the dialog (which serves the real vocabulary).
+type TagChange = Partial<Pick<ClipDTO, "era" | "audience">>;
 
 // The bulk bar's three dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that
 // field, and the server leaves the other two alone. A single "apply" that posted all three
@@ -55,14 +57,15 @@ type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
 // anyone driving by keyboard or screen reader — a test caught it as "found multiple elements",
 // which is the same collision seen from the outside. The verb also says what each one does:
 // the filter narrows what you see, this changes what the clips ARE.
+// ⚠ Bulk "Set category" was REMOVED (§10 V45a). Category is a DERIVED shadow of the taxonomy tags —
+// not a directly-settable field — and a single-value bulk menu cannot express a tag SET without either
+// wiping a clip's other tags or inventing a questionable "add one tag to N clips" affordance. Tag
+// editing is per-clip in the dialog, which serves the real vocabulary. Bulk era/audience stay: those
+// ARE single closed-enum values a menu fits. (The old category options were also a rule violation —
+// hardcoded, and a DIFFERENT 6-value set than every other place used; see the no-hardcode rule.)
 const BULK_TAG_FIELDS = [
   { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
   { key: "audience", label: "Set audience", options: ["kids", "family", "general", "late_night"] },
-  {
-    key: "category",
-    label: "Set category",
-    options: ["food", "toys", "auto", "retail", "media", "service"],
-  },
 ] as const;
 
 // The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because
@@ -213,10 +216,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // transient intent about the rows in front of you, and a shared link that carried it would
   // hand someone else a pre-armed destructive action over clips they never chose.
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const toggleSelected = (path: string) =>
+  const toggleSelected = (hash: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (!next.delete(path)) next.add(path);
+      if (!next.delete(hash)) next.add(hash);
       return next;
     });
   const clearSelection = () => setSelected(new Set());
@@ -228,9 +231,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // It doubles as the un-select once everything shown is picked, so the control is not a
   // one-way door that needs a second button to undo.
   const allSelected = (rows: readonly ClipDTO[]) =>
-    rows.length > 0 && rows.every((clip) => selected.has(clip.path));
+    rows.length > 0 && rows.every((clip) => selected.has(clip.hash));
   const selectAll = (rows: readonly ClipDTO[]) =>
-    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.path)));
+    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.hash)));
 
   // Bulk retag. Each field is independent on the server, so sending only what the operator
   // picked leaves the other two alone rather than blanking them.
@@ -281,14 +284,17 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // call site gets to remember or forget the siblings.
   const retag = (clip: ClipDTO, change: TagChange) =>
     confirmEra.mutate({
-      id: clip.path,
       data: {
+        // ⚠ The clip is identified by `hash` IN THE BODY (§10 V45a) — no {id} URL segment (the
+        // path has slashes a route can't match / a proxy decodes).
+        hash: clip.hash,
         // Kind is deliberately absent: the BE writes it separately (a shared code path with
         // the AI tagger), and sending it here would be a second opinion on a field this
-        // interaction never edits.
+        // interaction never edits. ⚠ `category`/`tags` are absent too (§10 V45a): a cycle only
+        // ever changes era or audience, and omitting tags leaves the clip's taxonomy tags alone —
+        // the derived category shadow rides along unchanged. Tag edits go through the dialog.
         era: change.era ?? clip.era,
         audience: (change.audience ?? clip.audience) as never,
-        category: change.category ?? clip.category,
       },
     });
 
@@ -297,7 +303,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // gate. Same shape as the ingest job below — request returns immediately, progress
   // arrives on the bus.
   const [splitJob, setSplitJob] = useState<{
-    clipPath: string;
+    clipHash: string;
+    // The status line reads better with a name than a content hash; carried alongside the
+    // identity because the DTO's wire identity (hash) is meaningless to read in a sentence.
+    clipName: string;
     jobId: string;
     status: string;
     error?: string;
@@ -305,10 +314,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const split = fillerApi.useSplitFiller({
     mutation: {
       onSuccess: (res, vars) => {
-        if (isOk(res)) setSplitJob({ clipPath: vars.id, jobId: res.data.jobId, status: "running" });
+        if (isOk(res)) {
+          setSplitJob({
+            clipHash: vars.data.hash,
+            clipName: pendingSplitName.current ?? vars.data.hash,
+            jobId: res.data.jobId,
+            status: "running",
+          });
+        }
       },
     },
   });
+  // The clip name for whatever split is currently in flight (§10 V45a) — a ref, not state,
+  // because it is write-then-read-once inside the mutation callback above and never rendered
+  // itself; only the resulting `splitJob.clipName` is.
+  const pendingSplitName = useRef<string | undefined>(undefined);
 
   useLoomarrEventListener({
     onFillerSplit: (e) => {
@@ -476,7 +496,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                   onValueChange={(value) =>
                     bulkTag.mutate({
                       data: {
-                        paths: [...selected],
+                        // The selection is HASHES (§10 V45a) — the bulk endpoint now keys on hashes,
+                        // matching the single-clip PATCH.
+                        hashes: [...selected],
                         [field.key]: field.key === "era" ? Number(value) : value,
                       },
                     })
@@ -502,7 +524,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 variant="outline"
                 size="sm"
                 disabled={removeClips.isPending}
-                onClick={() => removeClips.mutate({ data: { paths: [...selected] } })}
+                // ⚠ Same KNOWN GAP as the bulk-tag selects above: `paths` is genuinely path-keyed
+                // server-side and `selected` can only carry `clip.hash` now that `ClipDTO` has no
+                // path. See the comment on the bulk-tag Select's onValueChange.
+                onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
                 title="Stop using these clips. The files stay in your folder."
               >
                 Remove from catalog
@@ -526,7 +551,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             >
               {splitJob.status === "error"
                 ? (splitJob.error ?? "Split detection failed.")
-                : `Detecting cuts in ${splitJob.clipPath}… this can take a few minutes for a long compilation.`}
+                : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
             </p>
           )}
 
@@ -681,10 +706,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 <div className="overflow-hidden rounded-lg border border-border">
                   {rows.map((clip) => (
                     <ClipRow
-                      key={clip.path}
+                      key={clip.hash}
                       clip={clip}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
-                      selected={selected.has(clip.path)}
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+                      selected={selected.has(clip.hash)}
                     />
                   ))}
                 </div>
@@ -692,25 +717,34 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {rows.map((clip) => (
                     <ClipCard
-                      key={clip.path}
+                      key={clip.hash}
                       clip={clip}
-                      {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
-                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
-                      {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+                      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
+                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
+                      {...(isAdmin ? { onPin: () => setPinning(clip.hash) } : {})}
                       {...(isAdmin && clip.suggestedEra
                         ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
                         : {})}
                       {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                      {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
-                      splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
-                      selected={selected.has(clip.path)}
+                      {...(isAdmin
+                        ? {
+                            onSplit: () => {
+                              pendingSplitName.current = clip.name;
+                              split.mutate({ data: { hash: clip.hash } });
+                            },
+                          }
+                        : {})}
+                      splitPending={
+                        Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"
+                      }
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+                      selected={selected.has(clip.hash)}
                       // ⚠ NOT gated on isAdmin, unlike every other action on this card. Watching
                       // a clip mutates nothing, and `/v1/filler/media` is member-readable by
                       // design — these are the same commercials the household's channels play at
                       // them. Gating it would hide a safe capability from exactly the people who
                       // would want to check what is airing.
-                      onPlay={() => setPlaying(clip.path)}
+                      onPlay={() => setPlaying(clip.hash)}
                     />
                   ))}
                 </div>
@@ -720,7 +754,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
           {tagging && rows && (
             <ClipTagDialog
-              clip={rows.find((c) => c.path === tagging)}
+              clip={rows.find((c) => c.hash === tagging)}
               onClose={() => setTagging(undefined)}
               onSaved={() => {
                 setTagging(undefined);
@@ -731,7 +765,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
           {pinning && rows && (
             <PinClipDialog
-              clip={rows.find((c) => c.path === pinning)}
+              clip={rows.find((c) => c.hash === pinning)}
               onClose={() => setPinning(undefined)}
             />
           )}
@@ -742,7 +776,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               closed. A row that has vanished under a filter closes the player, which is the
               honest outcome — the clip it was showing is no longer in the list. */}
           <ClipPlayer
-            clip={rows?.find((c) => c.path === playing) ?? null}
+            clip={rows?.find((c) => c.hash === playing) ?? null}
             onClose={() => setPlaying(undefined)}
           />
         </div>

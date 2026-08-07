@@ -14,6 +14,16 @@ import {
 } from "@/components/ui";
 import type { ClipTagDialogProps } from "./clip-tag-dialog.type";
 
+// The taxonomy axes, in display order — the independent dimensions a clip is tagged on (§10 V45a).
+// Ordered product-first because it is the deepest and most-used; the labels are the human forms.
+const AXES = ["product", "format", "seasonal", "audience-cue"] as const;
+const AXIS_LABEL: Record<(typeof AXES)[number], string> = {
+  product: "Product",
+  format: "Format",
+  seasonal: "Seasonal",
+  "audience-cue": "Audience cue",
+};
+
 // ClipTagDialog — hand-correct one clip's match tags (§10). Tags are what let the
 // scheduler place a clip, so getting them right is the difference between a matched pod
 // and the fallback ladder.
@@ -27,24 +37,36 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
   // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
   // the select's own domain rather than the DTO's — "" is a real option here.
   const [audience, setAudience] = useState<string>(clip?.audience ?? "");
-  const [category, setCategory] = useState(clip?.category ?? "");
+  // Tags are the operator's chosen taxonomy leaves (§10 V45a) — a SET, not one category. Seeded from
+  // the clip's asserted tags; `category` is derived server-side from these, never sent.
+  const [tags, setTags] = useState<string[]>(clip?.tags ?? []);
 
+  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
+  // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
+  const vocab = fillerApi.useListTaxonomy();
+  // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
+  const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;
   const patch = fillerApi.useTagFillerClip({ mutation: { onSuccess: () => onSaved?.() } });
 
   if (!clip) return null;
 
   const save = () => {
     patch.mutate({
-      id: clip.path,
       data: {
+        // The clip is identified by `hash` in the body (§10 V45a) — no {id} URL segment.
+        hash: clip.hash,
         kind: kind as ClipDTO["kind"],
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
         audience: audience as ClipDTO["audience"],
-        category,
+        // The tag SET; the server grounds each and derives the category shadow.
+        tags,
       },
     });
   };
+
+  const toggleTag = (slug: string) =>
+    setTags((prev) => (prev.includes(slug) ? prev.filter((t) => t !== slug) : [...prev, slug]));
 
   return (
     // A labelled REGION, because the page already has a "Kind" and an "Audience" filter
@@ -112,16 +134,51 @@ const ClipTagDialog = ({ clip, onClose, onSaved }: ClipTagDialogProps) => {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label htmlFor="tag-category">Category</Label>
-            <Input
-              id="tag-category"
-              placeholder="toys, cereal, cars…"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
-          </div>
         </div>
+
+        {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This
+            REPLACES the free-text category input — a tag must be a real taxon, so a checklist of the
+            actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
+            server-side, so it is not edited here. */}
+        <fieldset className="flex flex-col gap-3">
+          <legend className="font-medium text-sm">Tags</legend>
+          {vocab.error != null && <ErrorState error={vocab.error} />}
+          {vocabTaxa == null ? (
+            <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
+          ) : (
+            AXES.map((axis) => {
+              const inAxis = vocabTaxa.filter((t) => t.axis === axis);
+              if (inAxis.length === 0) return null;
+              return (
+                <div key={axis} className="flex flex-col gap-1.5">
+                  <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                    {AXIS_LABEL[axis]}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {inAxis.map((t) => {
+                      const on = tags.includes(t.slug);
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => toggleTag(t.slug)}
+                          className={
+                            on
+                              ? "rounded-full border border-primary bg-primary/15 px-2.5 py-0.5 text-primary text-xs"
+                              : "rounded-full border border-border px-2.5 py-0.5 text-muted-foreground text-xs hover:border-primary/50"
+                          }
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </fieldset>
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>

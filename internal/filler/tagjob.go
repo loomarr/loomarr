@@ -5,10 +5,12 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The AI-tagging job (§10): classify untagged commercials in the catalog via the
@@ -82,10 +84,46 @@ func sourceSignals(sidecar, transcript string) string {
 	return strings.Join(parts, "\n")
 }
 
+// unionLeaves merges two leaf-slug sets into a de-duplicated, sorted set (§10 V45a) — the tagger's
+// "add knowledge, never replace" rule for the taxonomy tags. Sorted so a re-tag that gains nothing
+// produces the identical slice (the churn-avoidance guard compares lengths, and stable order keeps
+// SetClipTags reproducible).
+func unionLeaves(existing, fresh []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(existing)+len(fresh))
+	for _, s := range existing {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, s := range fresh {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // TagStore is the slice of the store the tagging job needs.
 type TagStore interface {
 	// ListUntaggedCommercials returns commercials missing match tags (the work list).
 	ListUntaggedCommercials(ctx context.Context) ([]StoreClip, error)
+	// ListTaxa returns the taxonomy graph — the vocabulary the tagger SERVES to the model and GROUNDS
+	// its answer against (§10 V45a). Loaded once per run and built into a Forest (the reindex pattern),
+	// so a graph edit takes effect on the next run without a restart.
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+	// GetClipTags returns a clip's asserted LEAF tags — what a fresh classification is UNIONed with, so
+	// a re-tag adds knowledge rather than replacing it (leavesOnly=true; keyed by hash).
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	// SetClipTags REPLACES a clip's tags with the rollup expansion of the given LEAVES (§10 V45a) — the
+	// per-clip taxonomy writer. The tagger calls it with the union of existing + newly-grounded leaves.
+	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	// UpdateClipTags writes era/audience/the DERIVED category shadow + ai_tagged (hash-keyed). `category`
+	// here is always PrimaryProductLeaf(the merged leaves) — the caller derives it; the column is the
+	// cheap read-path shadow of the tag set (§10 V45a).
 	UpdateClipTags(ctx context.Context, id string, era int, audience, category string, suggestedEra int, aiTagged bool, updatedAt time.Time) error
 	// SetClipBrand records a GROUNDED advertiser from the TEXT tagger (§10 V44). Separate from
 	// UpdateClipTags because brand has a different key and a different writer story: it is
@@ -191,6 +229,14 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 	if err != nil {
 		return TagResult{}, err
 	}
+	// Load the taxonomy ONCE per run and build the forest the whole pass serves + grounds against
+	// (§10 V45a) — the reindex pattern. A graph edit thus applies on the next run; a nil/empty forest
+	// grounds no tags, the safe direction.
+	taxa, err := t.store.ListTaxa(ctx)
+	if err != nil {
+		return TagResult{}, err
+	}
+	forest := taxonomy.New(taxa)
 	res := TagResult{Considered: len(work)}
 	for _, clip := range work {
 		select {
@@ -215,7 +261,7 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// "Kellogg's · since 1978", and until V44 that copy was thrown away after the split. Empty
 		// when the clip was never transcribed (or was and is wordless); `Classify` degrades to the
 		// signals it does have, exactly as it does for a missing sidecar.
-		sug, err := Classify(ctx, t.provider, t.displayName(clip), sourceSignals(t.sidecarText(clip), clip.Transcript))
+		sug, err := Classify(ctx, t.provider, forest, t.displayName(clip), sourceSignals(t.sidecarText(clip), clip.Transcript))
 		if err != nil {
 			if t.log != nil {
 				t.log.Warn("clip classify failed", "clip", clip.Path, "err", err)
@@ -233,10 +279,17 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		if audience == "" {
 			audience = string(sug.Audience)
 		}
-		category := clip.Category
-		if category == "" {
-			category = sug.Category
+		// ⚠ TAXONOMY TAGS UNION, then DERIVE category (§10 V45a). Unlike the scalar fields above (which
+		// gap-fill), the tag set is UNIONed: a re-tag adds newly-grounded leaves to whatever the clip
+		// already had, never replacing them. `category` is then RE-DERIVED from the merged set (the
+		// primary product leaf) rather than gap-filled — so the stored shadow always equals
+		// PrimaryProductLeaf(the persisted leaves), the invariant the whole design turns on.
+		existingLeaves, err := t.store.GetClipTags(ctx, clip.Hash, true)
+		if err != nil {
+			return res, err
 		}
+		mergedLeaves := unionLeaves(existingLeaves, sug.Tags)
+		category := forest.PrimaryProductLeaf(mergedLeaves)
 		// Brand fills a gap the same way, and never clears a set one (§10 V44). A vision pass or an
 		// earlier run may already have grounded a brand off the frame; a text run that reads none
 		// must not blank it. `sug.Brand` is empty unless it appeared literally in the text signals —
@@ -258,7 +311,12 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// searchable brand is the whole reason V44 persists transcripts. Without brand in this guard
 		// a brand-only clip would be skipped and its one grounded fact thrown away.
 		newBrand := clip.Brand == "" && brand != ""
-		if era == 0 && audience == "" && category == "" && suggestedEra == 0 && !newBrand {
+		// ⚠ NEW LEAVES also count as usable (§10 V45a). A clip grounded only on a non-product axis
+		// (`psa`, `christmas`) has an empty `category` shadow but real tags — without this it would be
+		// discarded as "nothing usable" and its taxonomy tags thrown away. `gainedLeaves` is true when
+		// the merge added a leaf the clip did not already have.
+		gainedLeaves := len(mergedLeaves) > len(existingLeaves)
+		if era == 0 && audience == "" && category == "" && suggestedEra == 0 && !newBrand && !gainedLeaves {
 			res.Skipped++
 			continue // nothing usable
 		}
@@ -269,6 +327,15 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 		// ever AI-tagged. Invisible to tests because the store fixtures set hash == path.
 		if err := t.store.UpdateClipTags(ctx, clip.Hash, era, audience, category, suggestedEra, true, t.now()); err != nil {
 			return res, err
+		}
+		// ⚠ Persist the GROUNDED TAG SET (§10 V45a) — the source of truth `category` above is derived
+		// from. Only when the merge actually gained a leaf, to avoid rewriting an unchanged clip_tags
+		// every pass (the same churn-avoidance the brand write uses). SetClipTags re-derives rollups
+		// from these leaves, so the stored full set and the derived category stay in lockstep.
+		if gainedLeaves {
+			if err := t.store.SetClipTags(ctx, clip.Hash, mergedLeaves, forest, t.now()); err != nil {
+				return res, err
+			}
 		}
 		// The grounded brand is written separately (§10 V44), and only when this run newly grounded
 		// one — re-writing an unchanged brand every pass is pointless churn on `updated_at`. PATH-

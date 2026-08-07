@@ -44,6 +44,12 @@ func TestJobSet(t *testing.T) {
 		// Hourly, not the sync's 15 minutes: on the local backend a batch is minutes natively and
 		// hours under QEMU, so it drains a catalog steadily rather than overlapping itself.
 		"filler-language | 0 30 * * * * | job.filler_language.schedule",
+		// ⚠ The taxonomy reindex (§10 V45a). A lifecycle sibling of the media jobs (its own row,
+		// registered unconditionally, default-off) but NOT an expensive one — its body is two bulk SQL
+		// statements (rebuild the closure, then every clip's rollups), no whisper/vision, no per-clip
+		// loop. At :05 it is CLEAR of the media-job cluster (:15/:30/:45/:50) rather than phase-offset
+		// from it, since it does not contend for the runner the way they do.
+		"filler-reindex | 0 5 * * * * | job.filler_reindex.schedule",
 		"filler-split | 0 45 * * * * | job.filler_split.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
 		// ⚠ The V44 metadata jobs. Both registered UNCONDITIONALLY (present even when their opt-in
