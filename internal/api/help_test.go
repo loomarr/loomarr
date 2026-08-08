@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,17 @@ import (
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/store"
 )
+
+// readBody drains a response so two of them can be compared verbatim.
+func readBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
 
 func newHelpServer(t *testing.T, ready api.ReadyFunc) *httptest.Server {
 	t.Helper()
@@ -246,15 +258,68 @@ func TestSystemVersion_WithoutStoreOmitsSchemaRows(t *testing.T) {
 	}
 }
 
-// /healthz and /readyz stay OUTSIDE the authenticated API on purpose: their consumers are
-// Docker HEALTHCHECK and orchestrators, which hold no session. Pinning this because
-// "register them in huma so orval can type them" is a tempting change that would put an
-// auth requirement in front of a container health probe.
+// The ops probes answer with NO credential. Their consumers are Docker HEALTHCHECK and
+// orchestrators, which hold no session and must never need one.
+//
+// ⚠ **This test used to pin something stronger — that the probes stay OUTSIDE huma — and that
+// pin has been deliberately released.** Its reasoning was that registering them "would put an
+// auth requirement in front of a container health probe", which was true when a Huma operation
+// implied a session. `RolePublic` makes non-authentication an explicit, greppable property of
+// the operation, so the probes are Huma ops now and still answer anonymously. The objection was
+// ANSWERED, not overruled: what it actually cared about is the assertion below, which is why
+// that assertion survives while the framework claim did not.
+//
+// Both paths are checked. `/v1/...` is canonical; the bare path is a permanent alias, because a
+// healthcheck configured in someone's compose file cannot be migrated by editing this repo.
 func TestOpsProbesStayUnauthenticated(t *testing.T) {
 	srv := newHelpServer(t, func() (bool, string) { return true, "ok" })
-	for _, path := range []string{"/healthz", "/readyz"} {
+	for _, path := range []string{
+		"/v1/healthz", "/v1/readyz",
+		"/healthz", "/readyz",
+	} {
 		if resp := do(t, srv, http.MethodGet, path, "", ""); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s without credentials → %d, want 200", path, resp.StatusCode)
 		}
+	}
+}
+
+// The alias must be the SAME endpoint, not merely another 200 — a probe that reports readiness
+// on one path and something else on the other is worse than having one path.
+func TestOpsProbeAliasesAgreeWithTheCanonicalPaths(t *testing.T) {
+	srv := newHelpServer(t, func() (bool, string) { return false, "no store configured" })
+
+	for _, pair := range [][2]string{
+		{"/v1/healthz", "/healthz"},
+		{"/v1/readyz", "/readyz"},
+	} {
+		canonical := do(t, srv, http.MethodGet, pair[0], "", "")
+		alias := do(t, srv, http.MethodGet, pair[1], "", "")
+		if canonical.StatusCode != alias.StatusCode {
+			t.Errorf("%s → %d but %s → %d; the alias must be the same endpoint",
+				pair[0], canonical.StatusCode, pair[1], alias.StatusCode)
+		}
+		cBody, aBody := readBody(t, canonical), readBody(t, alias)
+		if cBody != aBody {
+			t.Errorf("%s body %q != %s body %q", pair[0], cBody, pair[1], aBody)
+		}
+	}
+
+	// ⚠ And the un-ready answer keeps its SHAPE. Returning a huma error would have been the
+	// idiomatic way to get a 503 and would have replaced {ready, detail} with an RFC 7807
+	// problem — a wire change for every orchestrator parsing this, to gain nothing.
+	resp := do(t, srv, http.MethodGet, "/v1/readyz", "", "")
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unready /v1/readyz → %d, want 503", resp.StatusCode)
+	}
+	var body struct {
+		Ready  bool   `json:"ready"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Ready || body.Detail != "no store configured" {
+		t.Errorf("unready body = %+v, want ready=false and the reason — a probe that cannot "+
+			"explain itself is the thing §17 added it for", body)
 	}
 }

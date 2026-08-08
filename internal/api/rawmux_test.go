@@ -29,12 +29,23 @@ import (
 func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 	found := rawMuxRoutes(t)
 
-	// ⚠ A guard that matches nothing passes forever. If the registration style changes, this
-	// test must fail loudly rather than quietly approve an empty set — the same vacuous-guard
-	// trap the export-parity test protects against.
-	if len(found) < 5 {
-		t.Fatalf("only %d raw mux registrations found (%v) — the regex stopped matching, so this "+
-			"guard is no longer guarding anything", len(found), found)
+	// ⚠ A guard that matches nothing passes forever. This used to assert a MINIMUM COUNT, which
+	// was right while raw registrations were plentiful and became wrong the moment the migration
+	// finished — a count cannot tell "the regex broke" from "there is nothing left to find", and
+	// it started failing on success.
+	//
+	// The SPA catch-all is the one registration that must always exist (it serves the embedded
+	// frontend and is not an API route), so its presence is what proves the regex still matches.
+	// That stays true no matter how few raw routes remain.
+	var sawSPA bool
+	for _, p := range found {
+		if p == "/" {
+			sawSPA = true
+		}
+	}
+	if !sawSPA {
+		t.Fatalf(`the SPA catch-all mux.Handle("/", …) was not found among %v — the regex stopped `+
+			"matching, so this guard is no longer guarding anything", found)
 	}
 
 	var escaped []string
@@ -117,6 +128,34 @@ func TestTheRawV1AllowlistStaysEmpty(t *testing.T) {
 		"icon, SSE and SSO routes each proved it. If an exception is genuinely warranted, delete "+
 		"this test in the same commit so the decision is reviewed rather than absorbed.",
 		len(knownRawV1Routes), strings.Join(listed, "\n  "))
+}
+
+// TestTheSPACatchAllIsTheOnlyRawMuxRoute states the end condition of the migration.
+//
+// TestNoV1RouteEscapesToTheRawMux only constrains `/v1`, which was the right scope while the ops
+// probes, Prometheus, the profiler and the API reference still sat at bare paths. They are under
+// /v1 now (with hidden aliases, see ops.go), so the honest assertion is stronger: the embedded
+// SPA is the ONLY thing registered directly on the mux, because it is the only registration that
+// is not an API route.
+//
+// A new raw route outside /v1 would slip past the other guard entirely. This is what makes
+// adding one a deliberate act rather than an oversight.
+func TestTheSPACatchAllIsTheOnlyRawMuxRoute(t *testing.T) {
+	var extra []string
+	for _, p := range rawMuxRoutes(t) {
+		if p != "/" {
+			extra = append(extra, p)
+		}
+	}
+	sort.Strings(extra)
+	if len(extra) > 0 {
+		t.Errorf("raw mux registrations besides the SPA catch-all:\n  %s\n\n"+
+			"Every route is a Huma operation, including the ones that serve bytes, redirect, "+
+			"stream or wrap a third-party handler — rawOp (rawop.go) covers all of them, and the "+
+			"ops probes, Prometheus exposition and Go profiler each proved it. Registering here "+
+			"instead skips the role middleware (which fails CLOSED), the CSRF check and the spec.",
+			strings.Join(extra, "\n  "))
+	}
 }
 
 // muxRegistration matches `mux.HandleFunc("GET /path", …)` and `mux.Handle("/path", …)`.

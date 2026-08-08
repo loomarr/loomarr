@@ -70,13 +70,13 @@ func buildServeShutdown(t *testing.T, generation int) {
 	// Actually serve. A handler that is built and never used would not exercise the
 	// lazily-started machinery a real generation starts.
 	srv := httptest.NewServer(h)
-	resp, err := http.Get(srv.URL + "/healthz")
+	resp, err := http.Get(srv.URL + "/v1/healthz")
 	if err != nil {
 		t.Fatalf("generation %d: serve: %v", generation, err)
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("generation %d: /healthz → %d, want 200", generation, resp.StatusCode)
+		t.Fatalf("generation %d: /v1/healthz → %d, want 200", generation, resp.StatusCode)
 	}
 	srv.Close()
 
