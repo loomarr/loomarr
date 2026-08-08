@@ -93,7 +93,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
 		playoutHLS:   opts.PlayoutHLS,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
-		reclaimVRAM: opts.ReclaimVRAM,
+		timelineThumbs: opts.TimelineThumbs,
+		reclaimVRAM:    opts.ReclaimVRAM,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)

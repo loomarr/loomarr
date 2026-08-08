@@ -1,29 +1,27 @@
-import { type ChannelDTO, type ChannelPolicy, channelsApi, type TrackDTO, unwrap } from "@loomarr/api";
-import { Maximize2, Play, X } from "lucide-react";
+import {
+  type ChannelDTO,
+  type ChannelPolicy,
+  channelsApi,
+  type GuideAiring,
+  type TrackDTO,
+  unwrap,
+} from "@loomarr/api";
+import { Captions, Play, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  VideoPlayer,
-} from "@/components/ui";
-import { cn } from "@/lib";
+import { Button, VideoPlayer } from "@/components/ui";
+import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
+import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { languageLabel } from "./language-label";
 
 // ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
 //
-// The player itself is the shared VideoPlayer primitive in `live` mode (no scrubber — a live
-// channel has nothing to seek to) with hls.js bound through its `attach` seam (useHlsPlayer). This
-// component owns the surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater,
-// and the channel-level controls.
+// The player itself is the shared VideoPlayer primitive in `live` mode (no video seek — a live
+// channel has nothing to seek to) with hls.js bound through its `attach` seam (useHlsPlayer). In
+// place of a seek bar it passes VideoPlayer a `scrubber`: the mini-guide timeline (ChannelTimeline,
+// §9.1 V47), so the control bar shows where you are in the schedule. This component owns the
+// surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater, the channel controls.
 //
 // ⚠ Audio and Subtitles are CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
 // is one encoder per channel fanned to every viewer, so a per-viewer track would fork the encode —
@@ -39,6 +37,13 @@ interface ChannelWatchProps {
   /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
   mediaServerName?: string;
 }
+
+// withSaved keeps the currently-saved value present in an options list even when the airing does
+// not carry that track — so the menu always shows the channel's real selection (see the call site).
+const withSaved = (options: { value: string; label: string }[], value: string) =>
+  value && !options.some((o) => o.value === value)
+    ? [...options, { value, label: value.toUpperCase() }]
+    : options;
 
 // AUTO_SENTINEL is the "follow the channel/global default" choice. Radix Select forbids an
 // empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
@@ -77,6 +82,34 @@ const subtitleOptions = (tracks: TrackDTO[]): { value: string; label: string }[]
   return opts;
 };
 
+// clock renders ms-into-a-programme as m:ss (the mock's {elapsed} / {total} format).
+const clock = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+
+// programmeTime renders the controls-row time for the programme airing NOW (the mock's
+// "{elapsed} / {total}   {remaining}"): how far into the current show, the show's length, and the
+// time left — all PROGRAMME time from the schedule, not video time. null when nothing is airing at
+// this instant (the player omits the time). Rendered as a node so the "/ total" is dimmed like the
+// mock and the "left" reads grey beside it.
+const programmeTime = (airings: GuideAiring[]): React.ReactNode => {
+  const now = Date.now();
+  const current = airings.find((a) => now >= a.startMs && now < a.stopMs);
+  if (!current) return null;
+  const elapsed = now - current.startMs;
+  const total = current.stopMs - current.startMs;
+  const leftMin = Math.max(0, Math.round((current.stopMs - now) / 60_000));
+  return (
+    <span className="flex items-center gap-2">
+      <span>
+        {clock(elapsed)} <span className="text-muted-foreground">/ {clock(total)}</span>
+      </span>
+      <span className="text-muted-foreground">{leftMin}m left</span>
+    </span>
+  );
+};
+
 const ChannelWatch = ({
   channel,
   isAdmin,
@@ -87,7 +120,6 @@ const ChannelWatch = ({
   // `active` gates the idle poster vs the live player. Starting on a click (not on mount) matches
   // the mock's "▶ Watch live" affordance AND satisfies autoplay policies, which need a gesture.
   const [active, setActive] = useState(false);
-  const [theater, setTheater] = useState(false);
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
@@ -95,11 +127,25 @@ const ChannelWatch = ({
   // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
   const tracks = channelsApi.useChannelTracks(channel.id, { query: { enabled: !paused, retry: false } });
   const tracksBody = unwrap(tracks.data);
-  const audioOpts = audioOptions(tracksBody?.audio ?? []);
-  const subtitleOpts = subtitleOptions(tracksBody?.subtitles ?? []);
 
+  // The mini-guide scrubber's data — the channel's schedule strip (now + next few + the commercial
+  // breaks between them, each with episode detail + a TMDB still). Only while active (a poster needs
+  // no timeline) and unpaused. Refetched on an interval so the live playhead and "what's next" stay
+  // current as programmes roll.
+  const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
+    query: { enabled: active && !paused, retry: false, refetchInterval: 30_000 },
+  });
+  const airings = unwrap(timeline.data)?.airings ?? [];
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
   const subtitleValue = channel.policy?.playout?.subtitles || "off";
+
+  // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
+  // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it —
+  // the preference still applies when a programme with that track airs. So the saved value is
+  // appended to the media-derived options when absent, labelled by its raw code. (Ported from the
+  // old footer PolicyPicker.)
+  const audioOpts = withSaved(audioOptions(tracksBody?.audio ?? []), audioValue || AUTO_SENTINEL);
+  const subtitleOpts = withSaved(subtitleOptions(tracksBody?.subtitles ?? []), subtitleValue);
 
   const savePlayout = (patch: { audioLanguage?: string; subtitles?: string }) => {
     const next: ChannelPolicy = {
@@ -113,13 +159,60 @@ const ChannelWatch = ({
   const openInMediaServer = () =>
     toast.info(`Opening ${channel.name} in ${mediaServerName} — same stream, your usual client.`);
 
-  // The player element, reused inline and in the theater. `live` hides the scrubber; `attach`
-  // binds hls.js. Rendered only when active so the stream is not requested until asked for.
+  // The mini-guide scrubber (§9.1 V47) fills the player's full-width `scrubber` slot. Shown once we
+  // have a timeline and the stream is healthy; otherwise the player's control bar has no scrubber row.
+  const scrubber =
+    airings.length > 0 && player.status !== "error" ? <TimelineScrubber airings={airings} /> : undefined;
+
+  // The controls-row time (mock): elapsed / total + "N min left" for the programme airing now, from
+  // the schedule (the player has no source for programme time, so channel-watch derives it).
+  const timeLeft = programmeTime(airings);
+
+  // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
+  // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
+  // fetched here; the channel identity is what a viewer needs.
+  const topBar = (
+    <>
+      <span className="shrink-0 font-mono text-static-300 text-xs">CH {channel.number}</span>
+      <span className="min-w-0 truncate text-static-200 text-xs">{channel.name}</span>
+    </>
+  );
+
+  // Audio + Subtitle controls IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
+  // move off the old footer pickers. Same channel-wide, admin-scoped semantics: a member sees the
+  // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
+  const barControls = (
+    <>
+      <TrackSelectMenu
+        icon={Volume2}
+        label="Audio"
+        options={audioOpts}
+        value={audioValue || AUTO_SENTINEL}
+        onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
+        readOnly={!isAdmin}
+      />
+      <TrackSelectMenu
+        icon={Captions}
+        label="Subtitles"
+        options={subtitleOpts}
+        value={subtitleValue}
+        onChange={(v) => savePlayout({ subtitles: v })}
+        readOnly={!isAdmin}
+      />
+    </>
+  );
+
+  // The player. `live` = no seek; `scrubber` = full-width mini-guide; `topBar`/`timeLeft` = the live
+  // chrome; `barControls` = audio/subtitle menus beside fullscreen; `attach` binds hls.js. Fullscreen
+  // is the player's OWN control. Rendered only when active so the stream is not requested until asked.
   const playerEl = (
     <VideoPlayer
       live
+      scrubber={scrubber}
+      topBar={topBar}
+      timeLeft={timeLeft}
+      barControls={barControls}
       attach={player.attach}
-      title={`CH ${channel.number} · ${channel.name}`}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />
   );
@@ -135,25 +228,16 @@ const ChannelWatch = ({
         ) : active ? (
           <div className="flex flex-col gap-3 p-3">
             {playerEl}
-            <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-muted-foreground text-xs">
-                {player.status === "error"
-                  ? (player.error ?? "The stream stopped.")
-                  : player.status === "loading"
-                    ? "Tuning in…"
-                    : "You're joining live, mid-programme."}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setTheater(true)}
-                className="shrink-0"
-                disabled={player.status === "error"}
-              >
-                <Maximize2 className="size-3.5" aria-hidden />
-                Full frame
-              </Button>
-            </div>
+
+            {/* The tune-in status line under the player — the player's own control bar carries the
+                LIVE badge, scrubber, controls and fullscreen, so this is just the join note. */}
+            <p className="px-1 text-muted-foreground text-xs">
+              {player.status === "error"
+                ? (player.error ?? "The stream stopped.")
+                : player.status === "loading"
+                  ? "Tuning in…"
+                  : "You're joining live, mid-programme."}
+            </p>
           </div>
         ) : (
           <button
@@ -172,67 +256,22 @@ const ChannelWatch = ({
           </button>
         )}
 
-        {/* Controls row: hand-offs everyone sees, plus channel-level audio/subtitle pickers an
-            admin can change. */}
-        <div className="flex flex-col gap-4 border-border border-t bg-static-900/40 p-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <PolicyPicker
-              label="Audio"
-              value={audioValue || AUTO_SENTINEL}
-              options={audioOpts}
-              isAdmin={isAdmin}
-              onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
-            />
-            <PolicyPicker
-              label="Subtitles"
-              value={subtitleValue}
-              options={subtitleOpts}
-              isAdmin={isAdmin}
-              onChange={(v) => savePlayout({ subtitles: v })}
-            />
-            <div className="ml-auto flex gap-2">
-              <Button variant="outline" size="sm" onClick={openInMediaServer}>
-                Open in {mediaServerName}
-              </Button>
-            </div>
-          </div>
-          {isAdmin && (
+        {/* Footer: the "open in your media server" hand-off. Audio/subtitles moved INTO the player's
+            control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
+        <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
+          {isAdmin ? (
             <p className="text-muted-foreground text-xs">
               Audio and subtitles are set for the whole channel — everyone watching sees the same, because one
               encoder serves them all.
             </p>
+          ) : (
+            <span />
           )}
+          <Button variant="outline" size="sm" onClick={openInMediaServer} className="shrink-0">
+            Open in {mediaServerName}
+          </Button>
         </div>
       </section>
-
-      {/* Theater: the same live player, full frame. Reuses the Dialog primitive; the player is
-          re-mounted here (its own attach), so closing the theater tears that instance down while
-          the inline one keeps running. */}
-      <Dialog open={theater} onOpenChange={setTheater}>
-        <DialogContent
-          className="max-w-[min(1100px,95vw)] border-none bg-transparent p-0 shadow-none"
-          aria-label={`${channel.name}, full frame`}
-        >
-          <VideoPlayer
-            live
-            autoPlay
-            attach={player.attach}
-            title={`CH ${channel.number} · ${channel.name}`}
-            leading={
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTheater(false)}
-                aria-label="Close full frame"
-                className="size-8 rounded-full bg-black/40 text-static-100 hover:bg-black/60"
-              >
-                <X className="size-4" aria-hidden />
-              </Button>
-            }
-            className="overflow-hidden rounded-xl border border-border bg-black"
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
@@ -244,61 +283,6 @@ const IdleFrame = ({ title, sub }: { title: string; sub: string }) => (
     <p className="text-muted-foreground text-sm">{sub}</p>
   </div>
 );
-
-// PolicyPicker is a channel-level select: an editable dropdown for an admin, a read-only value for
-// a member (who sees what the channel is set to but cannot change it).
-const PolicyPicker = ({
-  label,
-  value,
-  options,
-  isAdmin,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  isAdmin: boolean;
-  onChange: (v: string) => void;
-}) => {
-  // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
-  // but this film is English-only). Keep that selection visible rather than dropping it — the
-  // preference still applies when a programme with that track airs. So the saved value is appended
-  // to the media-derived options when absent, labelled as its raw code.
-  const opts =
-    value && !options.some((o) => o.value === value)
-      ? [...options, { value, label: value.toUpperCase() }]
-      : options;
-  const current = opts.find((o) => o.value === value) ?? opts[0];
-  const id = `watch-${label.toLowerCase()}`;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label
-        htmlFor={id}
-        className={cn("font-mono text-[10px] text-muted-foreground uppercase tracking-wide")}
-      >
-        {label}
-      </Label>
-      {isAdmin ? (
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger id={id} className="h-9 w-44">
-            <SelectValue placeholder={current?.label} />
-          </SelectTrigger>
-          <SelectContent>
-            {opts.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <span id={id} className="flex h-9 items-center text-sm">
-          {current?.label}
-        </span>
-      )}
-    </div>
-  );
-};
 
 export type { ChannelWatchProps };
 export { ChannelWatch };

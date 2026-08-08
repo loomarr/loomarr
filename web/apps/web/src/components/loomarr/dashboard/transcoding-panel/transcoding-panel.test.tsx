@@ -8,6 +8,7 @@ const telemetry = (over: Partial<PlayoutTelemetry> = {}): PlayoutTelemetry =>
 
 const session = (over: Record<string, unknown> = {}) => ({
   channelId: "ch-42",
+  target: "browser",
   viewers: 2,
   encoder: "h264_nvenc",
   hardware: true,

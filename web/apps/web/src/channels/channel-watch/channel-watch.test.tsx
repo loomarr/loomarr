@@ -46,7 +46,13 @@ const live: ChannelDTO = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ChannelWatch pickers", () => {
-  it("builds the Audio picker from the AIRING media's tracks, not a hardcoded list", async () => {
+  // The audio/subtitle controls live IN the player's bar now (V47), so the player must be started
+  // ("Watch live") before they render — that click is also what enables the /tracks probe.
+  const startWatching = async () => {
+    await userEvent.click(await screen.findByRole("button", { name: /Watch .* live/ }));
+  };
+
+  it("builds the Audio menu from the AIRING media's tracks, not a hardcoded list", async () => {
     // The airing programme carries English + Russian audio — so those, and only those (plus Auto),
     // are the choices. A hardcoded list would show French/Spanish/Japanese, which this asserts absent.
     stubTracks({
@@ -57,16 +63,17 @@ describe("ChannelWatch pickers", () => {
     });
 
     render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
 
-    const audio = await screen.findByLabelText("Audio");
-    await userEvent.click(audio);
-
-    // Derived from the media, labelled via Intl.
-    expect(await screen.findByRole("option", { name: /English/ })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Russian/ })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Auto/ })).toBeInTheDocument();
+    // Open the Audio menu (an icon button in the player bar). Its items are menuitemcheckboxes.
+    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
+    expect(await screen.findByRole("menuitemcheckbox", { name: /English/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: /Russian/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: /Auto/ })).toBeInTheDocument();
     // Nothing the media does not carry.
-    expect(screen.queryByRole("option", { name: /French|Spanish|Japanese/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemcheckbox", { name: /French|Spanish|Japanese/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers Burn in only when the airing media has subtitle tracks", async () => {
@@ -74,12 +81,12 @@ describe("ChannelWatch pickers", () => {
     const { unmount } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
+    await startWatching();
 
-    // No subtitle tracks → the Subtitles picker offers only Off (no Burn in for media with none).
-    const subs = await screen.findByLabelText("Subtitles");
-    await userEvent.click(subs);
-    await waitFor(() => expect(screen.getByRole("option", { name: "Off" })).toBeInTheDocument());
-    expect(screen.queryByRole("option", { name: /Burn in/ })).not.toBeInTheDocument();
+    // No subtitle tracks → the Subtitles menu offers only Off (no Burn in for media with none).
+    await userEvent.click(await screen.findByRole("button", { name: "Subtitles" }));
+    await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Off" })).toBeInTheDocument());
+    expect(screen.queryByRole("menuitemcheckbox", { name: /Burn in/ })).not.toBeInTheDocument();
     unmount();
   });
 

@@ -531,6 +531,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
 	var iconSvc api.IconService
+	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
+	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
+	// timeline handles by rendering the strip with no images.
+	var timelineThumbs api.TimelineThumbResolver
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
@@ -539,6 +543,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
 			tmdbClient = ov.TMDB
+		}
+		// The Watch timeline's preview images (§9.1 V47) — a series episode's still or a movie's
+		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
+		// renders with no images, which is a supported (image-less) rendering.
+		if tmdbClient != nil {
+			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient}
 		}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
@@ -1291,8 +1301,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		PlayoutHLS:      playoutHLS,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:  playoutGuideSvc,
-		PlayoutSecret: playoutSecret,
+		PlayoutGuide:   playoutGuideSvc,
+		TimelineThumbs: timelineThumbs,
+		PlayoutSecret:  playoutSecret,
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.

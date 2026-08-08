@@ -44,6 +44,15 @@ func (s *Server) registerChannels(api huma.API) {
 	}, RoleMember), s.channelUpcoming)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "channel-timeline", Method: http.MethodGet, Path: "/v1/channels/{id}/timeline",
+		Summary: "The Watch player's schedule strip for one channel",
+		Description: "The current programme, the next few, and the commercial breaks between them, from " +
+			"internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. " +
+			"Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).",
+		Tags: []string{"channels"},
+	}, RoleMember), s.channelTimeline)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
 		Summary:     "Suggest channel icons from the lineup",
 		Description: "Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.",

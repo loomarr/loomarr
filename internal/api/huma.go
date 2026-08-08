@@ -149,6 +149,9 @@ type Server struct {
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
+	// timelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
+	// nil ⇒ the strip renders with no images (TMDB optional); it never fails the timeline.
+	timelineThumbs TimelineThumbResolver
 	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
 	playoutFont func() string
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
@@ -719,6 +722,9 @@ type Options struct {
 	PlayoutHLS PlayoutHLS
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
+	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
+	// Nil ⇒ the strip renders with no images (TMDB optional, and it never fails the timeline).
+	TimelineThumbs TimelineThumbResolver
 	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
 	// (filesystem + ffmpeg build), so it is injected like PlayoutSecret rather than resolved
 	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the

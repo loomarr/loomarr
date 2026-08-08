@@ -1818,6 +1818,9 @@ components:
           description: Epoch ms, exclusive
           format: int64
           type: integer
+        thumbUrl:
+          description: TMDB preview image (episode still or poster); empty for breaks or when unavailable
+          type: string
         title:
           description: The episode's name for a series, or the film's name
           type: string
@@ -4743,6 +4746,26 @@ components:
         - label
         - axis
       type: object
+    TimelineOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/TimelineOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        airings:
+          description: The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block
+          items:
+            $ref: "#/components/schemas/GuideAiring"
+          type:
+            - array
+            - "null"
+      required:
+        - airings
+      type: object
     TitleDTO:
       additionalProperties: false
       properties:
@@ -5613,6 +5636,40 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/timeline:
+    get:
+      description: The current programme, the next few, and the commercial breaks between them, from internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).
+      operationId: channel-timeline
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: How many programs to return (now + upcoming), default 6, max 24
+          explode: false
+          in: query
+          name: limit
+          schema:
+            description: How many programs to return (now + upcoming), default 6, max 24
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The Watch player's schedule strip for one channel
+      tags:
+        - channels
   /v1/channels/{id}/tracks:
     get:
       description: "Any signed-in user. The audio and subtitle tracks the CURRENTLY-AIRING programme actually carries — what the Watch tab's Audio/Subtitle pickers offer. These come from the media (an ffprobe of the airing file), not a fixed list and not a setting, so the choices are real. Best-effort: an empty list when nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default."
