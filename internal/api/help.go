@@ -34,7 +34,7 @@ func (s *Server) registerHelp(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-version", Method: http.MethodGet, Path: "/v1/system/version",
 		Summary:     "Version and readiness of this instance",
-		Description: "What the operator quotes in a bug report, plus the readiness /readyz reports. /healthz and /readyz stay unauthenticated for orchestrators; this is their typed, authenticated twin for the UI.",
+		Description: "What the operator quotes in a bug report, plus the readiness /v1/readyz reports. The probes stay unauthenticated for orchestrators (RolePublic); this is their authenticated twin, carrying the build and schema detail a probe has no business returning.",
 		Tags:        []string{"system"},
 	}, RolePublic), s.systemVersion)
 }
@@ -88,7 +88,7 @@ type systemVersionOutput struct {
 		Commit  string `json:"commit,omitempty"`
 		BuiltAt string `json:"builtAt,omitempty"`
 		Dirty   bool   `json:"dirty,omitempty" doc:"Built from a working tree with uncommitted changes"`
-		Ready   bool   `json:"ready" doc:"Same readiness /readyz reports"`
+		Ready   bool   `json:"ready" doc:"Same readiness /v1/readyz reports"`
 		Detail  string `json:"detail,omitempty" doc:"Why it is not ready"`
 
 		// The About page's remaining rows (§16, V12) — what an operator quotes in a bug
@@ -107,13 +107,18 @@ type systemVersionOutput struct {
 	}
 }
 
-// systemVersion is the typed twin of /readyz.
+// systemVersion is the typed twin of /v1/readyz.
 //
-// /healthz and /readyz deliberately stay OUTSIDE huma and unauthenticated: their consumers
-// are Docker HEALTHCHECK and orchestrators, which have no session and must not need one.
-// Registering them in huma to get them into the generated client would have put an auth
-// requirement in front of a container health probe. So the UI gets this instead — same
-// readiness, typed and authenticated, alongside the version the operator needs anyway.
+// ⚠ The old note here said the probes "deliberately stay OUTSIDE huma and unauthenticated…
+// registering them would have put an auth requirement in front of a container health probe".
+// The concern was right and its premise has since stopped holding: RolePublic marks an
+// operation reachable with no credential, so /v1/healthz and /v1/readyz are Huma operations,
+// still anonymous, with their bare paths kept as permanent aliases (ops.go).
+//
+// This endpoint is NOT redundant with them. It carries what an operator quotes in a bug
+// report — version, commit, build time, Go runtime, os/arch, process start, applied schema
+// version and backend — which is authenticated information a liveness probe has no business
+// returning to an unauthenticated caller.
 
 func (s *Server) systemVersion(_ context.Context, _ *struct{}) (*systemVersionOutput, error) {
 	info := buildinfo.Get()

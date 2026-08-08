@@ -67,6 +67,10 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerEvents(humaAPI)
 	// registerSSO is nil-guarded on the provider, same schemaOnly escape.
 	srv.registerSSO(humaAPI)
+	// pprof=false: the profiler routes are Hidden on both paths anyway (they exist only when a
+	// flag is set, so advertising them would describe a surface most installs do not have), and
+	// the exporter has no Options to read the flag from.
+	srv.registerOps(humaAPI, false)
 	srv.registerDashboard(humaAPI)
 	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner

@@ -50,10 +50,10 @@ air_pids() {
 held_by_loomarr() {
   # True when :$PORT is held AND a loomarr-dev binary is running — i.e. it's OUR zombie, safe
   # to reclaim. A port held by something ELSE is never touched; we just report and stop.
-  [ -n "$(loomarr_pids)" ] && { curl -sf "http://localhost:$PORT/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; }
+  [ -n "$(loomarr_pids)" ] && { curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; }
 }
 
-if curl -sf "http://localhost:$PORT/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; then
+if curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; then
   PIDS="$(loomarr_pids)"
   HOLDER="$(port_holder || true)"
 
@@ -69,7 +69,7 @@ if curl -sf "http://localhost:$PORT/healthz" >/dev/null 2>&1 || [ -n "$(port_hol
     for p in $(air_pids) $(loomarr_pids); do kill -9 "$p" 2>/dev/null || true; done
     # Wait up to 10s for the port to actually free before starting the new instance.
     i=0
-    while curl -sf "http://localhost:$PORT/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; do
+    while curl -sf "http://localhost:$PORT/v1/healthz" >/dev/null 2>&1 || [ -n "$(port_holder)" ]; do
       i=$((i + 1))
       [ "$i" -ge 20 ] && { echo "dev-be: port $PORT still held after 10s; not starting a second instance." >&2; exit 1; }
       sleep 0.5

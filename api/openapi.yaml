@@ -54,7 +54,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/AddFillerSourceInputBody.json
+            - https://example.com/v1/schemas/AddFillerSourceInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -113,7 +113,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApprovalEditDTO.json
+            - https://example.com/v1/schemas/ApprovalEditDTO.json
           format: uri
           readOnly: true
           type: string
@@ -141,7 +141,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApproveFillerPullInputBody.json
+            - https://example.com/v1/schemas/ApproveFillerPullInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -161,7 +161,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApproveOutputBody.json
+            - https://example.com/v1/schemas/ApproveOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -202,7 +202,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BackupEntry.json
+            - https://example.com/v1/schemas/BackupEntry.json
           format: uri
           readOnly: true
           type: string
@@ -228,7 +228,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BackupList.json
+            - https://example.com/v1/schemas/BackupList.json
           format: uri
           readOnly: true
           type: string
@@ -265,7 +265,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BootstrapInputBody.json
+            - https://example.com/v1/schemas/BootstrapInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -285,7 +285,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BootstrapOutputBody.json
+            - https://example.com/v1/schemas/BootstrapOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -306,7 +306,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkApproveInputBody.json
+            - https://example.com/v1/schemas/BulkApproveInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -327,7 +327,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkApproveOutputBody.json
+            - https://example.com/v1/schemas/BulkApproveOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -371,7 +371,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkRemoveFillerInputBody.json
+            - https://example.com/v1/schemas/BulkRemoveFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -395,7 +395,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkResultOutputBody.json
+            - https://example.com/v1/schemas/BulkResultOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -416,7 +416,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkTagFillerInputBody.json
+            - https://example.com/v1/schemas/BulkTagFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -454,7 +454,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ChangePasswordInputBody.json
+            - https://example.com/v1/schemas/ChangePasswordInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -477,7 +477,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ChannelDTO.json
+            - https://example.com/v1/schemas/ChannelDTO.json
           format: uri
           readOnly: true
           type: string
@@ -739,7 +739,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ChannelTracksOutputBody.json
+            - https://example.com/v1/schemas/ChannelTracksOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -765,7 +765,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ClipDTO.json
+            - https://example.com/v1/schemas/ClipDTO.json
           format: uri
           readOnly: true
           type: string
@@ -858,7 +858,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ClipFitOutputBody.json
+            - https://example.com/v1/schemas/ClipFitOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -877,7 +877,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CollectionsOutputBody.json
+            - https://example.com/v1/schemas/CollectionsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -896,7 +896,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ConfirmFillerSplitInputBody.json
+            - https://example.com/v1/schemas/ConfirmFillerSplitInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -916,7 +916,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ConfirmFillerSplitOutputBody.json
+            - https://example.com/v1/schemas/ConfirmFillerSplitOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -932,7 +932,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CoverageDTO.json
+            - https://example.com/v1/schemas/CoverageDTO.json
           format: uri
           readOnly: true
           type: string
@@ -985,7 +985,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CreateChannelInputBody.json
+            - https://example.com/v1/schemas/CreateChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1031,7 +1031,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CreateLocalUserInputBody.json
+            - https://example.com/v1/schemas/CreateLocalUserInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1093,7 +1093,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseBackup.json
+            - https://example.com/v1/schemas/DatabaseBackup.json
           format: uri
           readOnly: true
           type: string
@@ -1165,7 +1165,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabasePreflightOutputBody.json
+            - https://example.com/v1/schemas/DatabasePreflightOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1188,7 +1188,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseStatus.json
+            - https://example.com/v1/schemas/DatabaseStatus.json
           format: uri
           readOnly: true
           type: string
@@ -1230,7 +1230,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseSwitchoverOutputBody.json
+            - https://example.com/v1/schemas/DatabaseSwitchoverOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1269,7 +1269,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseTargetInputBody.json
+            - https://example.com/v1/schemas/DatabaseTargetInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1285,7 +1285,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DenyInputBody.json
+            - https://example.com/v1/schemas/DenyInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1298,7 +1298,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DenyOutputBody.json
+            - https://example.com/v1/schemas/DenyOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1313,7 +1313,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DeviceProfileBody.json
+            - https://example.com/v1/schemas/DeviceProfileBody.json
           format: uri
           readOnly: true
           type: string
@@ -1348,7 +1348,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DiscoverFillerOutputBody.json
+            - https://example.com/v1/schemas/DiscoverFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1420,7 +1420,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DiscoverStatsOutputBody.json
+            - https://example.com/v1/schemas/DiscoverStatsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1488,7 +1488,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/EnqueueInputBody.json
+            - https://example.com/v1/schemas/EnqueueInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1536,7 +1536,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ErrorModel.json
+            - https://example.com/v1/schemas/ErrorModel.json
           format: uri
           readOnly: true
           type: string
@@ -1583,7 +1583,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FetchFillerSourceOutputBody.json
+            - https://example.com/v1/schemas/FetchFillerSourceOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1611,7 +1611,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FileFillerInputBody.json
+            - https://example.com/v1/schemas/FileFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1635,7 +1635,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerIncomingOutputBody.json
+            - https://example.com/v1/schemas/FillerIncomingOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1788,7 +1788,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerSourcesOutputBody.json
+            - https://example.com/v1/schemas/FillerSourcesOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1837,7 +1837,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerWatchOutputBody.json
+            - https://example.com/v1/schemas/FillerWatchOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1893,7 +1893,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/GetDocOutputBody.json
+            - https://example.com/v1/schemas/GetDocOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2019,7 +2019,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/GuideOutputBody.json
+            - https://example.com/v1/schemas/GuideOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2043,13 +2043,30 @@ components:
         - toMs
         - channels
       type: object
+    HealthOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HealthOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        status:
+          examples:
+            - ok
+          type: string
+      required:
+        - status
+      type: object
     HoldFillerInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/HoldFillerInputBody.json
+            - https://example.com/v1/schemas/HoldFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2165,7 +2182,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IconSuggestionsOutputBody.json
+            - https://example.com/v1/schemas/IconSuggestionsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2208,7 +2225,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportCandidatesOutputBody.json
+            - https://example.com/v1/schemas/ImportCandidatesOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2227,7 +2244,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportUsersInputBody.json
+            - https://example.com/v1/schemas/ImportUsersInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2250,7 +2267,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportUsersOutputBody.json
+            - https://example.com/v1/schemas/ImportUsersOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2336,7 +2353,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IngestFillerInputBody.json
+            - https://example.com/v1/schemas/IngestFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2357,7 +2374,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IngestFillerOutputBody.json
+            - https://example.com/v1/schemas/IngestFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2373,7 +2390,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/Intent.json
+            - https://example.com/v1/schemas/Intent.json
           format: uri
           readOnly: true
           type: string
@@ -2485,7 +2502,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/JobsListOutputBody.json
+            - https://example.com/v1/schemas/JobsListOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2504,7 +2521,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/JobsPauseInputBody.json
+            - https://example.com/v1/schemas/JobsPauseInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2660,7 +2677,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListActivityOutputBody.json
+            - https://example.com/v1/schemas/ListActivityOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2679,7 +2696,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListChannelsOutputBody.json
+            - https://example.com/v1/schemas/ListChannelsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2698,7 +2715,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListDocsOutputBody.json
+            - https://example.com/v1/schemas/ListDocsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2717,7 +2734,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListFillerOutputBody.json
+            - https://example.com/v1/schemas/ListFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2736,7 +2753,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListFillerPullsOutputBody.json
+            - https://example.com/v1/schemas/ListFillerPullsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2759,7 +2776,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListOutputBody.json
+            - https://example.com/v1/schemas/ListOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2778,7 +2795,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListProposalsOutputBody.json
+            - https://example.com/v1/schemas/ListProposalsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2797,7 +2814,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListTaxonomyOutputBody.json
+            - https://example.com/v1/schemas/ListTaxonomyOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2816,7 +2833,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListUserSessionsOutputBody.json
+            - https://example.com/v1/schemas/ListUserSessionsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2835,7 +2852,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListUsersOutputBody.json
+            - https://example.com/v1/schemas/ListUsersOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2854,7 +2871,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/LivetvReconnectOutputBody.json
+            - https://example.com/v1/schemas/LivetvReconnectOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2871,7 +2888,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/LoginInputBody.json
+            - https://example.com/v1/schemas/LoginInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2890,7 +2907,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/MeBody.json
+            - https://example.com/v1/schemas/MeBody.json
           format: uri
           readOnly: true
           type: string
@@ -2951,7 +2968,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/NowNextOutputBody.json
+            - https://example.com/v1/schemas/NowNextOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2970,7 +2987,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PatchClipInputBody.json
+            - https://example.com/v1/schemas/PatchClipInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3012,7 +3029,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PatchUserInputBody.json
+            - https://example.com/v1/schemas/PatchUserInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3035,7 +3052,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PlayURLOutputBody.json
+            - https://example.com/v1/schemas/PlayURLOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3101,7 +3118,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PlayoutStatus.json
+            - https://example.com/v1/schemas/PlayoutStatus.json
           format: uri
           readOnly: true
           type: string
@@ -3127,7 +3144,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PlayoutTelemetry.json
+            - https://example.com/v1/schemas/PlayoutTelemetry.json
           format: uri
           readOnly: true
           type: string
@@ -3213,7 +3230,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PodPoolDTO.json
+            - https://example.com/v1/schemas/PodPoolDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3277,7 +3294,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PoolDTO.json
+            - https://example.com/v1/schemas/PoolDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3317,7 +3334,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewCycleOutputBody.json
+            - https://example.com/v1/schemas/PreviewCycleOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3349,7 +3366,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewDraftPodsInputBody.json
+            - https://example.com/v1/schemas/PreviewDraftPodsInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3364,7 +3381,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewProgrammingInputBody.json
+            - https://example.com/v1/schemas/PreviewProgrammingInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3383,7 +3400,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewProgrammingOutputBody.json
+            - https://example.com/v1/schemas/PreviewProgrammingOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3463,7 +3480,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ProposalDTO.json
+            - https://example.com/v1/schemas/ProposalDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3564,7 +3581,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ProposeFillerPullInputBody.json
+            - https://example.com/v1/schemas/ProposeFillerPullInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3581,7 +3598,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PullDTO.json
+            - https://example.com/v1/schemas/PullDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3669,13 +3686,36 @@ components:
           format: int64
           type: integer
       type: object
+    ReadyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ReadyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: Why, when not ready — the operator's first clue
+          examples:
+            - ok
+          type: string
+        ready:
+          examples:
+            - true
+          type: boolean
+      required:
+        - ready
+        - detail
+      type: object
     RefineChannelInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RefineChannelInputBody.json
+            - https://example.com/v1/schemas/RefineChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3694,7 +3734,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RefineChannelOutputBody.json
+            - https://example.com/v1/schemas/RefineChannelOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3710,7 +3750,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RemoteSourceDTO.json
+            - https://example.com/v1/schemas/RemoteSourceDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3737,7 +3777,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ResetPasswordInputBody.json
+            - https://example.com/v1/schemas/ResetPasswordInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3754,7 +3794,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RestartCost.json
+            - https://example.com/v1/schemas/RestartCost.json
           format: uri
           readOnly: true
           type: string
@@ -3900,7 +3940,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SearchOutputBody.json
+            - https://example.com/v1/schemas/SearchOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3933,7 +3973,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SecretRegenerateOutputBody.json
+            - https://example.com/v1/schemas/SecretRegenerateOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3951,7 +3991,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SecretRevealOutputBody.json
+            - https://example.com/v1/schemas/SecretRevealOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4038,7 +4078,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ServicesView.json
+            - https://example.com/v1/schemas/ServicesView.json
           format: uri
           readOnly: true
           type: string
@@ -4126,7 +4166,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetFillerSourceEnabledInputBody.json
+            - https://example.com/v1/schemas/SetFillerSourceEnabledInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4153,7 +4193,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetFillerSourceEnabledOutputBody.json
+            - https://example.com/v1/schemas/SetFillerSourceEnabledOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4290,7 +4330,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsEnvOverrideInputBody.json
+            - https://example.com/v1/schemas/SettingsEnvOverrideInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4306,7 +4346,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsListOutputBody.json
+            - https://example.com/v1/schemas/SettingsListOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4331,7 +4371,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsPatchInputBody.json
+            - https://example.com/v1/schemas/SettingsPatchInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4349,7 +4389,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsPatchOutputBody.json
+            - https://example.com/v1/schemas/SettingsPatchOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4368,7 +4408,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsTestInputBody.json
+            - https://example.com/v1/schemas/SettingsTestInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4384,7 +4424,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsTestOutputBody.json
+            - https://example.com/v1/schemas/SettingsTestOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4424,7 +4464,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetupStateOutputBody.json
+            - https://example.com/v1/schemas/SetupStateOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4448,7 +4488,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetupStatusOutputBody.json
+            - https://example.com/v1/schemas/SetupStatusOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4467,7 +4507,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SplitFillerInputBody.json
+            - https://example.com/v1/schemas/SplitFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4483,7 +4523,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SplitFillerOutputBody.json
+            - https://example.com/v1/schemas/SplitFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4499,7 +4539,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SplitProposal.json
+            - https://example.com/v1/schemas/SplitProposal.json
           format: uri
           readOnly: true
           type: string
@@ -4570,7 +4610,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SubmitOutputBody.json
+            - https://example.com/v1/schemas/SubmitOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4606,7 +4646,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SyncFillerOutputBody.json
+            - https://example.com/v1/schemas/SyncFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4634,7 +4674,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SyncOutputBody.json
+            - https://example.com/v1/schemas/SyncOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4650,7 +4690,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-discoverResponse.json
+            - https://example.com/v1/schemas/System-llm-discoverResponse.json
           format: uri
           readOnly: true
           type: string
@@ -4673,7 +4713,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-pullResponse.json
+            - https://example.com/v1/schemas/System-llm-pullResponse.json
           format: uri
           readOnly: true
           type: string
@@ -4689,7 +4729,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-testResponse.json
+            - https://example.com/v1/schemas/System-llm-testResponse.json
           format: uri
           readOnly: true
           type: string
@@ -4706,7 +4746,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMPullInputBody.json
+            - https://example.com/v1/schemas/SystemLLMPullInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4724,7 +4764,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMSelectInputBody.json
+            - https://example.com/v1/schemas/SystemLLMSelectInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4757,7 +4797,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMStatus.json
+            - https://example.com/v1/schemas/SystemLLMStatus.json
           format: uri
           readOnly: true
           type: string
@@ -4812,7 +4852,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMTestInputBody.json
+            - https://example.com/v1/schemas/SystemLLMTestInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4840,7 +4880,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemReloadOutputBody.json
+            - https://example.com/v1/schemas/SystemReloadOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4859,7 +4899,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemVersionOutputBody.json
+            - https://example.com/v1/schemas/SystemVersionOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4889,7 +4929,7 @@ components:
             - linux/amd64
           type: string
         ready:
-          description: Same readiness /readyz reports
+          description: Same readiness /v1/readyz reports
           type: boolean
         schemaVersion:
           description: Applied database migration version
@@ -4915,7 +4955,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TagFillerOutputBody.json
+            - https://example.com/v1/schemas/TagFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4943,7 +4983,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TaxonDTO.json
+            - https://example.com/v1/schemas/TaxonDTO.json
           format: uri
           readOnly: true
           type: string
@@ -4988,7 +5028,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TimelineOutputBody.json
+            - https://example.com/v1/schemas/TimelineOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -5008,7 +5048,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TitleDTO.json
+            - https://example.com/v1/schemas/TitleDTO.json
           format: uri
           readOnly: true
           type: string
@@ -5112,7 +5152,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TunarrConnectOutputBody.json
+            - https://example.com/v1/schemas/TunarrConnectOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -5133,7 +5173,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UpcomingOutputBody.json
+            - https://example.com/v1/schemas/UpcomingOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -5153,7 +5193,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UpdateChannelInputBody.json
+            - https://example.com/v1/schemas/UpdateChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -5195,7 +5235,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UploadIconOutputBody.json
+            - https://example.com/v1/schemas/UploadIconOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -5211,7 +5251,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UserBody.json
+            - https://example.com/v1/schemas/UserBody.json
           format: uri
           readOnly: true
           type: string
@@ -5257,7 +5297,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/Vocabulary.json
+            - https://example.com/v1/schemas/Vocabulary.json
           format: uri
           readOnly: true
           type: string
@@ -7299,6 +7339,26 @@ paths:
       summary: Every channel's timeline over a window
       tags:
         - channels
+  /v1/healthz:
+    get:
+      description: Public, no credential — the consumer is a container runtime, not a person. Answers 200 whenever the process is serving, regardless of whether its dependencies are healthy; that is what `readyz` is for. Also served at `/healthz`.
+      operationId: healthz
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Liveness probe
+      tags:
+        - ops
   /v1/jobs:
     get:
       description: Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.
@@ -7392,6 +7452,28 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/metrics:
+    get:
+      description: Public, no credential — a scrape job holds no session. Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`.
+      operationId: metrics
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: Prometheus text exposition.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Prometheus metrics
+      tags:
+        - ops
   /v1/playout/guide.xml:
     get:
       operationId: playout-guide
@@ -7841,6 +7923,48 @@ paths:
       summary: Deny a proposal (admin)
       tags:
         - proposals
+  /v1/readyz:
+    get:
+      description: Public, no credential. 200 when the store is up and migrations are applied, 503 with a reason otherwise — a container started without DATABASE_URL is a SUPPORTED degraded mode, and this is how it explains itself. Also served at `/readyz`.
+      operationId: readyz
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Readiness probe
+      tags:
+        - ops
+  /v1/reference:
+    get:
+      description: Public. A self-contained page linking to the machine-readable spec; no CDN assets.
+      operationId: api-reference
+      responses:
+        "200":
+          content:
+            text/html:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: An HTML page.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Interactive API reference
+      tags:
+        - ops
   /v1/search:
     get:
       operationId: search
@@ -8585,7 +8709,7 @@ paths:
         - system
   /v1/system/version:
     get:
-      description: What the operator quotes in a bug report, plus the readiness /readyz reports. /healthz and /readyz stay unauthenticated for orchestrators; this is their typed, authenticated twin for the UI.
+      description: What the operator quotes in a bug report, plus the readiness /v1/readyz reports. The probes stay unauthenticated for orchestrators (RolePublic); this is their authenticated twin, carrying the build and schema detail a probe has no business returning.
       operationId: system-version
       responses:
         "200":

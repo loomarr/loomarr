@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/http/pprof"
 	"strings"
 	"time"
 
@@ -27,46 +26,17 @@ type ReadyFunc func() (ready bool, detail string)
 func Router(log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
 
-	// Ops endpoints, unauthenticated on the LAN (§7).
 	ready := opts.Ready
 	if ready == nil {
 		ready = func() (bool, string) { return true, "ok" }
 	}
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ok, detail := ready()
-		code := http.StatusOK
-		if !ok {
-			code = http.StatusServiceUnavailable
-		}
-		writeJSON(w, code, map[string]any{"ready": ok, "detail": detail})
-	})
 
-	// Prometheus exposition (§7 /metrics, §18). Unauthenticated on the LAN like
-	// the other ops probes; the metrics.Middleware below records every request.
-	mux.Handle("GET /metrics", metrics.Handler())
+	// ⚠ The ops surface (liveness, readiness, Prometheus, the profiler, the API reference) now
+	// registers with everything else, in registerOps — under /v1, with its bare paths kept as
+	// hidden aliases. It was the last of the raw-mux world; see ops.go for why the aliases are
+	// not optional and why moving these reverses a decision that was pinned on purpose.
 
-	// Go's profiler (§7), mounted ONLY when the server was started with LOOMARR_PPROF=1.
-	// Not registering is the gate, the same posture as /v1/auth/dev-login: an install without
-	// the flag 404s because the routes genuinely do not exist, not because a handler refused.
-	//
-	// Unauthenticated by nature — a profiler is not a browser and holds no session — which is
-	// precisely why it is off by default: these handlers expose stack traces and memory
-	// contents, and a repeated CPU profile degrades a running server.
-	//
-	// Registered by explicit path rather than by prefix so the surface is exactly the four
-	// handlers listed, and `pprof.Index` serves its own links off /debug/pprof/.
-	if opts.Pprof {
-		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-		mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-	}
-
-	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
+	// The Huma API (§7.1): /v1 operations, /v1/openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
 	cfg := humaConfig()
 	// Stamp every error response with the request's correlation id + log its full cause
@@ -137,6 +107,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider
 	srv.registerProvisioning(humaAPI)
+	srv.registerOps(humaAPI, opts.Pprof) // §17 probes/metrics/profiler + the API reference
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp
@@ -147,25 +118,30 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	//
 	// Internal playout (§9.1) mounts the same way — see registerPlayout.
 
-	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
-	mux.HandleFunc("GET /docs", docsHandler)
-
-	// The embedded SPA at / (§12): the catch-all. Guard the prefix-based API
-	// surfaces so an unknown /v1 or /hooks path 404s as an API error rather than
-	// silently serving index.html. Exact ops routes (/healthz, /docs, …) already
-	// win by ServeMux specificity and never reach here.
+	// The embedded SPA at / (§12): the catch-all, and now the ONLY raw mux registration —
+	// it serves embedded static assets and is not an API route. Guard the prefix-based API
+	// surfaces so an unmatched path under one 404s as an API error rather than silently
+	// serving index.html. Exact routes already win by ServeMux specificity and never reach here.
 	spa := web.Handler()
-	// /playout/ is in this list for a real reason, not tidiness: without it an unmatched
-	// playout path (a typo'd channel id, a route we have not built yet) falls through to the
-	// SPA and returns index.html with a 200. ffmpeg would then read HTML as a transport
-	// stream, and the failure surfaces as a corrupt-stream error naming neither the URL nor
-	// the typo.
-	// `/debug/` is here even though pprof is usually NOT mounted, and that is the point: with
-	// the flag off, a request to /debug/pprof/profile would otherwise fall through to the SPA
-	// and return index.html with a 200. `go tool pprof` then reports "unrecognized profile
-	// format" — which reads as a broken profiler rather than as a disabled endpoint, and cost
-	// two failed capture attempts before a test caught it.
-	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/debug/"}
+	// ⚠ Each entry earns its place by a failure it prevents, and "it moved under /v1" does not
+	// remove the need for the OLD prefix — a stale bookmark, a scrape config or a docs link
+	// still resolves against this server.
+	//
+	// `/openapi` and `/schemas/` stay even though both now live under /v1: without them a
+	// request to the old /openapi.json falls through and returns index.html with a 200, so a
+	// client parsing it reports malformed YAML rather than "moved".
+	// `/debug/` stays even though pprof is usually NOT mounted, and that is the point: with the
+	// flag off, /debug/pprof/profile would otherwise return index.html with a 200 and
+	// `go tool pprof` reports "unrecognized profile format" — reading as a broken profiler
+	// rather than a disabled endpoint. That cost two failed capture attempts before a test
+	// caught it.
+	// `/metrics` likewise: a scrape hitting HTML should fail as a 404, not parse-error.
+	//
+	// ⚠ `/hooks/` is GONE. No /hooks route has existed since the inbound arr webhook was
+	// deleted, so the guard was reserving a prefix against nothing.
+	// `/playout/` is likewise absent: those routes have been under /v1/playout since V47, so
+	// /v1/ already covers them.
+	apiPrefixes := []string{"/v1/", "/openapi", "/schemas/", "/metrics", "/debug/", "/healthz", "/readyz", "/docs"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {

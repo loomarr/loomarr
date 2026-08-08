@@ -223,7 +223,13 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 func TestPprofAbsentByDefault(t *testing.T) {
 	srv := devLoginServer(t, false, nil)
 
-	for _, p := range []string{"/debug/pprof/", "/debug/pprof/profile", "/debug/pprof/heap"} {
+	// Both the canonical /v1 paths and the bare aliases: the profiler moved under /v1 like the
+	// rest of the ops surface, and an install without the flag must serve NEITHER. Checking only
+	// one would leave the other reachable on a change that missed a registration.
+	for _, p := range []string{
+		"/v1/debug/pprof/", "/v1/debug/pprof/profile", "/v1/debug/pprof/heap",
+		"/debug/pprof/", "/debug/pprof/profile", "/debug/pprof/heap",
+	} {
 		res, err := http.Get(srv.URL + p)
 		if err != nil {
 			t.Fatal(err)

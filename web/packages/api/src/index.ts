@@ -12,6 +12,7 @@ export * as fillerApi from "../generated/endpoints/filler/filler";
 export * as helpApi from "../generated/endpoints/help/help";
 export * as jobsApi from "../generated/endpoints/jobs/jobs";
 export * as libraryApi from "../generated/endpoints/library/library";
+export * as opsApi from "../generated/endpoints/ops/ops";
 export * as playoutApi from "../generated/endpoints/playout/playout";
 export * as proposalsApi from "../generated/endpoints/proposals/proposals";
 export * as searchApi from "../generated/endpoints/search/search";

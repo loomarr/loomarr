@@ -16,7 +16,7 @@ reads as "my change didn't work" and costs an hour.
 
 ```bash
 LOOMARR_DEV_LOGIN=1 make dev-be > /tmp/loomarr-be.log 2>&1 &
-until curl -sf http://localhost:8080/healthz >/dev/null 2>&1; do sleep 2; done
+until curl -sf http://localhost:8080/v1/healthz >/dev/null 2>&1; do sleep 2; done
 ```
 
 `make dev-be` runs Air (via `go run`, so it is never in `go.mod`), which sources `.env` and

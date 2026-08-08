@@ -101,9 +101,12 @@ docker/              # deployment + dev compose, Dockerfile context
   Backups contain secrets — keep them safe.
 - **Upgrade** — migrations are forward-only, so the ritual is **back up, then pull.** Restore a
   SQLite install by replacing `/data/loomarr.db`.
-- **Probes** — `/healthz` and `/readyz` are unauthenticated on the LAN for Docker
-  healthchecks and orchestrators.
-- **Metrics** — `/metrics` exposes Prometheus text (unauthenticated on the LAN). Currently:
+- **Probes** — `/v1/healthz` and `/v1/readyz` are unauthenticated on the LAN for Docker
+  healthchecks and orchestrators. The bare `/healthz` and `/readyz` still answer identically
+  and always will: a healthcheck lives in someone's compose file, not in this repo, so the
+  paths moved under `/v1` without anything having to be reconfigured.
+- **Metrics** — `/v1/metrics` exposes Prometheus text (unauthenticated on the LAN; `/metrics`
+  is kept as an alias for existing scrape configs). Currently:
   HTTP request rate/errors/latency (`loomarr_http_*`, labelled by method and matched route),
   the Go runtime + process collectors, the state gauges (`loomarr_titles{state}`,
   `loomarr_jobs{status}`, `loomarr_active_sessions`), the event counters

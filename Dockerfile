@@ -322,6 +322,7 @@ LABEL org.opencontainers.image.title="loomarr" \
 EXPOSE 8080
 # The base now HAS a shell, so a HEALTHCHECK could shell out — but the orchestrator's
 # HTTP check (compose) still owns readiness, and keeping the image free of a
-# wget/curl dependency is worth more than an in-image probe. /healthz is the contract.
+# wget/curl dependency is worth more than an in-image probe. /v1/healthz is the contract
+# (the bare /healthz alias answers identically, for checks configured outside this repo).
 USER nonroot:nonroot
 ENTRYPOINT ["/loomarr"]

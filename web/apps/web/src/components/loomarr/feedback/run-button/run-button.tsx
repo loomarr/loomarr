@@ -22,7 +22,7 @@ import type { RunButtonProps } from "./run-button.type";
 // to an operation that was reporting its duration honestly, which is a regression, not an
 // adoption. A spinner is not evidence that this component is missing.
 //
-// (system-restart has its own richer answer in `useRestartWatch` — it polls /healthz because
+// (system-restart has its own richer answer in `useRestartWatch` — it polls /v1/healthz because
 // the server actually goes away, and gives up after 30s. Do not replace it with this.)
 //
 // ⚠ Progress is INDETERMINATE by design (§18.1). A job's Run returns only at the end, so any

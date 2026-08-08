@@ -25,8 +25,11 @@ window to ship a fix before any public write-up.
 - Loomarr is designed to run on a **trusted LAN / internal Docker network and is
   not intended to be exposed directly to the public internet** (see the operator
   runbook in `docs/design.md`). Reports should assume that deployment model.
-- The `/healthz`, `/readyz`, and `/metrics` endpoints are intentionally
-  unauthenticated on the LAN.
+- The `/v1/healthz`, `/v1/readyz`, and `/v1/metrics` endpoints (and their bare
+  `/healthz`, `/readyz`, `/metrics` aliases) are intentionally unauthenticated on
+  the LAN — their consumers are container runtimes and scrape jobs, which hold no
+  session. This is declared per route as `RolePublic`, so the unauthenticated
+  surface is one greppable list rather than an absence you have to infer.
 - The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`,
   `deno`) pinned by the `Dockerfile`; vulnerabilities in those upstreams are best
   reported to their projects, but do let us know if a pin needs bumping. These used
