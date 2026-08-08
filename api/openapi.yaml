@@ -599,6 +599,43 @@ components:
         - pinned
         - excluded
       type: object
+    ChannelHealth:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        encoder:
+          description: Resolved encoder, or 'copy' when direct-playing
+          type: string
+        hardware:
+          description: Whether the encoder is hardware-accelerated
+          type: boolean
+        health:
+          description: ok | degraded | stalled
+          type: string
+        mode:
+          description: direct-play (copy) | transcode
+          type: string
+        reason:
+          description: One line an operator can act on
+          type: string
+        speed:
+          description: Realtime multiple; <1.0 means the channel will stutter
+          format: double
+          type: number
+        target:
+          description: "Codec audience: browser|mediaserver (§9.1 V47)"
+          type: string
+      required:
+        - channelId
+        - target
+        - encoder
+        - hardware
+        - mode
+        - speed
+        - health
+        - reason
+      type: object
     ChannelNowNext:
       additionalProperties: false
       properties:
@@ -655,6 +692,32 @@ components:
             - 168h
             - 24h
           type: string
+      type: object
+    ChannelTracksOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ChannelTracksOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audio:
+          items:
+            $ref: "#/components/schemas/TrackDTO"
+          type:
+            - array
+            - "null"
+        subtitles:
+          items:
+            $ref: "#/components/schemas/TrackDTO"
+          type:
+            - array
+            - "null"
+      required:
+        - audio
+        - subtitles
       type: object
     ClipDTO:
       additionalProperties: false
@@ -1314,6 +1377,28 @@ components:
       required:
         - slug
         - title
+      type: object
+    DoctorGPU:
+      additionalProperties: false
+      properties:
+        contended:
+          description: A model is resident AND channels are transcoding on hardware
+          type: boolean
+        llmModel:
+          description: Resident LLM sharing this GPU, if any (§8.2)
+          type: string
+        llmVramGiB:
+          description: VRAM the resident LLM holds — unavailable to encoders
+          format: double
+          type: number
+        name:
+          type: string
+        vramGiB:
+          description: Total detected GPU VRAM (0 = unknown/none)
+          format: double
+          type: number
+      required:
+        - contended
       type: object
     EnqueueInputBody:
       additionalProperties: false
@@ -2761,10 +2846,65 @@ components:
             - member
           type: string
       type: object
+    PlayURLOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PlayURLOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expiresAt:
+          description: When the signed URLs expire (RFC 3339)
+          format: date-time
+          type: string
+        relativeUrl:
+          description: Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)
+          type: string
+        url:
+          description: Absolute signed HLS (.m3u8) URL for native/off-origin clients; empty if the server's public address is unset
+          type: string
+      required:
+        - url
+        - relativeUrl
+        - expiresAt
+      type: object
+    PlayoutDoctor:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PlayoutDoctor.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelHealth"
+          type:
+            - array
+            - "null"
+        gpu:
+          $ref: "#/components/schemas/DoctorGPU"
+        running:
+          description: Internal playout is wired (false on a Tunarr-only install)
+          type: boolean
+      required:
+        - running
+        - gpu
+        - channels
+      type: object
     PlayoutPolicy:
       additionalProperties: false
       properties:
+        audioLanguage:
+          type: string
         backend:
+          type: string
+        subtitles:
           type: string
       type: object
     PlayoutTelemetry:
@@ -3744,6 +3884,8 @@ components:
           description: Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter
           format: double
           type: number
+        target:
+          type: string
         uptimeMs:
           format: int64
           type: integer
@@ -3752,6 +3894,7 @@ components:
           type: integer
       required:
         - channelId
+        - target
         - viewers
         - encoder
         - hardware
@@ -4665,6 +4808,22 @@ components:
         - mediaType
         - state
       type: object
+    TrackDTO:
+      additionalProperties: false
+      properties:
+        index:
+          description: Position among tracks of its own type — the N in -map 0:a:N / 0:s:N.
+          format: int64
+          type: integer
+        language:
+          description: ISO 639-2 code, lowercased; empty when the media left it untagged.
+          type: string
+        title:
+          description: Free-text stream title when the media carries one (e.g. 'Commentary').
+          type: string
+      required:
+        - index
+      type: object
     TunarrConnectOutputBody:
       additionalProperties: false
       properties:
@@ -5253,6 +5412,45 @@ paths:
       summary: Suggest channel icons from the lineup
       tags:
         - channels
+  /v1/channels/{id}/play-url:
+    post:
+      description: Any signed-in user. Returns a short-lived, signed HLS URL the in-app player (or a native app) loads directly — the device playout token never reaches the client (§9.1, §11). The URL is scoped to this channel and expires; request a fresh one when it lapses. `quality` picks a per-viewer tier (auto/720p/480p) — the only per-viewer control, since one encoder serves every viewer of a channel.
+      operationId: channel-play-url
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - explode: false
+          in: query
+          name: quality
+          schema:
+            enum:
+              - auto
+              - "720"
+              - "480"
+            examples:
+              - auto
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayURLOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mint a signed URL to watch this channel in the browser
+      tags:
+        - channels
   /v1/channels/{id}/pods:
     get:
       description: Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.
@@ -5415,6 +5613,34 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/tracks:
+    get:
+      description: "Any signed-in user. The audio and subtitle tracks the CURRENTLY-AIRING programme actually carries — what the Watch tab's Audio/Subtitle pickers offer. These come from the media (an ffprobe of the airing file), not a fixed list and not a setting, so the choices are real. Best-effort: an empty list when nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default."
+      operationId: channel-tracks
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelTracksOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Audio and subtitle tracks of what's airing now
+      tags:
+        - channels
   /v1/channels/{id}/upcoming:
     get:
       description: The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
@@ -6378,6 +6604,26 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/playout/doctor:
+    get:
+      description: "A read-only health projection of live internal playout: per (channel, target) encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM contention picture that a black-frame diagnosis needs. Admin only. Changes nothing."
+      operationId: get-playout-doctor
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayoutDoctor"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout health — why a channel is (or isn't) playing (admin)
+      tags:
+        - dashboard
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."

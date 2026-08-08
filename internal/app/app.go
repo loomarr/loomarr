@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -264,6 +265,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutSessions api.PlayoutSessions
+	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
+	// until then so the /playout/hls routes report "not running" on an unwired install.
+	var playoutHLS api.PlayoutHLS
 	var playoutResolverSvc api.PlayoutResolver
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
@@ -419,7 +423,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// ffmpeg path — the two ship together, so an operator who moved one moved both.
 			audioLanguage: func() string { return set.str("playout.audio_language") },
 			probeAudio:    playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path")),
-			log:           log,
+			probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
+			probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
+			// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
+			// applies without a restart — the same hot-apply posture as fillerDir/audioLanguage.
+			pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+			log:     log,
 			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
 			// It is called UNGUARDED (playout.Resolve → r.activeChannels()), so a missing
 			// assignment is a nil-func panic on the quality-ladder path — i.e. when a viewer
@@ -446,6 +455,25 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			})
 		})
 		playoutSessions = playoutMgr
+
+		// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
+		// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
+		// failure to create its scratch root is not fatal — the media-server streams work without
+		// it — so log and leave the /playout/hls routes reporting "not running" rather than
+		// refusing to boot.
+		if hlsMgr, herr := playout.NewHLSManager(
+			playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
+			playout.DefaultGrace, log,
+		); herr != nil {
+			log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
+				"err", herr)
+		} else {
+			playoutHLS = hlsMgr
+			go func() {
+				<-rootCtx.Done()
+				hlsMgr.Stop()
+			}()
+		}
 		playoutResolverSvc = playoutRes
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
@@ -1259,6 +1287,8 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutSessions: playoutSessions,
+		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
+		PlayoutHLS:      playoutHLS,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
 		PlayoutGuide:  playoutGuideSvc,
@@ -1267,6 +1297,28 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.
 		PlayoutFont: playout.CardFontFor(set.str("playout.ffmpeg_path")),
+		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
+		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
+		// always targets whatever model is currently resident. Only the local ollama provider holds
+		// VRAM on this box — a hosted provider has nothing local to reclaim, so it is a no-op there
+		// (the ladder then goes straight to the software fallback).
+		ReclaimVRAM: func(ctx context.Context) {
+			if set.str("llm.provider") != "ollama" {
+				return // hosted: nothing local to evict
+			}
+			url := set.str("llm.url")
+			if url == "" {
+				return
+			}
+			p := llm.NewProvider("ollama", url, set.str("llm.model"), "")
+			ev, ok := p.(llm.Evictor)
+			if !ok {
+				return
+			}
+			if err := ev.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
+				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
+			}
+		},
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

@@ -5,24 +5,37 @@ import (
 	"strings"
 )
 
-// Resolving a library item to something ffmpeg can read (§9.1, fact T1).
+// Resolving a library item to something ffmpeg can read (§9.1, fact T1 — REVISED).
 //
 // T1 was: "Loomarr does not know where media lives" — LibraryItem carries an id, a rating
 // and genres, no path. That never mattered while Tunarr did the playing, because Tunarr
 // resolved paths itself. Internal playout needs a real ffmpeg input.
 //
-// Two options existed, and the media server's own HTTP endpoint wins decisively:
+// ⚠ **The original T1 rejected the file path and always used the HTTP stream — that was wrong,
+// and it is the reason playout transcoded everything.** Reading `GET /Videos/{id}/stream` and
+// re-encoding is backwards when the media file is on a disk Loomarr can read: it forces a
+// transcode (and an HTTP round-trip through the media server's own streaming layer) on content
+// that is usually already a playable codec. DIRECT PLAY — read the file, `-c copy` when the
+// codec is already compatible — is the standard every mature media server (Plex/Emby/Jellyfin)
+// uses, and it is now the default here too.
 //
-//	(a) The filesystem path. Emby will hand it over via `Fields=Path`, and it is useless to
-//	    us: it is EMBY'S view of the filesystem. On the dev setup Emby runs on a different
-//	    host entirely, and even co-located it would demand the operator mount media
-//	    identically into both containers — the fragile coupling Tunarr deliberately avoids.
+// The old objection was that Emby's `Path` is EMBY'S view of the filesystem (`/data/tv/…`), not
+// Loomarr's. True — but that is a PATH MAPPING problem, not an impossibility: the same file is
+// mounted on the playout box at its own prefix (e.g. `/cifs/fictionalserver/tv/…`), and a
+// prefix substitution resolves it. This is exactly the "path mapping" setting every media server
+// exposes. So the resolution order is:
 //
-//	(b) `GET /Videos/{id}/stream?static=true`. ffmpeg reads it over HTTP. No shared mounts,
-//	    works across hosts, and it reuses the token the client already holds.
+//	(a) The FILE (default). Fetch `Fields=Path`, apply `library.path_map` (§15) to translate the
+//	    media-server prefix to the local mount, and if the mapped file is readable, hand ffmpeg the
+//	    file directly — copy the video when its codec is compatible, transcode only what is not
+//	    (ffprobe decides, playout.PlanCopy).
 //
-// Verified against the live dev Emby: a 4K DV/HDR10 HEVC remux with three audio tracks
-// streams over this URL and normalizes to 720p H.264 + AAC stereo.
+//	(b) `GET /Videos/{id}/stream?static=true` (FALLBACK). When no mapping resolves a readable local
+//	    file — a media server on a different host with no shared mount — ffmpeg reads it over HTTP,
+//	    as before. This keeps a no-shared-mount install working with zero config.
+//
+// `static=true` on the fallback asks for the ORIGINAL file, not a media-server transcode (playout
+// does its own normalizing; two encodes in series is twice the CPU for a worse picture).
 
 // StreamURL returns a URL ffmpeg can read for a library item.
 //

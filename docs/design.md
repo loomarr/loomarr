@@ -629,14 +629,17 @@ Generation is a **job**, persisted in the store (§5) and executed by the in-pro
 
 A local model that is not resident must be loaded from disk into VRAM before it can answer, and that load dominates everything else the suggester does. Measured on the maintainer's Apple-Silicon machine with an 8B model: **~9.1s cold vs ~0.5s warm**, an 18× difference for the identical request. Ollama unloads an idle model after **5 minutes** by default, so a household operator who describes a channel, reads the proposal, and then refines it reliably pays that load *again* — the app is slowest exactly when someone is using it, and the cost is invisible because nothing distinguishes "loading a model" from "thinking".
 
-Two mechanisms, both local-only (a hosted endpoint has no residency to manage, and sending either to one would be meaningless):
+Three mechanisms, all local-only (a hosted endpoint has no residency to manage, and sending any of them to one would be meaningless):
 
-- **`keep_alive` on every Ollama call.** Each `/api/chat` request carries a residency hint (`llm.keep_alive`, §15, default `30m`, `0` disables) so the model stays loaded between the turns of one run *and* across the pause between a suggestion and its refine. Without it the multi-round tool loop can re-pay the load mid-run. This is a hint to Ollama, not a reservation: it holds VRAM the operator may want elsewhere, so it is a settable knob rather than a constant, and `0` restores stock behavior for a memory-tight host.
+- **`keep_alive` on every Ollama call.** Each `/api/chat` request carries a residency hint (`llm.keep_alive`, §15, default `2m`, `0` disables) so the model stays loaded between the turns of one run *and* across the pause between a suggestion and its refine. Without it the multi-round tool loop can re-pay the load mid-run. This is a hint to Ollama, not a reservation: it holds VRAM the operator may want elsewhere, so it is a settable knob rather than a constant, and `0` restores stock behavior for a memory-tight host.
+
+  ⚠ **The default is `2m`, not a long hold, because the GPU is SHARED with playout (§9.1 V47).** A resident 8B model is ~6GB, and Loomarr's own hardware encoders need VRAM on the same card — when both compete on a 12GB GPU, a hardware encode that cannot allocate its device context fails silently and takes a channel to a black frame (verified live: the model resident at 6GB, four vulkan encodes, `[h264] no frame!` on the ones that could not fit). The suggester is bursty and interactive (seconds of use, then idle for a long time); playout is sustained but only while someone watches. Holding 6GB for 30 idle minutes "just in case" manufactures a conflict that rarely needs to exist — so the model unloads 2 minutes after the last suggestion instead, and a suggestion made later simply cold-loads again (~9s, paid by the *suggester*, never by a channel). An operator who never runs heavy playout can raise it.
+- **Eviction on demand — playout reclaims the VRAM (§9.1 V47).** `keep_alive` bounds idle residency; eviction handles *active contention*. When a hardware encode fails to produce output — the live signal that VRAM is tight — playout unloads the model immediately (`Evictor`, an Ollama `/api/chat` with `keep_alive:0`) and retries the encode before falling back to software (the retry ladder in §9.1). This makes the priority explicit and correct: a **live stream preempts a resident suggestion**, because a stream is latency-critical and a suggestion can afford the cold reload. Eviction is **reactive, never speculative** — it fires only on an actual encode failure, so the suggester keeps its warmth in the common case where the GPU has room for both. `ErrNothingToEvict` (the mirror of `ErrNothingToWarm`) is the declined-not-failed outcome when no model is resident to unload.
 - **Warm-up on selection.** Boot and every §8.1 model pick call the same code path (`Swappable.Set`), so that is where a warm-up fires: a minimal generation request that loads the model and returns immediately. It runs **in the background, best-effort** — a warm-up that fails or is slow must never delay startup, block the admin's Select response, or fail a job. The first *real* suggestion after an app start is therefore usually warm rather than paying the 9s on the operator's first impression.
 
   **Nothing is warmed until a model is actually chosen.** `LLM_MODEL` is deliberately blank by default (§8.1: the wizard's ranked picker owns the choice, because it depends on the user's GPU), and the Ollama client substitutes a built-in fallback tag when it has no model. Warming *that* would fire a tag the host has almost certainly never pulled, so a fresh install logged a 404 "warm-up failure" on every boot for a model nobody selected. A warm-up with no configured model is therefore **declined**, and declining is a **third outcome** distinct from success and failure (`ErrNothingToWarm`): reporting it as either would describe something that did not happen — first a failure that was never a real attempt, then, once the request was suppressed, a `model warmed took=0` announcing a preload of nothing. The picker's own `Set` warms the model the moment it is chosen, so declining costs no real latency.
 
-Neither mechanism changes what the model is asked or what it returns; they only decide whether the weights are already in memory when it is asked. Grounding, the repair loop, and the approval gate are untouched.
+None of these mechanisms changes what the model is asked or what it returns; they only decide whether the weights are already in memory when it is asked. Grounding, the repair loop, and the approval gate are untouched.
 
 ### Bonus: filler suggestions
 The suggester can also propose **era/genre-matched filler** (90s ads → 90s sitcom block) for the scheduler's flex — same grounding rules apply.
@@ -725,13 +728,114 @@ fleet-wide flip.
 that can't transcode is "let Tunarr do it", and an install that already works should never be forced
 to migrate.
 
+### How internal playout reads media — DIRECT PLAY is the default (V47)
+
+**Playout reads the FILE and copies it; it transcodes only when it must.** This reverses the
+original design, which read the media server's HTTP stream (`GET /Videos/{id}/stream`) and
+re-encoded *every* program through one normalized profile. That was wrong on two counts: it paid a
+transcode (and an HTTP round-trip through the media server's streaming layer) on content that is
+usually already a playable codec, and it made first-frame latency 15–20s (encoder spin-up + HTTP
+seek + realtime pacing) — which is what made the in-app Watch player (§12) unwatchable.
+
+The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
+
+1. **Resolve the real file.** Fetch the item's `Path` from the library and apply `library.path_map`
+   (§15) — a prefix substitution translating the media server's view of the filesystem
+   (`/data/tv/…`) to the local mount (`/cifs/fictionalserver/tv/…`). If the mapped file is readable,
+   that is the ffmpeg input. **HTTP is the fallback** only when no mapping resolves a local file (a
+   media server on another host, no shared mount) — so a zero-config install still works.
+2. **ffprobe decides, not the media server's metadata.** The resolved input is probed for its real
+   video/audio codec. `playout.CanDirectPlay` answers "can the target play this as-is?" against the
+   target's capability baseline (browser/HLS = h264+aac; a media-server tuner is broader).
+3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
+   when the codec genuinely is not playable** (e.g. HEVC/10-bit to an h264-only target).
+
+**A transcode has a retry ladder, because hardware encoding can fail silently (V47).** When a program
+must transcode, it uses the box's detected hardware encoder (nvenc/vulkan/qsv/…). But a hardware
+encode can fail to start for a reason that produces **no error and no output** — most commonly the GPU
+is out of VRAM (the shared-GPU case: the suggester's model is resident, §8.2), where the encoder
+cannot allocate its device context and simply emits zero frames. A silent zero-byte encode is a black
+channel. So a transcode that produces **no output** does not give up — it climbs a ladder:
+
+1. **Hardware encode.** Output? Done — the fast path, unchanged.
+2. **Zero output ⇒ reclaim VRAM and retry hardware.** The zero-byte result *is* the "VRAM tight"
+   signal — no polling, no guessing. Playout **evicts the local LLM** (§8.2 `Evictor`) to free its
+   VRAM, then retries the same program on hardware. A live stream preempts a resident suggestion:
+   the stream is latency-critical, the suggestion can afford a cold reload.
+3. **Still zero ⇒ software fallback.** If even the freed GPU will not encode it, the program re-runs
+   on **libx264 (software)** — slower, but the channel PLAYS rather than going black. Software is the
+   floor, never the silent failure.
+
+This ladder only applies to a **transcode** — a `-c copy` that produces nothing is a bad source file,
+which no encoder change fixes, so a copy fails straight through. And it fires **only on the failure**:
+the common case (hardware works first try) pays nothing, and the eviction in step 2 happens only when
+an encode genuinely could not fit.
+
+**This removes the old uniform-profile constraint.** Playout previously concatenated programs with a
+single `-c copy` parent that REQUIRED every program to share one profile (codec/resolution/fps/pixel
+format) — which is exactly why everything was transcoded into that profile. Programs now differ:
+program A direct-copied at its native profile, program B transcoded or copied at a different one. The
+session marks each program boundary with an HLS **`#EXT-X-DISCONTINUITY`** — the standard mechanism
+for heterogeneous sources — and the client (hls.js, native, a media server) handles it. The "one
+encode/repackage per channel, N refcounted viewers" invariant, the wall-clock epoch, and the
+single-source-of-truth cycle arithmetic are all unchanged; only the "force one profile" rule is gone.
+
 ### What internal playout serves
 
 - **Segments** over **both HLS and MPEG-TS**. Both, because media servers differ in what they accept
   and the compatibility matrix is not ours to police — MPEG-TS matches Tunarr's existing shape and
-  keeps latency low; HLS survives proxies.
+  keeps latency low; HLS survives proxies. The MPEG-TS stream (`/playout/stream/{id}`) is what a
+  media server or ffmpeg pulls. The **HLS pair** (`/playout/hls/{id}.m3u8` + its segments) is what a
+  **browser or a native app** plays — a `<video>` element cannot consume raw MPEG-TS, so the same
+  channel is *repackaged*, not re-encoded: a `-c copy` remux hangs off the channel encoder and fans
+  its already-keyframe-aligned bytes into a rolling playlist.
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
+
+### A session's identity is `(channel, target)` — one encoder per codec audience (V47)
+
+The two consumers above do **not** have the same codec tolerance, and pretending they do is a black
+frame. A **media-server tuner** (Emby/Jellyfin) ingests HEVC/AC3 over IPTV and re-transcodes per
+client downstream, so for it HEVC is a direct-copy — best quality, least work on our box. A
+**browser** `<video>`/MSE decodes only h264+aac; HEVC copied to it produces zero frames (verified
+live: hls.js fetches segments, the decoder emits nothing, `readyState` stuck at 0). So a channel
+does not have *a* stream — it has a stream **for a media server** and a stream **for a browser**,
+and the copy/transcode plan (`CanDirectPlay`) differs between them.
+
+Therefore the session's identity is **`(channelID, target)`**, not `channelID` alone. `target` is
+one of `mediaserver` (h264/hevc + ac3/eac3/mp3) or `browser` (h264+aac), and it threads the whole
+chain: a viewer attaches *with* a target; the session key carries it; the parent reads
+`/playout/playlist/{id}?target=T`; each program child plans its copy against `T`. The tuner path
+(`/playout/stream`) attaches as `mediaserver`; the HLS/Watch remux attaches as `browser`.
+
+**One encoder per `(channel, target)` — and the cost of the split is bounded by the copy plan, not
+the target.** For the common case — an h264 channel — *both* targets' plans are `-c copy`, so the
+browser session is also just a remux (near-zero GPU), and the only duplication for a channel watched
+on both a TV and a browser is a second cheap `-c copy` pipeline, not a second encode. A real second
+encode happens **only** for genuinely incompatible content (HEVC/10-bit) watched **in-browser** —
+exactly the content that *has* to be transcoded for a `<video>` element to show anything. §9.1's cost
+argument is intact: cost scales with *codec audiences actually being watched*, never with viewers.
+Truly merging the two into one process when their codecs coincide would require the long-lived parent
+to introspect each program and re-key mid-stream — complexity that buys one avoided remux, so we do
+not; the copy plan already makes the compatible case cheap.
+
+**Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
+**Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.
+It plays the HLS pair above. Two facts make this a real feature and not just a `<video src>`:
+
+- *A browser needs HLS, and on most browsers a JS shim.* Safari/iOS play `.m3u8` natively; Chrome/
+  Firefox/Edge need `hls.js` (§14) over Media Source Extensions. The player picks the native path
+  when the browser advertises it and falls back to the shim otherwise — the same `.m3u8` a future
+  native app hands to AVPlayer/ExoPlayer unchanged, which is why the transport is HLS rather than
+  anything browser-specific.
+- *A person is watching, but the stream still authenticates a device.* The browser must not hold the
+  `playout_token` (§11: it is the media server's device secret, not a per-person credential). So a
+  **session-authenticated** op — `POST /v1/channels/{id}/play-url` — mints a **short-lived signed
+  URL** the client feeds to its player. The signature is an HMAC over `channel + expiry` keyed by the
+  existing `playout_token`: **no new secret**, the token never leaves the server, and the URL
+  self-expires (the mock's "signed with the playout token, good for 8 hours"). The HLS routes accept
+  **either** the device token (a media server) **or** a valid signed URL (a browser/native app);
+  everything else about segment auth below is unchanged.
 
 **Audio track selection is ours to make, because nobody else is left to make it.** With no explicit
 `-map`, ffmpeg picks one stream per type by "best" — for audio that means **the most channels**,
@@ -748,9 +852,22 @@ gets audio. A hard map without the `?` fails the whole encode on an untagged fil
 goes black rather than one that speaks the wrong language, which is strictly worse. Empty means
 "whatever ffmpeg would have picked", preserving today's behaviour for anyone who wants it.
 
-*A per-channel override is deliberately NOT offered yet.* The obvious next request is a foreign-language
-channel, but the honest scope is a per-**title** decision (a subtitled original vs a dub), which is a
-different feature than a channel-wide default and should not be pre-empted by a knob that half-solves it.
+*A per-channel override is now offered; a per-viewer one is still not (V46).* When the Watch UI (above)
+gave audio a visible control, the question "whose choice is this?" had to be answered honestly. A
+per-**viewer** track is still refused for the reason it always was — it forks the encode per viewer and
+breaks one-encoder-per-channel. But a per-**channel** override is the *same shape* as the instance
+default already described here, just resolved with `policy.playout.audio_language` precedence over the
+global (like every other channel policy, §15) — so the Watch tab's Audio control is **admin-scoped and
+channel-wide**: it re-picks the track for the shared stream, for everyone, exactly as changing the
+instance default would. The per-**title** decision (a subtitled original vs a dub, one program at a
+time) remains a separate, unscoped feature; a channel-wide knob does not pre-empt it.
+
+**Subtitles are the same story, one axis over.** The Watch tab's Subtitles control is likewise
+**channel-wide and admin-scoped**, writing `policy.playout.subtitles` (§15): `off` (default, no change),
+or **burn-in** of the preferred-language track via ffmpeg's `subtitles`/`overlay` filter into the shared
+encode. Burn-in rather than a selectable soft track for the same invariant reason as audio — a soft
+subtitle track the *viewer* toggles would need per-viewer output; a burned-in one is baked once into the
+channel everyone shares. `off` keeps today's behaviour and costs nothing.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's
@@ -761,6 +878,32 @@ behind a typed confirmation.
 a session cookie, so segment routes authenticate a **device** by token, not a **person** by session.
 This is the only route family that bypasses the allowlist model, it is read-only, and it is scoped to
 playout. It is described in §11 alongside the credential paths rather than left implicit here.
+
+### The doctor — one place that answers "why is this channel black?" (V47)
+
+Playout has several ways to fail that all present identically to a viewer (a black frame) but have
+different causes: a codec the target can't decode, a hardware encode starved of VRAM by the resident
+LLM (§8.2), a transcode running below realtime, a channel with no session at all. Diagnosing which
+one, this build learned, means correlating three things the running app knows but did not expose
+together: the **live encoders** (`Stats()` — per (channel, target): encoder, hardware/software, and
+crucially *realtime speed*, where a sustained value **below 1.0×** is the stutter/stall signal), the
+**GPU + its VRAM** (`nvidia-smi`), and the **resident LLM** sharing that VRAM (Ollama `/api/ps`).
+
+**`GET /v1/playout/doctor`** (admin-only, §11) composes exactly those into one health picture:
+
+- A **GPU/VRAM header** — total and used VRAM, encoder-engine utilisation, and the resident LLM's
+  footprint — because the shared-GPU contention (§8.2) is invisible from the encoder rows alone.
+- One **health row per (channel, target)**: its encoder + hardware/software, its **mode**
+  (`direct-play` / `transcode`), its speed, and a verdict — **`ok`** (comfortably ≥1.0×),
+  **`degraded`** (near 1.0×, at risk), or **`stalled`** (below 1.0× — the channel is losing to
+  wall-clock and will buffer) — each with a one-line reason an operator can act on.
+
+It is a **read-only projection of live state**, never a control surface: it changes nothing, so it is
+safe to poll and safe to hand a support request. It is the in-app twin of `scripts/playout-diag.sh`
+(the shell-level process/GPU forensics), and it is what the dashboard's playout panel renders. Where
+`GET /v1/playout/sessions` reports raw per-encoder telemetry, the doctor adds the *verdict and the
+context* — the GPU/LLM picture and the ok/degraded/stalled judgement — so "why is it black?" has an
+answer without shelling into the box.
 
 ### Consequences recorded honestly
 
@@ -2131,6 +2274,7 @@ Internal playout (§9.1) serves segments to a **television**, which cannot hold 
 - **It does not touch the allowlist.** A device is not a user, is never provisioned as one, and cannot become one. The invariant that *"a login attempt for a username with no matching row is rejected"* is untouched, because this path has no username.
 - **Rotation is a deliberate, gated action.** Regenerating `playout_token` invalidates the media server's wiring: guide entries survive, playback stops until Live TV is re-connected. The UI requires a typed confirmation and says exactly that.
 - **Redaction applies** (config-design §4): the token never appears in logs, error bodies, or `setup/status`, and it is covered by the log-grep redaction test like every other secret.
+- **The in-app player is a person, and gets a derived credential — not the token (V46).** The Web UI's Watch surface (§9.1, §12) is used by a logged-in **person**, so it authenticates by session to `POST /v1/channels/{id}/play-url`, which returns a **short-lived signed HLS URL**. The signature is an HMAC over `channel + expiry` keyed by `playout_token` — so the browser holds a **scoped, expiring** capability for one channel, never the device secret itself. The HLS routes accept this signed URL **or** the raw device token; both remain read-only and playout-scoped. Rotating `playout_token` invalidates outstanding signed URLs too, which is correct: the same rotation that re-wires the media server also cuts existing browser sessions.
 
 *Comparison:* `API_TOKEN` is break-glass **admin** — full authority, one secret, for a human or a script acting as one. `playout_token` is the opposite: no authority beyond reading streams, held by an appliance. They are separate secrets and must not be conflated.
 
@@ -2220,13 +2364,14 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
 
   ✅ **The Channels/Guide fold is DONE** (2026-07-26). It was blocked for several phases on one thing — the grid had no origination affordance, so removing the card list would have stranded the everyday way a channel gets made. The v2 mock settles it: its **Guide screen is headed "Channels"** and carries the `✦ Add a channel` button in its header, with the inline describe panel and the "Dead air" empty state beneath. The affordance moved to the grid; `/channels` and `/suggest` are now **redirects** to `/guide`, kept so existing bookmarks and deep links do not 404. `/channels/{id}` is untouched — evolution still lives there.
 
-  The **channel detail page is four surfaces, organized by intent, with two audiences** — the everyday **Overview is the viewer surface (read-only); the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
+  The **channel detail page is five surfaces, organized by intent, with two audiences** — the everyday **Overview and Watch are viewer surfaces; the other three are admin.** Every surface answers one question, so the page stops being a flat pile of tabs:
   - **Overview** — *"Is it on? What's playing? What's on later?"* Status (`OnAirIndicator`) + an **Upcoming guide strip** — the program airing now (highlighted) then the next few with their real Tunarr airtimes (`GET …/{id}/upcoming`, §6: Tunarr owns airtimes; commercial gaps filtered out). This is the schedule on the product's face, shown to every user. An admin-only **diagnostics** disclosure carries the relaxation-ladder report (§9), drift, and the Tunarr link — status, with one deliberate exception: the per-channel **playout backend** (§9.1) sits in its Broadcast section, because *who streams this channel* is the same subject as the Tunarr link below it and changing it is an infrastructure decision, not a content one. (The channel-icon editor lives in the **page header** beside the channel's name, not here — it is a setting, not read-only status.)
+  - **Watch** (viewer) — *"Play this channel, here."* (V46) A live HLS player (§9.1) — inline 16:9 plus a full-frame **theater** mode — that joins the channel mid-programme, exactly as a TV does. Shown to every user; also the destination of the **Watch** action in the guide's per-row ⋮ menu. Its controls are scoped by who they affect: **Quality** is per-viewer (a transport/tier choice, safe to vary per session); **Audio** and **Subtitles** are **admin-scoped and channel-wide** because internal playout is one encoder per channel fanned to all viewers, so those re-pick the track / burn-in for the shared stream (§9.1 audio-track and subtitle overrides — a member sees the current values, only an admin changes them). "Open in {media server}" and "Copy stream URL" hand off to the household's usual client. *This overrides the v2 design mock, which placed the player inline in Overview; a dedicated surface is the cleaner home for a distinct intent ("watch" vs "is it working").*
   - **Programming** (admin) — *"What plays, and when?"* One surface with a visible hierarchy: **what plays** (the lineup + scope: era, genres, audience ceiling + unrated, runtimeMax, and the *only these shows* series picker) → **how it's ordered** (ordering, separation) → **when it changes** (the wall-clock curation rules, `programming-design.md` §6.5, plus **seasonal**/holiday behaviour on the calendar clock). The `GET …/cycle` **cycle preview docks here** as the shared verification pane ("what airs Saturday 9am, and which rule wins"). **Refine-with-AI is a verb on this surface, not a separate place** — a header action opens the describe→review→apply loop (§8) acting on the *same* object the manual controls edit; the review shows a diff including **policy deltas** (so a refine can't silently change era/ceiling — §8.2 ownership).
   - **Filler** (admin) — *"What plays between shows?"* The per-channel selection (era/audience/category/kinds + pin/exclude) with a **live sandbox** — every change re-assembles the actual break against an unsaved draft (`POST …/pods/preview`, §7/§10) so you see exactly what airs before you **Apply**.
   - **Danger zone** (admin) — *"Stop or remove this channel."* Pause/resume and a typed-confirm **delete**. Deliberately narrow: a tab headed by an irreversible action is the wrong home for anything an operator edits routinely, so identity and growth settings live where they are used rather than being grouped here as "lifecycle".
 
-  ⚠ **There is no Settings tab, and the auto-curate opt-in is not on one.** This bullet previously described a fifth *Settings* surface holding identity + lifecycle + auto-curate. It was never built — the tabs are `info | programming | filler | danger` (`SECTION_IDS`, `channels/$id.tsx`) — and describing it cost real work: the 2026-07-26 surface audit found `autoCurate`'s map row asserting a home ("Settings → lifecycle") that did not exist, so anyone checking "is auto-curate reachable?" read a row saying yes. Identity (name/number/group/**logo**) lives in the **page header**, next to the name it edits; auto-curate lives in **Programming → when it changes** (below), beside the curation rules it shares a clock with. Both are deliberate, not drift.
+  ⚠ **There is no Settings tab, and the auto-curate opt-in is not on one.** This bullet previously described a *Settings* surface holding identity + lifecycle + auto-curate. It was never built — the tabs are `info | watch | programming | filler | danger` (`SECTION_IDS`, `channels/$id.tsx`; `watch` added V46) — and describing it cost real work: the 2026-07-26 surface audit found `autoCurate`'s map row asserting a home ("Settings → lifecycle") that did not exist, so anyone checking "is auto-curate reachable?" read a row saying yes. Identity (name/number/group/**logo**) lives in the **page header**, next to the name it edits; auto-curate lives in **Programming → when it changes** (below), beside the curation rules it shares a clock with. Both are deliberate, not drift.
 
   **Two commit models, each cued:** most edits are **seamless** — no "rebuild now" button; an edit auto-reconciles in the background and the page updates live (the `channel` SSE frame). The **review-before-apply** surfaces say so explicitly: AI refine's diff, the filler sandbox, and **the Programming surface's scheduling rules** (below). A **surface map** (below) is the contract that every channel capability has exactly one home and audience.
 
@@ -2245,6 +2390,10 @@ Human control surface for the whole loop: browse/search, drive suggestions, appr
   | name / number / group | `PATCH` `name`/`number`/`group` | Overview → header (inline rename/renumber); `group` API-only v1 | admin |
   | channel icon (`logo`) | `PATCH` `logo`; `GET …/{id}/icon-suggestions`, `POST …/{id}/icon` | Overview → Channel icon | viewer sees it; admin edits |
   | on-air status, now/next, upcoming guide | `GET …/now-next` (card), `GET …/{id}/upcoming` (Overview strip) | Overview | viewer |
+  | watch in browser (live HLS player + theater) | `POST …/{id}/play-url` → signed HLS URL; `GET /playout/hls/{id}.m3u8` (+segments) | Watch; also guide → row ⋮ → Watch | viewer |
+  | stream quality (per-viewer tier) | `play-url` `quality` param | Watch → Quality picker | viewer |
+  | audio track (channel-wide) | `policy.playout.audio_language` | Watch → Audio picker | viewer sees; admin edits |
+  | subtitles (channel-wide burn-in) | `policy.playout.subtitles` | Watch → Subtitles picker | viewer sees; admin edits |
   | cross-channel schedule (time grid) | `GET /v1/guide?from=&to=` | **Guide** (top-level, not a channel surface) | viewer |
   | relaxation ladder, drift, Tunarr link | `policy.applied`, status | Overview → diagnostics | admin |
   | lineup (add/remove/reorder, season windows) | `PATCH` `lineup` | Programming → What plays | admin |
@@ -2463,6 +2612,7 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Help rendering | `react-markdown` + `remark-gfm` over the embedded `docs/` markdown | Offline, consistent with §7.1 |
 | Component workshop + gallery | **Storybook 10** (`@storybook/react-vite`) + `@storybook/addon-a11y` (axe, in the workshop) | The component gallery/contract *and* dev workshop (frontend-design §5); carries to the future mobile app via `@storybook/react-native` (Expo, on-device). Replaces the hand-rolled `/__gallery` registry. The CI gate (visual + a11y) is **one Playwright pass** over the offline `storybook-static` build. **Chromatic rejected** — hosted SaaS visual-diff, breaks the offline/self-hosted rule (§16) |
 | FE tests | Vitest + Testing Library (jsdom units) + a story-coverage test; **Playwright** over `storybook-static` for the visual suite (`toHaveScreenshot`) **and** a11y (`@axe-core/playwright`), plus the e2e approve-flow smoke | Matches §19 |
+| Browser HLS playback (Watch, §9.1/§12) | **`hls.js`** | The Watch player (V46) plays a channel's HLS in the browser. Safari/iOS play `.m3u8` natively via `<video>`; every other browser needs a Media-Source-Extensions shim, and `hls.js` is the maintained one (it uses `ManagedMediaSource` where present, so it tracks the modern MSE successor rather than freezing on the old API). Player chrome is **hand-built to the mock**, not the library's — so this is a *focused transport lib*, not a player framework (video.js/Vidstack rejected: their value is controls we recreate anyway, per §14's "focused library over framework"). Native path uses no lib at all; the same `.m3u8` later feeds AVPlayer/ExoPlayer, which is why the transport is HLS. CSP-safe (no external hosts), ~150kb, bundled into the embedded assets. |
 
 ### Ingest tooling & CI
 - **Ingest is core Go code** (`internal/clipfetch` — named so it is never confused with `internal/ingest`, the Sonarr/Radarr *webhook* handler of §6), shelling out to **`yt-dlp`** + **`ffmpeg`** (CLI) for YouTube/playlists and plain `net/http` for Archive.org; it writes files + info-JSON sidecars into the drop-folder. Deliberately dumb. Those binaries — plus **`deno`** (modern yt-dlp requires it for YouTube extraction), **`ffprobe`**, and **`whisper-cli`** (below) — are the **only** vendored non-Go executables the project allows, and they are invoked via `exec`, never linked. **They ship in the single image** (§16); there is no variant that omits them, so the `ingest` feature is always available.

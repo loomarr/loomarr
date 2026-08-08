@@ -2,9 +2,6 @@ package playout
 
 import (
 	"context"
-	"encoding/json"
-	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -81,60 +78,6 @@ func PickAudioTrack(tracks []AudioTrack, prefer string) int {
 //
 // An interface so the resolver can be tested without exec, and so a failing probe is a normal
 // return rather than a special case: nil tracks select index 0, which is what the code did
-// before this existed.
-type AudioProber func(ctx context.Context, streamURL string) ([]AudioTrack, error)
-
-// ffprobeAudioOutput is the shape of `ffprobe -show_streams -select_streams a -of json`.
-type ffprobeAudioOutput struct {
-	Streams []struct {
-		Tags struct {
-			Language string `json:"language"`
-		} `json:"tags"`
-	} `json:"streams"`
-}
-
-// FFprobeAudioNextTo returns an AudioProber using the ffprobe beside the given ffmpeg binary.
-//
-// Takes the FFMPEG path and derives ffprobe from it, the same way filler.FFprobeNextTo does and
-// for the same reason: `playout.ffmpeg_path` is the setting operators actually have, the two
-// binaries ship together, and a second path setting would be a knob whose only correct value is
-// derivable from the first. The derivation is shared rather than re-implemented — see
-// ffprobeBesideFFmpeg.
-//
-// `-select_streams a` so the indices returned are already audio-relative, which is exactly what
-// PickAudioTrack's contract needs. Asking for all streams and filtering here would reintroduce
-// the absolute-vs-audio-relative confusion the doc comment above warns about.
-func FFprobeAudioNextTo(ffmpegPath string) AudioProber {
-	bin := ffprobeBesideFFmpeg(ffmpegPath)
-	return func(ctx context.Context, streamURL string) ([]AudioTrack, error) {
-		cmd := exec.CommandContext(ctx, bin,
-			"-v", "error",
-			"-select_streams", "a",
-			"-show_entries", "stream_tags=language",
-			"-of", "json",
-			streamURL,
-		)
-		out, err := cmd.Output()
-		if err != nil {
-			return nil, err
-		}
-		var parsed ffprobeAudioOutput
-		if err := json.Unmarshal(out, &parsed); err != nil {
-			return nil, err
-		}
-		tracks := make([]AudioTrack, 0, len(parsed.Streams))
-		for _, s := range parsed.Streams {
-			tracks = append(tracks, AudioTrack{Language: s.Tags.Language})
-		}
-		return tracks, nil
-	}
-}
-
-// ffprobeBesideFFmpeg maps an ffmpeg path to the ffprobe next to it.
-func ffprobeBesideFFmpeg(ffmpegPath string) string {
-	if ffmpegPath == "" || ffmpegPath == "ffmpeg" {
-		return "ffprobe"
-	}
-	dir, base := filepath.Split(ffmpegPath)
-	return filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
-}
+// before this existed. The concrete prober (FFprobeAudioNextTo) lives in probe.go, where all
+// ffprobe use is consolidated.
+type AudioProber func(ctx context.Context, input string) ([]AudioTrack, error)

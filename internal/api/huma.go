@@ -142,11 +142,20 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
+	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
+	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
+	// without internal playout wired explains itself rather than 404ing.
+	playoutHLS PlayoutHLS
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
 	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
 	playoutFont func() string
+	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
+	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
+	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
+	// or none), and the ladder skips straight from hardware to the software fallback.
+	reclaimVRAM func(ctx context.Context)
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -705,6 +714,9 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
+	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
+	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
+	PlayoutHLS PlayoutHLS
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
 	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
@@ -712,6 +724,11 @@ type Options struct {
 	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
 	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
 	PlayoutFont func() string
+	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
+	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
+	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder
+	// calls it only after a hardware encode has already produced nothing.
+	ReclaimVRAM func(ctx context.Context)
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

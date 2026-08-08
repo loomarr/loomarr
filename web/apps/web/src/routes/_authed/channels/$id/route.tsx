@@ -26,11 +26,14 @@ import { ChannelDetailProvider } from "./-channel-detail-context";
 // the mutators, and the identity header; each section is its own route file reading them back
 // through `useChannelDetail()` (`-channel-detail-context.tsx`).
 
+// `viewer: true` marks a section a member can reach too — the tab bar shows exactly those for a
+// non-admin (Overview + Watch, both viewer surfaces per §12), and the full set for an admin.
 const SECTIONS = [
-  { id: "info", label: "Channel info", to: "/channels/$id/info" },
-  { id: "programming", label: "Programming", to: "/channels/$id/programming" },
-  { id: "filler", label: "Filler", to: "/channels/$id/filler" },
-  { id: "danger", label: "Danger zone", to: "/channels/$id/danger" },
+  { id: "info", label: "Channel info", to: "/channels/$id/info", viewer: true },
+  { id: "watch", label: "Watch", to: "/channels/$id/watch", viewer: true },
+  { id: "programming", label: "Programming", to: "/channels/$id/programming", viewer: false },
+  { id: "filler", label: "Filler", to: "/channels/$id/filler", viewer: false },
+  { id: "danger", label: "Danger zone", to: "/channels/$id/danger", viewer: false },
 ] as const;
 
 type AirState = { dot: OnAirState; label: string; detail: string };
@@ -192,18 +195,26 @@ const ChannelDetailLayout = () => {
         )}
       </header>
 
-      {/* A HORIZONTAL tab bar under the header (admin only). Each tab is its OWN ROUTE now
-          (V-nav-paths); a viewer sees no bar — just the read-only Channel info at /info. */}
-      {isAdmin && (
-        <div className="px-6 pt-2">
-          <NavTabs
-            label="Channel sections"
-            linkComponent={Link}
-            tabs={SECTIONS.map((s) => ({ id: s.id, label: s.label, to: s.to.replace("$id", id) }))}
-            activeId={SECTIONS.find((s) => pathname.endsWith(`/${s.id}`))?.id ?? "info"}
-          />
-        </div>
-      )}
+      {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin
+          sees every section; a viewer sees only the viewer surfaces (Overview + Watch, §12) —
+          previously a viewer saw NO bar, but Watch gave them a second reachable surface, so the
+          bar now appears for them with just those two. */}
+      {(() => {
+        const visible = SECTIONS.filter((s) => isAdmin || s.viewer);
+        // One reachable section ⇒ no bar (a lone tab is chrome, not navigation). True only if an
+        // install ever hides Watch; today a viewer always has Overview + Watch.
+        if (visible.length < 2) return null;
+        return (
+          <div className="px-6 pt-2">
+            <NavTabs
+              label="Channel sections"
+              linkComponent={Link}
+              tabs={visible.map((s) => ({ id: s.id, label: s.label, to: s.to.replace("$id", id) }))}
+              activeId={visible.find((s) => pathname.endsWith(`/${s.id}`))?.id ?? "info"}
+            />
+          </div>
+        );
+      })()}
 
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}

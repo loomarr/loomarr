@@ -49,6 +49,11 @@ const viewerBuffer = 8
 // Session is one channel's encoder plus its connected viewers.
 type Session struct {
 	ChannelID string
+	// Target is the codec audience this session encodes for (§9.1 V47) — part of the session's
+	// identity, not a viewer attribute. Two sessions can share a ChannelID and differ only here
+	// (a browser one transcoding HEVC, a tuner one copying it). Reported on SessionStat so the
+	// dashboard shows which audience an encoder serves.
+	Target Target
 
 	// cancel stops the encoder. The context IS the lifetime (process.go) — there is no
 	// separate "stop the ffmpeg" path that could disagree with it.
@@ -102,16 +107,33 @@ type Session struct {
 // A VALUE, not a pointer into the live session: the caller reads it without holding a lock
 // and cannot accidentally mutate an encoder's state while it runs.
 type SessionStat struct {
-	ChannelID string  `json:"channelId"`
-	Viewers   int     `json:"viewers"`
-	Encoder   string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`
-	Hardware  bool    `json:"hardware" doc:"Whether the resolved encoder is hardware-accelerated"`
-	Speed     float64 `json:"speed" doc:"Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter"`
+	ChannelID string `json:"channelId"`
+	// Target names the codec audience this encoder serves — "browser" or "mediaserver" (§9.1 V47).
+	// A channel can have one row per target; the dashboard shows both so an operator seeing two
+	// encoders on one channel knows one is a browser transcode and one is a tuner copy.
+	Target   string  `json:"target"`
+	Viewers  int     `json:"viewers"`
+	Encoder  string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`
+	Hardware bool    `json:"hardware" doc:"Whether the resolved encoder is hardware-accelerated"`
+	Speed    float64 `json:"speed" doc:"Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter"`
 	// BufferedMS is how far ahead of realtime the encoder has produced output — out_time
 	// minus wall-clock elapsed. Negative means it is BEHIND, which is the same condition a
 	// sub-1.0 speed reports, seen as accumulated deficit rather than an instantaneous rate.
 	BufferedMS int64 `json:"bufferedMs"`
 	UptimeMS   int64 `json:"uptimeMs"`
+}
+
+// sessionKey identifies one live encoder. A channel does NOT have a single stream — it has one
+// per codec AUDIENCE (§9.1 V47): a media-server tuner ingests HEVC, a browser needs h264, so the
+// two get different copy/transcode plans and therefore different encoders. The key is the pair.
+//
+// A struct rather than a "channel|target" string: it is a comparable value Go maps accept
+// directly, with no delimiter to escape and no parse to get wrong. For an h264 channel both
+// targets' plans are `-c copy`, so the "second" session is a cheap remux, not a second encode —
+// the split's cost is bounded by the copy plan, not the key (see §9.1).
+type sessionKey struct {
+	channel string
+	target  Target
 }
 
 // Manager owns the live sessions. One per process.
@@ -139,7 +161,7 @@ type Manager struct {
 	onChange func()
 
 	mu       sync.Mutex
-	sessions map[string]*Session
+	sessions map[sessionKey]*Session
 }
 
 // OnChange registers the session-set change hook. Called once during composition, before any
@@ -155,7 +177,12 @@ func (m *Manager) notifyChange() {
 
 // Spawner starts an encoder for a channel and returns the supervised process. The
 // implementation builds args from the resolved Airing and the load-aware Profile.
-type Spawner func(ctx context.Context, channelID string) (*Process, error)
+//
+// It takes the TARGET as well as the channel (§9.1 V47): the parent fetches its ffconcat playlist
+// over HTTP, and that playlist URL must carry `?target=` so every program it requests plans its
+// copy for the right codec audience. A browser session's parent and a tuner session's parent read
+// DIFFERENT playlist URLs for the same channel.
+type Spawner func(ctx context.Context, channelID string, target Target) (*Process, error)
 
 // NewManager builds a session manager.
 //
@@ -171,7 +198,7 @@ func NewManager(spawn Spawner, maxChannels int, grace time.Duration, log *slog.L
 	return &Manager{
 		spawn:       spawn,
 		maxChannels: maxChannels, grace: grace, log: log,
-		sessions: map[string]*Session{},
+		sessions: map[sessionKey]*Session{},
 	}
 }
 
@@ -183,11 +210,15 @@ func NewManager(spawn Spawner, maxChannels int, grace time.Duration, log *slog.L
 // abandoned channel stops burning a core promptly.
 const DefaultGrace = 30 * time.Second
 
-// Attach connects a viewer to a channel, starting the encoder if it is not running.
+// Attach connects a viewer to a channel FOR A TARGET, starting the encoder if one is not already
+// running for that (channel, target) pair (§9.1 V47). A tuner attaches as TargetMediaServer and a
+// browser as TargetBrowser; they get separate sessions when the copy plan differs (HEVC) and
+// separate-but-both-cheap `-c copy` sessions when it does not (h264).
 //
 // Returns a chunk channel and a detach func. The caller MUST call detach — it is what
 // decrements the refcount, and a leaked viewer keeps a channel encoding forever.
-func (m *Manager) Attach(ctx context.Context, channelID string) (<-chan []byte, func(), error) {
+func (m *Manager) Attach(ctx context.Context, channelID string, target Target) (<-chan []byte, func(), error) {
+	key := sessionKey{channel: channelID, target: target}
 	// THE RACE (prior-art §6.3). This lock is held across the find-or-create, including
 	// the spawn — deliberately, and it is the whole point. Two viewers tuning the same
 	// channel in the same millisecond both find no session; if the lock were released
@@ -210,47 +241,56 @@ func (m *Manager) Attach(ctx context.Context, channelID string) (<-chan []byte, 
 		}
 	}()
 
-	if s := m.sessions[channelID]; s != nil {
+	if s := m.sessions[key]; s != nil {
 		ch, detach, ok := s.addViewer()
 		if ok {
 			return ch, detach, nil
 		}
 		// The session is mid-teardown. Drop it and start fresh below rather than
 		// attaching to something that will never produce bytes.
-		delete(m.sessions, channelID)
+		delete(m.sessions, key)
 	}
 
-	// Admission, not eviction. See ErrAtCapacity.
+	// Admission, not eviction. See ErrAtCapacity. The bound counts ENCODERS, which is what
+	// consumes the box — so a channel watched as both a browser and a tuner legitimately counts
+	// twice here, because it is two encoders. len(m.sessions) already reflects that.
 	if AtCapacity(m.maxChannels, len(m.sessions)) {
 		return nil, nil, ErrAtCapacity
 	}
 
-	s, err := m.start(channelID)
+	s, err := m.start(channelID, target)
 	if err != nil {
 		return nil, nil, err
 	}
-	m.sessions[channelID] = s
+	m.sessions[key] = s
 	started = true
 
 	ch, detach, _ := s.addViewer() // fresh session: cannot be closed
 	return ch, detach, nil
 }
 
-// start launches an encoder for a channel. Caller holds m.mu.
-func (m *Manager) start(channelID string) (*Session, error) {
+// start launches an encoder for a (channel, target). Caller holds m.mu.
+func (m *Manager) start(channelID string, target Target) (*Session, error) {
 	// context.Background, NOT the attaching viewer's request context. The session
 	// outlives whoever started it — binding its lifetime to the first viewer's request
 	// would kill the channel for everybody the moment that one person's TV disconnected.
 	ctx, cancel := context.WithCancel(context.Background())
 
-	proc, err := m.spawn(ctx, channelID)
+	if m.log != nil {
+		m.log.Info("playout: session.start spawning encoder", "channel", channelID, "target", target.String())
+	}
+	proc, err := m.spawn(ctx, channelID, target)
 	if err != nil {
 		cancel()
+		if m.log != nil {
+			m.log.Warn("playout: session.start spawn failed", "channel", channelID, "target", target.String(), "err", err)
+		}
 		return nil, err
 	}
 
 	s := &Session{
 		ChannelID: channelID,
+		Target:    target,
 		cancel:    cancel, proc: proc, log: m.log,
 		grace:     m.grace,
 		onClosed:  m.notifyChange,
@@ -274,9 +314,17 @@ func (s *Session) pump() {
 	// the per-chunk fan-out overhead is negligible, small enough that a viewer joining
 	// mid-stream waits milliseconds for its first bytes.
 	buf := make([]byte, 64*1024)
+	var total int64
 	for {
 		n, err := s.proc.Stdout.Read(buf)
 		if n > 0 {
+			if total == 0 && s.log != nil {
+				s.mu.Lock()
+				vc := len(s.viewers)
+				s.mu.Unlock()
+				s.log.Info("playout: session first bytes from parent", "channel", s.ChannelID, "n", n, "viewers", vc)
+			}
+			total += int64(n)
 			// Copy before broadcasting: buf is reused on the next iteration, and the
 			// viewers hold their chunk in a buffered channel across it. Handing them the
 			// shared slice would corrupt whatever they had not yet written — a data race
@@ -456,11 +504,11 @@ func (m *Manager) Stop() {
 	}
 }
 
-// session returns a live session by channel id, or nil. For tests and telemetry.
-func (m *Manager) session(channelID string) *Session {
+// session returns a live session by (channel, target), or nil. For tests and telemetry.
+func (m *Manager) session(channelID string, target Target) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessions[channelID]
+	return m.sessions[sessionKey{channel: channelID, target: target}]
 }
 
 // ActiveCount reports how many channels are encoding. This is the `active` input to
@@ -505,7 +553,14 @@ func (m *Manager) Stats(now time.Time) []SessionStat {
 			out = append(out, st)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ChannelID < out[j].ChannelID })
+	// By channel, then target — a channel can now have two rows (browser + tuner), and a stable
+	// tiebreak keeps them from reshuffling between polls.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ChannelID != out[j].ChannelID {
+			return out[i].ChannelID < out[j].ChannelID
+		}
+		return out[i].Target < out[j].Target
+	})
 	return out
 }
 
@@ -531,6 +586,7 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 
 	return SessionStat{
 		ChannelID:  s.ChannelID,
+		Target:     s.Target.String(),
 		Viewers:    len(s.viewers),
 		Encoder:    string(s.encoder),
 		Hardware:   s.encoder != "" && s.encoder != EncoderSoftware,
@@ -540,7 +596,12 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 	}, true
 }
 
-// ReportProgram records telemetry for the program currently encoding on a channel (V16).
+// ReportProgram records telemetry for the program currently encoding on a (channel, target) (V16).
+//
+// The TARGET is part of the address (§9.1 V47): a channel can have two live sessions (a browser
+// one and a tuner one), and a per-program child belongs to exactly one — the one whose parent
+// requested it, which is why the child carries its target through the program URL. Reporting to the
+// wrong session would put a browser transcode's speed on the tuner's dashboard row.
 //
 // Called by the per-program encode path, which is where the real encoder runs — see the
 // `encoder` field for why the session's own process is the wrong source. A report for a channel
@@ -550,8 +611,8 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 //
 // Progress samples are a LATENCY signal, never load-bearing (§8) — the same discipline the SSE
 // bus documents. Dropping one costs a stale number for a second, nothing more.
-func (m *Manager) ReportProgram(channelID string, enc Encoder, p Progress) {
-	s := m.session(channelID)
+func (m *Manager) ReportProgram(channelID string, target Target, enc Encoder, p Progress) {
+	s := m.session(channelID, target)
 	if s == nil {
 		return
 	}

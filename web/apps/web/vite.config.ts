@@ -13,6 +13,9 @@ import { defineConfig, type Plugin } from "vite";
 // against the real backend with cookie auth intact.
 const API_TARGET = process.env.LOOMARR_API ?? "http://localhost:8080";
 const proxied = [
+  // /v1 covers the whole versioned surface INCLUDING /v1/playout (§9.1 V47: the playout streaming
+  // routes moved under /v1, so the in-app HLS player's same-origin /v1/playout/hls/... URLs are
+  // proxied to the Go server automatically — no separate entry needed).
   "/v1",
   "/hooks",
   "/docs",

@@ -15,10 +15,10 @@ import (
 func TestLiveTVURLsFor_InternalPointsAtLoomarr(t *testing.T) {
 	got := setup.LiveTVURLsFor("internal", "http://tunarr:8000", "http://loomarr:8080", "tok123")
 
-	if !strings.HasPrefix(got.M3U, "http://loomarr:8080/playout/tuner.m3u") {
+	if !strings.HasPrefix(got.M3U, "http://loomarr:8080/v1/playout/tuner.m3u") {
 		t.Errorf("M3U = %q, want Loomarr's own tuner endpoint", got.M3U)
 	}
-	if !strings.HasPrefix(got.XMLTV, "http://loomarr:8080/playout/guide.xml") {
+	if !strings.HasPrefix(got.XMLTV, "http://loomarr:8080/v1/playout/guide.xml") {
 		t.Errorf("XMLTV = %q, want Loomarr's own guide endpoint", got.XMLTV)
 	}
 	// The media server fetches these unauthenticated from a background job, so the device

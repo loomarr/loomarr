@@ -109,6 +109,10 @@ func (s *Server) registerChannels(api huma.API) {
 		Summary: "Remove a channel", Description: "Admin only. Detaches by default (§7).",
 		Tags: []string{"channels"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.deleteChannel)
+
+	// The Watch surface's play-url op (§9.1). Mounted here so both the live router and the
+	// OpenAPI-export parity path (export.go) pick it up from one call, never a hand-kept list.
+	s.registerChannelPlayURL(api)
 }
 
 type channelIDInput struct {

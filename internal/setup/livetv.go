@@ -58,8 +58,8 @@ func InternalPlayoutURLs(publicURL, deviceToken string) TunarrURLs {
 		q = "?token=" + url.QueryEscape(deviceToken)
 	}
 	return TunarrURLs{
-		M3U:   base + "/playout/tuner.m3u" + q,
-		XMLTV: base + "/playout/guide.xml" + q,
+		M3U:   base + "/v1/playout/tuner.m3u" + q,
+		XMLTV: base + "/v1/playout/guide.xml" + q,
 	}
 }
 

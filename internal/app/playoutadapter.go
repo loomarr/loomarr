@@ -106,6 +106,13 @@ type playoutResolver struct {
 	// applies without a restart, like the other live reads above.
 	fillerDir func() string
 
+	// pathMap resolves the parsed `library.path_map` (§15, V47) live, so a mapping edit applies
+	// without a restart. Empty ⇒ no mapping ⇒ ResolveInput uses the media server's HTTP stream.
+	pathMap func() library.PathMap
+	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
+	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
+	probeFormat playout.FormatProber
+
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
 	// audioLanguage is the operator's preferred audio track language (§9.1, `eng` by default),
@@ -116,7 +123,11 @@ type playoutResolver struct {
 	// index. Nil ⇒ track 0, the pre-existing behaviour: an install that cannot probe still
 	// plays, it just cannot honour the preference.
 	probeAudio playout.AudioProber
-	log        *slog.Logger
+	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
+	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
+	// only the current channel default rather than blocking.
+	probeTracks playout.TrackProber
+	log         *slog.Logger
 	// channels reads the channel the arranged-cycle cache fingerprints, and cycles is that
 	// cache (cyclecache.go). Both nil ⇒ the guide computes every cycle live, which is exactly
 	// the pre-cache behaviour — so tests and any install that skips the wiring still get correct
@@ -192,15 +203,22 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 		}
 	}
 
-	url := r.lib.StreamURL(airing.LibraryItemID)
-	if url == "" {
+	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
+	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
+	// direct play begins — reading the file lets the encoder `-c copy` it (playout.PlanCopy).
+	var pm library.PathMap
+	if r.pathMap != nil {
+		pm = r.pathMap()
+	}
+	src := r.lib.ResolveInput(ctx, airing.LibraryItemID, pm, library.StatReadableFile)
+	if src.URL == "" {
 		// The item id is real but the media server is unconfigured, so there is nothing to
 		// read. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
-	return airing, url, nil
+	return airing, src.URL, nil
 }
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
@@ -600,6 +618,54 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, streamURL string) i
 	return playout.PickAudioTrack(tracks, prefer)
 }
 
+// Tracks probes the audio + subtitle tracks of what's airing on a channel right now (§9.1 Watch,
+// V46). It resolves the current program's source URL exactly as the broadcast path does, then
+// probes it.
+//
+// BEST-EFFORT, like AudioTrackFor: nothing airing, no prober wired, or a failed probe all return
+// empty tracks rather than an error, so the Watch pickers degrade to "just the channel default"
+// instead of erroring. The one thing it does NOT swallow is a genuine store/resolve error (a
+// missing channel), which the handler needs to render a 404 rather than an empty list.
+func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error) {
+	airing, streamURL, err := r.AiringNow(ctx, channelID)
+	if err != nil {
+		return playout.MediaTracks{}, err
+	}
+	if r.probeTracks == nil || !airing.Playable() || streamURL == "" {
+		return playout.MediaTracks{}, nil
+	}
+	tracks, err := r.probeTracks(ctx, streamURL)
+	if err != nil {
+		if r.log != nil {
+			r.log.Debug("playout: tracks not probed for Watch pickers", "channel", channelID, "err", err)
+		}
+		return playout.MediaTracks{}, nil // degrade, don't fail the UI request
+	}
+	return tracks, nil
+}
+
+// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play, V47) —
+// probe the source, then PlanCopy. This is what makes a program direct-play: an h264 file to the
+// browser copies the video and transcodes at most the audio.
+//
+// BEST-EFFORT, and it fails SAFE toward TRANSCODE: no prober wired, no input, or a probe error all
+// return the zero CopyPlan (copy nothing → transcode both). A copy of an unprobed source could ship
+// a codec the target cannot play — a black frame — whereas an unnecessary transcode is merely slow.
+// So when we cannot know, we transcode.
+func (r *playoutResolver) PlanFor(ctx context.Context, input string, target playout.Target) playout.CopyPlan {
+	if r.probeFormat == nil || input == "" {
+		return playout.CopyPlan{} // transcode both
+	}
+	f, err := r.probeFormat(ctx, input)
+	if err != nil {
+		if r.log != nil {
+			r.log.Debug("playout: format not probed, transcoding", "input", library.RedactStreamURL(input), "err", err)
+		}
+		return playout.CopyPlan{}
+	}
+	return playout.PlanCopy(f, target)
+}
+
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
@@ -697,7 +763,7 @@ func channelOffset(channelID string) int64 {
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
 ) playout.Spawner {
-	return func(ctx context.Context, channelID string) (*playout.Process, error) {
+	return func(ctx context.Context, channelID string, target playout.Target) (*playout.Process, error) {
 		base := publicURL()
 		if base == "" {
 			// Without an absolute base the parent cannot fetch its own playlist: ffmpeg is a
@@ -705,8 +771,12 @@ func playoutSpawner(
 			// a clear message beats emitting a URL that fails inside ffmpeg.
 			return nil, fmt.Errorf("playout: server.public_url is not set, so ffmpeg cannot reach the playlist")
 		}
-		playlistURL := fmt.Sprintf("%s/playout/playlist/%s?token=%s",
-			strings.TrimRight(base, "/"), url.PathEscape(channelID), url.QueryEscape(token()))
+		// The playlist URL carries the session's TARGET (§9.1 V47), so every program the concat
+		// demuxer requests from it plans its copy for the right codec audience. Two sessions of one
+		// channel (a browser one, a tuner one) read two different playlist URLs that differ only here.
+		playlistURL := fmt.Sprintf("%s/v1/playout/playlist/%s?token=%s&target=%s",
+			strings.TrimRight(base, "/"), url.PathEscape(channelID), url.QueryEscape(token()),
+			url.QueryEscape(target.String()))
 		return playout.Start(ctx, ffmpegBin, playout.ConcatArgs(playlistURL), log, nil)
 	}
 }

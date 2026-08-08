@@ -109,6 +109,28 @@ type Warmer interface {
 // failure. This is a third outcome, so it gets its own name.
 var ErrNothingToWarm = errors.New("llm: no model configured to warm")
 
+// Evictor is the MIRROR of Warmer (§8.2, §9.1 V47): unload the local model from memory
+// NOW, instead of waiting out keep_alive. It exists because the suggester and playout share
+// one GPU — a resident 6GB model and several ffmpeg hardware encoders contend for VRAM, and a
+// hardware encode that cannot allocate its device context fails silently (no frame → a black
+// channel). A live stream is latency-critical and a suggestion can afford a cold reload, so
+// when the encoders need VRAM, playout evicts the model and reclaims it.
+//
+// Optional and local-only for the same reason as Warmer: a hosted endpoint has no residency
+// to manage. Callers type-assert; a provider that doesn't implement it is simply never evicted
+// (and a hosted LLM never contends for the local GPU, so there is nothing to do).
+type Evictor interface {
+	// Evict unloads the model, returning once the request is acknowledged. Best-effort by
+	// contract: an error is worth logging but never fatal — the worst case is the VRAM stays
+	// occupied and the encode falls back to software (§9.1). ErrNothingToEvict when there is
+	// no model to unload (nothing was resident to begin with).
+	Evict(ctx context.Context) error
+}
+
+// ErrNothingToEvict mirrors ErrNothingToWarm: the unload was declined because there is no
+// configured model to unload, not that one failed. Same three-outcome honesty.
+var ErrNothingToEvict = errors.New("llm: no model configured to evict")
+
 // ParseProvider validates the configured provider (§15 LLM_PROVIDER). `ollama` is
 // the local default; `openai` is the OpenAI-compatible client (which also reaches
 // hosted OpenAI/Gemini/Groq/OpenRouter/… and Ollama's own /v1 mode).

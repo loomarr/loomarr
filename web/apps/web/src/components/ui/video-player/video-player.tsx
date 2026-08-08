@@ -33,7 +33,7 @@ const mmss = (seconds: number): string => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
-const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerProps) => {
+const VideoPlayer = ({ src, title, autoPlay, leading, live, attach, className }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -47,6 +47,11 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
   // Distinguishes "still loading" from "0 seconds in": both are `current === 0`, and only one of
   // them should render as a dashed placeholder.
   const [ready, setReady] = useState(false);
+  // Controls OVERLAY the video (Emby/Jellyfin-style) and auto-hide during playback. `controlsShown`
+  // is the visibility; it is forced true while paused (a paused player always shows its controls,
+  // like every media player) and hides a few seconds after the last interaction while playing.
+  const [controlsShown, setControlsShown] = useState(true);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // ⚠ Reset when the SOURCE changes. A player reused for a second video (a dialog reopened on a
   // different clip) would otherwise show the previous one's elapsed time and playing state until
@@ -57,6 +62,41 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
     setDuration(0);
     setReady(false);
   }, []);
+
+  // Custom source binding (hls.js, etc.). When `attach` is given, the primitive hands over the
+  // element and runs the returned cleanup on unmount — so the element's lifecycle stays here while
+  // WHAT plays through it is the caller's concern. Re-runs if `attach` identity changes.
+  useEffect(() => {
+    if (!attach) return;
+    const el = videoRef.current;
+    if (!el) return;
+    return attach(el);
+  }, [attach]);
+
+  // revealControls shows the overlay and (re)arms the auto-hide. Called on mousemove/tap/focus over
+  // the frame. While paused, controls stay up — matching every media player — so the hide timer is
+  // only armed when playing.
+  const revealControls = useCallback(() => {
+    setControlsShown(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (playing) {
+      hideTimer.current = setTimeout(() => setControlsShown(false), 2800);
+    }
+  }, [playing]);
+
+  // A paused player always shows its controls; a playing one starts the hide countdown. Keeps the
+  // overlay in sync when playback state flips without a pointer event (autoplay, the video ending).
+  useEffect(() => {
+    if (!playing) {
+      setControlsShown(true);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      return;
+    }
+    revealControls();
+    return () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
+  }, [playing, revealControls]);
 
   const seekTo = useCallback((seconds: number) => {
     const el = videoRef.current;
@@ -101,12 +141,14 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
         toggle();
         break;
       case "ArrowLeft":
-        if (isSlider) return;
+        // Live has nothing to seek to, so the scrub shortcuts are inert (the scrubber itself is
+        // replaced by a LIVE indicator below).
+        if (isSlider || live) return;
         e.preventDefault();
         seekTo(current - SCRUB_STEP);
         break;
       case "ArrowRight":
-        if (isSlider) return;
+        if (isSlider || live) return;
         e.preventDefault();
         seekTo(current + SCRUB_STEP);
         break;
@@ -131,18 +173,26 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
   // activated.
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: shortcut layer, see above
-    <div className={cn("overflow-hidden", className)} onKeyDown={onKeyDown}>
-      <div className="relative aspect-video w-full bg-black">
+    <div
+      className={cn("group/player relative aspect-video w-full overflow-hidden bg-black", className)}
+      onKeyDown={onKeyDown}
+      onMouseMove={revealControls}
+      onMouseLeave={() => playing && setControlsShown(false)}
+      onFocus={revealControls}
+    >
+      <div className="relative size-full bg-black">
         {/* ⚠ No <track>: callers pass archive footage and live streams, neither of which has a
             caption track to point at. An empty one would assert captions exist. (No suppression
             needed — this config does not enable `useMediaCaption`.) */}
         <video
           ref={videoRef}
-          src={src}
+          // `attach` owns the source when present (hls.js binds via attachMedia, not a src
+          // attribute); otherwise the plain URL drives a native <video>.
+          src={attach ? undefined : src}
           // cursor-pointer because the frame itself toggles playback (onClick below) — the
-          // convention every video player follows, and an arrow over it would hide the
-          // affordance entirely since there is no other visual cue.
-          className="size-full cursor-pointer"
+          // convention every video player follows. The cursor hides with the controls during
+          // playback, exactly as Emby/Jellyfin do, so a still frame is not cluttered by an arrow.
+          className={cn("size-full cursor-pointer", !controlsShown && "cursor-none")}
           autoPlay={autoPlay}
           muted={muted}
           playsInline
@@ -161,9 +211,14 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
 
         {/* Title top-right, `leading` top-left, both on a scrim: they sit over arbitrary video,
             which has NO guaranteed contrast behind text. The same legibility rule the clip card's
-            overlays follow. */}
+            overlays follow. Fades WITH the controls (Emby/Jellyfin hide their top chrome too). */}
         {(title || leading) && (
-          <div className="pointer-events-none absolute top-0 right-0 left-0 flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent p-3">
+          <div
+            className={cn(
+              "pointer-events-none absolute top-0 right-0 left-0 flex items-start justify-between gap-2 bg-linear-to-b from-black/70 to-transparent p-3 transition-opacity duration-200",
+              controlsShown ? "opacity-100" : "opacity-0",
+            )}
+          >
             <div className="pointer-events-auto shrink-0">{leading}</div>
             {title && (
               <p className="pointer-events-auto min-w-0 truncate text-right font-medium text-sm text-static-100">
@@ -172,81 +227,97 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
             )}
           </div>
         )}
-      </div>
 
-      {/* The control bar — amber on the app's mono type, which is the whole reason these are
-          hand-built rather than the browser's. */}
-      <div className="flex items-center gap-3 border-border border-t bg-card px-4 py-3">
-        {/* ⚠ The app's `Button` primitive, NOT a hand-rolled <button>. Everything a control
+        {/* The control bar — OVERLAID on the video (Emby/Jellyfin-style), on a bottom scrim,
+            auto-hiding during playback. Amber on the app's mono type, which is why these are
+            hand-built rather than the browser's. */}
+        <div
+          className={cn(
+            "absolute right-0 bottom-0 left-0 flex items-center gap-3 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
+            controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+        >
+          {/* ⚠ The app's `Button` primitive, NOT a hand-rolled <button>. Everything a control
             needs — the pointer cursor Tailwind v4's Preflight stopped providing, the focus ring,
             the disabled handling — lives there once. Three hand-styled controls in this file each
             re-deriving `cursor-pointer` was the smell that said so. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggle}
-          // ⚠ The name changes with the STATE. A button permanently called "Play" lies as soon as
-          // the video is playing, and a screen-reader user has no other way to know.
-          aria-label={playing ? "Pause" : "Play"}
-          className="size-8 shrink-0 rounded-full text-signal hover:bg-transparent hover:text-signal-400"
-        >
-          {playing ? (
-            <Pause className="fill-current" aria-hidden />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggle}
+            // ⚠ The name changes with the STATE. A button permanently called "Play" lies as soon as
+            // the video is playing, and a screen-reader user has no other way to know.
+            aria-label={playing ? "Pause" : "Play"}
+            className="size-8 shrink-0 rounded-full text-signal hover:bg-transparent hover:text-signal-400"
+          >
+            {playing ? (
+              <Pause className="fill-current" aria-hidden />
+            ) : (
+              <Play className="fill-current" aria-hidden />
+            )}
+          </Button>
+
+          {live ? (
+            // LIVE: no scrubber. A live channel plays what is on — there is nothing to seek to
+            // (§9.1) — so the seek bar is replaced by a non-interactive LIVE indicator and a filled
+            // bar, which reads as "you are at the live edge" without offering a seek that does
+            // nothing.
+            <div className="flex flex-1 items-center gap-3">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded bg-onair px-2 py-0.5 font-mono text-[10px] text-static-0 uppercase tracking-wide">
+                <span className="size-1.5 rounded-full bg-static-0 motion-safe:animate-pulse" aria-hidden />
+                Live
+              </span>
+              <div className="h-1.5 flex-1 rounded-full bg-static-700" aria-hidden>
+                <div className="h-full rounded-full bg-onair" style={{ width: "100%" }} />
+              </div>
+            </div>
           ) : (
-            <Play className="fill-current" aria-hidden />
+            <>
+              {/* Radix Slider (§14). It owns the WAI-ARIA contract, arrow/Home/End stepping, pointer
+                capture, drag and click-anywhere-to-seek — all of which this file used to hand-roll.
+
+                ⚠ `aria-valuetext` is still ours, and is the one thing Radix cannot infer: without
+                it a screen reader reads `aria-valuenow` as a bare number of seconds ("4"), where
+                what a listener needs is "0:04 of 0:30".
+
+                ⚠ `max` is floored to at least 1. Radix divides by the range to place the thumb, so
+                a max of 0 — every render before metadata arrives — yields NaN and React drops the
+                style entirely, leaving the thumb stuck at the left edge even once playback starts. */}
+              <SliderPrimitive.Root
+                value={[current]}
+                max={Math.max(1, duration)}
+                step={0.1}
+                onValueChange={([v]) => seekTo(v ?? 0)}
+                className="group relative flex h-4 flex-1 cursor-pointer touch-none select-none items-center"
+              >
+                <SliderPrimitive.Track className="relative h-1.5 w-full grow rounded-full bg-static-700">
+                  <SliderPrimitive.Range className="absolute h-full rounded-full bg-signal" />
+                </SliderPrimitive.Track>
+                <SliderPrimitive.Thumb
+                  aria-label="Seek"
+                  aria-valuetext={`${mmss(current)} of ${mmss(duration)}`}
+                  className="block size-3 rounded-full bg-signal opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-card group-hover:opacity-100"
+                />
+              </SliderPrimitive.Root>
+
+              {/* tabular-nums so the row does not jitter as the digits change — it sits beside a
+                slider whose handle is already moving. */}
+              <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
+                {ready ? `${mmss(current)} / ${mmss(duration)}` : "–:–– / –:––"}
+              </span>
+            </>
           )}
-        </Button>
 
-        {/* Radix Slider (§14). It owns the WAI-ARIA contract, arrow/Home/End stepping, pointer
-            capture, drag and click-anywhere-to-seek — all of which this file used to hand-roll.
-
-            ⚠ `aria-valuetext` is still ours, and is the one thing Radix cannot infer: without it
-            a screen reader reads `aria-valuenow` as a bare number of seconds ("4"), where what a
-            listener needs is "0:04 of 0:30".
-
-            ⚠ `max` is floored to at least 1. Radix divides by the range to place the thumb, so a
-            max of 0 — every render before metadata arrives — yields NaN and React drops the style
-            entirely, leaving the thumb stuck at the left edge even once playback starts. */}
-        <SliderPrimitive.Root
-          value={[current]}
-          max={Math.max(1, duration)}
-          step={0.1}
-          onValueChange={([v]) => seekTo(v ?? 0)}
-          className="group relative flex h-4 flex-1 cursor-pointer touch-none select-none items-center"
-        >
-          <SliderPrimitive.Track className="relative h-1.5 w-full grow rounded-full bg-static-700">
-            <SliderPrimitive.Range className="absolute h-full rounded-full bg-signal" />
-          </SliderPrimitive.Track>
-          {/* The handle appears on hover or focus, as it did before — a permanently visible dot on
-              a 1.5px bar reads as clutter on a control most people never touch.
-
-              ⚠ **`aria-label` and `aria-valuetext` belong on the THUMB, not the Root.** Radix puts
-              `role="slider"` here, so ARIA attributes on the Root land on a plain <span> and are
-              ignored outright. Verified in the browser: with them on the Root, `aria-valuetext`
-              read back as `null` and the control announced `aria-valuenow="3.4068"` — a raw float
-              of seconds, which is exactly the semantics the switch to Radix was meant to secure. */}
-          <SliderPrimitive.Thumb
-            aria-label="Seek"
-            aria-valuetext={`${mmss(current)} of ${mmss(duration)}`}
-            className="block size-3 rounded-full bg-signal opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-card group-hover:opacity-100"
-          />
-        </SliderPrimitive.Root>
-
-        {/* tabular-nums so the row does not jitter as the digits change — it sits beside a slider
-            whose handle is already moving. */}
-        <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
-          {ready ? `${mmss(current)} / ${mmss(duration)}` : "–:–– / –:––"}
-        </span>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMuted((m) => !m)}
-          aria-label={muted ? "Unmute" : "Mute"}
-          className="size-8 shrink-0 rounded-full text-static-300 hover:bg-transparent hover:text-static-100"
-        >
-          {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMuted((m) => !m)}
+            aria-label={muted ? "Unmute" : "Mute"}
+            className="size-8 shrink-0 rounded-full text-static-300 hover:bg-transparent hover:text-static-100"
+          >
+            {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
+          </Button>
+        </div>
       </div>
     </div>
   );
