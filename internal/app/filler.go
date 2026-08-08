@@ -173,6 +173,10 @@ func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand str
 	return a.st.SetClipBrand(ctx, path, brand, at)
 }
 
+func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
+	return a.st.SetClipConfidence(ctx, path, confidence, at)
+}
+
 func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
 	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
 }
@@ -548,14 +552,17 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 
 // publishSplit emits one split-detection frame (§7, type=filler_split). The
 // terminal "success" frame is what hands the review UI its proposal id.
-func (a fillerServiceAdapter) publishSplit(jobID, clipPath, status, proposalID string, segments int, errMsg string) {
+// ⚠ The clip field is a HASH and is now named like one. Every caller already passed `clipID`;
+// only the parameter and the wire key said "path", which is the same naming drift that let the
+// proposal store a path in a field the lookup needed a hash for (§10 V51a).
+func (a fillerServiceAdapter) publishSplit(jobID, clipHash, status, proposalID string, segments int, errMsg string) {
 	if a.bus == nil {
 		return
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_split",
 		Payload: api.FillerSplitEvent{
-			JobID: jobID, ClipPath: clipPath, Status: status,
+			JobID: jobID, ClipHash: clipHash, Status: status,
 			ProposalID: proposalID, Segments: segments, Error: errMsg,
 		},
 	})

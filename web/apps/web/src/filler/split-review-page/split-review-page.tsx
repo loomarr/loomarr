@@ -58,7 +58,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       <div>
         <h1 className="font-semibold text-xl">Review split</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-          Detection proposed these cuts in <span className="font-mono text-static-200">{p.clipPath}</span>.
+          Detection proposed these cuts in <span className="font-mono text-static-200">{p.clipHash}</span>.
           Nothing is in the catalog yet. Edit, drop, or merge until the list is right, then confirm. Leaving
           keeps the proposal for later.
         </p>

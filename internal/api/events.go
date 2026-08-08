@@ -97,8 +97,12 @@ type FillerIngestEvent struct {
 // FillerSplitEvent tracks compilation-split detection (§10 V34). Detection runs minutes per
 // file, so the POST returns a job id and the terminal frame hands the review UI its proposal id.
 type FillerSplitEvent struct {
-	JobID      string `json:"jobId"`
-	ClipPath   string `json:"clipPath"`
+	JobID string `json:"jobId"`
+	// ClipHash is the compilation's IDENTITY (§10 V38c). ⚠ This was `ClipPath` while every caller
+	// already passed a hash into it — only the field and the wire key said "path". That is the same
+	// naming drift that broke split confirm outright: the persisted proposal stored a path in a
+	// field the hash-keyed lookup needed (§10 V51a).
+	ClipHash   string `json:"clipHash"`
 	Status     string `json:"status" enum:"running,success,error"`
 	ProposalID string `json:"proposalId,omitempty"`
 	Segments   int    `json:"segments"`

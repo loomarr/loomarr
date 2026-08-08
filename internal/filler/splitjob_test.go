@@ -63,9 +63,14 @@ func (f *fakeTools) Keyframes(_ context.Context, path string, _ int) ([][]byte, 
 	return f.keyframes[filepath.Base(path)], nil
 }
 
+// ⚠ The written bytes are DERIVED FROM THE SPAN, and that is load-bearing rather than decorative.
+// A segment's identity is the hash of its contents (§10 V38c), so a fake that wrote the same bytes
+// for every cut would make every segment of a reel hash identically — they would collapse into one
+// catalog row, correctly, and the test could not tell that outcome apart from the empty-hash bug
+// V51a fixes. Real cuts of different spans differ; the fake has to as well.
 func (f *fakeTools) Cut(_ context.Context, _ string, start, end int64, out string) error {
 	f.cutCalls = append(f.cutCalls, fmt.Sprintf("%d-%d→%s", start, end, filepath.Base(out)))
-	return os.WriteFile(out, []byte("cut"), 0o644)
+	return os.WriteFile(out, []byte(fmt.Sprintf("cut %d-%d", start, end)), 0o644)
 }
 
 // splitMemStore is an in-memory SplitStore.
@@ -78,6 +83,13 @@ func newSplitMemStore() *splitMemStore {
 	return &splitMemStore{clips: map[string]filler.StoreClip{}, proposals: map[string]filler.SplitProposal{}}
 }
 
+// ⚠ **Keyed by HASH, because `store.UpsertClip` is `ON CONFLICT(hash)` and `store.GetClip` is
+// `WHERE hash = ?`.** This map was keyed on `Path`, and that single mismatch hid two shipped bugs
+// at once: `Confirm` looked the compilation up by path (so no split could ever be committed), and
+// every segment was upserted with an empty hash (so a 41-segment reel collapsed into one row).
+// Both were invisible here because a path-keyed fixture answers a question production never asks.
+// Keep this keyed exactly as the real store is — a fixture that indexes differently from the
+// thing it stands in for cannot see key confusion by construction.
 func (m *splitMemStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
@@ -90,7 +102,7 @@ func (m *splitMemStore) ListClips(context.Context) ([]filler.StoreClip, error) {
 	return out, nil
 }
 func (m *splitMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
-	m.clips[c.Path] = c
+	m.clips[c.Hash] = c
 	return nil
 }
 func (m *splitMemStore) DeleteClip(_ context.Context, id string) error {
@@ -98,21 +110,22 @@ func (m *splitMemStore) DeleteClip(_ context.Context, id string) error {
 	return nil
 }
 
-// SetClipComposite marks the parent composite by HASH (§10 V45) — the real store keys it by hash, so
-// the mock searches by hash rather than assuming the map key (which is the path here).
+// SetClipComposite marks the parent composite by HASH (§10 V45) — a direct lookup now that the
+// map is keyed the way the real store is. It used to scan for a matching `Hash` because the key
+// was the path; that workaround was the fixture quietly admitting it indexed clips differently
+// from production.
 func (m *splitMemStore) SetClipComposite(_ context.Context, hash string, composite bool, _ time.Time) error {
-	for k, c := range m.clips {
-		if c.Hash == hash {
-			c.IsComposite = composite
-			m.clips[k] = c
-			return nil
-		}
+	c, ok := m.clips[hash]
+	if !ok {
+		return fmt.Errorf("composite target not found: %s", hash)
 	}
-	return fmt.Errorf("composite target not found: %s", hash)
+	c.IsComposite = composite
+	m.clips[hash] = c
+	return nil
 }
 func (m *splitMemStore) UpsertSplitProposal(_ context.Context, p filler.SplitProposal) error {
 	for id, existing := range m.proposals {
-		if existing.ClipPath == p.ClipPath && id != p.ID {
+		if existing.ClipHash == p.ClipHash && id != p.ID {
 			delete(m.proposals, id) // one proposal per clip, like the store's UNIQUE
 		}
 	}
@@ -138,7 +151,14 @@ func (m *splitMemStore) ListTaxa(_ context.Context) ([]taxonomy.Taxon, error) {
 	return taxonomy.SeedForest(), nil
 }
 
-func seedCompilation(st *splitMemStore, path string, durationMs int64) {
+// seedCompilation files a compilation and RETURNS ITS HASH — the identity every caller then hands
+// to `Propose`.
+//
+// ⚠ Returning it is the point. Callers used to pass the PATH to `Propose`, which is an identity
+// parameter, and a path-keyed fixture happily answered — so the suite asserted against a lookup
+// production does not perform. Handing back the hash means no test re-derives the identity, and
+// none can express "look this clip up by its location" even by accident.
+func seedCompilation(st *splitMemStore, path string, durationMs int64) string {
 	c := filler.StoreClip{}
 	// ⚠ Hash is the IDENTITY (§10 V38c) SetClipComposite/ParentHash key on, and it must be NON-EMPTY
 	// and DISTINCT from the path. Leaving it "" made SetClipComposite(clip.Hash=="") match whichever
@@ -152,7 +172,8 @@ func seedCompilation(st *splitMemStore, path string, durationMs int64) {
 	c.Source = "archive"
 	c.License = "https://creativecommons.org/licenses/by/4.0/"
 	c.Quality = "480p"
-	st.clips[path] = c
+	st.clips[c.Hash] = c
+	return c.Hash
 }
 
 func newSplitter(st *splitMemStore, tools filler.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
@@ -169,7 +190,7 @@ func newSplitter(st *splitMemStore, tools filler.MediaTools, provider *testkit.L
 // Chapters split for free: no black/silence pass runs, and titles become names.
 func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 61_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
 	tools := &fakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30000, Title: "McDonald's"},
 		{StartMs: 30000, EndMs: 61000, Title: "Lego"},
@@ -181,7 +202,7 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	drop := t.TempDir()
 	sp := newSplitter(st, tools, llmMock, drop)
 
-	p, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +225,7 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 // Coarse split: black/silence boundaries cut, slivers dropped, parts named.
 func TestPropose_CoarseSplit(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 90_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 90_000)
 	tools := &fakeTools{
 		blacks:   []filler.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 29800, EndMs: 30200}},
 		silences: []filler.Interval{{StartMs: 59900, EndMs: 60100}},
@@ -216,7 +237,7 @@ func TestPropose_CoarseSplit(t *testing.T) {
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +257,7 @@ func TestPropose_CoarseSplit(t *testing.T) {
 // three adverts that only the transcript can see (plan §6.4's measured case).
 func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/late-night.mp4", 149_000)
+	hash := seedCompilation(st, "comps/late-night.mp4", 149_000)
 	tools := &fakeTools{ // no chapters, no black, no silence — the measured shape
 		transcripts: map[string][]filler.TranscriptSegment{
 			"0:149000": {
@@ -260,7 +281,7 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/late-night.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +305,7 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 // must come back as ONE segment — never manufactured into clips (§6.4).
 func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/infomercial.mp4", 121_000)
+	hash := seedCompilation(st, "comps/infomercial.mp4", 121_000)
 	tools := &fakeTools{
 		transcripts: map[string][]filler.TranscriptSegment{
 			"0:121000": {{StartMs: 0, EndMs: 121000, Text: "The amazing knife slices, dices, and juliennes"}},
@@ -296,7 +317,7 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 	)
 	sp := newSplitter(st, tools, llmMock, t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/infomercial.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,11 +332,11 @@ func TestPropose_SingleLongAdvertIsNotManufactured(t *testing.T) {
 // No whisper (or a whisper failure) ⇒ Unsplittable, NEVER a guessed cut (§15).
 func TestPropose_WhisperFailureMarksUnsplittable(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/late-night.mp4", 149_000)
+	hash := seedCompilation(st, "comps/late-night.mp4", 149_000)
 	tools := &fakeTools{transcribeErr: fmt.Errorf("whisper not configured")}
 	sp := newSplitter(st, tools, testkit.NewLLM(), t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/late-night.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,11 +349,11 @@ func TestPropose_WhisperFailureMarksUnsplittable(t *testing.T) {
 // and nothing is classified — the honest degradation.
 func TestPropose_NoLLMDegradesHonestly(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 160_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 160_000)
 	tools := &fakeTools{blacks: []filler.Interval{{StartMs: 29800, EndMs: 30200}}}
 	sp := newSplitter(st, tools, nil, t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,11 +374,14 @@ func TestPropose_NoLLMDegradesHonestly(t *testing.T) {
 // compilation itself.
 func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 60_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 60_000)
 	existing := filler.StoreClip{}
+	// ⚠ A distinct, non-empty hash. Left empty, this clip and any other unhashed fixture share
+	// the map key "" — the collapsed-key trap that has now hidden four separate bugs in this file.
+	existing.Hash = "hash-of-old/mcdonalds.mp4"
 	existing.Path = "old/mcdonalds.mp4"
 	existing.DurationMs = 30_000
-	st.clips[existing.Path] = existing
+	st.clips[existing.Hash] = existing
 
 	dupFrame := make([]byte, 72)
 	for i := range dupFrame {
@@ -378,7 +402,7 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir())
 
-	p, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	p, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +420,7 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 // Confirm cuts, catalogs, and consumes — and leaves the compilation behind.
 func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 61_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
 	drop := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(drop, "comps"), 0o755); err != nil {
 		t.Fatal(err)
@@ -411,7 +435,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	// order, so if the store ever holds >1 proposal the range picked an arbitrary one and Confirm ran
 	// against the wrong id (an intermittent "compilation not marked composite" flake, now fixed
 	// deterministically). See [[loomarr-splitjob-test-map-order-flake]].
-	prop, err := sp.Propose(context.Background(), "comps/1987.mp4")
+	prop, err := sp.Propose(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +456,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	// ⚠ V45: the compilation is KEPT and marked a composite (NOT deleted — the reversal of V34). Its
 	// row survives, flagged is_composite so pod assembly excludes it, and its file stays for re-split.
-	comp, found, _ := st.GetClip(context.Background(), "comps/1987.mp4")
+	comp, found, _ := st.GetClip(context.Background(), hash)
 	if !found {
 		t.Fatal("compilation row was deleted on confirm — V45 keeps the parent as a composite")
 	}
@@ -476,10 +500,10 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 // path is where the review gate's teeth are).
 func TestConfirm_ValidatesTheEdit(t *testing.T) {
 	st := newSplitMemStore()
-	seedCompilation(st, "comps/1987.mp4", 61_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
 	tools := &fakeTools{}
 	sp := newSplitter(st, tools, nil, t.TempDir())
-	if _, err := sp.Propose(context.Background(), "comps/1987.mp4"); err != nil {
+	if _, err := sp.Propose(context.Background(), hash); err != nil {
 		t.Fatal(err)
 	}
 	var propID string

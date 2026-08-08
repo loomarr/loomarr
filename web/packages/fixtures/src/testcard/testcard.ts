@@ -89,7 +89,7 @@ const untaggedAsk: IncomingAskDTO = {
 // A compilation mid-split, with the count of segments an operator cannot simply accept.
 const compilationReel: IncomingReelDTO = {
   proposalId: "sp_1",
-  clipPath: "comps/1987-saturday.mp4",
+  clipHash: "a3f9000000000000000000000000000000000000000000000000000000001987",
   segments: 12,
   needsAttention: 3,
   createdAt: "2026-08-01T12:00:00Z",
@@ -97,7 +97,7 @@ const compilationReel: IncomingReelDTO = {
 
 const cleanReel: IncomingReelDTO = {
   proposalId: "sp_2",
-  clipPath: "comps/1993-toys.mp4",
+  clipHash: "b7c1000000000000000000000000000000000000000000000000000000001993",
   segments: 8,
   needsAttention: 0,
   createdAt: "2026-08-01T13:00:00Z",
@@ -315,7 +315,7 @@ const suggestedEraClip: ClipDTO = {
 // suggestion, a dHash duplicate flag, an unsplittable over-long span, and a transcript.
 const splitProposal: SplitProposal = {
   id: "split-testcard",
-  clipPath: "compilations/80s-tv-commercials.mp4",
+  clipHash: "c5e2000000000000000000000000000000000000000000000000000000000080",
   createdAt: "2026-07-25T20:00:00Z",
   segments: [
     {

@@ -28,7 +28,7 @@ func goodSeg(i int, startMs, endMs int64) filler.SplitSegment {
 }
 
 func proposalOf(segs ...filler.SplitSegment) filler.SplitProposal {
-	return filler.SplitProposal{ID: "p1", ClipPath: "aa/bb/reel.mp4", Segments: segs}
+	return filler.SplitProposal{ID: "p1", ClipHash: "reel-hash", Segments: segs}
 }
 
 const floor = 10 * time.Second

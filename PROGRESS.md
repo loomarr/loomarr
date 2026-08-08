@@ -4,6 +4,55 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V51a — the filler pre-flight: four dead code paths, one blind fixture class (2026-08-08, `7119d92`).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` (9 identifiers) + `make fe` (**1196 tests**, up from 1190).
+
+⚠ **This is the V41 lesson recurring, in the one place V41 did not look.** V41's entry below says
+the identity/location fixture blind spot "was written into a comment and the fixture was never
+fixed" — it fixed `clipAt`, `sampleClip`, `untaggedClip` and `tagMemStore`, and left the SPLIT
+fixtures alone. All four defects here lived behind exactly those.
+
+**1. Split confirm had never worked since V38c.** The persisted proposal stored `clip.Path` in a
+field named `clipPath`; `Confirm` fed it to `GetClip`, which is `WHERE hash = ?`. Every confirm
+returned *"compilation … no longer in the catalog"* for a clip that was in the catalog — an
+operator could detect, open a 41-segment reel, edit it, and never commit. Reproduced first against
+a real store, then fixed: the proposal carries `clipHash`, the file location is derived from the
+row exactly as `Propose` already derives it.
+
+**2. Every segment upserted with an empty hash.** `UpsertClip` is `ON CONFLICT(hash)`, so segment
+N overwrote segment N−1 and a whole reel became **one** row. Cuts are now hashed the moment they
+are written and filed at their own shard path, which retires `uniqueClipPath`/`sanitizeClipName`
+(content addressing leaves no name to sanitise and no collision to break). **Sabotage-verified**:
+removing the hash assignment collapses the test to one row.
+
+**3. `dedup`'s self-exclusion never fired.** Parameter named `clipPath`, tested against `c.Path`,
+called with the hash — so every segment was compared against the compilation it was cut from and
+came back flagged a duplicate. Noise in the review, and enough for `AutoConfirmable` to reject a
+sound reel.
+
+**4. `clips.confidence` had no writer, in any catalog, ever.** `Score` computed the
+grounding-capped number and `Tagger.Run` used it for the filing decision and dropped it. Auto-file
+worked; the number an operator judges it by was permanently 0, so the Incoming meter never
+rendered. `SetClipConfidence` is the writer now. ⚠ The store's conformance case passed the whole
+time because it seeded the value through `UpsertClip`'s INSERT — **a column can round-trip
+perfectly and still have no producer**.
+
+**Plus a live FE defect found on the way.** `useLoomarrEventListener` never re-dispatched
+`onPlayout` or `onDatabase`, so `settings/system/database.tsx`'s migration progress was dead. The
+drift guard was green because it regexed BOTH handler objects in one pass and asserted their
+**union** — a guard that ORs its two sources cannot see drift between them. It now slices and
+asserts each independently, and throws rather than degrading if its anchors move.
+
+**The durable half.** Both split fixtures are hash-keyed with identity and location deliberately
+unequal; `seedCompilation` returns the hash so no test can re-derive it; the fake `Cut` writes
+span-derived bytes (identical bytes would make segments legitimately collapse, masking the bug);
+and `Confirm` is exercised end to end against a real store for the first time.
+
+⚠ **The register is still behind.** V42, V44, V45a and V46–V49 shipped without rows; this entry
+sits above V41 because that is the last recorded phase, not because nothing happened between.
+Back-filling them is scheduled with the V51 doc pass — see the plan.
+
 **V41 — the audit pass: three live defects, six cleanups (2026-08-05, `aba3b22`, PRs #169–#175).**
 Gate, per PR: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
 `retired-verify`; the web PRs additionally `make fe` (**1116 tests**, up from 1108) + `fe-visual`

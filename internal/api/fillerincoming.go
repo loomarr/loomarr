@@ -78,8 +78,12 @@ type IncomingAskDTO struct {
 // IncomingReelDTO is one compilation mid-split.
 type IncomingReelDTO struct {
 	ProposalID string `json:"proposalId"`
-	ClipPath   string `json:"clipPath"`
-	Segments   int    `json:"segments" doc:"How many clips the detector found"`
+	// ClipHash is the compilation's identity (§10 V38c). ⚠ Was `clipPath` and carried the shard
+	// path; the two look alike on screen (`a3/f9/<hash>.mp4` is mostly the hash) which is part of
+	// why the mismatch behind it went unnoticed for so long. A friendlier display name belongs
+	// here eventually — it is not added alongside a bug fix.
+	ClipHash string `json:"clipHash"`
+	Segments int    `json:"segments" doc:"How many clips the detector found"`
 	// NeedsAttention counts segments the operator cannot simply accept — an unsplittable
 	// stretch, or one flagged as a duplicate of something already in the catalog.
 	NeedsAttention int    `json:"needsAttention"`
@@ -154,7 +158,7 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	} else {
 		for _, p := range proposals {
 			out.Body.Reels = append(out.Body.Reels, IncomingReelDTO{
-				ProposalID: p.ID, ClipPath: p.ClipPath, Segments: len(p.Segments),
+				ProposalID: p.ID, ClipHash: p.ClipHash, Segments: len(p.Segments),
 				NeedsAttention: segmentsNeedingAttention(p),
 				CreatedAt:      p.CreatedAt.UTC().Format(time.RFC3339),
 			})

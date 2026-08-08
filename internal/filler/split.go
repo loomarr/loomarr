@@ -74,8 +74,22 @@ type SplitSegment struct {
 // in a compilation clip (§10 V34). It is NOT a clip: nothing here is visible to
 // pod matching, and the only way segments become clips is Confirm.
 type SplitProposal struct {
-	ID        string         `json:"id"`
-	ClipPath  string         `json:"clipPath"` // the compilation's clip identity
+	ID string `json:"id"`
+	// ClipHash is the compilation's IDENTITY — its content hash (§10 V38c), the value
+	// `GetClip` is keyed on.
+	//
+	// ⚠ **This field was `ClipPath` and held `clip.Path`, and that mismatch broke Confirm
+	// outright.** `Propose` wrote the shard path (`a3/f9/<hash>.mp4`); `Confirm` handed the same
+	// string to a HASH-keyed `GetClip`, which never matched — so every confirm returned
+	// "compilation … no longer in the catalog" for a clip sitting in the catalog. An operator
+	// could open a 41-segment reel, edit it, and never commit it. It survived because the
+	// splitter's test store keys its map on `Path`, so the fixture answered a question
+	// production's store does not (the same collapsed-key class `conformance_filler.go` records).
+	//
+	// ⚠ The FILE PATH is DERIVED from this, never stored beside it: `ClipPath(dropDir, hash, ext)`
+	// is the containment boundary, and one identity with a derived location is what stops the two
+	// disagreeing again.
+	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
 }

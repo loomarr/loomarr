@@ -268,7 +268,7 @@ const IncomingPanel = ({
                 className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="truncate font-medium text-sm">{reel.clipPath}</span>
+                  <span className="truncate font-mono text-sm">{reel.clipHash}</span>
                   <Caption>
                     {pluralize(reel.segments, "clip")} found
                     {/* A reel of twelve clean segments and one with three problems are

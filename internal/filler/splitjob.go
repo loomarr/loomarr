@@ -36,11 +36,16 @@ type SplitStore interface {
 	// not deleted, so its segments can point back at it and a re-split stays possible.
 	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
 	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
-	// grounds the answer against it. ⚠ The split job does NOT call SetClipTags — a segment clip has
-	// no content hash at confirm time (it gets one from the intake pipeline when its cut file is
-	// hashed), and SetClipTags is hash-keyed, so persisting here would orphan the tag rows. The
-	// segment carries its grounded Tags on the proposal for the reviewer; the TAG JOB persists the
-	// taxonomy tags once the segment file is intaken and hashed — the one hash-keyed tag writer.
+	// grounds the answer against it.
+	//
+	// ⚠ The split job still does NOT call SetClipTags, but the REASON it could not has gone.
+	// This said "a segment clip has no content hash at confirm time (it gets one from the intake
+	// pipeline when its cut file is hashed)" — which described the bug, not a constraint: segments
+	// were written with an empty hash and only acquired one if a later sync happened to re-file
+	// them. V51a hashes each cut before it is upserted, so a segment has its identity here and
+	// tag rows would resolve. Persisting them is deliberately left to the tag stage rather than
+	// added alongside a bug fix; until then the segment's grounded Tags ride the proposal for the
+	// reviewer and the TAG JOB writes them, as before.
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
@@ -122,8 +127,11 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 	for i := range segs {
 		segs[i].Index = i
 	}
-	// ⚠ `ClipPath` is a PATH, per its name and per what Confirm joins onto the drop dir.
-	p := &SplitProposal{ID: sp.newID(), ClipPath: clip.Path, CreatedAt: sp.now().UTC(), Segments: segs}
+	// ⚠ The proposal carries the compilation's HASH, not its path. Confirm looks the clip back up
+	// with `GetClip`, which is hash-keyed — writing `clip.Path` here (as this did until V51a) meant
+	// that lookup never matched and no split could ever be committed. The file location Confirm
+	// needs is derived from the hash, so there is one identity and nothing to disagree with it.
+	p := &SplitProposal{ID: sp.newID(), ClipHash: clip.Hash, CreatedAt: sp.now().UTC(), Segments: segs}
 	if err := sp.store.UpsertSplitProposal(ctx, *p); err != nil {
 		return nil, err
 	}
@@ -242,7 +250,15 @@ func (sp *Splitter) classify(ctx context.Context, segs []SplitSegment) {
 // dedup flags segments whose dHash matches an existing catalog clip. Hashing
 // failures (undecodable span, unreadable catalog file) mean NO flag — a false
 // "already have it" hides a genuinely new advert, which is the worse direction.
-func (sp *Splitter) dedup(ctx context.Context, file, clipPath string, segs []SplitSegment) {
+//
+// ⚠ **The self-exclusion below compares IDENTITIES, and comparing the wrong one broke it.** This
+// parameter was named `clipPath` and tested against `c.Path`, while the one call site passes the
+// compilation's HASH — so the guard never fired and every segment was compared against the very
+// file it was cut from. Any segment resembling its parent came back flagged `DupOf` the
+// compilation: noise in the review, counted by `segmentsNeedingAttention`, and enough to make
+// `AutoConfirmable` reject a perfectly good reel. It read as correct because the splitter's test
+// store keyed clips by path, so the fixture made `hash` and `path` the same string (§10 V51a).
+func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []SplitSegment) {
 	catalog, err := sp.store.ListClips(ctx)
 	if err != nil || len(catalog) == 0 {
 		return
@@ -253,7 +269,7 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipPath string, segs []Spl
 	}
 	var candidates []hashed
 	for _, c := range catalog {
-		if c.Path == clipPath {
+		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
 		frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
@@ -293,12 +309,12 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	if err != nil {
 		return err
 	}
-	clip, found, err := sp.store.GetClip(ctx, p.ClipPath)
+	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipPath)
+		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipHash)
 	}
 	if len(segments) == 0 {
 		return fmt.Errorf("%w: zero segments — reject the proposal instead of gutting the compilation", ErrSplitValidation)
@@ -307,31 +323,71 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		return err
 	}
 
-	src := filepath.Join(sp.dropDir, p.ClipPath)
-	dir := filepath.Dir(p.ClipPath)
-	ext := filepath.Ext(p.ClipPath)
+	// ⚠ The LOCATION comes from the row, not from the proposal — the same rule (and the same
+	// join) `Propose` states above. The proposal carries an identity; joining a hash onto the
+	// drop dir would build a path that does not exist.
+	ext := filepath.Ext(clip.Path)
+	src := filepath.Join(sp.dropDir, clip.Path)
+
+	// ⚠ Segments are cut to a TEMPORARY file first, because a clip's identity is the hash of its
+	// CONTENTS and those contents do not exist until ffmpeg has written them. There is no name to
+	// file a cut under until it has been made.
+	//
+	// ⚠ Outside the clip folder deliberately: `ScanDir` walks every directory under it except the
+	// watch folder, so a half-written `.mp4` sitting there would be catalogued mid-confirm as a
+	// clip at a non-shard path — and then pruned on the next sync. `movePath` below is intake's
+	// own helper and carries the EXDEV copy fallback that makes crossing back in safe.
+	tmpDir, err := os.MkdirTemp("", "loomarr-split-")
+	if err != nil {
+		return fmt.Errorf("split confirm: temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
 	// Cut everything FIRST: a failure mid-confirm leaves the compilation intact
 	// (the proposal is only consumed once every segment exists on disk and in
 	// the catalog), so the operator can fix and retry rather than losing cuts.
 	type written struct {
 		seg  SplitSegment
+		hash string
 		path string
 	}
 	var cuts []written
-	for _, seg := range segments {
-		rel, err := sp.uniqueClipPath(ctx, dir, sanitizeClipName(seg.Name), ext)
+	for i, seg := range segments {
+		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
+		if err := sp.tools.Cut(ctx, src, seg.StartMs, seg.EndMs, tmp); err != nil {
+			return err
+		}
+		id, err := ClipID(tmp)
+		if err != nil {
+			return fmt.Errorf("split confirm: hash segment %d: %w", i, err)
+		}
+		dst, err := ClipPath(sp.dropDir, id, ext)
 		if err != nil {
 			return err
 		}
-		out := filepath.Join(sp.dropDir, rel)
-		if err := sp.tools.Cut(ctx, src, seg.StartMs, seg.EndMs, out); err != nil {
-			return err
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return fmt.Errorf("split confirm: segment %d: %w", i, err)
 		}
-		cuts = append(cuts, written{seg: seg, path: rel})
+		// ⚠ An existing destination is a byte-identical cut, not a collision: the path IS the
+		// hash. The old code guarded this with a `-2`, `-3` suffix loop over operator-shaped
+		// names, which content addressing makes both unnecessary and wrong — two identical cuts
+		// are one clip, and giving them separate rows would double-count them in every pool.
+		if _, statErr := os.Stat(dst); statErr != nil {
+			if err := movePath(tmp, dst); err != nil {
+				return fmt.Errorf("split confirm: file segment %d: %w", i, err)
+			}
+		}
+		cuts = append(cuts, written{seg: seg, hash: id, path: ClipRelPath(id, ext)})
 	}
 	now := sp.now().UTC()
 	for _, c := range cuts {
 		nc := StoreClip{UpdatedAt: now}
+		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
+		// so every segment used to insert with `hash=''` and each one overwrote the last — a
+		// 41-segment reel became ONE catalog row. Invisible to the splitter's own tests because
+		// their store keys its map on `Path`; the store conformance suite is where this class is
+		// pinned, and V51a adds the case.
+		nc.Hash = c.hash
 		nc.Path = c.path
 		nc.Name = c.seg.Name
 		nc.Kind = clip.Kind
@@ -395,56 +451,13 @@ func validateConfirmedSegments(segs []SplitSegment, durationMs int64) error {
 	return nil
 }
 
-// uniqueClipPath picks a collision-free relative path for a new segment clip.
-func (sp *Splitter) uniqueClipPath(ctx context.Context, dir, name, ext string) (string, error) {
-	for i := 1; ; i++ {
-		candidate := name + ext
-		if i > 1 {
-			candidate = fmt.Sprintf("%s-%d%s", name, i, ext)
-		}
-		rel := filepath.Join(dir, candidate)
-		if dir == "." {
-			rel = candidate
-		}
-		if _, err := os.Stat(filepath.Join(sp.dropDir, rel)); err == nil {
-			continue
-		}
-		if _, found, err := sp.store.GetClip(ctx, rel); err != nil {
-			return "", err
-		} else if found {
-			continue
-		}
-		return rel, nil
-	}
-}
-
-// sanitizeClipName makes a proposed segment name safe as a filename while
-// keeping it displayable ("McDonald's — 1987!" → "mcdonalds-1987").
-// Apostrophes VANISH rather than becoming dashes — "mcdonald-s" is not a word.
-func sanitizeClipName(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	var b strings.Builder
-	lastDash := false
-	for _, r := range name {
-		if r == '\'' || r == '’' {
-			continue
-		}
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
-		switch {
-		case ok:
-			b.WriteRune(r)
-			lastDash = false
-		case !lastDash && b.Len() > 0:
-			b.WriteByte('-')
-			lastDash = true
-		}
-	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		return "segment"
-	}
-	return out
-}
+// ⚠ `uniqueClipPath` and `sanitizeClipName` were DELETED in V51a, and their absence is the point.
+// They existed to turn a segment's display name into a collision-free filename
+// ("McDonald's — 1987!" → `mcdonalds-1987.mp4`, then `-2`, `-3` on collision). Under content
+// addressing a segment's location IS its hash, so there is no name to sanitise and no collision
+// to break: two cuts that produce the same bytes are the same clip and belong in one row. The
+// segment's name still travels — on the catalog row, where it is read by humans rather than by
+// the filesystem.
 
 // subSegmentName prefers the LLM's product label, falling back to the
 // compilation-part convention when the model said "unknown".

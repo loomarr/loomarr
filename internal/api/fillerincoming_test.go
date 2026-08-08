@@ -106,7 +106,7 @@ func TestFillerIncoming_DoesNotQueueBumpers(t *testing.T) {
 func TestFillerIncoming_CountsSegmentsNeedingAttention(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
-		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: time.Now().UTC(),
+		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "clean"},
 			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "dup", DupOf: "old/ad.mp4"},
@@ -135,7 +135,7 @@ func TestFillerIncoming_TotalCoversBothHalves(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	putClip(t, st, filler.Clip{Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 25_000, Held: true})
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
-		ID: "sp_1", ClipPath: "comps/a.mp4", CreatedAt: time.Now().UTC(),
+		ID: "sp_1", ClipHash: "hash-of-comps/a.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000, Name: "a"}},
 	}); err != nil {
 		t.Fatal(err)

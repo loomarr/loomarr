@@ -685,6 +685,34 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 	return nil
 }
 
+// SetClipConfidence records the tagger's grounding-capped score (§10 V38, migration 00030).
+//
+// ⚠ **The ONLY writer of `confidence`, and until V51a there was NO writer at all.**
+// `TagSuggestion.Score` computed the number, `Tagger.Run` compared it against the auto-file
+// threshold, and then threw it away. `UpsertClip` inserts a literal 0 and correctly omits the
+// column from its DO UPDATE, so nothing ever put a score in the database: `confidence` was 0 for
+// every clip that had ever existed, the Incoming tab's meter never rendered, and the field's own
+// doc string ("0 = never scored") was true of the entire catalog. The store's conformance case
+// passed throughout because it wrote a value by hand and asserted the round trip — a column can
+// round-trip perfectly and still have no producer.
+//
+// ⚠ The value must come from `TagSuggestion.Score`, never from the model directly. The score is a
+// ceiling set by what could be verified in the clip's own text, which the model may only lower; a
+// caller passing the model's self-assessment would defeat the grounding cap that stops a
+// fabricated era being auto-filed.
+//
+// Keyed by PATH, like SetClipLanguage and SetClipTranscript beside it — that is what the job
+// carries.
+func (s *sqlStore) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET confidence = ?, updated_at = ? WHERE path = ?`),
+		confidence, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip confidence %s: %w", path, err)
+	}
+	return nil
+}
+
 // SetClipTranscript records what the transcribe job heard (§10 V44, migration 00038).
 //
 // ⚠ **The ONLY writer of `transcript`**, exactly like SetClipLanguage owns `language` and for the
