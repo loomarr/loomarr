@@ -418,6 +418,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
 			ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
+			// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
+			// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
+			// so playout picks NVENC on an NVIDIA card rather than young cross-vendor Vulkan. Called
+			// once, lazily, inside the memoised capability probe; "" (unknown GPU) is a fine default.
+			gpuName: func() string { return llm.GPUName(rootCtx) },
 			// Preferred audio language (§9.1), read live so a Settings change applies to the
 			// next programme rather than the next restart. The prober derives ffprobe from the
 			// ffmpeg path — the two ship together, so an operator who moved one moved both.

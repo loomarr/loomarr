@@ -115,6 +115,10 @@ type playoutResolver struct {
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
+	// gpuName reports the primary GPU's name so the capability probe can prefer that vendor's
+	// native encoder (Detect's gpuVendor arg). Nil or "" ⇒ unknown GPU ⇒ the cross-vendor default
+	// order, so an install without the wiring still detects an encoder, just without the native hint.
+	gpuName func() string
 	// audioLanguage is the operator's preferred audio track language (§9.1, `eng` by default),
 	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
 	// did before this existed — and is how a channel played a film in Russian.
@@ -698,7 +702,11 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		if bin == "" {
 			bin = "ffmpeg"
 		}
-		cap := playout.Detect(ctx, bin, playout.DefaultProfile())
+		gpu := ""
+		if r.gpuName != nil {
+			gpu = r.gpuName()
+		}
+		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
 		r.detected = cap.Chosen
 		if r.log != nil {
 			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
