@@ -107,7 +107,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	}
 
 	var statuses []string
-	var terminal map[string]any
+	var terminal *api.FillerSplitEvent
 	deadline := time.After(5 * time.Second)
 	for terminal == nil {
 		select {
@@ -115,17 +115,19 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 			if ev.Type != "filler_split" {
 				continue
 			}
-			p, ok := ev.Payload.(map[string]any)
+			// ⚠ A TYPED payload. huma names an SSE frame after its payload's Go type, so a
+			// frame published as anything but api.FillerSplitEvent goes out unnamed and the
+			// review UI's listener never fires — see internal/api/events.go.
+			p, ok := ev.Payload.(api.FillerSplitEvent)
 			if !ok {
-				t.Fatalf("frame payload = %T, want map", ev.Payload)
+				t.Fatalf("frame payload = %T, want api.FillerSplitEvent", ev.Payload)
 			}
-			if p["jobId"] != jobID {
-				t.Errorf("frame for a different job: %v", p["jobId"])
+			if p.JobID != jobID {
+				t.Errorf("frame for a different job: %v", p.JobID)
 			}
-			status, _ := p["status"].(string)
-			statuses = append(statuses, status)
-			if status == "success" || status == "error" {
-				terminal = p
+			statuses = append(statuses, p.Status)
+			if p.Status == "success" || p.Status == "error" {
+				terminal = &p
 			}
 		case <-deadline:
 			t.Fatalf("no terminal filler_split frame within 5s (statuses so far: %v)", statuses)
@@ -134,11 +136,15 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	if len(statuses) < 2 || statuses[0] != "running" {
 		t.Errorf("frames = %v, want running first, then a terminal", statuses)
 	}
-	if terminal["status"] != "success" {
-		t.Fatalf("terminal = error %v", terminal["error"])
+	if terminal.Status != "success" {
+		t.Fatalf("terminal = error %v", terminal.Error)
 	}
-	propID, _ := terminal["proposalId"].(string)
-	if propID == "" || terminal["segments"] != 2 {
+	propID := terminal.ProposalID
+	// ⚠ `terminal.Segments != 2` used to be `terminal["segments"] != 2` against an `any`.
+	// That comparison is only correct while the boxed value happens to be an `int` — the
+	// same literal against an int64 or a float64 is silently false, and the assertion
+	// passes for the wrong reason. A typed field cannot be compared wrongly here.
+	if propID == "" || terminal.Segments != 2 {
 		t.Errorf("terminal frame missing the proposal: %+v", terminal)
 	}
 	// The proposal is readable afterwards — the review's reconnect truth.

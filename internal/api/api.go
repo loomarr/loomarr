@@ -134,21 +134,13 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
+	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerProvisioning(humaAPI)
 
 	// SSO's two routes are browser REDIRECTS (§11, V8) that also set a cookie. Still plain mux
 	// handlers, and still the exception the raw-mux guard (rawmux_test.go) knows about by name —
 	// they move onto rawOp next. Not mounted at all when no provider is wired.
 	srv.registerSSO(mux)
-
-	// GET /v1/events streams SSE (§7/§8) — a plain mux handler for now; it becomes a typed
-	// sse.Register operation with real event schemas. Auth checked inline via the same authorizer.
-	mux.HandleFunc("GET /v1/events", srv.eventsHandler)
-
-	// Channel icon UPLOAD is multipart and still plain-mux, which is why it hand-rolls the CSRF
-	// check Huma's middleware would otherwise give it (channelicon.go) — it moves onto
-	// huma.MultipartFormFiles next. The SERVE half is already a rawOp in registerChannels.
-	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp

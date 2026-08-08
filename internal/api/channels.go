@@ -75,6 +75,19 @@ func (s *Server) registerChannels(api huma.API) {
 	}, "The stored icon bytes.", "image/png", "image/jpeg", "image/webp", "image/gif"),
 		RolePublic, s.serveChannelIcon)
 
+	// The upload half — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
+	// edge, before the handler's own read limit; the handler still checks, because the multipart
+	// header's declared size is a claim, not a measurement.
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "upload-channel-icon", Method: http.MethodPost, Path: "/v1/channels/{id}/icon",
+		Summary: "Upload a channel icon",
+		Description: "Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — " +
+			"SVG is refused because the serve half is public and an SVG can carry script). Stores the " +
+			"bytes, points the channel's logo at the serve URL, and reconciles so Tunarr picks it up.",
+		Tags:         []string{"channels"},
+		MaxBodyBytes: maxIconBytes + 1024,
+	}, RoleAdmin), s.uploadChannelIcon)
+
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
