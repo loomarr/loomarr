@@ -159,6 +159,10 @@ type Server struct {
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
 	// or none), and the ladder skips straight from hardware to the software fallback.
 	reclaimVRAM func(ctx context.Context)
+	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
+	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
+	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
+	hwEncodeGate *hwEncodeGate
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -735,6 +739,10 @@ type Options struct {
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder
 	// calls it only after a hardware encode has already produced nothing.
 	ReclaimVRAM func(ctx context.Context)
+	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
+	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
+	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
+	HWEncodeSlots func(ctx context.Context) int
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

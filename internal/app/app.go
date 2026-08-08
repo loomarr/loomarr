@@ -269,6 +269,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// until then so the /playout/hls routes report "not running" on an unwired install.
 	var playoutHLS api.PlayoutHLS
 	var playoutResolverSvc api.PlayoutResolver
+	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
+	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
+	var hwEncodeSlots func(context.Context) int
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -480,6 +483,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}()
 		}
 		playoutResolverSvc = playoutRes
+		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
+		// admission gate first reads it — the operator-facing counterpart to "encoder probed".
+		hwEncodeSlots = func(ctx context.Context) int {
+			n := playoutRes.HWEncodeSlots(ctx)
+			log.Info("playout: hardware encode admission", "hw_slots", n)
+			return n
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -1335,6 +1345,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
 			}
 		},
+		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
+		// the gate that routes an over-capacity channel to software up front instead of stalling on a
+		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
+		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
+		HWEncodeSlots: hwEncodeSlots,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

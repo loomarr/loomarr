@@ -143,8 +143,9 @@ type playoutResolver struct {
 	// Cached because Detect trial-encodes every candidate at ~5s apiece — fine once, far too
 	// slow on the per-program path. NOT a plain field set at construction: probing eagerly
 	// would add ~20s to every boot for a value most installs never override.
-	detectOnce sync.Once
-	detected   playout.Encoder
+	detectOnce  sync.Once
+	detected    playout.Encoder
+	maxChannels int
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -708,6 +709,7 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		}
 		cap := playout.Detect(ctx, bin, playout.DefaultProfile(), gpu)
 		r.detected = cap.Chosen
+		r.maxChannels = cap.MaxChannels
 		if r.log != nil {
 			// INFO, not DEBUG: which encoder a box settled on is the first thing anyone asks
 			// when playout is slow, and the per-candidate reasons explain WHY a GPU was
@@ -724,6 +726,19 @@ func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
 		}
 	})
 	return r.detected
+}
+
+// HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's
+// measured_max_channels. It drives the playout admission gate: a transcode that cannot get a slot
+// goes straight to software rather than piling onto a saturated GPU and stalling. Runs the same
+// memoised probe as detectedEncoder (first call pays; the rest read the cache). Returns 0 when the
+// box has no working hardware encoder (software-only) — the gate treats 0 as "never admit hardware",
+// which is correct: there is no hardware to admit.
+func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
+	if r.detectedEncoder(ctx) == playout.EncoderSoftware {
+		return 0
+	}
+	return r.maxChannels
 }
 
 // playoutEpoch anchors a channel's cycle on the wall clock.
