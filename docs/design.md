@@ -2231,6 +2231,66 @@ Discovery (V33) surfaces a source; ingest downloads it. But a large share of wha
 
    That shape follows how the 69% case actually fails. A badly-split reel is not uniformly slightly-wrong; it has obvious tells — one 6-minute block where the detector saw no boundary, sitting beside perfectly good 30-second cuts. Confirming the good segments and surfacing the rest would split one reel's decision across two places and hand the operator fragments to judge without the picture. The filmstrip exists to show that whole picture, and it is what the operator sees for the reels that genuinely need them.
 
+### Splitting keys on identity, not location (V51a)
+
+⚠ **Compilation splitting could not commit a single reel between V38c and V51a, and nothing said
+so.** The persisted proposal stored `clip.Path` (the sharded location `a3/f9/<hash>.mp4`) in a
+field called `clipPath`, and `Confirm` handed that string to `GetClip`, which is keyed
+`WHERE hash = ?`. The lookup never matched, so every confirm returned *"compilation … no longer in
+the catalog"* for a clip sitting in the catalog. An operator could run detection, open a
+41-segment reel, edit the cut list — and never commit it. The Review-cuts button was a dead end.
+
+Underneath it sat a second defect that would have been hit the moment the first was fixed: each
+confirmed segment was upserted with **no `Hash` at all**, and `UpsertClip` is
+`ON CONFLICT(hash) DO UPDATE`, so every segment overwrote the last and a whole reel collapsed into
+**one** catalog row.
+
+Three rules come out of this, and they are the reason the section exists rather than just a
+changelog line:
+
+1. **The proposal carries the compilation's HASH (`clipHash` on the wire), and its file location is
+   DERIVED** — `Propose` already resolves the file as `join(dropDir, clip.Path)` from the row, and
+   `Confirm` now does the same instead of rebuilding a path from an identity. One identity, one
+   derivation, nothing to disagree.
+2. **A segment is hashed the moment it is cut.** Cuts are written to a temp file outside the clip
+   folder, hashed with `ClipID`, and filed at `ClipRelPath(hash, ext)` — the same shape intake
+   uses. This retires `uniqueClipPath`/`sanitizeClipName`: under content addressing there is no
+   display name to make filesystem-safe and no collision to break, because two cuts with identical
+   bytes *are* one clip.
+3. **`dedup`'s self-exclusion compares identities.** It took a parameter named `clipPath`, tested
+   it against `c.Path`, and was called with the hash — so the guard never fired and every segment
+   was compared against the file it was cut from. Segments resembling their parent came back
+   flagged as duplicates, which is noise in the review and enough to make `AutoConfirmable` reject
+   a sound reel.
+
+⚠ **The reason all three survived is one fixture.** The splitter's test store keyed clips by
+`Path` while the real store keys by `hash`, and the app-level fixture set `Hash` and `Path` to the
+*same string*. A double that indexes differently from the thing it stands in for cannot see key
+confusion — it answers a question production never asks. Both fixtures are now hash-keyed with
+identity and location deliberately distinct, `seedCompilation` returns the hash so no test can
+re-derive it, and the confirm round trip is exercised against a real store for the first time.
+This is the same lesson `internal/store/conformance_filler.go` already records; it had simply
+never been applied to the split path.
+
+### The tagging score had no writer (V51a)
+
+⚠ **`clips.confidence` was 0 for every clip in every catalog that has ever existed.**
+`TagSuggestion.Score` computed the grounding-capped number and `Tagger.Run` compared it against
+`filler.autofile.min_confidence` to decide filing — then discarded it. `UpsertClip` inserts a
+literal 0 and correctly omits the column from its `DO UPDATE`, so nothing ever persisted a score.
+Auto-filing worked; the number an operator uses to judge it was permanently absent, and the
+Incoming meter (which correctly renders nothing at 0, because 0 means *never scored*) never
+appeared.
+
+`SetClipConfidence` is now that writer — path-keyed, beside `SetClipLanguage` and
+`SetClipTranscript`, and the score written is always `Score`'s output, never the model's own
+self-assessment, so the grounding cap keeps its teeth.
+
+⚠ **The store's conformance case passed throughout**, because it seeded a value through
+`UpsertClip`'s INSERT and asserted the round trip and the `DO UPDATE` omission — all true, and all
+true of a column with no producer. A column can round-trip perfectly and still be dead. The case
+now exercises the writer itself.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.

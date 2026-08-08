@@ -43,7 +43,8 @@ const untagged: IncomingAskDTO = {
 
 const reel: IncomingReelDTO = {
   proposalId: "sp_1",
-  clipPath: "comps/1987.mp4",
+  clipHash: "a3f9000000000000000000000000000000000000000000000000000000000001",
+  clipName: "1987 Saturday morning block",
   segments: 12,
   needsAttention: 3,
   createdAt: "2026-08-01T12:00:00Z",
@@ -113,7 +114,7 @@ describe("IncomingPanel", () => {
   it("says how much work a compilation is before it is opened", async () => {
     renderReels(<IncomingPanel asks={[]} reels={[reel]} />);
 
-    expect(await screen.findByText("comps/1987.mp4")).toBeInTheDocument();
+    expect(await screen.findByText(reel.clipName)).toBeInTheDocument();
     expect(screen.getByText("12 clips found · 3 need a look")).toBeInTheDocument();
   });
 

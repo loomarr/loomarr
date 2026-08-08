@@ -15,7 +15,7 @@ const seg = (over: Partial<SplitSegment> = {}): SplitSegment => ({
 
 const proposal: SplitProposal = {
   id: "sp-1",
-  clipPath: "comp.mp4",
+  clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
   segments: [
     seg({

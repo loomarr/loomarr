@@ -1808,7 +1808,7 @@ components:
     FillerSplitEvent:
       additionalProperties: false
       properties:
-        clipPath:
+        clipHash:
           type: string
         error:
           type: string
@@ -1827,7 +1827,7 @@ components:
           type: string
       required:
         - jobId
-        - clipPath
+        - clipHash
         - status
         - segments
       type: object
@@ -2309,7 +2309,9 @@ components:
     IncomingReelDTO:
       additionalProperties: false
       properties:
-        clipPath:
+        clipHash:
+          type: string
+        clipName:
           type: string
         createdAt:
           description: RFC3339
@@ -2325,7 +2327,8 @@ components:
           type: integer
       required:
         - proposalId
-        - clipPath
+        - clipHash
+        - clipName
         - segments
         - needsAttention
         - createdAt
@@ -4503,7 +4506,7 @@ components:
           format: uri
           readOnly: true
           type: string
-        clipPath:
+        clipHash:
           type: string
         createdAt:
           format: date-time
@@ -4518,7 +4521,7 @@ components:
             - "null"
       required:
         - id
-        - clipPath
+        - clipHash
         - createdAt
         - segments
       type: object

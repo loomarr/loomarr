@@ -1022,6 +1022,34 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 			"trusted clip starts asking again for no reason", after[0].Confidence)
 	}
 
+	// ⚠ **`SetClipConfidence` is the score's WRITER, and the assertions above cannot see whether
+	// one exists.** They seed the value through `UpsertClip`'s INSERT and prove it round-trips and
+	// survives a re-scan — all true, and all true for two phases while NOTHING in the application
+	// ever wrote a score. `confidence` was 0 in every real catalog. So exercise the writer itself:
+	// it is path-keyed like its `SetClipLanguage`/`SetClipTranscript` neighbours, and its value has
+	// to outlive the folder scan the same way the seeded one does.
+	if err := s.SetClipConfidence(ctx, "held.mp4", 92, at); err != nil {
+		t.Fatal(err)
+	}
+	scored, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scored) != 1 || scored[0].Confidence != 92 {
+		t.Fatalf("SetClipConfidence did not write the score: %+v", scored)
+	}
+	if err := s.UpsertClip(ctx, rescan); err != nil {
+		t.Fatal(err)
+	}
+	rescored, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rescored) != 1 || rescored[0].Confidence != 92 {
+		t.Errorf("a re-scan blanked a WRITTEN score (%+v) — `confidence` must stay out of "+
+			"UpsertClip's DO UPDATE list for the writer's value, not just the seeded one", rescored)
+	}
+
 	// Filing is the only way out, and it records that nobody looked.
 	if _, err := s.SetClipsHeld(ctx, []string{"held.mp4"}, false, true, at); err != nil {
 		t.Fatal(err)
@@ -1533,7 +1561,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	p := filler.SplitProposal{
-		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: now,
+		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys"},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4"},
@@ -1547,7 +1575,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClipPath != p.ClipPath || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+	if got.ClipHash != p.ClipHash || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
 		t.Fatalf("proposal round-trip = %+v", got)
 	}
 	// Every segment field survives the JSON round-trip — including the V34-specific
@@ -1563,7 +1591,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// ⚠ Re-detection REPLACES the pending proposal for the same clip — two competing
 	// cut-lists for one file is a review bug, not a choice. The NEW id answers the old
 	// one's GET with ErrNotFound.
-	p2 := filler.SplitProposal{ID: "sp_2", ClipPath: p.ClipPath, CreatedAt: now.Add(time.Hour),
+	p2 := filler.SplitProposal{ID: "sp_2", ClipHash: p.ClipHash, CreatedAt: now.Add(time.Hour),
 		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
 	if err := s.UpsertSplitProposal(ctx, p2); err != nil {
 		t.Fatal(err)

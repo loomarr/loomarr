@@ -15,10 +15,10 @@ import (
 // delayed review. It is deliberately NOT part of the clip catalog: pod matching
 // never sees it, and segments become clips only through Confirm.
 
-const splitProposalSelect = `SELECT id, clip_path, segments_json, created_at FROM filler_split_proposals`
+const splitProposalSelect = `SELECT id, clip_hash, segments_json, created_at FROM filler_split_proposals`
 
 // UpsertSplitProposal writes a proposal. ONE proposal per compilation clip:
-// re-running detection replaces the pending one (clip_path is UNIQUE), because
+// re-running detection replaces the pending one (clip_hash is UNIQUE), because
 // two competing cut-lists for one file is a review bug, not a choice.
 func (s *sqlStore) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
 	raw, err := json.Marshal(p.Segments)
@@ -26,11 +26,11 @@ func (s *sqlStore) UpsertSplitProposal(ctx context.Context, p filler.SplitPropos
 		return fmt.Errorf("marshal split segments: %w", err)
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO filler_split_proposals (id, clip_path, segments_json, created_at)
+		`INSERT INTO filler_split_proposals (id, clip_hash, segments_json, created_at)
 		 VALUES (?, ?, ?, ?)
-		 ON CONFLICT(clip_path) DO UPDATE SET
+		 ON CONFLICT(clip_hash) DO UPDATE SET
 		   id=excluded.id, segments_json=excluded.segments_json, created_at=excluded.created_at`),
-		p.ID, p.ClipPath, string(raw), epoch(p.CreatedAt))
+		p.ID, p.ClipHash, string(raw), epoch(p.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("upsert split proposal %s: %w", p.ID, err)
 	}
@@ -46,7 +46,7 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 		createdAt int64
 	)
 	err := s.db.QueryRowContext(ctx, s.ph(splitProposalSelect+` WHERE id = ?`), id).
-		Scan(&p.ID, &p.ClipPath, &raw, &createdAt)
+		Scan(&p.ID, &p.ClipHash, &raw, &createdAt)
 	if err == sql.ErrNoRows {
 		return filler.SplitProposal{}, ErrNotFound
 	}
@@ -114,7 +114,7 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 			raw       string
 			createdAt int64
 		)
-		if err := rows.Scan(&p.ID, &p.ClipPath, &raw, &createdAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.ClipHash, &raw, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan split proposal: %w", err)
 		}
 		// Reported rather than silently skipped: a proposal whose segments will not decode is
