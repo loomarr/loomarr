@@ -118,15 +118,17 @@ const AppShell = ({
         </Link>
         {onLogout && (
           <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onLogout}
-                aria-label="Sign out"
-                className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <LogOut className="size-4" aria-hidden />
-              </button>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  aria-label="Sign out"
+                  className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+                />
+              }
+            >
+              <LogOut className="size-4" aria-hidden />
             </TooltipTrigger>
             <TooltipContent>Sign out</TooltipContent>
           </Tooltip>

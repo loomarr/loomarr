@@ -61,7 +61,6 @@ const KNOWN_GAPS = new Set([
   "components/ui/checkbox/checkbox.tsx",
   "components/ui/dialog/dialog.tsx",
   "components/ui/select/select.tsx",
-  "components/ui/tooltip/tooltip.tsx",
   "dashboard/restart-watch-provider/restart-watch-provider.tsx",
   "dashboard/use-restart-watch/use-restart-watch.ts",
   "filler/channel-filler/filler-clip-list/filler-clip-list.tsx",
