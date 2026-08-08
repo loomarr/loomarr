@@ -65,6 +65,8 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
 	// the generated client always has the event types even when this export ran without one.
 	srv.registerEvents(humaAPI)
+	// registerSSO is nil-guarded on the provider, same schemaOnly escape.
+	srv.registerSSO(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner

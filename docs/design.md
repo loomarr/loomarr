@@ -532,6 +532,19 @@ Single source of truth: spec, request validation, and served docs all derive fro
 
 **Requirements:** OpenAPI **3.1** at `/openapi.{json,yaml}`; interactive docs at `/docs` with **bundled assets** — note Huma's default docs page loads Stoplight Elements **from a CDN**, which violates the offline rule: override the docs handler to serve self-hosted assets (works air-gapped on LAN); every operation has summary/description/operationId/tags + an example; schemas generated from domain types (`Title`, `Record`, `State` enum, `Channel`, `Proposal`, `Clip`, `Pod`, RFC 7807 error) — the spec `State` enum must equal the code enum; `make openapi` exports and commits `api/openapi.yaml` (diffed in review, published as CI artifact).
 
+**Every `/v1` route is a Huma operation — including the ones that do not return JSON.** "Define each operation once" was true of the typed routes and quietly false elsewhere: a binary download, an image, an SSE stream, a multipart upload and a 302 were registered straight onto the `ServeMux`. That is a fact about a route's *response shape*, and it was being read as a fact about where the route belongs. The cost was never mainly documentation:
+
+- **Authorization forked.** A Huma operation carries its required role in `Operation.Metadata`, enforced by one middleware that **fails closed** for an operation declaring nothing. Raw handlers called a second helper, and two of them had already drifted to opposite answers on what a nil authorizer means (`backupHandler` denied, `eventsHandler` allowed).
+- **CSRF did not reach them**, so the multipart upload hand-rolled its own header check.
+- **The drift guard could not see them.** `TestRegisterListsMatchBetweenRouterAndExporter` matches `srv.register*(humaAPI)` and is therefore structurally blind to a raw registration — the same class of gap it was written to catch.
+
+`rawOp` (`internal/api/rawop.go`) mounts these on the same API while keeping the raw `(w, r)` that `http.ServeContent`, an SSE loop and `http.Redirect` need; typed SSE goes through huma's `sse.Register`, multipart through `huma.MultipartFormFiles`. The second authorization helper is deleted, so there is **one** path rather than two. A guard fails on any `/v1` route registered on the bare mux, and its exemption list is asserted empty.
+
+Two consequences worth stating, because both look like details and are not:
+
+- **A route's payload type is now load-bearing for SSE.** Huma names an event frame after its payload's Go type, so a frame whose type is missing from the registry ships with no `event:` name: every browser listener for it silently stops firing, on a 200. Frames are declared types, and a guard checks the publishers against the registry.
+- **The spec describing a byte route is a documentation claim, not a stability promise.** The playout streams' shape is dictated by what media servers accept, not by us; being listed says what we serve, not that a generated client should drive it.
+
 ### 7.2 Search (federated, no index)
 **Decision: Loomarr builds no search index.** Every searchable corpus is already indexed by its owner: the media server exposes `SearchTerm` on the same `/Items` surface as §6 (with `IncludeItemTypes` + `Recursive=true`, flavor auth as usual); TMDB has `/search/multi`; the clip catalog is thousands of rows where a `name LIKE` filter in the store suffices. Dual-dialect full-text (SQLite FTS5 *and* Postgres tsvector, which diverge substantially) to re-index data we don't own is explicitly rejected — revisit only if enormous filler catalogs demand it (§20).
 
