@@ -439,6 +439,15 @@ func renderNode() string {
 // Structured k=v on its own pipe, NOT stderr scraping: viewra read stderr in 4096-byte
 // chunks looking for substrings, and a chunked read can split a token across the buffer
 // boundary. A bufio.Scanner over the progress pipe cannot.
+// lastSpeed returns the PEAK realtime multiple across a trial encode's progress samples — the
+// encoder's sustained capability once warmed, not whichever sample happened to be last.
+//
+// ⚠ **Peak, not last, and that is the fix for a capacity under-count.** ffmpeg's early progress
+// samples are depressed by cold encoder init (CUDA/VAAPI context setup, filter-graph warmup); for a
+// short 5s trial the LAST sample can still be one of those cold ones, or `N/A`/`0x` during teardown.
+// Taking the last collapsed a warm ~8x NVENC to ~1x → channelsFromSpeed → 1 hardware channel on a
+// GPU that sustains several, which then made the admission gate cap the box at one transcode. The
+// peak is stable against the cold ramp and is the honest "how fast can this encoder go" signal.
 func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
 	var speed float64
 	sc := bufio.NewScanner(r)
@@ -449,7 +458,7 @@ func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
 		}
 		// Padded, with a trailing x: "speed=  14x".
 		v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "x"))
-		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > speed {
 			speed = f
 		}
 	}
