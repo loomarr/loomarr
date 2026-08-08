@@ -85,10 +85,6 @@ func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 // protections listed above, and the test fails on a stale entry so the list cannot outlive the
 // work it describes.
 var knownRawV1Routes = map[string]string{
-	"POST /v1/channels/{id}/icon": "multipart upload; becomes a huma.MultipartFormFiles input, " +
-		"which also deletes the CSRF check it hand-rolls today",
-	"GET /v1/events": "SSE; becomes sse.Register with one concrete DTO per event so the frames " +
-		"reach the spec instead of being hand-typed on the frontend",
 	"GET /v1/auth/sso/start":    "302 + Set-Cookie; becomes a rawOp with RolePublic",
 	"GET /v1/auth/sso/callback": "302 + Set-Cookie; becomes a rawOp with RolePublic",
 }

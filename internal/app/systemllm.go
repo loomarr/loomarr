@@ -540,9 +540,9 @@ func (s *systemLLMService) publishPull(jobID, model, status string, percent int,
 	}
 	s.bus.Publish(events.Event{
 		Type: "llm_pull",
-		Payload: map[string]any{
-			"jobId": jobID, "model": model, "status": status,
-			"percent": percent, "completed": completed, "total": total, "error": errMsg,
+		Payload: api.LLMPullEvent{
+			JobID: jobID, Model: model, Status: status,
+			Percent: percent, Completed: completed, Total: total, Error: errMsg,
 		},
 	})
 }

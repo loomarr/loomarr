@@ -221,11 +221,11 @@ func (d *databaseService) emit(st api.DatabaseStatus) {
 	if d.bus == nil {
 		return
 	}
-	d.bus.Publish(events.Event{Type: "database", Payload: map[string]any{
-		"phase":  st.Phase,
-		"parity": st.Parity,
-		"tables": st.Tables,
-		"error":  st.Error,
+	d.bus.Publish(events.Event{Type: "database", Payload: api.DatabaseEvent{
+		Phase:  st.Phase,
+		Parity: st.Parity,
+		Tables: st.Tables,
+		Error:  st.Error,
 	}})
 }
 

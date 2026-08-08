@@ -513,7 +513,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		playoutMgr.OnChange(func() {
 			eventBus.Publish(events.Event{
 				Type:    "playout",
-				Payload: map[string]int{"active": playoutMgr.ActiveCount()},
+				Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
 			})
 		})
 		playoutSessions = playoutMgr

@@ -7,10 +7,12 @@
 export * as authApi from "../generated/endpoints/auth/auth";
 export * as channelsApi from "../generated/endpoints/channels/channels";
 export * as dashboardApi from "../generated/endpoints/dashboard/dashboard";
+export * as eventsApi from "../generated/endpoints/events/events";
 export * as fillerApi from "../generated/endpoints/filler/filler";
 export * as helpApi from "../generated/endpoints/help/help";
 export * as jobsApi from "../generated/endpoints/jobs/jobs";
 export * as libraryApi from "../generated/endpoints/library/library";
+export * as playoutApi from "../generated/endpoints/playout/playout";
 export * as proposalsApi from "../generated/endpoints/proposals/proposals";
 export * as searchApi from "../generated/endpoints/search/search";
 export * as settingsApi from "../generated/endpoints/settings/settings";
