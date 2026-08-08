@@ -82,14 +82,24 @@ func authorizeRole(want, have Role) bool {
 	}
 }
 
-// requireRole is the plain-mux equivalent, for the handlers Huma's middleware never sees
-// (SSE, backup download, icons, playout, SSO redirects — §7). It writes the refusal and
-// reports whether the caller may proceed.
+// requireRole is the plain-mux equivalent, for the handlers Huma's middleware never sees. It
+// writes the refusal and reports whether the caller may proceed.
 //
 // ⚠ **This exists because two hand-written guards had already diverged on what a nil
 // authorizer means.** `backupHandler` denied when `s.auth == nil`; `eventsHandler` allowed.
 // Same package, same concern, opposite fail-safe defaults — which is what a rule that is
 // re-derived per handler decays into. There is one answer here: no authorizer ⇒ denied.
+//
+// ⚠ **It is being deleted, and the count only goes down.** The backup pair, the three clip byte
+// routes, the channel-icon serve and the playout streams all reached it through the raw mux;
+// they are rawOps now (rawop.go) and get the SAME rule from the operation's declared role,
+// enforced once in registerMiddleware. Two callers remain — the SSE stream and the multipart
+// icon upload — and when those move this function goes with them, leaving one authorization
+// path instead of two. Do not add a caller; add a rawOp.
+//
+// One difference to know while both exist: with no authorizer at all this answers 403, whereas
+// the middleware leaves the role anonymous and answers 401. Real installs always wire one, so
+// this only shows up in a test that builds a Server without Auth.
 func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, want Role) bool {
 	if want == RolePublic {
 		return true

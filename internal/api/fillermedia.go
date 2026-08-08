@@ -61,10 +61,6 @@ var mediaTypes = map[string]string{
 // any authenticated user, and these are the same commercials the household's channels play at
 // them. NOT public — unlike the channel icon, nothing machine-to-machine needs this.
 func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
-	if !s.requireRole(w, r, RoleMember) {
-		return
-	}
-
 	// Read live rather than captured at wiring, so changing filler.dir in Settings applies to
 	// the next request (config-design §3 hot-apply) — the same treatment scan, sync and thumb
 	// give it. `liveConfig` is nil in unit tests that build a bare Server.

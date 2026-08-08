@@ -529,39 +529,47 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 // routes outside the SPA's origin — which is why the in-app player's same-origin URLs did not
 // resolve in dev. Auth is ONE shared middleware (playoutAuthMiddleware), not re-derived per handler.
 //
-// Still deliberately NOT under /v1 and hidden from the OpenAPI spec: they are a machine-to-machine
-// byte surface whose shape media servers dictate (prior-art §1), not the versioned JSON contract
-// the generated client consumes — versioning them alongside the API would imply a freedom to change
-// them that we do not have. Mounting on the Huma API is about the ROUTER + AUTH, not the contract.
+// ⚠ **They are now IN the OpenAPI spec, and that is a documentation claim, not a stability
+// promise.** The previous text here said they were "deliberately NOT under /v1 and hidden",
+// which had gone stale twice over: the paths have been `/v1/playout/…` since V47, and hiding
+// them meant `api/openapi.yaml` silently under-reported the served surface — the same class of
+// gap that let `GET /v1/playout/sessions` run live and undocumented. Their shape is still
+// dictated by what media servers accept (prior-art §1), NOT by us, so appearing in the spec
+// describes what we serve without implying we are free to change it or that a generated client
+// should drive it. Read the response schemas as "these bytes, this media type" only.
 //
 // The handler BODIES (streamHandler, hlsPlaylistHandler, …) are unchanged — they still take (w, r)
-// and stream; this only changes how they are mounted and guarded.
+// and stream; this only changes how they are mounted, guarded and described.
 func (s *Server) registerPlayout(api huma.API) {
 	// The tuner list + XMLTV the media server registers.
-	s.streamOp(api, huma.Operation{
+	streamOp[struct{}](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-tuner", Method: http.MethodGet, Path: "/v1/playout/tuner.m3u",
 		Summary: "Playout tuner M3U (device-authed)", Tags: []string{"playout"},
-	}, s.tunerHandler)
+	}, "The M3U tuner list a media server registers as a Live TV source.",
+		"application/vnd.apple.mpegurl"), s.tunerHandler)
 	// The XMLTV listings (playoutguide.go). Without it a channel tunes with an empty EPG.
-	s.streamOp(api, huma.Operation{
+	streamOp[struct{}](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-guide", Method: http.MethodGet, Path: "/v1/playout/guide.xml",
 		Summary: "Playout XMLTV guide (device-authed)", Tags: []string{"playout"},
-	}, s.guideHandler)
+	}, "XMLTV listings for every internally-played channel.", "application/xml"), s.guideHandler)
 
 	// The continuous MPEG-TS a TV/media server plays, plus the ffconcat + program the parent reads.
-	s.streamOp(api, huma.Operation{
+	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-stream", Method: http.MethodGet, Path: "/v1/playout/stream/{id}",
 		Summary: "Channel MPEG-TS stream (device-authed)", Tags: []string{"playout"},
-	}, s.streamHandler)
-	s.streamOp(api, huma.Operation{
+	}, "A continuous transport stream of whatever the channel is playing now.",
+		"video/mp2t"), s.streamHandler)
+	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-playlist", Method: http.MethodGet, Path: "/v1/playout/playlist/{id}",
 		Summary: "Channel ffconcat playlist (device-authed)", Tags: []string{"playout"},
-	}, s.playlistHandler)
+	}, "The ffconcat playlist the parent ffmpeg reads to sequence programs.",
+		"text/plain"), s.playlistHandler)
 	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per program.
-	s.streamOp(api, huma.Operation{
+	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-program", Method: http.MethodGet, Path: "/v1/playout/program/{id}",
 		Summary: "One program's MPEG-TS (device-authed)", Tags: []string{"playout"},
-	}, s.programHandler)
+	}, "One program's transport stream; the concat demuxer re-opens this per program.",
+		"video/mp2t"), s.programHandler)
 
 	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by
 	// the signed URL (or the device token). Same-origin under the Huma API now, so the dev proxy and
@@ -569,35 +577,53 @@ func (s *Server) registerPlayout(api huma.API) {
 	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
 	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
 	// that works across every player + the browser.
-	s.streamOp(api, huma.Operation{
+	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-hls-master", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/master.m3u8",
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
-	}, s.hlsPlaylistHandler)
+	}, "The HLS master playlist for the in-app and native players.",
+		"application/vnd.apple.mpegurl"), s.hlsPlaylistHandler)
 	// A segment is a bare file beside the master (`seg-N.ts`) — direct play is one playlist, no
 	// variant subdirs, so a single `{asset}` segment (not a trailing wildcard) is enough.
-	s.streamOp(api, huma.Operation{
+	//
+	// Two content types because this one route genuinely serves both: `{asset}` is a segment
+	// (video/mp2t) or the media playlist beside the master (vnd.apple.mpegurl), decided by the
+	// filename asked for — see hlsAssetHandler.
+	streamOp[playoutAssetInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-hls-asset", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/{asset}",
-		Summary: "Channel HLS segment (signed-URL authed)", Tags: []string{"playout"},
-	}, s.hlsAssetHandler)
+		Summary: "Channel HLS segment or media playlist (signed-URL authed)", Tags: []string{"playout"},
+	}, "A segment, or the media playlist beside the master.",
+		"video/mp2t", "application/vnd.apple.mpegurl"), s.hlsAssetHandler)
+}
+
+// playoutChannelInput addresses one channel's playout by its Loomarr channel id.
+//
+// Declared for the SPEC, not for the handlers — they still read r.PathValue("id"). Huma builds
+// the parameter list from this struct and never cross-checks it against the `{placeholders}` in
+// Path, so an op registered with struct{} emits a path template whose parameter is defined
+// nowhere. That was invisible while these routes were Hidden (see rawop.go).
+type playoutChannelInput struct {
+	ID string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
+}
+
+// playoutAssetInput is playoutChannelInput plus the file beside the master playlist.
+type playoutAssetInput struct {
+	ID    string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
+	Asset string `path:"asset" example:"seg-7.ts" doc:"A file beside the master playlist — a segment, or the media playlist"`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout
 // auth middleware, and a StreamResponse body that hands the existing (w, r) handler control. `body`
-// is the current stdlib handler — reused verbatim. Hidden from the OpenAPI spec (see registerPlayout).
-func (s *Server) streamOp(api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
+// is the current stdlib handler — reused verbatim.
+//
+// A thin specialisation of rawOp (rawop.go) pinning the two things every playout route shares.
+// It is a package-level function rather than a method because it takes a type parameter for the
+// path params, and Go methods cannot.
+func streamOp[I any](s *Server, api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
 	// RolePublic tells the GLOBAL session-auth middleware (registerMiddleware) to skip these — they
 	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
 	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
 	// session layer, guarded by the playout layer — the correct two-layer split (§11).
-	op = withRole(op, RolePublic)
-	op.Middlewares = append(op.Middlewares, s.playoutAuthMiddleware)
-	op.Hidden = true
-	huma.Register(api, op, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
-		return &huma.StreamResponse{Body: func(hctx huma.Context) {
-			r, w := humago.Unwrap(hctx)
-			body(w, r)
-		}}, nil
-	})
+	rawOp[I](api, op, RolePublic, body, s.playoutAuthMiddleware)
 }
 
 // playoutAuthMiddleware is the ONE authorization point for playout streaming routes — the device
