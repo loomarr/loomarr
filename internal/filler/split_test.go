@@ -281,18 +281,9 @@ func TestDHash_NoFramesIsNotADuplicate(t *testing.T) {
 
 // --- names / transcripts -----------------------------------------------------
 
-func TestSanitizeClipName(t *testing.T) {
-	for in, want := range map[string]string{
-		"McDonald's — 1987!": "mcdonalds-1987",
-		"  Aqua Globes  ":    "aqua-globes",
-		"!!!":                "segment",
-		"Rice Krispies":      "rice-krispies",
-	} {
-		if got := sanitizeClipName(in); got != want {
-			t.Errorf("sanitizeClipName(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
+// ⚠ `TestSanitizeClipName` was deleted with the function it covered (§10 V51a). A segment's
+// filename is its content hash now, so there is no display name to make filesystem-safe — the
+// name lives on the catalog row and is read by people, not by the filesystem.
 
 func TestSliceTranscript(t *testing.T) {
 	tr := []TranscriptSegment{

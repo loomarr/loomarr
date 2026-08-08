@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,7 +37,28 @@ func (f splitFakeTools) GrayFrames(context.Context, string, int64, int64) ([][]b
 func (f splitFakeTools) Keyframes(context.Context, string, int) ([][]byte, error) {
 	return nil, fmt.Errorf("no keyframes in tests")
 }
-func (f splitFakeTools) Cut(context.Context, string, int64, int64, string) error { return nil }
+
+// ⚠ It must actually WRITE, and write something different per span. A segment's identity is the
+// hash of its bytes (§10 V38c), so a `Cut` that wrote nothing leaves nothing to hash, and one that
+// wrote identical bytes would make every segment of a reel the same clip — which is the correct
+// outcome for identical content and therefore indistinguishable from the collapse bug this file
+// now guards against. Returning a bare nil was safe only while nobody read the result.
+func (f splitFakeTools) Cut(_ context.Context, _ string, start, end int64, out string) error {
+	return os.WriteFile(out, []byte(fmt.Sprintf("cut %d-%d", start, end)), 0o644)
+}
+
+// compHash is the seeded compilation's IDENTITY, and compPath its LOCATION.
+//
+// ⚠ **They are deliberately different strings.** This fixture set `Hash` and `Path` to the same
+// value, with a comment explaining that Split looks the clip up by id — which made the lookup
+// appear to work no matter which of the two the code passed. Production hashes are 64 hex
+// characters and never equal a path, so every key confusion in the split path was invisible here:
+// `Confirm` looked the compilation up by path against a hash-keyed `GetClip` and could never
+// commit a split at all (§10 V51a). Two distinct values is what makes that class visible.
+const (
+	compHash = "a3f90000000000000000000000000000000000000000000000000000000000c1"
+	compPath = "a3/f9/" + compHash + ".mp4"
+)
 
 func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, store.Store) {
 	t.Helper()
@@ -46,9 +69,8 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	t.Cleanup(func() { _ = st.Close() })
 	// A compilation to split.
 	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
-		// Hash AND Path — identity is the hash since V38c, and Split looks the clip up by id.
-		Hash: "comps/1987.mp4",
-		Path: "comps/1987.mp4", Name: "1987.mp4", Kind: filler.Commercial, DurationMs: 61_000,
+		Hash: compHash,
+		Path: compPath, Name: "1987.mp4", Kind: filler.Commercial, DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +94,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 // the Settings remedy (§10, V34).
 func TestSplit_NoDropFolderIsUnavailable(t *testing.T) {
 	a, _ := newSplitAdapter(t, events.NewBus(), false)
-	if _, err := a.Split(context.Background(), "comps/1987.mp4"); !errors.Is(err, api.ErrSplitUnavailable) {
+	if _, err := a.Split(context.Background(), compHash); !errors.Is(err, api.ErrSplitUnavailable) {
 		t.Errorf("Split without a splitter = %v, want ErrSplitUnavailable", err)
 	}
 	if err := a.ConfirmSplit(context.Background(), "sp_1", nil); !errors.Is(err, api.ErrSplitUnavailable) {
@@ -98,7 +120,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	t.Cleanup(unsub)
 	a, st := newSplitAdapter(t, bus, true)
 
-	jobID, err := a.Split(context.Background(), "comps/1987.mp4")
+	jobID, err := a.Split(context.Background(), compHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,5 +176,110 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	}
 	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" {
 		t.Errorf("persisted proposal = %+v", p.Segments)
+	}
+}
+
+// ⚠ **The confirm round trip against the REAL store — the coverage whose absence let split
+// confirm ship broken (§10 V51a).**
+//
+// Every existing test above stops at Propose. Confirm was exercised only by `internal/filler`'s
+// own suite, whose store keys clips by PATH — so it answered a lookup production does not
+// perform, and the two defects underneath went unseen for two phases:
+//
+//  1. the proposal carried `clip.Path` while `Confirm` fed it to a hash-keyed `GetClip`, so every
+//     confirm returned "compilation … no longer in the catalog" for a clip that was right there;
+//  2. segments were upserted with an empty `Hash`, and `ON CONFLICT(hash)` made each one
+//     overwrite the last — a 41-segment reel collapsing into a single row.
+//
+// This asserts the outcome an operator actually needs: N reviewed segments become N distinct,
+// airable catalog rows, each pointing back at a parent that is still there.
+func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/f.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// A real file at the sharded location the row claims, so the cut reads something.
+	drop := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(drop, "a3", "f9"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(drop, compPath), []byte("compilation"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{
+		Hash: compHash, Path: compPath, Name: "1987.mp4",
+		Kind: filler.Commercial, DurationMs: 61_000, Source: "archive",
+	}, UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+
+	n := 0
+	sp := filler.NewSplitter(fillerSplitStoreAdapter{st}, splitFakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
+		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+	}}, nil, drop, func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
+
+	prop, err := sp.Propose(ctx, compHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The proposal addresses the compilation by IDENTITY, not by location.
+	if prop.ClipHash != compHash {
+		t.Fatalf("proposal.ClipHash = %q, want the compilation's hash %q", prop.ClipHash, compHash)
+	}
+
+	if err := sp.Confirm(ctx, prop.ID, prop.Segments); err != nil {
+		t.Fatalf("Confirm: %v — this is the failure that made split review a dead end", err)
+	}
+
+	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var segments []store.Clip
+	var parent *store.Clip
+	for i, c := range clips {
+		if c.Hash == compHash {
+			parent = &clips[i]
+			continue
+		}
+		segments = append(segments, c)
+	}
+
+	if len(segments) != 2 {
+		t.Fatalf("catalog holds %d segments, want 2 — a reel collapsing into one row is the "+
+			"empty-hash upsert bug (%+v)", len(segments), segments)
+	}
+	seen := map[string]bool{}
+	for _, s := range segments {
+		if s.Hash == "" {
+			t.Errorf("segment %q has no identity — UpsertClip keys on hash", s.Name)
+		}
+		if seen[s.Hash] {
+			t.Errorf("two segments share the hash %q", s.Hash)
+		}
+		seen[s.Hash] = true
+		if s.ParentHash != compHash {
+			t.Errorf("segment %q parentHash = %q, want %q — lineage is the point of V45",
+				s.Name, s.ParentHash, compHash)
+		}
+		// Filed where its identity says it lives, and the bytes are actually there.
+		if want := filler.ClipRelPath(s.Hash, ".mp4"); s.Path != want {
+			t.Errorf("segment %q path = %q, want the sharded %q", s.Name, s.Path, want)
+		}
+		if _, err := os.Stat(filepath.Join(drop, s.Path)); err != nil {
+			t.Errorf("segment %q has a catalog row but no file: %v", s.Name, err)
+		}
+	}
+
+	// ⚠ V45: the parent is KEPT and marked a composite, not deleted.
+	if parent == nil {
+		t.Fatal("the parent was deleted on confirm — V45 keeps it as a composite")
+	}
+	if !parent.IsComposite {
+		t.Error("the parent survived but is not marked composite — it would still be airable")
 	}
 }

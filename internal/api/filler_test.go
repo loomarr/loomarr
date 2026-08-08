@@ -808,7 +808,7 @@ func TestSplitFiller_Route(t *testing.T) {
 func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	p := filler.SplitProposal{
-		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: time.Now().UTC(),
+		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true},

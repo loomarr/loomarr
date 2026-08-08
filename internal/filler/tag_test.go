@@ -29,6 +29,11 @@ type tagMemStore struct {
 	// brands records SetClipBrand writes keyed by PATH (the key the real store uses), so a test can
 	// assert a GROUNDED brand was written — and, by its absence, that an ungrounded one never was.
 	brands map[string]string
+	// confidence records SetClipConfidence writes keyed by PATH (the key the real store uses).
+	// ⚠ Kept as a map rather than folded into `clips`, so a test asserts that the score was
+	// WRITTEN rather than that it happens to be non-zero — the distinction that mattered, since
+	// `Score` produced a correct number for two phases while nothing persisted it (§10 V51a).
+	confidence map[string]int
 	// tags records SetClipTags writes keyed by HASH (§10 V45a) — the LEAVES the tagger persisted. A
 	// test asserts the grounded tag set here; hash-keyed like UpdateClipTags (and unlike the
 	// path-keyed brand map), so it MISSES a caller that passed a path, the same discipline the rest of
@@ -38,10 +43,11 @@ type tagMemStore struct {
 
 func newTagMemStore() *tagMemStore {
 	return &tagMemStore{
-		clips:   map[string]filler.StoreClip{},
-		updates: map[string]filler.StoreClip{},
-		brands:  map[string]string{},
-		tags:    map[string][]string{},
+		clips:      map[string]filler.StoreClip{},
+		updates:    map[string]filler.StoreClip{},
+		brands:     map[string]string{},
+		tags:       map[string][]string{},
+		confidence: map[string]int{},
 	}
 }
 
@@ -107,6 +113,19 @@ func (m *tagMemStore) SetClipBrand(_ context.Context, path, brand string, _ time
 		u.Brand = brand
 		m.updates[hash] = u
 	}
+	return nil
+}
+
+// SetClipConfidence records the grounding-capped score, PATH-keyed like the real store's writer.
+func (m *tagMemStore) SetClipConfidence(_ context.Context, path string, confidence int, _ time.Time) error {
+	hash, ok := m.hashByPath(path)
+	if !ok {
+		return errTagClipNotFound
+	}
+	m.confidence[path] = confidence
+	c := m.clips[hash]
+	c.Confidence = confidence
+	m.clips[hash] = c
 	return nil
 }
 
@@ -901,5 +920,53 @@ func TestTagger_DoesNotRefileAClipAHumanAlreadyFiled(t *testing.T) {
 	if res.AutoFiled != 0 || len(st.filed) != 0 {
 		t.Errorf("re-filed an already-filed clip (%v) — that would stamp auto_filed on a human's "+
 			"own decision", st.filed)
+	}
+}
+
+// ⚠ **The score has to be PERSISTED, not just computed — the gap V51a closed.**
+//
+// `TagSuggestion.Score` was correct and unit-tested for two phases, and `Run` consulted it for the
+// auto-file decision, but nothing ever wrote it to the clip. `UpsertClip` inserts a literal 0 and
+// deliberately omits the column from its DO UPDATE, so `confidence` was 0 for every clip in every
+// catalog — and the Incoming meter renders nothing at 0 (correctly: 0 means "never scored"), so
+// the number an operator uses to decide whether to trust an auto-filed clip was permanently absent.
+//
+// The store's own conformance case passed throughout, because it wrote a value by hand and
+// asserted the round trip. A column can round-trip perfectly and still have no producer, which is
+// why this asserts the WRITE happened rather than that the value looks plausible.
+func TestTagger_PersistsTheGroundedScore(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		clip  string
+		reply string
+		want  int
+	}{
+		// Everything verifies (the year is literally in the name) and the model does not lower it.
+		{"fully grounded", "Toy ad 1985", `{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`, 100},
+		// ⚠ The load-bearing row: an era found nowhere in the text is capped at 40 however certain
+		// the model claims to be. If this ever records 100, the grounding cap is not wired.
+		{"ungrounded era", "Retro toy commercial", `{"era":1985,"audience":"kids","tags":["toys"],"confidence":100}`, 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newTagMemStore()
+			st.clips["c1"] = heldClip("c1", tc.clip)
+			path := st.clips["c1"].Path
+
+			llmMock := testkit.NewLLM(testkit.FinalResponse(tc.reply))
+			tagger := filler.NewTagger(st, llmMock, nil, func() time.Time { return time.Unix(1, 0) }, discardLog()).
+				WithAutoFile(autoFileAt(85))
+			if _, err := tagger.Run(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			got, written := st.confidence[path]
+			if !written {
+				t.Fatalf("no score was written for %q — Score computed one and the tagger dropped "+
+					"it, which is exactly the state that shipped", path)
+			}
+			if got != tc.want {
+				t.Errorf("confidence = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }

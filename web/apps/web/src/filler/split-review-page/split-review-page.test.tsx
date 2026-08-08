@@ -19,7 +19,7 @@ const MEMBER = { ...ADMIN, role: "member" };
 
 const PROPOSAL = {
   id: "sp-1",
-  clipPath: "comp.mp4",
+  clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
   segments: [
     { index: 0, startMs: 0, endMs: 30000, name: "First ad", era: 1990, audience: "kids", category: "toys" },
@@ -77,7 +77,7 @@ describe("SplitReviewPage", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: /segment 1: first ad/i })).toBeInTheDocument();
-    expect(screen.getByText("comp.mp4")).toBeInTheDocument();
+    expect(screen.getByText("comp-hash")).toBeInTheDocument();
   });
 
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {

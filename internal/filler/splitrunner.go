@@ -125,9 +125,13 @@ func (r *SplitRunner) Run(ctx context.Context) (SplitRunResult, error) {
 	if err != nil {
 		return res, err
 	}
+	// ⚠ Keyed by HASH, matched against `c.Hash` below — the same identity `Propose` takes. It was
+	// path-on-both-sides before V51a, which agreed with itself but not with the clip lookup two
+	// lines down; keying the guard on the identity the work is actually done under is what keeps
+	// "already pending" and "propose this" talking about the same clip.
 	waiting := make(map[string]struct{}, len(pending))
 	for _, p := range pending {
-		waiting[p.ClipPath] = struct{}{}
+		waiting[p.ClipHash] = struct{}{}
 	}
 
 	for _, c := range clips {
@@ -146,7 +150,7 @@ func (r *SplitRunner) Run(ctx context.Context) (SplitRunResult, error) {
 
 		// Already review-pending: re-detecting would replace a proposal an operator may be
 		// halfway through editing.
-		if _, pendingReview := waiting[c.Path]; pendingReview {
+		if _, pendingReview := waiting[c.Hash]; pendingReview {
 			res.Skipped++
 			continue
 		}

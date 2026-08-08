@@ -76,7 +76,7 @@ const stubFetch = ({
       return Promise.resolve(
         json({
           id: "sp-1",
-          clipPath: "c1.mp4",
+          clipHash: "c1",
           createdAt: "2026-07-25T20:00:00Z",
           segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
         }),
@@ -358,12 +358,12 @@ describe("Filler page", () => {
     expect(await screen.findByText(/detecting cuts in frosted flakes/i)).toBeInTheDocument();
 
     act(() => {
-      fireFrame("filler_split", { jobId: "job-split-1", clipPath: "c1.mp4", status: "running" });
+      fireFrame("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
     });
     act(() => {
       fireFrame("filler_split", {
         jobId: "job-split-1",
-        clipPath: "c1.mp4",
+        clipHash: "c1",
         status: "success",
         proposalId: "sp-1",
         segments: 1,
@@ -383,7 +383,7 @@ describe("Filler page", () => {
     act(() => {
       fireFrame("filler_split", {
         jobId: "job-split-1",
-        clipPath: "c1.mp4",
+        clipHash: "c1",
         status: "error",
         error: "ffprobe found no streams",
       });

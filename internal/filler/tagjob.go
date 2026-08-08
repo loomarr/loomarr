@@ -131,6 +131,11 @@ type TagStore interface {
 	// hash-keyed. Only a brand `Classify` already grounded reaches here — the store call writes
 	// what it is given, the grounding lives in validateTags.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
+	// SetClipConfidence persists the grounding-capped score (§10 V38) — PATH-keyed, beside
+	// SetClipBrand. ⚠ Added in V51a because the score had NO writer: it was computed here, used
+	// once for the auto-file comparison, and dropped, so `confidence` was 0 for every clip in
+	// every catalog and the Incoming meter never rendered.
+	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
 	// SetClipsHeld files a clip into the catalog (§10 V38). The tagger calls it only to FILE
 	// (held=false, autoFiled=true) — sending a clip back for review is a human's decision,
 	// made from Incoming, never the job's.
@@ -345,6 +350,14 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 			if err := t.store.SetClipBrand(ctx, clip.Path, brand, t.now()); err != nil {
 				return res, err
 			}
+		}
+		// ⚠ **Persist the score BEFORE the filing decision reads it.** This is the write that did
+		// not exist: `Score` produced the number, the comparison below consumed it, and nothing
+		// ever put it in the database — so an operator was shown "0" (rendered as "never scored")
+		// for a clip the tagger had just scored 92 and filed. Written unconditionally, including
+		// for clips that stay held, because a low score is exactly the case a human needs to see.
+		if err := t.store.SetClipConfidence(ctx, clip.Path, sug.Confidence, t.now()); err != nil {
+			return res, err
 		}
 		// The filing decision (§10 V38). Only HELD clips are candidates: a clip already in the
 		// catalog was filed by a human or by an earlier run, and re-filing it would flip its
