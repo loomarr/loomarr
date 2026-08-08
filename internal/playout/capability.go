@@ -38,17 +38,21 @@ import (
 //
 // Coverage mirrors ErsatzTV's eight pipeline families, because that is the breadth real
 // deployments need: NVIDIA, Intel, AMD (both OSes), Apple Silicon, and ARM SBCs.
-// Vulkan leads on MEASURED throughput. On this box it sustains 23.7x against nvenc's
-// 13.7x at 720p25 — nearly double the channel capacity — and it is cross-vendor, so the
-// same path serves NVIDIA, AMD and Intel. It was originally ordered last as "newer, least
-// proven", which is a reasonable prior and the wrong call once there is a number: the
-// trial encode already refuses anything that does not work, so the cost of trying Vulkan
-// first is one failed probe, and the benefit is roughly twice the channels.
+//
+// ⚠ **This is the CROSS-VENDOR default, used when the GPU vendor is unknown.** When the vendor IS
+// known (preferenceFor), that vendor's NATIVE encoder is moved to the front — see the comment there.
+// Vulkan sits high because it sustains high measured throughput and is cross-vendor, but it is NOT
+// the right default on a card with a mature native encoder: the Vulkan video-encode drivers are
+// young (h264/hevc encode landed only recently, ~ffmpeg 8.x) and vary by driver, and on NVIDIA the
+// native NVENC path is more mature and better quality per bit. Raw throughput is not the constraint
+// for live playout — even ~14x realtime is many channels of headroom — so maturity and quality win.
+// The representative trial (trialEncode) still refuses anything that does not actually feed the HLS
+// remux, so a young Vulkan driver that stalls is demoted automatically rather than by exclusion.
 //
 // Anything ahead of software here must EARN its place by working; ordering only decides
 // who gets asked first.
 var encoderPreference = []Encoder{
-	EncoderVulkan,       // cross-vendor, and fastest measured here (23.7x vs nvenc 13.7x)
+	EncoderVulkan,       // cross-vendor; high measured throughput, but young drivers → not native-first
 	EncoderNVENC,        // NVIDIA — mature, good quality per bit
 	EncoderQSV,          // Intel Quick Sync — mature
 	EncoderVAAPI,        // Intel AND AMD on Linux; the broadest Linux path
@@ -57,6 +61,50 @@ var encoderPreference = []Encoder{
 	EncoderRKMPP,        // Rockchip SBCs
 	EncoderV4L2M2M,      // Raspberry Pi and other V4L2 stateful encoders
 	EncoderSoftware,     // always viable — the floor, not a candidate
+}
+
+// nativeEncoders maps a GPU vendor to its MATURE native H.264 encoders, most-preferred first. The
+// key is matched as a lowercase substring of the probed GPU name ("NVIDIA GeForce RTX 3080 Ti" →
+// "nvidia"), so no device-file inspection is needed — the same nvidia-smi/GPU-name signal the rest of
+// the app already probes is the only input. A vendor not listed here (or an empty name) keeps the
+// cross-vendor encoderPreference order, so unknown hardware still trials everything.
+var nativeEncoders = map[string][]Encoder{
+	"nvidia": {EncoderNVENC},
+	"intel":  {EncoderQSV, EncoderVAAPI}, // QSV is Intel's native; VAAPI is the broader Linux path
+	"amd":    {EncoderVAAPI, EncoderAMF}, // VAAPI on Linux, AMF on Windows
+	"apple":  {EncoderVideoToolbox},
+}
+
+// preferenceFor returns the trial order for a known GPU vendor: that vendor's native encoders first
+// (so a mature vendor path is chosen over young cross-vendor Vulkan), then the cross-vendor default
+// for everything else, de-duplicated. An unknown/empty vendor returns the default order unchanged.
+func preferenceFor(gpuVendor string) []Encoder {
+	v := strings.ToLower(strings.TrimSpace(gpuVendor))
+	var native []Encoder
+	for key, encs := range nativeEncoders {
+		if strings.Contains(v, key) {
+			native = encs
+			break
+		}
+	}
+	if len(native) == 0 {
+		return encoderPreference
+	}
+	seen := make(map[Encoder]bool, len(encoderPreference))
+	ordered := make([]Encoder, 0, len(encoderPreference))
+	for _, e := range native {
+		if !seen[e] {
+			seen[e] = true
+			ordered = append(ordered, e)
+		}
+	}
+	for _, e := range encoderPreference {
+		if !seen[e] {
+			seen[e] = true
+			ordered = append(ordered, e)
+		}
+	}
+	return ordered
 }
 
 // Capability is what one encoder can actually do here.
@@ -97,11 +145,15 @@ type Capacity struct {
 // at 720p25 — nearly identical channel counts, but libx264 burns cores the rest of the app
 // needs while nvenc offloads to otherwise-idle silicon. The gap widens with resolution,
 // which is why the probe runs at the PROFILE's resolution rather than a fixed one.
-func Detect(ctx context.Context, ffmpegPath string, p Profile) Capacity {
+// Detect picks the encoder and channel capacity for this box. gpuVendor is the probed GPU name (or
+// vendor substring); when it names a vendor with a mature native encoder, that encoder is trialled
+// first (preferenceFor). Pass "" when the GPU is unknown — the cross-vendor default order applies and
+// the trial still decides what actually works.
+func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string) Capacity {
 	listed := listEncoders(ctx, ffmpegPath)
 	out := Capacity{Chosen: EncoderSoftware, MaxChannels: 1}
 
-	for _, enc := range encoderPreference {
+	for _, enc := range preferenceFor(gpuVendor) {
 		if !listed[enc] {
 			// This ffmpeg build has no such encoder. Distinct from a failure: it means
 			// "wrong build", not "wrong hardware".
@@ -157,6 +209,15 @@ func listEncoders(ctx context.Context, ffmpegPath string) map[Encoder]bool {
 // rather than pattern-matched into a category. Viewra classified by substring — matching
 // "not found" and "cannot open" among others — which also matches a missing input file, so
 // an unrelated failure could permanently demote a box to software.
+//
+// ⚠ **The trial mirrors the LIVE pipeline shape — same scale filter, muxed to MPEG-TS, and the
+// output is then checked for a keyframe.** It used to encode to `-f null` (decode/encode only,
+// output discarded), which is NOT representative: an encoder whose driver produces a stream the
+// mpegts muxer cannot segment on a keyframe passed the trial and was then CHOSEN, only to stall the
+// live `-c copy -f hls` remux and black the channel for the full 45s timeout. Muxing to a real .ts
+// and asserting a keyframe is present makes the probe fail that encoder here instead — which is what
+// lets ordering prefer a vendor-native encoder while an immature cross-vendor driver is demoted
+// automatically rather than by a hard-coded exclusion.
 func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile) Capability {
 	// Bounded: a wedged GPU driver can hang an encode indefinitely, and the wizard waits
 	// on this.
@@ -166,6 +227,16 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile)
 	probe := p
 	probe.Encoder = enc
 
+	// A real MPEG-TS output file, mirroring the live child (which muxes mpegts). Removed after the
+	// check. Stdout stays reserved for `-progress`, so the mux target must be a file, not pipe:1.
+	out, err := os.CreateTemp("", "loomarr-trial-*.ts")
+	if err != nil {
+		return Capability{Encoder: enc, Err: err.Error()}
+	}
+	outPath := out.Name()
+	_ = out.Close()
+	defer func() { _ = os.Remove(outPath) }()
+
 	args := []string{"-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats"}
 	args = append(args, deviceInitArgs(enc)...)
 	// `testsrc` rather than a flat colour field: it has detail and motion, so the encoder
@@ -174,11 +245,13 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile)
 	args = append(args, "-f", "lavfi", "-i",
 		fmt.Sprintf("testsrc=duration=%d:size=%dx%d:rate=%d",
 			trialSeconds, probe.Width, probe.Height, probe.Framerate))
-	if vf := hardwareUploadFilter(enc); vf != "" {
-		args = append(args, "-vf", vf)
-	}
+	// The SAME scale/format/upload filter the live child builds (scaleFilterArgs), not just the bare
+	// upload — a filter-graph mismatch (CPU frames into a GPU encoder) is one of the real cold-path
+	// failures, so the trial must exercise it.
+	args = append(args, probe.scaleFilterArgs()...)
 	args = append(args, probe.videoEncodeArgs()...)
-	args = append(args, "-f", "null", "-")
+	// Mux to MPEG-TS exactly like the child, so an encoder that cannot feed the muxer fails HERE.
+	args = append(args, "-f", "mpegts", outPath)
 
 	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -204,7 +277,43 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile)
 		}
 		return Capability{Encoder: enc, Err: msg}
 	}
+
+	// The encode exited 0 — but Works also requires the muxed stream to carry a keyframe the HLS
+	// remux could cut on. An empty/keyframeless .ts here is exactly the live stall, caught early.
+	if !hasKeyframe(ctx, ffmpegPath, outPath) {
+		return Capability{Encoder: enc, Err: "encoded but produced no keyframe the HLS remux could segment on"}
+	}
 	return Capability{Encoder: enc, Works: true, Speed: speed}
+}
+
+// hasKeyframe reports whether an MPEG-TS file carries at least one video keyframe. This is the
+// property the HLS remux needs to cut a segment; an encoder whose output has none would stall the
+// live pipeline, so the trial rejects it. Best-effort: if ffprobe cannot run we do NOT fail the
+// encoder on that basis (the encode itself already exited 0) — we only fail on a definitive "no
+// keyframe" answer.
+func hasKeyframe(ctx context.Context, ffmpegPath, path string) bool {
+	probeBin := ffprobeFor(ffmpegPath)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	raw, err := exec.CommandContext(ctx, probeBin,
+		"-hide_banner", "-loglevel", "error",
+		"-select_streams", "v",
+		"-show_entries", "packet=flags",
+		"-read_intervals", "%+#5", // first few packets are enough; a frame-0 IDR is the target
+		"-of", "csv=p=0", path).Output()
+	if err != nil {
+		return true // can't probe → don't punish an encode that already succeeded
+	}
+	return strings.Contains(string(raw), "K")
+}
+
+// ffprobeFor derives the ffprobe path from the ffmpeg path (they ship together), so a build that
+// points FFMPEG at a custom location finds the matching probe rather than a PATH default.
+func ffprobeFor(ffmpegPath string) string {
+	if ffmpegPath == "" || ffmpegPath == "ffmpeg" {
+		return "ffprobe"
+	}
+	return strings.TrimSuffix(ffmpegPath, "ffmpeg") + "ffprobe"
 }
 
 // trialSeconds is long enough for the speed figure to settle past encoder startup, short
@@ -330,6 +439,15 @@ func renderNode() string {
 // Structured k=v on its own pipe, NOT stderr scraping: viewra read stderr in 4096-byte
 // chunks looking for substrings, and a chunked read can split a token across the buffer
 // boundary. A bufio.Scanner over the progress pipe cannot.
+// lastSpeed returns the PEAK realtime multiple across a trial encode's progress samples — the
+// encoder's sustained capability once warmed, not whichever sample happened to be last.
+//
+// ⚠ **Peak, not last, and that is the fix for a capacity under-count.** ffmpeg's early progress
+// samples are depressed by cold encoder init (CUDA/VAAPI context setup, filter-graph warmup); for a
+// short 5s trial the LAST sample can still be one of those cold ones, or `N/A`/`0x` during teardown.
+// Taking the last collapsed a warm ~8x NVENC to ~1x → channelsFromSpeed → 1 hardware channel on a
+// GPU that sustains several, which then made the admission gate cap the box at one transcode. The
+// peak is stable against the cold ramp and is the honest "how fast can this encoder go" signal.
 func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
 	var speed float64
 	sc := bufio.NewScanner(r)
@@ -340,7 +458,7 @@ func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
 		}
 		// Padded, with a trailing x: "speed=  14x".
 		v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "x"))
-		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > speed {
 			speed = f
 		}
 	}

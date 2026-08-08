@@ -109,6 +109,54 @@ func TestAttach_OneEncoderServesManyViewers(t *testing.T) {
 	}
 }
 
+// Concurrent cold starts of DIFFERENT channels must run in PARALLEL, not serialize on the manager
+// lock. The spawner here blocks until `want` spawns are in flight AT ONCE — only reachable if the
+// manager holds no lock across the spawn. The old design (m.mu held across the spawn) would let only
+// one spawn run at a time, the barrier would never fill, and this would hit the deadline and fail.
+func TestAttach_DifferentChannelsStartConcurrently(t *testing.T) {
+	const want = 4
+	inner, _ := newFakeSpawner(t)
+	inFlight := make(chan struct{}, want)
+	release := make(chan struct{})
+	spawn := func(ctx context.Context, channelID string, target Target) (*Process, error) {
+		inFlight <- struct{}{} // announce this spawn is running
+		<-release              // hold here until every spawn is confirmed concurrent
+		return inner(ctx, channelID, target)
+	}
+	m := testManager(t, spawn, want, time.Minute)
+
+	errs := make(chan error, want)
+	for i := 0; i < want; i++ {
+		ch := channelIDForIndex(i)
+		go func() {
+			_, _, err := m.Attach(context.Background(), ch, TargetMediaServer)
+			errs <- err
+		}()
+	}
+
+	// All `want` spawns must be simultaneously in flight within the deadline.
+	deadline := time.After(2 * time.Second)
+	for i := 0; i < want; i++ {
+		select {
+		case <-inFlight:
+		case <-deadline:
+			t.Fatalf("only %d/%d channel starts ran concurrently — starts are serialized", i, want)
+		}
+	}
+	close(release) // let them all finish
+
+	for i := 0; i < want; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent attach: %v", err)
+		}
+	}
+	if n := m.ActiveCount(); n != want {
+		t.Errorf("ActiveCount = %d, want %d", n, want)
+	}
+}
+
+func channelIDForIndex(i int) string { return "ch" + string(rune('a'+i)) }
+
 // THE RACE (prior-art §6.3). Two viewers tuning the same channel simultaneously must not
 // each start an encoder — the loser's would be orphaned with no viewers and no map entry,
 // i.e. a leaked ffmpeg burning a core until the process dies.

@@ -185,6 +185,16 @@ func (p *Prober) ollamaVersion(ctx context.Context) (string, bool) {
 	return v.Version, true
 }
 
+// GPUName reports the primary GPU's name (e.g. "NVIDIA GeForce RTX 3080 Ti"), or "" when unknown.
+// A thin exported wrapper over the same nvidia-smi probe the status endpoint uses, so callers that
+// only need the vendor signal (the playout encoder chooser) do not run the full LLM status probe or
+// duplicate the nvidia-smi call. Returns "" (not an error) on any failure — an unknown GPU is a
+// normal state that downstream code handles by falling back to its cross-vendor default.
+func GPUName(ctx context.Context) string {
+	name, _, _ := nvidiaSMIVRAM(ctx)
+	return name
+}
+
 // nvidiaSMIVRAM reads the primary GPU's name + total VRAM via nvidia-smi. Returns
 // ok=false on any failure (no binary, no GPU, parse error) — the caller treats that
 // as "VRAM unknown". Only the first GPU is read; a multi-GPU host is out of the

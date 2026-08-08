@@ -269,6 +269,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// until then so the /playout/hls routes report "not running" on an unwired install.
 	var playoutHLS api.PlayoutHLS
 	var playoutResolverSvc api.PlayoutResolver
+	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
+	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
+	var hwEncodeSlots func(context.Context) int
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -418,6 +421,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
 			ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
+			// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
+			// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
+			// so playout picks NVENC on an NVIDIA card rather than young cross-vendor Vulkan. Called
+			// once, lazily, inside the memoised capability probe; "" (unknown GPU) is a fine default.
+			gpuName: func() string { return llm.GPUName(rootCtx) },
 			// Preferred audio language (§9.1), read live so a Settings change applies to the
 			// next programme rather than the next restart. The prober derives ffprobe from the
 			// ffmpeg path — the two ship together, so an operator who moved one moved both.
@@ -475,6 +483,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}()
 		}
 		playoutResolverSvc = playoutRes
+		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
+		// admission gate first reads it — the operator-facing counterpart to "encoder probed".
+		hwEncodeSlots = func(ctx context.Context) int {
+			n := playoutRes.HWEncodeSlots(ctx)
+			log.Info("playout: hardware encode admission", "hw_slots", n)
+			return n
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -1330,6 +1345,39 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
 			}
 		},
+		// The doctor's TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is actually
+		// loaded now, rather than estimating from a model's on-disk size (which reported an unloaded
+		// model as resident). Local ollama only — a hosted provider holds no local VRAM, so (0, "").
+		// Read LIVE like ReclaimVRAM so a provider/URL change hot-applies. Sums VRAM across resident
+		// models and names the largest, which is the one that matters for encoder contention.
+		ResidentLLMVRAM: func(ctx context.Context) (float64, string) {
+			if set.str("llm.provider") != "ollama" {
+				return 0, ""
+			}
+			url := set.str("llm.url")
+			if url == "" {
+				return 0, ""
+			}
+			resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
+			if err != nil {
+				log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
+				return 0, ""
+			}
+			var total float64
+			var largest llm.ResidentModel
+			for _, m := range resident {
+				total += m.VRAMGiB
+				if m.VRAMGiB > largest.VRAMGiB {
+					largest = m
+				}
+			}
+			return total, largest.Name
+		},
+		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
+		// the gate that routes an over-capacity channel to software up front instead of stalling on a
+		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
+		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
+		HWEncodeSlots: hwEncodeSlots,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

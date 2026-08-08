@@ -164,3 +164,27 @@ func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
 		t.Errorf("Resolve dropped the encoder: %q", got.Encoder)
 	}
 }
+
+// lastSpeed must return the PEAK sample, not the last — a cold encoder ramps, and taking whichever
+// sample landed last collapsed a warm ~8x to ~1x and capped the box at one hardware channel.
+func TestLastSpeed_TakesThePeakNotTheLast(t *testing.T) {
+	// A realistic cold ramp that then falls off at teardown: peak is 8.66, last is a cold 0.90.
+	progress := strings.NewReader(strings.Join([]string{
+		"frame=10", "speed=0.75x",
+		"frame=60", "speed=6.20x",
+		"frame=140", "speed=8.66x", // the peak — the honest capability
+		"frame=150", "speed=0.90x", // a depressed final sample
+		"progress=end",
+	}, "\n"))
+	if got := lastSpeed(progress); got != 8.66 {
+		t.Errorf("lastSpeed = %v, want the peak 8.66", got)
+	}
+}
+
+// A trial that never emitted a usable speed (all N/A) reports 0, which channelsFromSpeed floors to 1.
+func TestLastSpeed_NoUsableSampleIsZero(t *testing.T) {
+	r := strings.NewReader("speed=N/A\nspeed=0x\nprogress=end\n")
+	if got := lastSpeed(r); got != 0 {
+		t.Errorf("lastSpeed = %v, want 0 when no usable sample", got)
+	}
+}

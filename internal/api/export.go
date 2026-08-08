@@ -62,7 +62,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerDashboard(humaAPI)
-	srv.registerPlayoutDoctor(humaAPI)
+	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
 	// spec, matching how /v1/auth/* is handled. Documented via §11.
