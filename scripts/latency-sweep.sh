@@ -45,7 +45,7 @@ ROUTES=(
   "/v1/jobs"
   "/v1/filler"
   "/v1/settings"
-  "/v1/suggestions"
+  "/v1/proposals"
   "/v1/users"
   "/v1/setup/state"
   "/v1/programming/vocabulary"

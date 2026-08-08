@@ -109,8 +109,8 @@ start_app() {
 # ---------------------------------------------------------------------------------
 # The LIVE TV profile — a DISPOSABLE media server, on purpose.
 #
-# POST /v1/setup/livetv-connect is the one wiring action that writes to the MEDIA SERVER
-# (it registers Tunarr as an M3U tuner + XMLTV guide source). Running it against the
+# Live TV wiring is the one action that writes to the MEDIA SERVER — it registers Tunarr as an
+# M3U tuner + XMLTV guide source, and it auto-runs when Connections are saved. Running it against the
 # maintainer's real Emby would leave a tuner pointing at a Tunarr that gets torn down,
 # and there is no product code path to undo it — internal/library/livetv.go only adds.
 # So this profile stands up its own Jellyfin, wires THAT, and deletes the whole server
