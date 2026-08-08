@@ -390,6 +390,57 @@ func (o *Ollama) Evict(ctx context.Context) error {
 	return nil
 }
 
+// ResidentModel is one model currently loaded in memory, with the VRAM it actually holds — the LIVE
+// truth from Ollama /api/ps, as opposed to the on-disk-size ESTIMATE the model catalog carries.
+type ResidentModel struct {
+	Name    string  // the model tag, e.g. "qwen3:8b"
+	VRAMGiB float64 // size_vram from /api/ps, converted to GiB — 0 when Ollama reports CPU-only
+	SizeGiB float64 // total resident size (VRAM + system RAM); ≥ VRAMGiB
+}
+
+// ollamaPSResp mirrors the /api/ps payload: the models Ollama has RESIDENT right now.
+type ollamaPSResp struct {
+	Models []struct {
+		Name     string `json:"name"`
+		SizeVRAM int64  `json:"size_vram"`
+		Size     int64  `json:"size"`
+	} `json:"models"`
+}
+
+// ListResident reports the models Ollama currently holds in memory (GET /api/ps) and the real VRAM
+// each occupies. This is the doctor's source of TRUTH for GPU contention: the earlier doctor derived
+// "LLM VRAM held" from the model's on-disk size, which reported a model as resident (and holding
+// several GB) even after Ollama had unloaded it — the exact reason the contention theory could not be
+// confirmed. An empty slice means nothing is resident (no contention), which is a real answer, not an
+// error. Best-effort: any transport/parse failure returns (nil, err) and the caller degrades to "unknown".
+func (o *Ollama) ListResident(ctx context.Context) ([]ResidentModel, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.baseURL+"/api/ps", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := o.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama ps: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("ollama ps: status %d", resp.StatusCode)
+	}
+	var ps ollamaPSResp
+	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
+		return nil, fmt.Errorf("decode ollama ps: %w", err)
+	}
+	out := make([]ResidentModel, 0, len(ps.Models))
+	for _, m := range ps.Models {
+		out = append(out, ResidentModel{
+			Name:    m.Name,
+			VRAMGiB: float64(m.SizeVRAM) / (1 << 30),
+			SizeGiB: float64(m.Size) / (1 << 30),
+		})
+	}
+	return out, nil
+}
+
 var (
 	_ Provider = (*Ollama)(nil)
 	_ Warmer   = (*Ollama)(nil)

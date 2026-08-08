@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui";
+import { Button, PanelRow } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -45,8 +45,8 @@ const ServicesPanel = ({ view, onFix, refreshing, className }: ServicesPanelProp
 
       <ul>
         {[view.loomarr, ...rows].filter(Boolean).map((row) => (
-          <li key={row.name} className="border-border border-b px-4 py-2.5 last:border-0">
-            <div className="flex items-center gap-3">
+          <PanelRow key={row.name}>
+            <PanelRow.Main className="flex items-center gap-3">
               <span
                 role="img"
                 aria-label={row.ok ? "OK" : "Not responding"}
@@ -58,6 +58,13 @@ const ServicesPanel = ({ view, onFix, refreshing, className }: ServicesPanelProp
                     which reads as a rendering bug rather than an answer. */}
                 {row.target || "not configured"}
               </span>
+              {/* The server's actionable detail ("connection refused"), under the row where a
+                  failed check sits — the panel's job is to explain, not just to flag. */}
+              {!row.ok && row.hint ? (
+                <p className="mt-1 basis-full pl-7.5 text-muted-foreground text-xs">{row.hint}</p>
+              ) : null}
+            </PanelRow.Main>
+            <PanelRow.Meta>
               <span className={cn("shrink-0 font-mono text-xs", row.ok ? "text-lock" : "text-onair")}>
                 {row.ok ? "pass" : "fail"}
               </span>
@@ -74,13 +81,8 @@ const ServicesPanel = ({ view, onFix, refreshing, className }: ServicesPanelProp
                   Fix →
                 </Button>
               ) : null}
-            </div>
-            {/* The server's actionable detail ("connection refused"), under the row where a
-                failed check sits — the panel's job is to explain, not just to flag. */}
-            {!row.ok && row.hint ? (
-              <p className="mt-1 pl-[1.875rem] text-muted-foreground text-xs">{row.hint}</p>
-            ) : null}
-          </li>
+            </PanelRow.Meta>
+          </PanelRow>
         ))}
       </ul>
     </section>

@@ -203,9 +203,26 @@ const gopKeyframeSeconds = 2
 // nothing until the next one. `-sc_threshold 0` disables scene-change detection, which would
 // otherwise insert keyframes at unpredictable places and make segment durations vary — and a
 // TARGETDURATION that lies is a player error, not a warning.
+//
+// ⚠ **A keyframe is forced on FRAME 0, and this is the cold-start black-screen fix (measured).**
+// The HLS remux (`-c copy -f hls`) can only cut a `.ts` segment on a keyframe. With only the 2s GOP
+// below, a cold transcode child's first keyframe lands up to a full GOP in — and on a slow cold
+// encoder init it lands late enough that `awaitPlaylist` (45s) times out with NO segment and the
+// viewer gets a 502 / black frame (a channel measured at 45s vs 0.4s for a direct-play channel).
+// `-forced-idr 1` makes the forced points real IDRs (not just P-frames flagged as keyframes, which
+// some encoders emit and the remux cannot cut on), and the `eq(n,0)` term puts one on the very first
+// frame so segment 0 cuts immediately. The `gte(t,prev_forced_t+GOP)` term keeps the steady 2s
+// cadence. Output-side keyframe control, so it is hardware-agnostic — works for nvenc/vaapi/qsv/
+// vulkan/software alike, and only ever emitted on the transcode path (a `-c copy` program never
+// calls videoEncodeArgs).
 func (p Profile) gopArgs() []string {
 	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
-	return []string{"-g", gop, "-keyint_min", gop, "-sc_threshold", "0"}
+	return []string{
+		"-g", gop, "-keyint_min", gop, "-sc_threshold", "0",
+		// Force a keyframe on the first frame (instant segment 0), then every gopKeyframeSeconds.
+		"-forced-idr", "1",
+		"-force_key_frames", fmt.Sprintf("expr:if(eq(n,0),1,gte(t,prev_forced_t+%d))", gopKeyframeSeconds),
+	}
 }
 
 // audioEncodeArgs is fixed AAC stereo 48kHz — see Profile.AudioBitrate.

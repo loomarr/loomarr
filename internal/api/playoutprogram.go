@@ -219,23 +219,44 @@ const offlineCardDuration = 30 * time.Second
 func (s *Server) streamProgram(
 	w http.ResponseWriter, r *http.Request, channelID string, target playout.Target, what string, spec playout.ProgramSpec,
 ) {
-	// Attempt 1: as resolved (hardware when available).
+	transcoding := !spec.Plan.CopyVideo
+	wantsHardware := transcoding && spec.Profile.Encoder != playout.EncoderSoftware
+
+	// ADMISSION, up front (§9.1 V47). A hardware transcode must hold a GPU slot; when the encoder is
+	// saturated we choose software NOW rather than piling on and stalling. A copy needs no slot (it
+	// does no encoding); a box with no hardware encoder reports zero slots and always lands here on
+	// software. The reactive evict-and-retry below stays only as a safety net for a slot-holder whose
+	// hardware encode still fails.
+	if wantsHardware && s.hwEncodeGate != nil {
+		if release, ok := s.hwEncodeGate.tryAcquire(); ok {
+			defer release()
+		} else {
+			s.log.Info("playout: GPU encode slots full — using software for this program",
+				"channel", channelID, "program", what, "wanted", spec.Profile.Encoder)
+			spec.Profile.Encoder = playout.EncoderSoftware
+			wantsHardware = false
+		}
+	}
+
+	// Attempt 1: as resolved (hardware when a slot was granted, else software).
 	if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
 		s.pipeChild(w, r, channelID, what, c)
 		return
 	}
 
 	// Only a VIDEO TRANSCODE can be rescued by the ladder — a copy failing is a bad file.
-	transcoding := !spec.Plan.CopyVideo
 	if !transcoding {
 		s.failProgram(w, r, channelID, what, "the source could not be read")
 		return
 	}
 
-	// Attempt 2: reclaim VRAM (evict the resident LLM), then retry the SAME hardware encoder. The
-	// zero-byte first attempt is the "VRAM tight" signal — no polling, no guess (§8.2 Evictor).
-	if s.reclaimVRAM != nil && spec.Profile.Encoder != playout.EncoderSoftware {
-		s.log.Info("playout: hardware encode produced nothing — reclaiming GPU memory and retrying",
+	// Attempt 2 — the SAFETY NET (§9.1 V47). We got here despite holding a GPU slot (wantsHardware),
+	// so this is not saturation — the admission gate already routes saturation to software up front.
+	// It is the rarer case: a slot-holder's hardware encode produced nothing, usually because the
+	// resident LLM is holding the VRAM the encoder needs. Reclaim it (evict the LLM) and retry the
+	// SAME hardware encoder once. The zero-byte first attempt is the signal — no polling, no guess.
+	if wantsHardware && s.reclaimVRAM != nil {
+		s.log.Info("playout: hardware encode produced nothing despite a free slot — reclaiming GPU memory and retrying",
 			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
 		s.reclaimVRAM(r.Context())
 		if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
@@ -244,14 +265,18 @@ func (s *Server) streamProgram(
 		}
 	}
 
-	// Attempt 3: software fallback. The channel plays (slower) rather than going black.
-	softSpec := spec
-	softSpec.Profile.Encoder = playout.EncoderSoftware
-	s.log.Warn("playout: falling back to software encoding for this program",
-		"channel", channelID, "program", what, "from", spec.Profile.Encoder)
-	if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, playout.ProgramArgs(softSpec)); c != nil {
-		s.pipeChild(w, r, channelID, what, c)
-		return
+	// Attempt 3: software fallback. The channel plays (slower) rather than going black. If the gate
+	// already chose software up front, attempt 1 WAS software — this simply retries it once more,
+	// which is harmless and covers a transient first-attempt failure.
+	if spec.Profile.Encoder != playout.EncoderSoftware {
+		softSpec := spec
+		softSpec.Profile.Encoder = playout.EncoderSoftware
+		s.log.Warn("playout: falling back to software encoding for this program",
+			"channel", channelID, "program", what, "from", spec.Profile.Encoder)
+		if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, playout.ProgramArgs(softSpec)); c != nil {
+			s.pipeChild(w, r, channelID, what, c)
+			return
+		}
 	}
 
 	// Even software produced nothing — genuinely unplayable (a corrupt file, a missing mount).

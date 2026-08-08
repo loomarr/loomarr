@@ -1,4 +1,5 @@
 import { formatRelative } from "@loomarr/core";
+import { PanelRow } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ActivityFeedProps } from "./activity-feed.type";
 
@@ -35,7 +36,7 @@ const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProp
     ) : (
       <ul>
         {entries.map((e) => (
-          <li key={e.id} className="flex items-center gap-3 border-border border-b px-4 py-2.5 last:border-0">
+          <PanelRow key={e.id} className="gap-3">
             <span className="w-14 shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
               {/* `at` is unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
               {formatRelative(e.at * 1000, now)}
@@ -46,7 +47,7 @@ const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProp
               className={cn("size-1.5 shrink-0 rounded-full", LEVEL_DOT[e.level] ?? "bg-static-500")}
             />
             <span className="min-w-0 flex-1 text-sm">{e.text}</span>
-          </li>
+          </PanelRow>
         ))}
       </ul>
     )}
