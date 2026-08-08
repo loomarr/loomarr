@@ -1262,6 +1262,41 @@ components:
       required:
         - status
       type: object
+    DeviceProfileBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeviceProfileBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audio:
+          description: Audio codecs the client can decode (e.g. ["eac3","ac3"]). aac is always implied.
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        hdr:
+          description: Whether the client can display HDR (PQ/HLG).
+          type: boolean
+        maxResolution:
+          description: Tallest video height the client will direct-play (e.g. 1080); 0 = no cap.
+          format: int64
+          type: integer
+        video:
+          description: Video codecs the client can DECODE (e.g. ["hevc"]). h264 is always implied.
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        video10bit:
+          description: Whether the client can decode 10-bit (or deeper) video.
+          type: boolean
+      type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
       properties:
@@ -5486,6 +5521,12 @@ paths:
             examples:
               - auto
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceProfileBody"
+        required: true
       responses:
         "200":
           content:

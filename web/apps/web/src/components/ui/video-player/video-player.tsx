@@ -41,6 +41,7 @@ const VideoPlayer = ({
   topBar,
   timeLeft,
   barControls,
+  overlay,
   attach,
   className,
 }: VideoPlayerProps) => {
@@ -135,6 +136,11 @@ const VideoPlayer = ({
           // play/pause, elapsed, and metadata-load are owned by usePlaybackState.
           {...mediaHandlers}
         />
+
+        {/* OVERLAY SLOT — a caller-rendered transient state (channel-watch's TunerLoader during
+          warm-up). Sits directly over the video but UNDER the control-bar scrims below, so the
+          controls stay operable. pointer-events-none so it never eats a click on the frame. */}
+        {overlay && <div className="pointer-events-none absolute inset-0 z-0">{overlay}</div>}
 
         {/* TOP BAR — over a scrim, fading with the controls. Live: LiveIndicator (left) + the caller's
           `topBar` (CH + encoder line), matching the mock. Non-live: `leading` (left) + `title`

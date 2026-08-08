@@ -56,9 +56,19 @@ describe("useHlsPlayer", () => {
     });
 
     await waitFor(() => expect(channelPlayUrl).toHaveBeenCalledOnce());
-    expect(channelPlayUrl).toHaveBeenCalledWith("ch-1", {
-      quality: expect.stringMatching(/^(auto|720|480)$/),
-    });
+    // The mint now carries the client's DeviceProfile body (§9.1 V48) plus the quality hint. The
+    // profile shape is what device-profile.ts probes; here we assert the call CONTRACT — a profile
+    // object first, then the quality params — not the specific capabilities (those depend on the JS
+    // env's MediaSource, exercised in device-profile's own test).
+    expect(channelPlayUrl).toHaveBeenCalledWith(
+      "ch-1",
+      expect.objectContaining({
+        video: expect.any(Array),
+        audio: expect.any(Array),
+        video10bit: expect.any(Boolean),
+      }),
+      { quality: expect.stringMatching(/^(auto|720|480)$/) },
+    );
   });
 
   it("surfaces an error when the mint returns no URL", async () => {

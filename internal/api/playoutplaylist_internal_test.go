@@ -27,3 +27,15 @@ func TestRewritePlaylistAuth_ExistingQueryUsesAmpersand(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// ⚠ The fMP4 init segment rides an #EXT-X-MAP TAG, not a bare URI line — but its URI is still a fetch
+// that must self-authenticate, or the init segment 404s and an HEVC stream black-screens (§9.1 V48).
+// The rewrite must reach INTO the quoted URI while leaving the rest of the tag intact.
+func TestRewritePlaylistAuth_RewritesFmp4InitMap(t *testing.T) {
+	in := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.0,\nseg-0.m4s\n"
+	got := string(rewritePlaylistAuth([]byte(in), "sig=abc123"))
+	want := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-MAP:URI=\"init.mp4?sig=abc123\"\n#EXTINF:4.0,\nseg-0.m4s?sig=abc123\n"
+	if got != want {
+		t.Fatalf("fMP4 init-map rewrite:\n got %q\nwant %q", got, want)
+	}
+}

@@ -54,7 +54,7 @@ type PlayoutResolver interface {
 	// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play,
 	// V47): copy the streams the target can play, transcode the rest. Fails safe toward transcode
 	// (the zero CopyPlan) when the source cannot be probed.
-	PlanFor(ctx context.Context, input string, target playout.Target) playout.CopyPlan
+	PlanFor(ctx context.Context, input string, target playout.EncodePlan) playout.CopyPlan
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -86,11 +86,13 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The codec audience this program is for (§9.1 V47) — set on the URL by the session parent that
-	// requested it, so a browser session's programs plan for the browser and a tuner session's for
-	// the media server. It drives both the copy plan below and which session gets this child's
-	// telemetry. Parsed once here so the offline-card path (which also spawns a child) carries it too.
-	target := playout.ParseTarget(r.URL.Query().Get(playoutTargetParam))
+	// The codec audience this program is for (§9.1 V48) — the EncodePlan set on the URL by the session
+	// parent that requested it, so a baseline session's programs plan for baseline and a full/tuner
+	// session's for the broad set. It drives both the copy plan below and which session gets this
+	// child's telemetry. This is an internal parent→program hop, so ParseEncodePlan round-trips the
+	// canonical token (safe PlanBaseline default on absent). Parsed once here so the offline-card path
+	// (which also spawns a child) carries it too.
+	encPlan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
 
 	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -132,12 +134,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 			p.Encoder = enc
 			return playout.OfflineCardArgs(p, font, "Nothing scheduled", channelID, offlineCardDuration)
 		}
-		if c := s.startChild(r.Context(), channelID, target, profile.Encoder, card(profile.Encoder)); c != nil {
+		if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
 			s.pipeChild(w, r, channelID, "offline card", c)
 			return
 		}
 		if profile.Encoder != playout.EncoderSoftware {
-			if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, card(playout.EncoderSoftware)); c != nil {
+			if c := s.startChild(r.Context(), channelID, encPlan, playout.EncoderSoftware, true, card(playout.EncoderSoftware)); c != nil {
 				s.pipeChild(w, r, channelID, "offline card", c)
 				return
 			}
@@ -173,7 +175,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// browser have different codec tolerance, so each attaches its own session with its own target,
 	// and this handler feeds that session's parent. ParseTarget defaults to the media server (the
 	// broader set, and the historical behaviour), so an un-parameterised request is unchanged.
-	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, target)
+	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 
 	spec := playout.ProgramSpec{
 		Profile:    profile,
@@ -188,7 +190,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
 	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.
 	// A copy plan (no video transcode) has no ladder — a copy that produces nothing is a bad file.
-	s.streamProgram(w, r, channelID, target, airing.Title, spec)
+	s.streamProgram(w, r, channelID, encPlan, airing.Title, spec)
 }
 
 // offlineCardDuration is how long one offline-card request lasts before the demuxer re-asks.
@@ -217,7 +219,7 @@ const offlineCardDuration = 30 * time.Second
 // response: with nothing yet written, a retry is free. Once bytes are flowing, there is no retry —
 // a mid-stream death is a normal program boundary, handled by the demuxer re-requesting.
 func (s *Server) streamProgram(
-	w http.ResponseWriter, r *http.Request, channelID string, target playout.Target, what string, spec playout.ProgramSpec,
+	w http.ResponseWriter, r *http.Request, channelID string, target playout.EncodePlan, what string, spec playout.ProgramSpec,
 ) {
 	transcoding := !spec.Plan.CopyVideo
 	wantsHardware := transcoding && spec.Profile.Encoder != playout.EncoderSoftware
@@ -239,7 +241,7 @@ func (s *Server) streamProgram(
 	}
 
 	// Attempt 1: as resolved (hardware when a slot was granted, else software).
-	if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
+	if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
 		s.pipeChild(w, r, channelID, what, c)
 		return
 	}
@@ -259,7 +261,7 @@ func (s *Server) streamProgram(
 		s.log.Info("playout: hardware encode produced nothing despite a free slot — reclaiming GPU memory and retrying",
 			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
 		s.reclaimVRAM(r.Context())
-		if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
+		if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, c)
 			return
 		}
@@ -273,7 +275,7 @@ func (s *Server) streamProgram(
 		softSpec.Profile.Encoder = playout.EncoderSoftware
 		s.log.Warn("playout: falling back to software encoding for this program",
 			"channel", channelID, "program", what, "from", spec.Profile.Encoder)
-		if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, playout.ProgramArgs(softSpec)); c != nil {
+		if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, transcoding, playout.ProgramArgs(softSpec)); c != nil {
 			s.pipeChild(w, r, channelID, what, c)
 			return
 		}
@@ -290,7 +292,7 @@ type liveChild struct {
 	proc   *playout.Process
 	first  []byte             // the first chunk, already read — must be written before draining proc
 	enc    playout.Encoder    // for telemetry
-	target playout.Target     // for telemetry
+	target playout.EncodePlan // for telemetry
 	cancel context.CancelFunc // ties the child to the request; pipeChild owns calling it
 }
 
@@ -300,7 +302,7 @@ type liveChild struct {
 // through the session Manager: this is one private child per demuxer request whose whole job is to
 // END so the parent advances (routing it through the session map would collide on the channel key).
 func (s *Server) startChild(
-	ctx context.Context, channelID string, target playout.Target, enc playout.Encoder, args []string,
+	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, args []string,
 ) *liveChild {
 	// The child dies with the request. cancel is handed to the caller (pipeChild) which owns the
 	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
@@ -310,7 +312,9 @@ func (s *Server) startChild(
 	enc2 := enc // capture for the progress closure
 	onProgress := func(p playout.Progress) {
 		if s.playoutSessions != nil {
-			s.playoutSessions.ReportProgram(channelID, target, enc2, p)
+			// `transcoding` corrects the session's admission cost to reality (§9.1 V49): a `-c copy`
+			// program frees its transcode slot, a re-encode claims one.
+			s.playoutSessions.ReportProgram(channelID, target, enc2, transcoding, p)
 		}
 	}
 	proc, err := s.playoutEncoder(cctx, args, onProgress)

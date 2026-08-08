@@ -129,22 +129,34 @@ func Resolve(tier Tier, enc Encoder, capacity, active int) Profile {
 	}
 }
 
-// AtCapacity reports whether a new encode should be REFUSED rather than admitted at reduced
-// quality.
+// Admit reports whether a new session may start, given a COST-AWARE budget (§9.1 V49).
 //
-// Refusing is deliberate and is the one place this policy says no. Admitting an N+1th
-// channel that makes all N stutter is worse than declining it: the operator can see a
-// clear "at capacity" message and raise the cap or lower the tier, whereas universal
-// stutter presents as "playout is broken" with no obvious cause.
+// The bound is not "how many sessions" but "how many concurrent TRANSCODES the box can sustain",
+// because the transcode is what consumes the GPU. A `-c copy` session (an h264 channel, or an HEVC
+// channel to an HEVC-capable client) costs ~nothing and is ALWAYS admitted — it never blocks another
+// channel. Only a session that re-encodes video counts against `budget`.
 //
-// This is also the bound viewra lacked — its manager EVICTED other sessions to make room
-// (prior-art, viewra §1), which for playout would mean one viewer tuning in kills someone
-// else's channel.
-func AtCapacity(maxChannels, active int) bool {
-	if maxChannels <= 0 {
-		return false // unconfigured: do not block playout on a missing number
+// This is what makes a channel watched at two plans (baseline + hevc8) cost ONE, not two: the hevc8
+// copy is free, only the baseline transcode counts. And `budget` is the box's MEASURED capacity
+// (Detect), optionally shaded by live VRAM headroom, not a static magic number.
+//
+//   - newCost is the incoming session's estimated cost (1 if it will transcode video, else 0).
+//   - committed is the summed cost of sessions already running.
+//   - budget <= 0 means "unmeasured/unconfigured" — do not block playout on a missing number.
+//
+// Refusing is deliberate and is the one place this policy says no. Admitting an N+1th transcode that
+// makes all N stutter is worse than declining it: the operator sees a clear "at capacity" message and
+// can raise the cap or lower the tier, whereas universal stutter presents as "playout is broken".
+// (This is the bound viewra lacked — its manager EVICTED sessions to make room, which for playout
+// would mean one viewer tuning in kills someone else's channel.)
+func Admit(budget, committed, newCost int) bool {
+	if budget <= 0 {
+		return true // unmeasured: never block playout on a missing/zero capacity
 	}
-	return active >= maxChannels
+	if newCost <= 0 {
+		return true // a copy costs ~no GPU — always admit, it cannot starve a transcode
+	}
+	return committed+newCost <= budget
 }
 
 // qualityArgs returns rate-control args for software encoders, which do better with a

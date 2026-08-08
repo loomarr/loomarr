@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/store"
 )
 
@@ -51,6 +52,35 @@ type playURLInput struct {
 	// a small closed set the player offers, not the operator's `playout.quality_tier` names —
 	// this is the viewer's session preference, resolved into a variant at request time.
 	Quality string `query:"quality" enum:"auto,720,480" example:"auto"`
+	// Body carries the client's DeviceProfile (§9.1 V48) — what THIS device can direct-play. Optional
+	// and defaulting to the zero value, which resolves to the safe h264/aac baseline: a client that
+	// sends nothing (or an old client) plays exactly as before. A browser fills it from
+	// MediaSource.isTypeSupported(…); a native app from its known decoder set.
+	Body deviceProfileBody
+}
+
+// deviceProfileBody is the wire shape of a client's direct-play capabilities (the DeviceProfile,
+// §9.1 V48). Mirrors playout.DeviceProfile; kept as its own API type so the wire contract (JSON tags,
+// docs, OpenAPI) is owned here, not by the playout domain type. All fields optional; empty ⇒ baseline.
+type deviceProfileBody struct {
+	Video         []string `json:"video,omitempty" doc:"Video codecs the client can DECODE (e.g. [\"hevc\"]). h264 is always implied."`
+	Audio         []string `json:"audio,omitempty" doc:"Audio codecs the client can decode (e.g. [\"eac3\",\"ac3\"]). aac is always implied."`
+	Video10Bit    bool     `json:"video10bit,omitempty" doc:"Whether the client can decode 10-bit (or deeper) video."`
+	HDR           bool     `json:"hdr,omitempty" doc:"Whether the client can display HDR (PQ/HLG)."`
+	MaxResolution int      `json:"maxResolution,omitempty" doc:"Tallest video height the client will direct-play (e.g. 1080); 0 = no cap."`
+}
+
+// toPlan resolves a client-sent profile body to the session's EncodePlan (§9.1 V48). The one place
+// the wire body meets the domain resolver; the safe-default and round-down guarantees live in
+// playout.ResolvePlan.
+func (b deviceProfileBody) toPlan() playout.EncodePlan {
+	return playout.ResolvePlan(playout.DeviceProfile{
+		Video:         b.Video,
+		Audio:         b.Audio,
+		Video10Bit:    b.Video10Bit,
+		HDR:           b.HDR,
+		MaxResolution: b.MaxResolution,
+	})
 }
 
 type playURLOutput struct {
@@ -88,7 +118,11 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 
 	exp := time.Now().Add(playURLTTL)
 	quality := normalizeQuality(in.Quality)
-	rel := s.playoutHLSPathURL(ch.ID, quality, exp)
+	// Resolve the client's advertised capabilities to the session's EncodePlan (§9.1 V48). An absent
+	// or empty body resolves to PlanBaseline, so a client that proves nothing plays h264/aac — the
+	// black-frame-safe default. The plan is baked into the signed URL as an unsigned `?plan=`.
+	plan := in.Body.toPlan()
+	rel := s.playoutHLSPathURL(ch.ID, quality, plan, exp)
 	if rel == "" {
 		// The RELATIVE URL fails only when the signature can't be minted (no playout token) —
 		// which means playout is genuinely unconfigured. The web player can use the relative URL
@@ -101,7 +135,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	out := &playURLOutput{}
 	// Absolute may be empty (public_url unset) — that only strands NATIVE clients, and the message
 	// for them is different (set the public address), so it is not an error for the web player.
-	out.Body.URL = s.playoutHLSURL(ch.ID, quality, exp)
+	out.Body.URL = s.playoutHLSURL(ch.ID, quality, plan, exp)
 	out.Body.RelativeURL = rel
 	out.Body.ExpiresAt = exp
 	return out, nil

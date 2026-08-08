@@ -657,7 +657,7 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 // return the zero CopyPlan (copy nothing → transcode both). A copy of an unprobed source could ship
 // a codec the target cannot play — a black frame — whereas an unnecessary transcode is merely slow.
 // So when we cannot know, we transcode.
-func (r *playoutResolver) PlanFor(ctx context.Context, input string, target playout.Target) playout.CopyPlan {
+func (r *playoutResolver) PlanFor(ctx context.Context, input string, target playout.EncodePlan) playout.CopyPlan {
 	if r.probeFormat == nil || input == "" {
 		return playout.CopyPlan{} // transcode both
 	}
@@ -786,7 +786,7 @@ func channelOffset(channelID string) int64 {
 func playoutSpawner(
 	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
 ) playout.Spawner {
-	return func(ctx context.Context, channelID string, target playout.Target) (*playout.Process, error) {
+	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := publicURL()
 		if base == "" {
 			// Without an absolute base the parent cannot fetch its own playlist: ffmpeg is a

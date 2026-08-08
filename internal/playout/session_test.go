@@ -24,25 +24,25 @@ type fakeEncoder struct {
 func newFakeSpawner(t *testing.T) (Spawner, func(string) *fakeEncoder) {
 	t.Helper()
 	spawn, byKey := newFakeSpawnerByKey(t)
-	get := func(channelID string) *fakeEncoder { return byKey(channelID, TargetMediaServer) }
+	get := func(channelID string) *fakeEncoder { return byKey(channelID, PlanFull) }
 	return spawn, get
 }
 
 // newFakeSpawnerByKey mirrors production's (channel, target) identity: two targets on one channel
 // get two distinct fake encoders, so a test can prove they are separate sessions.
-func newFakeSpawnerByKey(t *testing.T) (Spawner, func(string, Target) *fakeEncoder) {
+func newFakeSpawnerByKey(t *testing.T) (Spawner, func(string, EncodePlan) *fakeEncoder) {
 	t.Helper()
 	var mu sync.Mutex
 	encoders := map[sessionKey]*fakeEncoder{}
 
-	spawn := func(ctx context.Context, channelID string, target Target) (*Process, error) {
+	spawn := func(ctx context.Context, channelID string, target EncodePlan) (*Process, error) {
 		pr, pw, err := os.Pipe()
 		if err != nil {
 			return nil, err
 		}
 		fe := &fakeEncoder{w: pw, stopped: make(chan struct{})}
 		mu.Lock()
-		encoders[sessionKey{channel: channelID, target: target}] = fe
+		encoders[sessionKey{channel: channelID, plan: target}] = fe
 		mu.Unlock()
 
 		// Mimic Start's contract: the context is the lifetime. Cancelling it must end the
@@ -54,10 +54,10 @@ func newFakeSpawnerByKey(t *testing.T) (Spawner, func(string, Target) *fakeEncod
 
 		return &Process{Stdout: pr, cmd: &exec.Cmd{}}, nil
 	}
-	get := func(channelID string, target Target) *fakeEncoder {
+	get := func(channelID string, target EncodePlan) *fakeEncoder {
 		mu.Lock()
 		defer mu.Unlock()
-		return encoders[sessionKey{channel: channelID, target: target}]
+		return encoders[sessionKey{channel: channelID, plan: target}]
 	}
 	return spawn, get
 }
@@ -68,7 +68,7 @@ func countingSpawner(t *testing.T) (Spawner, func() int) {
 	inner, _ := newFakeSpawner(t)
 	var mu sync.Mutex
 	n := 0
-	return func(ctx context.Context, channelID string, target Target) (*Process, error) {
+	return func(ctx context.Context, channelID string, target EncodePlan) (*Process, error) {
 			mu.Lock()
 			n++
 			mu.Unlock()
@@ -83,9 +83,12 @@ func countingSpawner(t *testing.T) (Spawner, func() int) {
 		}
 }
 
-func testManager(t *testing.T, spawn Spawner, maxChannels int, grace time.Duration) *Manager {
+// testManager builds a Manager whose admission budget is a fixed number of concurrent TRANSCODES
+// (§9.1 V49). Tests that exercise the cap attach as PlanBaseline (EstimatedCost 1) so each session
+// counts; a PlanFull/hevc session copies (cost 0) and is always admitted.
+func testManager(t *testing.T, spawn Spawner, budget int, grace time.Duration) *Manager {
 	t.Helper()
-	m := NewManager(spawn, maxChannels, grace, nil)
+	m := NewManager(spawn, func() int { return budget }, grace, nil)
 	t.Cleanup(m.Stop)
 	return m
 }
@@ -97,7 +100,7 @@ func TestAttach_OneEncoderServesManyViewers(t *testing.T) {
 	m := testManager(t, spawn, 4, time.Minute)
 
 	for i := 0; i < 3; i++ {
-		if _, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer); err != nil {
+		if _, _, err := m.Attach(context.Background(), "ch1", PlanFull); err != nil {
 			t.Fatalf("viewer %d: %v", i, err)
 		}
 	}
@@ -118,7 +121,7 @@ func TestAttach_DifferentChannelsStartConcurrently(t *testing.T) {
 	inner, _ := newFakeSpawner(t)
 	inFlight := make(chan struct{}, want)
 	release := make(chan struct{})
-	spawn := func(ctx context.Context, channelID string, target Target) (*Process, error) {
+	spawn := func(ctx context.Context, channelID string, target EncodePlan) (*Process, error) {
 		inFlight <- struct{}{} // announce this spawn is running
 		<-release              // hold here until every spawn is confirmed concurrent
 		return inner(ctx, channelID, target)
@@ -129,7 +132,7 @@ func TestAttach_DifferentChannelsStartConcurrently(t *testing.T) {
 	for i := 0; i < want; i++ {
 		ch := channelIDForIndex(i)
 		go func() {
-			_, _, err := m.Attach(context.Background(), ch, TargetMediaServer)
+			_, _, err := m.Attach(context.Background(), ch, PlanFull)
 			errs <- err
 		}()
 	}
@@ -172,7 +175,7 @@ func TestAttach_SimultaneousViewersDoNotStartTwoEncoders(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start // release them all at once
-			if _, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer); err != nil {
+			if _, _, err := m.Attach(context.Background(), "ch1", PlanFull); err != nil {
 				t.Errorf("attach: %v", err)
 			}
 		}()
@@ -192,11 +195,11 @@ func TestAttach_AllViewersReceiveTheSameBytes(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	a, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	a, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	b, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,18 +229,18 @@ func TestAttach_TargetForksTheSession(t *testing.T) {
 	spawn, byKey := newFakeSpawnerByKey(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	_, detachBrowser, err := m.Attach(context.Background(), "ch1", TargetBrowser)
+	_, detachBrowser, err := m.Attach(context.Background(), "ch1", PlanBaseline)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, _, err = m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Two distinct encoders for one channel — the fake keys by (channel, target), so both being
 	// non-nil and distinct proves two sessions were started, not one shared.
-	browserEnc, tunerEnc := byKey("ch1", TargetBrowser), byKey("ch1", TargetMediaServer)
+	browserEnc, tunerEnc := byKey("ch1", PlanBaseline), byKey("ch1", PlanFull)
 	if browserEnc == nil || tunerEnc == nil {
 		t.Fatalf("expected an encoder per target, got browser=%v tuner=%v", browserEnc, tunerEnc)
 	}
@@ -249,7 +252,7 @@ func TestAttach_TargetForksTheSession(t *testing.T) {
 	}
 
 	// The two sessions are addressed independently.
-	if m.session("ch1", TargetBrowser) == m.session("ch1", TargetMediaServer) {
+	if m.session("ch1", PlanBaseline) == m.session("ch1", PlanFull) {
 		t.Fatal("session(ch1, browser) and session(ch1, mediaserver) must be different sessions")
 	}
 
@@ -257,7 +260,7 @@ func TestAttach_TargetForksTheSession(t *testing.T) {
 	// minute here, but the browser session had exactly one viewer, so detaching arms grace, not a
 	// stop — the tuner session is untouched regardless).
 	detachBrowser()
-	if m.session("ch1", TargetMediaServer) == nil {
+	if m.session("ch1", PlanFull) == nil {
 		t.Fatal("detaching the browser viewer must not tear down the tuner session")
 	}
 }
@@ -275,11 +278,11 @@ func TestBroadcast_SlowViewerIsDroppedNotBlocking(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	slow, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	slow, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fast, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	fast, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +336,7 @@ func TestBroadcast_StalledViewerIsClosed(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	stalled, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	stalled, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,24 +366,26 @@ func TestBroadcast_StalledViewerIsClosed(t *testing.T) {
 	}
 }
 
-// The admission bound. viewra EVICTED an existing session to make room (prior-art viewra
-// §1); for playout that means one person tuning in kills someone else's channel. We refuse
-// the newcomer instead and keep faith with whoever is already watching.
+// The admission bound (§9.1 V49 — COST-AWARE). viewra EVICTED an existing session to make room
+// (prior-art viewra §1); for playout that means one person tuning in kills someone else's channel.
+// We refuse the newcomer instead and keep faith with whoever is already watching. ⚠ The bound counts
+// concurrent TRANSCODES — so these channels attach as PlanBaseline (EstimatedCost 1) to consume the
+// budget; a copy session (PlanFull/hevc, cost 0) is a separate case tested below.
 func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
-	m := testManager(t, spawn, 2, time.Minute)
+	m := testManager(t, spawn, 2, time.Minute) // budget = 2 concurrent transcodes
 
-	first, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	first, _, err := m.Attach(context.Background(), "ch1", PlanBaseline)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = m.Attach(context.Background(), "ch2", TargetMediaServer); err != nil {
+	if _, _, err = m.Attach(context.Background(), "ch2", PlanBaseline); err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err = m.Attach(context.Background(), "ch3", TargetMediaServer)
+	_, _, err = m.Attach(context.Background(), "ch3", PlanBaseline)
 	if err == nil {
-		t.Fatal("a third channel was admitted past a cap of 2")
+		t.Fatal("a third transcode was admitted past a budget of 2")
 	}
 	if err != ErrAtCapacity {
 		t.Errorf("err = %v, want ErrAtCapacity so the API can render an actionable 503", err)
@@ -399,10 +404,36 @@ func TestAttach_AtCapacityRefusesRatherThanEvicting(t *testing.T) {
 	}
 
 	// A viewer already attached to an admitted channel is still fine, and attaching
-	// ANOTHER viewer to an existing channel must not be refused — the cap is on channels
-	// (encoders), not on people watching.
-	if _, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer); err != nil {
+	// ANOTHER viewer to an existing channel must not be refused — the cap is on encoders,
+	// not on people watching.
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanBaseline); err != nil {
 		t.Errorf("a second viewer on an admitted channel was refused: %v", err)
+	}
+}
+
+// ⚠ A COPY session never consumes the transcode budget (§9.1 V49) — this is what fixes the
+// plan-doubling that halved capacity. Even at a budget of 1 already full of a transcode, an hevc
+// copy of another channel is admitted, because it costs ~no GPU.
+func TestAttach_CopySessionsDoNotConsumeBudget(t *testing.T) {
+	spawn, _ := newFakeSpawner(t)
+	m := testManager(t, spawn, 1, time.Minute) // budget = 1 transcode
+
+	// One baseline transcode fills the transcode budget.
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanBaseline); err != nil {
+		t.Fatal(err)
+	}
+	// A SECOND baseline transcode is refused — budget is 1.
+	if _, _, err := m.Attach(context.Background(), "ch2", PlanBaseline); err != ErrAtCapacity {
+		t.Fatalf("second transcode err = %v, want ErrAtCapacity", err)
+	}
+	// But an hevc COPY of another channel is admitted anyway — it costs 0.
+	if _, _, err := m.Attach(context.Background(), "ch3", PlanHEVC8); err != nil {
+		t.Errorf("an hevc copy was refused despite costing no transcode budget: %v", err)
+	}
+	// And a channel watched at BOTH plans: the baseline (ch1, above) counts, the hevc copy is free —
+	// so watching one channel two ways costs ONE slot, not two (the plan-double fix).
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanHEVC8); err != nil {
+		t.Errorf("the hevc copy of an already-transcoding channel was refused: %v", err)
 	}
 }
 
@@ -411,7 +442,7 @@ func TestAttach_UnconfiguredCapDoesNotBlock(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
 	m := testManager(t, spawn, 0, time.Minute)
 	for _, id := range []string{"a", "b", "c", "d", "e"} {
-		if _, _, err := m.Attach(context.Background(), id, TargetMediaServer); err != nil {
+		if _, _, err := m.Attach(context.Background(), id, PlanFull); err != nil {
 			t.Fatalf("channel %s refused with no cap configured: %v", id, err)
 		}
 	}
@@ -423,7 +454,7 @@ func TestSession_EncoderExitDisconnectsViewers(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	v, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	v, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,10 +476,10 @@ func TestDetach_IsIdempotent(t *testing.T) {
 	spawn, _ := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, time.Minute)
 
-	if _, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer); err != nil {
+	if _, _, err := m.Attach(context.Background(), "ch1", PlanFull); err != nil {
 		t.Fatal(err)
 	}
-	_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +488,7 @@ func TestDetach_IsIdempotent(t *testing.T) {
 	detach()
 	detach()
 
-	s := m.session("ch1", TargetMediaServer)
+	s := m.session("ch1", PlanFull)
 	if s == nil {
 		t.Fatal("session gone")
 	}
@@ -470,10 +501,10 @@ func TestDetach_IsIdempotent(t *testing.T) {
 // without this they outlive the process that started them.
 func TestManagerStop_TearsDownEveryEncoder(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
-	m := NewManager(spawn, 4, time.Minute, nil)
+	m := NewManager(spawn, func() int { return 4 }, time.Minute, nil)
 
 	for _, id := range []string{"ch1", "ch2"} {
-		if _, _, err := m.Attach(context.Background(), id, TargetMediaServer); err != nil {
+		if _, _, err := m.Attach(context.Background(), id, PlanFull); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -501,7 +532,7 @@ func TestOnIdle_EncoderSurvivesBrieflyAfterTheLastViewerLeaves(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 10*time.Second)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +551,7 @@ func TestOnIdle_EncoderStopsAfterTheGracePeriod(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 50*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,14 +571,14 @@ func TestOnIdle_ReconnectInsideGraceAbortsTeardown(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 300*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
 	detach()
 
 	time.Sleep(50 * time.Millisecond) // still inside the grace window
-	v, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	v, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatalf("reattach inside the grace window: %v", err)
 	}
@@ -577,7 +608,7 @@ func TestOnIdle_StaleTimerDoesNotKillALaterViewer(t *testing.T) {
 
 	// Three quick join/leave cycles, each arming a grace timer.
 	for i := 0; i < 3; i++ {
-		_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+		_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 		if err != nil {
 			t.Fatalf("cycle %d: %v", i, err)
 		}
@@ -587,7 +618,7 @@ func TestOnIdle_StaleTimerDoesNotKillALaterViewer(t *testing.T) {
 	}
 
 	// A viewer settles in for the long haul.
-	v, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	v, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +646,7 @@ func TestOnIdle_TornDownSessionIsReplacedOnNextAttach(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 4, 50*time.Millisecond)
 
-	_, detach, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	_, detach, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +658,7 @@ func TestOnIdle_TornDownSessionIsReplacedOnNextAttach(t *testing.T) {
 	}
 
 	// A new viewer must get a working stream.
-	v, _, err := m.Attach(context.Background(), "ch1", TargetMediaServer)
+	v, _, err := m.Attach(context.Background(), "ch1", PlanFull)
 	if err != nil {
 		t.Fatalf("attach after teardown: %v", err)
 	}

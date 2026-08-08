@@ -62,54 +62,165 @@ func (f MediaFormat) HDR() bool {
 // mirroring AudioProber / TrackProber. The concrete prober (FFprobeFormatNextTo) lives in probe.go.
 type FormatProber func(ctx context.Context, input string) (MediaFormat, error)
 
-// Target is a playback destination's codec tolerance — what it can play without transcoding.
-type Target int
+// EncodePlan is the CANONICAL codec bucket a session is keyed on and encoded for (§9.1 V48). It is
+// NOT the client's capability — that is DeviceProfile. Many profiles resolve() into few EncodePlans,
+// so encoder fan-out is bounded by this small fixed set, never by the number of distinct devices.
+//
+// The order is widening capability, and it is load-bearing: resolve() picks the richest plan a
+// profile fully satisfies, and String()/ParseEncodePlan round-trip the wire token. `baseline` is the
+// safe default the whole design falls back to (a client that proves nothing gets h264/aac).
+type EncodePlan int
 
 const (
-	// TargetBrowser is the in-app HLS player (hls.js / native / a future mobile app). The safe
-	// baseline MSE and Safari/iOS both play is H.264 video + AAC audio. HEVC plays only on some
-	// Apple hardware, so it is NOT in the browser baseline; surround audio (EAC3/AC3) is not
-	// broadly decodable in-browser either.
-	TargetBrowser Target = iota
-	// TargetMediaServer is a media server tuner (Emby/Jellyfin) or a general TV client, which
-	// handles a broader set directly and re-transcodes anything it cannot itself play.
-	TargetMediaServer
+	// PlanBaseline is h264 video + AAC audio — what a plain browser `<video>`/MSE and Safari/iOS
+	// decode with no hardware help. The safe default: any client that has not ADVERTISED more gets
+	// this, so a client with no HEVC decoder never receives an undecodable stream.
+	PlanBaseline EncodePlan = iota
+	// PlanHEVC8 adds 8-bit HEVC video — a browser with a hardware HEVC decoder (hls.js ≥1.6
+	// transmuxes HEVC-in-MPEG-TS for MSE) or a modest native app. Audio stays AAC (the browser
+	// baseline); HEVC files carrying EAC3/AC3 surround still transcode that audio alone.
+	PlanHEVC8
+	// PlanHEVC10 adds 10-bit HEVC and surround passthrough (EAC3/AC3) — a capable native app
+	// (AVPlayer/ExoPlayer) that decodes 10-bit and plays surround directly, so neither the video
+	// nor the audio needs a transcode for typical HEVC content.
+	PlanHEVC10
+	// PlanFull is the broadest set — h264/hevc video + aac/ac3/eac3/mp3 audio. It is what a
+	// media-server tuner (Emby/Jellyfin) ingests and re-transcodes downstream, and the plan the
+	// tuner path (which sends no DeviceProfile) resolves to. Was the old `mediaserver` target.
+	PlanFull
 )
 
-// String renders a target as the token used on the wire (the `?target=` query on the playlist and
-// program URLs) and in a session key. Stable, lowercase, and the inverse of ParseTarget.
-func (t Target) String() string {
-	switch t {
-	case TargetBrowser:
-		return "browser"
+// String renders a plan as the wire token (the `?plan=` query on the playlist and program URLs) and
+// the session-key component. Stable, lowercase, the inverse of ParseEncodePlan.
+func (p EncodePlan) String() string {
+	switch p {
+	case PlanHEVC8:
+		return "hevc8"
+	case PlanHEVC10:
+		return "hevc10"
+	case PlanFull:
+		return "full"
 	default:
-		return "mediaserver"
+		return "baseline"
 	}
 }
 
-// ParseTarget maps the wire token back to a Target. Unknown or empty ⇒ TargetMediaServer — the
-// safe default: it is the broader capability set (a media-server tuner ingests more than a
-// browser), and it is what the tuner path has always produced, so an un-parameterised request
-// (an old client, a hand-typed URL) behaves exactly as before. The browser narrows EXPLICITLY.
-func ParseTarget(s string) Target {
-	if s == "browser" {
-		return TargetBrowser
+// ParseEncodePlan maps a wire token back to an EncodePlan. Unknown or empty ⇒ PlanBaseline — the
+// SAFE default (h264/aac): the copy plan that plays on any client, so an absent/garbage `?plan=`
+// never grants a capability the client did not prove. A client widens EXPLICITLY, via a recognized
+// token minted from its own DeviceProfile. (This is the inverse of the old ParseTarget, whose unknown
+// default was the BROAD mediaserver set — retired in V48 precisely because "unknown ⇒ broad" is the
+// wrong default for the browser/Watch path. The tuner path resolves to PlanFull explicitly, not by
+// falling through here.)
+func ParseEncodePlan(s string) EncodePlan {
+	switch s {
+	case "hevc8":
+		return PlanHEVC8
+	case "hevc10":
+		return PlanHEVC10
+	case "full":
+		return PlanFull
+	default:
+		return PlanBaseline
 	}
-	return TargetMediaServer
 }
 
-// directPlayVideo / directPlayAudio are the codecs each target plays without a transcode.
-var directPlayVideo = map[Target]map[string]bool{
-	TargetBrowser:     {"h264": true},
-	TargetMediaServer: {"h264": true, "hevc": true, "h265": true},
+// copyVideo / copyAudio are the codecs each plan copies without a transcode. A plan copies a superset
+// of the plan below it; 10-bit is gated separately (see PlanCopy) since it is a pixel-format axis, not
+// a codec-name one.
+var planCopyVideo = map[EncodePlan]map[string]bool{
+	PlanBaseline: {"h264": true},
+	PlanHEVC8:    {"h264": true, "hevc": true, "h265": true},
+	PlanHEVC10:   {"h264": true, "hevc": true, "h265": true},
+	PlanFull:     {"h264": true, "hevc": true, "h265": true},
 }
 
-var directPlayAudio = map[Target]map[string]bool{
-	TargetBrowser:     {"aac": true},
-	TargetMediaServer: {"aac": true, "ac3": true, "eac3": true, "mp3": true},
+var planCopyAudio = map[EncodePlan]map[string]bool{
+	PlanBaseline: {"aac": true},
+	PlanHEVC8:    {"aac": true},
+	PlanHEVC10:   {"aac": true, "ac3": true, "eac3": true},
+	PlanFull:     {"aac": true, "ac3": true, "eac3": true, "mp3": true},
 }
 
-// CopyPlan is the per-stream copy/transcode decision for one source against one target. It maps
+// DeviceProfile is what a Watch CLIENT advertises it can direct-play (§9.1 V48) — the input to
+// resolve(). Sent as a JSON body on POST /v1/channels/{id}/play-url. All fields are optional and the
+// ZERO value is the safe baseline: an absent/empty profile resolves to PlanBaseline, so a client that
+// proves nothing gets h264/aac. A browser fills it from MediaSource.isTypeSupported(…); a native app
+// from its known decoder set.
+type DeviceProfile struct {
+	// Video / Audio are the codecs the client can DECODE, lowercased (e.g. "hevc", "eac3"). h264 and
+	// aac are the implied floor — a profile need not list them, and resolve treats them as present.
+	Video []string
+	Audio []string
+	// Video10Bit reports the client can decode 10-bit (or deeper) video. Gates PlanHEVC10's 10-bit
+	// copy: without it, a 10-bit HEVC source transcodes even for an HEVC-capable client.
+	Video10Bit bool
+	// HDR reports the client can DISPLAY HDR (PQ/HLG). Drives the tone-map decision on transcode, not
+	// the copy-codec bucket, so it does not multiply EncodePlans.
+	HDR bool
+	// MaxResolution is the tallest video height the client will direct-play (e.g. 1080). 0 = no cap.
+	// Drives the rendition ladder, not the copy bucket — kept out of resolve() for the same reason.
+	MaxResolution int
+}
+
+// has reports whether `codec` is in `list` (case-insensitive), treating `implied` as always present.
+func has(list []string, codec, implied string) bool {
+	if codec == implied {
+		return true
+	}
+	for _, c := range list {
+		if strings.EqualFold(strings.TrimSpace(c), codec) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolve maps a DeviceProfile to the richest EncodePlan the profile FULLY satisfies, rounding DOWN
+// when a profile sits between buckets (§9.1 V48). It is pure, total, and the ONE place bucketing
+// lives. It never returns a plan that claims a capability the profile did not advertise — the
+// black-frame guard: a client that did not prove HEVC (or 10-bit, or surround) is bucketed below it.
+//
+// It deliberately does NOT return PlanFull: `full` is the tuner set (mp3 + the broad audio), reached
+// only by the tuner path resolving to it explicitly, not by a browser/native profile. The richest a
+// client profile earns is PlanHEVC10.
+func resolve(p DeviceProfile) EncodePlan {
+	hevc := has(p.Video, "hevc", "h264") || has(p.Video, "h265", "h264")
+	surround := has(p.Audio, "eac3", "aac") || has(p.Audio, "ac3", "aac")
+	switch {
+	case hevc && p.Video10Bit && surround:
+		return PlanHEVC10
+	case hevc:
+		return PlanHEVC8
+	default:
+		return PlanBaseline
+	}
+}
+
+// ResolvePlan is the exported entry point callers use to bucket a client's advertised capabilities
+// into the session's EncodePlan (§9.1 V48). Thin wrapper over the pure resolve so the bucketing logic
+// stays unexported and single-sourced. (Named ResolvePlan, not Resolve, because quality.go already
+// owns Resolve for the quality-tier→Profile decision — a different resolution entirely.)
+func ResolvePlan(p DeviceProfile) EncodePlan { return resolve(p) }
+
+// EstimatedCost is a plan's admission cost BEFORE any program has reported (§9.1 V49 admission).
+// It is the conservative guess used at session start, corrected to the real cost once the first
+// program reports whether it actually transcoded (see Manager.ReportProgram):
+//
+//   - PlanBaseline MIGHT transcode (an HEVC/incompatible channel to an h264-only client) → cost 1.
+//   - The HEVC/full plans COPY the video (that is their whole point) → cost 0.
+//
+// Over-counting baseline on an h264 channel (guessing 1 when it will copy) is SAFE — it never
+// over-admits — and self-corrects to 0 on the first program report. The video transcode is the only
+// thing that consumes the GPU budget; audio transcode (a cheap AAC encode) is not counted.
+func (p EncodePlan) EstimatedCost() int {
+	if p == PlanBaseline {
+		return 1
+	}
+	return 0
+}
+
+// CopyPlan is the per-stream copy/transcode decision for one source against one EncodePlan. It maps
 // directly onto ffmpeg codec flags: CopyVideo → `-c:v copy` else a video encoder; CopyAudio →
 // `-c:a copy` else `-c:a aac`.
 type CopyPlan struct {
@@ -121,18 +232,36 @@ type CopyPlan struct {
 // path (no encode at all).
 func (p CopyPlan) DirectPlay() bool { return p.CopyVideo && p.CopyAudio }
 
-// PlanCopy decides, per stream, what can be copied for `target` — the core decision, pure and
-// testable without ffmpeg.
+// Cost is the REAL admission cost of a program once its copy plan is known (§9.1 V49): 1 when the
+// VIDEO is transcoded (the GPU-consuming case), else 0. Audio transcode (a cheap AAC encode) does
+// not count — the budget bounds concurrent VIDEO encodes, which is what saturates the box.
+func (p CopyPlan) Cost() int {
+	if p.CopyVideo {
+		return 0
+	}
+	return 1
+}
+
+// PlanCopy decides, per stream, what can be copied for `plan` — the core decision, pure and testable
+// without ffmpeg.
 //
-//   - Video copies when the target plays its codec (h264 for a browser). Otherwise it transcodes.
-//   - Audio copies when the target plays its codec, OR when there is no audio. Otherwise the audio
+//   - Video copies when the plan copies its codec AND the bit depth is allowed. Only PlanHEVC10 (and
+//     PlanFull) copy 10-bit; a 10-bit HEVC source to PlanHEVC8 TRANSCODES, because that client proved
+//     8-bit HEVC only — copying 10-bit to it is the same black frame as copying HEVC to baseline.
+//   - Audio copies when the plan copies its codec, OR when there is no audio. Otherwise the audio
 //     alone transcodes (to AAC) — the video is untouched. This is what makes an h264 + EAC3 file
-//     cost only a cheap audio encode for the browser, not a full video re-encode.
-func PlanCopy(f MediaFormat, target Target) CopyPlan {
+//     cost only a cheap audio encode for a baseline client, not a full video re-encode.
+func PlanCopy(f MediaFormat, plan EncodePlan) CopyPlan {
 	v := strings.ToLower(strings.TrimSpace(f.VideoCodec))
 	a := strings.ToLower(strings.TrimSpace(f.AudioCodec))
+	copyVideo := planCopyVideo[plan][v]
+	// 10-bit is a pixel-format axis, not a codec-name one: a plan may copy the CODEC (hevc) but not
+	// 10-bit of it. Only the 10-bit-capable plans copy a 10-bit source; others transcode it down.
+	if copyVideo && f.TenBit() && plan != PlanHEVC10 && plan != PlanFull {
+		copyVideo = false
+	}
 	return CopyPlan{
-		CopyVideo: directPlayVideo[target][v],
-		CopyAudio: a == "" || directPlayAudio[target][a],
+		CopyVideo: copyVideo,
+		CopyAudio: a == "" || planCopyAudio[plan][a],
 	}
 }

@@ -21,7 +21,7 @@ type fakeAttacher struct {
 	chans    []chan []byte
 }
 
-func (f *fakeAttacher) Attach(ctx context.Context, channelID string, target Target) (<-chan []byte, func(), error) {
+func (f *fakeAttacher) Attach(ctx context.Context, channelID string, target EncodePlan) (<-chan []byte, func(), error) {
 	f.attaches.Add(1)
 	ch := make(chan []byte)
 	f.mu.Lock()
@@ -39,7 +39,7 @@ func newTestHLSManager(t *testing.T, att HLSAttacher) *HLSManager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.spawn = func(ctx context.Context, bin, dir string, log *slog.Logger) (*hlsProcess, error) {
+	m.spawn = func(ctx context.Context, bin, dir string, _ EncodePlan, log *slog.Logger) (*hlsProcess, error) {
 		// Write a stub playlist that REFERENCES A SEGMENT — awaitPlaylist waits for a `.ts` line
 		// (the readiness signal), so a header-only stub would (correctly) never be considered ready.
 		stub := "#EXTM3U\n#EXT-X-VERSION:6\n#EXTINF:4.0,\nseg-0.ts\n"
@@ -65,7 +65,7 @@ func TestHLSManager_ViewersShareOneRemux(t *testing.T) {
 
 	var detaches []func()
 	for i := 0; i < 3; i++ {
-		_, d, err := m.Playlist("ch1")
+		_, d, err := m.Playlist("ch1", PlanBaseline)
 		if err != nil {
 			t.Fatalf("viewer %d: %v", i, err)
 		}
@@ -86,7 +86,7 @@ func TestHLSManager_TeardownReleasesSessionAfterGrace(t *testing.T) {
 	att := &fakeAttacher{}
 	m := newTestHLSManager(t, att)
 
-	_, detach, err := m.Playlist("ch1")
+	_, detach, err := m.Playlist("ch1", PlanBaseline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,14 +108,14 @@ func TestHLSManager_RejoinWithinGraceKeepsOneAttach(t *testing.T) {
 	att := &fakeAttacher{}
 	m := newTestHLSManager(t, att)
 
-	_, d1, err := m.Playlist("ch1")
+	_, d1, err := m.Playlist("ch1", PlanBaseline)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d1() // last viewer leaves; grace timer arms
 
 	// Re-join immediately, well within the 20ms grace.
-	_, d2, err := m.Playlist("ch1")
+	_, d2, err := m.Playlist("ch1", PlanBaseline)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import { Captions, Play, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
+import { TunerLoader } from "@/components/loomarr/shell";
 import { Button, VideoPlayer } from "@/components/ui";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
@@ -212,6 +213,10 @@ const ChannelWatch = ({
       topBar={topBar}
       timeLeft={timeLeft}
       barControls={barControls}
+      // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
+      // not cut yet) so the viewer sees a channel tuning in, not a black frame. Only while loading —
+      // an error shows its own message below, and a playing stream needs no overlay.
+      overlay={player.status === "loading" ? <TunerLoader /> : undefined}
       attach={player.attach}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />
