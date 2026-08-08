@@ -56,10 +56,20 @@ type Session struct {
 	Target Target
 
 	// cancel stops the encoder. The context IS the lifetime (process.go) — there is no
-	// separate "stop the ffmpeg" path that could disagree with it.
+	// separate "stop the ffmpeg" path that could disagree with it. nil until the spawn completes
+	// (see ready): a placeholder is in the map before its ffmpeg exists.
 	cancel context.CancelFunc
 	proc   *Process
 	log    *slog.Logger
+
+	// ready is closed once the encoder spawn resolves (success OR initErr). It lets the manager
+	// insert a placeholder session under m.mu, release the lock, and spawn ffmpeg OUTSIDE it, while
+	// concurrent same-key viewers wait here for the one spawn instead of starting a second encoder.
+	// A nil ready means a fully-spawned session (the fake-spawner test path builds these directly).
+	ready chan struct{}
+	// initErr is the spawn failure, if any — read only after ready is closed. Set once by
+	// spawnPlaceholder; never mutated afterwards, so no lock is needed for it.
+	initErr error
 	// grace is how long this session survives its last viewer. Copied from the manager
 	// so onIdle does not need to reach back through a parent pointer (which would also
 	// mean taking two locks in an order that has to stay consistent).
@@ -219,86 +229,116 @@ const DefaultGrace = 30 * time.Second
 // decrements the refcount, and a leaked viewer keeps a channel encoding forever.
 func (m *Manager) Attach(ctx context.Context, channelID string, target Target) (<-chan []byte, func(), error) {
 	key := sessionKey{channel: channelID, target: target}
-	// THE RACE (prior-art §6.3). This lock is held across the find-or-create, including
-	// the spawn — deliberately, and it is the whole point. Two viewers tuning the same
-	// channel in the same millisecond both find no session; if the lock were released
-	// between the lookup and the insert, both would start an encoder and one would be
-	// orphaned with no viewers and no map entry to ever find it again. Holding it means
-	// the loser finds the winner's session.
+
+	// ⚠ **The find-or-create is atomic, but the SPAWN is not held under m.mu.** The lock protects
+	// only the map decision (reuse an existing session, or reserve a placeholder for a new one);
+	// the ffmpeg spawn then runs OUTSIDE the lock. This is what lets four channels cold-start in
+	// PARALLEL instead of queuing — the earlier design held m.mu across the whole spawn, so a
+	// simultaneous four-channel tune-in serialized, each waiting on the previous encoder's init.
 	//
-	// Cost of being wrong the other way (a brief serialization of channel starts) is a
-	// few hundred ms of added latency on simultaneous first-tunes. Cost of the race is a
-	// permanently leaked ffmpeg. Not a close call.
-	// `started` is set inside the critical section and read by the deferred notify, so the
-	// hook fires AFTER m.mu is released — calling out to the bus while holding this lock
-	// would couple two packages' locks for no reason.
-	started := false
+	// The race the old lock prevented (two viewers of the SAME channel starting two encoders, one
+	// orphaned) is still prevented: the placeholder is inserted atomically, so the second same-key
+	// caller finds it and WAITS on the winner's spawn (session.ready) rather than starting its own.
+	// Different keys never contend — each reserves its own placeholder and spawns concurrently.
 	m.mu.Lock()
-	defer func() {
-		m.mu.Unlock()
-		if started {
-			m.notifyChange()
-		}
-	}()
-
 	if s := m.sessions[key]; s != nil {
-		ch, detach, ok := s.addViewer()
-		if ok {
-			return ch, detach, nil
-		}
-		// The session is mid-teardown. Drop it and start fresh below rather than
-		// attaching to something that will never produce bytes.
-		delete(m.sessions, key)
+		m.mu.Unlock()
+		return m.joinExisting(ctx, key, s)
 	}
-
 	// Admission, not eviction. See ErrAtCapacity. The bound counts ENCODERS, which is what
 	// consumes the box — so a channel watched as both a browser and a tuner legitimately counts
-	// twice here, because it is two encoders. len(m.sessions) already reflects that.
+	// twice here, because it is two encoders. len(m.sessions) already reflects that. Checked here,
+	// under the lock and against the placeholder count, so parallel starts cannot overshoot it.
 	if AtCapacity(m.maxChannels, len(m.sessions)) {
+		m.mu.Unlock()
 		return nil, nil, ErrAtCapacity
 	}
-
-	s, err := m.start(channelID, target)
-	if err != nil {
-		return nil, nil, err
-	}
+	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
+	s := m.newPlaceholder(channelID, target)
 	m.sessions[key] = s
-	started = true
+	m.mu.Unlock()
 
-	ch, detach, _ := s.addViewer() // fresh session: cannot be closed
+	m.spawnPlaceholder(ctx, s)
+	<-s.ready
+	if s.initErr != nil {
+		// Spawn failed: drop the placeholder so the next viewer starts fresh, and report it.
+		m.mu.Lock()
+		if m.sessions[key] == s {
+			delete(m.sessions, key)
+		}
+		m.mu.Unlock()
+		return nil, nil, s.initErr
+	}
+	m.notifyChange()
+	ch, detach, _ := s.addViewer() // fresh, spawned session: cannot be closed yet
 	return ch, detach, nil
 }
 
-// start launches an encoder for a (channel, target). Caller holds m.mu.
-func (m *Manager) start(channelID string, target Target) (*Session, error) {
-	// context.Background, NOT the attaching viewer's request context. The session
-	// outlives whoever started it — binding its lifetime to the first viewer's request
-	// would kill the channel for everybody the moment that one person's TV disconnected.
-	ctx, cancel := context.WithCancel(context.Background())
-
-	if m.log != nil {
-		m.log.Info("playout: session.start spawning encoder", "channel", channelID, "target", target.String())
+// joinExisting attaches to a session another caller created. If it is mid-spawn (a same-key viewer
+// that arrived a moment after the winner), we wait on its readiness rather than starting a second
+// encoder; if it turns out to have failed or is tearing down, we retry the whole find-or-create so
+// the caller still gets a working session.
+func (m *Manager) joinExisting(ctx context.Context, key sessionKey, s *Session) (<-chan []byte, func(), error) {
+	<-s.ready
+	if s.initErr != nil {
+		// The winner's spawn failed; it will remove itself. Retry from the top.
+		return m.Attach(ctx, key.channel, key.target)
 	}
-	proc, err := m.spawn(ctx, channelID, target)
-	if err != nil {
-		cancel()
-		if m.log != nil {
-			m.log.Warn("playout: session.start spawn failed", "channel", channelID, "target", target.String(), "err", err)
-		}
-		return nil, err
+	ch, detach, ok := s.addViewer()
+	if ok {
+		return ch, detach, nil
 	}
+	// Mid-teardown: drop it and start fresh rather than joining something dying.
+	m.mu.Lock()
+	if m.sessions[key] == s {
+		delete(m.sessions, key)
+	}
+	m.mu.Unlock()
+	return m.Attach(ctx, key.channel, key.target)
+}
 
-	s := &Session{
+// newPlaceholder builds a Session whose encoder is not spawned yet. `ready` gates every viewer until
+// spawnPlaceholder resolves it (success or initErr), so concurrent same-key callers share one spawn.
+func (m *Manager) newPlaceholder(channelID string, target Target) *Session {
+	return &Session{
 		ChannelID: channelID,
 		Target:    target,
-		cancel:    cancel, proc: proc, log: m.log,
+		log:       m.log,
 		grace:     m.grace,
 		onClosed:  m.notifyChange,
 		startedAt: time.Now(),
 		viewers:   map[int]chan []byte{},
+		ready:     make(chan struct{}),
 	}
+}
+
+// spawnPlaceholder runs the ffmpeg spawn for a reserved placeholder OUTSIDE m.mu, then closes
+// s.ready. On failure it records s.initErr; Attach/joinExisting remove the placeholder from the map.
+func (m *Manager) spawnPlaceholder(ctx context.Context, s *Session) {
+	// context.Background, NOT the attaching viewer's request context. The session outlives whoever
+	// started it — binding its lifetime to the first viewer's request would kill the channel for
+	// everybody the moment that one person's TV disconnected. ctx is accepted only for symmetry with
+	// the spawner signature; the viewer's cancellation must not propagate here.
+	_ = ctx
+	sctx, cancel := context.WithCancel(context.Background())
+
+	if m.log != nil {
+		m.log.Info("playout: session.start spawning encoder", "channel", s.ChannelID, "target", s.Target.String())
+	}
+	proc, err := m.spawn(sctx, s.ChannelID, s.Target)
+	if err != nil {
+		cancel()
+		if m.log != nil {
+			m.log.Warn("playout: session.start spawn failed", "channel", s.ChannelID, "target", s.Target.String(), "err", err)
+		}
+		s.initErr = err
+		close(s.ready)
+		return
+	}
+	s.cancel = cancel
+	s.proc = proc
 	go s.pump()
-	return s, nil
+	close(s.ready)
 }
 
 // pump reads the encoder's output and fans each chunk to every viewer.
