@@ -63,9 +63,14 @@ type BackupContent struct {
 	Bytes int64
 }
 
-// registerSystemBackups mounts the typed half of /v1/system/backups (§16). The download
-// is a plain mux handler (it streams a file) and is mounted in Router alongside
-// /v1/backup. Admin-only: a backup carries every secret the instance holds.
+// registerSystemBackups mounts the backup surface (§16): the typed list/run pair, the download
+// of an already-written file, and /v1/backup which makes a fresh one.
+//
+// All four are admin-only — a backup carries every secret the instance holds.
+//
+// ⚠ The two byte routes were plain mux handlers until they moved onto rawOp (rawop.go). They
+// live HERE, with the typed half, rather than in Router: splitting one resource across two
+// registration mechanisms is what let the list be spec'd while its download was not.
 func (s *Server) registerSystemBackups(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-backups-list", Method: http.MethodGet, Path: "/v1/system/backups",
@@ -84,6 +89,30 @@ func (s *Server) registerSystemBackups(api huma.API) {
 			"the retention policy — the same work the scheduled job does, without waiting for it.",
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemBackupsRun)
+
+	rawOp[backupNameInput](api, bytesResponse(huma.Operation{
+		OperationID: "system-backups-download", Method: http.MethodGet,
+		Path:    "/v1/system/backups/{name}",
+		Summary: "Download an already-written backup",
+		Description: "Admin only. Streams one file from the backup directory, honouring Range so a " +
+			"large download can resume. See `system-database-backup` to write a new one.",
+		Tags: []string{"system"},
+	}, "The backup file.", "application/octet-stream"), RoleAdmin, s.downloadBackupHandler)
+
+	rawOp[struct{}](api, bytesResponse(huma.Operation{
+		OperationID: "backup-now", Method: http.MethodGet, Path: "/v1/backup",
+		Summary: "Stream a fresh backup",
+		Description: "Admin only. Makes a new snapshot and streams it without writing it to the " +
+			"backup directory — SQLite installs only (Postgres answers 501; use your usual " +
+			"Postgres tooling).",
+		Tags: []string{"system"},
+	}, "A SQLite database snapshot.", "application/octet-stream"), RoleAdmin, s.backupHandler)
+}
+
+// backupNameInput names a file in the backup directory. Declared for the spec; the handler
+// still reads r.PathValue("name"). See rawop.go for why an undeclared path param matters.
+type backupNameInput struct {
+	Name string `path:"name" example:"loomarr-2026-08-08T02-00-00Z.db" doc:"Backup filename, as listed by system-backups-list"`
 }
 
 type systemBackupsListOutput struct {
@@ -128,12 +157,12 @@ func (s *Server) systemBackupsRun(ctx context.Context, _ *struct{}) (*systemBack
 }
 
 // downloadBackupHandler serves GET /v1/system/backups/{name} — an already-written file,
-// as opposed to /v1/backup which makes a new one. A plain mux handler because it streams
-// bytes rather than returning a typed body (§16).
+// as opposed to /v1/backup which makes a new one.
+//
+// Keeps the stdlib (w, r) signature because http.ServeContent does Range, If-Modified-Since and
+// 206 in one call; it is mounted as a rawOp (rawop.go), so authorization is the operation's
+// declared RoleAdmin enforced by the shared middleware, not a check in this body.
 func (s *Server) downloadBackupHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.requireRole(w, r, RoleAdmin) {
-		return
-	}
 	if s.backups == nil {
 		s.writeProblem(w, r, http.StatusNotImplemented, "Backup unavailable",
 			"In-app backup is available on SQLite installs. On Postgres, back up the database with your usual Postgres tools.")

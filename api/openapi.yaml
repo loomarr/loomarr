@@ -5258,6 +5258,28 @@ paths:
       summary: Change your own password
       tags:
         - auth
+  /v1/backup:
+    get:
+      description: Admin only. Makes a new snapshot and streams it without writing it to the backup directory — SQLite installs only (Postgres answers 501; use your usual Postgres tooling).
+      operationId: backup-now
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A SQLite database snapshot.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Stream a fresh backup
+      tags:
+        - system
   /v1/channels:
     get:
       operationId: list-channels
@@ -5470,6 +5492,51 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/icon:
+    get:
+      description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day; the ?v= cache-bust changes on re-upload."
+      operationId: channel-icon
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            image/gif:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/png:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The stored icon bytes.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A channel's uploaded icon
+      tags:
+        - channels
   /v1/channels/{id}/icon-suggestions:
     get:
       description: Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.
@@ -6131,6 +6198,38 @@ paths:
       summary: Send clips back to the review queue
       tags:
         - filler
+  /v1/filler/hover/{hash}:
+    get:
+      description: Any authenticated user. A few seconds of silent animation, so a grid of stills can answer "is this actually the advert it says it is?" without opening anything.
+      operationId: filler-hover
+      parameters:
+        - description: The clip's content hash (from ClipDTO)
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: An animated WebP.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's hover preview
+      tags:
+        - filler
   /v1/filler/incoming:
     get:
       description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
@@ -6174,6 +6273,43 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)
+      tags:
+        - filler
+  /v1/filler/media/{hash}:
+    get:
+      description: Any authenticated user. The clip itself, so an operator can watch one before deciding about it. Range-capable, so a <video> element can seek. The exact media type comes from a short server-side allowlist keyed by extension.
+      operationId: filler-media
+      parameters:
+        - description: The clip's content hash (from ClipDTO)
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            audio/*:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            video/*:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The clip's own bytes.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's own bytes
       tags:
         - filler
   /v1/filler/pool:
@@ -6580,6 +6716,38 @@ paths:
       summary: Edit a clip's tags
       tags:
         - filler
+  /v1/filler/thumb/{hash}:
+    get:
+      description: Any authenticated user. The extracted frame ClipDTO.thumbnail points at.
+      operationId: filler-thumb
+      parameters:
+        - description: The clip's content hash (from ClipDTO)
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A JPEG still.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's thumbnail frame
+      tags:
+        - filler
   /v1/filler/watch:
     get:
       description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
@@ -6730,6 +6898,165 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/playout/guide.xml:
+    get:
+      operationId: playout-guide
+      responses:
+        "200":
+          content:
+            application/xml:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: XMLTV listings for every internally-played channel.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout XMLTV guide (device-authed)
+      tags:
+        - playout
+  /v1/playout/hls/{id}/master.m3u8:
+    get:
+      operationId: playout-hls-master
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The HLS master playlist for the in-app and native players.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel HLS master playlist (signed-URL authed)
+      tags:
+        - playout
+  /v1/playout/hls/{id}/{asset}:
+    get:
+      operationId: playout-hls-asset
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+        - description: A file beside the master playlist — a segment, or the media playlist
+          in: path
+          name: asset
+          required: true
+          schema:
+            description: A file beside the master playlist — a segment, or the media playlist
+            examples:
+              - seg-7.ts
+            type: string
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A segment, or the media playlist beside the master.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel HLS segment or media playlist (signed-URL authed)
+      tags:
+        - playout
+  /v1/playout/playlist/{id}:
+    get:
+      operationId: playout-playlist
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The ffconcat playlist the parent ffmpeg reads to sequence programs.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel ffconcat playlist (device-authed)
+      tags:
+        - playout
+  /v1/playout/program/{id}:
+    get:
+      operationId: playout-program
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: One program's transport stream; the concat demuxer re-opens this per program.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One program's MPEG-TS (device-authed)
+      tags:
+        - playout
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."
@@ -6770,6 +7097,58 @@ paths:
       summary: Playout status — why a channel is (or isn't) playing (admin)
       tags:
         - dashboard
+  /v1/playout/stream/{id}:
+    get:
+      operationId: playout-stream
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A continuous transport stream of whatever the channel is playing now.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel MPEG-TS stream (device-authed)
+      tags:
+        - playout
+  /v1/playout/tuner.m3u:
+    get:
+      operationId: playout-tuner
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The M3U tuner list a media server registers as a Live TV source.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout tuner M3U (device-authed)
+      tags:
+        - playout
   /v1/programming/vocabulary:
     get:
       description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user."
@@ -7365,6 +7744,38 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Write a backup now
+      tags:
+        - system
+  /v1/system/backups/{name}:
+    get:
+      description: Admin only. Streams one file from the backup directory, honouring Range so a large download can resume. See `system-database-backup` to write a new one.
+      operationId: system-backups-download
+      parameters:
+        - description: Backup filename, as listed by system-backups-list
+          in: path
+          name: name
+          required: true
+          schema:
+            description: Backup filename, as listed by system-backups-list
+            examples:
+              - loomarr-2026-08-08T02-00-00Z.db
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The backup file.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Download an already-written backup
       tags:
         - system
   /v1/system/database:
