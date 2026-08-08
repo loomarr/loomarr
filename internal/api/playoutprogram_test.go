@@ -66,7 +66,7 @@ func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, err
 
 // PlanFor returns whatever plan the test set — zero value (transcode both) by default, which is
 // what the existing program-path assertions expect (they check the transcode args).
-func (f *fakeResolver) PlanFor(context.Context, string, playout.Target) playout.CopyPlan {
+func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) playout.CopyPlan {
 	return f.plan
 }
 

@@ -147,7 +147,7 @@ func TestBind_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
 		[]suggest.ProposalItem{inLib(3, "Raiders"), inLib(4, "Predator 2")}, nil)
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestBind_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
 	seedApprovedProposalRetiring(t, st, "p1", "job1", suggest.AutoCuratedBy,
 		[]suggest.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestBind_ManualApproval_IgnoresRetirements(t *testing.T) {
 	seedApprovedProposalRetiring(t, st, "p1", "job1", "admin",
 		[]suggest.ProposalItem{inLib(1, "Kept By A Human")}, nil, []provision.Key{movieKey(1)})
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestBind_AutoCurate_DropsUnavailable(t *testing.T) {
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
 		[]suggest.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestBind_ManualApprove_ReplacesLineup(t *testing.T) {
 	putAvailable(t, st, 2, "New")
 	seedApprovedProposal(t, st, "p1", "job1", "admin-user", []suggest.ProposalItem{inLib(2, "New")}, nil)
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestBind_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 	// The refreshed proposal's policy carries NONE of these operator-owned fields.
 	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy, []suggest.ProposalItem{inLib(1, "Film")}, nil)
 
-	b := binder.New(st, nil, testkit.Logger())
+	b := binder.New(st, nil, nil, testkit.Logger())
 	if _, err := b.BindApprovedChannel(context.Background(), mustProposal(t, st, "p1")); err != nil {
 		t.Fatal(err)
 	}

@@ -41,6 +41,12 @@
      keyframe offsets rather than glide — that read of discrete jitter is what sells "static". */
   --animate-tv-snow: tv-snow 0.45s steps(1, end) infinite;
   --animate-bar-breathe: bar-breathe 4s ease-in-out infinite;
+  /* Signal-lock — the tuner loader's bars jitter as snow (grey, stepped) then RESOLVE to a
+     steady phosphor-amber level: static becoming signal. Each bar carries this with a per-index
+     delay (set inline in TunerLoader) so the lock travels across the strip rather than snapping
+     as one block. `steps(4)` in the first half keeps the snow phase discrete (real static jumps);
+     the tail eases so the amber settles rather than pings. Off under reduced-motion. */
+  --animate-signal-lock: signal-lock 1.6s steps(4, end) infinite;
   --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -158,6 +164,40 @@ body {
   }
   50% {
     opacity: 0.62;
+  }
+}
+
+/* Signal-lock — the tuner loader (§9.1 Watch). A bar starts as grey snow at a jittering height,
+   then locks to phosphor-amber at a settled height with a bloom. `height` carries the snow jitter;
+   `background-color` and the amber `box-shadow` carry the static→signal transition. Animated via
+   `motion-safe:animate-signal-lock` so it's off under reduced-motion, and the visual suite's
+   `reducedMotion: reduce` freezes it at the locked (amber) frame — a deterministic baseline, not a
+   mid-flicker one. Colours are the raw token values (Tailwind can't interpolate a class per frame). */
+@keyframes signal-lock {
+  0% {
+    height: 22%;
+    background-color: var(--color-static-500);
+    box-shadow: none;
+  }
+  25% {
+    height: 88%;
+    background-color: var(--color-static-400);
+    box-shadow: none;
+  }
+  45% {
+    height: 40%;
+    background-color: var(--color-static-500);
+    box-shadow: none;
+  }
+  65% {
+    height: 74%;
+    background-color: var(--color-signal);
+    box-shadow: 0 0 6px 0 var(--color-signal);
+  }
+  100% {
+    height: 64%;
+    background-color: var(--color-signal-400);
+    box-shadow: 0 0 8px 0 var(--color-signal-400);
   }
 }
 

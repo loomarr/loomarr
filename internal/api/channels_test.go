@@ -114,7 +114,7 @@ func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeC
 		// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
 		// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
 		// approved proposals in these tests, same as production wiring.
-		Binder: binder.New(st, chSvc, log),
+		Binder: binder.New(st, chSvc, nil, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

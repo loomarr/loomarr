@@ -68,18 +68,19 @@ const hlsFirstSegmentTimeout = 45 * time.Second
 // that the request returns promptly once ffmpeg writes it, not so short it spins the CPU.
 const firstSegmentPoll = 100 * time.Millisecond
 
-// HLSAttacher is the slice of Manager an HLS remux needs: attach to a channel's byte stream for a
-// target. Exactly Manager.Attach, named so hls.go depends on a capability, not the whole Manager,
-// and so tests can drive the remux with a fake stream. The remux always attaches as TargetBrowser
-// (§9.1 V47) — its consumer is a `<video>` element, so HEVC/AC3 must be transcoded to h264/aac.
+// HLSAttacher is the slice of Manager an HLS remux needs: attach to a channel's byte stream for an
+// EncodePlan. Exactly Manager.Attach, named so hls.go depends on a capability, not the whole Manager,
+// and so tests can drive the remux with a fake stream. The remux attaches at the CLIENT's resolved
+// plan (§9.1 V48): a baseline `<video>` gets HEVC/AC3 transcoded to h264/aac, while an HEVC-capable
+// client gets it copied — the plan the Watch handler resolved from the DeviceProfile decides which.
 type HLSAttacher interface {
-	Attach(ctx context.Context, channelID string, target Target) (<-chan []byte, func(), error)
+	Attach(ctx context.Context, channelID string, plan EncodePlan) (<-chan []byte, func(), error)
 }
 
 // hlsSpawner starts the repackaging ffmpeg for a channel dir. A field on the manager
 // (defaulting to startHLSFFmpeg) rather than a hard call, so the refcount and lifecycle can be
 // tested without executing a binary — the same seam Manager's Spawner provides.
-type hlsSpawner func(ctx context.Context, bin, dir string, log *slog.Logger) (*hlsProcess, error)
+type hlsSpawner func(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error)
 
 // HLSManager owns the per-channel HLS remuxes. One per process, built beside the session Manager.
 type HLSManager struct {
@@ -92,8 +93,19 @@ type HLSManager struct {
 	// root is the base temp directory; each remux gets a subdir under it. Removed on Stop.
 	root string
 
-	mu      sync.Mutex
-	remuxes map[string]*hlsRemux
+	mu sync.Mutex
+	// Keyed by (channel, plan): a baseline (h264) remux and an HEVC-capable remux of the SAME channel
+	// are distinct — they attach to different sessions with different copy plans, so each needs its
+	// own segment dir and refcount (§9.1 V48). The tuner path does not go through here (it streams
+	// MPEG-TS directly, streamHandler).
+	remuxes map[remuxKey]*hlsRemux
+}
+
+// remuxKey identifies one HLS remux: a channel viewed at one EncodePlan. Comparable, so it is the
+// map key directly — the same shape as session.go's sessionKey, and for the same reason (§9.1 V48).
+type remuxKey struct {
+	channel string
+	plan    EncodePlan
 }
 
 // NewHLSManager builds the HLS repackager. `ffmpeg` is the same binary path playout encodes
@@ -127,7 +139,7 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 		attacher: attacher, ffmpeg: ffmpeg, grace: grace, log: log,
 		spawn:   startHLSFFmpeg,
 		root:    root,
-		remuxes: map[string]*hlsRemux{},
+		remuxes: map[remuxKey]*hlsRemux{},
 	}, nil
 }
 
@@ -138,22 +150,23 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 // The find-or-create is under the manager lock for the same reason Attach's is (session.go): two
 // viewers tuning the same channel together must find one remux, not race two into existence with
 // one orphaned.
-func (m *HLSManager) Playlist(channelID string) (playlistPath string, detach func(), err error) {
+func (m *HLSManager) Playlist(channelID string, plan EncodePlan) (playlistPath string, detach func(), err error) {
+	key := remuxKey{channel: channelID, plan: plan}
 	m.mu.Lock()
-	if r := m.remuxes[channelID]; r != nil {
+	if r := m.remuxes[key]; r != nil {
 		if p, d, ok := r.addViewer(); ok {
 			m.mu.Unlock()
 			return p, d, nil
 		}
 		// Mid-teardown: drop and start fresh below rather than joining something dying.
-		delete(m.remuxes, channelID)
+		delete(m.remuxes, key)
 	}
-	r, err := m.start(channelID)
+	r, err := m.start(channelID, plan)
 	if err != nil {
 		m.mu.Unlock()
 		return "", nil, err
 	}
-	m.remuxes[channelID] = r
+	m.remuxes[key] = r
 	p, d, _ := r.addViewer() // fresh remux: cannot be closed
 	m.mu.Unlock()
 
@@ -191,9 +204,9 @@ func (m *HLSManager) Playlist(channelID string) (playlistPath string, detach fun
 //
 // `rel` is the file UNDER the channel dir (e.g. "seg-3.ts"). It is joined beneath the channel dir
 // and the result is verified to stay inside.
-func (m *HLSManager) AssetPath(channelID, rel string) (string, bool) {
+func (m *HLSManager) AssetPath(channelID string, plan EncodePlan, rel string) (string, bool) {
 	m.mu.Lock()
-	r := m.remuxes[channelID]
+	r := m.remuxes[remuxKey{channel: channelID, plan: plan}]
 	m.mu.Unlock()
 	if r == nil {
 		return "", false
@@ -207,8 +220,8 @@ func (m *HLSManager) AssetPath(channelID, rel string) (string, bool) {
 	return full, true
 }
 
-// start launches a remux for a channel. Caller holds m.mu.
-func (m *HLSManager) start(channelID string) (*hlsRemux, error) {
+// start launches a remux for a channel at one EncodePlan. Caller holds m.mu.
+func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error) {
 	dir, err := os.MkdirTemp(m.root, "ch-")
 	if err != nil {
 		return nil, fmt.Errorf("hls: channel dir: %w", err)
@@ -219,36 +232,39 @@ func (m *HLSManager) start(channelID string) (*hlsRemux, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if m.log != nil {
-		m.log.Info("hls: starting remux", "channel", channelID, "dir", dir, "ffmpeg", m.ffmpeg)
+		m.log.Info("hls: starting remux", "channel", channelID, "plan", plan.String(), "dir", dir, "ffmpeg", m.ffmpeg)
 	}
-	// TargetBrowser: the HLS remux feeds a `<video>` element, which decodes only h264/aac — so it
-	// attaches to the BROWSER session, whose parent transcodes HEVC/AC3. For an h264 channel that
-	// session is also just `-c copy` (same bytes the tuner gets), so this costs no extra encode
-	// there — only genuinely incompatible content pays, and only while watched in-browser (§9.1 V47).
-	chunks, sessDetach, err := m.attacher.Attach(ctx, channelID, TargetBrowser)
+	// Attach to the session for THIS client's resolved plan (§9.1 V48). PlanBaseline transcodes
+	// HEVC/AC3 to the h264/aac a `<video>` decodes; PlanHEVC8/10 copies HEVC for a client that
+	// advertised it. For an h264 channel EVERY plan is just `-c copy` (same bytes the tuner gets), so
+	// this costs no extra encode there — only genuinely incompatible content pays, and only while
+	// watched. The remux ffmpeg is `-c copy` regardless of plan — it re-containers whatever the
+	// session hands it (HEVC-in-TS included; hls.js ≥1.6 transmuxes that client-side).
+	chunks, sessDetach, err := m.attacher.Attach(ctx, channelID, plan)
 	if err != nil {
 		cancel()
 		_ = os.RemoveAll(dir)
 		if m.log != nil {
-			m.log.Warn("hls: attach failed", "channel", channelID, "err", err)
+			m.log.Warn("hls: attach failed", "channel", channelID, "plan", plan.String(), "err", err)
 		}
 		return nil, err // ErrAtCapacity flows straight through — the caller renders 503.
 	}
 	if m.log != nil {
-		m.log.Info("hls: attached to session", "channel", channelID)
+		m.log.Info("hls: attached to session", "channel", channelID, "plan", plan.String())
 	}
 
+	key := remuxKey{channel: channelID, plan: plan}
 	r := &hlsRemux{
 		channelID: channelID, dir: dir,
 		playlist: filepath.Join(dir, hlsPlaylistName),
 		cancel:   cancel, sessDetach: sessDetach,
 		grace: m.grace, log: m.log,
-		onClosed: func() { m.remove(channelID) },
+		onClosed: func() { m.remove(key) },
 	}
 
 	// Direct-play: the remux stream-copies the session's bytes into HLS. No renditions, no
 	// transcode — one encode per channel is the SESSION's; the remux only re-containers it.
-	proc, err := m.spawn(ctx, m.ffmpeg, dir, m.log)
+	proc, err := m.spawn(ctx, m.ffmpeg, dir, plan, m.log)
 	if err != nil {
 		cancel()
 		sessDetach()
@@ -269,11 +285,11 @@ func (m *HLSManager) start(channelID string) (*hlsRemux, error) {
 	return r, nil
 }
 
-// remove drops a channel's remux from the map after its own teardown. Called by the remux's
+// remove drops a (channel, plan) remux from the map after its own teardown. Called by the remux's
 // onClosed once the grace period has expired and it has released the session.
-func (m *HLSManager) remove(channelID string) {
+func (m *HLSManager) remove(key remuxKey) {
 	m.mu.Lock()
-	delete(m.remuxes, channelID)
+	delete(m.remuxes, key)
 	m.mu.Unlock()
 }
 
@@ -284,7 +300,7 @@ func (m *HLSManager) Stop() {
 	for _, r := range m.remuxes {
 		remuxes = append(remuxes, r)
 	}
-	m.remuxes = map[string]*hlsRemux{}
+	m.remuxes = map[remuxKey]*hlsRemux{}
 	m.mu.Unlock()
 
 	for _, r := range remuxes {
@@ -536,8 +552,8 @@ func (p *hlsProcess) readStderr(r io.Reader) {
 // startHLSFFmpeg launches the DIRECT-PLAY repackager: one ffmpeg reading the shared MPEG-TS on
 // stdin and stream-COPYING it into a live HLS playlist (hlsArgs). In its own process group so
 // teardown signals the whole tree, exactly like Process.
-func startHLSFFmpeg(ctx context.Context, bin, dir string, log *slog.Logger) (*hlsProcess, error) {
-	args := hlsArgs(dir)
+func startHLSFFmpeg(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
+	args := hlsArgs(dir, plan)
 	cmd := exec.CommandContext(ctx, bin, args...) //nolint:gosec // args built here, never user text
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -572,8 +588,8 @@ func startHLSFFmpeg(ctx context.Context, bin, dir string, log *slog.Logger) (*hl
 // LIVE, NOT VOD: `delete_segments` prunes old files so a day-long channel does not fill the disk;
 // `omit_endlist` keeps players from thinking the stream ended; `-hls_allow_cache 0` stops segments
 // being cached like VOD.
-func hlsArgs(dir string) []string {
-	return []string{
+func hlsArgs(dir string, plan EncodePlan) []string {
+	base := []string{
 		"-hide_banner", "-loglevel", "error",
 		// Input is the raw MPEG-TS on stdin. `-f mpegts` names it explicitly rather than making
 		// ffmpeg probe a pipe it cannot seek.
@@ -582,10 +598,45 @@ func hlsArgs(dir string) []string {
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(hlsSegmentDuration),
 		"-hls_list_size", strconv.Itoa(hlsWindow),
-		"-hls_flags", "delete_segments+independent_segments+omit_endlist",
 		"-hls_allow_cache", "0",
+	}
+
+	// ⚠ HEVC HLS MUST be fMP4, not MPEG-TS (Apple's HLS authoring spec, and how Emby/Jellyfin do
+	// HEVC direct-play). A `<video>`/MSE will NOT play HEVC muxed in an MPEG-TS segment — it black-
+	// screens even on a browser that decodes HEVC. So the HEVC plans emit fragmented-MP4 segments
+	// (`.m4s`) with an init segment (`init.mp4`, referenced by #EXT-X-MAP that ffmpeg writes), and
+	// ffmpeg's fMP4 muxer signals the codec as `hvc1` in the playlist CODECS so the browser knows to
+	// use its HEVC decoder. `-c copy` still copies the HEVC bitstream untouched — this is a REMUX
+	// (container swap TS→fMP4), not a transcode.
+	//
+	// The BASELINE plan stays MPEG-TS: it is h264, which plays in TS everywhere, and TS is what has
+	// shipped and is proven for the first-paint path (§9.1 V47). Only the HEVC plans pay the fMP4
+	// path, and only while an HEVC-capable client is watching.
+	if plan == PlanHEVC8 || plan == PlanHEVC10 || plan == PlanFull {
+		return append(base,
+			// ⚠ Two bitstream fixes REQUIRED for a TS→fMP4 remux, or the mux fails and the stream
+			// black-screens (both verified by feeding a real HEVC clip through this exact command):
+			//
+			//  - `-bsf:a aac_adtstoasc`: AAC in MPEG-TS is ADTS-framed; the MP4/fMP4 muxer needs it as
+			//    raw AAC with an ASC in the sample description. Without this the muxer REJECTS every
+			//    audio packet ("Operation not permitted: Error muxing a packet") and the whole mux
+			//    dies with exit 255 — no segments, black screen. This is the classic TS→MP4 gotcha.
+			//  - `-tag:v hvc1`: ffmpeg tags copied HEVC as `hev1` (codec config in-band) by default,
+			//    but MSE/Safari only reliably decode `hvc1` (config in the sample description). Forcing
+			//    the tag is what makes the browser use its HEVC decoder instead of showing black.
+			"-bsf:a", "aac_adtstoasc",
+			"-tag:v", "hvc1",
+			"-hls_flags", "delete_segments+independent_segments+omit_endlist",
+			"-hls_segment_type", "fmp4",
+			"-hls_fmp4_init_filename", "init.mp4",
+			"-hls_segment_filename", filepath.Join(dir, "seg-%d.m4s"),
+			filepath.Join(dir, hlsPlaylistName),
+		)
+	}
+	return append(base,
+		"-hls_flags", "delete_segments+independent_segments+omit_endlist",
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", filepath.Join(dir, "seg-%d.ts"),
 		filepath.Join(dir, hlsPlaylistName),
-	}
+	)
 }

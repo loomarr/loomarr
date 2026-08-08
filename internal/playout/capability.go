@@ -160,7 +160,7 @@ func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string)
 			out.All = append(out.All, Capability{Encoder: enc, Err: "not in this ffmpeg build"})
 			continue
 		}
-		got := trialEncode(ctx, ffmpegPath, enc, p)
+		got := trialEncode(ctx, ffmpegPath, enc, p, trialSeconds)
 		got.Available = true
 		out.All = append(out.All, got)
 
@@ -169,6 +169,26 @@ func Detect(ctx context.Context, ffmpegPath string, p Profile, gpuVendor string)
 		if got.Works && out.Chosen == EncoderSoftware && out.MaxChannels == 1 {
 			out.Chosen = got.Encoder
 			out.MaxChannels = channelsFromSpeed(got.Speed)
+		}
+	}
+
+	// Re-measure the CHOSEN encoder's speed WARM (§9.1 V49). The pass/fail loop above uses a short
+	// probe that reads the cold ramp and under-counts a capable GPU (the 3080-Ti-reads-as-1 bug); a
+	// single longer trial on just the winner clears the ramp and reads the sustained peak — paid once,
+	// at boot, not per candidate. Software is left on its short-probe figure: it has no cold ramp to
+	// clear (the CPU is already warm) and channelsFromSpeed governs it honestly.
+	if out.Chosen != EncoderSoftware {
+		if warm := trialEncode(ctx, ffmpegPath, out.Chosen, p, trialSecondsWarm); warm.Works && warm.Speed > 0 {
+			out.MaxChannels = channelsFromSpeed(warm.Speed)
+		}
+		// Clamp to [floor, ceiling] for any hardware encoder: the floor stops a still-low reading from
+		// throttling a real GPU to 1; the ceiling stands in for the driver session cap and the
+		// test-pattern-is-cheaper-than-film caveat. Software is deliberately NOT clamped.
+		if out.MaxChannels < capacityFloor {
+			out.MaxChannels = capacityFloor
+		}
+		if out.MaxChannels > capacityCeiling {
+			out.MaxChannels = capacityCeiling
 		}
 	}
 	return out
@@ -218,10 +238,10 @@ func listEncoders(ctx context.Context, ffmpegPath string) map[Encoder]bool {
 // and asserting a keyframe is present makes the probe fail that encoder here instead — which is what
 // lets ordering prefer a vendor-native encoder while an immature cross-vendor driver is demoted
 // automatically rather than by a hard-coded exclusion.
-func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile) Capability {
-	// Bounded: a wedged GPU driver can hang an encode indefinitely, and the wizard waits
-	// on this.
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile, seconds int) Capability {
+	// Bounded: a wedged GPU driver can hang an encode indefinitely, and boot waits on this. The
+	// timeout scales with the trial length (a 15s warm trial needs more than a 5s probe's headroom).
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(seconds+25)*time.Second)
 	defer cancel()
 
 	probe := p
@@ -244,7 +264,7 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile)
 	// report a speed no real program achieves.
 	args = append(args, "-f", "lavfi", "-i",
 		fmt.Sprintf("testsrc=duration=%d:size=%dx%d:rate=%d",
-			trialSeconds, probe.Width, probe.Height, probe.Framerate))
+			seconds, probe.Width, probe.Height, probe.Framerate))
 	// The SAME scale/format/upload filter the live child builds (scaleFilterArgs), not just the bare
 	// upload — a filter-graph mismatch (CPU frames into a GPU encoder) is one of the real cold-path
 	// failures, so the trial must exercise it.
@@ -316,9 +336,28 @@ func ffprobeFor(ffmpegPath string) string {
 	return strings.TrimSuffix(ffmpegPath, "ffmpeg") + "ffprobe"
 }
 
-// trialSeconds is long enough for the speed figure to settle past encoder startup, short
-// enough that probing every candidate does not stall the wizard.
+// trialSeconds is the PASS/FAIL probe length — long enough to prove an encoder produces a
+// keyframe-bearing stream, short enough that probing every candidate does not stall boot. It is NOT
+// long enough to measure sustained SPEED: a hardware encoder ramps from a cold context over ~15–20s
+// (measured: nvenc 8.3×→13.3× across 30s), so a 5s probe reads the cold ramp and under-counts a
+// capable GPU as ~1 channel. Speed is therefore re-measured warm on the CHOSEN encoder only
+// (trialSecondsWarm), which bounds the extra boot cost to a single trial rather than one per candidate.
 const trialSeconds = 5
+
+// trialSecondsWarm is the length of the SPEED re-measure on the winning encoder — long enough to
+// clear the cold ramp and read the sustained peak. Paid once, at boot, only for the chosen encoder.
+const trialSecondsWarm = 15
+
+// capacityFloor / capacityCeiling clamp the throughput-derived channel count for ANY hardware
+// encoder (§9.1 V49). The floor stops a mis-measured or momentarily-slow trial from throttling a real
+// GPU to 1 (the 3080-Ti-reads-as-1 bug); the ceiling stops an over-optimistic throughput reading (a
+// cheap test pattern encodes faster than real film grain) from admitting more than the box sustains —
+// it also stands in for NVENC's driver session cap (~8 on modern drivers) without a per-GPU table.
+// Software (no hardware) is not floored — it is honestly CPU-bound and channelsFromSpeed governs it.
+const (
+	capacityFloor   = 2
+	capacityCeiling = 12
+)
 
 // deviceInitArgs returns args that must appear BEFORE the input — hardware device setup is
 // a global option, and placing it after `-i` silently applies to nothing.

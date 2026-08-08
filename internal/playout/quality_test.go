@@ -105,21 +105,32 @@ func TestLadders_BitrateFallsBeforeResolution(t *testing.T) {
 	}
 }
 
-// THE refusal. Admitting an N+1th channel that makes all N stutter is worse than declining
-// it — and this is the admission bound viewra lacked, where a new session EVICTED others.
-func TestAtCapacity_RefusesRatherThanDegradingEveryone(t *testing.T) {
-	if AtCapacity(4, 3) {
-		t.Error("3 of 4 must be admitted")
+// THE refusal, now COST-AWARE (§9.1 V49). Admit counts concurrent TRANSCODES against a budget: a
+// new transcode is refused when the budget is full, but a COPY (cost 0) is ALWAYS admitted — that is
+// what stops the plan-double from halving capacity. This is the admission bound viewra lacked, where
+// a new session EVICTED others.
+func TestAdmit_CostAware(t *testing.T) {
+	// A transcode (cost 1) against a budget of 4:
+	if !Admit(4, 3, 1) {
+		t.Error("a 4th transcode (3 committed) must be admitted")
 	}
-	if !AtCapacity(4, 4) {
-		t.Error("4 of 4 must be REFUSED, not admitted at reduced quality")
+	if Admit(4, 4, 1) {
+		t.Error("a 5th transcode (4 committed, budget 4) must be REFUSED")
 	}
-	if !AtCapacity(4, 5) {
-		t.Error("over capacity must be refused")
+	if Admit(4, 5, 1) {
+		t.Error("over budget must be refused")
 	}
-	// An unconfigured cap must not block playout entirely.
-	if AtCapacity(0, 99) {
-		t.Error("an unset max_channels must not refuse everything")
+	// ⚠ A COPY (cost 0) is ALWAYS admitted, even at/over budget — it costs ~no GPU and cannot starve
+	// a transcode. This is the plan-double fix: an hevc copy never blocks a channel.
+	if !Admit(4, 4, 0) {
+		t.Error("a copy (cost 0) must be admitted even when the transcode budget is full")
+	}
+	if !Admit(1, 99, 0) {
+		t.Error("a copy must be admitted regardless of committed transcodes")
+	}
+	// An unmeasured/zero budget must not block playout entirely.
+	if !Admit(0, 99, 1) {
+		t.Error("an unmeasured (<=0) budget must not refuse everything")
 	}
 }
 

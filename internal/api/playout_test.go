@@ -24,7 +24,7 @@ const playoutToken = "playout-token-abcdefghijklmnop"
 type fakePlayoutSessions struct {
 	mu sync.Mutex
 	// attached records each Attach as (channel, target) so a test can assert the tuner attaches as
-	// TargetMediaServer (§9.1 V47) — the identity that keeps HEVC a copy for a media server.
+	// PlanFull (§9.1 V47) — the identity that keeps HEVC a copy for a media server.
 	attached []attachRecord
 	err      error
 	chunks   chan []byte
@@ -38,16 +38,17 @@ type fakePlayoutSessions struct {
 // attachRecord is one Attach call — its channel and codec target.
 type attachRecord struct {
 	channelID string
-	target    playout.Target
+	target    playout.EncodePlan
 }
 
 // reportedProgram is one ReportProgram call, so a test can assert the per-program encode path
 // actually reports its telemetry rather than silently dropping it — to the right (channel, target).
 type reportedProgram struct {
-	channelID string
-	target    playout.Target
-	encoder   playout.Encoder
-	progress  playout.Progress
+	channelID   string
+	target      playout.EncodePlan
+	encoder     playout.Encoder
+	transcoding bool
+	progress    playout.Progress
 }
 
 func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
@@ -62,13 +63,13 @@ func (f *fakePlayoutSessions) Capacity() int {
 	return f.capacity
 }
 
-func (f *fakePlayoutSessions) ReportProgram(channelID string, target playout.Target, enc playout.Encoder, p playout.Progress) {
+func (f *fakePlayoutSessions) ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.reported = append(f.reported, reportedProgram{channelID: channelID, target: target, encoder: enc, progress: p})
+	f.reported = append(f.reported, reportedProgram{channelID: channelID, target: target, encoder: enc, transcoding: transcoding, progress: p})
 }
 
-func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.Target) (<-chan []byte, func(), error) {
+func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {

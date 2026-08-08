@@ -70,7 +70,7 @@ func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest
 		// No Reconciler wired here (channels isn't under test) — mirrors the
 		// composition root's nil-guard: the bind still creates/patches the
 		// channel row and just skips the immediate Tunarr reconcile push.
-		Binder: binder.New(st, nil, log),
+		Binder: binder.New(st, nil, nil, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

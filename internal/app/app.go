@@ -280,6 +280,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
 	var playoutRes *playoutResolver
+	// residentVRAM — the admission budget's late-bound "VRAM a resident LLM holds now" hook (§9.1
+	// V49). Declared at FUNCTION scope (not inside the playout block) because it is SET far below,
+	// where the LLM residency getter is built, yet READ by the budget closure inside the block. A no-op
+	// (nil) until assigned, which the budget treats as "no contention".
+	var residentVRAM func(context.Context) (gib float64, model string)
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
@@ -384,11 +389,57 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}
 			return secrets.Value(settings.SecretPlayout)
 		}
+		// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
+		// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
+		// LLM wiring. The budget closure reads it through that pointer; nil ⇒ assume no contention.
+		//
+		// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
+		// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
+		//   1. MEASURED capacity — what Detect's encoder trial found this box sustains (playoutRes,
+		//      set async at adapter start). The source of truth for "how many encodes fit".
+		//   2. OPERATOR OVERRIDE — playout.max_channels, applied as a HARD CAP (min): an operator may
+		//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
+		//      proved. 0/unset ⇒ no cap, use the measurement.
+		//   3. VRAM SHADING — a resident LLM steals VRAM each hardware encode needs for its device
+		//      context; the original black screen was an encoder that could not allocate under a
+		//      resident model. So when a model is resident, shade the budget down by the encodes that
+		//      VRAM can no longer host (~1 hardware encode per few GiB held). Reactive to the model
+		//      loading/unloading, so headroom grows back when it evicts.
+		playoutBudget := func() int {
+			measured := 0
+			if playoutRes != nil {
+				measured = playoutRes.maxChannels // set async by Detect at adapter start; stable after
+			}
+			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
+			// measured capacity is a conservative estimate that can under-count a capable GPU (the
+			// 3080-Ti-read-as-1 bug), so an operator who sets playout.max_channels is trusted to RAISE
+			// above it as well as lower it. Unset (0) ⇒ use the measurement, which is now warm-measured
+			// and clamped to a sane floor so it is a reasonable default on its own.
+			budget := measured
+			if override := set.intv("playout.max_channels"); override > 0 {
+				budget = override
+			}
+			// Shade by resident-LLM VRAM. ~4 GiB per hardware encode is a conservative device-context
+			// estimate; a resident 8B model (~6 GiB) thus costs ~1–2 slots, which matches the live
+			// black-screen incident. Never shade below 1 while any capacity exists — a resident model
+			// should degrade headroom, not take playout to zero.
+			if residentVRAM != nil {
+				if gib, _ := residentVRAM(rootCtx); gib > 0 {
+					const gibPerEncode = 4.0
+					shaded := budget - int(gib/gibPerEncode)
+					if shaded < 1 && budget >= 1 {
+						shaded = 1
+					}
+					budget = shaded
+				}
+			}
+			return budget
+		}
 		playoutMgr := playout.NewManager(
 			playoutSpawner(set.str("playout.ffmpeg_path"),
 				func() string { return set.str("server.public_url") },
 				playoutTokenFn, log),
-			set.intv("playout.max_channels"),
+			playoutBudget,
 			playout.DefaultGrace,
 			log,
 		)
@@ -409,6 +460,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
 			// cache bug degrades a grid rather than a broadcast.
 			channels: st,
+			// The store, narrowed to the single derived-column write ComputeChannelCodec makes
+			// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
+			codecs:   st,
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
@@ -483,6 +537,37 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}()
 		}
 		playoutResolverSvc = playoutRes
+
+		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
+		// channel to h264 — a data migration runs in the store with no library access, so it
+		// cannot probe. Channels bound AFTER this upgrade get their codec at bind; the ones that
+		// predate it would otherwise stay h264 (and needlessly transcode an HEVC library down)
+		// until their next re-curation. This pass recomputes each once, off the boot path.
+		//
+		// Async and best-effort: channels still play (as h264) while it runs, so a slow or
+		// failing probe delays convergence, never startup. Idempotent — ComputeChannelCodec
+		// writes the measured majority every time — so it needs no "already backfilled" marker
+		// and re-running on a later boot is harmless bounded work.
+		if st != nil {
+			go func() {
+				chans, lerr := st.ListChannels(rootCtx)
+				if lerr != nil {
+					log.Warn("playout: broadcast-codec backfill skipped (channel list failed)", "err", lerr)
+					return
+				}
+				for _, ch := range chans {
+					if rootCtx.Err() != nil {
+						return // shutting down mid-backfill
+					}
+					if _, cerr := playoutRes.ComputeChannelCodec(rootCtx, ch.ID); cerr != nil {
+						log.Debug("playout: broadcast-codec backfill for a channel failed",
+							"channel", ch.ID, "err", cerr)
+					}
+				}
+				log.Info("playout: broadcast-codec backfill complete", "channels", len(chans))
+			}()
+		}
+
 		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
 		// admission gate first reads it — the operator-facing counterpart to "encoder probed".
 		hwEncodeSlots = func(ctx context.Context) int {
@@ -534,7 +619,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if channelSvc != nil {
 			rec = channelSvc
 		}
-		chBinder = binder.New(st, rec, log)
+		// The playout resolver doubles as the CodecComputer (§9.1 V50): it owns library
+		// resolution + ffprobe, so it measures + stores the channel's broadcast codec after a
+		// bind. Assigned only when playout is wired — passing a typed-nil *playoutResolver as a
+		// non-nil interface would defeat the binder's nil-guard and panic on the first bind, so
+		// it stays a nil interface unless playoutRes actually exists.
+		var codec binder.CodecComputer
+		if playoutRes != nil {
+			codec = playoutRes
+		}
+		chBinder = binder.New(st, rec, codec, log)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
@@ -1267,6 +1361,41 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			func() string { return set.str("backup.dir") }, eventBus)
 	}
 
+	// residentLLMVRAMFn — the TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is
+	// actually loaded now, rather than estimating from on-disk size. Extracted to a named var (not an
+	// inline opts field) because TWO consumers need it: the doctor's GPU header (below) AND the
+	// admission budget's VRAM shading (V49) — the manager was built earlier with a late-bound hook
+	// (residentVRAM), which we now point at this. Local ollama only; a hosted provider holds no local
+	// VRAM → (0, ""). Read LIVE so a provider/URL change hot-applies.
+	residentLLMVRAMFn := func(ctx context.Context) (float64, string) {
+		if set.str("llm.provider") != "ollama" {
+			return 0, ""
+		}
+		url := set.str("llm.url")
+		if url == "" {
+			return 0, ""
+		}
+		resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
+		if err != nil {
+			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
+			return 0, ""
+		}
+		var total float64
+		var largest llm.ResidentModel
+		for _, m := range resident {
+			total += m.VRAMGiB
+			if m.VRAMGiB > largest.VRAMGiB {
+				largest = m
+			}
+		}
+		return total, largest.Name
+	}
+	// Point the admission budget's late-bound VRAM hook at the real getter now that it exists, so a
+	// resident model shades the transcode budget down (V49). Guarded: playout may be unwired.
+	if playoutRes != nil {
+		residentVRAM = residentLLMVRAMFn
+	}
+
 	return api.Router(log, api.Options{
 		Store:         st,
 		Auth:          authorizer,
@@ -1345,34 +1474,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
 			}
 		},
-		// The doctor's TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is actually
-		// loaded now, rather than estimating from a model's on-disk size (which reported an unloaded
-		// model as resident). Local ollama only — a hosted provider holds no local VRAM, so (0, "").
-		// Read LIVE like ReclaimVRAM so a provider/URL change hot-applies. Sums VRAM across resident
-		// models and names the largest, which is the one that matters for encoder contention.
-		ResidentLLMVRAM: func(ctx context.Context) (float64, string) {
-			if set.str("llm.provider") != "ollama" {
-				return 0, ""
-			}
-			url := set.str("llm.url")
-			if url == "" {
-				return 0, ""
-			}
-			resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
-			if err != nil {
-				log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
-				return 0, ""
-			}
-			var total float64
-			var largest llm.ResidentModel
-			for _, m := range resident {
-				total += m.VRAMGiB
-				if m.VRAMGiB > largest.VRAMGiB {
-					largest = m
-				}
-			}
-			return total, largest.Name
-		},
+		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
+		// the admission budget's VRAM shading (V49) shares the exact same source.
+		ResidentLLMVRAM: residentLLMVRAMFn,
 		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
 		// the gate that routes an over-capacity channel to software up front instead of stalling on a
 		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
