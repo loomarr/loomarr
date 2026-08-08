@@ -1,6 +1,17 @@
 // Vitest global setup — jest-dom matchers (toBeInTheDocument, toHaveAccessibleName,
 // …) for the Testing Library component tests. Loaded via vite.config test.setupFiles.
+import { configure } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+// Testing Library's async utilities (`findBy*`, `waitFor`) default to a 1000ms timeout, which is
+// generous for one spec and tight for 156 running in parallel on a loaded machine.
+//
+// ⚠ This is a LOAD tolerance, not a correctness knob. It was raised in V50b because the Base UI
+// migration turned a batch of `getBy` queries into `findBy` — popups now mount asynchronously —
+// and the suite went from 2 intermittent failures to 6, every one of them passing in isolation.
+// Waiting longer cannot make a broken assertion pass: a query that never resolves still fails,
+// just later. What it removes is a red build caused by CPU contention rather than by the code.
+configure({ asyncUtilTimeout: 5000 });
 
 // jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on
 // mount. A no-op stub lets components that open the stream render in tests.

@@ -5,6 +5,7 @@ import { cn } from "@/lib";
 import type {
   DropdownMenuCheckboxItemProps,
   DropdownMenuContentProps,
+  DropdownMenuItemProps,
   DropdownMenuLabelProps,
   DropdownMenuSeparatorProps,
 } from "./dropdown-menu.type";
@@ -57,6 +58,19 @@ const DropdownMenuContent = ({
       </MenuPrimitive.Popup>
     </MenuPrimitive.Positioner>
   </MenuPrimitive.Portal>
+);
+
+// Item — a plain action row. Added in V50b for the channels-list ⋮ menu, per this file's own
+// "add a part back when something needs it" rule; the player's track menu still uses CheckboxItem.
+const DropdownMenuItem = ({ className, ...props }: DropdownMenuItemProps) => (
+  <MenuPrimitive.Item
+    className={cn(
+      "flex cursor-pointer select-none items-center gap-2 rounded px-2 py-1.5 text-left text-sm outline-none transition-colors",
+      "data-[disabled]:pointer-events-none data-[highlighted]:bg-static-700 data-[highlighted]:text-static-0 data-[disabled]:opacity-50",
+      className,
+    )}
+    {...props}
+  />
 );
 
 // Label — a non-interactive heading (mono/uppercase caption, the app's data-label idiom).
@@ -116,6 +130,7 @@ export {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,

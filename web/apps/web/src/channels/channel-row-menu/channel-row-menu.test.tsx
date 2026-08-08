@@ -57,7 +57,8 @@ describe("ChannelRowMenu", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    // `findBy`: the popup is portalled and mounts asynchronously (V50b — Base UI Menu).
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
     expect(onLinkClick).not.toHaveBeenCalled();
   });
 
@@ -67,7 +68,7 @@ describe("ChannelRowMenu", () => {
     render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: "Pause" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Pause" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     const patch = calls.find((c) => c.method === "PATCH");
@@ -80,7 +81,7 @@ describe("ChannelRowMenu", () => {
     render(<ChannelRowMenu channel={paused} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: "Resume" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Resume" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ status: "building" });
@@ -92,7 +93,7 @@ describe("ChannelRowMenu", () => {
     render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
 
     // Step 2 is a plain confirm — no textbox to fill, the execute button is enabled.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();

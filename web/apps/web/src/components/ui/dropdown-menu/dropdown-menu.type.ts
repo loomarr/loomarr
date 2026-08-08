@@ -8,12 +8,14 @@ type DropdownMenuContentProps = MenuPrimitive.Popup.Props &
   Pick<MenuPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset">;
 
 type DropdownMenuCheckboxItemProps = MenuPrimitive.CheckboxItem.Props;
+type DropdownMenuItemProps = MenuPrimitive.Item.Props;
 type DropdownMenuLabelProps = MenuPrimitive.GroupLabel.Props;
 type DropdownMenuSeparatorProps = SeparatorPrimitive.Props;
 
 export type {
   DropdownMenuCheckboxItemProps,
   DropdownMenuContentProps,
+  DropdownMenuItemProps,
   DropdownMenuLabelProps,
   DropdownMenuSeparatorProps,
 };
