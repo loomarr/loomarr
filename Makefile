@@ -76,7 +76,16 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
 	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
 	@sh scripts/dev-be-guard.sh
-	$(GO) run github.com/air-verse/air@v1.67.3
+	@# ⚠ STALE-BINARY WATCHDOG (scripts/dev-be-watchdog.sh). Even with `.air.toml`'s
+	@# stop_on_error=false + poll=true, Air can still end up ALIVE but not rebuilding (poll loop
+	@# stalled) — serving a frozen binary while your saves do nothing. Config can't detect its own
+	@# watcher dying; this out-of-band watchdog does. It runs beside Air, notices when the running
+	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
+	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
+	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
+	@sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
+	    sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
+	  exec $(GO) run github.com/air-verse/air@v1.67.3'
 
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
