@@ -23,17 +23,16 @@ import (
 // the word now would make the warning it left behind pointless. `hover` says what the asset is
 // FOR, which is the one thing that distinguishes it from every other clip-shaped byte stream.
 //
-// ⚠ **A plain mux handler, and NOT because "Huma only does JSON" — it does not only do JSON.**
-// Huma can serve arbitrary content types. What it cannot do without dropping to the raw
-// ResponseWriter anyway is `http.ServeContent`, which is what gives Range, If-Modified-Since and
-// 206 handling in one call — the machinery that lets a client seek instead of refetching. Going
-// through an op would therefore buy an openapi.yaml entry describing an opaque byte body, at the
-// cost of the escape hatch, so this matches `thumb` and `media` instead.
+// ⚠ **A rawOp, not a plain mux handler — and the distinction is auth, not content type.** Huma
+// serves arbitrary content types; what it cannot do without the raw ResponseWriter is
+// `http.ServeContent`, which gives Range, If-Modified-Since and 206 in one call. rawOp (rawop.go)
+// keeps that escape hatch AND puts the route behind the one authorization middleware, so this
+// body needs no guard of its own.
 //
-// The real price of that choice, stated so it is not a surprise: this route is NOT in the spec,
-// so its client URL (`clipHoverURL`) is hand-written rather than generated, and hand-maintained
-// lists in this repo have drifted from generated output three times. The URL rule is shared with
-// the other two helpers in one place for exactly that reason.
+// This comment used to end by conceding the price — "this route is NOT in the spec, so its client
+// URL (`clipHoverURL`) is hand-written" — which is no longer true: it is registered, described,
+// and covered by the raw-mux guard. `clipHoverURL` stays, because an `<img src>` needs a URL
+// string rather than a generated fetch, but it is now checkable against a spec entry that exists.
 
 // serveFillerHover streams a clip's animated preview.
 //
@@ -42,10 +41,6 @@ import (
 // user can already stream from `media`. NOT public — unlike the channel icon, nothing
 // machine-to-machine needs it.
 func (s *Server) serveFillerHover(w http.ResponseWriter, r *http.Request) {
-	if !s.requireRole(w, r, RoleMember) {
-		return
-	}
-
 	// Read live rather than captured at wiring, so changing filler.dir in Settings applies to the
 	// next request (config-design §3 hot-apply) — the same treatment scan, sync and thumb give it.
 	// `liveConfig` is nil in unit tests that build a bare Server.

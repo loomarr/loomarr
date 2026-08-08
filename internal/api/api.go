@@ -136,52 +136,28 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerHelp(humaAPI)
 	srv.registerProvisioning(humaAPI)
 
-	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
-	// (not a typed Huma op — §16). Auth checked inline.
-	mux.HandleFunc("GET /v1/backup", srv.backupHandler)
-
-	// Downloading an ALREADY-WRITTEN backup (§16, V12) — same reason it isn't a Huma op:
-	// it streams a file. The list half of /v1/system/backups IS typed and lives with the
-	// other system routes.
-	mux.HandleFunc("GET /v1/system/backups/{name}", srv.downloadBackupHandler)
-
-	// SSO's two routes are browser REDIRECTS (§11, V8), so they are plain mux handlers like
-	// /v1/backup — Huma models typed JSON, and a 302 carrying Set-Cookie is neither. Not
-	// mounted at all when no provider is wired.
+	// SSO's two routes are browser REDIRECTS (§11, V8) that also set a cookie. Still plain mux
+	// handlers, and still the exception the raw-mux guard (rawmux_test.go) knows about by name —
+	// they move onto rawOp next. Not mounted at all when no provider is wired.
 	srv.registerSSO(mux)
 
-	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
-	// bodies). Auth checked inline via the same authorizer.
+	// GET /v1/events streams SSE (§7/§8) — a plain mux handler for now; it becomes a typed
+	// sse.Register operation with real event schemas. Auth checked inline via the same authorizer.
 	mux.HandleFunc("GET /v1/events", srv.eventsHandler)
 
-	// Channel icon upload (multipart) + serve (raw image bytes) are plain mux handlers —
-	// neither fits Huma's typed-JSON model. Upload is admin-only (checked inline); serve is
-	// public so Tunarr can fetch the icon machine-to-machine, like a TMDB poster URL.
+	// Channel icon UPLOAD is multipart and still plain-mux, which is why it hand-rolls the CSRF
+	// check Huma's middleware would otherwise give it (channelicon.go) — it moves onto
+	// huma.MultipartFormFiles next. The SERVE half is already a rawOp in registerChannels.
 	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
-	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
 
-	// Clip thumbnails (V30) — image bytes, so a plain handler like the icon above. ⚠ Keyed by the
-	// clip's content HASH (V45a), a plain `{hash}` segment — hex, no slashes, so no wildcard and no
-	// encoding. The handler resolves hash → the clip's disk path (the path is server-internal now).
-	// ⚠ Called `thumb`, not `preview` — /channels/{id}/filler/preview is a different thing
-	// entirely (the pod pool a channel would get, as JSON).
-	mux.HandleFunc("GET /v1/filler/thumb/{hash}", srv.serveFillerThumb)
-
-	// Clip media (V35) — the clip's own bytes, so the operator can watch one before deciding
-	// about it. Same hash-keying as thumbnails, and the same naming rule: `media`, never
-	// `preview`. Range-capable, so a <video> element can seek.
-	mux.HandleFunc("GET /v1/filler/media/{hash}", srv.serveFillerMedia)
-
-	// Clip hover previews (V39) — a few seconds of silent animation per clip, so a grid of
-	// stills can answer "is this actually the advert it says it is?" without opening anything.
-	// ⚠ `hover`, not `preview`, for the third time on this surface: /channels/{id}/filler/preview
-	// and PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
-	mux.HandleFunc("GET /v1/filler/hover/{hash}", srv.serveFillerHover)
-
-	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, the continuous MPEG-TS
-	// stream, and the in-app HLS surface. They stream bytes, so they use huma.StreamResponse
-	// rather than a typed body — but they mount on the SAME Huma API (V47), behind one shared
-	// playout-auth middleware, instead of a parallel plain-mux world. See registerPlayout.
+	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
+	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp
+	// (rawop.go). They stream bytes and keep the (w, r) signature that http.ServeContent needs,
+	// but they mount on the SAME Huma API as every other route, so they are covered by the one
+	// authorization middleware and appear in api/openapi.yaml. Splitting one resource across two
+	// registration mechanisms is what let /v1/system/backups be spec'd while its download was not.
+	//
+	// Internal playout (§9.1) mounts the same way — see registerPlayout.
 
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)

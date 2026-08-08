@@ -136,6 +136,44 @@ func (s *Server) registerFiller(api huma.API) {
 			"is a path that now means twenty clips, not one.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.confirmFillerSplit)
+
+	// The three clip byte routes (V30/V35/V39). Member-visible, matching `list-filler`: the
+	// catalog listing is visible to any authenticated user, and an asset is strictly less
+	// information than the row it decorates. NOT public like the channel icon — that one is open
+	// so Tunarr can fetch it machine-to-machine, a reason that does not apply here.
+	//
+	// ⚠ `thumb`/`media`/`hover`, never `preview`: /v1/channels/{id}/filler/coverage and
+	// PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
+	//
+	// They keep the stdlib (w, r) signature because http.ServeContent answers Range,
+	// If-Modified-Since and 206 in one call — see rawop.go. Their URLs still reach clients as
+	// ClipDTO.thumbnail/.preview strings, so nothing in the browser builds them.
+	rawOp[hashInput](api, bytesResponse(huma.Operation{
+		OperationID: "filler-thumb", Method: http.MethodGet, Path: "/v1/filler/thumb/{hash}",
+		Summary:     "A clip's thumbnail frame",
+		Description: "Any authenticated user. The extracted frame ClipDTO.thumbnail points at.",
+		Tags:        []string{"filler"},
+	}, "A JPEG still.", "image/jpeg"), RoleMember, s.serveFillerThumb)
+
+	// ⚠ Media type ranges, not a single type: this route serves whatever the clip's extension
+	// maps to in the `mediaTypes` allowlist (video/mp4, video/x-matroska, audio/mpeg, …). Naming
+	// one of them would be a documented lie, and enumerating eleven says less than the range does.
+	rawOp[hashInput](api, bytesResponse(huma.Operation{
+		OperationID: "filler-media", Method: http.MethodGet, Path: "/v1/filler/media/{hash}",
+		Summary: "A clip's own bytes",
+		Description: "Any authenticated user. The clip itself, so an operator can watch one before " +
+			"deciding about it. Range-capable, so a <video> element can seek. The exact media type " +
+			"comes from a short server-side allowlist keyed by extension.",
+		Tags: []string{"filler"},
+	}, "The clip's own bytes.", "video/*", "audio/*"), RoleMember, s.serveFillerMedia)
+
+	rawOp[hashInput](api, bytesResponse(huma.Operation{
+		OperationID: "filler-hover", Method: http.MethodGet, Path: "/v1/filler/hover/{hash}",
+		Summary: "A clip's hover preview",
+		Description: "Any authenticated user. A few seconds of silent animation, so a grid of stills " +
+			"can answer \"is this actually the advert it says it is?\" without opening anything.",
+		Tags: []string{"filler"},
+	}, "An animated WebP.", "image/webp"), RoleMember, s.serveFillerHover)
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
