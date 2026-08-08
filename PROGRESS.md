@@ -53,6 +53,50 @@ and `Confirm` is exercised end to end against a real store for the first time.
 sits above V41 because that is the last recorded phase, not because nothing happened between.
 Back-filling them is scheduled with the V51 doc pass — see the plan.
 
+**V50a — Radix → Base UI, the vendor consolidation (2026-08-08, branch `feat/base-ui-v50a`).**
+Gate: `make fe` (**1219** app + 17 api + 51 core + 5 tokens, biome + tsc + SPA build + storybook
+build) + `make fe-visual` (**760 passed, 0 failed, 0 flaky, 0 axe** on a CLEAN verify run, after a
+reviewed 2-baseline update) + `make e2e` (7) + `make check` + `retired-verify` (14 identifiers).
+
+Six `@radix-ui/*` packages → one `@base-ui/react`; **823 lines of transitive lockfile closure
+deleted**. Doc-first per directive 1: §14's stack row keeps every primitive's ORIGINAL rationale
+(Select-over-native, tooltip-over-`title=`, slider-owns-the-WAI-ARIA-contract, menu-is-not-a-select)
+because only the vendor moved.
+
+⚠ **Two user-visible regressions that a compile-clean port would have shipped.** Neither is caught
+by types, lint, or axe:
+
+1. **Every Select trigger would have shown its RAW VALUE.** Base UI resolves `<SelectValue>` to the
+   item's label only when Root is given an `items` map; all 23 selects here pass options as inline
+   `<SelectItem>` JSX. Triggers would read "240" where the list says "4 hours". Hand-writing
+   `items={[…]}` per site would duplicate every label expression (several computed) — the
+   two-lists-that-must-agree pattern this repo has been bitten by — so the wrapper DERIVES them
+   from the items. Found only because the assertion was written before the port was believed.
+2. **Tooltips lost their accessible description.** Base UI's tooltip is visual-only BY DESIGN — no
+   `role="tooltip"`, no `aria-describedby`. Harmless for 36 of 37 consumers, whose trigger
+   `aria-label` restates the content. Not for `FieldHelp`, which renders each setting's `doc`
+   prose: a screen-reader user got "About Ordering, button" and nothing else.
+
+⚠ **The durable half is the COMMENTS.** Three explained why something was the way it was, each was
+true under Radix, and each would have silently become a lie: `field-help` claimed the SR user
+"hears the same guidance"; `volume-control` put `aria-label` on the Thumb "because Radix puts
+role=slider there" (still the right placement — Base UI nests an `<input type="range">` — but a
+different reason); `setup.ts` credited five jsdom shims to Radix. Removing the shims one at a time
+proved the pointer-capture trio was **dead weight** and that `scrollIntoView`, the one that matters,
+was never Radix's need — it is our own `search-command`, and removing it fails 31 tests.
+
+Other findings: Base UI mounts portalled popups **asynchronously**, so six tests needed `findBy`
+over `getBy` (waiting, not weakening); `closeOnClick` defaults false where Radix closed on select
+(preserved for the track picker); Menu has no standalone Label, so the heading now NAMES its group;
+`asChild` renamed to `render` at all 11 sites, with both `@radix-ui` and `asChild` added to
+`check-retired.sh` so neither vocabulary creeps back. **The single visual delta in 760 snapshots**
+was the volume thumb at value 0 — Radix clamped it inside the track at the extremes, Base UI centres
+it on the value; 54px, reviewed, baseline updated. Debt register 43 → 40 (tooltip, select, dialog).
+
+**Next up: V50b** (hand-rolled overlays onto Base UI — `channel-row-menu`, `search-command`,
+`command-palette`, `restart-overlay`, `timeline-scrubber`), then V50c (disclosure/form primitives)
+and V50d (house-style conformance across `components/ui`).
+
 **V41 — the audit pass: three live defects, six cleanups (2026-08-05, `aba3b22`, PRs #169–#175).**
 Gate, per PR: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
 `retired-verify`; the web PRs additionally `make fe` (**1116 tests**, up from 1108) + `fe-visual`
