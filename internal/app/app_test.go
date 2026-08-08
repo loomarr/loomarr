@@ -75,7 +75,7 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	}
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("/readyz = %d, want 503 (not ready, but answering)", rec.Code)
 	}
@@ -84,7 +84,7 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("/healthz = %d, want 200 (the process is alive)", rec.Code)
 	}

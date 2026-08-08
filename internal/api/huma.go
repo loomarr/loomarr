@@ -782,7 +782,13 @@ func humaConfig() huma.Config {
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs
-	// path and mount our own at /docs (docs.go).
+	// path and mount our own at /v1/reference (ops.go).
 	cfg.DocsPath = ""
+	// ⚠ The spec and schema paths move under /v1 with everything else. Huma writes SchemasPath
+	// into every `$ref` in the document, so changing it rewrites references throughout — that is
+	// expected, not drift. The bare /openapi* and /schemas/ prefixes stay in the SPA guard
+	// (api.go) so a stale bookmark 404s instead of being handed index.html with a 200.
+	cfg.OpenAPIPath = "/v1/openapi"
+	cfg.SchemasPath = "/v1/schemas"
 	return cfg
 }

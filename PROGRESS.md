@@ -1174,6 +1174,19 @@ which hold no session — registering them in the authenticated /v1 API would pu
 front of a container health probe. The UI gets the typed twin instead. Pinned by a test,
 because "type the health endpoints" is a tempting future change.
 
+> ⚠ **REVERSED LATER, and the pin did its job.** The probes are Huma operations under
+> `/v1/healthz` and `/v1/readyz` now. What changed is not the concern above but its
+> premise: "registering them in huma" no longer implies "in the authenticated API",
+> because `RolePublic` makes non-authentication an explicit, greppable property of an
+> operation. The two things this entry actually cared about are both preserved and still
+> tested — the probes answer with **no credential**, and a **storeless boot** still gets
+> 200 from healthz and 503-with-a-reason from readyz (the 503 keeps carrying `ready` and
+> `detail` rather than becoming an RFC 7807 problem; huma additionally emits its standard
+> `$schema` link, as on every other typed response here). Their bare paths stay as permanent
+> aliases, because a healthcheck lives in someone's compose file and cannot be migrated
+> by editing this repo. `TestOpsProbesStayUnauthenticated` survives, now covering both
+> paths, plus `TestOpsProbeAliasesAgreeWithTheCanonicalPaths`.
+
 **Found and fixed a startup panic (pre-existing, from the 2026-07-18 guide-reader work).**
 Starting with no DATABASE_URL is a SUPPORTED mode — main logs "running without a store
 (not ready)" and expects /readyz to explain itself. Instead the process panicked in

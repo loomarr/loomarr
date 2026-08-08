@@ -42,7 +42,7 @@ wait_for() { # url label seconds
   echo "  ✗ $label did not come up in ${limit}s"; return 1
 }
 
-app_up()    { [ "$(curl -s -o /dev/null -w '%{http_code}' -m 2 "localhost:$PORT/healthz" || true)" = "200" ]; }
+app_up()    { [ "$(curl -s -o /dev/null -w '%{http_code}' -m 2 "localhost:$PORT/v1/healthz" || true)" = "200" ]; }
 tunarr_up() { [ "$(curl -s -o /dev/null -w '%{http_code}' -m 2 "localhost:$TUNARR_PORT/api/channels" || true)" = "200" ]; }
 
 stop_app() { lsof -ti:"$PORT" 2>/dev/null | xargs kill -9 2>/dev/null || true; }
@@ -103,7 +103,7 @@ start_app() {
   # Record exactly what this process was started with, so the next run can tell whether
   # the live server is still current (see needs_restart).
   cp "$WORK/env" "$WORK/env.running"
-  wait_for "localhost:$PORT/healthz" "loomarr" 120
+  wait_for "localhost:$PORT/v1/healthz" "loomarr" 120
 }
 
 # ---------------------------------------------------------------------------------

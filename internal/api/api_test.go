@@ -200,12 +200,25 @@ func TestBackupRequiresAdmin(t *testing.T) {
 	}
 }
 
-// /docs is offline: no external (CDN) asset references (§7.1).
+// The API reference is offline: no external (CDN) asset references (§7.1).
 func TestDocsOffline(t *testing.T) {
 	srv, _ := newServer(t)
-	resp := do(t, srv, http.MethodGet, "/docs", "", "")
+	resp := do(t, srv, http.MethodGet, "/v1/reference", "", "")
 	b, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(b), "cdn.") || strings.Contains(string(b), "unpkg") || strings.Contains(string(b), "jsdelivr") {
-		t.Error("/docs references a CDN — violates the offline rule (§7.1)")
+	page := string(b)
+	if strings.Contains(page, "cdn.") || strings.Contains(page, "unpkg") || strings.Contains(page, "jsdelivr") {
+		t.Error("/v1/reference references a CDN — violates the offline rule (§7.1)")
+	}
+	// ⚠ Its two spec links are hardcoded in a const while the real paths come from
+	// cfg.OpenAPIPath, so nothing but this connects them. They pointed at the pre-/v1
+	// /openapi.json until it was spotted by hand — a reference page whose only links 404.
+	for _, link := range []string{"/v1/openapi.json", "/v1/openapi.yaml"} {
+		if !strings.Contains(page, link) {
+			t.Errorf("the reference page does not link %s; its links have drifted from cfg.OpenAPIPath", link)
+			continue
+		}
+		if r := do(t, srv, http.MethodGet, link, "", ""); r.StatusCode != http.StatusOK {
+			t.Errorf("the reference page links %s, which answers %d", link, r.StatusCode)
+		}
 	}
 }
