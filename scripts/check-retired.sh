@@ -32,6 +32,13 @@ RETIRED=(
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
   'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
   'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  # Live TV wiring stopped being an operator ACTION: it is idempotent and fully derived from the
+  # Tunarr connection, so it auto-runs on a Connections save (settings.go autoWireAfterSave) and a
+  # manual endpoint would be a redundant no-op. The route was deleted; five documents kept telling
+  # operators to call it, including the wizard walkthrough and the §7 route table — the exact
+  # "docs/help ships as instructions" failure this script exists for. ⚠ NOT the same thing as
+  # /v1/setup/livetv-reconnect, which is the force-re-wire for a stale channel→stream binding.
+  'setup/livetv-connect|Live TV wiring auto-runs on a Connections save (settings.go autoWireAfterSave); there is no manual route. The force-re-wire is /v1/setup/livetv-reconnect'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
@@ -47,7 +54,13 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # ⚠ internal/ and docker/ are searched too. They were not before, which is how a Go doc
 # comment could keep describing "the sidecar's OWN configuration" — and how a dead
 # LoadConfig reading five env vars absent from §15 survived as apparently-live architecture.
-SEARCH=(docs internal docker web/apps/web/src README.md CLAUDE.md .env.example)
+#
+# ⚠ scripts/ is searched for the same reason, found the same way: latency-sweep.sh had been
+# probing the retired /v1/suggestions since V41 — a hand-maintained ROUTE array sitting in the
+# one directory the ban could not see, so the sweep silently measured a 404 as if it were an
+# endpoint. This file excludes itself via ALLOW_PATH, so the RETIRED array above does not
+# self-trip.
+SEARCH=(docs internal docker scripts web/apps/web/src README.md CLAUDE.md .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do
   id="${row%%|*}"; why="${row#*|}"
