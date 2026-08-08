@@ -95,7 +95,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playoutHLS:   opts.PlayoutHLS,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
 		timelineThumbs: opts.TimelineThumbs,
-		reclaimVRAM:    opts.ReclaimVRAM,
+		reclaimVRAM:     opts.ReclaimVRAM,
+		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
 	if opts.HWEncodeSlots != nil {
 		// The gate reads the slot count lazily on first use, on a background context — the capability

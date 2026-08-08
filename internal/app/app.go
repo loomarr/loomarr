@@ -1345,6 +1345,34 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
 			}
 		},
+		// The doctor's TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is actually
+		// loaded now, rather than estimating from a model's on-disk size (which reported an unloaded
+		// model as resident). Local ollama only — a hosted provider holds no local VRAM, so (0, "").
+		// Read LIVE like ReclaimVRAM so a provider/URL change hot-applies. Sums VRAM across resident
+		// models and names the largest, which is the one that matters for encoder contention.
+		ResidentLLMVRAM: func(ctx context.Context) (float64, string) {
+			if set.str("llm.provider") != "ollama" {
+				return 0, ""
+			}
+			url := set.str("llm.url")
+			if url == "" {
+				return 0, ""
+			}
+			resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
+			if err != nil {
+				log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
+				return 0, ""
+			}
+			var total float64
+			var largest llm.ResidentModel
+			for _, m := range resident {
+				total += m.VRAMGiB
+				if m.VRAMGiB > largest.VRAMGiB {
+					largest = m
+				}
+			}
+			return total, largest.Name
+		},
 		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
 		// the gate that routes an over-capacity channel to software up front instead of stalling on a
 		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not

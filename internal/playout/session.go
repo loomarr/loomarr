@@ -82,6 +82,11 @@ type Session struct {
 	// startedAt is when the channel came on air — the dashboard's uptime, and the denominator
 	// for judging whether a low speed is a cold start or a sustained problem.
 	startedAt time.Time
+	// coldStartMs is the wall-clock from session start to the FIRST bytes the parent produced —
+	// the "time to first frame" the viewer waits through as a black screen (§9.1 V47 doctor). The
+	// one number that tracks the black-screen symptom directly; 0 until the first bytes arrive.
+	// Written once in pump under mu, read in stat().
+	coldStartMs int64
 	// encoder is the hardware/software choice the CURRENT program resolved (§9.1). The single
 	// most actionable telemetry an operator has: it is the difference between four concurrent
 	// streams and one.
@@ -131,6 +136,9 @@ type SessionStat struct {
 	// sub-1.0 speed reports, seen as accumulated deficit rather than an instantaneous rate.
 	BufferedMS int64 `json:"bufferedMs"`
 	UptimeMS   int64 `json:"uptimeMs"`
+	// ColdStartMS is how long this channel took from session start to first frame — the black-screen
+	// window a viewer waited through (§9.1 V47 doctor). 0 before the first bytes arrive.
+	ColdStartMS int64 `json:"coldStartMs"`
 }
 
 // sessionKey identifies one live encoder. A channel does NOT have a single stream — it has one
@@ -358,11 +366,17 @@ func (s *Session) pump() {
 	for {
 		n, err := s.proc.Stdout.Read(buf)
 		if n > 0 {
-			if total == 0 && s.log != nil {
+			if total == 0 {
+				// First bytes — the cold-start window (start → first frame) closes here.
 				s.mu.Lock()
+				s.coldStartMs = time.Since(s.startedAt).Milliseconds()
 				vc := len(s.viewers)
+				cold := s.coldStartMs
 				s.mu.Unlock()
-				s.log.Info("playout: session first bytes from parent", "channel", s.ChannelID, "n", n, "viewers", vc)
+				if s.log != nil {
+					s.log.Info("playout: session first bytes from parent",
+						"channel", s.ChannelID, "n", n, "viewers", vc, "cold_start_ms", cold)
+				}
 			}
 			total += int64(n)
 			// Copy before broadcasting: buf is reused on the next iteration, and the
@@ -630,9 +644,10 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 		Viewers:    len(s.viewers),
 		Encoder:    string(s.encoder),
 		Hardware:   s.encoder != "" && s.encoder != EncoderSoftware,
-		Speed:      s.last.Speed,
-		BufferedMS: buffered,
-		UptimeMS:   uptime.Milliseconds(),
+		Speed:       s.last.Speed,
+		BufferedMS:  buffered,
+		UptimeMS:    uptime.Milliseconds(),
+		ColdStartMS: s.coldStartMs,
 	}, true
 }
 

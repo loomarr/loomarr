@@ -54,6 +54,9 @@ type ChannelHealth struct {
 	Speed     float64       `json:"speed" doc:"Realtime multiple; <1.0 means the channel will stutter"`
 	Health    PlayoutHealth `json:"health" doc:"ok | degraded | stalled"`
 	Reason    string        `json:"reason" doc:"One line an operator can act on"`
+	// ColdStartMS is how long this channel took to first frame — the black-screen window a viewer
+	// waited through (§9.1 V47). The one number that tracks the black-screen symptom; 0 = not measured.
+	ColdStartMS int64 `json:"coldStartMs" doc:"Time to first frame in ms — the black-screen window; 0 if unmeasured"`
 }
 
 // DoctorGPU is the shared-GPU header — the contention picture the encoder rows alone can't show.
@@ -135,6 +138,7 @@ func channelHealthFrom(st playout.SessionStat) ChannelHealth {
 		ChannelID: st.ChannelID, Target: st.Target,
 		Encoder: st.Encoder, Hardware: st.Hardware,
 		Mode: mode, Speed: st.Speed, Health: health, Reason: reason,
+		ColdStartMS: st.ColdStartMS,
 	}
 }
 
@@ -178,17 +182,18 @@ func (s *Server) doctorGPU(ctx context.Context) DoctorGPU {
 		return DoctorGPU{}
 	}
 	g := DoctorGPU{Name: status.GPUName, VRAMGiB: status.VRAMGiB}
-	// The active model + its footprint: Status.Model is the active tag; find it in the catalog for
-	// its VRAM proxy (the on-disk size). Only for a LOCAL provider — a hosted model holds no local
-	// VRAM. This is a footprint ESTIMATE (on-disk size), not live residency; the exact resident set
-	// is what scripts/playout-diag.sh reads from Ollama /api/ps, and the contention flag below only
-	// needs "is a local model configured and sized", which this answers.
-	if status.Local && status.Model != "" {
-		for _, m := range status.Catalog {
-			if m.Tag == status.Model && m.VRAMGiB > 0 {
-				g.LLMModel, g.LLMVRAMGiB = m.Tag, m.VRAMGiB
-				break
-			}
+
+	// ⚠ **LIVE residency, from Ollama /api/ps — not the on-disk-size estimate this used to report.**
+	// The old path looked up the active model tag in the catalog and reported its on-DISK size as
+	// "VRAM held". That lied in the exact case the doctor exists to diagnose: it showed a model as
+	// resident and holding several GB even after Ollama had unloaded it — so `contended` fired (or
+	// didn't) on a fiction, and the one tool meant to confirm GPU contention could not be trusted.
+	// residentLLMVRAM asks Ollama what is ACTUALLY loaded right now; nothing resident → 0 held → no
+	// contention, a real answer. Best-effort: nil injection or a probe error leaves the header at 0,
+	// never a failed request (the channel-health rows do not depend on it).
+	if s.residentLLMVRAM != nil {
+		if gib, model := s.residentLLMVRAM(ctx); gib > 0 {
+			g.LLMVRAMGiB, g.LLMModel = gib, model
 		}
 	}
 	return g

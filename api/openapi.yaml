@@ -604,6 +604,10 @@ components:
       properties:
         channelId:
           type: string
+        coldStartMs:
+          description: Time to first frame in ms — the black-screen window; 0 if unmeasured
+          format: int64
+          type: integer
         encoder:
           description: Resolved encoder, or 'copy' when direct-playing
           type: string
@@ -635,6 +639,7 @@ components:
         - speed
         - health
         - reason
+        - coldStartMs
       type: object
     ChannelNowNext:
       additionalProperties: false
@@ -3877,6 +3882,9 @@ components:
           type: integer
         channelId:
           type: string
+        coldStartMs:
+          format: int64
+          type: integer
         encoder:
           description: "Resolved encoder: hardware vendor, or 'software'"
           type: string
@@ -3904,6 +3912,7 @@ components:
         - speed
         - bufferedMs
         - uptimeMs
+        - coldStartMs
       type: object
     SetFillerSourceEnabledInputBody:
       additionalProperties: false

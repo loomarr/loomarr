@@ -159,6 +159,11 @@ type Server struct {
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
 	// or none), and the ladder skips straight from hardware to the software fallback.
 	reclaimVRAM func(ctx context.Context)
+	// residentLLMVRAM reports the VRAM the LLM ACTUALLY holds right now + its model tag, from a live
+	// Ollama /api/ps probe (§9.1 V47 doctor). The doctor uses it for the true contention picture,
+	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
+	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
+	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
 	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
 	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
 	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
@@ -739,6 +744,10 @@ type Options struct {
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder
 	// calls it only after a hardware encode has already produced nothing.
 	ReclaimVRAM func(ctx context.Context)
+	// ResidentLLMVRAM reports the VRAM the LLM currently holds + its model tag, from a live Ollama
+	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
+	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
+	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
 	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
 	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
 	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
