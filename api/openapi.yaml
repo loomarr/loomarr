@@ -5470,6 +5470,40 @@ paths:
       summary: Change your own password
       tags:
         - auth
+  /v1/auth/sso/callback:
+    get:
+      description: Public. The provider redirects here; Loomarr verifies the state cookie and the code, mints a session, and redirects onward. §11's allowlist decides access — this route cannot create a user.
+      operationId: sso-callback
+      responses:
+        "200":
+          description: OK
+        "302":
+          description: Redirect back into the app, with a session cookie on success.
+          headers:
+            Location:
+              description: Where to go next
+              schema:
+                type: string
+      summary: Complete an SSO login
+      tags:
+        - auth
+  /v1/auth/sso/start:
+    get:
+      description: Public — this is how you sign in. Redirects to the identity provider and sets a short-lived state cookie binding the callback to this browser. `next` may be a PATH only; an absolute URL would make this an open redirector.
+      operationId: sso-start
+      responses:
+        "200":
+          description: OK
+        "302":
+          description: Redirect to the identity provider.
+          headers:
+            Location:
+              description: Where to go next
+              schema:
+                type: string
+      summary: Begin an SSO login
+      tags:
+        - auth
   /v1/backup:
     get:
       description: Admin only. Makes a new snapshot and streams it without writing it to the backup directory — SQLite installs only (Postgres answers 501; use your usual Postgres tooling).

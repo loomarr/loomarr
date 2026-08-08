@@ -135,12 +135,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
+	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider
 	srv.registerProvisioning(humaAPI)
-
-	// SSO's two routes are browser REDIRECTS (§11, V8) that also set a cookie. Still plain mux
-	// handlers, and still the exception the raw-mux guard (rawmux_test.go) knows about by name —
-	// they move onto rawOp next. Not mounted at all when no provider is wired.
-	srv.registerSSO(mux)
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp

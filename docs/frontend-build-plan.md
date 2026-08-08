@@ -78,7 +78,7 @@ Corresponds to the `frontend-design.md` §7 "Phase 1" deliverables, done now at 
 - **Operator wizard** (§13, §6), resume-safe from `GET /v1/setup/status`:
   1. **Bootstrap** — `POST /v1/setup/bootstrap` (owning admin; succeeds once).
   2. **Connection checklist** — the now-complete `setup/status`; each red check shows plain-language cause + exact fix + a deep link into the embedded docs. Per-dependency re-test via `POST /v1/setup/test`.
-  3. **Connect Tunarr to the guide** — `POST /v1/setup/livetv-connect` (m3u tuner + XMLTV), idempotent, never silent.
+  3. **Connect Tunarr to the guide** — no call of its own: the m3u tuner + XMLTV wiring is idempotent and fully derived from the Tunarr connection, so it auto-runs when Connections are saved. The step reports the `livetv` setup check rather than posting. Never silent — saving the connection is the ask.
   4. **Webhook handshake** — show URL + secret; **listen** via the new `setup/status` webhook `lastReceived` (per-app "listening… → green on receipt").
   5. **Wire Tunarr's media source** — `POST /v1/setup/tunarr-connect` (already built + live-proven) so channels get real programs, not dead-air.
   6. **Import media-server users** — `POST /v1/users/import` (optional; skippable solo).
@@ -125,7 +125,7 @@ Manual smoke half of the DoD (design §21) runs on the maintainer's real stack (
 | Screen | Reads | Writes | Live (SSE) |
 | --- | --- | --- | --- |
 | Login | `auth/me` | `auth/login`, `auth/logout` | — |
-| Wizard | `setup/status` | `setup/bootstrap`, `setup/test`, `setup/livetv-connect`, `setup/tunarr-connect`, `users/import` | `job` (first-channel generate) |
+| Wizard | `setup/status` | `setup/bootstrap`, `setup/test`, `setup/tunarr-connect`, `users/import` | `job` (first-channel generate) |
 | Channels + detail | `channels`, `channels/{id}` | `channels`, `channels/{id}/reconcile`, `channels/{id}` (DELETE) | `channel` |
 | Board / My proposals | `titles`, `titles/{key}`, `suggestions` | `titles` (DELETE) | `title` |
 | Suggest workspace | `suggestions`, `suggestions/{id}`, `search` | `suggestions`, `suggestions/{id}/approve`, `suggestions/{id}/deny` | `job` (progress) |

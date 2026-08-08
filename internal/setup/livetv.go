@@ -1,5 +1,5 @@
 // Package setup owns the operator connection flows (§7, §13): the Live TV wiring
-// (POST /v1/setup/livetv-connect) and the setup-status checklist. It composes the
+// (auto-run on a Connections save — see LiveTVConnector) and the setup-status checklist. It composes the
 // media-server LiveTV capability (§6) and derives Tunarr's playlist/guide URLs;
 // it never talks to Tunarr directly (Tunarr publishes those URLs; the media
 // server consumes them).
@@ -78,9 +78,14 @@ func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) Tunarr
 	return TunarrURLsFrom(tunarrBaseURL)
 }
 
-// LiveTVConnector performs the one-time, idempotent Live TV wiring (§6). It is
-// the POST /v1/setup/livetv-connect body and also backs the wizard's one-click
-// connect (§13).
+// LiveTVConnector performs the one-time, idempotent Live TV wiring (§6).
+//
+// ⚠ There is no manual endpoint behind this, and there deliberately is not one. The wiring is
+// fully derived from the Tunarr connection and idempotent, so it AUTO-RUNS when Connections are
+// saved (settings.go autoWireAfterSave); a separate operator action would be a redundant no-op.
+// The wiring status still surfaces through the `livetv` setup check. The related route,
+// POST /v1/setup/livetv-reconnect, is a different thing: a force re-wire that clears a stale
+// channel→stream binding.
 type LiveTVConnector struct {
 	lib library.LiveTV
 	// urls is resolved PER CALL, not captured at construction: `playout.backend`,

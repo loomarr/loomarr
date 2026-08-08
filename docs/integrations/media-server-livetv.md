@@ -30,7 +30,7 @@ Both servers refresh guide data on a schedule (nightly by default). After any re
 
 ## Rules
 
-1. **Never silent.** Wiring is an explicit operator action — the wizard's one-click "Connect Tunarr to Emby/Jellyfin" (`POST /v1/setup/livetv-connect`, admin) or the manual runbook step. Loomarr does not reconfigure someone's media server unasked.
+1. **Never silent.** Wiring follows from an explicit operator action — saving the Tunarr connection. It is idempotent and fully derived from that connection, so it auto-runs on save rather than needing its own button, and the `livetv` setup check reports the result. Loomarr does not reconfigure someone's media server unasked: saving the connection *is* the ask. `POST /v1/setup/livetv-reconnect` (admin) force re-wires when a stale channel→stream binding needs clearing.
 2. **Idempotent.** Enumerate existing tuners/providers first; if Tunarr is already registered, the call is a no-op. Duplicate tuners are a classic Emby mess — tests assert second-call-no-op.
 3. **Checklist-detected.** `GET /v1/setup/status` includes a "media server has Tunarr wired as tuner + guide" check; a red check surfaces the connect button.
 

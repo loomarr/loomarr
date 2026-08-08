@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/mantonx/loomarr/internal/auth"
 	"github.com/mantonx/loomarr/internal/metrics"
 	"github.com/mantonx/loomarr/internal/store"
@@ -16,14 +18,20 @@ import (
 
 // /v1/auth/sso/* — the OIDC credential path (§11 SSO, D-F, V8).
 //
-// ⚠ **Plain mux handlers, not Huma operations.** Both routes are BROWSER REDIRECTS: start
-// sends the person to their provider, and callback sends them back into the app carrying a
-// session cookie. Huma models typed JSON bodies, and a 302 with a Set-Cookie is neither —
-// the same reason `/v1/backup` and the playout routes are mounted directly.
+// ⚠ **Huma operations mounted via rawOp, not plain mux handlers.** Both routes are BROWSER
+// REDIRECTS: start sends the person to their provider, and callback sends them back carrying a
+// session cookie. A 302 with a Set-Cookie is not a typed JSON body — but that describes the
+// RESPONSE, and it never described where the route belongs. rawOp keeps the raw `(w, r)` these
+// handlers need while mounting them on the one Huma API, exactly as `/v1/backup` and the
+// playout streams now are.
 //
-// They are also deliberately absent from `api/openapi.yaml`: a redirect an operator's
-// browser follows is not a client contract, and generating an orval hook for it would invite
-// a fetch that cannot work.
+// ⚠ They ARE in `api/openapi.yaml` now, declared as 302s with a Location header. The previous
+// text called their absence deliberate — "a redirect an operator's browser follows is not a
+// client contract" — which reads fine until you notice the same argument would justify leaving
+// any route out, and that the spec's job is to describe the served surface. The concern behind
+// it was that an orval hook would invite a `fetch` that cannot work; that is answered by the
+// declared 302 (there is no 2xx body to generate a useful call from) and by login.tsx driving
+// `sso-start` through `window.location.assign`, which is the only thing that can work.
 //
 // ⚠ **Unauthenticated by necessity** — this is how you sign IN. Three things protect them:
 // the state COOKIE (below) binds the callback to the browser that started the login, the
@@ -32,9 +40,16 @@ import (
 //
 // ⚠ **The cookie is the CSRF protection, not the state map.** An earlier version of this
 // comment credited "the state/nonce pair", and that was wrong: `pending` lives in one process
-// and answers "did a login start here?", never "did THIS browser start it?". Nor does the
-// `X-Loomarr-Csrf` header help — it guards mutating Huma routes, and these are plain-mux GETs
-// registered outside that middleware. Do not delete the cookie check as redundant.
+// and answers "did a login start here?", never "did THIS browser start it?".
+//
+// ⚠ **Nor does the `X-Loomarr-Csrf` header help, and the reason CHANGED — read it before
+// deleting the cookie check as redundant.** It used to be "these are plain-mux GETs registered
+// outside that middleware". They are Huma operations now, inside the middleware, so that
+// sentence would today read as "…therefore the header covers us". It does not: the header guard
+// applies only to MUTATING methods (`isMutating`, titles.go), and a login redirect is a GET. It
+// also could not apply — the callback arrives as a cross-site top-level navigation from the
+// provider, which carries no custom headers at all. The cookie remains the only thing that
+// binds a callback to the browser that started the login.
 
 // SSOService is the credential path the routes drive. nil ⇒ the routes are not mounted at
 // all, which is the honest posture for an unconfigured provider: a Sign-in-with button that
@@ -50,12 +65,55 @@ type SSOService interface {
 }
 
 // registerSSO mounts the two redirect routes when a provider is wired.
-func (s *Server) registerSSO(mux *http.ServeMux) {
-	if s.sso == nil {
+//
+// ⚠ **rawOp, not the bare mux.** A 302 carrying Set-Cookie is not a typed JSON body, which is
+// why these lived on the mux — but that reasoning confused the RESPONSE shape with where a
+// route belongs. rawOp (rawop.go) keeps the raw `(w, r)` so the handlers still write their own
+// redirect and cookie, while mounting on the same Huma API as everything else. Concretely that
+// buys: `RolePublic` written down instead of inferred from an absence, coverage by the raw-mux
+// guard, an entry in api/openapi.yaml, and — the one that actually bit before —
+// TestRegisterListsMatchBetweenRouterAndExporter, which matches `srv.register*(humaAPI)` and
+// was structurally blind to `registerSSO(mux)`.
+//
+// ⚠ The nil guard admits schemaOnly so the routes still reach the spec when the exporter runs
+// without a provider wired. Dropping a route from openapi.yaml because a dependency happened to
+// be nil at export time has already happened in this package once (see export.go).
+func (s *Server) registerSSO(api huma.API) {
+	if s.sso == nil && !s.schemaOnly {
 		return
 	}
-	mux.HandleFunc("GET /v1/auth/sso/start", s.ssoStart)
-	mux.HandleFunc("GET /v1/auth/sso/callback", s.ssoCallback)
+	rawOp[struct{}](api, redirectResponse(huma.Operation{
+		OperationID: "sso-start", Method: http.MethodGet, Path: "/v1/auth/sso/start",
+		Summary: "Begin an SSO login",
+		Description: "Public — this is how you sign in. Redirects to the identity provider and sets " +
+			"a short-lived state cookie binding the callback to this browser. `next` may be a PATH " +
+			"only; an absolute URL would make this an open redirector.",
+		Tags: []string{"auth"},
+	}, "Redirect to the identity provider."), RolePublic, s.ssoStart)
+
+	rawOp[struct{}](api, redirectResponse(huma.Operation{
+		OperationID: "sso-callback", Method: http.MethodGet, Path: "/v1/auth/sso/callback",
+		Summary: "Complete an SSO login",
+		Description: "Public. The provider redirects here; Loomarr verifies the state cookie and the " +
+			"code, mints a session, and redirects onward. §11's allowlist decides access — this " +
+			"route cannot create a user.",
+		Tags: []string{"auth"},
+	}, "Redirect back into the app, with a session cookie on success."), RolePublic, s.ssoCallback)
+}
+
+// redirectResponse declares a 302 for a route whose whole job is the Location header, so the
+// spec does not imply a JSON body these never return.
+func redirectResponse(op huma.Operation, description string) huma.Operation {
+	if op.Responses == nil {
+		op.Responses = map[string]*huma.Response{}
+	}
+	op.Responses["302"] = &huma.Response{
+		Description: description,
+		Headers: map[string]*huma.Param{
+			"Location": {Description: "Where to go next", Schema: &huma.Schema{Type: huma.TypeString}},
+		},
+	}
+	return op
 }
 
 // ssoStateCookie is the name of the short-lived cookie that binds a callback to the browser

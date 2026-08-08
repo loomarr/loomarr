@@ -61,6 +61,8 @@ func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 	// The allowlist is a migration TODO, not a permanent exemption: an entry whose route no longer
 	// exists means that migration LANDED and the entry should go. Without this half, the list rots
 	// into a set of stale names that quietly re-permits a future route matching an old pattern.
+	// It is empty now (see TestTheRawV1AllowlistStaysEmpty), so this half is dormant — and it
+	// stays because the first person to add an entry needs it working, not written afterwards.
 	inSource := make(map[string]bool, len(found))
 	for _, p := range found {
 		inSource[p] = true
@@ -79,14 +81,42 @@ func TestNoV1RouteEscapesToTheRawMux(t *testing.T) {
 	}
 }
 
-// knownRawV1Routes are the /v1 routes still on the bare mux, each with why and what replaces it.
+// knownRawV1Routes is EMPTY, and TestTheRawV1AllowlistStaysEmpty keeps it that way.
 //
-// ⚠ **This shrinks to empty; it is a work list, not a set of exemptions.** Every entry costs the
-// protections listed above, and the test fails on a stale entry so the list cannot outlive the
-// work it describes.
-var knownRawV1Routes = map[string]string{
-	"GET /v1/auth/sso/start":    "302 + Set-Cookie; becomes a rawOp with RolePublic",
-	"GET /v1/auth/sso/callback": "302 + Set-Cookie; becomes a rawOp with RolePublic",
+// It began as a work list — the /v1 routes still owed a migration, each with why and what
+// replaced it — and shrank to nothing as they landed: the backup pair, three clip byte routes
+// and the channel-icon serve, then the SSE stream and the multipart upload, then the two SSO
+// redirects. Every entry cost the protections listed at the top of this file.
+//
+// ⚠ **Do not add an entry to make a new route pass.** The map survives only so the mechanism is
+// obvious if a genuine exception ever turns up; adding one silently re-opens the escape hatch
+// this whole migration closed. A route that streams bytes, redirects, or takes multipart still
+// belongs on the Huma API — that is what rawOp (rawop.go) is for, and every route listed above
+// proved it works for exactly those shapes.
+var knownRawV1Routes = map[string]string{}
+
+// TestTheRawV1AllowlistStaysEmpty is the ratchet.
+//
+// TestNoV1RouteEscapesToTheRawMux passes either by a route being migrated OR by someone adding
+// it to the allowlist — which is the right shape while a migration is in flight, and the wrong
+// one once it is finished. Every /v1 route is a Huma operation now, so the honest assertion is
+// that the exemption list is empty, and re-opening the escape hatch has to be a deliberate,
+// visible edit to this test rather than one quiet map entry.
+func TestTheRawV1AllowlistStaysEmpty(t *testing.T) {
+	if len(knownRawV1Routes) == 0 {
+		return
+	}
+	var listed []string
+	for pattern, why := range knownRawV1Routes {
+		listed = append(listed, pattern+" — "+why)
+	}
+	sort.Strings(listed)
+	t.Errorf("knownRawV1Routes is meant to be empty, and has %d entries:\n  %s\n\n"+
+		"Every /v1 route is a Huma operation. A route that streams bytes, redirects or takes "+
+		"multipart is not an exception — rawOp (rawop.go) covers all three, and the backup, clip, "+
+		"icon, SSE and SSO routes each proved it. If an exception is genuinely warranted, delete "+
+		"this test in the same commit so the decision is reviewed rather than absorbed.",
+		len(knownRawV1Routes), strings.Join(listed, "\n  "))
 }
 
 // muxRegistration matches `mux.HandleFunc("GET /path", …)` and `mux.Handle("/path", …)`.
