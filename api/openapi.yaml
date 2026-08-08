@@ -1808,7 +1808,7 @@ components:
     FillerSplitEvent:
       additionalProperties: false
       properties:
-        clipPath:
+        clipHash:
           type: string
         error:
           type: string
@@ -1827,7 +1827,7 @@ components:
           type: string
       required:
         - jobId
-        - clipPath
+        - clipHash
         - status
         - segments
       type: object
@@ -2311,6 +2311,8 @@ components:
       properties:
         clipHash:
           type: string
+        clipName:
+          type: string
         createdAt:
           description: RFC3339
           type: string
@@ -2326,6 +2328,7 @@ components:
       required:
         - proposalId
         - clipHash
+        - clipName
         - segments
         - needsAttention
         - createdAt

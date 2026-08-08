@@ -89,7 +89,11 @@ const untaggedAsk: IncomingAskDTO = {
 // A compilation mid-split, with the count of segments an operator cannot simply accept.
 const compilationReel: IncomingReelDTO = {
   proposalId: "sp_1",
+  // ⚠ Identity and display name are separate, and the hash is realistic (64 hex). This fixture
+  // used to carry only a friendly `clipPath` no real catalog contains — a filed clip's path is
+  // `a3/f9/<hash>.mp4` — which made the row look better in the baseline than in production.
   clipHash: "a3f9000000000000000000000000000000000000000000000000000000001987",
+  clipName: "1987 Saturday morning block",
   segments: 12,
   needsAttention: 3,
   createdAt: "2026-08-01T12:00:00Z",
@@ -98,6 +102,7 @@ const compilationReel: IncomingReelDTO = {
 const cleanReel: IncomingReelDTO = {
   proposalId: "sp_2",
   clipHash: "b7c1000000000000000000000000000000000000000000000000000000001993",
+  clipName: "1993 toy commercials",
   segments: 8,
   needsAttention: 0,
   createdAt: "2026-08-01T13:00:00Z",

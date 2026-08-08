@@ -80,9 +80,19 @@ type IncomingReelDTO struct {
 	ProposalID string `json:"proposalId"`
 	// ClipHash is the compilation's identity (§10 V38c). ⚠ Was `clipPath` and carried the shard
 	// path; the two look alike on screen (`a3/f9/<hash>.mp4` is mostly the hash) which is part of
-	// why the mismatch behind it went unnoticed for so long. A friendlier display name belongs
-	// here eventually — it is not added alongside a bug fix.
+	// why the mismatch behind it went unnoticed for so long.
 	ClipHash string `json:"clipHash"`
+	// ClipName is what the operator recognises — the compilation's catalog name.
+	//
+	// ⚠ Added with the identity rename, because without it this row's title becomes 64 hex
+	// characters. The old `clipPath` was no better in production (a filed clip's path IS
+	// `a3/f9/<hash>.mp4`); it only LOOKED acceptable because the test fixture used a friendly
+	// filename no real catalog contains. Renaming the field made that flattery visible in the
+	// visual baseline, which is the honest moment to fix it rather than defer it.
+	//
+	// Falls back to the hash when the clip has gone — a reel whose compilation was deleted is a
+	// real state, and rendering nothing there would hide it.
+	ClipName string `json:"clipName"`
 	Segments int    `json:"segments" doc:"How many clips the detector found"`
 	// NeedsAttention counts segments the operator cannot simply accept — an unsplittable
 	// stretch, or one flagged as a duplicate of something already in the catalog.
@@ -157,8 +167,18 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		s.log.Warn("list split proposals for incoming", "err", err)
 	} else {
 		for _, p := range proposals {
+			// One read per pending reel to resolve a display name. ⚠ Bounded by design: a
+			// proposal exists only while a compilation is waiting on a human, so this list is
+			// the review queue, not the catalog. A missing clip is not an error — the reel
+			// simply falls back to its identity, which is what a deleted compilation should
+			// look like rather than a blank row.
+			name := p.ClipHash
+			if clip, cerr := s.store.GetClip(ctx, p.ClipHash); cerr == nil && clip.Name != "" {
+				name = clip.Name
+			}
 			out.Body.Reels = append(out.Body.Reels, IncomingReelDTO{
-				ProposalID: p.ID, ClipHash: p.ClipHash, Segments: len(p.Segments),
+				ProposalID: p.ID, ClipHash: p.ClipHash, ClipName: name,
+				Segments:       len(p.Segments),
 				NeedsAttention: segmentsNeedingAttention(p),
 				CreatedAt:      p.CreatedAt.UTC().Format(time.RFC3339),
 			})
