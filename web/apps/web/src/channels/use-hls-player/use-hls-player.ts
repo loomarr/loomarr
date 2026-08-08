@@ -1,6 +1,7 @@
 import { channelsApi, toProblem, unwrap } from "@loomarr/api";
 import Hls from "hls.js";
 import { useCallback, useRef, useState } from "react";
+import { deviceProfile } from "./device-profile";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -80,16 +81,26 @@ function useHlsPlayer(channelId: string): UseHlsPlayer {
         manifestLoadingRetryDelay: 1000,
         levelLoadingMaxRetry: 8,
         fragLoadingMaxRetry: 8,
-        // ⚠ **Start ~one segment from the live edge, not three — this is the cold-start first-paint
-        // fix (measured in-browser).** hls.js's default liveSyncDurationCount is 3, so on a fresh
-        // channel it waited to accumulate ~3 segments (~12s at our 4s segments) before painting the
-        // first frame — the black window a viewer sees even after the server is serving. Syncing one
-        // segment back paints after the first fetched segment. NOT full lowLatencyMode: the origin
-        // emits whole segments, not LL-HLS parts, and LL's tighter buffer is more fragile on a flaky
-        // link — the earlier "low-latency off" call. maxBufferLength stays generous so the player
-        // still BUILDS a cushion in the background after starting fast: start now, buffer up after.
-        liveSyncDurationCount: 1,
-        maxBufferLength: 30,
+        // ⚠ **Start ~TWO segments from the live edge — the balance between fast first-paint and a
+        // survivable buffer (both measured in-browser).** hls.js's default liveSyncDurationCount is 3
+        // (~12s at our 4s segments) — the black window V47 first fixed by dropping it to 1. But 1
+        // sits the playhead AT the live edge, and on a TRANSCODING channel (HEVC→h264 at ~1.2×
+        // realtime, "little margin" per the doctor) the encoder never pulls ahead, so headroom stays
+        // pinned at 0s and any dip below realtime plays out as a BLACK FRAME with nothing buffered to
+        // cover it (measured: a transcoding channel held 0s headroom for 30s and fired a `waiting`
+        // event). Two segments keeps first-paint fast (one extra ~4s segment vs V47) while giving a
+        // one-segment cushion against those dips. A direct-play (`-c copy`) channel fills far past
+        // this instantly, so it costs the fast path nothing.
+        liveSyncDurationCount: 2,
+        // liveMaxLatencyDurationCount governs when hls.js gives up chasing and hard-seeks to the edge
+        // (which itself looks like a stall). Keep it well above the sync target so a slow transcode is
+        // allowed to drift and be absorbed by the buffer instead of triggering a corrective seek.
+        liveMaxLatencyDurationCount: 10,
+        // Generous forward buffer + a back buffer so the player keeps BUILDING a cushion after the
+        // fast start (start near the edge, buffer up behind the scenes — what Emby/Jellyfin do). The
+        // back buffer also lets a viewer nudge back a few seconds without a re-fetch.
+        maxBufferLength: 60,
+        backBufferLength: 30,
       });
       hls.loadSource(url);
       hls.attachMedia(video);
@@ -155,7 +166,11 @@ function useHlsPlayer(channelId: string): UseHlsPlayer {
       // identity, so `attach` depends only on the stable `channelId` and `bind`.
       let teardown: (() => void) | undefined;
       channelsApi
-        .channelPlayUrl(channelId, { quality: qualityHint() })
+        // The DeviceProfile body (§9.1 V48) tells the server what THIS browser can direct-play, so an
+        // HEVC-capable browser gets a `-c:v copy` stream instead of a HEVC→h264 transcode. Probed from
+        // MediaSource.isTypeSupported; an empty profile resolves to the safe h264/aac baseline server-
+        // side, so a browser that can't decode HEVC is never handed an undecodable stream.
+        .channelPlayUrl(channelId, deviceProfile(), { quality: qualityHint() })
         .then((res) => {
           if (cancelledRef.current) return;
           const body = unwrap(res);

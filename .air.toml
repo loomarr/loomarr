@@ -31,10 +31,24 @@ tmp_dir = "tmp"
   exclude_regex = ["_test\\.go"]
   # Don't restart on an in-progress rebuild; give the compile a moment to settle.
   delay = 400
-  stop_on_error = true
+  # ⚠ stop_on_error MUST be false. `true` makes Air STOP WATCHING after any failed build — so a
+  # single transient compile error from a mid-refactor save wedges Air permanently: it holds the
+  # last-good binary and ignores every later save, INCLUDING the one that fixes the error. That is
+  # the "my fix didn't take for a week" bug (a fresh single Air, not a duplicate — the guard cannot
+  # catch it). With `false`, a failed build keeps the previous binary running AND keeps watching, so
+  # the moment the code compiles again Air rebuilds and swaps. `build-errors.log` records the failure
+  # either way; you just don't lose the watcher over it.
+  stop_on_error = false
   # Send SIGINT so the server's graceful shutdown (context cancel) runs before restart.
   send_interrupt = true
   kill_delay = "2s"
+  # ⚠ poll = true — do NOT rely on inotify here. The repo is on btrfs, and Air's inotify watcher
+  # silently fails to deliver events on some Linux/filesystem/editor combinations (atomic-save-via-
+  # rename, overlay/btrfs subvolumes), leaving Air alive but never rebuilding on save — the same
+  # stale-binary symptom as stop_on_error. Polling re-scans file mtimes on an interval instead, which
+  # works on every filesystem. Slightly less instant than inotify; correctness beats the ~500ms.
+  poll = true
+  poll_interval = 500
 
 [log]
   time = true

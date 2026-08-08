@@ -46,6 +46,9 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		},
 		Applied: []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
 	}
+	// A non-default (hevc) broadcast codec (§9.1 V50) — using the non-default value
+	// proves the column preserves what's written, not that it fell back to the DDL default.
+	ch.BroadcastCodec = BroadcastCodecHEVC
 	ch.ReconcileDeadline = deadline
 	return ch
 }
@@ -83,6 +86,11 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(got.Policy.Applied) != 1 || got.Policy.Applied[0].Kind != "episodeNoRepeat" {
 		t.Errorf("policy applied-relaxation round-trip: got %+v", got.Policy.Applied)
+	}
+	// BroadcastCodec (§9.1 V50) round-trips the non-default hevc value verbatim — both the
+	// direct GetChannel path and (below) the claim RETURNING path scan the same column.
+	if got.BroadcastCodec != BroadcastCodecHEVC {
+		t.Errorf("broadcast_codec round-trip: got %q want %q", got.BroadcastCodec, BroadcastCodecHEVC)
 	}
 	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
 		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)

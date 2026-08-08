@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mantonx/loomarr/internal/playout"
 )
 
 // Signed playout URLs — how a PERSON's browser plays a channel without holding the device
@@ -121,9 +123,9 @@ func playoutSignature(key, channelID string, exp int64) string {
 // client with no "current origin" that fetches the URL cold. The web browser uses the RELATIVE
 // form (playoutHLSPathURL) instead, because it is already on Loomarr's origin. Returns "" when the
 // base or the signature is unavailable.
-func (s *Server) playoutHLSURL(channelID string, quality string, exp time.Time) string {
+func (s *Server) playoutHLSURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
 	base := s.playoutBaseURL()
-	path := s.playoutHLSPathURL(channelID, quality, exp)
+	path := s.playoutHLSPathURL(channelID, quality, plan, exp)
 	if base == "" || path == "" {
 		return ""
 	}
@@ -138,7 +140,7 @@ func (s *Server) playoutHLSURL(channelID string, quality string, exp time.Time) 
 // URL would trip) AND does not depend on `server.public_url` being set or reachable. Native apps
 // cannot use this — they have no origin to be relative to — which is exactly why the absolute form
 // above still exists. Returns "" only when the signature can't be minted (no token).
-func (s *Server) playoutHLSPathURL(channelID string, quality string, exp time.Time) string {
+func (s *Server) playoutHLSPathURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
 	sig := s.signPlayout(channelID, exp)
 	if sig == "" {
 		return ""
@@ -147,6 +149,15 @@ func (s *Server) playoutHLSPathURL(channelID string, quality string, exp time.Ti
 	q.Set(signQueryParam, sig)
 	if quality != "" {
 		q.Set("quality", quality)
+	}
+	// `?plan=` is UNSIGNED, deliberately — like `quality`. The signature authorizes the CHANNEL
+	// (channel:exp); the plan only picks a copy bucket for a channel the sig already grants, so it
+	// needs no signing, and a client can re-probe its capabilities and switch plans without re-minting.
+	// Omitted for PlanBaseline (the default clientPlan reads on absence) so the common URL stays clean;
+	// a richer plan is written explicitly. clientPlan on the read side treats only a recognized token
+	// as capable — anything else is the safe baseline.
+	if plan != playout.PlanBaseline {
+		q.Set(playoutPlanParam, plan.String())
 	}
 	return fmt.Sprintf("/v1/playout/hls/%s/master.m3u8?%s", url.PathEscape(channelID), q.Encode())
 }

@@ -26,6 +26,12 @@ RETIRED=(
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
+  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
+  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
+  # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
+  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
+  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how

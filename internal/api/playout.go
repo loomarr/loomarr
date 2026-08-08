@@ -55,9 +55,11 @@ import (
 // access at all, api_token is break-glass admin).
 const playoutTokenParam = "token"
 
-// playoutTargetParam names the codec-audience query on the playlist and program URLs (§9.1 V47):
-// `?target=browser` or `?target=mediaserver`. It selects the copy/transcode plan; see playout.Target.
-const playoutTargetParam = "target"
+// playoutPlanParam names the codec-audience query on the playlist and program URLs (§9.1 V48):
+// `?plan=baseline|hevc8|hevc10|full`. It selects the copy/transcode plan; see playout.EncodePlan and
+// clientPlan (the client-safe reader). ⚠ Replaces the retired `?target=browser|mediaserver` token
+// (see scripts/check-retired.sh).
+const playoutPlanParam = "plan"
 
 // PlayoutSessions is the session surface the handlers need (implemented by playout.Manager).
 // Nil ⇒ the /playout/ routes still mount but report "not running", so a misconfigured install
@@ -66,7 +68,7 @@ type PlayoutSessions interface {
 	// Attach connects a viewer to a (channel, target) and returns its chunk channel plus a detach
 	// func (§9.1 V47). The caller MUST call detach — it decrements the refcount that keeps the
 	// encoder alive. The tuner path attaches as TargetMediaServer; only the copy plan differs.
-	Attach(ctx context.Context, channelID string, target playout.Target) (<-chan []byte, func(), error)
+	Attach(ctx context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error)
 
 	// Stats snapshots every live encoder for the dashboard (§12, V16).
 	Stats(now time.Time) []playout.SessionStat
@@ -78,21 +80,23 @@ type PlayoutSessions interface {
 	// session's own ffmpeg is the `-c copy` parent and never encodes: its speed would measure
 	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
 	// and the load-aware Resolve can legitimately pick differently between programs.
-	ReportProgram(channelID string, target playout.Target, enc playout.Encoder, p playout.Progress)
+	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress)
 }
 
 // PlayoutHLS is the HLS repackaging surface the Watch handlers need (§9.1, V46), implemented by
 // playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running", so an install without
 // internal playout wired explains itself rather than 404ing.
 type PlayoutHLS interface {
-	// Playlist starts (or joins) a channel's HLS remux and returns the on-disk MASTER playlist
-	// path plus a detach func the caller MUST invoke — it releases the viewer refcount that keeps
-	// the remux, and through it the channel's encoder, alive.
-	Playlist(channelID string) (playlistPath string, detach func(), err error)
-	// AssetPath resolves an HLS asset under a channel — a variant playlist or a segment, by its
-	// path relative to the channel dir (e.g. "720p/seg-3.ts") — to its on-disk path for a live
-	// channel; ok=false when no remux is running or the path would escape the dir.
-	AssetPath(channelID, rel string) (string, bool)
+	// Playlist starts (or joins) a channel's HLS remux for `plan` and returns the on-disk MASTER
+	// playlist path plus a detach func the caller MUST invoke — it releases the viewer refcount that
+	// keeps the remux, and through it the channel's encoder, alive. The plan selects the copy plan: a
+	// baseline client (h264) and an HEVC-capable client get SEPARATE remuxes/sessions of one channel,
+	// so an HEVC channel copies its video for the capable client while transcoding for the baseline one.
+	Playlist(channelID string, plan playout.EncodePlan) (playlistPath string, detach func(), err error)
+	// AssetPath resolves an HLS asset under a channel's `plan` remux — a variant playlist or a
+	// segment, by its path relative to the channel dir (e.g. "720p/seg-3.ts") — to its on-disk path
+	// for a live channel; ok=false when no remux is running or the path would escape the dir.
+	AssetPath(channelID string, plan playout.EncodePlan, rel string) (string, bool)
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.
@@ -171,13 +175,14 @@ func (s *Server) playoutURL(kind, channelID string) string {
 	return fmt.Sprintf("%s/v1/playout/%s/%s?%s", base, kind, url.PathEscape(channelID), q.Encode())
 }
 
-// withTarget appends `&target=<t>` to a playout URL that already carries a query (playoutURL always
-// sets the token, so there is always a `?`). It is the one place the wire token is written, keyed
-// off Target.String, so the playlist→program hop cannot drift from the enum. mediaserver is the
-// default everywhere downstream, so it is written explicitly rather than omitted — a present token
-// is self-documenting in a log line and leaves no ambiguity about which audience a session serves.
-func withTarget(rawURL string, t playout.Target) string {
-	return rawURL + "&" + playoutTargetParam + "=" + url.QueryEscape(t.String())
+// withPlan appends `&plan=<p>` to a playout URL that already carries a query (playoutURL always
+// sets the token, so there is always a `?`). It is the one place the plan is written on the internal
+// playlist→program hop, keyed off EncodePlan.String, so a program child inherits the session's served
+// plan (§9.1 V50: PlanBaseline=h264/TS, PlanHEVC8/10=HEVC/fMP4) and its copy/transcode decision
+// cannot drift from the parent's. Written explicitly (including PlanBaseline) so the served plan is
+// self-documenting in a log line and unambiguous about how the child must encode.
+func withPlan(rawURL string, t playout.EncodePlan) string {
+	return rawURL + "&" + playoutPlanParam + "=" + url.QueryEscape(t.String())
 }
 
 // streamHandler serves a channel as continuous MPEG-TS. This is what the television plays.
@@ -219,7 +224,7 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin), which ingests HEVC/AC3 and
 	// adapts per-client downstream — so it attaches as TargetMediaServer and keeps HEVC as a copy
 	// (§9.1 V47). The browser's HLS remux attaches as TargetBrowser separately.
-	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID, playout.TargetMediaServer)
+	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID, playout.PlanFull)
 	if err != nil {
 		// At capacity is a real, actionable condition rather than a generic failure: the
 		// operator can raise playout.max_channels or lower the quality tier so more channels
@@ -284,13 +289,14 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Propagate the session's TARGET (§9.1 V47) down to the program URL: a browser session's parent
-	// fetches `playlist?target=browser`, so every program it requests must also carry `browser` and
-	// plan its copy for the browser baseline. The playlist and its programs are one codec audience;
-	// the target is what makes them so. ParseTarget→String round-trips to the canonical token, so an
-	// absent/garbage `?target=` degrades to `mediaserver` — the historical behaviour.
-	target := playout.ParseTarget(r.URL.Query().Get("target"))
-	programURL = withTarget(programURL, target)
+	// Propagate the session's PLAN (§9.1 V48) down to the program URL: a baseline session's parent
+	// fetches `playlist?plan=baseline`, so every program it requests must also carry `baseline` and
+	// plan its copy for that bucket. The playlist and its programs are one codec audience; the plan is
+	// what makes them so. This is an INTERNAL parent→program hop — the plan was already fixed when the
+	// session was created (clientPlan enforced the safe default at the client edge), so ParseEncodePlan
+	// here round-trips the canonical token; an absent one degrades to PlanBaseline, the safe floor.
+	plan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
+	programURL = withPlan(programURL, plan)
 
 	// text/plain: ffmpeg does not care about the type, and there is no registered one for
 	// ffconcat. Nosniff so a browser that opens the URL cannot reinterpret the bytes.
@@ -422,7 +428,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, detach, err := s.playoutHLS.Playlist(channelID)
+	path, detach, err := s.playoutHLS.Playlist(channelID, clientPlan(r))
 	if err != nil {
 		if errors.Is(err, playout.ErrAtCapacity) {
 			w.Header().Set("Retry-After", "30")
@@ -450,6 +456,24 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(rewritePlaylistAuth(body, r.URL.RawQuery))
 }
 
+// clientPlan reads the EncodePlan for a Watch HLS request (a browser OR a native app) from `?plan=`.
+// It is the CLIENT-FACING edge, and its default is the safety invariant of the whole V48 model:
+//
+//   - An absent, empty, or unrecognized `?plan=` resolves to PlanBaseline (h264/aac) — NEVER a
+//     richer plan. Copying HEVC (or 10-bit, or surround) to a client that did not prove it can decode
+//     it is a black frame, so only an explicit, recognized plan token unlocks richer copy.
+//   - The token itself was minted from the client's DeviceProfile at play-url time (resolve →
+//     `?plan=`), and resolve already rounded DOWN to what the profile fully satisfies. So there are
+//     two independent guards: resolve at mint, clientPlan here at read. Either alone keeps a client
+//     from receiving an undecodable stream; both is defence in depth.
+//
+// ParseEncodePlan already defaults unknown→PlanBaseline, so this is a thin, intention-naming wrapper
+// over it — but the wrapper (and this comment) is where the client-edge invariant is asserted, so it
+// is not inlined.
+func clientPlan(r *http.Request) playout.EncodePlan {
+	return playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
+}
+
 // rewritePlaylistAuth appends the request's auth query (`?sig=…` or `?token=…`) to every SEGMENT
 // URI in a media playlist, so each segment fetch is self-authenticating.
 //
@@ -460,25 +484,46 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 // re-append a query param either, so fixing it client-side (hls.js xhrSetup) would leave every
 // native player broken. Rewriting the URIs here is the one fix that works for every client.
 //
-// Only lines that are segment/asset references get the query — tag lines (starting with `#`) and
-// blank lines are left untouched.
+// Only lines that are segment/asset references get the query — most tag lines (starting with `#`)
+// and blank lines are left untouched. The ONE exception is `#EXT-X-MAP:URI="…"`, the fMP4 init
+// segment (§9.1 V48 HEVC): it is a tag but its URI is a fetch that must self-authenticate too, or the
+// init segment 404s and an HEVC stream black-screens. So its quoted URI is rewritten in place.
 func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
 	if rawQuery == "" {
 		return body
 	}
+	appendQuery := func(uri string) string {
+		sep := "?"
+		if strings.Contains(uri, "?") {
+			sep = "&"
+		}
+		return uri + sep + rawQuery
+	}
 	lines := strings.Split(string(body), "\n")
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue // tag or blank — not a URI
+		if t == "" {
+			continue
+		}
+		// EXT-X-MAP carries the fMP4 init segment as a quoted URI="…" — rewrite that URI, not the
+		// whole tag. The rest of the tag (BYTERANGE etc.) is left intact.
+		if strings.HasPrefix(t, "#EXT-X-MAP:") {
+			const marker = `URI="`
+			if start := strings.Index(t, marker); start != -1 {
+				uStart := start + len(marker)
+				if end := strings.Index(t[uStart:], `"`); end != -1 {
+					uri := t[uStart : uStart+end]
+					lines[i] = t[:uStart] + appendQuery(uri) + t[uStart+end:]
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(t, "#") {
+			continue // any other tag — not a URI
 		}
 		// A URI line. Append the query, preserving any it already carries (it never does today,
 		// but a `?` in the name must not be doubled).
-		sep := "?"
-		if strings.Contains(t, "?") {
-			sep = "&"
-		}
-		lines[i] = t + sep + rawQuery
+		lines[i] = appendQuery(t)
 	}
 	return []byte(strings.Join(lines, "\n"))
 }
@@ -504,16 +549,21 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := s.playoutHLS.AssetPath(channelID, rel)
+	path, ok := s.playoutHLS.AssetPath(channelID, clientPlan(r), rel)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	// A variant playlist and a segment want different content types; the suffix is the only
-	// discriminator the asset carries.
-	if strings.HasSuffix(rel, ".m3u8") {
+	// Content type by suffix — the only discriminator the asset carries. MPEG-TS segments (.ts) are
+	// the baseline plan; fMP4 segments (.m4s) and their init segment (init.mp4) are the HEVC plans
+	// (§9.1 V48 — HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless
+	// because AssetPath already proved the file exists under the channel's own remux dir.
+	switch {
+	case strings.HasSuffix(rel, ".m3u8"):
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	} else {
+	case strings.HasSuffix(rel, ".m4s"), strings.HasSuffix(rel, ".mp4"):
+		w.Header().Set("Content-Type", "video/mp4")
+	default:
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
 	w.Header().Set("Cache-Control", "no-store")

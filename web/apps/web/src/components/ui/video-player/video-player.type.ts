@@ -36,6 +36,12 @@ interface VideoPlayerProps {
   // Audio + Subtitle TrackSelectMenus here. They are channel/policy concerns the player must not
   // know, so it only PLACES them (right side of the controls row, left of the fullscreen button).
   barControls?: React.ReactNode;
+  // A centered SLOT over the video, beneath the control scrims (§9.1 Watch). The caller renders a
+  // transient state here — channel-watch passes the TunerLoader while the stream warms up, so the
+  // cold-start beat reads as a tuner acquiring signal instead of a black frame. The player only
+  // places it (fills the frame, centered) and stays ignorant of what it is; pass `undefined` to
+  // show nothing. It sits UNDER the top/bottom control bars so those stay operable over it.
+  overlay?: React.ReactNode;
   // Custom source binding. When provided, the primitive does NOT set `<video src>`; instead it
   // calls `attach(videoEl)` once the element is mounted and invokes the returned cleanup on
   // unmount/source-change. This is the seam the channel-watch surface uses to bind hls.js (which

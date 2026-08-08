@@ -745,10 +745,13 @@ The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
    that is the ffmpeg input. **HTTP is the fallback** only when no mapping resolves a local file (a
    media server on another host, no shared mount) — so a zero-config install still works.
 2. **ffprobe decides, not the media server's metadata.** The resolved input is probed for its real
-   video/audio codec. `playout.CanDirectPlay` answers "can the target play this as-is?" against the
-   target's capability baseline (browser/HLS = h264+aac; a media-server tuner is broader).
+   video/audio codec. `playout.PlanCopy` answers "can this be copied as-is?" against the resolved
+   **EncodePlan**'s copy sets (see "A session's identity is `(channel, encode-plan)`" below):
+   `baseline` = h264+aac; `hevc8`/`hevc10` add HEVC (and, for `hevc10`, 10-bit + surround); a
+   media-server tuner resolves to the broadest, `full`.
 3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
-   when the codec genuinely is not playable** (e.g. HEVC/10-bit to an h264-only target).
+   when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
+   10-bit to an 8-bit-only one).
 
 **A transcode has a retry ladder, because hardware encoding can fail silently (V47).** When a program
 must transcode, it uses the box's detected hardware encoder (nvenc/vulkan/qsv/…). But a hardware
@@ -792,32 +795,132 @@ single-source-of-truth cycle arithmetic are all unchanged; only the "force one p
 - **An M3U tuner** (`/playout/tuner.m3u`) — the channel list the media server registers.
 - **An XMLTV guide** (`/playout/guide.xml`) — the listings provider.
 
-### A session's identity is `(channel, target)` — one encoder per codec audience (V47)
+### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
 
-The two consumers above do **not** have the same codec tolerance, and pretending they do is a black
+The consumers above do **not** have the same codec tolerance, and pretending they do is a black
 frame. A **media-server tuner** (Emby/Jellyfin) ingests HEVC/AC3 over IPTV and re-transcodes per
-client downstream, so for it HEVC is a direct-copy — best quality, least work on our box. A
-**browser** `<video>`/MSE decodes only h264+aac; HEVC copied to it produces zero frames (verified
-live: hls.js fetches segments, the decoder emits nothing, `readyState` stuck at 0). So a channel
-does not have *a* stream — it has a stream **for a media server** and a stream **for a browser**,
-and the copy/transcode plan (`CanDirectPlay`) differs between them.
+client downstream, so for it HEVC is a direct-copy — best quality, least work on our box. A **plain
+browser** `<video>`/MSE decodes only h264+aac; HEVC copied to it produces zero frames (verified live:
+hls.js fetches segments, the decoder emits nothing, `readyState` stuck at 0). But "browser" is not
+one capability: a browser *with* a hardware HEVC decoder plays HEVC (hls.js ≥1.6 transmuxes HEVC-in-
+MPEG-TS for MSE), and a **native app** (AVPlayer/ExoPlayer, a future TV app) plays HEVC, surround
+audio, and 10-bit directly. So a channel does not have *a* stream, nor even two — it has a stream per
+**codec audience**, and the copy/transcode plan differs between them.
 
-Therefore the session's identity is **`(channelID, target)`**, not `channelID` alone. `target` is
-one of `mediaserver` (h264/hevc + ac3/eac3/mp3) or `browser` (h264+aac), and it threads the whole
-chain: a viewer attaches *with* a target; the session key carries it; the parent reads
-`/playout/playlist/{id}?target=T`; each program child plans its copy against `T`. The tuner path
-(`/playout/stream`) attaches as `mediaserver`; the HLS/Watch remux attaches as `browser`.
+**V48 makes the client's capability first-class, and separates it from what we encode.** These are
+two different things — *what the client can play* (a property of the device) and *what we encode* (a
+property of the session) — and fusing them (a fixed "browser = h264/aac" target, or a `?hevc=1`
+boolean bolted onto it) is what did not scale. The model is two types with a pure resolver between:
 
-**One encoder per `(channel, target)` — and the cost of the split is bounded by the copy plan, not
-the target.** For the common case — an h264 channel — *both* targets' plans are `-c copy`, so the
-browser session is also just a remux (near-zero GPU), and the only duplication for a channel watched
-on both a TV and a browser is a second cheap `-c copy` pipeline, not a second encode. A real second
-encode happens **only** for genuinely incompatible content (HEVC/10-bit) watched **in-browser** —
-exactly the content that *has* to be transcoded for a `<video>` element to show anything. §9.1's cost
+- **`DeviceProfile`** — client-authored, sent as a JSON body on `POST /v1/channels/{id}/play-url`:
+  `video[]`/`audio[]` (codecs it can decode; h264/aac always implied), `video10bit`, `hdr`,
+  `maxResolution`. A browser fills it from `MediaSource.isTypeSupported(…)`; a native app from its
+  known decoder set. **Absent or empty ⇒ the safe h264/aac baseline** — a client that does not prove
+  a capability never receives it.
+- **`EncodePlan`** — the small, server-defined, canonical bucket the session is actually keyed on and
+  encoded for. The closed set: `baseline` (h264/aac — the old `browser`), `hevc8` (HEVC 8-bit + aac),
+  `hevc10` (HEVC 10-bit + surround), `full` (the old `mediaserver`/tuner set).
+- **`resolve(profile) → EncodePlan`** — pure and total; picks the **richest bucket the profile fully
+  satisfies** and rounds **down** when a profile sits between buckets. Never returns a bucket that
+  claims a capability the client did not advertise (the black-frame guard). This is the ONE place
+  bucketing lives.
+
+Therefore the session's identity is **`(channelID, EncodePlan)`**, not `channelID` alone, and not a
+device target — many DeviceProfiles bucket into few EncodePlans, so encoder fan-out is bounded by the
+(small, fixed) bucket count, never by the number of distinct devices. It threads the whole chain: a
+viewer attaches *with* a plan; the session key carries it; the parent reads `/playout/playlist/{id}
+?plan=P`; each program child plans its copy against `P`. The tuner path (`/playout/stream`) sends no
+profile and resolves to `full`; the HLS/Watch remux resolves the client's profile to its plan.
+
+⚠ **`?plan=` replaces `?target=` (V48).** The old `browser`/`mediaserver` token is retired; the
+retired identifier lives in `scripts/check-retired.sh`. `browser`→`baseline`, `mediaserver`→`full`.
+The read side (`clientPlan`) defaults an absent/unknown `?plan=` to `baseline`, **never** `full` — so
+only an explicit, recognized plan token unlocks richer copy. Two independent guards (`resolve` rounds
+down at mint; `clientPlan` defaults safe at read) ensure a client that did not prove HEVC never gets
+it. `maxResolution`/`hdr` drive the rendition ladder and tone-map decision, NOT the copy-codec
+bucket, so they do not multiply the bucket count.
+
+**One encoder per `(channel, plan)` — and the cost of the split is bounded by the copy plan, not the
+plan count.** For the common case — an h264 channel — *every* plan's copy is `-c copy`, so a browser
+or native session is also just a remux (near-zero GPU), and the only duplication for a channel watched
+across audiences is a second cheap `-c copy` pipeline, not a second encode. A real second encode
+happens **only** for genuinely incompatible content (e.g. HEVC to a `baseline` browser, or 10-bit to
+an 8-bit-only client) — exactly the content that *has* to be transcoded to show anything. §9.1's cost
 argument is intact: cost scales with *codec audiences actually being watched*, never with viewers.
-Truly merging the two into one process when their codecs coincide would require the long-lived parent
+Truly merging plans into one process when their copy sets coincide would require the long-lived parent
 to introspect each program and re-key mid-stream — complexity that buys one avoided remux, so we do
 not; the copy plan already makes the compatible case cheap.
+
+### The broadcast codec follows the CONTENT, not the client (V50)
+
+V48 let the *client* pick the plan: a HEVC-capable browser got `hevc8`, so a channel's stream codec
+was whatever the watching device could take. That is wrong for two reasons the live smoke exposed.
+First, **HEVC HLS must be fMP4** (Apple spec — HEVC-in-MPEG-TS black-screens even on HEVC-capable
+browsers), and **fMP4 binds one decoder from its init segment: it cannot survive a mid-stream codec
+change.** A channel whose *content* mixes codecs (an HEVC show, then a VP9/h264/theora commercial —
+the filler dir is a zoo) black-screens at the commercial on the fMP4 path. Second, letting the client
+pick meant the same channel had no single truth about what codec it *is*.
+
+**V50 inverts it: a channel has ONE uniform broadcast codec, derived from its library CONTENT, and the
+client capability only gates how that one codec is delivered.** Two independent axes:
+
+- **Channel codec** — `channels.broadcast_codec` (`h264` | `hevc`), the **majority** of its titles'
+  probed video codecs, computed at **curation** (when the binder writes the lineup) and stored, not
+  probed at runtime. An even split (or an un-measurable lineup) defaults to `h264` — the maximally
+  compatible floor. This is the codec the whole timeline **normalizes to**: the matching show `-c
+  copy`s; a minority-codec title and *all filler* transcode to it, so the stream stays single-codec
+  and therefore fMP4-legal. Everything non-HEVC (vp9/mpeg2/…) counts as `h264` for the majority vote.
+  Derived state: an ADD COLUMN migration defaults every existing channel to `h264`, a one-time async
+  boot pass backfills the real value (a data migration can't probe — no library access), and each
+  re-curation recomputes it.
+- **Client `DeviceProfile`** (the V48 type, **reused**) — now a **yes/no gate** on whether the client
+  can decode the channel's native codec, *not* a plan picker. `ServedPlan(channelCodec, profile)`:
+  - h264 channel → `baseline` (h264/TS) for **everyone** — no client can promote it, the timeline
+    isn't HEVC to begin with.
+  - HEVC channel + HEVC-capable client → `hevc8`/`hevc10` (fMP4, `-c copy` the show; richness picks 8-
+    vs 10-bit as before).
+  - HEVC channel + incapable client → `baseline`: the **whole channel down-converts** to h264/TS for
+    that client (its own session, keyed on the plan).
+
+The V48 `EncodePlan` enum, the `?plan=` URL/session key, the fMP4-vs-TS container branch, and the HEVC
+transcode-target swap (`WantsHEVCOutput`) are all **unchanged** — but the plan now means *how this
+channel is served*, so `hevc8`/`hevc10` arise **only for an HEVC channel** and the "normalize a
+transcoded program to HEVC" wiring becomes exactly "match the channel codec." `resolve(profile)`
+survives as the pure profile-richness helper `ServedPlan` composes. Drop the profile and you either
+black-screen incapable clients or transcode-for-everyone and lose the copy win for capable ones —
+neither axis replaces the other.
+
+### Admission is cost-aware, against measured capacity (V49)
+
+The admission gate bounds *what saturates the box*, which is the **video transcode**, not the number
+of sessions. A `-c copy` session — an h264 channel at any plan, or an HEVC channel to an HEVC-capable
+client — costs ≈0 GPU and is **always admitted**; only a session that *re-encodes video* counts. This
+is what stops the plan-split from halving capacity: a channel watched at `baseline` + `hevc8` costs
+**one** (the baseline transcode), not two, because the hevc8 copy is free. (`playout.Admit` /
+`CopyPlan.Cost` / `EncodePlan.EstimatedCost`.)
+
+The cost is not known at attach — the program's codec is probed later, per program child — so a new
+session's cost is **estimated from its plan** (`baseline`→1, the HEVC/full plans→0) and **corrected to
+the truth** on the first program report (`ReportProgram(..., transcoding)` adjusts the committed sum by
+the delta). Over-estimating baseline on an h264 channel is safe — it never over-admits — and
+self-corrects to 0 within one program.
+
+The budget is **not a static magic number**. It is `playout.Manager`'s injected `budget func() int`,
+re-read on every admission, composed from three live sources:
+
+1. **Measured capacity** — what `Detect`'s representative encoder trial found this box sustains (not a
+   guess; the same number that seeds the `playout.max_channels` default).
+2. **Operator override** — `playout.max_channels`, applied as a **hard cap** (`min`): an operator may
+   only *lower* below the measurement (a safety throttle), never claim more than the hardware proved.
+3. **VRAM shading** — a resident LLM steals the VRAM each hardware encode needs for its device context
+   (the original black-screen incident was an encoder that could not allocate under a resident model),
+   so the budget is shaded down by the encodes that VRAM can no longer host (~one per few GiB held),
+   and grows back when the model evicts. Reactive, from the true `/api/ps` residency reading (the same
+   source the doctor's GPU header uses), never a fixed estimate.
+
+Refusing an over-budget transcode is deliberate — the operator gets an actionable "at capacity" 503,
+not universal stutter. The dashboard's `active / capacity` line shows the *live* budget, so its
+denominator shrinks when a model goes resident and grows when it unloads.
 
 **Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
 **Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.
