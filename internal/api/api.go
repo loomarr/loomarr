@@ -94,7 +94,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
 		playoutHLS:   opts.PlayoutHLS,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
-		timelineThumbs: opts.TimelineThumbs,
+		timelineThumbs:  opts.TimelineThumbs,
 		reclaimVRAM:     opts.ReclaimVRAM,
 		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
@@ -126,7 +126,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerTaxonomy(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
-	srv.registerPlayoutDoctor(humaAPI) // §9.1 V47: playout health projection
+	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemBackups(humaAPI)

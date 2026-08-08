@@ -879,7 +879,7 @@ a session cookie, so segment routes authenticate a **device** by token, not a **
 This is the only route family that bypasses the allowlist model, it is read-only, and it is scoped to
 playout. It is described in §11 alongside the credential paths rather than left implicit here.
 
-### The doctor — one place that answers "why is this channel black?" (V47)
+### Playout status — one place that answers "why is this channel black?" (V47)
 
 Playout has several ways to fail that all present identically to a viewer (a black frame) but have
 different causes: a codec the target can't decode, a hardware encode starved of VRAM by the resident
@@ -889,7 +889,7 @@ together: the **live encoders** (`Stats()` — per (channel, target): encoder, h
 crucially *realtime speed*, where a sustained value **below 1.0×** is the stutter/stall signal), the
 **GPU + its VRAM** (`nvidia-smi`), and the **resident LLM** sharing that VRAM (Ollama `/api/ps`).
 
-**`GET /v1/playout/doctor`** (admin-only, §11) composes exactly those into one health picture:
+**`GET /v1/playout/status`** (admin-only, §11) composes exactly those into one health picture:
 
 - A **GPU/VRAM header** — total and used VRAM, encoder-engine utilisation, and the resident LLM's
   footprint — because the shared-GPU contention (§8.2) is invisible from the encoder rows alone.

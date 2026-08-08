@@ -21,6 +21,11 @@ RETIRED=(
   # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
   # back in help text an operator would follow to a 404.
   'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
+  # V47b: renamed the playout "doctor" to "playout status" — same read-only health projection,
+  # clearer name. The old operation id and path must not survive in help text an operator would
+  # follow to a 404.
+  'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
+  'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how

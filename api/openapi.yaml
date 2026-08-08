@@ -602,6 +602,10 @@ components:
     ChannelHealth:
       additionalProperties: false
       properties:
+        bufferedMs:
+          description: Encoded lead over realtime in ms; negative = falling behind
+          format: int64
+          type: integer
         channelId:
           type: string
         coldStartMs:
@@ -620,6 +624,13 @@ components:
         mode:
           description: direct-play (copy) | transcode
           type: string
+        name:
+          description: Channel name for display (empty = unknown)
+          type: string
+        number:
+          description: Channel number for display (0 = unknown)
+          format: int64
+          type: integer
         reason:
           description: One line an operator can act on
           type: string
@@ -630,9 +641,17 @@ components:
         target:
           description: "Codec audience: browser|mediaserver (§9.1 V47)"
           type: string
+        viewers:
+          description: How many clients are attached
+          format: int64
+          type: integer
       required:
         - channelId
+        - number
+        - name
         - target
+        - viewers
+        - bufferedMs
         - encoder
         - hardware
         - mode
@@ -1382,28 +1401,6 @@ components:
       required:
         - slug
         - title
-      type: object
-    DoctorGPU:
-      additionalProperties: false
-      properties:
-        contended:
-          description: A model is resident AND channels are transcoding on hardware
-          type: boolean
-        llmModel:
-          description: Resident LLM sharing this GPU, if any (§8.2)
-          type: string
-        llmVramGiB:
-          description: VRAM the resident LLM holds — unavailable to encoders
-          format: double
-          type: number
-        name:
-          type: string
-        vramGiB:
-          description: Total detected GPU VRAM (0 = unknown/none)
-          format: double
-          type: number
-      required:
-        - contended
       type: object
     EnqueueInputBody:
       additionalProperties: false
@@ -2879,31 +2876,27 @@ components:
         - relativeUrl
         - expiresAt
       type: object
-    PlayoutDoctor:
+    PlayoutGPU:
       additionalProperties: false
       properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/PlayoutDoctor.json
-          format: uri
-          readOnly: true
-          type: string
-        channels:
-          items:
-            $ref: "#/components/schemas/ChannelHealth"
-          type:
-            - array
-            - "null"
-        gpu:
-          $ref: "#/components/schemas/DoctorGPU"
-        running:
-          description: Internal playout is wired (false on a Tunarr-only install)
+        contended:
+          description: A model is resident AND channels are transcoding on hardware
           type: boolean
+        llmModel:
+          description: Resident LLM sharing this GPU, if any (§8.2)
+          type: string
+        llmVramGiB:
+          description: VRAM the resident LLM holds — unavailable to encoders
+          format: double
+          type: number
+        name:
+          type: string
+        vramGiB:
+          description: Total detected GPU VRAM (0 = unknown/none)
+          format: double
+          type: number
       required:
-        - running
-        - gpu
-        - channels
+        - contended
       type: object
     PlayoutPolicy:
       additionalProperties: false
@@ -2914,6 +2907,32 @@ components:
           type: string
         subtitles:
           type: string
+      type: object
+    PlayoutStatus:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/PlayoutStatus.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelHealth"
+          type:
+            - array
+            - "null"
+        gpu:
+          $ref: "#/components/schemas/PlayoutGPU"
+        running:
+          description: Internal playout is wired (false on a Tunarr-only install)
+          type: boolean
+      required:
+        - running
+        - gpu
+        - channels
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -6670,26 +6689,6 @@ paths:
       summary: List media-server collections
       tags:
         - library
-  /v1/playout/doctor:
-    get:
-      description: "A read-only health projection of live internal playout: per (channel, target) encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM contention picture that a black-frame diagnosis needs. Admin only. Changes nothing."
-      operationId: get-playout-doctor
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PlayoutDoctor"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Playout health — why a channel is (or isn't) playing (admin)
-      tags:
-        - dashboard
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."
@@ -6708,6 +6707,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Live internal-playout encoder telemetry (admin)
+      tags:
+        - dashboard
+  /v1/playout/status:
+    get:
+      description: "A read-only health projection of live internal playout: per (channel, target) encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM contention picture that a black-frame diagnosis needs. Admin only. Changes nothing."
+      operationId: get-playout-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayoutStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout status — why a channel is (or isn't) playing (admin)
       tags:
         - dashboard
   /v1/programming/vocabulary:

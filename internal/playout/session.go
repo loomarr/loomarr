@@ -639,11 +639,11 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 	buffered := s.last.OutTimeMS - uptime.Milliseconds()
 
 	return SessionStat{
-		ChannelID:  s.ChannelID,
-		Target:     s.Target.String(),
-		Viewers:    len(s.viewers),
-		Encoder:    string(s.encoder),
-		Hardware:   s.encoder != "" && s.encoder != EncoderSoftware,
+		ChannelID:   s.ChannelID,
+		Target:      s.Target.String(),
+		Viewers:     len(s.viewers),
+		Encoder:     string(s.encoder),
+		Hardware:    s.encoder != "" && s.encoder != EncoderSoftware,
 		Speed:       s.last.Speed,
 		BufferedMS:  buffered,
 		UptimeMS:    uptime.Milliseconds(),

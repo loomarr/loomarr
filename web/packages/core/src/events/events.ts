@@ -89,11 +89,13 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
         extraRef.current?.onLlmPull?.(e);
       },
       onPlayout: (e) => {
-        // A channel started or stopped encoding, so the telemetry endpoint's answer changed.
-        // Invalidating is the whole job: the frame carries only a count, and
-        // GET /v1/playout/sessions owns the shape the dashboard renders (§8 — SSE is the
-        // latency path, the GET is truth).
+        // A channel started or stopped encoding, so both the telemetry endpoint AND the doctor's
+        // answer changed (encoder, cold-start time, GPU contention). Invalidating is the whole job:
+        // the frame carries only a count, and the GETs own the shapes the dashboard renders (§8 —
+        // SSE is the latency path, the GET is truth). The doctor is the same start/stop cadence as
+        // sessions, so it rides the same frame rather than needing a stream of its own.
         invalidateByPrefix(qc, "/v1/playout/sessions");
+        invalidateByPrefix(qc, "/v1/playout/status");
         extraRef.current?.onPlayout?.(e);
       },
       onFillerIngest: (e) => {
