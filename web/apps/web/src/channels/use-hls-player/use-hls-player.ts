@@ -80,6 +80,16 @@ function useHlsPlayer(channelId: string): UseHlsPlayer {
         manifestLoadingRetryDelay: 1000,
         levelLoadingMaxRetry: 8,
         fragLoadingMaxRetry: 8,
+        // ⚠ **Start ~one segment from the live edge, not three — this is the cold-start first-paint
+        // fix (measured in-browser).** hls.js's default liveSyncDurationCount is 3, so on a fresh
+        // channel it waited to accumulate ~3 segments (~12s at our 4s segments) before painting the
+        // first frame — the black window a viewer sees even after the server is serving. Syncing one
+        // segment back paints after the first fetched segment. NOT full lowLatencyMode: the origin
+        // emits whole segments, not LL-HLS parts, and LL's tighter buffer is more fragile on a flaky
+        // link — the earlier "low-latency off" call. maxBufferLength stays generous so the player
+        // still BUILDS a cushion in the background after starting fast: start now, buffer up after.
+        liveSyncDurationCount: 1,
+        maxBufferLength: 30,
       });
       hls.loadSource(url);
       hls.attachMedia(video);
