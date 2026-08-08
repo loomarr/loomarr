@@ -491,10 +491,10 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_ingest",
-		Payload: map[string]any{
-			"jobId": jobID, "status": status,
-			"fetched": res.Fetched, "skipped": res.Skipped,
-			"failed": res.Failed, "empty": res.Empty, "error": errMsg,
+		Payload: api.FillerIngestEvent{
+			JobID: jobID, Status: status,
+			Fetched: res.Fetched, Skipped: res.Skipped,
+			Failed: res.Failed, Empty: res.Empty, Error: errMsg,
 		},
 	})
 }
@@ -554,9 +554,9 @@ func (a fillerServiceAdapter) publishSplit(jobID, clipPath, status, proposalID s
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_split",
-		Payload: map[string]any{
-			"jobId": jobID, "clipPath": clipPath, "status": status,
-			"proposalId": proposalID, "segments": segments, "error": errMsg,
+		Payload: api.FillerSplitEvent{
+			JobID: jobID, ClipPath: clipPath, Status: status,
+			ProposalID: proposalID, Segments: segments, Error: errMsg,
 		},
 	})
 }
