@@ -23,8 +23,11 @@ import type { FieldHelpProps } from "./field-help.type";
 // That is what Radix did under the hood; it is written out here because the primitive no longer
 // does it. This file's comment previously claimed the SR user "hears the same guidance" — under
 // Base UI that claim would have been false, which is exactly why it is spelled out now.
-const FieldHelp = ({ children, label, className }: FieldHelpProps) => {
-  const descriptionId = useId();
+const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps) => {
+  const ownId = useId();
+  // Reuse the consumer's existing description when there is one (SettingField renders the doc for
+  // its control already); only mint and render a copy when this is the sole carrier of the text.
+  const descriptionId = describedById ?? ownId;
 
   return (
     <Tooltip>
@@ -42,9 +45,11 @@ const FieldHelp = ({ children, label, className }: FieldHelpProps) => {
         }
       >
         <Info className="size-3.5" aria-hidden />
-        <span id={descriptionId} className="sr-only">
-          {children}
-        </span>
+        {!describedById && (
+          <span id={descriptionId} className="sr-only">
+            {children}
+          </span>
+        )}
       </TooltipTrigger>
       <TooltipContent>{children}</TooltipContent>
     </Tooltip>

@@ -39,6 +39,14 @@ RETIRED=(
   # "docs/help ships as instructions" failure this script exists for. ⚠ NOT the same thing as
   # /v1/setup/livetv-reconnect, which is the force-re-wire for a stale channel→stream binding.
   'setup/livetv-connect|Live TV wiring auto-runs on a Connections save (settings.go autoWireAfterSave); there is no manual route. The force-re-wire is /v1/setup/livetv-reconnect'
+  # V50a: the primitive vendor moved Radix → Base UI (design §14). Both are headless React
+  # libraries with near-identical part names, so a copy-pasted snippet or a re-added dependency
+  # would look ordinary in review while quietly pulling a second vendor back into the tree — which
+  # is precisely what the consolidation bought. `asChild` rides along because it is the one API
+  # that cannot survive the move: Base UI composes through a `render` PROP, so a prop still named
+  # for merging onto a CHILD is the half-migrated vocabulary that outlives whoever reintroduced it.
+  '@radix-ui|the primitive vendor is Base UI since V50a (design §14) — import from @base-ui/react'
+  'asChild|Radix composition prop; Base UI composes with render={<El />} (design §14, V50a)'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how

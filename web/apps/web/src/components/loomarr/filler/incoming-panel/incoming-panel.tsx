@@ -284,10 +284,12 @@ const IncomingPanel = ({
                     <Outlet/>, so nesting the review under /filler would make the whole surface
                     unreachable while every unit test stayed green (PROGRESS.md records the
                     near-miss). This tab is an additional door to that route, not a replacement. */}
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/filler/splits/$proposalId" params={{ proposalId: reel.proposalId }}>
-                    Review cuts
-                  </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link to="/filler/splits/$proposalId" params={{ proposalId: reel.proposalId }} />}
+                >
+                  Review cuts
                 </Button>
               </li>
             ))}
