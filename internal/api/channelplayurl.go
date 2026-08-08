@@ -70,11 +70,14 @@ type deviceProfileBody struct {
 	MaxResolution int      `json:"maxResolution,omitempty" doc:"Tallest video height the client will direct-play (e.g. 1080); 0 = no cap."`
 }
 
-// toPlan resolves a client-sent profile body to the session's EncodePlan (§9.1 V48). The one place
-// the wire body meets the domain resolver; the safe-default and round-down guarantees live in
-// playout.ResolvePlan.
-func (b deviceProfileBody) toPlan() playout.EncodePlan {
-	return playout.ResolvePlan(playout.DeviceProfile{
+// servedPlan resolves how a channel is served AS to this client (§9.1 V50 content-driven codec).
+// The one place the wire body meets the domain resolver — but the decision is now driven by the
+// CHANNEL's broadcast codec (what its content is), with the client body only gating copy-native vs
+// down-convert. An h264 channel is always PlanBaseline; an HEVC channel is served native (fMP4) to
+// an HEVC-capable client and down-converted to h264/TS otherwise. The safe defaults live in
+// playout.ServedPlan (empty channelCodec / empty body ⇒ PlanBaseline).
+func (b deviceProfileBody) servedPlan(channelCodec string) playout.EncodePlan {
+	return playout.ServedPlan(channelCodec, playout.DeviceProfile{
 		Video:         b.Video,
 		Audio:         b.Audio,
 		Video10Bit:    b.Video10Bit,
@@ -118,10 +121,12 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 
 	exp := time.Now().Add(playURLTTL)
 	quality := normalizeQuality(in.Quality)
-	// Resolve the client's advertised capabilities to the session's EncodePlan (§9.1 V48). An absent
-	// or empty body resolves to PlanBaseline, so a client that proves nothing plays h264/aac — the
-	// black-frame-safe default. The plan is baked into the signed URL as an unsigned `?plan=`.
-	plan := in.Body.toPlan()
+	// Resolve how this channel is served to this client (§9.1 V50 content-driven codec): the
+	// channel's stored broadcast codec decides the timeline codec/container, and the client body only
+	// gates copy-native vs down-convert. An h264 channel (or an empty codec on an un-backfilled row)
+	// resolves to PlanBaseline — h264/aac, the black-frame-safe default; an HEVC channel serves native
+	// fMP4 only to an HEVC-capable client. The plan is baked into the signed URL as an unsigned `?plan=`.
+	plan := in.Body.servedPlan(ch.BroadcastCodec)
 	rel := s.playoutHLSPathURL(ch.ID, quality, plan, exp)
 	if rel == "" {
 		// The RELATIVE URL fails only when the signature can't be minted (no playout token) —

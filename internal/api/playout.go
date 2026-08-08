@@ -175,11 +175,12 @@ func (s *Server) playoutURL(kind, channelID string) string {
 	return fmt.Sprintf("%s/v1/playout/%s/%s?%s", base, kind, url.PathEscape(channelID), q.Encode())
 }
 
-// withPlan appends `&target=<t>` to a playout URL that already carries a query (playoutURL always
-// sets the token, so there is always a `?`). It is the one place the wire token is written, keyed
-// off Target.String, so the playlist→program hop cannot drift from the enum. mediaserver is the
-// default everywhere downstream, so it is written explicitly rather than omitted — a present token
-// is self-documenting in a log line and leaves no ambiguity about which audience a session serves.
+// withPlan appends `&plan=<p>` to a playout URL that already carries a query (playoutURL always
+// sets the token, so there is always a `?`). It is the one place the plan is written on the internal
+// playlist→program hop, keyed off EncodePlan.String, so a program child inherits the session's served
+// plan (§9.1 V50: PlanBaseline=h264/TS, PlanHEVC8/10=HEVC/fMP4) and its copy/transcode decision
+// cannot drift from the parent's. Written explicitly (including PlanBaseline) so the served plan is
+// self-documenting in a log line and unambiguous about how the child must encode.
 func withPlan(rawURL string, t playout.EncodePlan) string {
 	return rawURL + "&" + playoutPlanParam + "=" + url.QueryEscape(t.String())
 }

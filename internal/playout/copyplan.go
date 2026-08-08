@@ -44,6 +44,14 @@ type MediaFormat struct {
 	Bitrate   int64   // overall bit/s; 0 when unknown
 }
 
+// IsHEVCCodec reports whether a codec-name string names HEVC/H.265. ffprobe emits "hevc" but
+// some sources/containers label the same codec "h265", so both count — the single place that
+// equivalence lives (used by the copy-plan bucketing and the §9.1 V50 channel-codec measurement).
+func IsHEVCCodec(codec string) bool {
+	c := strings.ToLower(codec)
+	return c == "hevc" || c == "h265"
+}
+
 // TenBit reports whether the video is 10-bit (or deeper) — the `…10le`/`…12le` pixel-format
 // suffix. Relevant because some encoders (e.g. h264_nvenc) only do 8-bit, so a 10-bit source
 // forces a pixel-format conversion on transcode (a trap recorded in PROGRESS.md).
@@ -201,7 +209,57 @@ func resolve(p DeviceProfile) EncodePlan {
 // into the session's EncodePlan (§9.1 V48). Thin wrapper over the pure resolve so the bucketing logic
 // stays unexported and single-sourced. (Named ResolvePlan, not Resolve, because quality.go already
 // owns Resolve for the quality-tier→Profile decision — a different resolution entirely.)
+//
+// ⚠ V50 (below) makes ServedPlan the entry point the play URL uses — it gates on the CHANNEL's codec,
+// not the client's capabilities. ResolvePlan remains the pure profile-richness helper ServedPlan
+// composes, and the one place the hevc8-vs-hevc10 (10-bit + surround) distinction lives.
 func ResolvePlan(p DeviceProfile) EncodePlan { return resolve(p) }
+
+// ServedPlan decides the EncodePlan a channel is served AS to a given client (§9.1 V50 — the
+// content-driven model). Two independent axes decide it:
+//
+//   - channelCodec — the channel's UNIFORM broadcast codec (store.broadcast_codec), derived from its
+//     library content. This is what the timeline normalizes to, and it is what makes the HEVC/fMP4
+//     path legal (one codec end to end). An h264 channel is ALWAYS served h264/TS — no client can
+//     promote it to HEVC, because the timeline isn't HEVC to begin with.
+//   - the client DeviceProfile — a yes/no gate on whether this client can decode the channel's native
+//     codec. It never PICKS the channel codec; it only decides copy-native vs down-convert.
+//
+// The result maps onto the existing EncodePlan container/copy machinery unchanged:
+//   - h264 channel                    → PlanBaseline (h264/TS, copy the h264 show).
+//   - hevc channel, client plays hevc → PlanHEVC8/10 (fMP4, copy the hevc show; 10-bit+surround
+//     picks hevc10 via the profile-richness helper).
+//   - hevc channel, client can't      → PlanBaseline (down-convert the whole channel to h264/TS).
+//
+// So WantsHEVCOutput()/the fMP4 container/the HEVC transcode target all key on the plan exactly as
+// before — but the plan now expresses "how this channel is served", not "the richest bucket the
+// client supports". PlanFull (tuner) is never returned here; the tuner path resolves it explicitly.
+func ServedPlan(channelCodec string, p DeviceProfile) EncodePlan {
+	if !IsHEVCCodec(channelCodec) {
+		return PlanBaseline // h264 (or any non-hevc) channel: served h264/TS to everyone.
+	}
+	// HEVC channel. Serve it natively ONLY to a client that proved it can decode HEVC; otherwise
+	// down-convert the whole channel to h264/TS for this client (its own session, keyed on the plan).
+	clientHEVC := has(p.Video, "hevc", "h264") || has(p.Video, "h265", "h264")
+	if !clientHEVC {
+		return PlanBaseline // capable-channel, incapable-client → down-convert.
+	}
+	// Native HEVC copy. resolve() picks hevc8 vs hevc10 from the profile's 10-bit + surround richness
+	// — but it can also fall to PlanBaseline if the profile is threadbare, which for an HEVC channel a
+	// client already proved it can take, so floor it at hevc8 (never serve an HEVC channel as TS to a
+	// client that CAN play HEVC — that would needlessly transcode).
+	if plan := resolve(p); plan == PlanHEVC8 || plan == PlanHEVC10 {
+		return plan
+	}
+	return PlanHEVC8
+}
+
+// WantsHEVCOutput reports whether this plan's stream must be HEVC-coded end to end (§9.1 V49). The
+// HEVC plans (hevc8/hevc10) are served over fMP4, which cannot mix codecs mid-stream, so any program
+// they transcode must output HEVC, not the h264 default. Baseline (h264/TS) and full (tuner) do not.
+func (p EncodePlan) WantsHEVCOutput() bool {
+	return p == PlanHEVC8 || p == PlanHEVC10
+}
 
 // EstimatedCost is a plan's admission cost BEFORE any program has reported (§9.1 V49 admission).
 // It is the conservative guess used at session start, corrected to the real cost once the first

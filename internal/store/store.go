@@ -45,6 +45,9 @@ type ChannelStore interface {
 	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
 	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
 	UpsertChannel(ctx context.Context, ch Channel) error
+	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
+	// a targeted write used after the lineup is bound, so it never races the binder's row write.
+	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
 	ListChannels(ctx context.Context) ([]Channel, error)
 	DeleteChannel(ctx context.Context, id string) error
 	// PutChannelIcon stores (or replaces) a channel's uploaded icon bytes + MIME (the

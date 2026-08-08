@@ -53,18 +53,31 @@ type Reconciler interface {
 	Reconcile(ctx context.Context, channelID string) error
 }
 
+// CodecComputer derives + stores a channel's uniform broadcast codec from its content (§9.1 V50):
+// it samples the just-bound lineup's files, probes their codecs, and persists the majority. The
+// binder stays codec-agnostic (it has no library/probe access by design) and only TRIGGERS this
+// after the lineup is written — the probe itself lives in the composition root's playout resolver,
+// which already owns library resolution + ffprobe. Nil ⇒ the channel keeps its stored codec (h264
+// by migration default), so an install without playout wiring binds exactly as before.
+type CodecComputer interface {
+	ComputeChannelCodec(ctx context.Context, channelID string) (string, error)
+}
+
 // Binder materializes approved proposals onto channels (§7). Holds the store + an
 // optional Reconciler + a logger.
 type Binder struct {
 	store Store
 	rec   Reconciler
+	codec CodecComputer
 	log   *slog.Logger
 }
 
 // New builds a Binder. rec may be nil (no Tunarr wired yet); the bind still
 // creates/patches the channel row, it just skips the immediate reconcile push.
-func New(st store.Store, rec Reconciler, log *slog.Logger) *Binder {
-	return &Binder{store: st, rec: rec, log: log}
+// codec may be nil (no playout wiring); the bind then leaves the channel's stored
+// broadcast codec (h264 default) untouched — see CodecComputer.
+func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
+	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
 
 // newChannelID mints the id for a channel created by approving an intent. The
@@ -167,6 +180,18 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 	}
 	if err := b.store.UpsertChannel(ctx, ch); err != nil {
 		return "", err
+	}
+
+	// Compute + store the channel's uniform broadcast codec from the just-bound content (§9.1 V50):
+	// the majority codec of the lineup's landed programs, which the timeline normalizes to. Runs here
+	// so the codec is set BEFORE the first play (no default-h264 window). Best-effort — a probe
+	// failure logs and leaves the stored codec at its current value (h264 default on a first bind),
+	// never failing the bind: the channel must go on air even if the codec measurement can't.
+	if b.codec != nil {
+		if _, cerr := b.codec.ComputeChannelCodec(ctx, ch.ID); cerr != nil && b.log != nil {
+			b.log.Warn("broadcast codec not computed (channel keeps stored codec)",
+				"channel", ch.ID, "err", cerr)
+		}
 	}
 
 	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries.

@@ -1,9 +1,13 @@
 import type { DeviceProfileBody } from "@loomarr/api";
 
-// deviceProfile() — what THIS browser can direct-play, as a DeviceProfile the play-url endpoint
-// resolves to an EncodePlan (§9.1 V48). The server buckets it and, when the browser can decode HEVC,
-// serves a `-c:v copy` stream instead of paying a full HEVC→h264 transcode — the black-frame-free,
-// GPU-free path a media server has always had.
+// deviceProfile() — what THIS browser can direct-play, as a DeviceProfile the play-url endpoint uses
+// (§9.1 V48/V50). Its role is a yes/no GATE, not a plan picker: under the V50 content-driven model the
+// CHANNEL's broadcast codec decides the timeline codec/container, and this profile only tells the
+// server whether this client can decode that codec natively. When the channel is HEVC and the browser
+// can decode HEVC, the server serves a `-c:v copy` fMP4 stream instead of a full HEVC→h264 transcode
+// (the black-frame-free, GPU-free path a media server has always had); when it can't, the server
+// down-converts that same channel to h264/TS for this client. An h264 channel is served h264/TS to
+// everyone regardless of what this profile advertises.
 //
 // ⚠ We ask MediaSource.isTypeSupported, NOT video.canPlayType — the same lesson the transport split
 // learned (use-hls-player.ts): Chromium's canPlayType lies ("maybe" for things it cannot decode),

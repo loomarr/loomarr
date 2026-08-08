@@ -851,6 +851,45 @@ Truly merging plans into one process when their copy sets coincide would require
 to introspect each program and re-key mid-stream — complexity that buys one avoided remux, so we do
 not; the copy plan already makes the compatible case cheap.
 
+### The broadcast codec follows the CONTENT, not the client (V50)
+
+V48 let the *client* pick the plan: a HEVC-capable browser got `hevc8`, so a channel's stream codec
+was whatever the watching device could take. That is wrong for two reasons the live smoke exposed.
+First, **HEVC HLS must be fMP4** (Apple spec — HEVC-in-MPEG-TS black-screens even on HEVC-capable
+browsers), and **fMP4 binds one decoder from its init segment: it cannot survive a mid-stream codec
+change.** A channel whose *content* mixes codecs (an HEVC show, then a VP9/h264/theora commercial —
+the filler dir is a zoo) black-screens at the commercial on the fMP4 path. Second, letting the client
+pick meant the same channel had no single truth about what codec it *is*.
+
+**V50 inverts it: a channel has ONE uniform broadcast codec, derived from its library CONTENT, and the
+client capability only gates how that one codec is delivered.** Two independent axes:
+
+- **Channel codec** — `channels.broadcast_codec` (`h264` | `hevc`), the **majority** of its titles'
+  probed video codecs, computed at **curation** (when the binder writes the lineup) and stored, not
+  probed at runtime. An even split (or an un-measurable lineup) defaults to `h264` — the maximally
+  compatible floor. This is the codec the whole timeline **normalizes to**: the matching show `-c
+  copy`s; a minority-codec title and *all filler* transcode to it, so the stream stays single-codec
+  and therefore fMP4-legal. Everything non-HEVC (vp9/mpeg2/…) counts as `h264` for the majority vote.
+  Derived state: an ADD COLUMN migration defaults every existing channel to `h264`, a one-time async
+  boot pass backfills the real value (a data migration can't probe — no library access), and each
+  re-curation recomputes it.
+- **Client `DeviceProfile`** (the V48 type, **reused**) — now a **yes/no gate** on whether the client
+  can decode the channel's native codec, *not* a plan picker. `ServedPlan(channelCodec, profile)`:
+  - h264 channel → `baseline` (h264/TS) for **everyone** — no client can promote it, the timeline
+    isn't HEVC to begin with.
+  - HEVC channel + HEVC-capable client → `hevc8`/`hevc10` (fMP4, `-c copy` the show; richness picks 8-
+    vs 10-bit as before).
+  - HEVC channel + incapable client → `baseline`: the **whole channel down-converts** to h264/TS for
+    that client (its own session, keyed on the plan).
+
+The V48 `EncodePlan` enum, the `?plan=` URL/session key, the fMP4-vs-TS container branch, and the HEVC
+transcode-target swap (`WantsHEVCOutput`) are all **unchanged** — but the plan now means *how this
+channel is served*, so `hevc8`/`hevc10` arise **only for an HEVC channel** and the "normalize a
+transcoded program to HEVC" wiring becomes exactly "match the channel codec." `resolve(profile)`
+survives as the pure profile-richness helper `ServedPlan` composes. Drop the profile and you either
+black-screen incapable clients or transcode-for-everyone and lose the copy win for capable ones —
+neither axis replaces the other.
+
 ### Admission is cost-aware, against measured capacity (V49)
 
 The admission gate bounds *what saturates the box*, which is the **video transcode**, not the number

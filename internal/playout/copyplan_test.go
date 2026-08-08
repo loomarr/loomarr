@@ -78,6 +78,48 @@ func TestResolvePlan(t *testing.T) {
 	}
 }
 
+// ServedPlan is the V50 content-driven decision: the CHANNEL's codec drives the served plan, the
+// client only gates copy-native vs down-convert. These cases pin what separates V50 from the old
+// client-driven model — most sharply, that an h264 channel is NEVER promoted to HEVC no matter how
+// capable the client, and an HEVC channel IS down-converted for an incapable client.
+func TestServedPlan(t *testing.T) {
+	hevcClient := DeviceProfile{Video: []string{"hevc"}, Audio: []string{"aac"}}
+	hevc10Client := DeviceProfile{Video: []string{"hevc"}, Audio: []string{"eac3"}, Video10Bit: true}
+	h264Client := DeviceProfile{Video: []string{"h264"}, Audio: []string{"aac"}}
+	cases := []struct {
+		name         string
+		channelCodec string
+		client       DeviceProfile
+		want         EncodePlan
+	}{
+		// h264 channel: ALWAYS baseline. The client's HEVC capability is irrelevant — the timeline
+		// isn't HEVC, so there's nothing to serve natively. This is THE V50 inversion: content wins.
+		{"h264 channel, h264 client → baseline", "h264", h264Client, PlanBaseline},
+		{"h264 channel, HEVC-capable client → STILL baseline", "h264", hevc10Client, PlanBaseline},
+		{"empty channel codec (un-backfilled) → baseline", "", hevc10Client, PlanBaseline},
+		{"unknown channel codec → baseline (safe)", "vp9", hevcClient, PlanBaseline},
+
+		// HEVC channel, capable client: serve native. Richness picks hevc8 vs hevc10.
+		{"HEVC channel, HEVC client → hevc8 (native copy)", "hevc", hevcClient, PlanHEVC8},
+		{"HEVC channel, HEVC+10bit+surround client → hevc10", "hevc", hevc10Client, PlanHEVC10},
+		// A capable-but-threadbare HEVC client still gets HEVC (floored at hevc8) — never TS, which
+		// would needlessly transcode an HEVC channel a client already proved it can play.
+		{"HEVC channel, HEVC client, empty audio → hevc8 (floored, not TS)", "hevc", DeviceProfile{Video: []string{"hevc"}}, PlanHEVC8},
+
+		// HEVC channel, INCAPABLE client: down-convert the whole channel to h264/TS for this client.
+		{"HEVC channel, h264-only client → baseline (down-convert)", "hevc", h264Client, PlanBaseline},
+		{"HEVC channel, empty profile → baseline (down-convert)", "hevc", DeviceProfile{}, PlanBaseline},
+
+		// h265 alias on both axes resolves the same as hevc.
+		{"h265 channel, h265 client → hevc8", "h265", DeviceProfile{Video: []string{"h265"}}, PlanHEVC8},
+	}
+	for _, c := range cases {
+		if got := ServedPlan(c.channelCodec, c.client); got != c.want {
+			t.Errorf("%s: ServedPlan(%q, %+v) = %v, want %v", c.name, c.channelCodec, c.client, got, c.want)
+		}
+	}
+}
+
 // EncodePlan ↔ wire token round-trips, and an unknown/empty token degrades to PlanBaseline — the SAFE
 // default (h264/aac), the inverse of the retired ParseTarget whose unknown default was the BROAD set.
 // This contract is load-bearing and is one of the two black-frame guards (the other is resolve).

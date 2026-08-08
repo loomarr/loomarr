@@ -44,7 +44,7 @@ UPDATE channels c SET reconcile_deadline = $1
 FROM due WHERE c.id = due.id
 RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
-          c.reconcile_deadline, c.updated_at`
+          c.broadcast_codec, c.reconcile_deadline, c.updated_at`
 
 // Postgres job claim: FOR UPDATE SKIP LOCKED so replicas never run one job twice
 // (§8/§18). Placeholders: $1=leaseUntil, $2=now, $3=limit.

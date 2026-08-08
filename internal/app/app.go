@@ -460,6 +460,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
 			// cache bug degrades a grid rather than a broadcast.
 			channels: st,
+			// The store, narrowed to the single derived-column write ComputeChannelCodec makes
+			// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
+			codecs:   st,
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
@@ -534,6 +537,37 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}()
 		}
 		playoutResolverSvc = playoutRes
+
+		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
+		// channel to h264 — a data migration runs in the store with no library access, so it
+		// cannot probe. Channels bound AFTER this upgrade get their codec at bind; the ones that
+		// predate it would otherwise stay h264 (and needlessly transcode an HEVC library down)
+		// until their next re-curation. This pass recomputes each once, off the boot path.
+		//
+		// Async and best-effort: channels still play (as h264) while it runs, so a slow or
+		// failing probe delays convergence, never startup. Idempotent — ComputeChannelCodec
+		// writes the measured majority every time — so it needs no "already backfilled" marker
+		// and re-running on a later boot is harmless bounded work.
+		if st != nil {
+			go func() {
+				chans, lerr := st.ListChannels(rootCtx)
+				if lerr != nil {
+					log.Warn("playout: broadcast-codec backfill skipped (channel list failed)", "err", lerr)
+					return
+				}
+				for _, ch := range chans {
+					if rootCtx.Err() != nil {
+						return // shutting down mid-backfill
+					}
+					if _, cerr := playoutRes.ComputeChannelCodec(rootCtx, ch.ID); cerr != nil {
+						log.Debug("playout: broadcast-codec backfill for a channel failed",
+							"channel", ch.ID, "err", cerr)
+					}
+				}
+				log.Info("playout: broadcast-codec backfill complete", "channels", len(chans))
+			}()
+		}
+
 		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
 		// admission gate first reads it — the operator-facing counterpart to "encoder probed".
 		hwEncodeSlots = func(ctx context.Context) int {
@@ -585,7 +619,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if channelSvc != nil {
 			rec = channelSvc
 		}
-		chBinder = binder.New(st, rec, log)
+		// The playout resolver doubles as the CodecComputer (§9.1 V50): it owns library
+		// resolution + ffprobe, so it measures + stores the channel's broadcast codec after a
+		// bind. Assigned only when playout is wired — passing a typed-nil *playoutResolver as a
+		// non-nil interface would defeat the binder's nil-guard and panic on the first bind, so
+		// it stays a nil interface unless playoutRes actually exists.
+		var codec binder.CodecComputer
+		if playoutRes != nil {
+			codec = playoutRes
+		}
+		chBinder = binder.New(st, rec, codec, log)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),

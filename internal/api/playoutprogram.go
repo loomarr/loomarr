@@ -169,13 +169,25 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		targetLUFS = s.liveConfig("filler.target_lufs")
 	}
 
-	// The copy/transcode plan (§9.1 direct play, V47): copy the video when the target can play it
-	// (the common case — instant, no GPU), transcode only what it cannot. The TARGET comes from the
-	// request (`?target=`), because a channel's stream is not one thing — a media-server tuner and a
-	// browser have different codec tolerance, so each attaches its own session with its own target,
-	// and this handler feeds that session's parent. ParseTarget defaults to the media server (the
-	// broader set, and the historical behaviour), so an un-parameterised request is unchanged.
+	// The copy/transcode plan (§9.1 direct play, V47; V50 content-driven codec): copy the video when
+	// the served plan can carry this program's codec (the common case — instant, no GPU), transcode
+	// only what it cannot. The plan comes from the request (`?plan=`), which encodes HOW THIS SESSION
+	// SERVES THE CHANNEL (V50): PlanBaseline = h264/TS (a native-h264 channel, or an HEVC channel
+	// down-converted for an incapable client); PlanHEVC8/10 = the HEVC channel served native over
+	// fMP4. A channel's stream is not one thing — different clients attach their own session with their
+	// own served plan — and this handler feeds that session's parent. ParseEncodePlan defaults to
+	// PlanBaseline, so an un-parameterised request stays h264/TS (the black-frame-safe floor).
 	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
+
+	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
+	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
+	// change. So when THIS program must transcode video (a VP9/h264/mpeg2 commercial between HEVC
+	// shows), transcode it to HEVC — not the profile's default h264 — so the fMP4 the browser plays
+	// never switches codec. The HEVC show itself still `-c copy`s (plan.CopyVideo); only the odd
+	// incompatible program pays an HEVC transcode. For a baseline (h264/TS) session this is a no-op.
+	if encPlan.WantsHEVCOutput() && !plan.CopyVideo {
+		profile.Encoder = playout.HEVCEncoderFor(profile.Encoder)
+	}
 
 	spec := playout.ProgramSpec{
 		Profile:    profile,
