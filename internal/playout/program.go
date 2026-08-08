@@ -7,22 +7,23 @@ import (
 	"time"
 )
 
-// Per-program encode args — the child half of the concat mechanism (§9.1, prior-art §1).
+// Per-program encode args (§9.1, prior-art §1) — DIRECT PLAY by default (V47).
 //
-// THE CORRECTNESS BURDEN LIVES HERE. The parent process concatenates these children with
-// `-c copy`, which is only legal if every child produced byte-compatible output: same
-// resolution, same framerate, same codec, same pixel format, same track count. A child that
-// quietly differs produces a stream players reject partway through — and the symptom (a
-// channel that dies a few minutes in) points nowhere near the cause, because the child that
-// caused it exited cleanly and long ago.
+// A program is COPIED when its codec already fits the target, and transcoded only for the
+// streams that do not (copyplan.go, PlanCopy). The common case — an h264 file to a browser or
+// TV — copies the video untouched (instant, no GPU) and at most re-encodes an incompatible audio
+// track. Transcoding the whole program is the exception, for a codec the target genuinely cannot
+// play (HEVC/MPEG-2 to an h264-only client).
 //
-// So every knob that could vary between programs is pinned by the Profile, and the things a
-// real library item can spring on us — multiple audio tracks, subtitles, HDR, 10-bit, an
-// unusual framerate — are normalized away rather than passed through.
+// ⚠ **This removed the old uniform-profile burden.** Programs used to be force-transcoded into
+// ONE profile so the parent could concatenate them with `-c copy` — which required every child to
+// be byte-identical (same resolution/framerate/codec/pixfmt). That constraint is gone: the session
+// marks each program boundary with an HLS `#EXT-X-DISCONTINUITY` (session/hls layer), so programs
+// may differ. What is pinned now is only what the CHOSEN PATH needs — a transcode still normalizes
+// to the Profile so a re-encoded program is internally consistent; a copy passes the source through.
 //
-// Every flag below is either verified in Tunarr's source or executed against the live dev
-// Emby (prior-art §5a–§5c). None of it is guessed; the ones that look redundant are the ones
-// that took a real failure to find.
+// The transcode flags below are each verified in Tunarr's source or against the live dev Emby
+// (prior-art §5a–§5c); the ones that look redundant are the ones a real failure found.
 
 // readrateInitialBurst is how many seconds of content ffmpeg may read flat-out before
 // settling to realtime pacing.
@@ -36,70 +37,55 @@ import (
 // stalls the pipeline (see TestCardArgs, which uses plain `-re`).
 const readrateInitialBurst = 10
 
-// ProgramArgs builds the args to encode ONE program, starting `offset` in, for `limit`.
-//
-// This is what the "what's on now" endpoint spawns per program. It streams finite MPEG-TS to
-// stdout and then EXITS — that EOF is the sequencing signal the parent's concat demuxer acts
-// on (prior-art §1). Nothing here loops; a child that never ended would pin the channel to
-// one program forever.
-//
-// Audio track 0 — the file's first — which is the historical behaviour and correct only when
-// the caller has no language preference to apply. ProgramArgsWithAudio is what the resolver
-// uses; see audio.go for why the choice cannot be expressed in ffmpeg's args alone.
-func ProgramArgs(p Profile, streamURL string, offset, limit time.Duration) []string {
-	return ProgramArgsWithAudio(p, streamURL, offset, limit, 0)
+// ProgramSpec is everything one program's encode needs. A struct rather than the old positional
+// ladder (ProgramArgs → …WithAudio → …Normalised, which had reached six parameters): the copy plan
+// is a first-class field, not a seventh positional, and adding the next knob widens a struct instead
+// of forking another function.
+type ProgramSpec struct {
+	Profile Profile
+	// Input is the ffmpeg input — a local file path (direct play) or an HTTP URL (fallback). The
+	// input-option branch (reconnect flags) keys on isHTTP, so both are handled from the one field.
+	Input         string
+	Offset, Limit time.Duration
+	AudioTrack    int      // the N in -map 0:a:N (PickAudioTrack); 0 = the file's first track
+	TargetLUFS    string   // filler loudness normalisation (§10 V40); "" = none (library titles)
+	Plan          CopyPlan // per-stream copy/transcode decision (PlanCopy); zero value = transcode both
 }
 
-// ProgramArgsWithAudio is ProgramArgs with an explicit audio track index (§9.1).
+// ProgramArgs builds the args to encode (or COPY) ONE program, starting Offset in, for Limit.
 //
-// `audioTrack` is an index among AUDIO streams — the `N` in `-map 0:a:N` — as returned by
-// PickAudioTrack. Out-of-range values are not clamped here: ffprobe and ffmpeg enumerate the
-// same file the same way, so a bad index means the two disagreed, and failing loudly at encode
-// beats silently playing a track the operator did not ask for.
-func ProgramArgsWithAudio(
-	p Profile, streamURL string, offset, limit time.Duration, audioTrack int,
-) []string {
-	return ProgramArgsNormalised(p, streamURL, offset, limit, audioTrack, "")
-}
-
-// ProgramArgsNormalised is ProgramArgsWithAudio with an optional loudness target (§10 V40).
+// This is what the "what's on now" endpoint spawns per program. It streams finite MPEG-TS to stdout
+// and then EXITS — that EOF is the sequencing signal (prior-art §1). Nothing here loops.
 //
-// ⚠ **Only FILLER passes a target.** The caller decides, because only the caller knows what it is
-// playing: `Airing.Source` is set for a resolved filler clip and empty for a library title, which
-// is the discriminator — no new plumbing needed. Normalising a feature film to advert loudness
-// would flatten its dynamic range, and the problem being solved (adverts recorded a decade apart
-// at wildly different levels — a measured 11 dB spread) is a filler problem.
-//
-// `targetLUFS` empty ⇒ byte-identical to what shipped before V40, which is what keeps every
-// existing caller and every existing test meaning what it meant.
-func ProgramArgsNormalised(
-	p Profile, streamURL string, offset, limit time.Duration, audioTrack int, targetLUFS string,
-) []string {
+// The copy plan drives the shape:
+//   - Plan.CopyVideo ⇒ `-c:v copy`, and the whole transcode apparatus (hardware device init,
+//     hardware decode, scale filter, video encode) is SKIPPED — a copy decodes nothing, so setting
+//     up a decoder/encoder would be wasted work and, worse, a chance for a hardware-init failure to
+//     take down a program that needed no hardware at all.
+//   - else the video transcodes to the Profile (the exception path, unchanged from before).
+//   - Plan.CopyAudio ⇒ `-c:a copy`; else the audio alone transcodes to AAC.
+func ProgramArgs(spec ProgramSpec) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-progress", progressPipeArg(), "-nostats",
 	}
 
-	// HARDWARE DEVICE SETUP, and it must come before everything — it is a global option, and
-	// placed after `-i` it silently applies to nothing.
-	//
-	// Reused from the capability prober rather than reimplemented. Writing a second version
-	// of this reproduced a bug the prober had already found and fixed: without the device,
-	// `hwupload` fails with "A hardware device reference is required to upload frames to",
-	// which reads like a filter bug and sends you looking in the wrong place. The prober's
-	// version is also per-encoder correct in ways a generic one is not (QSV needs an explicit
-	// render node; Vulkan names its device differently).
-	args = append(args, deviceInitArgs(p.Encoder)...)
-
-	// HARDWARE DECODE. Measured on a 4K 10-bit HEVC film with an RTX 3080 Ti: the child went
-	// from 341% CPU to ~0%, with the GPU decoder taking it instead.
-	//
-	// That number is the whole justification. Moving only the ENCODE to the GPU barely helped —
-	// CPU actually ROSE from 260% to 341%, because the decode was the real cost and it stopped
-	// being throttled by a slow software encoder. For 4K sources the decode dominates.
-	args = append(args, hardwareDecodeArgs(p.Encoder)...)
+	// Hardware setup is a TRANSCODE concern: a video copy neither decodes nor encodes, so it needs
+	// no device and no hardware decoder. Emitting them for a copy is not just wasteful — a device
+	// init that fails (no /dev/dri in a container) would kill a program that could have copied fine.
+	if !spec.Plan.CopyVideo {
+		// HARDWARE DEVICE SETUP, before everything — it is a global option; after `-i` it silently
+		// applies to nothing. Reused from the capability prober (per-encoder correct: QSV needs an
+		// explicit render node, Vulkan names its device differently).
+		args = append(args, deviceInitArgs(spec.Profile.Encoder)...)
+		// HARDWARE DECODE. Measured on a 4K 10-bit HEVC film with an RTX 3080 Ti: the child went
+		// from 341% CPU to ~0%, the GPU decoder taking it instead. For 4K sources the decode
+		// dominates, so moving only the encode to the GPU barely helped.
+		args = append(args, hardwareDecodeArgs(spec.Profile.Encoder)...)
+	}
 
 	// --- Input options (before -i, so they apply to THIS input) ---
+	p, streamURL, offset, limit, audioTrack, targetLUFS := spec.Profile, spec.Input, spec.Offset, spec.Limit, spec.AudioTrack, spec.TargetLUFS
 
 	// Reconnect flags, CHILD tier — and ONLY for an http input. See isHTTP.
 	//
@@ -162,9 +148,25 @@ func ProgramArgsNormalised(
 		args = append(args, "-t", seconds(limit))
 	}
 
-	args = append(args, p.scaleFilterArgs()...)
-	args = append(args, p.videoEncodeArgs()...)
-	args = append(args, p.audioEncodeArgsNormalised(targetLUFS)...)
+	// VIDEO: copy (direct play — the fast path) or transcode to the Profile (the exception).
+	if spec.Plan.CopyVideo {
+		// `-c:v copy` passes the source video through untouched. No scale filter, no encoder —
+		// those are transcode-only. This is the whole point: an h264 file plays with zero video
+		// re-encode.
+		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args, p.scaleFilterArgs()...)
+		args = append(args, p.videoEncodeArgs()...)
+	}
+
+	// AUDIO: copy when the target plays it, else transcode ONLY the audio (cheap) to AAC. The
+	// loudness filter (filler) is a transcode-time concern, so a copy skips it — a copied advert
+	// keeps its own levels, which is acceptable and far better than a needless re-encode.
+	if spec.Plan.CopyAudio {
+		args = append(args, "-c:a", "copy")
+	} else {
+		args = append(args, p.audioEncodeArgsNormalised(targetLUFS)...)
+	}
 
 	// `+initial_discontinuity` tells the downstream demuxer the first timestamps are not
 	// necessarily zero — true for anything joining a live stream mid-flight, and true here

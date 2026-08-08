@@ -1,6 +1,7 @@
 export * from "./channel-health";
 export * from "./channel-identity-field";
 export * from "./channel-row-menu";
+export * from "./channel-watch";
 export * from "./guide-page";
 export * from "./guide-window";
 export * from "./use-channel-lineup";

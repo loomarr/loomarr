@@ -46,6 +46,15 @@ type PlayoutResolver interface {
 	// track) whenever the preference cannot be resolved, so a probe failure costs the language
 	// and never the programme.
 	AudioTrackFor(ctx context.Context, streamURL string) int
+	// Tracks probes the audio + subtitle tracks of the channel's CURRENTLY-AIRING program, for
+	// the Watch surface's pickers (§9.1, V46). The options a viewer sees are what the airing file
+	// actually carries — not a hardcoded list and not an app setting. Best-effort: empty tracks
+	// when nothing is airing or the probe fails, so a UI request never blocks on a bad probe.
+	Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error)
+	// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play,
+	// V47): copy the streams the target can play, transcode the rest. Fails safe toward transcode
+	// (the zero CopyPlan) when the source cannot be probed.
+	PlanFor(ctx context.Context, input string, target playout.Target) playout.CopyPlan
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -76,6 +85,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	// The codec audience this program is for (§9.1 V47) — set on the URL by the session parent that
+	// requested it, so a browser session's programs plan for the browser and a tuner session's for
+	// the media server. It drives both the copy plan below and which session gets this child's
+	// telemetry. Parsed once here so the offline-card path (which also spawns a child) carries it too.
+	target := playout.ParseTarget(r.URL.Query().Get(playoutTargetParam))
 
 	airing, streamURL, err := s.playoutResolver.AiringNow(r.Context(), channelID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -108,9 +123,26 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		if s.playoutFont != nil {
 			font = s.playoutFont()
 		}
-		args := playout.OfflineCardArgs(profile, font,
-			"Nothing scheduled", channelID, offlineCardDuration)
-		s.streamChild(w, r, channelID, "offline card", args, profile.Encoder)
+		// The card is a synthetic lavfi source, so it does not contend for VRAM the way a decode+
+		// transcode does — but it still uses the profile's encoder, so it gets the SOFTWARE fallback
+		// (not the VRAM eviction step): a card that cannot hardware-encode should still render rather
+		// than leave the channel with no offline frame either.
+		card := func(enc playout.Encoder) []string {
+			p := profile
+			p.Encoder = enc
+			return playout.OfflineCardArgs(p, font, "Nothing scheduled", channelID, offlineCardDuration)
+		}
+		if c := s.startChild(r.Context(), channelID, target, profile.Encoder, card(profile.Encoder)); c != nil {
+			s.pipeChild(w, r, channelID, "offline card", c)
+			return
+		}
+		if profile.Encoder != playout.EncoderSoftware {
+			if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, card(playout.EncoderSoftware)); c != nil {
+				s.pipeChild(w, r, channelID, "offline card", c)
+				return
+			}
+		}
+		s.failProgram(w, r, channelID, "offline card", "the offline card could not be rendered")
 		return
 	}
 
@@ -135,9 +167,28 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		targetLUFS = s.liveConfig("filler.target_lufs")
 	}
 
-	args := playout.ProgramArgsNormalised(
-		profile, streamURL, airing.Offset, airing.Remaining, audioTrack, targetLUFS)
-	s.streamChild(w, r, channelID, airing.Title, args, profile.Encoder)
+	// The copy/transcode plan (§9.1 direct play, V47): copy the video when the target can play it
+	// (the common case — instant, no GPU), transcode only what it cannot. The TARGET comes from the
+	// request (`?target=`), because a channel's stream is not one thing — a media-server tuner and a
+	// browser have different codec tolerance, so each attaches its own session with its own target,
+	// and this handler feeds that session's parent. ParseTarget defaults to the media server (the
+	// broader set, and the historical behaviour), so an un-parameterised request is unchanged.
+	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, target)
+
+	spec := playout.ProgramSpec{
+		Profile:    profile,
+		Input:      streamURL,
+		Offset:     airing.Offset,
+		Limit:      airing.Remaining,
+		AudioTrack: audioTrack,
+		TargetLUFS: targetLUFS,
+		Plan:       plan,
+	}
+	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
+	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
+	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.
+	// A copy plan (no video transcode) has no ladder — a copy that produces nothing is a bad file.
+	s.streamProgram(w, r, channelID, target, airing.Title, spec)
 }
 
 // offlineCardDuration is how long one offline-card request lasts before the demuxer re-asks.
@@ -147,39 +198,126 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 // channel is not re-encoding every second.
 const offlineCardDuration = 30 * time.Second
 
-// streamChild spawns one encoder and pipes it to the response until it ends.
+// streamProgram runs ONE program down the retry ladder (§9.1 V47), then streams it to the response.
 //
-// Deliberately NOT going through the session Manager. A session is a SHARED encoder fanned out to
-// N viewers; this is the opposite — one private child per demuxer request, whose whole job is to
-// END so the parent advances. Routing it through the session map would collide on the channel key
-// and, worse, the grace-period teardown would keep a finished program's encoder alive.
-func (s *Server) streamChild(
-	w http.ResponseWriter, r *http.Request, channelID, what string, args []string, enc playout.Encoder,
+// The ladder exists because a hardware encode can fail SILENTLY — most often the shared GPU is out
+// of VRAM (the suggester's model is resident, §8.2), where the encoder cannot allocate its device
+// context and emits zero frames with no error. A silent zero-byte encode is a black channel. So:
+//
+//  1. Try the spec as-is (hardware, if that is what the Profile resolved).
+//  2. Produced nothing AND this is a video transcode? Reclaim VRAM (evict the LLM) and retry the
+//     SAME encoder — the freed VRAM is often all it needed.
+//  3. Still nothing? Rebuild the spec with the software encoder (libx264) and run that — slower, but
+//     the channel PLAYS instead of going black. Software is the floor.
+//
+// A `-c copy` program is NOT laddered: a copy that produces nothing is a bad source file, which no
+// encoder change fixes — so it runs once and fails through (attempt still surfaces the stderr).
+//
+// The ladder is only possible because startChild PEEKS the first chunk before committing the HTTP
+// response: with nothing yet written, a retry is free. Once bytes are flowing, there is no retry —
+// a mid-stream death is a normal program boundary, handled by the demuxer re-requesting.
+func (s *Server) streamProgram(
+	w http.ResponseWriter, r *http.Request, channelID string, target playout.Target, what string, spec playout.ProgramSpec,
 ) {
-	// The child dies with the request. If the parent ffmpeg goes away — the channel was stopped,
-	// the last viewer left, the process was killed — this context cancels and takes the encoder
-	// with it. Without that binding a child outlives its parent and becomes an orphan nobody
-	// will ever reap.
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	// Progress from THIS child is the channel's real encoder telemetry (V16). Reported to the
-	// session by channel id, because the child is per-program and short-lived while the
-	// dashboard asks about the channel. A report for a channel with no live session is dropped
-	// by the manager — the child is bound to its request and can briefly outlive a teardown.
-	onProgress := func(p playout.Progress) {
-		if s.playoutSessions != nil {
-			s.playoutSessions.ReportProgram(channelID, enc, p)
-		}
-	}
-	proc, err := s.playoutEncoder(ctx, args, onProgress)
-	if err != nil {
-		s.log.Warn("playout: could not start the program encoder",
-			"channel", channelID, "program", what, "err", err)
-		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the program",
-			"Loomarr couldn't start encoding this program.")
+	// Attempt 1: as resolved (hardware when available).
+	if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
+		s.pipeChild(w, r, channelID, what, c)
 		return
 	}
+
+	// Only a VIDEO TRANSCODE can be rescued by the ladder — a copy failing is a bad file.
+	transcoding := !spec.Plan.CopyVideo
+	if !transcoding {
+		s.failProgram(w, r, channelID, what, "the source could not be read")
+		return
+	}
+
+	// Attempt 2: reclaim VRAM (evict the resident LLM), then retry the SAME hardware encoder. The
+	// zero-byte first attempt is the "VRAM tight" signal — no polling, no guess (§8.2 Evictor).
+	if s.reclaimVRAM != nil && spec.Profile.Encoder != playout.EncoderSoftware {
+		s.log.Info("playout: hardware encode produced nothing — reclaiming GPU memory and retrying",
+			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
+		s.reclaimVRAM(r.Context())
+		if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, playout.ProgramArgs(spec)); c != nil {
+			s.pipeChild(w, r, channelID, what, c)
+			return
+		}
+	}
+
+	// Attempt 3: software fallback. The channel plays (slower) rather than going black.
+	softSpec := spec
+	softSpec.Profile.Encoder = playout.EncoderSoftware
+	s.log.Warn("playout: falling back to software encoding for this program",
+		"channel", channelID, "program", what, "from", spec.Profile.Encoder)
+	if c := s.startChild(r.Context(), channelID, target, playout.EncoderSoftware, playout.ProgramArgs(softSpec)); c != nil {
+		s.pipeChild(w, r, channelID, what, c)
+		return
+	}
+
+	// Even software produced nothing — genuinely unplayable (a corrupt file, a missing mount).
+	s.failProgram(w, r, channelID, what, "no encoder could produce this program")
+}
+
+// liveChild is an encoder that has PROVEN it produces output — its peeked first chunk plus the
+// still-running process. Returned by startChild only on success, so a caller holding one can commit
+// the HTTP response knowing bytes will flow.
+type liveChild struct {
+	proc   *playout.Process
+	first  []byte             // the first chunk, already read — must be written before draining proc
+	enc    playout.Encoder    // for telemetry
+	target playout.Target     // for telemetry
+	cancel context.CancelFunc // ties the child to the request; pipeChild owns calling it
+}
+
+// startChild spawns one encoder and PEEKS its first chunk to prove it produces output before any
+// response is committed. Returns the live child on success, or nil when the encoder produced nothing
+// (the silent-failure case the ladder rescues) — logging the stderr either way. Deliberately NOT
+// through the session Manager: this is one private child per demuxer request whose whole job is to
+// END so the parent advances (routing it through the session map would collide on the channel key).
+func (s *Server) startChild(
+	ctx context.Context, channelID string, target playout.Target, enc playout.Encoder, args []string,
+) *liveChild {
+	// The child dies with the request. cancel is handed to the caller (pipeChild) which owns the
+	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
+	// orphan before the next ladder step.
+	cctx, cancel := context.WithCancel(ctx)
+
+	enc2 := enc // capture for the progress closure
+	onProgress := func(p playout.Progress) {
+		if s.playoutSessions != nil {
+			s.playoutSessions.ReportProgram(channelID, target, enc2, p)
+		}
+	}
+	proc, err := s.playoutEncoder(cctx, args, onProgress)
+	if err != nil {
+		s.log.Warn("playout: could not start the program encoder", "channel", channelID, "err", err)
+		cancel()
+		return nil
+	}
+
+	// PEEK the first chunk. A hardware-init failure closes stdout with no bytes — read returns
+	// EOF/zero, which is exactly the silent failure the ladder exists to catch. A real encode
+	// returns a chunk within a moment (the readrate burst fills the buffer immediately).
+	buf := make([]byte, 64*1024)
+	n, readErr := proc.Stdout.Read(buf)
+	if n == 0 {
+		// Nothing produced. Surface ffmpeg's own last stderr line — "Device creation failed",
+		// "No capable devices found" — the actionable reason, not a generic message.
+		s.log.Warn("playout: encoder produced NO OUTPUT",
+			"channel", channelID, "encoder", enc, "ffmpeg", proc.LastError(), "readErr", readErr)
+		cancel()
+		_ = proc.Wait()
+		return nil
+	}
+	first := make([]byte, n)
+	copy(first, buf[:n])
+	return &liveChild{proc: proc, first: first, enc: enc, target: target, cancel: cancel}
+}
+
+// pipeChild commits the HTTP response and streams the live child to it: the peeked first chunk, then
+// the rest of the encoder's output, until the program ends (EOF) or the client disconnects.
+func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, what string, c *liveChild) {
+	defer c.cancel()
 
 	flusher, _ := w.(http.Flusher)
 	w.Header().Set("Content-Type", "video/mp2t")
@@ -188,34 +326,27 @@ func (s *Server) streamChild(
 	// known until the encode is done.
 	w.Header().Set("Accept-Ranges", "none")
 	w.WriteHeader(http.StatusOK)
-	if flusher != nil {
+
+	// The peeked first chunk goes out FIRST — it was read off the pipe before the header, so
+	// skipping it would drop the start of the program.
+	if _, err := w.Write(c.first); err == nil && flusher != nil {
 		flusher.Flush()
 	}
 
-	n, copyErr := copyAndFlush(w, proc.Stdout, flusher)
+	_, _ = copyAndFlush(w, c.proc.Stdout, flusher)
 
-	// Reap it. The deferred cancel would also kill it, but waiting HERE means the process is
-	// gone before the response ends, so the encoder count is accurate the moment the demuxer
-	// re-requests.
-	cancel()
-	_ = proc.Wait()
+	// Reap before returning so the encoder count is accurate the moment the demuxer re-requests.
+	c.cancel()
+	_ = c.proc.Wait()
+}
 
-	// ZERO BYTES IS ALWAYS WRONG, whether or not the copy reported an error.
-	//
-	// This condition was `copyErr != nil && n == 0` and it never fired for the case that
-	// matters most: an encoder that dies at startup closes its stdout, which the copy sees as
-	// a clean EOF — so copyErr is NIL and n is 0. The channel silently produced nothing while
-	// the viewer's player sat buffering, and the only clue (ffmpeg's stderr) was logged at
-	// DEBUG. Found the hard way: a misconfigured hardware encoder in a container with no GPU
-	// took a live channel down with not one line in the log at INFO.
-	//
-	// ffmpeg's own last stderr line is the useful part — "Device creation failed", "No such
-	// file or directory" — so it is surfaced here rather than left to a debug-level sink.
-	if n == 0 {
-		s.log.Warn("playout: the encoder produced NO OUTPUT — this channel will not play",
-			"channel", channelID, "program", what,
-			"ffmpeg", proc.LastError(), "copyErr", copyErr)
-	}
+// failProgram writes the 502 for a program that could not be produced at all — every ladder step
+// exhausted. Retryable by the demuxer (it re-requests), so a transient library outage self-heals.
+func (s *Server) failProgram(w http.ResponseWriter, r *http.Request, channelID, what, reason string) {
+	s.log.Warn("playout: program could not be produced — this channel will not play",
+		"channel", channelID, "program", what, "reason", reason)
+	s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the program",
+		"Loomarr couldn't start encoding this program.")
 }
 
 // copyAndFlush streams src to dst, flushing so the demuxer sees bytes promptly.

@@ -1,7 +1,7 @@
 import { channelsApi, toProblem } from "@loomarr/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MoreVertical, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -170,9 +170,26 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
                 pos ? "visible" : "invisible",
               )}
             >
-              {/* Edit channel — FIRST, and the reason the menu is worth opening: the row's own
-                click target opens the channel too, but a menu whose only options are Pause and
-                Delete reads as a destructive-actions menu. The mock leads with Edit. */}
+              {/* Watch — FIRST, matching the mock's guide menu: the everyday reason to open a
+                channel from the guide is to watch it. Routes straight to the Watch surface (§9.1);
+                a paused channel still opens it (the surface shows the "off air" poster and
+                explains, rather than the menu guessing). */}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  swallow(e);
+                  close();
+                  void navigate({ to: "/channels/$id/watch", params: { id: channel.id } });
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors hover:bg-static-700 hover:text-static-0"
+              >
+                <Tv className="size-4 text-signal" aria-hidden />
+                Watch
+              </button>
+
+              {/* Edit channel — the row's own click target opens the channel too, but a menu whose
+                only options are Pause and Delete reads as a destructive-actions menu. */}
               <button
                 type="button"
                 role="menuitem"

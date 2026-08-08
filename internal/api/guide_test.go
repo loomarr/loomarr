@@ -20,7 +20,7 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
-// GET /v1/guide — the time-grid endpoint (V13b). Distinct from /playout/guide.xml, which the
+// GET /v1/guide — the time-grid endpoint (V13b). Distinct from /v1/playout/guide.xml, which the
 // tests in playoutguide_test.go cover: same arithmetic underneath, different projection and a
 // different auth model.
 

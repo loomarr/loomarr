@@ -92,6 +92,40 @@ func TestCollectionID(t *testing.T) {
 	}
 }
 
+// EpisodeStillURL reads still_path from GET /tv/{id}/season/{s}/episode/{e} (the live-TV
+// timeline's per-episode hover thumbnail). An episode with an image returns imageBase+path, one
+// without returns "", and a not-found episode returns "" + no error (best-effort, mirrors
+// PosterURL's no-poster/not-found handling).
+func TestEpisodeStillURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tv/1396/season/1/episode/1": // Breaking Bad S1E1 — has a still
+			_, _ = w.Write([]byte(`{"id":62085,"still_path":"/abc.jpg"}`))
+		case "/tv/1396/season/1/episode/2": // has no still image
+			_, _ = w.Write([]byte(`{"id":62086,"still_path":""}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := tmdb.NewWithBase(srv.URL, "key")
+
+	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 1); err != nil || u != "https://image.tmdb.org/t/p/w500/abc.jpg" {
+		t.Errorf("EpisodeStillURL(1396,1,1) = %q,%v want image url,nil", u, err)
+	}
+	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 2); err != nil || u != "" {
+		t.Errorf("EpisodeStillURL(1396,1,2) = %q,%v want \"\",nil (no still)", u, err)
+	}
+	// A season/episode TMDB doesn't have → "" and NO error (not-found is not a failure).
+	if u, err := c.EpisodeStillURL(context.Background(), 1396, 99, 99); err != nil || u != "" {
+		t.Errorf("EpisodeStillURL(1396,99,99) = %q,%v want \"\",nil (not found)", u, err)
+	}
+	// Zero id → no HTTP call, "" + nil.
+	if u, err := c.EpisodeStillURL(context.Background(), 0, 1, 1); err != nil || u != "" {
+		t.Errorf("EpisodeStillURL(0,_,_) = %q,%v want \"\",nil", u, err)
+	}
+}
+
 // ContentRating pulls the US rating from /content_ratings (tv) or /release_dates
 // (movie) — the source for an acquisition's rating before it's in the library (§389).
 // Sparse coverage is normal, so a title with none returns "" and no error.

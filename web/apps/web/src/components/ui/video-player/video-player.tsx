@@ -1,98 +1,87 @@
-import * as SliderPrimitive from "@radix-ui/react-slider";
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib";
+import { FullscreenButton } from "./fullscreen-button";
+import { HoldControlsContext } from "./internal/hold-controls-context";
+import { useAutoHideControls } from "./internal/use-auto-hide-controls";
+import { useFullscreen } from "./internal/use-fullscreen";
+import { usePlaybackState } from "./internal/use-playback-state";
+import { LiveIndicator } from "./live-indicator";
+import { PlayToggle } from "./play-toggle";
 import type { VideoPlayerProps } from "./video-player.type";
+import { VolumeControl } from "./volume-control";
 
 // VideoPlayer — the app's own video surface, with Loomarr's controls rather than the browser's
-// (V39, frontend-design §3 Layer 1).
+// (V39, frontend-design §3 Layer 1). It COMPOSES named controls (PlayToggle, VolumeControl,
+// FullscreenButton, LiveIndicator, and the live scrubber slot) rather than hand-rolling each.
 //
-// ⚠ **Custom controls rather than `<video controls>` — a maintainer decision (2026-08-03) that
-// buys a real cost.** Native controls are keyboard-correct, screen-reader-correct and free;
-// hand-built ones make every one of those this file's job. What they buy is a player that reads
-// as part of the app, which matters wherever watching something is part of a decision rather than
-// the point of the page. The consequences are handled explicitly below — keyboard shortcuts, an
-// ARIA slider with real semantics, a focus route to every control — and are why this file is not
-// short.
+// ⚠ **Custom controls rather than `<video controls>` — a maintainer decision (2026-08-03).** Native
+// controls are keyboard-correct and free; hand-built ones make that this file's job (see the
+// keyboard shortcuts). What they buy is a player that reads as part of the app.
 //
-// ⚠ **Deliberately knows NOTHING about clips.** It takes a `src` and a `title`, both plain
-// strings. The filler catalog wraps it in a dialog and hands it `clipMediaURL(clip.hash)`; the
-// channel-watch surface the mock sketches plays a live stream through the same component. Putting
-// `ClipDTO` in here would make "core primitive" a lie the first time something that is not a clip
-// needed a player.
+// ⚠ **Knows NOTHING about clips or channels.** It takes a `src`/`attach` and slots (`topBar`,
+// `scrubber`); the filler catalog hands it a clip URL, channel-watch hands it hls.js + a live
+// timeline. Putting `ClipDTO`/channel concepts in here would make "core primitive" a lie.
 
-// The scrub step for arrow keys, in seconds. Five is the convention every video player uses and a
-// useful fraction of a 30-second advert.
-const SCRUB_STEP = 5;
-
-// mmss renders a media time. Local rather than `formatClipDuration` from @loomarr/core: that one
-// is about CLIPS, and this primitive is the one thing here that must not know what a clip is.
+// mmss renders a media time (m:ss) — for the non-live clip player's progress readout.
 const mmss = (seconds: number): string => {
   const total = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
-const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerProps) => {
+// The scrub step for arrow keys, in seconds (non-live only). Five is the convention.
+const SCRUB_STEP = 5;
+
+const VideoPlayer = ({
+  src,
+  title,
+  autoPlay,
+  leading,
+  live,
+  scrubber,
+  topBar,
+  timeLeft,
+  barControls,
+  attach,
+  className,
+}: VideoPlayerProps) => {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [current, setCurrent] = useState(0);
-  // ⚠ Duration comes from the ELEMENT once loaded, never from a caller-supplied length. A caller
-  // that has one (a clip's probed `durationMs`) can still disagree with the file — a
-  // variable-frame-rate capture, or a file replaced on disk since the last scan. Scrubbing
-  // against a length the element does not agree with puts the handle in the wrong place and makes
-  // the end unreachable.
-  const [duration, setDuration] = useState(0);
-  // Distinguishes "still loading" from "0 seconds in": both are `current === 0`, and only one of
-  // them should render as a dashed placeholder.
-  const [ready, setReady] = useState(false);
 
-  // ⚠ Reset when the SOURCE changes. A player reused for a second video (a dialog reopened on a
-  // different clip) would otherwise show the previous one's elapsed time and playing state until
-  // the new metadata arrived.
+  // The three concerns, each its own tested hook (see ./internal): the element's transport, the
+  // fullscreen quirk, and the auto-hide overlay. VideoPlayer is left composing them into the frame.
+  const {
+    playing,
+    muted,
+    setMuted,
+    volume,
+    setVolume,
+    current,
+    duration,
+    ready,
+    toggle,
+    seekTo,
+    mediaHandlers,
+  } = usePlaybackState(videoRef);
+  const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
+  const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
+    useAutoHideControls(playing);
+
+  // Custom source binding (hls.js). `attach(el)` runs on mount and its cleanup on unmount. Stays in
+  // the component because it wires the caller's `attach` onto the element the component owns.
   useEffect(() => {
-    setPlaying(false);
-    setCurrent(0);
-    setDuration(0);
-    setReady(false);
-  }, []);
-
-  const seekTo = useCallback((seconds: number) => {
+    if (!attach) return;
     const el = videoRef.current;
     if (!el) return;
-    // Clamped against the ELEMENT's duration: seeking past the end throws in some browsers and
-    // silently does nothing in others, and `NaN` (before metadata) would poison the expression
-    // and freeze the handle.
-    const max = Number.isFinite(el.duration) ? el.duration : 0;
-    el.currentTime = Math.min(Math.max(0, seconds), max);
-  }, []);
+    return attach(el);
+  }, [attach]);
 
-  const toggle = useCallback(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (el.paused) {
-      // ⚠ The promise is caught, not ignored. Autoplay policies reject `play()` when the gesture
-      // heuristic is not satisfied, and an uncaught rejection is an unhandled promise error in
-      // the console on a perfectly ordinary interaction.
-      void el.play().catch(() => setPlaying(false));
-    } else {
-      el.pause();
-    }
-  }, []);
-
-  // ⚠ **Keyboard shortcuts are not a nicety — they are what native controls would have given for
-  // free.** Space/K toggle, arrows scrub, M mutes: the set every player has, so someone who has
-  // used one already knows this one.
-  //
-  // Bound on the player's own surface rather than on `window`, so they cannot fire while it is
-  // off-screen, and skipped when focus is in a control that uses the same keys itself (the slider
-  // handles its own arrows; Space on a <button> must click it).
+  // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows
+  // seek (non-live only). Bound on the player's surface so they cannot fire while it is off-screen,
+  // and skipped when focus is in a control that uses the same keys (Space on a <button> must click).
   const onKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as HTMLElement;
     const isSlider = target.getAttribute("role") === "slider";
     const isButton = target.tagName === "BUTTON";
-
     switch (e.key) {
       case " ":
       case "k":
@@ -101,12 +90,13 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
         toggle();
         break;
       case "ArrowLeft":
-        if (isSlider) return;
+        // Live has nothing to seek to, so the scrub shortcuts are inert.
+        if (isSlider || live) return;
         e.preventDefault();
         seekTo(current - SCRUB_STEP);
         break;
       case "ArrowRight":
-        if (isSlider) return;
+        if (isSlider || live) return;
         e.preventDefault();
         seekTo(current + SCRUB_STEP);
         break;
@@ -119,136 +109,105 @@ const VideoPlayer = ({ src, title, autoPlay, leading, className }: VideoPlayerPr
     }
   };
 
-  // ⚠ **The scrubber's keyboard contract, click-to-seek and drag are RADIX's, not ours** (§14,
-  // V39). This file previously hand-rolled `role="slider"` with its own arrow/Home/End handling —
-  // semantics that rot silently, because nothing fails when they drift, and a screen reader then
-  // announces an affordance that does not work. Deleting ~40 lines of that in favour of a
-  // primitive the app already uses for Select/Dialog/Tooltip is strictly less to get wrong.
-
-  // ⚠ The keyboard handler below sits on a plain <div> on purpose: it is a SHORTCUT layer over a
-  // composite widget, not a control itself. Every action it offers also has a focusable button or
-  // slider inside, so making this wrapper focusable would add a tab stop that does nothing when
-  // activated.
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: shortcut layer, see above
-    <div className={cn("overflow-hidden", className)} onKeyDown={onKeyDown}>
-      <div className="relative aspect-video w-full bg-black">
-        {/* ⚠ No <track>: callers pass archive footage and live streams, neither of which has a
-            caption track to point at. An empty one would assert captions exist. (No suppression
-            needed — this config does not enable `useMediaCaption`.) */}
+    <HoldControlsContext.Provider value={holdControls}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: shortcut layer over a composite widget; every action also has a focusable control inside */}
+      <div
+        ref={wrapperRef}
+        className={cn("group/player relative aspect-video w-full overflow-hidden bg-black", className)}
+        onKeyDown={onKeyDown}
+        onMouseEnter={onPointerActive}
+        onMouseMove={onPointerActive}
+        // Leaving just drops `hovering`; the effect arms the short GRACE hide. A menu open at the time
+        // still keeps the bar (held > 0), so leaving TOWARD the portalled menu doesn't pull it away.
+        onMouseLeave={onPointerLeave}
+        onFocus={revealControls}
+      >
         <video
           ref={videoRef}
-          src={src}
-          // cursor-pointer because the frame itself toggles playback (onClick below) — the
-          // convention every video player follows, and an arrow over it would hide the
-          // affordance entirely since there is no other visual cue.
-          className="size-full cursor-pointer"
+          // `attach` owns the source when present (hls.js binds via attachMedia); else the plain URL.
+          src={attach ? undefined : src}
+          className={cn("size-full cursor-pointer", !controlsShown && "cursor-none")}
           autoPlay={autoPlay}
           muted={muted}
           playsInline
           onClick={toggle}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => {
-            // Guarded: a live stream reports Infinity, and a bar computed from that renders a
-            // handle at NaN% — which CSS drops, leaving it stuck at 0.
-            const d = e.currentTarget.duration;
-            setDuration(Number.isFinite(d) ? d : 0);
-            setReady(true);
-          }}
+          // play/pause, elapsed, and metadata-load are owned by usePlaybackState.
+          {...mediaHandlers}
         />
 
-        {/* Title top-right, `leading` top-left, both on a scrim: they sit over arbitrary video,
-            which has NO guaranteed contrast behind text. The same legibility rule the clip card's
-            overlays follow. */}
-        {(title || leading) && (
-          <div className="pointer-events-none absolute top-0 right-0 left-0 flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent p-3">
-            <div className="pointer-events-auto shrink-0">{leading}</div>
-            {title && (
-              <p className="pointer-events-auto min-w-0 truncate text-right font-medium text-sm text-static-100">
-                {title}
-              </p>
+        {/* TOP BAR — over a scrim, fading with the controls. Live: LiveIndicator (left) + the caller's
+          `topBar` (CH + encoder line), matching the mock. Non-live: `leading` (left) + `title`
+          (right), the clip player's existing chrome. */}
+        {(live ? topBar : title || leading) && (
+          <div
+            className={cn(
+              "pointer-events-none absolute top-0 right-0 left-0 flex items-center gap-2.5 bg-linear-to-b from-black/70 to-transparent p-3 transition-opacity duration-200",
+              controlsShown ? "opacity-100" : "opacity-0",
+            )}
+          >
+            {live ? (
+              <>
+                <LiveIndicator />
+                <div className="pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5">{topBar}</div>
+              </>
+            ) : (
+              <>
+                <div className="pointer-events-auto shrink-0">{leading}</div>
+                {title && (
+                  <p className="pointer-events-auto ml-auto min-w-0 truncate text-right font-medium text-sm text-static-100">
+                    {title}
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
-      </div>
 
-      {/* The control bar — amber on the app's mono type, which is the whole reason these are
-          hand-built rather than the browser's. */}
-      <div className="flex items-center gap-3 border-border border-t bg-card px-4 py-3">
-        {/* ⚠ The app's `Button` primitive, NOT a hand-rolled <button>. Everything a control
-            needs — the pointer cursor Tailwind v4's Preflight stopped providing, the focus ring,
-            the disabled handling — lives there once. Three hand-styled controls in this file each
-            re-deriving `cursor-pointer` was the smell that said so. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggle}
-          // ⚠ The name changes with the STATE. A button permanently called "Play" lies as soon as
-          // the video is playing, and a screen-reader user has no other way to know.
-          aria-label={playing ? "Pause" : "Play"}
-          className="size-8 shrink-0 rounded-full text-signal hover:bg-transparent hover:text-signal-400"
-        >
-          {playing ? (
-            <Pause className="fill-current" aria-hidden />
-          ) : (
-            <Play className="fill-current" aria-hidden />
+        {/* CONTROL BAR — over a bottom scrim, auto-hiding. A COLUMN: the live scrubber gets its own
+          FULL-WIDTH row above the buttons (the mock); the buttons row follows. */}
+        <div
+          className={cn(
+            "absolute right-0 bottom-0 left-0 flex flex-col gap-2.5 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
+            controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
           )}
-        </Button>
-
-        {/* Radix Slider (§14). It owns the WAI-ARIA contract, arrow/Home/End stepping, pointer
-            capture, drag and click-anywhere-to-seek — all of which this file used to hand-roll.
-
-            ⚠ `aria-valuetext` is still ours, and is the one thing Radix cannot infer: without it
-            a screen reader reads `aria-valuenow` as a bare number of seconds ("4"), where what a
-            listener needs is "0:04 of 0:30".
-
-            ⚠ `max` is floored to at least 1. Radix divides by the range to place the thumb, so a
-            max of 0 — every render before metadata arrives — yields NaN and React drops the style
-            entirely, leaving the thumb stuck at the left edge even once playback starts. */}
-        <SliderPrimitive.Root
-          value={[current]}
-          max={Math.max(1, duration)}
-          step={0.1}
-          onValueChange={([v]) => seekTo(v ?? 0)}
-          className="group relative flex h-4 flex-1 cursor-pointer touch-none select-none items-center"
         >
-          <SliderPrimitive.Track className="relative h-1.5 w-full grow rounded-full bg-static-700">
-            <SliderPrimitive.Range className="absolute h-full rounded-full bg-signal" />
-          </SliderPrimitive.Track>
-          {/* The handle appears on hover or focus, as it did before — a permanently visible dot on
-              a 1.5px bar reads as clutter on a control most people never touch.
+          {/* Row 1 (live): the full-width mini-guide scrubber. */}
+          {live && scrubber && <div className="w-full">{scrubber}</div>}
 
-              ⚠ **`aria-label` and `aria-valuetext` belong on the THUMB, not the Root.** Radix puts
-              `role="slider"` here, so ARIA attributes on the Root land on a plain <span> and are
-              ignored outright. Verified in the browser: with them on the Root, `aria-valuetext`
-              read back as `null` and the control announced `aria-valuenow="3.4068"` — a raw float
-              of seconds, which is exactly the semantics the switch to Radix was meant to secure. */}
-          <SliderPrimitive.Thumb
-            aria-label="Seek"
-            aria-valuetext={`${mmss(current)} of ${mmss(duration)}`}
-            className="block size-3 rounded-full bg-signal opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-card group-hover:opacity-100"
-          />
-        </SliderPrimitive.Root>
+          {/* Row 2 — the mock's control row: LEFT-PACKED play → volume → time, with only fullscreen
+            pushed to the far right (ml-auto). No stretching spacer: everything sits next to play. */}
+          <div className="flex items-center gap-3">
+            <PlayToggle playing={playing} onToggle={toggle} />
+            <VolumeControl
+              volume={volume}
+              muted={muted}
+              onVolumeChange={setVolume}
+              onMutedChange={setMuted}
+            />
 
-        {/* tabular-nums so the row does not jitter as the digits change — it sits beside a slider
-            whose handle is already moving. */}
-        <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
-          {ready ? `${mmss(current)} / ${mmss(duration)}` : "–:–– / –:––"}
-        </span>
+            {/* Time, right after volume (mock order). Live: the caller's programme time (schedule);
+              non-live (a clip): the video's own elapsed / total. */}
+            {live
+              ? timeLeft && (
+                  <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">{timeLeft}</span>
+                )
+              : ready && (
+                  <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
+                    {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
+                  </span>
+                )}
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMuted((m) => !m)}
-          aria-label={muted ? "Unmute" : "Mute"}
-          className="size-8 shrink-0 rounded-full text-static-300 hover:bg-transparent hover:text-static-100"
-        >
-          {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
-        </Button>
+            {/* The right cluster (ml-auto): the caller's bar controls (audio/subtitles) then fullscreen
+              at the far edge — the "controls beside fullscreen" the maintainer asked for. */}
+            <div className="ml-auto flex items-center gap-1.5">
+              {barControls}
+              <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </HoldControlsContext.Provider>
   );
 };
 

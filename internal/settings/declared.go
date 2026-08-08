@@ -71,6 +71,15 @@ func declared() []Setting {
 			Doc: "An API key from your media server. Lets Loomarr read your library and set up the TV guide.",
 		},
 		{
+			// Direct play (§9.1 V47): translate the media server's file paths to where Loomarr can
+			// read them, so playout reads the FILE and copies it instead of transcoding the media
+			// server's HTTP stream. Empty = no mapping, so playout falls back to the HTTP stream —
+			// which is what a media server on another host with no shared mount needs.
+			Key: "library.path_map", EnvVar: "LIBRARY_PATH_MAP", Group: GroupMediaServer,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
+		},
+		{
 			Key: "season.precision", EnvVar: "SEASON_PRECISION", Group: GroupMediaServer,
 			Kind: KindEnum, Enum: []EnumOption{opt("series", "Whole series"), opt("seasons", "Requested seasons")}, Default: "series", Advanced: true,
 			Doc: "When adding a series, get the whole show (default) or just the seasons you asked for.",
@@ -206,7 +215,19 @@ func declared() []Setting {
 		{
 			Key: "playout.audio_language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
 			Kind: KindString, Default: "eng",
-			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original.",
+			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1).",
+		},
+		{
+			// Subtitles are burned into the shared encode, not offered as a soft toggle: one
+			// encoder serves every viewer of a channel (§9.1), so a viewer-selectable soft
+			// track would require per-viewer output. Off is the default and costs nothing.
+			Key: "playout.subtitles", EnvVar: "PLAYOUT_SUBTITLES", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("off", "Off — no subtitles"),
+				opt("burn", "Burn in — the preferred-language track, rendered into the picture"),
+			},
+			Default: "off",
+			Doc:     "Whether internal playout burns subtitles into the channel. Off is the default. Burn in renders the preferred-language subtitle track into the picture for the whole channel — everyone watching sees the same thing, because one encoder serves them all. A channel can override this on its Watch tab (§9.1).",
 		},
 		{
 			Key: "playout.quality_tier", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -231,6 +252,18 @@ func declared() []Setting {
 			Key: "playout.ffmpeg_path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Default: "ffmpeg", Advanced: true,
 			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
+		},
+		{
+			// Where the in-app HLS player's segments are written (§9.1 Watch, V46). Empty =
+			// the OS temp dir, which is the right default for most installs. An operator points
+			// it at a fast disk or a tmpfs when playing several channels to browsers, or away
+			// from a small root filesystem — the footprint is a rolling window of a few segments
+			// per watched channel, cleaned up when the last viewer leaves. Advanced: a wrong
+			// value degrades in-app playback, never the media-server streams (those never touch
+			// this dir).
+			Key: "playout.hls_dir", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching.",
 		},
 		{
 			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
@@ -320,8 +353,8 @@ func declared() []Setting {
 			// Local-only (§8.2): a hosted service has no model to hold in memory, so this
 			// is hidden for the openai provider rather than shown as an inert control.
 			Key: "llm.keep_alive", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
-			Kind: KindDuration, Default: "30m", Advanced: true,
-			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster. Set to 0 to free the memory as soon as each request finishes.",
+			Kind: KindDuration, Default: "2m", Advanced: true,
+			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
 		},
 		{

@@ -4,7 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 // (V-nav-paths). "advanced" was never a real section (P7 folded it into the info panel's
 // diagnostics disclosure), so it is deliberately absent here too — the same fallback the old
 // validateSearch gave it.
-const SECTION_IDS = ["info", "programming", "filler", "danger"] as const;
+const SECTION_IDS = ["info", "watch", "programming", "filler", "danger"] as const;
 
 // /channels/$id opens on Channel info — the default section, and the only one a viewer can
 // reach (the layout hides the tab bar entirely for a non-admin).
