@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useHoldControls } from "./internal/hold-controls-context";
 import { VideoPlayer } from "./video-player";
 
 // The app's video surface (V39). Custom controls were a maintainer decision, which means the
@@ -23,9 +24,10 @@ describe("VideoPlayer", () => {
 
   // A player under a heading that already names the thing does not repeat it — and the whole top
   // overlay goes with it rather than rendering an empty scrim over the frame.
-  it("renders no title overlay without a title", () => {
+  it("renders no top-bar overlay without a title or leading", () => {
     const { container } = render(<VideoPlayer src={SRC} />);
-    expect(container.querySelector(".bg-gradient-to-b")).toBeNull();
+    // The top scrim uses the linear-gradient utility; absent when there is nothing to put in it.
+    expect(container.querySelector(".bg-linear-to-b")).toBeNull();
   });
 
   // ⚠ **The mute button's NAME tracks its state.** A control permanently labelled "Mute" lies as
@@ -40,24 +42,26 @@ describe("VideoPlayer", () => {
     expect(screen.queryByRole("button", { name: "Mute" })).not.toBeInTheDocument();
   });
 
-  // ⚠ **`aria-valuetext` must be a TIME, and must live on the element carrying `role="slider"`.**
-  // Radix puts that role on the Thumb, so attributes set on the Root land on a plain <span> and
-  // are silently ignored — which is exactly what shipped first: the control announced
-  // `aria-valuenow="3.4068"`, a raw float of seconds, and `aria-valuetext` read back as null.
-  // Caught in the browser, not here, which is why it is pinned here now.
-  it("announces the playhead as a time, on the element that owns the slider role", () => {
+  // A non-live player (a clip) has NO seek bar (V47 removed it — clips are short previews). The only
+  // slider present is the VOLUME control; there is no "Seek" slider. This pins that removal so a
+  // seek bar cannot creep back in unnoticed.
+  it("has no seek slider — only the volume slider", () => {
     render(<VideoPlayer src={SRC} title="Frosted Flakes" />);
 
-    const slider = screen.getByRole("slider");
-    expect(slider).toHaveAttribute("aria-label", "Seek");
-    expect(slider).toHaveAttribute("aria-valuetext", "0:00 of 0:00");
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders).toHaveLength(1);
+    expect(sliders[0]).toHaveAttribute("aria-label", "Volume");
+    // Fullscreen is the player's own control now (icon, no text).
+    expect(screen.getByRole("button", { name: "Fullscreen" })).toBeInTheDocument();
   });
 
-  // Before metadata arrives there is no honest time to show. A dashed placeholder says "not known
-  // yet"; "0:00 / 0:00" would assert a zero-length video.
-  it("shows a placeholder time until metadata loads", () => {
+  // Before metadata arrives there is no honest time to show, so a clip's time readout is omitted
+  // (not "0:00 / 0:00", which would assert a zero-length video). It appears once metadata loads —
+  // which jsdom never fires, so the "absent until ready" half is what is testable here.
+  it("shows no time readout until metadata loads", () => {
     render(<VideoPlayer src={SRC} />);
-    expect(screen.getByText("–:–– / –:––")).toBeInTheDocument();
+    expect(screen.queryByText(/\d+:\d+ \/ \d+:\d+/)).not.toBeInTheDocument();
+    expect(screen.queryByText("–:–– / –:––")).not.toBeInTheDocument();
   });
 
   // `leading` is how a dialog puts its close button ON the frame rather than above it. The
@@ -65,5 +69,70 @@ describe("VideoPlayer", () => {
   it("renders a caller-supplied leading control", () => {
     render(<VideoPlayer src={SRC} leading={<button type="button">Close</button>} />);
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+});
+
+// Auto-hide — the Emby/Jellyfin behaviour that native `<video controls>` gives free but custom
+// controls must own. The controls OVERLAY the video and fade out during playback; the fade is the
+// bottom control bar's opacity class (`opacity-100` shown ⇄ `opacity-0` hidden).
+//
+// ⚠ jsdom fires no media events on its own, but `fireEvent.play(video)` dispatches a real `play`
+// event, which flips our `playing` state — that is what unlocks testing the hide path (hiding only
+// happens while playing). Timers are faked so the IDLE/GRACE windows are deterministic.
+describe("VideoPlayer auto-hide", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // The bottom control bar is the scrim carrying the shown/hidden opacity — grab it by that gradient.
+  const controlBar = (container: HTMLElement) => container.querySelector(".from-black\\/80") as HTMLElement;
+  const frame = (container: HTMLElement) => container.querySelector(".group\\/player") as HTMLElement;
+
+  const startPlaying = (container: HTMLElement) => {
+    // Reveal (pointer over the frame), then start playback so the hide logic is armed.
+    fireEvent.mouseMove(frame(container));
+    fireEvent.play(container.querySelector("video") as HTMLVideoElement);
+  };
+
+  it("keeps the controls shown while the pointer rests on the frame", () => {
+    const { container } = render(<VideoPlayer src={SRC} />);
+    startPlaying(container);
+
+    // The idle window elapses, but the pointer is still on the frame ⇒ stays shown.
+    act(() => vi.advanceTimersByTime(3000));
+    expect(controlBar(container)).toHaveClass("opacity-100");
+  });
+
+  it("hides the controls shortly after the pointer leaves the frame during playback", () => {
+    const { container } = render(<VideoPlayer src={SRC} />);
+    startPlaying(container);
+    expect(controlBar(container)).toHaveClass("opacity-100");
+
+    // Pointer leaves the frame ⇒ the short GRACE window, then hidden.
+    fireEvent.mouseLeave(frame(container));
+    act(() => vi.advanceTimersByTime(700));
+    expect(controlBar(container)).toHaveClass("opacity-0");
+  });
+
+  it("re-hides after a hold clears while the pointer is off the frame (a closed menu)", () => {
+    // A held control (open menu) keeps the bar shown even with the pointer gone; when it releases
+    // (menu closed) the bar must hide again rather than linger — the behaviour this reproduces.
+    let hold!: (on: boolean) => void;
+    const Grabber = () => {
+      hold = useHoldControls().hold;
+      return null;
+    };
+    const { container } = render(<VideoPlayer src={SRC} barControls={<Grabber />} />);
+    startPlaying(container);
+
+    // Pointer off the frame, but a menu is open (held) ⇒ stays shown past the grace window.
+    fireEvent.mouseLeave(frame(container));
+    act(() => hold(true));
+    act(() => vi.advanceTimersByTime(700));
+    expect(controlBar(container)).toHaveClass("opacity-100");
+
+    // Menu closes: the hold releases and, with the pointer still off the frame, the bar hides.
+    act(() => hold(false));
+    act(() => vi.advanceTimersByTime(700));
+    expect(controlBar(container)).toHaveClass("opacity-0");
   });
 });

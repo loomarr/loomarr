@@ -198,7 +198,7 @@ func TestLive_ProgramArgsNormalizeRealContent(t *testing.T) {
 	t.Logf("normalizing real content with %s", enc)
 
 	// Seek in, so this also exercises the mid-program tune-in path against HTTP.
-	args := ProgramArgs(p, url, 60*time.Second, 3*time.Second)
+	args := transcodeArgs(p, url, 60*time.Second, 3*time.Second)
 	args = replaceOutput(args, out)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -284,7 +284,7 @@ func TestLive_TwoProgramsConcatenateWithCopy(t *testing.T) {
 	// Encode two "programs" from different offsets, exactly as two children would.
 	parts := []string{dir + "/a.ts", dir + "/b.ts"}
 	for i, offset := range []time.Duration{30 * time.Second, 300 * time.Second} {
-		args := replaceOutput(ProgramArgs(p, url, offset, 2*time.Second), parts[i])
+		args := replaceOutput(transcodeArgs(p, url, offset, 2*time.Second), parts[i])
 		proc, err := Start(ctx, bin, args, nil, nil)
 		if err != nil {
 			t.Fatalf("part %d start: %v", i, err)

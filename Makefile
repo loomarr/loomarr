@@ -69,6 +69,13 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
 	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
 	@# is how this box spent a session serving a stale binary.
+	@#
+	@# ⚠ SINGLE-INSTANCE GUARD (scripts/dev-be-guard.sh). Air itself has no "am I already
+	@# running?" check, so a SECOND `make dev-be` used to start a second Air + binary that lost
+	@# the :8080 bind and exited — while the stale one kept serving OLD code. That zombie cost
+	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
+	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
+	@sh scripts/dev-be-guard.sh
 	$(GO) run github.com/air-verse/air@v1.67.3
 
 .PHONY: dev-gpu

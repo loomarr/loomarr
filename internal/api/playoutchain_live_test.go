@@ -81,7 +81,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 	}
 
 	// The REAL parent args against the REAL playlist endpoint.
-	playlistURL := srv.URL + "/playout/playlist/ch1?token=" + playoutToken
+	playlistURL := srv.URL + "/v1/playout/playlist/ch1?token=" + playoutToken
 	args := playout.ConcatArgs(playlistURL)
 	// Bound the infinite parent and write to a file we can probe.
 	out := t.TempDir() + "/joined.ts"

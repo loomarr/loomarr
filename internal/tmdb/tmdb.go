@@ -391,6 +391,59 @@ func (c *Client) PosterURLByTVDB(ctx context.Context, tvdbID int) (string, error
 	return "", nil
 }
 
+// EpisodeStillURLByTVDB resolves a TVDB series id to a per-episode still, via the same /find bridge
+// PosterURLByTVDB uses (/find/{tvdb_id}?external_source=tvdb_id → the tv result's TMDB id) and then
+// EpisodeStillURL for that id + season/episode. Series are usually TVDB-keyed (§3 series key), so the
+// live-TV timeline needs this to show an episode thumbnail for them. Best-effort throughout: no TVDB
+// match, no TMDB id, or no still all return "" + nil, never a hard failure.
+func (c *Client) EpisodeStillURLByTVDB(ctx context.Context, tvdbID, season, episode int) (string, error) {
+	if tvdbID <= 0 {
+		return "", nil
+	}
+	var body struct {
+		TVResults []struct {
+			ID int `json:"id"` // the TMDB series id — the bridge from tvdb to tmdb
+		} `json:"tv_results"`
+	}
+	if err := c.get(ctx, "/find/"+strconv.Itoa(tvdbID)+"?external_source=tvdb_id", &body); err != nil {
+		return "", err
+	}
+	for _, r := range body.TVResults {
+		if r.ID > 0 {
+			return c.EpisodeStillURL(ctx, r.ID, season, episode)
+		}
+	}
+	return "", nil
+}
+
+// EpisodeStillURL returns the absolute image URL of a series episode's still frame (the little
+// preview image TMDB has per episode), or "" when TMDB has none for that episode. Best-effort like
+// PosterURL: a not-found episode or an image-less one is "" + nil error, never a hard failure — the
+// caller renders a fallback. Used by the live-TV timeline to show a per-episode thumbnail on hover.
+func (c *Client) EpisodeStillURL(ctx context.Context, tmdbID, season, episode int) (string, error) {
+	if tmdbID <= 0 {
+		return "", nil
+	}
+	path := fmt.Sprintf("/tv/%d/season/%d/episode/%d", tmdbID, season, episode)
+	var body struct {
+		StillPath string `json:"still_path"`
+	}
+	status, err := c.getStatus(ctx, path, &body)
+	if err != nil {
+		return "", err
+	}
+	if status == http.StatusNotFound {
+		return "", nil
+	}
+	if status < 200 || status >= 300 {
+		return "", fmt.Errorf("tmdb GET %s: status %d", path, status)
+	}
+	if p := strings.TrimSpace(body.StillPath); p != "" {
+		return imageBase + p, nil // still_path already has a leading "/"
+	}
+	return "", nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	status, err := c.getStatus(ctx, path, out)
 	if err != nil {

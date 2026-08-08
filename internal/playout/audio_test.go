@@ -62,7 +62,7 @@ func TestPickAudioTrack_EmptyTrackListIsZero(t *testing.T) {
 // expressed as two ffmpeg maps: EXACTLY ONE audio track, whatever was chosen.
 func TestProgramArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
 	for _, track := range []int{0, 1, 3} {
-		args := ProgramArgsWithAudio(DefaultProfile(), testStreamURL, 0, time.Hour, track)
+		args := transcodeArgsAudio(DefaultProfile(), testStreamURL, 0, time.Hour, track)
 
 		var audioMaps []string
 		for i, a := range args {
@@ -83,7 +83,7 @@ func TestProgramArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
 
 // The wrapper must keep the pre-existing behaviour for every caller that has no preference.
 func TestProgramArgs_DefaultsToTheFirstAudioTrack(t *testing.T) {
-	args := ProgramArgs(DefaultProfile(), testStreamURL, 0, time.Hour)
+	args := transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour)
 	if !containsPair(args, "-map", "0:a:0") {
 		t.Fatalf("ProgramArgs did not map 0:a:0; args=%v", args)
 	}
@@ -92,7 +92,7 @@ func TestProgramArgs_DefaultsToTheFirstAudioTrack(t *testing.T) {
 // Video mapping is untouched by the audio work — the one thing most likely to be broken by a
 // careless edit to the same line.
 func TestProgramArgsWithAudio_StillMapsTheFirstVideoStream(t *testing.T) {
-	args := ProgramArgsWithAudio(DefaultProfile(), testStreamURL, 0, time.Hour, 2)
+	args := transcodeArgsAudio(DefaultProfile(), testStreamURL, 0, time.Hour, 2)
 	if !containsPair(args, "-map", "0:v:0") {
 		t.Fatalf("video map missing or changed; args=%v", args)
 	}

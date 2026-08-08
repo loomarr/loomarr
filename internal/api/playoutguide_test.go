@@ -109,7 +109,7 @@ func TestPlayoutGuide_RequiresTheDeviceToken(t *testing.T) {
 	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
 
 	for _, q := range []string{"", "?token=wrong", "?token=" + playoutToken[:8]} {
-		if resp := getPlayout(t, srv, "/playout/guide.xml"+q); resp.StatusCode != http.StatusNotFound {
+		if resp := getPlayout(t, srv, "/v1/playout/guide.xml"+q); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("token %q: status %d, want 404", q, resp.StatusCode)
 		}
 	}
@@ -126,7 +126,7 @@ func TestPlayoutGuide_ServesRealListings(t *testing.T) {
 	srv, st := newGuideServer(t, g)
 	seedChannel(t, st, "ch1", "Classic Sci-Fi", 50, "internal")
 
-	resp := getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
@@ -172,8 +172,8 @@ func TestPlayoutGuide_ChannelIDsMatchTheTuner(t *testing.T) {
 	srv, st := newGuideServer(t, g)
 	seedChannel(t, st, "classic-simpsons", "Classic Simpsons", 52, "internal")
 
-	tuner, _ := io.ReadAll(getPlayout(t, srv, "/playout/tuner.m3u?token="+playoutToken).Body)
-	guide, _ := io.ReadAll(getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken).Body)
+	tuner, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken).Body)
+	guide, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
 
 	if !strings.Contains(string(tuner), `tvg-id="classic-simpsons"`) {
 		t.Fatalf("tuner is missing the channel:\n%s", tuner)
@@ -195,7 +195,7 @@ func TestPlayoutGuide_ExcludesTunarrBackedChannels(t *testing.T) {
 	seedChannel(t, st, "mine", "Internal", 1, "internal")
 	seedChannel(t, st, "theirs", "Tunarr", 2, "tunarr")
 
-	body, _ := io.ReadAll(getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken).Body)
+	body, _ := io.ReadAll(getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken).Body)
 	if !strings.Contains(string(body), `id="mine"`) {
 		t.Errorf("internal channel missing:\n%s", body)
 	}
@@ -215,7 +215,7 @@ func TestPlayoutGuide_OneChannelFailingDoesNotEmptyTheGuide(t *testing.T) {
 	seedChannel(t, st, "good", "Good", 1, "internal")
 	seedChannel(t, st, "bad", "Bad", 2, "internal")
 
-	resp := getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d — one bad channel failed the whole guide", resp.StatusCode)
 	}
@@ -237,7 +237,7 @@ func TestPlayoutGuide_WindowCoversPastAndFuture(t *testing.T) {
 	srv, st := newGuideServer(t, g)
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
-	_ = getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken)
+	_ = getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
 	if len(g.windows) == 0 {
 		t.Fatal("the guide never asked for a timeline")
 	}
@@ -254,7 +254,7 @@ func TestPlayoutGuide_IsNotCacheable(t *testing.T) {
 	srv, st := newGuideServer(t, &fakeXMLTVGuide{})
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken)
 	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "no-store") {
 		t.Errorf("Cache-Control = %q, want no-store", cc)
 	}
@@ -265,7 +265,7 @@ func TestPlayoutGuide_NotRunningExplainsItself(t *testing.T) {
 	srv, st := newGuideServer(t, nil)
 	seedChannel(t, st, "ch1", "Ch", 1, "internal")
 
-	if resp := getPlayout(t, srv, "/playout/guide.xml?token="+playoutToken); resp.StatusCode != http.StatusNotImplemented {
+	if resp := getPlayout(t, srv, "/v1/playout/guide.xml?token="+playoutToken); resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", resp.StatusCode)
 	}
 }

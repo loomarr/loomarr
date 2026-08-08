@@ -91,7 +91,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
+		playoutHLS:   opts.PlayoutHLS,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
+		timelineThumbs: opts.TimelineThumbs,
+		reclaimVRAM:    opts.ReclaimVRAM,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
@@ -99,6 +102,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerUsers(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
+	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
@@ -115,6 +119,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerTaxonomy(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
+	srv.registerPlayoutDoctor(humaAPI) // §9.1 V47: playout health projection
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemBackups(humaAPI)
@@ -166,11 +171,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// and PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
 	mux.HandleFunc("GET /v1/filler/hover/{hash}", srv.serveFillerHover)
 
-	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
-	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
-	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a
-	// cookie (§11).
-	srv.registerPlayout(mux)
+	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, the continuous MPEG-TS
+	// stream, and the in-app HLS surface. They stream bytes, so they use huma.StreamResponse
+	// rather than a typed body — but they mount on the SAME Huma API (V47), behind one shared
+	// playout-auth middleware, instead of a parallel plain-mux world. See registerPlayout.
 
 	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
 	mux.HandleFunc("GET /docs", docsHandler)
@@ -190,7 +194,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// and return index.html with a 200. `go tool pprof` then reports "unrecognized profile
 	// format" — which reads as a broken profiler rather than as a disabled endpoint, and cost
 	// two failed capture attempts before a test caught it.
-	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/playout/", "/debug/"}
+	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/debug/"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {

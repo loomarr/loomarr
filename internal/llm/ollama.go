@@ -350,7 +350,48 @@ func (o *Ollama) Warm(ctx context.Context) error {
 	return nil
 }
 
+// Evict unloads the model from memory immediately (§9.1 V47), the mirror of Warm. It is the
+// same no-messages /api/chat preload request, but with `keep_alive: 0` — Ollama's documented
+// way to release a model right away rather than after the idle window. Playout calls this when
+// its hardware encoders need the VRAM the model is holding.
+//
+// Best-effort like Warm: an error costs the VRAM staying occupied (and the encode falling back
+// to software), never correctness. A guessed model is not evicted for the same reason it is not
+// warmed — there is nothing resident to unload.
+func (o *Ollama) Evict(ctx context.Context) error {
+	if o.guessedModel {
+		return ErrNothingToEvict
+	}
+	body, err := json.Marshal(ollamaChatReq{
+		Model:  o.model,
+		Stream: false,
+		// keep_alive:0 is the unload. Sent as the string "0" so it serialises even though it is
+		// the zero value (the field is omitempty; an explicit "0" is what Ollama reads as "unload
+		// now" rather than "use the default").
+		KeepAlive: "0",
+	})
+	if err != nil {
+		return fmt.Errorf("marshal ollama evict request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/chat", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("ollama evict: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ollama evict: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 var (
 	_ Provider = (*Ollama)(nil)
 	_ Warmer   = (*Ollama)(nil)
+	_ Evictor  = (*Ollama)(nil)
 )

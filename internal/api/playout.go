@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/mantonx/loomarr/internal/playout"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -18,9 +21,13 @@ import (
 
 // Internal playout's HTTP surface (§9.1, §11 device auth).
 //
-// These are NOT typed Huma ops: they stream bytes (two of them forever), which Huma's
-// typed-JSON model cannot express. They are plain mux handlers, like /v1/events and
-// /v1/backup already are.
+// These stream bytes (some forever), which Huma's typed-JSON MODEL cannot express — but that does
+// not mean they live outside the framework. They register on the SAME Huma API as everything else
+// (V47) and stream through the raw response writer via humago.Unwrap; auth is a shared middleware
+// (playoutAuthMiddleware), not a hand-rolled inline check re-implemented per handler. This mounts
+// them in the one router the dev proxy and every other guarantee already cover, and it ends the
+// parallel plain-mux world that (a) duplicated auth and (b) put these routes outside the SPA's
+// origin, so the in-app player's same-origin URLs did not resolve in dev.
 //
 // The route family exists because a TELEVISION is the client. That single fact drives the
 // whole design:
@@ -48,13 +55,18 @@ import (
 // access at all, api_token is break-glass admin).
 const playoutTokenParam = "token"
 
+// playoutTargetParam names the codec-audience query on the playlist and program URLs (§9.1 V47):
+// `?target=browser` or `?target=mediaserver`. It selects the copy/transcode plan; see playout.Target.
+const playoutTargetParam = "target"
+
 // PlayoutSessions is the session surface the handlers need (implemented by playout.Manager).
 // Nil ⇒ the /playout/ routes still mount but report "not running", so a misconfigured install
 // gets an explanation rather than a 404 that looks like a wiring mistake.
 type PlayoutSessions interface {
-	// Attach connects a viewer and returns its chunk channel plus a detach func. The caller
-	// MUST call detach — it decrements the refcount that keeps the encoder alive.
-	Attach(ctx context.Context, channelID string) (<-chan []byte, func(), error)
+	// Attach connects a viewer to a (channel, target) and returns its chunk channel plus a detach
+	// func (§9.1 V47). The caller MUST call detach — it decrements the refcount that keeps the
+	// encoder alive. The tuner path attaches as TargetMediaServer; only the copy plan differs.
+	Attach(ctx context.Context, channelID string, target playout.Target) (<-chan []byte, func(), error)
 
 	// Stats snapshots every live encoder for the dashboard (§12, V16).
 	Stats(now time.Time) []playout.SessionStat
@@ -66,7 +78,21 @@ type PlayoutSessions interface {
 	// session's own ffmpeg is the `-c copy` parent and never encodes: its speed would measure
 	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
 	// and the load-aware Resolve can legitimately pick differently between programs.
-	ReportProgram(channelID string, enc playout.Encoder, p playout.Progress)
+	ReportProgram(channelID string, target playout.Target, enc playout.Encoder, p playout.Progress)
+}
+
+// PlayoutHLS is the HLS repackaging surface the Watch handlers need (§9.1, V46), implemented by
+// playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running", so an install without
+// internal playout wired explains itself rather than 404ing.
+type PlayoutHLS interface {
+	// Playlist starts (or joins) a channel's HLS remux and returns the on-disk MASTER playlist
+	// path plus a detach func the caller MUST invoke — it releases the viewer refcount that keeps
+	// the remux, and through it the channel's encoder, alive.
+	Playlist(channelID string) (playlistPath string, detach func(), err error)
+	// AssetPath resolves an HLS asset under a channel — a variant playlist or a segment, by its
+	// path relative to the channel dir (e.g. "720p/seg-3.ts") — to its on-disk path for a live
+	// channel; ok=false when no remux is running or the path would escape the dir.
+	AssetPath(channelID, rel string) (string, bool)
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.
@@ -91,11 +117,21 @@ func (s *Server) authorizePlayout(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	got := r.URL.Query().Get(playoutTokenParam)
-	if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
-		http.NotFound(w, r)
-		return false
+	if subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1 {
+		return true
 	}
-	return true
+	// A browser/native player carries a SIGNED URL instead of the device token (§9.1 Watch,
+	// playoutsign.go): a capability scoped to this channel and expiring on its own. Accepted
+	// only when the request path names a channel to scope it to — the tuner list and other
+	// channel-less routes take the device token alone. Same 404-on-failure as the token path,
+	// so a bad or expired signature is indistinguishable from a wrong token.
+	if sig := r.URL.Query().Get(signQueryParam); sig != "" {
+		if id := r.PathValue("id"); id != "" && s.verifyPlayoutSignature(sig, id, time.Now()) {
+			return true
+		}
+	}
+	http.NotFound(w, r)
+	return false
 }
 
 // playoutToken reads the generated device secret (§15 `playout_token`).
@@ -132,7 +168,16 @@ func (s *Server) playoutURL(kind, channelID string) string {
 	}
 	q := url.Values{}
 	q.Set(playoutTokenParam, s.playoutToken())
-	return fmt.Sprintf("%s/playout/%s/%s?%s", base, kind, url.PathEscape(channelID), q.Encode())
+	return fmt.Sprintf("%s/v1/playout/%s/%s?%s", base, kind, url.PathEscape(channelID), q.Encode())
+}
+
+// withTarget appends `&target=<t>` to a playout URL that already carries a query (playoutURL always
+// sets the token, so there is always a `?`). It is the one place the wire token is written, keyed
+// off Target.String, so the playlist→program hop cannot drift from the enum. mediaserver is the
+// default everywhere downstream, so it is written explicitly rather than omitted — a present token
+// is self-documenting in a log line and leaves no ambiguity about which audience a session serves.
+func withTarget(rawURL string, t playout.Target) string {
+	return rawURL + "&" + playoutTargetParam + "=" + url.QueryEscape(t.String())
 }
 
 // streamHandler serves a channel as continuous MPEG-TS. This is what the television plays.
@@ -171,7 +216,10 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID)
+	// The raw MPEG-TS tuner audience is a media server (Emby/Jellyfin), which ingests HEVC/AC3 and
+	// adapts per-client downstream — so it attaches as TargetMediaServer and keeps HEVC as a copy
+	// (§9.1 V47). The browser's HLS remux attaches as TargetBrowser separately.
+	chunks, detach, err := s.playoutSessions.Attach(r.Context(), channelID, playout.TargetMediaServer)
 	if err != nil {
 		// At capacity is a real, actionable condition rather than a generic failure: the
 		// operator can raise playout.max_channels or lower the quality tier so more channels
@@ -235,6 +283,14 @@ func (s *Server) playlistHandler(w http.ResponseWriter, r *http.Request) {
 			"Set Loomarr's public address in Settings → Server so streams can be reached.")
 		return
 	}
+
+	// Propagate the session's TARGET (§9.1 V47) down to the program URL: a browser session's parent
+	// fetches `playlist?target=browser`, so every program it requests must also carry `browser` and
+	// plan its copy for the browser baseline. The playlist and its programs are one codec audience;
+	// the target is what makes them so. ParseTarget→String round-trips to the canonical token, so an
+	// absent/garbage `?target=` degrades to `mediaserver` — the historical behaviour.
+	target := playout.ParseTarget(r.URL.Query().Get("target"))
+	programURL = withTarget(programURL, target)
 
 	// text/plain: ffmpeg does not care about the type, and there is no registered one for
 	// ffconcat. Nosniff so a browser that opens the URL cannot reinterpret the bytes.
@@ -340,20 +396,218 @@ func (s *Server) playsInternally(ch store.Channel) bool {
 	return schedule.PlaysInternally(ch.Policy, s.liveConfig("playout.backend"))
 }
 
-// registerPlayout mounts the device-authenticated playout routes (§9.1).
+// hlsPlaylistHandler serves a channel's live HLS media playlist for the in-app player (§9.1
+// Watch, V46). Authorized by EITHER the device token OR a signed URL (authorizePlayout), so the
+// same route serves a browser (signed) that the tuner list points a media server at (token).
 //
-// Deliberately NOT under /v1: these are not API operations and not part of the versioned
-// contract the generated client consumes. They are a machine-to-machine surface whose shape is
-// dictated by what media servers accept (prior-art §1), so versioning it alongside the JSON API
-// would imply a freedom to change it that we do not have.
-func (s *Server) registerPlayout(mux *http.ServeMux) {
-	mux.HandleFunc("GET /playout/tuner.m3u", s.tunerHandler)
-	// The XMLTV listings (playoutguide.go). Without it a channel tunes and plays with an
-	// empty EPG — §9.1 promised this alongside the tuner.
-	mux.HandleFunc("GET /playout/guide.xml", s.guideHandler)
-	mux.HandleFunc("GET /playout/stream/{id}", s.streamHandler)
-	mux.HandleFunc("GET /playout/playlist/{id}", s.playlistHandler)
-	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per
-	// program, forever, and each response is one program's finite MPEG-TS.
-	mux.HandleFunc("GET /playout/program/{id}", s.programHandler)
+// It reads the playlist ffmpeg is writing to disk and returns it, holding a viewer refcount for
+// the duration of… no — the opposite. A playlist fetch is a SNAPSHOT: hls.js re-fetches the
+// playlist every few seconds to discover new segments, so holding the refcount for one fetch
+// would drop the remux between polls. The refcount must span the WHOLE viewing session, which no
+// single stateless request can bracket. So the playlist fetch itself keeps the remux alive for a
+// grace window after the last fetch (the remux's own idle timer), and the refcount is taken-and-
+// released per fetch: each poll re-arms the grace timer, and when the polls stop, the timer fires.
+func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizePlayout(w, r) {
+		return
+	}
+	if s.playoutHLS == nil {
+		s.writeProblem(w, r, http.StatusNotImplemented, "Playout unavailable",
+			"Internal playout isn't running on this instance.")
+		return
+	}
+	channelID := r.PathValue("id")
+	if channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	path, detach, err := s.playoutHLS.Playlist(channelID)
+	if err != nil {
+		if errors.Is(err, playout.ErrAtCapacity) {
+			w.Header().Set("Retry-After", "30")
+			s.writeProblem(w, r, http.StatusServiceUnavailable, "All tuners are busy",
+				"Loomarr is already encoding as many channels as it's configured to handle. "+
+					"Raise the channel limit in Settings → Playout, or choose a lower quality tier.")
+			return
+		}
+		s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
+		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
+			"Loomarr couldn't start this channel's in-app stream.")
+		return
+	}
+	// Release THIS fetch's refcount as it returns — the remux's grace timer keeps it alive
+	// between the client's playlist polls (see the handler doc).
+	defer detach()
+
+	body, rerr := os.ReadFile(path)
+	if rerr != nil {
+		http.NotFound(w, r) // the playlist vanished between the readiness wait and now (teardown)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(rewritePlaylistAuth(body, r.URL.RawQuery))
+}
+
+// rewritePlaylistAuth appends the request's auth query (`?sig=…` or `?token=…`) to every SEGMENT
+// URI in a media playlist, so each segment fetch is self-authenticating.
+//
+// ⚠ This is REQUIRED, not a nicety, and it is why token-authed HLS origins all rewrite playlists.
+// ffmpeg writes bare segment URIs (`seg-0.ts`); a client resolves them relative to the playlist's
+// PATH but does NOT carry the playlist's query string onto them — so a bare segment request arrives
+// with no credential and 404s (authorizePlayout). Native players (iOS/Android/Roku) will not
+// re-append a query param either, so fixing it client-side (hls.js xhrSetup) would leave every
+// native player broken. Rewriting the URIs here is the one fix that works for every client.
+//
+// Only lines that are segment/asset references get the query — tag lines (starting with `#`) and
+// blank lines are left untouched.
+func rewritePlaylistAuth(body []byte, rawQuery string) []byte {
+	if rawQuery == "" {
+		return body
+	}
+	lines := strings.Split(string(body), "\n")
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue // tag or blank — not a URI
+		}
+		// A URI line. Append the query, preserving any it already carries (it never does today,
+		// but a `?` in the name must not be doubled).
+		sep := "?"
+		if strings.Contains(t, "?") {
+			sep = "&"
+		}
+		lines[i] = t + sep + rawQuery
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// hlsAssetHandler serves an HLS asset under a channel — a variant media playlist
+// (`720p/stream.m3u8`) or a segment (`720p/seg-12.ts`) — for the ABR ladder (§9.1 Watch, V46).
+// Same dual auth as the master playlist. The asset path (captured as a trailing wildcard) is
+// validated against traversal here AND again in AssetPath (defence in depth).
+func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizePlayout(w, r) {
+		return
+	}
+	if s.playoutHLS == nil {
+		http.NotFound(w, r)
+		return
+	}
+	channelID := r.PathValue("id")
+	rel := r.PathValue("asset") // the trailing "<variant>/<file>" path
+	// Reject a parent ref up front — the asset paths are all "<variant>/<file>" and never need
+	// to climb. AssetPath re-checks containment after cleaning, so this is the outer of two gates.
+	if channelID == "" || rel == "" || strings.Contains(rel, "..") {
+		http.NotFound(w, r)
+		return
+	}
+
+	path, ok := s.playoutHLS.AssetPath(channelID, rel)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	// A variant playlist and a segment want different content types; the suffix is the only
+	// discriminator the asset carries.
+	if strings.HasSuffix(rel, ".m3u8") {
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	} else {
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, path)
+}
+
+// registerPlayout mounts the playout streaming routes on the Huma API (§9.1, V47).
+//
+// ⚠ These stream bytes, which Huma's typed-JSON model cannot express — but they mount on the SAME
+// Huma API as every other route, via huma.StreamResponse (the framework's streaming primitive) and
+// the raw response writer (humago.Unwrap). This replaced a parallel plain-mux registration that
+// duplicated auth per handler and, because it lived outside the app's router surface, put these
+// routes outside the SPA's origin — which is why the in-app player's same-origin URLs did not
+// resolve in dev. Auth is ONE shared middleware (playoutAuthMiddleware), not re-derived per handler.
+//
+// Still deliberately NOT under /v1 and hidden from the OpenAPI spec: they are a machine-to-machine
+// byte surface whose shape media servers dictate (prior-art §1), not the versioned JSON contract
+// the generated client consumes — versioning them alongside the API would imply a freedom to change
+// them that we do not have. Mounting on the Huma API is about the ROUTER + AUTH, not the contract.
+//
+// The handler BODIES (streamHandler, hlsPlaylistHandler, …) are unchanged — they still take (w, r)
+// and stream; this only changes how they are mounted and guarded.
+func (s *Server) registerPlayout(api huma.API) {
+	// The tuner list + XMLTV the media server registers.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-tuner", Method: http.MethodGet, Path: "/v1/playout/tuner.m3u",
+		Summary: "Playout tuner M3U (device-authed)", Tags: []string{"playout"},
+	}, s.tunerHandler)
+	// The XMLTV listings (playoutguide.go). Without it a channel tunes with an empty EPG.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-guide", Method: http.MethodGet, Path: "/v1/playout/guide.xml",
+		Summary: "Playout XMLTV guide (device-authed)", Tags: []string{"playout"},
+	}, s.guideHandler)
+
+	// The continuous MPEG-TS a TV/media server plays, plus the ffconcat + program the parent reads.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-stream", Method: http.MethodGet, Path: "/v1/playout/stream/{id}",
+		Summary: "Channel MPEG-TS stream (device-authed)", Tags: []string{"playout"},
+	}, s.streamHandler)
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-playlist", Method: http.MethodGet, Path: "/v1/playout/playlist/{id}",
+		Summary: "Channel ffconcat playlist (device-authed)", Tags: []string{"playout"},
+	}, s.playlistHandler)
+	// The sequencing layer (playoutprogram.go): the concat demuxer re-opens this once per program.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-program", Method: http.MethodGet, Path: "/v1/playout/program/{id}",
+		Summary: "One program's MPEG-TS (device-authed)", Tags: []string{"playout"},
+	}, s.programHandler)
+
+	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by
+	// the signed URL (or the device token). Same-origin under the Huma API now, so the dev proxy and
+	// the SPA origin cover them — which fixed the in-app player. The signed URL is kept because the
+	// native players (iOS/Android/Roku) fetch HLS with their own networking and carry no session —
+	// Roku especially forces a credential in the URL, so a URL-borne credential is the one mechanism
+	// that works across every player + the browser.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-hls-master", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/master.m3u8",
+		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
+	}, s.hlsPlaylistHandler)
+	// A segment is a bare file beside the master (`seg-N.ts`) — direct play is one playlist, no
+	// variant subdirs, so a single `{asset}` segment (not a trailing wildcard) is enough.
+	s.streamOp(api, huma.Operation{
+		OperationID: "playout-hls-asset", Method: http.MethodGet, Path: "/v1/playout/hls/{id}/{asset}",
+		Summary: "Channel HLS segment (signed-URL authed)", Tags: []string{"playout"},
+	}, s.hlsAssetHandler)
+}
+
+// streamOp registers one playout streaming route on the Huma API: method + path, the shared playout
+// auth middleware, and a StreamResponse body that hands the existing (w, r) handler control. `body`
+// is the current stdlib handler — reused verbatim. Hidden from the OpenAPI spec (see registerPlayout).
+func (s *Server) streamOp(api huma.API, op huma.Operation, body func(http.ResponseWriter, *http.Request)) {
+	// RolePublic tells the GLOBAL session-auth middleware (registerMiddleware) to skip these — they
+	// do not authenticate a PERSON by session (which defaults to admin-required, a 401). Their real
+	// auth is the device token / signed URL, enforced by playoutAuthMiddleware below. Public to the
+	// session layer, guarded by the playout layer — the correct two-layer split (§11).
+	op = withRole(op, RolePublic)
+	op.Middlewares = append(op.Middlewares, s.playoutAuthMiddleware)
+	op.Hidden = true
+	huma.Register(api, op, func(_ context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+		return &huma.StreamResponse{Body: func(hctx huma.Context) {
+			r, w := humago.Unwrap(hctx)
+			body(w, r)
+		}}, nil
+	})
+}
+
+// playoutAuthMiddleware is the ONE authorization point for playout streaming routes — the device
+// token OR a signed URL, exactly what authorizePlayout checked inline, now shared across every route
+// instead of re-derived per handler. On failure it writes the 404 (see authorizePlayout for why
+// 404) and does NOT call next, so the stream handler never runs.
+func (s *Server) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context)) {
+	r, w := humago.Unwrap(hctx)
+	if !s.authorizePlayout(w, r) {
+		return // authorizePlayout already wrote the 404
+	}
+	next(hctx)
 }

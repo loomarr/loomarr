@@ -285,6 +285,40 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
 }
 
+// timelineThumbResolver adapts *tmdb.Client to api.TimelineThumbResolver — the Watch player's
+// schedule strip asks it for a preview image per programme block (§9.1 V47). A series episode gets
+// its OWN still (per-episode), a movie its poster. The image always comes from TMDB, but the KEY may
+// be TVDB (series are usually TVDB-keyed, §3) — so a tvdb series bridges TVDB→TMDB via /find first.
+// Every failure is swallowed to "" so a missing image never fails the strip.
+type timelineThumbResolver struct{ tmdb *tmdb.Client }
+
+func (a timelineThumbResolver) ThumbFor(ctx context.Context, key string, season, episode int) string {
+	mt, provider, id, ok := provision.ParseKey(provision.Key(key))
+	if !ok {
+		return "" // no usable key
+	}
+	var (
+		url string
+		err error
+	)
+	switch {
+	case mt == provision.Series && provider == "tvdb":
+		// The common series case (§3: series prefer a TVDB key). Bridge TVDB→TMDB, then the episode
+		// still — the strip is per-programme, so the episode's own still, not the show poster.
+		url, err = a.tmdb.EpisodeStillURLByTVDB(ctx, id, season, episode)
+	case mt == provision.Series: // provider == "tmdb"
+		url, err = a.tmdb.EpisodeStillURL(ctx, id, season, episode)
+	case provider == "tmdb": // a movie
+		url, err = a.tmdb.PosterURL(ctx, mt, id)
+	default:
+		return "" // a tvdb-keyed movie is not a shape we produce
+	}
+	if err != nil {
+		return ""
+	}
+	return url
+}
+
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
 // discovery can mark titles the library already owns as in-library. Prefers the
 // TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb.
