@@ -90,6 +90,13 @@ type HLSManager struct {
 	grace    time.Duration
 	spawn    hlsSpawner
 
+	// readyTimeout is how long a starting remux waits for its first segment. A field rather than
+	// the constant used directly, for one reason: the NEGATIVE readiness cases (a header-only
+	// playlist must never be reported ready) can only be asserted by letting the wait EXPIRE, and
+	// at the production 45s that is a 45-second unit test. Same seam, and same justification, as
+	// `spawn` above. Zero means hlsFirstSegmentTimeout.
+	readyTimeout time.Duration
+
 	// root is the base temp directory; each remux gets a subdir under it. Removed on Stop.
 	root string
 
@@ -189,7 +196,7 @@ func (m *HLSManager) Playlist(channelID string, plan EncodePlan) (playlistPath s
 	// upstream can take a few seconds to warm up (encoder spin-up, seek), so the wait is generous
 	// enough to cover that and still bounded so a genuinely stuck channel fails cleanly rather than
 	// hanging the request forever.
-	if werr := r.awaitPlaylist(hlsFirstSegmentTimeout); werr != nil {
+	if werr := r.awaitPlaylist(m.readyWait()); werr != nil {
 		d() // release the refcount we just took; teardown fires if we were the only viewer
 		return "", nil, werr
 	}
@@ -314,6 +321,14 @@ func (m *HLSManager) Stop() {
 // the play-url the client is handed, so the on-disk file, the URL, and the mux pattern are one
 // name with no mismatch.
 const hlsPlaylistName = "master.m3u8"
+
+// readyWait is the first-segment timeout, defaulting to the production bound.
+func (m *HLSManager) readyWait() time.Duration {
+	if m.readyTimeout > 0 {
+		return m.readyTimeout
+	}
+	return hlsFirstSegmentTimeout
+}
 
 // hlsRemux is one channel's HLS repackaging: a `-c copy -f hls` ffmpeg fed by the session's
 // bytes, writing segments a browser reads. Its viewer refcount mirrors Session's.
@@ -485,11 +500,29 @@ func (r *hlsRemux) pump(chunks <-chan []byte) {
 // segment is flushed. A playlist served in that window has no playable media — hls.js parses it,
 // finds nothing to fetch, and stalls (or exhausts its retries). Apple's HLS spec requires a live
 // playlist to list playable media, so the readiness signal is "a segment is referenced", detected
-// here by the presence of a `.ts` line, not the file's existence.
+// here by the presence of a segment line, not the file's existence.
+//
+// ⚠ **The predicate must not name a CONTAINER.** It was `bytes.Contains(body, ".ts")` from the day
+// the readiness gate was written until 2026-08-09, which silently stopped working the moment
+// hlsArgs learned to emit fMP4: PlanHEVC8/HEVC10/Full write `seg-%d.m4s` with an `init.mp4`, so
+// their playlist contains no `.ts` anywhere — and segment URIs are basenames, so the directory path
+// cannot smuggle one in either. Every HEVC-capable client (Safari, native apps — exactly the
+// audience V48 added the plan for) therefore waited the full 45s and got a 502.
+//
+// Every OTHER fMP4 layer had been thought through: the asset handler branches on `.m4s`/`.mp4`, and
+// rewritePlaylistAuth special-cases `#EXT-X-MAP:URI=` with its own test. Only this line was missed,
+// and no unit test could see it — hls_refcount_test.go writes a `.ts` stub "so awaitPlaylist
+// succeeds" regardless of plan.
+//
+// `#EXTINF` is the container-independent answer, and it is the RIGHT answer rather than a wider
+// net: the spec defines it as the tag that precedes a media segment URI, so it is present exactly
+// when a playable segment is listed. Deliberately NOT `#EXT-X-MAP`, which fMP4 writes with the init
+// segment BEFORE any media exists — matching it would reintroduce the header-only stall this
+// function was written to prevent, on the very path that just broke.
 func (r *hlsRemux) awaitPlaylist(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		if body, err := os.ReadFile(r.playlist); err == nil && bytes.Contains(body, []byte(".ts")) {
+		if body, err := os.ReadFile(r.playlist); err == nil && bytes.Contains(body, []byte("#EXTINF")) {
 			return nil
 		}
 		if time.Now().After(deadline) {
