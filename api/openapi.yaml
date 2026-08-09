@@ -45,13 +45,16 @@ components:
         - level
         - text
       type: object
+    ActivityEvent:
+      additionalProperties: false
+      type: object
     AddFillerSourceInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/AddFillerSourceInputBody.json
+            - https://example.com/v1/schemas/AddFillerSourceInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -110,7 +113,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApprovalEditDTO.json
+            - https://example.com/v1/schemas/ApprovalEditDTO.json
           format: uri
           readOnly: true
           type: string
@@ -118,16 +121,12 @@ components:
           description: Titles to add as acquisitions
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         drop:
           description: Provisioning keys to remove from the proposal before approving
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         note:
           description: A message to the requester, stored with the approval
           type: string
@@ -138,16 +137,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApproveFillerPullInputBody.json
+            - https://example.com/v1/schemas/ApproveFillerPullInputBody.json
           format: uri
           readOnly: true
           type: string
         dropSourceIds:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         note:
           description: Narrowing instruction, e.g. 'no local dealers, no PSAs'
           type: string
@@ -158,7 +155,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ApproveOutputBody.json
+            - https://example.com/v1/schemas/ApproveOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -199,7 +196,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BackupEntry.json
+            - https://example.com/v1/schemas/BackupEntry.json
           format: uri
           readOnly: true
           type: string
@@ -225,7 +222,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BackupList.json
+            - https://example.com/v1/schemas/BackupList.json
           format: uri
           readOnly: true
           type: string
@@ -233,9 +230,7 @@ components:
           description: On disk, newest first
           items:
             $ref: "#/components/schemas/BackupEntry"
-          type:
-            - array
-            - "null"
+          type: array
         dir:
           description: Where backups are written (backup.dir)
           type: string
@@ -262,7 +257,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BootstrapInputBody.json
+            - https://example.com/v1/schemas/BootstrapInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -282,7 +277,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BootstrapOutputBody.json
+            - https://example.com/v1/schemas/BootstrapOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -303,7 +298,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkApproveInputBody.json
+            - https://example.com/v1/schemas/BulkApproveInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -312,9 +307,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - ids
       type: object
@@ -324,7 +317,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkApproveOutputBody.json
+            - https://example.com/v1/schemas/BulkApproveOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -335,9 +328,7 @@ components:
         results:
           items:
             $ref: "#/components/schemas/BulkApproveResult"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - results
         - approved
@@ -368,22 +359,21 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkRemoveFillerInputBody.json
+            - https://example.com/v1/schemas/BulkRemoveFillerInputBody.json
           format: uri
           readOnly: true
           type: string
-        paths:
+        hashes:
+          description: Clip identities (content hashes, §10 V45a)
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
         restore:
           description: Put the clips back in the catalog instead of removing them
           type: boolean
       required:
-        - paths
+        - hashes
       type: object
     BulkResultOutputBody:
       additionalProperties: false
@@ -391,7 +381,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkResultOutputBody.json
+            - https://example.com/v1/schemas/BulkResultOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -412,7 +402,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/BulkTagFillerInputBody.json
+            - https://example.com/v1/schemas/BulkTagFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -424,23 +414,23 @@ components:
             - general
             - late_night
           type: string
-        category:
-          description: Omit to leave it alone.
-          type: string
         era:
           description: Set the era on every selected clip. Omit to leave it alone.
           format: int64
           type: integer
-        paths:
-          description: Clip identities (paths relative to FILLER_DIR)
+        hashes:
+          description: Clip identities (content hashes, §10 V45a)
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
+        tags:
+          description: Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a).
+          items:
+            type: string
+          type: array
       required:
-        - paths
+        - hashes
       type: object
     ChangePasswordInputBody:
       additionalProperties: false
@@ -448,7 +438,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ChangePasswordInputBody.json
+            - https://example.com/v1/schemas/ChangePasswordInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -471,7 +461,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ChannelDTO.json
+            - https://example.com/v1/schemas/ChannelDTO.json
           format: uri
           readOnly: true
           type: string
@@ -493,12 +483,13 @@ components:
           description: The channel's titles, in order (the intent-level lineup, not the expanded slots)
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         logo:
           description: Channel icon URL — pushed to Tunarr's channel icon (from TMDB, an upload, or set directly)
           type: string
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The image record when the logo is served by this instance's image service; absent for an external URL
         name:
           examples:
             - Saturday Morning Cartoons
@@ -556,6 +547,19 @@ components:
         - policy
         - lineup
       type: object
+    ChannelEvent:
+      additionalProperties: false
+      properties:
+        channelId:
+          examples:
+            - ch_abc123
+          type: string
+        status:
+          type: string
+      required:
+        - channelId
+        - status
+      type: object
     ChannelFitDTO:
       additionalProperties: false
       properties:
@@ -596,6 +600,67 @@ components:
         - pinned
         - excluded
       type: object
+    ChannelHealth:
+      additionalProperties: false
+      properties:
+        bufferedMs:
+          description: Encoded lead over realtime in ms; negative = falling behind
+          format: int64
+          type: integer
+        channelId:
+          type: string
+        coldStartMs:
+          description: Time to first frame in ms — the black-screen window; 0 if unmeasured
+          format: int64
+          type: integer
+        encoder:
+          description: Resolved encoder, or 'copy' when direct-playing
+          type: string
+        hardware:
+          description: Whether the encoder is hardware-accelerated
+          type: boolean
+        health:
+          description: ok | degraded | stalled
+          type: string
+        mode:
+          description: direct-play (copy) | transcode
+          type: string
+        name:
+          description: Channel name for display (empty = unknown)
+          type: string
+        number:
+          description: Channel number for display (0 = unknown)
+          format: int64
+          type: integer
+        reason:
+          description: One line an operator can act on
+          type: string
+        speed:
+          description: Realtime multiple; <1.0 means the channel will stutter
+          format: double
+          type: number
+        target:
+          description: "Codec audience: browser|mediaserver (§9.1 V47)"
+          type: string
+        viewers:
+          description: How many clients are attached
+          format: int64
+          type: integer
+      required:
+        - channelId
+        - number
+        - name
+        - target
+        - viewers
+        - bufferedMs
+        - encoder
+        - hardware
+        - mode
+        - speed
+        - health
+        - reason
+        - coldStartMs
+      type: object
     ChannelNowNext:
       additionalProperties: false
       properties:
@@ -615,9 +680,7 @@ components:
         applied:
           items:
             $ref: "#/components/schemas/AppliedRelaxation"
-          type:
-            - array
-            - "null"
+          type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
@@ -627,9 +690,7 @@ components:
         operatorSet:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         ordering:
           type: string
         playout:
@@ -637,9 +698,7 @@ components:
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
-          type:
-            - array
-            - "null"
+          type: array
         scope:
           $ref: "#/components/schemas/ScopePolicy"
         seasonal:
@@ -653,13 +712,35 @@ components:
             - 24h
           type: string
       type: object
+    ChannelTracksOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ChannelTracksOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audio:
+          items:
+            $ref: "#/components/schemas/TrackDTO"
+          type: array
+        subtitles:
+          items:
+            $ref: "#/components/schemas/TrackDTO"
+          type: array
+      required:
+        - audio
+        - subtitles
+      type: object
     ClipDTO:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ClipDTO.json
+            - https://example.com/v1/schemas/ClipDTO.json
           format: uri
           readOnly: true
           type: string
@@ -673,14 +754,36 @@ components:
             - late_night
             - ""
           type: string
-        category:
+        brand:
+          description: The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred.
           type: string
+        category:
+          description: Derived primary product-leaf tag; the full set is in tags (§10 V45a)
+          type: string
+        confidence:
+          description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
+          format: int64
+          type: integer
         durationMs:
           format: int64
           type: integer
         era:
           format: int64
           type: integer
+        hasTranscript:
+          description: Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders.
+          type: boolean
+        hash:
+          type: string
+        held:
+          description: Waiting for review in Incoming, not in the playable catalog (§10 V38). Only ever true when includeHeld or heldOnly was passed.
+          type: boolean
+        hoverImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Image-service record for the hover loop; absent until adopted, or when no animation was rendered
+        isComposite:
+          description: A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)
+          type: boolean
         kind:
           enum:
             - commercial
@@ -690,12 +793,19 @@ components:
             - trailer
             - interstitial
           type: string
+        language:
+          description: Absent = not yet checked; 'none' = checked and wordless; otherwise the detected language (§10 V40). The first two are different facts.
+          type: string
         lastPlayedAt:
           description: RFC3339; absent if never played (or not counted)
           type: string
+        license:
+          description: The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none.
+          type: string
         name:
           type: string
-        path:
+        parentHash:
+          description: The composite this clip was split from; absent for a non-segment clip (§10 V45)
           type: string
         playCount:
           format: int64
@@ -718,12 +828,23 @@ components:
         tagged:
           description: Whether the clip has all match tags (era+audience+category)
           type: boolean
+        tags:
+          description: The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)
+          items:
+            type: string
+          type: array
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Image-service record for the still; absent until the adoption job has run
         thumbnail:
           type: string
         tunarrProgramId:
           type: string
+        visionTagged:
+          description: A vision pass over keyframes contributed tags, distinct from aiTagged (text-only) (§10 V44)
+          type: boolean
       required:
-        - path
+        - hash
         - name
         - kind
         - durationMs
@@ -738,16 +859,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ClipFitOutputBody.json
+            - https://example.com/v1/schemas/ClipFitOutputBody.json
           format: uri
           readOnly: true
           type: string
         channels:
           items:
             $ref: "#/components/schemas/ChannelFitDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -757,16 +876,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CollectionsOutputBody.json
+            - https://example.com/v1/schemas/CollectionsOutputBody.json
           format: uri
           readOnly: true
           type: string
         collections:
           items:
             $ref: "#/components/schemas/LibraryCollection"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - collections
       type: object
@@ -776,7 +893,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ConfirmFillerSplitInputBody.json
+            - https://example.com/v1/schemas/ConfirmFillerSplitInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -784,9 +901,7 @@ components:
           items:
             $ref: "#/components/schemas/SplitSegment"
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - segments
       type: object
@@ -796,7 +911,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ConfirmFillerSplitOutputBody.json
+            - https://example.com/v1/schemas/ConfirmFillerSplitOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -812,7 +927,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CoverageDTO.json
+            - https://example.com/v1/schemas/CoverageDTO.json
           format: uri
           readOnly: true
           type: string
@@ -828,9 +943,7 @@ components:
           description: Ladder rungs, TIGHTEST FIRST. A rung the channel's policy skips is absent, not zero.
           items:
             $ref: "#/components/schemas/CoverageRungDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           description: Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times.
           format: int64
@@ -865,7 +978,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CreateChannelInputBody.json
+            - https://example.com/v1/schemas/CreateChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -911,7 +1024,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/CreateLocalUserInputBody.json
+            - https://example.com/v1/schemas/CreateLocalUserInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -973,7 +1086,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseBackup.json
+            - https://example.com/v1/schemas/DatabaseBackup.json
           format: uri
           readOnly: true
           type: string
@@ -1010,22 +1123,47 @@ components:
         - detail
         - ok
       type: object
+    DatabaseEvent:
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        parity:
+          enum:
+            - unknown
+            - match
+            - mismatch
+          type: string
+        phase:
+          enum:
+            - idle
+            - migrating
+            - verified
+            - failed
+          type: string
+        tables:
+          description: Per-table progress; empty when idle
+          items:
+            $ref: "#/components/schemas/DatabaseTable"
+          type: array
+      required:
+        - phase
+        - parity
+      type: object
     DatabasePreflightOutputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabasePreflightOutputBody.json
+            - https://example.com/v1/schemas/DatabasePreflightOutputBody.json
           format: uri
           readOnly: true
           type: string
         checks:
           items:
             $ref: "#/components/schemas/DatabaseCheck"
-          type:
-            - array
-            - "null"
+          type: array
         passed:
           description: True only if every check passed
           type: boolean
@@ -1039,7 +1177,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseStatus.json
+            - https://example.com/v1/schemas/DatabaseStatus.json
           format: uri
           readOnly: true
           type: string
@@ -1065,9 +1203,7 @@ components:
           description: Per-table progress; empty when idle
           items:
             $ref: "#/components/schemas/DatabaseTable"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - backend
         - canMigrate
@@ -1081,7 +1217,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseSwitchoverOutputBody.json
+            - https://example.com/v1/schemas/DatabaseSwitchoverOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1120,7 +1256,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DatabaseTargetInputBody.json
+            - https://example.com/v1/schemas/DatabaseTargetInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1136,7 +1272,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DenyInputBody.json
+            - https://example.com/v1/schemas/DenyInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1149,7 +1285,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DenyOutputBody.json
+            - https://example.com/v1/schemas/DenyOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1158,22 +1294,51 @@ components:
       required:
         - status
       type: object
+    DeviceProfileBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/DeviceProfileBody.json
+          format: uri
+          readOnly: true
+          type: string
+        audio:
+          description: Audio codecs the client can decode (e.g. ["eac3","ac3"]). aac is always implied.
+          items:
+            type: string
+          type: array
+        hdr:
+          description: Whether the client can display HDR (PQ/HLG).
+          type: boolean
+        maxResolution:
+          description: Tallest video height the client will direct-play (e.g. 1080); 0 = no cap.
+          format: int64
+          type: integer
+        video:
+          description: Video codecs the client can DECODE (e.g. ["hevc"]). h264 is always implied.
+          items:
+            type: string
+          type: array
+        video10bit:
+          description: Whether the client can decode 10-bit (or deeper) video.
+          type: boolean
+      type: object
     DiscoverFillerOutputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DiscoverFillerOutputBody.json
+            - https://example.com/v1/schemas/DiscoverFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
         items:
           items:
             $ref: "#/components/schemas/DiscoveredClip"
-          type:
-            - array
-            - "null"
+          type: array
         licenceNote:
           type: string
         total:
@@ -1236,7 +1401,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/DiscoverStatsOutputBody.json
+            - https://example.com/v1/schemas/DiscoverStatsOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1304,7 +1469,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/EnqueueInputBody.json
+            - https://example.com/v1/schemas/EnqueueInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1319,9 +1484,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         tmdbId:
           format: int64
           type: integer
@@ -1352,7 +1515,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ErrorModel.json
+            - https://example.com/v1/schemas/ErrorModel.json
           format: uri
           readOnly: true
           type: string
@@ -1365,9 +1528,7 @@ components:
           description: Optional list of individual error details
           items:
             $ref: "#/components/schemas/ErrorDetail"
-          type:
-            - array
-            - "null"
+          type: array
         instance:
           description: A URI reference that identifies the specific occurrence of the problem.
           examples:
@@ -1399,7 +1560,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FetchFillerSourceOutputBody.json
+            - https://example.com/v1/schemas/FetchFillerSourceOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1427,7 +1588,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FileFillerInputBody.json
+            - https://example.com/v1/schemas/FileFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1439,11 +1600,56 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - paths
+      type: object
+    FillerClipEvent:
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+        disposition:
+          enum:
+            - running
+            - review
+            - filed
+            - rejected
+          type: string
+        hash:
+          type: string
+        name:
+          type: string
+        progress:
+          format: int64
+          type: integer
+        reason:
+          type: string
+        stage:
+          enum:
+            - probe
+            - transcode
+            - split
+            - language
+            - transcribe
+            - tag
+            - vision
+            - score
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - done
+            - failed
+            - skipped
+          type: string
+      required:
+        - hash
+        - stage
+        - status
+        - progress
+        - disposition
       type: object
     FillerIncomingOutputBody:
       additionalProperties: false
@@ -1451,37 +1657,75 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerIncomingOutputBody.json
+            - https://example.com/v1/schemas/FillerIncomingOutputBody.json
           format: uri
           readOnly: true
           type: string
-        asks:
+        clips:
           items:
-            $ref: "#/components/schemas/IncomingAskDTO"
-          type:
-            - array
-            - "null"
+            $ref: "#/components/schemas/IncomingClipDTO"
+          type: array
         recentlyFiled:
           items:
-            $ref: "#/components/schemas/IncomingAskDTO"
-          type:
-            - array
-            - "null"
+            $ref: "#/components/schemas/IncomingClipDTO"
+          type: array
         reels:
           items:
             $ref: "#/components/schemas/IncomingReelDTO"
-          type:
-            - array
-            - "null"
+          type: array
+        rejected:
+          items:
+            $ref: "#/components/schemas/IncomingRejectDTO"
+          type: array
+        stageOrder:
+          description: Every pipeline stage id, in run order
+          items:
+            type: string
+          type: array
         total:
           description: Everything waiting on a human — asks plus reels
           format: int64
           type: integer
       required:
-        - asks
+        - clips
         - reels
+        - rejected
+        - stageOrder
         - recentlyFiled
         - total
+      type: object
+    FillerIngestEvent:
+      additionalProperties: false
+      properties:
+        empty:
+          format: int64
+          type: integer
+        error:
+          type: string
+        failed:
+          format: int64
+          type: integer
+        fetched:
+          format: int64
+          type: integer
+        jobId:
+          type: string
+        skipped:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - starting
+            - success
+            - error
+          type: string
+      required:
+        - jobId
+        - status
+        - fetched
+        - skipped
+        - failed
+        - empty
       type: object
     FillerSelection:
       additionalProperties: false
@@ -1491,29 +1735,21 @@ components:
         categories:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         era:
           $ref: "#/components/schemas/Range"
         excluded:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         kinds:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         pinned:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     FillerSourceDTO:
       additionalProperties: false
@@ -1529,6 +1765,8 @@ components:
           type: boolean
         fetchable:
           type: boolean
+        group:
+          type: boolean
         id:
           type: string
         kind:
@@ -1543,6 +1781,8 @@ components:
           type: string
         license:
           description: Licence the source declared; absent means unknown, NOT public domain
+          type: string
+        parentId:
           type: string
         removable:
           type: boolean
@@ -1571,16 +1811,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerSourcesOutputBody.json
+            - https://example.com/v1/schemas/FillerSourcesOutputBody.json
           format: uri
           readOnly: true
           type: string
         sources:
           items:
             $ref: "#/components/schemas/FillerSourceDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           format: int64
           type: integer
@@ -1588,13 +1826,39 @@ components:
         - sources
         - total
       type: object
+    FillerSplitEvent:
+      additionalProperties: false
+      properties:
+        clipHash:
+          type: string
+        error:
+          type: string
+        jobId:
+          type: string
+        proposalId:
+          type: string
+        segments:
+          format: int64
+          type: integer
+        status:
+          enum:
+            - running
+            - success
+            - error
+          type: string
+      required:
+        - jobId
+        - clipHash
+        - status
+        - segments
+      type: object
     FillerWatchOutputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/FillerWatchOutputBody.json
+            - https://example.com/v1/schemas/FillerWatchOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1634,15 +1898,11 @@ components:
         exclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         include:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     GetDocOutputBody:
       additionalProperties: false
@@ -1650,7 +1910,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/GetDocOutputBody.json
+            - https://example.com/v1/schemas/GetDocOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1676,9 +1936,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         itemId:
           description: Media-server item id, when the content is available
           type: string
@@ -1716,6 +1974,9 @@ components:
           description: Epoch ms, exclusive
           format: int64
           type: integer
+        thumbUrl:
+          description: TMDB preview image (episode still or poster); empty for breaks or when unavailable
+          type: string
         title:
           description: The episode's name for a series, or the film's name
           type: string
@@ -1735,9 +1996,7 @@ components:
           description: In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them
           items:
             $ref: "#/components/schemas/GuideAiring"
-          type:
-            - array
-            - "null"
+          type: array
         channelId:
           type: string
         logo:
@@ -1773,16 +2032,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/GuideOutputBody.json
+            - https://example.com/v1/schemas/GuideOutputBody.json
           format: uri
           readOnly: true
           type: string
         channels:
           items:
             $ref: "#/components/schemas/GuideChannelTimeline"
-          type:
-            - array
-            - "null"
+          type: array
         fromMs:
           description: The window actually served, after clamping
           format: int64
@@ -1797,13 +2054,30 @@ components:
         - toMs
         - channels
       type: object
+    HealthOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HealthOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        status:
+          examples:
+            - ok
+          type: string
+      required:
+        - status
+      type: object
     HoldFillerInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/HoldFillerInputBody.json
+            - https://example.com/v1/schemas/HoldFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1812,9 +2086,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - paths
       type: object
@@ -1860,9 +2132,7 @@ components:
         models:
           items:
             $ref: "#/components/schemas/HostedModelView"
-          type:
-            - array
-            - "null"
+          type: array
         modelsLive:
           description: Models were fetched live from the provider (false = curated fallback)
           type: boolean
@@ -1919,18 +2189,70 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IconSuggestionsOutputBody.json
+            - https://example.com/v1/schemas/IconSuggestionsOutputBody.json
           format: uri
           readOnly: true
           type: string
         suggestions:
           items:
             $ref: "#/components/schemas/IconSuggestion"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - suggestions
+      type: object
+    ImageDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ImageDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        animated:
+          description: True when the original carries motion; such images have one rendition
+          type: boolean
+        dominantHex:
+          description: Average colour, for tinting a skeleton
+          type: string
+        hash:
+          description: Content hash — the image's identity and its ETag
+          type: string
+        height:
+          description: The original's height in pixels
+          format: int64
+          type: integer
+        placeholder:
+          description: Base64 ThumbHash for the low-quality placeholder
+          type: string
+        role:
+          description: poster | backdrop | icon | thumb — decides the width ladder
+          type: string
+        src:
+          description: A single JPEG URL for the <img> fallback
+          type: string
+        srcSetAvif:
+          description: srcset for AVIF; empty until the AVIF job has run
+          type: string
+        srcSetWebp:
+          description: srcset for WebP
+          type: string
+        width:
+          description: The original's width in pixels
+          format: int64
+          type: integer
+      required:
+        - hash
+        - role
+        - width
+        - height
+        - placeholder
+        - dominantHex
+        - animated
+        - srcSetAvif
+        - srcSetWebp
+        - src
       type: object
     ImportCandidate:
       additionalProperties: false
@@ -1962,16 +2284,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportCandidatesOutputBody.json
+            - https://example.com/v1/schemas/ImportCandidatesOutputBody.json
           format: uri
           readOnly: true
           type: string
         candidates:
           items:
             $ref: "#/components/schemas/ImportCandidate"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - candidates
       type: object
@@ -1981,7 +2301,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportUsersInputBody.json
+            - https://example.com/v1/schemas/ImportUsersInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -1989,9 +2309,7 @@ components:
           description: Media-server user ids to allowlist.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         makeAdmin:
           description: Grant admin to imported users that are media-server admins (default member).
           type: boolean
@@ -2004,7 +2322,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ImportUsersOutputBody.json
+            - https://example.com/v1/schemas/ImportUsersOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2015,7 +2333,7 @@ components:
       required:
         - imported
       type: object
-    IncomingAskDTO:
+    IncomingClipDTO:
       additionalProperties: false
       properties:
         audience:
@@ -2035,13 +2353,20 @@ components:
           type: integer
         from:
           type: string
+        hash:
+          description: Clip identity — its content hash
+          type: string
         kind:
           type: string
         name:
           type: string
+        needsDecision:
+          type: boolean
         path:
-          description: Clip identity — the path relative to FILLER_DIR
+          description: The clip's disk path — used by the array-keyed hold/file/remove ops
           type: string
+        pipeline:
+          $ref: "#/components/schemas/IncomingPipelineDTO"
         reason:
           type: string
         suggestedEra:
@@ -2050,16 +2375,47 @@ components:
         thumbnail:
           type: string
       required:
+        - hash
         - path
         - name
         - durationMs
         - kind
         - reason
       type: object
+    IncomingPipelineDTO:
+      additionalProperties: false
+      properties:
+        attempts:
+          description: Retries spent on the current stage; absent on the first try
+          format: int64
+          type: integer
+        progress:
+          format: int64
+          type: integer
+        stage:
+          type: string
+        stages:
+          items:
+            $ref: "#/components/schemas/IncomingStageDTO"
+          type: array
+        status:
+          type: string
+        updatedAt:
+          description: RFC3339
+          type: string
+      required:
+        - stage
+        - status
+        - progress
+        - stages
+        - updatedAt
+      type: object
     IncomingReelDTO:
       additionalProperties: false
       properties:
-        clipPath:
+        clipHash:
+          type: string
+        clipName:
           type: string
         createdAt:
           description: RFC3339
@@ -2075,10 +2431,54 @@ components:
           type: integer
       required:
         - proposalId
-        - clipPath
+        - clipHash
+        - clipName
         - segments
         - needsAttention
         - createdAt
+      type: object
+    IncomingRejectDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC3339
+          type: string
+        detail:
+          type: string
+        hash:
+          type: string
+        name:
+          type: string
+        reason:
+          type: string
+        restorable:
+          type: boolean
+        stage:
+          description: Which stage refused it
+          type: string
+      required:
+        - hash
+        - reason
+        - restorable
+        - stage
+        - at
+      type: object
+    IncomingStageDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC3339
+          type: string
+        note:
+          type: string
+        stage:
+          type: string
+        status:
+          type: string
+      required:
+        - stage
+        - status
+        - at
       type: object
     IngestFillerInputBody:
       additionalProperties: false
@@ -2086,7 +2486,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IngestFillerInputBody.json
+            - https://example.com/v1/schemas/IngestFillerInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2095,9 +2495,7 @@ components:
           items:
             type: string
           minItems: 1
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - urls
       type: object
@@ -2107,7 +2505,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/IngestFillerOutputBody.json
+            - https://example.com/v1/schemas/IngestFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2123,22 +2521,18 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/Intent.json
+            - https://example.com/v1/schemas/Intent.json
           format: uri
           readOnly: true
           type: string
         adjacent:
           items:
             $ref: "#/components/schemas/AdjacentContext"
-          type:
-            - array
-            - "null"
+          type: array
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
-          type:
-            - array
-            - "null"
+          type: array
         description:
           type: string
         era:
@@ -2149,15 +2543,11 @@ components:
         mustExclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         mustInclude:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         refineText:
           type: string
         runtimeTargetMin:
@@ -2167,6 +2557,16 @@ components:
           type: string
       required:
         - description
+      type: object
+    JobEvent:
+      additionalProperties: false
+      properties:
+        name:
+          examples:
+            - library-scan
+          type: string
+      required:
+        - name
       type: object
     JobView:
       additionalProperties: false
@@ -2225,16 +2625,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/JobsListOutputBody.json
+            - https://example.com/v1/schemas/JobsListOutputBody.json
           format: uri
           readOnly: true
           type: string
         jobs:
           items:
             $ref: "#/components/schemas/JobView"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - jobs
       type: object
@@ -2244,7 +2642,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/JobsPauseInputBody.json
+            - https://example.com/v1/schemas/JobsPauseInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2291,6 +2689,35 @@ components:
         - recommended
         - why
       type: object
+    LLMPullEvent:
+      additionalProperties: false
+      properties:
+        completed:
+          format: int64
+          type: integer
+        error:
+          type: string
+        jobId:
+          type: string
+        model:
+          type: string
+        percent:
+          format: int64
+          type: integer
+        status:
+          description: Ollama's own status strings pass through, plus Loomarr's terminal success/error
+          type: string
+        total:
+          format: int64
+          type: integer
+      required:
+        - jobId
+        - model
+        - status
+        - percent
+        - completed
+        - total
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -2330,9 +2757,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         key:
           description: Provisioning key, e.g. movie:tmdb:603
           type: string
@@ -2371,16 +2796,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListActivityOutputBody.json
+            - https://example.com/v1/schemas/ListActivityOutputBody.json
           format: uri
           readOnly: true
           type: string
         activity:
           items:
             $ref: "#/components/schemas/Activity"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - activity
       type: object
@@ -2390,16 +2813,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListChannelsOutputBody.json
+            - https://example.com/v1/schemas/ListChannelsOutputBody.json
           format: uri
           readOnly: true
           type: string
         channels:
           items:
             $ref: "#/components/schemas/ChannelDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -2409,16 +2830,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListDocsOutputBody.json
+            - https://example.com/v1/schemas/ListDocsOutputBody.json
           format: uri
           readOnly: true
           type: string
         docs:
           items:
             $ref: "#/components/schemas/DocSummary"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - docs
       type: object
@@ -2428,18 +2847,21 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListFillerOutputBody.json
+            - https://example.com/v1/schemas/ListFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
         clips:
           items:
             $ref: "#/components/schemas/ClipDTO"
-          type:
-            - array
-            - "null"
+          type: array
+        total:
+          description: Total matching the filter, ignoring limit/offset — the 'of 1,204' in a pager (§10 V51d)
+          format: int64
+          type: integer
       required:
         - clips
+        - total
       type: object
     ListFillerPullsOutputBody:
       additionalProperties: false
@@ -2447,16 +2869,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListFillerPullsOutputBody.json
+            - https://example.com/v1/schemas/ListFillerPullsOutputBody.json
           format: uri
           readOnly: true
           type: string
         pulls:
           items:
             $ref: "#/components/schemas/PullDTO"
-          type:
-            - array
-            - "null"
+          type: array
         total:
           format: int64
           type: integer
@@ -2470,16 +2890,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListOutputBody.json
+            - https://example.com/v1/schemas/ListOutputBody.json
           format: uri
           readOnly: true
           type: string
         titles:
           items:
             $ref: "#/components/schemas/TitleDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - titles
       type: object
@@ -2489,18 +2907,33 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListProposalsOutputBody.json
+            - https://example.com/v1/schemas/ListProposalsOutputBody.json
           format: uri
           readOnly: true
           type: string
         proposals:
           items:
             $ref: "#/components/schemas/ProposalDTO"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - proposals
+      type: object
+    ListTaxonomyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListTaxonomyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        taxa:
+          items:
+            $ref: "#/components/schemas/TaxonDTO"
+          type: array
+      required:
+        - taxa
       type: object
     ListUserSessionsOutputBody:
       additionalProperties: false
@@ -2508,16 +2941,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListUserSessionsOutputBody.json
+            - https://example.com/v1/schemas/ListUserSessionsOutputBody.json
           format: uri
           readOnly: true
           type: string
         sessions:
           items:
             $ref: "#/components/schemas/SessionBody"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - sessions
       type: object
@@ -2527,16 +2958,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ListUsersOutputBody.json
+            - https://example.com/v1/schemas/ListUsersOutputBody.json
           format: uri
           readOnly: true
           type: string
         users:
           items:
             $ref: "#/components/schemas/UserBody"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - users
       type: object
@@ -2546,7 +2975,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/LivetvReconnectOutputBody.json
+            - https://example.com/v1/schemas/LivetvReconnectOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2563,7 +2992,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/LoginInputBody.json
+            - https://example.com/v1/schemas/LoginInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2582,7 +3011,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/MeBody.json
+            - https://example.com/v1/schemas/MeBody.json
           format: uri
           readOnly: true
           type: string
@@ -2643,16 +3072,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/NowNextOutputBody.json
+            - https://example.com/v1/schemas/NowNextOutputBody.json
           format: uri
           readOnly: true
           type: string
         channels:
           items:
             $ref: "#/components/schemas/ChannelNowNext"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - channels
       type: object
@@ -2662,7 +3089,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PatchClipInputBody.json
+            - https://example.com/v1/schemas/PatchClipInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2674,11 +3101,12 @@ components:
             - late_night
             - ""
           type: string
-        category:
-          type: string
         era:
           format: int64
           type: integer
+        hash:
+          description: The clip's content hash (its identity)
+          type: string
         kind:
           enum:
             - commercial
@@ -2689,6 +3117,13 @@ components:
             - interstitial
             - ""
           type: string
+        tags:
+          description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
+          items:
+            type: string
+          type: array
+      required:
+        - hash
       type: object
     PatchUserInputBody:
       additionalProperties: false
@@ -2696,7 +3131,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PatchUserInputBody.json
+            - https://example.com/v1/schemas/PatchUserInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2713,11 +3148,95 @@ components:
             - member
           type: string
       type: object
+    PlayURLOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PlayURLOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        expiresAt:
+          description: When the signed URLs expire (RFC 3339)
+          format: date-time
+          type: string
+        relativeUrl:
+          description: Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)
+          type: string
+        url:
+          description: Absolute signed HLS (.m3u8) URL for native/off-origin clients; empty if the server's public address is unset
+          type: string
+      required:
+        - url
+        - relativeUrl
+        - expiresAt
+      type: object
+    PlayoutEvent:
+      additionalProperties: false
+      properties:
+        active:
+          format: int64
+          type: integer
+      required:
+        - active
+      type: object
+    PlayoutGPU:
+      additionalProperties: false
+      properties:
+        contended:
+          description: A model is resident AND channels are transcoding on hardware
+          type: boolean
+        llmModel:
+          description: Resident LLM sharing this GPU, if any (§8.2)
+          type: string
+        llmVramGiB:
+          description: VRAM the resident LLM holds — unavailable to encoders
+          format: double
+          type: number
+        name:
+          type: string
+        vramGiB:
+          description: Total detected GPU VRAM (0 = unknown/none)
+          format: double
+          type: number
+      required:
+        - contended
+      type: object
     PlayoutPolicy:
       additionalProperties: false
       properties:
+        audioLanguage:
+          type: string
         backend:
           type: string
+        subtitles:
+          type: string
+      type: object
+    PlayoutStatus:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PlayoutStatus.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          items:
+            $ref: "#/components/schemas/ChannelHealth"
+          type: array
+        gpu:
+          $ref: "#/components/schemas/PlayoutGPU"
+        running:
+          description: Internal playout is wired (false on a Tunarr-only install)
+          type: boolean
+      required:
+        - running
+        - gpu
+        - channels
       type: object
     PlayoutTelemetry:
       additionalProperties: false
@@ -2725,7 +3244,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PlayoutTelemetry.json
+            - https://example.com/v1/schemas/PlayoutTelemetry.json
           format: uri
           readOnly: true
           type: string
@@ -2740,9 +3259,7 @@ components:
         sessions:
           items:
             $ref: "#/components/schemas/SessionStat"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - sessions
         - active
@@ -2752,6 +3269,20 @@ components:
     PodEntryDTO:
       additionalProperties: false
       properties:
+        audience:
+          description: Who the clip suits; empty when untagged
+          enum:
+            - kids
+            - family
+            - general
+            - late_night
+          type: string
+        brand:
+          description: The advertiser the clip is for (Kellogg's, Ford); empty when ungrounded/untagged (V44)
+          type: string
+        category:
+          description: The clip's category (cereal, toys, cars, …); empty when untagged
+          type: string
         durationMs:
           format: int64
           type: integer
@@ -2782,6 +3313,9 @@ components:
         tunarrProgramId:
           description: Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card AND on installs without Tunarr — key on path, not this.
           type: string
+        visibleText:
+          description: On-screen text a vision pass read off the frame (V44); empty when none
+          type: string
       required:
         - name
         - kind
@@ -2794,16 +3328,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PodPoolDTO.json
+            - https://example.com/v1/schemas/PodPoolDTO.json
           format: uri
           readOnly: true
           type: string
         entries:
           items:
             $ref: "#/components/schemas/PodEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         matchLevel:
           description: How far down the fallback ladder assembly went (§10)
           enum:
@@ -2858,7 +3390,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PoolDTO.json
+            - https://example.com/v1/schemas/PoolDTO.json
           format: uri
           readOnly: true
           type: string
@@ -2866,9 +3398,7 @@ components:
           description: Live channels, WORST COVERAGE FIRST. Paused and detached channels are excluded — their breaks are not airing, so counting them as uncovered would report a problem the operator created deliberately.
           items:
             $ref: "#/components/schemas/PoolChannelDTO"
-          type:
-            - array
-            - "null"
+          type: array
         clips:
           description: Every clip in the catalog, of every kind
           format: int64
@@ -2898,7 +3428,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewCycleOutputBody.json
+            - https://example.com/v1/schemas/PreviewCycleOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2911,9 +3441,7 @@ components:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
-          type:
-            - array
-            - "null"
+          type: array
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -2930,7 +3458,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewDraftPodsInputBody.json
+            - https://example.com/v1/schemas/PreviewDraftPodsInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2945,16 +3473,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewProgrammingInputBody.json
+            - https://example.com/v1/schemas/PreviewProgrammingInputBody.json
           format: uri
           readOnly: true
           type: string
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
-          type:
-            - array
-            - "null"
+          type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
       type: object
@@ -2964,7 +3490,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PreviewProgrammingOutputBody.json
+            - https://example.com/v1/schemas/PreviewProgrammingOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -2980,9 +3506,7 @@ components:
           description: Leading slots of the resolved cycle, in play order (capped)
           items:
             $ref: "#/components/schemas/CycleSlotDTO"
-          type:
-            - array
-            - "null"
+          type: array
         windowMs:
           description: Resolved rolling-window horizon in ms (0 = the whole run, no truncation)
           format: int64
@@ -3000,15 +3524,11 @@ components:
         acquisitions:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         alternates:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         channelName:
           type: string
         intent:
@@ -3016,9 +3536,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/ProposalItem"
-          type:
-            - array
-            - "null"
+          type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
@@ -3026,9 +3544,7 @@ components:
         retired:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         scores:
           $ref: "#/components/schemas/Scores"
       required:
@@ -3044,7 +3560,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ProposalDTO.json
+            - https://example.com/v1/schemas/ProposalDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3093,9 +3609,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         inLibrary:
           type: boolean
         libraryItemId:
@@ -3120,9 +3634,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         source:
           type: string
         tmdbId:
@@ -3145,7 +3657,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ProposeFillerPullInputBody.json
+            - https://example.com/v1/schemas/ProposeFillerPullInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3162,7 +3674,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/PullDTO.json
+            - https://example.com/v1/schemas/PullDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3185,9 +3697,7 @@ components:
         plan:
           items:
             $ref: "#/components/schemas/PullPlanRowDTO"
-          type:
-            - array
-            - "null"
+          type: array
         proposedBy:
           type: string
         reason:
@@ -3250,13 +3760,36 @@ components:
           format: int64
           type: integer
       type: object
+    ReadyOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ReadyOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: Why, when not ready — the operator's first clue
+          examples:
+            - ok
+          type: string
+        ready:
+          examples:
+            - true
+          type: boolean
+      required:
+        - ready
+        - detail
+      type: object
     RefineChannelInputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RefineChannelInputBody.json
+            - https://example.com/v1/schemas/RefineChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3275,7 +3808,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RefineChannelOutputBody.json
+            - https://example.com/v1/schemas/RefineChannelOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3291,7 +3824,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RemoteSourceDTO.json
+            - https://example.com/v1/schemas/RemoteSourceDTO.json
           format: uri
           readOnly: true
           type: string
@@ -3318,7 +3851,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ResetPasswordInputBody.json
+            - https://example.com/v1/schemas/ResetPasswordInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3335,7 +3868,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/RestartCost.json
+            - https://example.com/v1/schemas/RestartCost.json
           format: uri
           readOnly: true
           type: string
@@ -3346,9 +3879,7 @@ components:
           description: Boot-time settings waiting on a restart, e.g. DATABASE_URL
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         restartRequired:
           description: A boot-time setting has changed and needs a restart to apply
           type: boolean
@@ -3402,9 +3933,7 @@ components:
         collections:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         era:
           $ref: "#/components/schemas/Range"
         genres:
@@ -3417,9 +3946,7 @@ components:
         series:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
       type: object
     Scores:
       additionalProperties: false
@@ -3448,9 +3975,7 @@ components:
         genres:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         inLibrary:
           type: boolean
         libraryItemId:
@@ -3481,16 +4006,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SearchOutputBody.json
+            - https://example.com/v1/schemas/SearchOutputBody.json
           format: uri
           readOnly: true
           type: string
         candidates:
           items:
             $ref: "#/components/schemas/SearchCandidate"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - candidates
       type: object
@@ -3500,9 +4023,7 @@ components:
         holidays:
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         mode:
           type: string
         offSeason:
@@ -3514,7 +4035,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SecretRegenerateOutputBody.json
+            - https://example.com/v1/schemas/SecretRegenerateOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3532,7 +4053,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SecretRevealOutputBody.json
+            - https://example.com/v1/schemas/SecretRevealOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3619,7 +4140,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/ServicesView.json
+            - https://example.com/v1/schemas/ServicesView.json
           format: uri
           readOnly: true
           type: string
@@ -3628,9 +4149,7 @@ components:
         rows:
           items:
             $ref: "#/components/schemas/ServiceRow"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - loomarr
         - rows
@@ -3669,6 +4188,9 @@ components:
           type: integer
         channelId:
           type: string
+        coldStartMs:
+          format: int64
+          type: integer
         encoder:
           description: "Resolved encoder: hardware vendor, or 'software'"
           type: string
@@ -3679,6 +4201,8 @@ components:
           description: Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter
           format: double
           type: number
+        target:
+          type: string
         uptimeMs:
           format: int64
           type: integer
@@ -3687,12 +4211,14 @@ components:
           type: integer
       required:
         - channelId
+        - target
         - viewers
         - encoder
         - hardware
         - speed
         - bufferedMs
         - uptimeMs
+        - coldStartMs
       type: object
     SetFillerSourceEnabledInputBody:
       additionalProperties: false
@@ -3700,7 +4226,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetFillerSourceEnabledInputBody.json
+            - https://example.com/v1/schemas/SetFillerSourceEnabledInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3727,7 +4253,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetFillerSourceEnabledOutputBody.json
+            - https://example.com/v1/schemas/SetFillerSourceEnabledOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3759,16 +4285,12 @@ components:
           description: Enum values (the closed set) — labels are in enumOptions.
           items:
             type: string
-          type:
-            - array
-            - "null"
+          type: array
         enumOptions:
           description: Enum choices with display labels (config-design §5).
           items:
             $ref: "#/components/schemas/SettingEnumOption"
-          type:
-            - array
-            - "null"
+          type: array
         envOverride:
           description: "An admin took this key back from the environment (§3.1): the env var is set but deliberately not winning. Reported alongside provenance — such a key resolves honestly as 'db' — so the UI can say 'overriding SEERR_URL' rather than implying the variable is unset."
           type: boolean
@@ -3805,9 +4327,7 @@ components:
           additionalProperties:
             items:
               type: string
-            type:
-              - array
-              - "null"
+            type: array
           description: "Conditional visibility: show only when a named key's current value is listed (§5)."
           type: object
         updatedAt:
@@ -3864,7 +4384,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsEnvOverrideInputBody.json
+            - https://example.com/v1/schemas/SettingsEnvOverrideInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3880,7 +4400,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsListOutputBody.json
+            - https://example.com/v1/schemas/SettingsListOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3892,9 +4412,7 @@ components:
         settings:
           items:
             $ref: "#/components/schemas/SettingEntry"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - settings
         - features
@@ -3905,7 +4423,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsPatchInputBody.json
+            - https://example.com/v1/schemas/SettingsPatchInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3923,16 +4441,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsPatchOutputBody.json
+            - https://example.com/v1/schemas/SettingsPatchOutputBody.json
           format: uri
           readOnly: true
           type: string
         results:
           items:
             $ref: "#/components/schemas/SettingResult"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - results
       type: object
@@ -3942,7 +4458,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsTestInputBody.json
+            - https://example.com/v1/schemas/SettingsTestInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3958,7 +4474,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SettingsTestOutputBody.json
+            - https://example.com/v1/schemas/SettingsTestOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -3998,7 +4514,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetupStateOutputBody.json
+            - https://example.com/v1/schemas/SetupStateOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4022,18 +4538,32 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SetupStatusOutputBody.json
+            - https://example.com/v1/schemas/SetupStatusOutputBody.json
           format: uri
           readOnly: true
           type: string
         checks:
           items:
             $ref: "#/components/schemas/SetupCheck"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - checks
+      type: object
+    SplitFillerInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SplitFillerInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        hash:
+          description: The compilation clip's content hash (its identity, §10)
+          type: string
+      required:
+        - hash
       type: object
     SplitFillerOutputBody:
       additionalProperties: false
@@ -4041,7 +4571,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SplitFillerOutputBody.json
+            - https://example.com/v1/schemas/SplitFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4057,11 +4587,11 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SplitProposal.json
+            - https://example.com/v1/schemas/SplitProposal.json
           format: uri
           readOnly: true
           type: string
-        clipPath:
+        clipHash:
           type: string
         createdAt:
           format: date-time
@@ -4071,12 +4601,10 @@ components:
         segments:
           items:
             $ref: "#/components/schemas/SplitSegment"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - id
-        - clipPath
+        - clipHash
         - createdAt
         - segments
       type: object
@@ -4106,6 +4634,10 @@ components:
         suggestedEra:
           format: int64
           type: integer
+        tags:
+          items:
+            type: string
+          type: array
         transcript:
           type: string
         unsplittable:
@@ -4122,7 +4654,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SubmitOutputBody.json
+            - https://example.com/v1/schemas/SubmitOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4131,13 +4663,34 @@ components:
       required:
         - jobId
       type: object
+    SuggestionEvent:
+      additionalProperties: false
+      properties:
+        jobId:
+          type: string
+        phase:
+          enum:
+            - searching
+            - reasoning
+            - scoring
+            - done
+            - failed
+          type: string
+        round:
+          format: int64
+          type: integer
+      required:
+        - jobId
+        - phase
+        - round
+      type: object
     SyncFillerOutputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SyncFillerOutputBody.json
+            - https://example.com/v1/schemas/SyncFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4165,7 +4718,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SyncOutputBody.json
+            - https://example.com/v1/schemas/SyncOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4181,16 +4734,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-discoverResponse.json
+            - https://example.com/v1/schemas/System-llm-discoverResponse.json
           format: uri
           readOnly: true
           type: string
         models:
           items:
             $ref: "#/components/schemas/DiscoverModelView"
-          type:
-            - array
-            - "null"
+          type: array
         sourceOk:
           description: False if the model catalog (Hugging Face) was unreachable — the UI shows a browse link, not an empty state
           type: boolean
@@ -4204,7 +4755,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-pullResponse.json
+            - https://example.com/v1/schemas/System-llm-pullResponse.json
           format: uri
           readOnly: true
           type: string
@@ -4220,7 +4771,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/System-llm-testResponse.json
+            - https://example.com/v1/schemas/System-llm-testResponse.json
           format: uri
           readOnly: true
           type: string
@@ -4237,7 +4788,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMPullInputBody.json
+            - https://example.com/v1/schemas/SystemLLMPullInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4255,7 +4806,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMSelectInputBody.json
+            - https://example.com/v1/schemas/SystemLLMSelectInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4288,7 +4839,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMStatus.json
+            - https://example.com/v1/schemas/SystemLLMStatus.json
           format: uri
           readOnly: true
           type: string
@@ -4296,18 +4847,14 @@ components:
           description: Curated local models annotated for this machine
           items:
             $ref: "#/components/schemas/LLMModelView"
-          type:
-            - array
-            - "null"
+          type: array
         gpuName:
           type: string
         hosted:
           description: Curated hosted providers + recommended models
           items:
             $ref: "#/components/schemas/HostedProviderView"
-          type:
-            - array
-            - "null"
+          type: array
         local:
           description: True for local Ollama (probe + local catalog apply)
           type: boolean
@@ -4343,7 +4890,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemLLMTestInputBody.json
+            - https://example.com/v1/schemas/SystemLLMTestInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4371,16 +4918,14 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemReloadOutputBody.json
+            - https://example.com/v1/schemas/SystemReloadOutputBody.json
           format: uri
           readOnly: true
           type: string
         checks:
           items:
             $ref: "#/components/schemas/SetupCheck"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - checks
       type: object
@@ -4390,7 +4935,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/SystemVersionOutputBody.json
+            - https://example.com/v1/schemas/SystemVersionOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4420,7 +4965,7 @@ components:
             - linux/amd64
           type: string
         ready:
-          description: Same readiness /readyz reports
+          description: Same readiness /v1/readyz reports
           type: boolean
         schemaVersion:
           description: Applied database migration version
@@ -4446,7 +4991,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TagFillerOutputBody.json
+            - https://example.com/v1/schemas/TagFillerOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4468,13 +5013,72 @@ components:
         - partial
         - skipped
       type: object
+    TaxonDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/TaxonDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        axis:
+          description: The independent dimension this taxon lives on
+          enum:
+            - product
+            - format
+            - seasonal
+            - audience-cue
+          type: string
+        label:
+          description: Human display form
+          type: string
+        parent:
+          description: Parent slug on the same axis; empty for an axis root
+          type: string
+        retiredAliases:
+          description: Former slugs that still resolve here after a rename (§10)
+          items:
+            type: string
+          type: array
+        slug:
+          description: Stable machine id — the token the tagger emits and clip_tags references
+          type: string
+        synonyms:
+          items:
+            type: string
+          type: array
+      required:
+        - slug
+        - label
+        - axis
+      type: object
+    TimelineOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/TimelineOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        airings:
+          description: The current programme (first) then the next few and the breaks between them, in airtime order, with a preview image per programme block
+          items:
+            $ref: "#/components/schemas/GuideAiring"
+          type: array
+      required:
+        - airings
+      type: object
     TitleDTO:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TitleDTO.json
+            - https://example.com/v1/schemas/TitleDTO.json
           format: uri
           readOnly: true
           type: string
@@ -4533,13 +5137,52 @@ components:
         - mediaType
         - state
       type: object
+    TitleEvent:
+      additionalProperties: false
+      properties:
+        key:
+          examples:
+            - movie:tmdb:1111867
+          type: string
+        name:
+          examples:
+            - In Flames
+          type: string
+        state:
+          enum:
+            - wanted
+            - requested
+            - downloading
+            - available
+            - unavailable
+          type: string
+      required:
+        - key
+        - state
+      type: object
+    TrackDTO:
+      additionalProperties: false
+      properties:
+        index:
+          description: Position among tracks of its own type — the N in -map 0:a:N / 0:s:N.
+          format: int64
+          type: integer
+        language:
+          description: ISO 639-2 code, lowercased; empty when the media left it untagged.
+          type: string
+        title:
+          description: Free-text stream title when the media carries one (e.g. 'Commentary').
+          type: string
+      required:
+        - index
+      type: object
     TunarrConnectOutputBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/TunarrConnectOutputBody.json
+            - https://example.com/v1/schemas/TunarrConnectOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4560,7 +5203,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UpcomingOutputBody.json
+            - https://example.com/v1/schemas/UpcomingOutputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4568,9 +5211,7 @@ components:
           description: The program airing now (first, if any) then the next ones in airtime order; gaps skipped
           items:
             $ref: "#/components/schemas/NowNextEntry"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - upcoming
       type: object
@@ -4580,7 +5221,7 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UpdateChannelInputBody.json
+            - https://example.com/v1/schemas/UpdateChannelInputBody.json
           format: uri
           readOnly: true
           type: string
@@ -4616,13 +5257,29 @@ components:
             - time_slot
           type: string
       type: object
+    UploadIconOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/UploadIconOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        logo:
+          description: The absolute serve URL now stored on the channel
+          type: string
+      required:
+        - logo
+      type: object
     UserBody:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/UserBody.json
+            - https://example.com/v1/schemas/UserBody.json
           format: uri
           readOnly: true
           type: string
@@ -4668,28 +5325,22 @@ components:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/Vocabulary.json
+            - https://example.com/v1/schemas/Vocabulary.json
           format: uri
           readOnly: true
           type: string
         how:
           items:
             $ref: "#/components/schemas/HowVocab"
-          type:
-            - array
-            - "null"
+          type: array
         what:
           items:
             $ref: "#/components/schemas/WhatVocab"
-          type:
-            - array
-            - "null"
+          type: array
         when:
           items:
             $ref: "#/components/schemas/WhenVocab"
-          type:
-            - array
-            - "null"
+          type: array
       required:
         - when
         - what
@@ -4721,9 +5372,7 @@ components:
           items:
             format: int64
             type: integer
-          type:
-            - array
-            - "null"
+          type: array
         holiday:
           type: string
         hourFrom:
@@ -4881,6 +5530,62 @@ paths:
       summary: Change your own password
       tags:
         - auth
+  /v1/auth/sso/callback:
+    get:
+      description: Public. The provider redirects here; Loomarr verifies the state cookie and the code, mints a session, and redirects onward. §11's allowlist decides access — this route cannot create a user.
+      operationId: sso-callback
+      responses:
+        "200":
+          description: OK
+        "302":
+          description: Redirect back into the app, with a session cookie on success.
+          headers:
+            Location:
+              description: Where to go next
+              schema:
+                type: string
+      summary: Complete an SSO login
+      tags:
+        - auth
+  /v1/auth/sso/start:
+    get:
+      description: Public — this is how you sign in. Redirects to the identity provider and sets a short-lived state cookie binding the callback to this browser. `next` may be a PATH only; an absolute URL would make this an open redirector.
+      operationId: sso-start
+      responses:
+        "200":
+          description: OK
+        "302":
+          description: Redirect to the identity provider.
+          headers:
+            Location:
+              description: Where to go next
+              schema:
+                type: string
+      summary: Begin an SSO login
+      tags:
+        - auth
+  /v1/backup:
+    get:
+      description: Admin only. Makes a new snapshot and streams it without writing it to the backup directory — SQLite installs only (Postgres answers 501; use your usual Postgres tooling).
+      operationId: backup-now
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A SQLite database snapshot.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Stream a fresh backup
+      tags:
+        - system
   /v1/channels:
     get:
       operationId: list-channels
@@ -5093,6 +5798,95 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/icon:
+    get:
+      description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at /v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, and it retires with the channel_icons table in phase 8."
+      operationId: channel-icon
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            image/gif:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/png:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The stored icon bytes.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A channel's uploaded icon
+      tags:
+        - channels
+    post:
+      description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Ingests the bytes into the image service (§22), points the channel's logo at the content-addressed URL, and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a different image yields a different one, so no cache-bust is needed.
+      operationId: upload-channel-icon
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              file:
+                contentType: image/png,image/jpeg,image/webp,image/gif
+            schema:
+              properties:
+                file:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  description: The icon image. Raster only, under 2 MB — SVG is refused.
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadIconOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upload a channel icon
+      tags:
+        - channels
   /v1/channels/{id}/icon-suggestions:
     get:
       description: Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.
@@ -5119,6 +5913,51 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Suggest channel icons from the lineup
+      tags:
+        - channels
+  /v1/channels/{id}/play-url:
+    post:
+      description: Any signed-in user. Returns a short-lived, signed HLS URL the in-app player (or a native app) loads directly — the device playout token never reaches the client (§9.1, §11). The URL is scoped to this channel and expires; request a fresh one when it lapses. `quality` picks a per-viewer tier (auto/720p/480p) — the only per-viewer control, since one encoder serves every viewer of a channel.
+      operationId: channel-play-url
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - explode: false
+          in: query
+          name: quality
+          schema:
+            enum:
+              - auto
+              - "720"
+              - "480"
+            examples:
+              - auto
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceProfileBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayURLOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Mint a signed URL to watch this channel in the browser
       tags:
         - channels
   /v1/channels/{id}/pods:
@@ -5283,6 +6122,68 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/timeline:
+    get:
+      description: The current programme, the next few, and the commercial breaks between them, from internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).
+      operationId: channel-timeline
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: How many programs to return (now + upcoming), default 6, max 24
+          explode: false
+          in: query
+          name: limit
+          schema:
+            description: How many programs to return (now + upcoming), default 6, max 24
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The Watch player's schedule strip for one channel
+      tags:
+        - channels
+  /v1/channels/{id}/tracks:
+    get:
+      description: "Any signed-in user. The audio and subtitle tracks the CURRENTLY-AIRING programme actually carries — what the Watch tab's Audio/Subtitle pickers offer. These come from the media (an ffprobe of the airing file), not a fixed list and not a setting, so the choices are real. Best-effort: an empty list when nothing is airing or the probe can't run, never an error — a viewer still gets the channel's current default."
+      operationId: channel-tracks
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelTracksOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Audio and subtitle tracks of what's airing now
+      tags:
+        - channels
   /v1/channels/{id}/upcoming:
     get:
       description: The program airing now (first) then the next few, in airtime order, from Tunarr's generated guide (§6 airtimes; gaps skipped). Powers the Overview 'what's on later' strip. Read-only — any authenticated user (§8.1 viewer-facing).
@@ -5365,9 +6266,231 @@ paths:
       summary: Read one help page as markdown
       tags:
         - help
+  /v1/events:
+    get:
+      description: "Any authenticated user. State changes as Server-Sent Events, each frame named by its type. A latency optimization only (§8): every frame's information is also readable from a GET, which stays the source of truth on reconnect, so a dropped frame costs freshness and never correctness."
+      operationId: events
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                description: Each oneOf object in the array represents one possible Server Sent Events (SSE) message, serialized as UTF-8 text according to the SSE specification.
+                items:
+                  oneOf:
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ActivityEvent"
+                        event:
+                          const: activity
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event activity
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/ChannelEvent"
+                        event:
+                          const: channel
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event channel
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/DatabaseEvent"
+                        event:
+                          const: database
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event database
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/FillerClipEvent"
+                        event:
+                          const: filler_clip
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event filler_clip
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/FillerIngestEvent"
+                        event:
+                          const: filler_ingest
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event filler_ingest
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/FillerSplitEvent"
+                        event:
+                          const: filler_split
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event filler_split
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/JobEvent"
+                        event:
+                          const: job
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event job
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/LLMPullEvent"
+                        event:
+                          const: llm_pull
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event llm_pull
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/PlayoutEvent"
+                        event:
+                          const: playout
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event playout
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/SuggestionEvent"
+                        event:
+                          const: suggestion
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event suggestion
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/TitleEvent"
+                        event:
+                          const: title
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event title
+                      type: object
+                title: Server Sent Events
+                type: array
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Live update stream (SSE)
+      tags:
+        - events
   /v1/filler:
     get:
-      description: Filter by kind/era/audience/category.
+      description: Filter by kind/era/audience/category, search across name/brand/on-screen-text/tags, sort, and page (§10 V51d). ⚠ **Paged by default — `limit` is 100 and caps at 500.** The unbounded read this replaced hard-fails past ~65k clips on Postgres (one bind parameter per clip in the tag batch, against a 65535-parameter statement cap). `total` is the number MATCHING THE FILTER, counted in SQL through the same predicate as the rows, so a pager can say 'showing 61-120 of 1,204' without the two disagreeing. Held clips and composites are excluded unless asked for, because neither is in the playable catalog.
       operationId: list-filler
       parameters:
         - explode: false
@@ -5410,13 +6533,100 @@ paths:
           schema:
             description: Only commercials missing match tags
             type: boolean
-        - description: Case-insensitive substring match on the clip name
+        - description: Case-insensitive substring match across name, brand, on-screen text and tags (§10 V51d)
           explode: false
           in: query
           name: q
           schema:
-            description: Case-insensitive substring match on the clip name
+            description: Case-insensitive substring match across name, brand, on-screen text and tags (§10 V51d)
             type: string
+        - description: "Also search the transcript. Opt-in: it is kilobytes per clip and matches inside words."
+          explode: false
+          in: query
+          name: searchTranscript
+          schema:
+            description: "Also search the transcript. Opt-in: it is kilobytes per clip and matches inside words."
+            type: boolean
+        - description: Page size (§10 V51d). Capped at 500 — the unbounded read this replaced hard-fails past ~65k clips on Postgres.
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            description: Page size (§10 V51d). Capped at 500 — the unbounded read this replaced hard-fails past ~65k clips on Postgres.
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+        - description: Rows to skip. Use with total to render 'showing 61-120 of 1,204'.
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Rows to skip. Use with total to render 'showing 61-120 of 1,204'.
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d).
+          explode: false
+          in: query
+          name: sort
+          schema:
+            description: Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d).
+            enum:
+              - name
+              - duration
+              - added
+              - plays
+              - confidence
+            type: string
+        - description: Sort direction; default ascending.
+          explode: false
+          in: query
+          name: order
+          schema:
+            description: Sort direction; default ascending.
+            enum:
+              - asc
+              - desc
+            type: string
+        - description: Include clips awaiting review (§10 V38). They are excluded by default because they are not in the playable catalog.
+          explode: false
+          in: query
+          name: includeHeld
+          schema:
+            description: Include clips awaiting review (§10 V38). They are excluded by default because they are not in the playable catalog.
+            type: boolean
+        - description: Include composites — recorded breaks, which are NOT airable (§10 V45). The catalog listing pairs this with topLevel to render them as containers.
+          explode: false
+          in: query
+          name: includeComposites
+          schema:
+            description: Include composites — recorded breaks, which are NOT airable (§10 V45). The catalog listing pairs this with topLevel to render them as containers.
+            type: boolean
+        - description: Only clips with no parent, so a break paginates as one container row instead of the twenty adverts inside it (§10 V51d).
+          explode: false
+          in: query
+          name: topLevel
+          schema:
+            description: Only clips with no parent, so a break paginates as one container row instead of the twenty adverts inside it (§10 V51d).
+            type: boolean
+        - description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
+          explode: false
+          in: query
+          name: parentHash
+          schema:
+            description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
+            type: string
+        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
+          explode: false
+          in: query
+          name: hashes
+          schema:
+            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
+            items:
+              type: string
+            type: array
       responses:
         "200":
           content:
@@ -5546,9 +6756,7 @@ paths:
             items:
               type: string
             maxItems: 25
-            type:
-              - array
-              - "null"
+            type: array
       responses:
         "200":
           content:
@@ -5647,6 +6855,38 @@ paths:
       summary: Send clips back to the review queue
       tags:
         - filler
+  /v1/filler/hover/{hash}:
+    get:
+      description: Any authenticated user. A few seconds of silent animation, so a grid of stills can answer "is this actually the advert it says it is?" without opening anything.
+      operationId: filler-hover
+      parameters:
+        - description: The clip's content hash (from ClipDTO)
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: An animated WebP.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's hover preview
+      tags:
+        - filler
   /v1/filler/incoming:
     get:
       description: "Admin only (§10 V35) — the Filler page's Incoming tab. Two halves in ONE read: clips whose tags need a human (an AI era the tagger could not ground in the clip's text, or a commercial with no match tags), and compilations mid-split. ⚠ No confidence score is returned, because nothing measures one — `reason` reports the real state instead."
@@ -5690,6 +6930,43 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)
+      tags:
+        - filler
+  /v1/filler/media/{hash}:
+    get:
+      description: Any authenticated user. The clip itself, so an operator can watch one before deciding about it. Range-capable, so a <video> element can seek. The exact media type comes from a short server-side allowlist keyed by extension.
+      operationId: filler-media
+      parameters:
+        - description: The clip's content hash (from ClipDTO)
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            audio/*:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            video/*:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The clip's own bytes.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's own bytes
       tags:
         - filler
   /v1/filler/pool:
@@ -5946,6 +7223,32 @@ paths:
       summary: Switch a source on or off, and tune how often it is fetched
       tags:
         - filler
+  /v1/filler/split:
+    post:
+      description: "Admin only (§10, V34). The clip is identified by `path` in the body (§10 V45a). Runs detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: review is not optional, because detection quality is a property of the source."
+      operationId: split-filler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitFillerInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SplitFillerOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Propose splits for a compilation clip
+      tags:
+        - filler
   /v1/filler/splits/{proposalId}:
     get:
       description: Admin only (§10, V34). The review surface's source of truth on SSE reconnect — the same pattern as /v1/proposals/{id}.
@@ -6044,36 +7347,10 @@ paths:
       summary: AI-tag untagged clips
       tags:
         - filler
-  /v1/filler/watch:
-    get:
-      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
-      operationId: filler-watch
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerWatchOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Is filler working right now
-      tags:
-        - filler
-  /v1/filler/{id}:
+  /v1/filler/tags:
     patch:
-      description: Admin only.
+      description: Admin only. The clip is identified by `path` in the body (§10 V45a).
       operationId: tag-filler-clip
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
       requestBody:
         content:
           application/json:
@@ -6096,24 +7373,48 @@ paths:
       summary: Edit a clip's tags
       tags:
         - filler
-  /v1/filler/{id}/split:
-    post:
-      description: "Admin only (§10, V34). Runs detection — chapters → blackdetect/silencedetect → transcript rescue for over-long segments — as a background job (progress on /v1/events as filler_split frames), producing a PERSISTED split proposal. Nothing enters the catalog: review is not optional, because detection quality is a property of the source."
-      operationId: split-filler
+  /v1/filler/thumb/{hash}:
+    get:
+      description: Any authenticated user. The extracted frame ClipDTO.thumbnail points at.
+      operationId: filler-thumb
       parameters:
-        - description: The compilation clip's path (its identity, §10)
+        - description: The clip's content hash (from ClipDTO)
           in: path
-          name: id
+          name: hash
           required: true
           schema:
-            description: The compilation clip's path (its identity, §10)
+            description: The clip's content hash (from ClipDTO)
+            examples:
+              - 9f2b1c4e8a7d6503
             type: string
+      responses:
+        "200":
+          content:
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A JPEG still.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: A clip's thumbnail frame
+      tags:
+        - filler
+  /v1/filler/watch:
+    get:
+      description: "The Filler page header's live status (§10 V38c): how many sources are on, how many clips the catalog holds, when anything last arrived, and a health verdict. ⚠ The verdict is computed on the SERVER — the rule ('every source dark', 'nothing has arrived in days') is domain logic, and deriving it in the client would also have left members with a permanently grey indicator, since the sources listing is admin-only. Read-only and member-visible: it names no paths, targets or ids — only counts and a verdict."
+      operationId: filler-watch
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SplitFillerOutputBody"
+                $ref: "#/components/schemas/FillerWatchOutputBody"
           description: OK
         default:
           content:
@@ -6121,7 +7422,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
-      summary: Propose splits for a compilation clip
+      summary: Is filler working right now
       tags:
         - filler
   /v1/guide:
@@ -6161,6 +7462,175 @@ paths:
       summary: Every channel's timeline over a window
       tags:
         - channels
+  /v1/healthz:
+    get:
+      description: Public, no credential — the consumer is a container runtime, not a person. Answers 200 whenever the process is serving, regardless of whether its dependencies are healthy; that is what `readyz` is for. Also served at `/healthz`.
+      operationId: healthz
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Liveness probe
+      tags:
+        - ops
+  /v1/images:
+    post:
+      description: Stores an image and returns its record. Raster only — SVG is refused.
+      operationId: upload-image
+      parameters:
+        - description: poster | backdrop | icon | thumb
+          explode: false
+          in: query
+          name: role
+          schema:
+            description: poster | backdrop | icon | thumb
+            examples:
+              - icon
+            type: string
+        - description: public | member
+          explode: false
+          in: query
+          name: visibility
+          schema:
+            description: public | member
+            examples:
+              - member
+            type: string
+        - description: What this image decorates, e.g. channel
+          explode: false
+          in: query
+          name: ownerKind
+          schema:
+            description: What this image decorates, e.g. channel
+            type: string
+        - description: The id of the thing it decorates
+          explode: false
+          in: query
+          name: ownerId
+          schema:
+            description: The id of the thing it decorates
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              file:
+                contentType: image/png,image/jpeg,image/webp,image/gif
+            schema:
+              properties:
+                file:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  description: The image. Raster only — SVG is refused.
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upload an image
+      tags:
+        - Images
+  /v1/images/{hash}:
+    get:
+      description: Dimensions, placeholder and per-format srcset strings for one image — everything an <img> needs to render without layout shift.
+      operationId: get-image
+      parameters:
+        - in: path
+          name: hash
+          required: true
+          schema:
+            examples:
+              - 9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read an image's record
+      tags:
+        - Images
+  /v1/images/{hash}/{rendition}:
+    get:
+      description: Returns the bytes of one rendition (a width in a format) of a stored image. Content-addressed, so the response is immutable and cacheable forever.
+      operationId: serve-image
+      parameters:
+        - description: The image's content hash
+          in: path
+          name: hash
+          required: true
+          schema:
+            description: The image's content hash
+            examples:
+              - 9f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d65039f2b1c4e8a7d6503
+            type: string
+        - description: Width and format, as w<width>.<ext>
+          in: path
+          name: rendition
+          required: true
+          schema:
+            description: Width and format, as w<width>.<ext>
+            examples:
+              - w342.webp
+            type: string
+      responses:
+        "200":
+          content:
+            image/avif:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The image bytes
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Serve one image rendition
+      tags:
+        - Images
   /v1/jobs:
     get:
       description: Admin only. The scheduler's named jobs with their effective interval, last/next run, result, and running state (§18.1). All timing is server-authored.
@@ -6254,6 +7724,187 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/metrics:
+    get:
+      description: Public, no credential — a scrape job holds no session. Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`.
+      operationId: metrics
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: Prometheus text exposition.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Prometheus metrics
+      tags:
+        - ops
+  /v1/playout/guide.xml:
+    get:
+      operationId: playout-guide
+      responses:
+        "200":
+          content:
+            application/xml:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: XMLTV listings for every internally-played channel.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout XMLTV guide (device-authed)
+      tags:
+        - playout
+  /v1/playout/hls/{id}/master.m3u8:
+    get:
+      operationId: playout-hls-master
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The HLS master playlist for the in-app and native players.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel HLS master playlist (signed-URL authed)
+      tags:
+        - playout
+  /v1/playout/hls/{id}/{asset}:
+    get:
+      operationId: playout-hls-asset
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+        - description: A file beside the master playlist — a segment, or the media playlist
+          in: path
+          name: asset
+          required: true
+          schema:
+            description: A file beside the master playlist — a segment, or the media playlist
+            examples:
+              - seg-7.ts
+            type: string
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A segment, or the media playlist beside the master.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel HLS segment or media playlist (signed-URL authed)
+      tags:
+        - playout
+  /v1/playout/playlist/{id}:
+    get:
+      operationId: playout-playlist
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The ffconcat playlist the parent ffmpeg reads to sequence programs.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel ffconcat playlist (device-authed)
+      tags:
+        - playout
+  /v1/playout/program/{id}:
+    get:
+      operationId: playout-program
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: One program's transport stream; the concat demuxer re-opens this per program.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One program's MPEG-TS (device-authed)
+      tags:
+        - playout
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."
@@ -6274,6 +7925,78 @@ paths:
       summary: Live internal-playout encoder telemetry (admin)
       tags:
         - dashboard
+  /v1/playout/status:
+    get:
+      description: "A read-only health projection of live internal playout: per (channel, target) encoder + realtime-speed verdict (ok|degraded|stalled), plus the GPU/VRAM and resident-LLM contention picture that a black-frame diagnosis needs. Admin only. Changes nothing."
+      operationId: get-playout-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayoutStatus"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout status — why a channel is (or isn't) playing (admin)
+      tags:
+        - dashboard
+  /v1/playout/stream/{id}:
+    get:
+      operationId: playout-stream
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            video/mp2t:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: A continuous transport stream of whatever the channel is playing now.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel MPEG-TS stream (device-authed)
+      tags:
+        - playout
+  /v1/playout/tuner.m3u:
+    get:
+      operationId: playout-tuner
+      responses:
+        "200":
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The M3U tuner list a media server registers as a Live TV source.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Playout tuner M3U (device-authed)
+      tags:
+        - playout
   /v1/programming/vocabulary:
     get:
       description: "The WHEN/WHAT/HOW curation-rule presets (§6.6): each token with its label and the value the BE lowers it to. The rules editor renders its picker from this and lowers identically to the server — so a hand-authored rule and an LLM-authored one are byte-identical, and the FE no longer hand-mirrors the lowering table. Read-only; any authenticated user."
@@ -6472,6 +8195,48 @@ paths:
       summary: Deny a proposal (admin)
       tags:
         - proposals
+  /v1/readyz:
+    get:
+      description: Public, no credential. 200 when the store is up and migrations are applied, 503 with a reason otherwise — a container started without DATABASE_URL is a SUPPORTED degraded mode, and this is how it explains itself. Also served at `/readyz`.
+      operationId: readyz
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Readiness probe
+      tags:
+        - ops
+  /v1/reference:
+    get:
+      description: Public. A self-contained page linking to the machine-readable spec; no CDN assets.
+      operationId: api-reference
+      responses:
+        "200":
+          content:
+            text/html:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: An HTML page.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Interactive API reference
+      tags:
+        - ops
   /v1/search:
     get:
       operationId: search
@@ -6871,6 +8636,38 @@ paths:
       summary: Write a backup now
       tags:
         - system
+  /v1/system/backups/{name}:
+    get:
+      description: Admin only. Streams one file from the backup directory, honouring Range so a large download can resume. See `system-database-backup` to write a new one.
+      operationId: system-backups-download
+      parameters:
+        - description: Backup filename, as listed by system-backups-list
+          in: path
+          name: name
+          required: true
+          schema:
+            description: Backup filename, as listed by system-backups-list
+            examples:
+              - loomarr-2026-08-08T02-00-00Z.db
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The backup file.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Download an already-written backup
+      tags:
+        - system
   /v1/system/database:
     get:
       description: Admin only. Which backend is live, whether a migration is offered, and how far one has got — including per-table row counts and the parity verdict.
@@ -7184,7 +8981,7 @@ paths:
         - system
   /v1/system/version:
     get:
-      description: What the operator quotes in a bug report, plus the readiness /readyz reports. /healthz and /readyz stay unauthenticated for orchestrators; this is their typed, authenticated twin for the UI.
+      description: What the operator quotes in a bug report, plus the readiness /v1/readyz reports. The probes stay unauthenticated for orchestrators (RolePublic); this is their authenticated twin, carrying the build and schema detail a probe has no business returning.
       operationId: system-version
       responses:
         "200":
@@ -7202,6 +8999,104 @@ paths:
       summary: Version and readiness of this instance
       tags:
         - system
+  /v1/taxonomy:
+    get:
+      description: The operator-editable tag graph the filler tagger grounds against and curation matches over (§10 V45a). Ordered by axis then slug. Read-only, so any authenticated user may call it.
+      operationId: list-taxonomy
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTaxonomyOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The clip tag vocabulary (the taxonomy graph)
+      tags:
+        - filler
+    post:
+      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      operationId: create-taxon
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxonDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxonDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a taxon
+      tags:
+        - filler
+  /v1/taxonomy/{slug}:
+    delete:
+      description: Admin only. Children are reparented to the grandparent; reindexes (§10 V45a).
+      operationId: delete-taxon
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a taxon
+      tags:
+        - filler
+    put:
+      description: Admin only. Reindexes the catalog's rolled-up tags (§10 V45a).
+      operationId: update-taxon
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxonDTO"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxonDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Edit a taxon
+      tags:
+        - filler
   /v1/titles:
     get:
       operationId: list-titles

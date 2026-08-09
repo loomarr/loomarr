@@ -58,11 +58,13 @@ const previewBody = {
 // …/channels/{id} is apply; GET /v1/filler is both the catalog resolve and the add-search.
 const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
   const patches: unknown[] = [];
+  const calls: string[] = [];
   const previews: unknown[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       const u = String(url);
+      calls.push(u);
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       if (method === "POST" && u.endsWith("/pods/preview")) {
@@ -73,11 +75,25 @@ const stubFetch = (opts: { clips?: unknown[]; patchStatus?: number } = {}) => {
         patches.push(body);
         return Promise.resolve(jsonResponse(opts.patchStatus ?? 200, { id: "ch-1" }));
       }
+      // GET /v1/taxonomy — the category vocabulary the criteria's product chips are now FETCHED from
+      // (§10 V45a; the hardcoded list is gone). A minimal product forest with the taxa these tests
+      // toggle (Toys, Candy) so the chips render for the interaction.
+      if (u.includes("/v1/taxonomy")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            taxa: [
+              { slug: "toys", label: "Toys", axis: "product" },
+              { slug: "candy", label: "Candy", axis: "product" },
+              { slug: "cars", label: "Cars", axis: "product" },
+            ],
+          }),
+        );
+      }
       // GET /v1/filler — catalog + add-search.
       return Promise.resolve(jsonResponse(200, { clips: opts.clips ?? [] }));
     }),
   );
-  return { patches, previews };
+  return { patches, previews, calls };
 };
 
 const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
@@ -87,6 +103,24 @@ const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
 });
 
 afterEach(() => vi.restoreAllMocks());
+
+// ⚠ The section starts CLOSED, and since V50c a closed CollapsibleSection panel carries
+// `hidden="until-found"` — so its contents are out of the accessibility tree until opened.
+// `*ByRole` queries honour that tree, which means any test that reaches a control in the body
+// has to open the section first, exactly as a user does.
+//
+// This is not a workaround for the port; it is the port removing a defect these tests were
+// resting on. The old `.reveal` closed with `grid-template-rows: 0fr` + `overflow:hidden` —
+// zero height but NOT `display:none` — so collapsed controls stayed focusable and announced.
+// A keyboard user could Tab into a section they could not see. `findByRole` reaching into a
+// closed body was that bug, visible in a test rather than in a bug report.
+//
+// ⚠ The failure mode is deliberately unhelpful, so recognise it: `asyncUtilTimeout` and
+// `testTimeout` are both 5000ms, so findBy's own "Unable to find role" never surfaces — the
+// test times out first and reports only "Test timed out in 5000ms".
+const openFiller = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole("button", { name: /^filler/i }));
+};
 
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
@@ -107,6 +141,7 @@ describe("ChannelFiller", () => {
     const { previews } = stubFetch();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
+    await openFiller(user);
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
     // (findBy awaits the router-harness mount.) No Apply until the draft diverges.
     const toys = await screen.findByRole("button", { name: "Toys" });
@@ -128,6 +163,7 @@ describe("ChannelFiller", () => {
     const { patches } = stubFetch();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
 
+    await openFiller(user);
     await user.click(await screen.findByRole("button", { name: "Candy" }));
     const apply = await screen.findByRole("button", { name: /apply filler/i });
     await user.click(apply);
@@ -144,11 +180,15 @@ describe("ChannelFiller", () => {
     });
   });
 
-  it("resolves a pinned clip's id to its name via the catalog", async () => {
-    stubFetch({
+  // ⚠ It resolves by asking for THOSE HASHES, not by loading the catalog and mapping it
+  // client-side (§10 V51d). The old shape worked only while the listing was unbounded: against
+  // a paged catalog it would resolve whichever pins happened to land on page one and render the
+  // rest as bare hashes — an override that looks like it has gone missing.
+  it("resolves a pinned clip's id by asking for that hash, not by loading the catalog", async () => {
+    const { calls } = stubFetch({
       clips: [
         {
-          path: "p9.mp4",
+          hash: "p9-hash",
           tunarrProgramId: "p9",
           name: "Frosted Flakes",
           kind: "commercial",
@@ -158,9 +198,16 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9.mp4"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
+
+    const resolves = calls.filter((u) => u.includes("/v1/filler?"));
+    expect(resolves.length, "the resolver must issue a listing request").toBeGreaterThan(0);
+    expect(
+      resolves.every((u) => u.includes("hashes=p9-hash")),
+      "every resolve must name the hashes it wants — an unfiltered listing is a catalog read",
+    ).toBe(true);
   });
 
   it("surfaces a preview failure rather than a silently empty break", async () => {

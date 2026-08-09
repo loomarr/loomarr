@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,18 @@ import (
 type Clip struct {
 	filler.Clip
 	UpdatedAt time.Time
+	// CreatedAt is when the clip ENTERED the catalog (§10 V51d, migration 00046) — the "recently
+	// added" sort order, and the only honest answer to "what arrived while I was away?".
+	//
+	// ⚠ A separate column rather than a reading of UpdatedAt, because a folder re-sync bumps
+	// UpdatedAt on every clip it touches: an "added" order backed by it would reshuffle the whole
+	// catalog after a routine scan. Written ONCE, at insert — `UpsertClip` omits it from the
+	// DO UPDATE list for the same reason it omits held/removed_at/confidence and the counters.
+	//
+	// ⚠ A catalog fact, so it lives HERE beside UpdatedAt rather than on filler.Clip. Nothing in
+	// pod assembly, matching or playout reads it; the domain has no opinion about when a row
+	// appeared, only about what the clip is.
+	CreatedAt time.Time
 }
 
 // ClipFilter narrows a ListClips query. Any zero-value field is a wildcard, so a
@@ -59,6 +72,128 @@ type ClipFilter struct {
 	// catalog". Added because the audit list was loading every clip in the install and dropping
 	// all but the auto-filed ones in Go; the predicate belongs beside the column it reads.
 	AutoFiledOnly bool
+	// IncludeComposites lifts the default exclusion of COMPOSITE clips (§10 V45).
+	//
+	// ⚠ Same polarity and same reason as IncludeHeld. A composite is a recorded break, NOT airable —
+	// pod assembly loads the catalog through this same call with a ZERO filter, so an opt-OUT would
+	// put a 16-minute block into a channel's break as one "commercial". Its segments air, it does
+	// not. Opt-in means only a caller that explicitly wants to SEE composites (the catalog listing,
+	// a lineage view) passes this.
+	IncludeComposites bool
+	// CompositesOnly restricts to composites — the "recorded breaks awaiting split" work list and the
+	// lineage parent lookup. The inverse of the default exclusion, like HeldOnly.
+	CompositesOnly bool
+	// ParentHash restricts to the SEGMENTS of one composite (§10 V45) — the lineage query
+	// ("show me the adverts split out of this break").
+	ParentHash string
+	// TopLevelOnly restricts to clips with NO parent (§10 V51d) — composites and standalone clips,
+	// but not the segments split out of a break. The catalog listing's filter, so a break paginates
+	// as ONE container row rather than as the twenty adverts inside it.
+	//
+	// ⚠ Opt-in, with a sharper argument than its siblings. For Held and IncludeComposites the
+	// excluded rows are the unsafe ones; here it is the reverse — **segments are the airable
+	// clips**. Pod assembly loads the catalog through the zero filter, so an opt-OUT would remove
+	// every advert split out of a recorded break from every channel's breaks: not a degraded pool
+	// but the exact inverse of what V45 exists to achieve, and silent.
+	//
+	// ⚠ Ignored when ParentHash is set — see clipWhere.
+	TopLevelOnly bool
+	// Hashes restricts to a specific set of clip identities (§10 V51d) — the batch read behind
+	// "resolve these N pinned ids to their names".
+	//
+	// ⚠ It exists because paging made the alternative impossible: the channel pin/exclude editor
+	// used to load the WHOLE catalog and build an id→clip map in the client, which a 100-row
+	// default page silently truncates. Ask for what you hold.
+	//
+	// ⚠ The CALLER bounds the list. One bind parameter per hash, and Postgres caps a statement at
+	// 65535 — the same ceiling attachTags carries a warning about.
+	Hashes []string
+	// QueryTranscript widens Query to also search the persisted transcript (§10 V51d).
+	//
+	// ⚠ Opt-in, and NOT because of safety this time but because of cost and noise. `transcript` is
+	// the one long column — a few KB per clip, so a 500-row page scans megabytes — and the one
+	// noisy one: "ford" matches "afford" with no ranking available to explain why the row came
+	// back. A caller that wants to search what a clip SAYS asks for it.
+	QueryTranscript bool
+	// Sort selects the ORDER BY column; "" keeps the historical `path` order (see clipOrderBy).
+	Sort ClipSort
+	// Desc reverses the sort, tie-break included, so a descending page is the exact reverse of the
+	// ascending list rather than a differently-tied approximation of it.
+	Desc bool
+	// Limit caps the rows returned; Offset skips that many first (§10 V51d).
+	//
+	// ⚠ **`Limit == 0` means NO `LIMIT` CLAUSE, and the default lives in the API — never here.**
+	// This is the single most important rule in the paging change: pod assembly loads the catalog
+	// through the ZERO filter, so a store-side default of 100 would quietly cut every channel's
+	// break pool to the first hundred clips. No error, no log line, just a channel that plays the
+	// same few adverts. The API layer applies the operator-facing default; the store obeys.
+	//
+	// ⚠ Offset without Limit is IGNORED, not emulated: sqlite rejects a bare OFFSET, and a page
+	// with no size is not a page.
+	Limit  int
+	Offset int
+}
+
+// ClipSort is the catalog's sort vocabulary (§10 V51d) — a CLOSED set, mapped to a column by a
+// fixed switch in clipOrderBy.
+//
+// ⚠ A typed string rather than a raw one so the column can never be concatenated from client
+// input, and an unrecognised value is an error rather than a silent fall-back to the default. A
+// silent fall-back turns "the sort control does nothing" into a bug that looks like a UI glitch.
+type ClipSort string
+
+const (
+	ClipSortName       ClipSort = "name"
+	ClipSortDuration   ClipSort = "duration"
+	ClipSortAdded      ClipSort = "added"
+	ClipSortPlays      ClipSort = "plays"
+	ClipSortConfidence ClipSort = "confidence"
+)
+
+// ErrUnknownClipSort is returned by ListClips for a Sort value outside the closed set above. The
+// API maps it to a 422; nothing falls back.
+var ErrUnknownClipSort = errors.New("unknown clip sort")
+
+// clipOrderBy renders the ORDER BY for a filter (§10 V51d).
+//
+// ⚠ **Every ordering appends `hash` as a tie-break, and that is a correctness requirement, not
+// tidiness.** Without a total order, `ORDER BY duration_ms` under LIMIT/OFFSET may return the same
+// row on two pages and skip another entirely — SQL promises nothing about the relative order of
+// tied rows between statements, and duration/plays/confidence tie constantly.
+//
+// ⚠ **`name` sorts as `LOWER(name)` on BOTH dialects.** SQLite's default BINARY collation puts
+// 'Z' before 'a'; Postgres's locale collation typically does not. Without the LOWER() this one
+// function produces two different orders — the per-dialect fork §5's store rules forbid — and the
+// conformance fixture carries case-mixed names so a regression fails on exactly one backend.
+func clipOrderBy(f ClipFilter) (string, error) {
+	var col string
+	switch f.Sort {
+	case "":
+		// The historical order, preserved exactly so the zero filter (pod assembly, coverage, the
+		// filler-list builder) is byte-for-byte unchanged by this phase. `hash` still rides along:
+		// paths are unique in practice, and "in practice" is not a total order.
+		col = "path"
+	case ClipSortName:
+		col = "LOWER(name)"
+	case ClipSortDuration:
+		col = "duration_ms"
+	case ClipSortAdded:
+		col = "created_at"
+	case ClipSortPlays:
+		col = "play_count"
+	case ClipSortConfidence:
+		col = "confidence"
+	default:
+		return "", fmt.Errorf("%w: %q", ErrUnknownClipSort, f.Sort)
+	}
+	dir := "ASC"
+	if f.Desc {
+		dir = "DESC"
+	}
+	// The tie-break flips WITH the sort, so a descending page is the exact reverse of the
+	// ascending list. Either direction would be total; matching makes the reversal a property the
+	// conformance suite can assert.
+	return " ORDER BY " + col + " " + dir + ", hash " + dir, nil
 }
 
 func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
@@ -91,8 +226,34 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		// ⚠ transcript / brand / visible_text / vision_tagged are INSERTed (a new row starts empty)
+		// but deliberately OMITTED from DO UPDATE (§10 V44, migration 00038) — the same rule the
+		// block above states for language/removed_at/held/counters. The folder scan knows none of
+		// them; if they rode the update list, one re-sync would blank a transcribed or vision-tagged
+		// clip and re-trigger ~341s of Whisper or a paid vision call over work already done. Their
+		// writers are the job methods below — SetClipTranscript owns `transcript`, SetClipVisionTags
+		// owns `visible_text`/`vision_tagged`, and `brand` is written by whichever grounded it
+		// (SetClipBrand from text, SetClipVisionTags from the frame).
+		//
+		// ⚠ is_composite / parent_hash (§10 V45, migration 00039) are also INSERTed but OMITTED from
+		// DO UPDATE. Set by intake/detection and by split Confirm; the folder scan does not know a
+		// file is a composite or whose segment it is, so a re-sync must not flip a confirmed composite
+		// back or blank a segment's lineage. Written by SetClipComposite / SetClipParent below.
+		//
+		// ⚠ `created_at` (§10 V51d, migration 00046) is the FOURTH column with this rule, and this
+		// block is where people look for the list. INSERTed so a new row records when it arrived;
+		// omitted from DO UPDATE because the scan supplies a fresh timestamp on every pass — riding
+		// the update list would mark the entire catalog "just added" after each sync, which is the
+		// exact failure the column was added to avoid. It has NO other writer: unlike its
+		// neighbours here there is no Set… method, because nothing may ever change when a clip
+		// arrived. See clipCreatedAt below for the insert-time value.
+		//
+		// ⚠ `thumb_image_hash` / `hover_image_hash` (§22 V52 phase 6, migration 00047) are the
+		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
+		// job ingests the files. The scan knows nothing about image identities, so including them
+		// in the update list would blank every clip's artwork on re-sync.
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, auto_filed, updated_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hash) DO UPDATE SET
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
@@ -102,6 +263,11 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
 		   preview=excluded.preview,
+		   -- ⚠ thumb_image_hash / hover_image_hash are DELIBERATELY ABSENT from this list, and
+		   -- their absence is load-bearing (§22, V52 phase 6). They are written by ONE writer —
+		   -- SetClipArtworkImages, after the ingest — and the folder scan that also calls this
+		   -- upsert has no idea what they are. Including them would blank a clip's artwork on
+		   -- every re-sync, which is the same class as is_composite/parent_hash above.
 		   language=excluded.language,
 		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
@@ -110,22 +276,58 @@ func (s *sqlStore) UpsertClip(ctx context.Context, c Clip) error {
 		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
 		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
 		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
-		// line is the fourth time it has bitten this session.
-		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.Language,
+		// line is the fourth time it has bitten this session. `vision_tagged` joins them (00038).
+		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
+		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
+		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
-		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt))
+		c.Held, c.Confidence, c.AutoFiled, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Hash, err)
 	}
 	return nil
 }
 
+// clipCreatedAt is the value `created_at` takes at INSERT (§10 V51d).
+//
+// ⚠ It falls back to UpdatedAt when the caller left CreatedAt zero, and the fallback is the point:
+// every existing writer — the folder scan, intake, split confirm — builds a Clip with a fresh
+// UpdatedAt and knows nothing about this column. Requiring each of them to set it would mean five
+// call sites that must remember, and the one that forgets writes a 0 that sorts to the far end of
+// "recently added" forever. The store answers the question it can answer correctly.
+//
+// ⚠ It is NOT a general default. Only the INSERT reads this; a re-sync never reaches it, because
+// `created_at` is absent from the DO UPDATE list.
+func clipCreatedAt(c Clip) time.Time {
+	if !c.CreatedAt.IsZero() {
+		return c.CreatedAt
+	}
+	return c.UpdatedAt
+}
+
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, kind, era, audience, category, duration_ms,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, language, play_count, last_played_at, suggested_era,
-	removed_at, held, confidence, auto_filed, updated_at FROM clips`
+	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
+	is_composite, parent_hash,
+	play_count, last_played_at, suggested_era,
+	removed_at, held, confidence, auto_filed, updated_at, created_at FROM clips`
 
 func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE hash = ?`), id))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
+}
+
+// clipWithTags fills a single clip's taxonomy Tags (§10 V45a). Wraps attachTags for the two
+// single-row readers so they load tags the same way the listing does — one clip is a one-element
+// batch, so there is no separate query shape to keep in step.
+func (s *sqlStore) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
+	batch := []Clip{c}
+	if err := s.attachTags(ctx, batch); err != nil {
+		return Clip{}, err
+	}
+	return batch[0], nil
 }
 
 // GetClipByPath looks a clip up by its location under FILLER_DIR.
@@ -141,25 +343,53 @@ func (s *sqlStore) GetClip(ctx context.Context, id string) (Clip, error) {
 // The media route needs this one rather than the hash lookup because its URL carries the path —
 // which is what `ClipDTO` exposes, and what every other clip-shaped route already keys on.
 func (s *sqlStore) GetClipByPath(ctx context.Context, path string) (Clip, error) {
-	return scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	c, err := scanClip(s.db.QueryRowContext(ctx, s.ph(clipSelect+` WHERE path = ?`), path))
+	if err != nil {
+		return Clip{}, err
+	}
+	return s.clipWithTags(ctx, c)
 }
 
 // ListClips applies the filter as ANDed WHERE clauses (zero fields omitted). The
 // UntaggedOnly flag adds "era=0 OR audience=” OR category=”" (any missing tag).
+//
+// Ordering comes from clipOrderBy (always total — see its tie-break warning), and `Limit`/`Offset`
+// page the result. ⚠ An unknown `Sort` is an ERROR (ErrUnknownClipSort), never a fall-back.
 func (s *sqlStore) ListClips(ctx context.Context, f ClipFilter) ([]Clip, error) {
 	where, args := clipWhere(f)
 	q := clipSelect
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY path"
+	order, err := clipOrderBy(f)
+	if err != nil {
+		return nil, err
+	}
+	q += order
+	// ⚠ `Limit == 0` renders NO clause at all — see the field's own warning. Pod assembly reaches
+	// here with the zero filter and must get the whole catalog.
+	if f.Limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, f.Limit)
+		if f.Offset > 0 {
+			q += " OFFSET ?"
+			args = append(args, f.Offset)
+		}
+	}
 
 	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanClips(rows)
+	clips, err := scanClips(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachTags(ctx, clips); err != nil {
+		return nil, err
+	}
+	return clips, nil
 }
 
 // CountClips answers "how many match?" without materialising the rows.
@@ -240,8 +470,40 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		// a search that behaves differently per backend is exactly the dialect fork the
 		// store rules forbid. The term is escaped for LIKE metacharacters so a user
 		// typing "%" searches for a percent sign rather than matching everything.
-		where = append(where, "LOWER(name) LIKE LOWER(?) ESCAPE '\\'")
-		args = append(args, "%"+escapeLike(f.Query)+"%")
+		//
+		// ⚠ Widened past `name` in V51d — a catalog search that could not find "Kellogg's" on a
+		// clip whose brand IS Kellogg's was a search box that looked broken. The columns come from
+		// a FIXED list below, never from input; only the bound term is user data.
+		//
+		// ⚠ No FTS, deliberately: SQLite FTS5 and Postgres tsvector are different engines with
+		// different tokenizers and ranking, so adopting them forces this function to branch on
+		// dialect and the conformance suite to assert equivalent-but-not-identical results per
+		// backend. One suite, two backends (§5) rules that out. LIKE over four columns is slower
+		// in theory and indistinguishable at household scale.
+		like := "%" + escapeLike(f.Query) + "%"
+		cols := []string{"name", "brand", "visible_text"}
+		if f.QueryTranscript {
+			cols = append(cols, "transcript")
+		}
+		ors := make([]string, 0, len(cols)+1)
+		for _, col := range cols {
+			ors = append(ors, "LOWER("+col+") LIKE LOWER(?) ESCAPE '\\'")
+			args = append(args, like)
+		}
+		// Tags match through an EXISTS rather than a JOIN: a clip with three matching tags must be
+		// ONE row, and a join would return it three times — which CountClips would then count
+		// three times, so the total and the rows would disagree. `clip_tags` is indexed both ways.
+		ors = append(ors, "EXISTS (SELECT 1 FROM clip_tags ct WHERE ct.clip_hash = clips.hash AND LOWER(ct.taxon) LIKE LOWER(?) ESCAPE '\\')")
+		args = append(args, like)
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+	if len(f.Hashes) > 0 {
+		ph := make([]string, len(f.Hashes))
+		for i, h := range f.Hashes {
+			ph[i] = "?"
+			args = append(args, h)
+		}
+		where = append(where, "hash IN ("+strings.Join(ph, ",")+")")
 	}
 	if !f.IncludeRemoved {
 		where = append(where, "removed_at = 0")
@@ -260,6 +522,30 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 	} else if !f.IncludeHeld {
 		where = append(where, "held = ?")
 		args = append(args, false)
+	}
+	// ⚠ THE composite chokepoint (§10 V45), the same shape as the held block above and for the same
+	// reason: pod assembly loads the catalog here with a zero filter, so a composite excluded ONCE
+	// here can never air. Bound, never a literal — `is_composite` is BOOLEAN on Postgres and INTEGER
+	// on sqlite (00039), the recurring dialect trap.
+	if f.CompositesOnly {
+		where = append(where, "is_composite = ?")
+		args = append(args, true)
+	} else if !f.IncludeComposites {
+		where = append(where, "is_composite = ?")
+		args = append(args, false)
+	}
+	// ⚠ ParentHash WINS over TopLevelOnly rather than both being ANDed. They are contradictory —
+	// "the segments of break X" and "clips with no parent" share no row — so ANDing them returns
+	// the empty set, which renders as "this break has no segments" on a break that has twenty.
+	// A lineage query is by construction not a top-level query; saying so here beats letting a
+	// caller that sets both get a confident, wrong, empty answer.
+	if f.ParentHash != "" {
+		where = append(where, "parent_hash = ?")
+		args = append(args, f.ParentHash)
+	} else if f.TopLevelOnly {
+		// Bound, not the literal '', for the same reason every other comparison here is bound.
+		where = append(where, "parent_hash = ?")
+		args = append(args, "")
 	}
 	if f.UntaggedOnly {
 		// "Untagged" = a COMMERCIAL missing any match tag. Bumpers/station-ids/PSAs
@@ -355,6 +641,16 @@ func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedA
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
+	// ⚠ **The pipeline rows go with the clips, in the same call** (§10 V51b). `filler_clip_pipeline`
+	// is a sibling table with no foreign key — deliberately, so it survives a `clips` rebuild — and
+	// the price of that independence is that nothing else will ever clean it up. An orphan row is
+	// not inert either: `ListPipelineWork` would keep returning it, `advance` would fail to find
+	// the clip, and it would be re-tombstoned as "no longer in the catalog" on every pass, forever.
+	//
+	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
+	// branches below and cannot disagree with whichever DELETE ran.
+	defer func() { _ = s.pruneOrphanPipelines(ctx) }()
+
 	if len(keepIDs) == 0 {
 		res, err := s.db.ExecContext(ctx, `DELETE FROM clips`)
 		if err != nil {
@@ -404,11 +700,22 @@ func scanClip(sc scannable) (Clip, error) {
 		aiTagged  bool
 		held      bool
 		autoFiled bool
-		updatedAt int64
+		// vision_tagged is BOOLEAN (00038), the same side of the dialect split as its three
+		// neighbours above — scanned into a bool, never an int.
+		visionTagged bool
+		// is_composite is BOOLEAN (00039), the same side again.
+		isComposite bool
+		updatedAt   int64
+		// created_at is BIGINT on Postgres and INTEGER on sqlite (00046) — the same per-column
+		// dialect split every epoch value here follows, and both are 64-bit.
+		createdAt int64
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &kind, &c.Era, &audience, &c.Category,
-		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview, &c.Language,
-		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt)
+		&c.DurationMs, &c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
+		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
+		&isComposite, &c.ParentHash,
+		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &autoFiled, &updatedAt, &createdAt)
 	if err == sql.ErrNoRows {
 		return Clip{}, ErrNotFound
 	}
@@ -419,6 +726,8 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Audience = filler.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged
+	c.VisionTagged = visionTagged
+	c.IsComposite = isComposite
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
 	if removedAt != 0 {
 		c.RemovedAt = fromEpoch(removedAt)
@@ -426,6 +735,7 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Held = held
 	c.AutoFiled = autoFiled
 	c.UpdatedAt = fromEpoch(updatedAt)
+	c.CreatedAt = fromEpoch(createdAt)
 	return c, nil
 }
 
@@ -439,6 +749,45 @@ func scanClips(rows *sql.Rows) ([]Clip, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// attachTags loads the taxonomy tag set (§10 V45a) for a batch of clips and fills each Clip.Tags.
+//
+// ⚠ ONE query for the whole batch (`WHERE clip_hash IN (…)`), never one per clip — pod assembly loads
+// the entire catalog through ListClips, so a per-clip tag read would be a textbook N+1 on the hot path
+// (the class [[loomarr-perf-cpu-profile-blind-to-waiting]] warns about). The full leaf+rollup set is
+// loaded (leaf and rollup rows alike), because that is what curation matches against; `Category` is
+// derived from it separately at write time, not here.
+//
+// A clip with no tag rows keeps Tags == nil, which is the honest "tagger has not reached it" state.
+func (s *sqlStore) attachTags(ctx context.Context, clips []Clip) error {
+	if len(clips) == 0 {
+		return nil
+	}
+	idx := make(map[string]int, len(clips)) // hash → position in clips, so we can fill in place
+	placeholders := make([]string, len(clips))
+	args := make([]any, len(clips))
+	for i, c := range clips {
+		idx[c.Hash] = i
+		placeholders[i] = "?"
+		args[i] = c.Hash
+	}
+	q := `SELECT clip_hash, taxon FROM clip_tags WHERE clip_hash IN (` + strings.Join(placeholders, ",") + `) ORDER BY clip_hash, taxon`
+	rows, err := s.db.QueryContext(ctx, s.ph(q), args...)
+	if err != nil {
+		return fmt.Errorf("attach clip tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var hash, taxon string
+		if err := rows.Scan(&hash, &taxon); err != nil {
+			return err
+		}
+		if i, ok := idx[hash]; ok {
+			clips[i].Tags = append(clips[i].Tags, taxon)
+		}
+	}
+	return rows.Err()
 }
 
 // ⚠ `boolToInt` was here and is DELETED (V38c). Every bool column is BOOLEAN on Postgres now that
@@ -561,6 +910,229 @@ func (s *sqlStore) SetClipLanguage(ctx context.Context, path, language string, a
 		language, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip language %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipConfidence records the tagger's grounding-capped score (§10 V38, migration 00030).
+//
+// ⚠ **The ONLY writer of `confidence`, and until V51a there was NO writer at all.**
+// `TagSuggestion.Score` computed the number, `Tagger.Run` compared it against the auto-file
+// threshold, and then threw it away. `UpsertClip` inserts a literal 0 and correctly omits the
+// column from its DO UPDATE, so nothing ever put a score in the database: `confidence` was 0 for
+// every clip that had ever existed, the Incoming tab's meter never rendered, and the field's own
+// doc string ("0 = never scored") was true of the entire catalog. The store's conformance case
+// passed throughout because it wrote a value by hand and asserted the round trip — a column can
+// round-trip perfectly and still have no producer.
+//
+// ⚠ The value must come from `TagSuggestion.Score`, never from the model directly. The score is a
+// ceiling set by what could be verified in the clip's own text, which the model may only lower; a
+// caller passing the model's self-assessment would defeat the grounding cap that stops a
+// fabricated era being auto-filed.
+//
+// Keyed by PATH, like SetClipLanguage and SetClipTranscript beside it — that is what the job
+// carries.
+func (s *sqlStore) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET confidence = ?, updated_at = ? WHERE path = ?`),
+		confidence, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip confidence %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipTranscript records what the transcribe job heard (§10 V44, migration 00038).
+//
+// ⚠ **The ONLY writer of `transcript`**, exactly like SetClipLanguage owns `language` and for the
+// identical reason: `UpsertClip` deliberately omits the column, so the folder scan cannot blank a
+// transcribed clip by finding its file still on disk. Without that omission every sync would reset
+// the catalog to "not yet transcribed" and the job would re-run Whisper on everything — ~341s per
+// clip under QEMU.
+//
+// Keyed by PATH rather than hash, because that is what the job carries and what SetClipLanguage
+// beside it takes. An empty transcript is a legitimate write: it records "checked, wordless", which
+// is what stops the selective job from re-visiting a silent clip forever.
+func (s *sqlStore) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET transcript = ?, updated_at = ? WHERE path = ?`),
+		transcript, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip transcript %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44, migration 00038).
+//
+// ⚠ Writes `brand` and nothing else — deliberately narrower than SetClipVisionTags, which also
+// stamps `vision_tagged` and owns `visible_text`. The text tagger grounds a brand in the clip's
+// text signals (filename, sidecar, or the persisted transcript); the vision pass grounds one in the
+// on-screen text. Both are legitimate writers of `brand`, and each writes only what it is entitled
+// to: this must NOT touch `vision_tagged`, or a text-tagged clip would masquerade as one a vision
+// pass had read, and a re-run would skip the frame it never actually looked at.
+//
+// The caller has already applied the grounding rule (validateTags keeps a brand only when it
+// appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
+// and vision writers it sits beside and unlike the hash-keyed UpdateClipTags — the job carries the
+// path. `UpsertClip` omits `brand` from its DO UPDATE for the same single-writer reason as every
+// other job column, so a re-sync cannot blank a grounded brand and make the tagger re-derive it.
+func (s *sqlStore) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE path = ?`),
+		brand, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip brand %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipVisionTags records what a vision pass read off a clip's keyframes (§10 V44, migration
+// 00038): the on-screen text it saw, a grounded brand, and — when the frame supported them — an
+// era and category. It stamps `vision_tagged` so a re-run does not pay for the same clip twice.
+//
+// ⚠ **The ONLY writer of `visible_text` and `vision_tagged`.** `brand` it SHARES with SetClipBrand
+// (the text tagger's grounded writer) — both write `brand` and only `brand`, and this one must not
+// be confused for the sole owner or a text-grounded brand would look vision-read. Same rule as
+// every job column here: `UpsertClip` omits them so a re-sync cannot undo the pass. The caller has
+// already applied the grounding rule (a brand/era/category survives only if `visibleText` supports
+// it), so this method writes what it is given — the validation lives in the domain, not the SQL.
+//
+// era and category are written only when > 0 / non-empty, so a vision pass that grounded a brand
+// but no era leaves an existing text-tagged era untouched. Keyed by PATH, like its neighbours.
+func (s *sqlStore) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		// COALESCE-style guards inline: only overwrite era/category when the vision pass produced a
+		// grounded value, otherwise keep what text tagging already found. brand and visible_text are
+		// vision's own to own, so they are written unconditionally.
+		//
+		// ⚠ suggested_era is written ONLY when the pass grounded NO era (the ? > 0 guard on
+		// suggestedEra) AND does not clobber an existing suggestion: it is the frame-heuristic tier's
+		// output (B&W + 4:3 ⇒ "pre-1970s?"), a QUESTION for the operator, never a fact — the same
+		// role validateTags gives an ungrounded LLM year. A grounded era needs no suggestion, so a
+		// pass that read a year off the frame leaves suggested_era alone.
+		`UPDATE clips SET brand = ?, visible_text = ?, vision_tagged = ?,
+		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
+		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
+		   category = CASE WHEN ? <> '' THEN ? ELSE category END,
+		   updated_at = ? WHERE path = ?`),
+		brand, visibleText, true,
+		era, era,
+		era, suggestedEra, suggestedEra,
+		category, category,
+		epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("set clip vision tags %s: %w", path, err)
+	}
+	return nil
+}
+
+// ClearClipVisionTags removes the vision stamp so the rung will look again (§10 V51b) — the
+// invalidation half of `Rewind`.
+//
+// ⚠ **It clears the STAMP and the text vision read; it does NOT clear brand, era or category.**
+// Those three are SHARED with the text tagger — `SetClipBrand` and `UpdateClipTags` write the same
+// columns — and nothing on the row records which tier put a value there. Blanking them would
+// therefore destroy a text-grounded brand, or an era an operator confirmed by hand, in order to
+// re-run a tier that may not even find one. A re-read simply overwrites what it can ground, which
+// is the same additive contract `SetClipVisionTags` has.
+//
+// ⚠ A separate narrow method rather than calling `SetClipVisionTags` with empty strings: that one
+// is pinned as the ONLY writer of visible_text/vision_tagged and writes what it is GIVEN, so the
+// empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
+func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
+		false, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("clear clip vision tags %s: %w", path, err)
+	}
+	return nil
+}
+
+// SetClipComposite marks (or unmarks) a clip as a composite — a recorded break, not airable (§10
+// V45). Called by intake/detection when a 16-minute file is recognised as a break, and by split
+// Confirm on the PARENT (which V45 keeps and marks composite rather than deleting).
+//
+// ⚠ **The ONLY writer of `is_composite`**, exactly like SetClipLanguage owns `language`: UpsertClip
+// omits it, so a re-sync finding the original file on disk cannot flip a confirmed composite back to
+// an airable clip. Keyed by HASH — a composite is identified by its content, and the detection/
+// confirm paths hold the hash.
+// ClipArtworkPending is one clip whose rendered artwork has not been adopted into the image
+// service yet. Paths are RELATIVE to the artwork cache directory, exactly as the columns store
+// them — the store does not know where FILLER_DIR is, and resolving that here would put a
+// filesystem assumption inside a query.
+type ClipArtworkPending struct {
+	Hash      string
+	Thumbnail string
+	Preview   string
+}
+
+// ListClipsPendingArtworkAdoption returns clips that HAVE rendered artwork but no image-service
+// identity for it yet (§22, V52 phase 6) — the adoption job's work list.
+//
+// ⚠ The predicate is per-ASSET, not per-clip: a clip whose still adopted but whose animation did
+// not must come back, or the hover loop would never be adopted for any clip where the two renders
+// completed in different passes. `OR` rather than `AND` is the whole correctness of this query.
+//
+// ⚠ Tombstoned clips are excluded. Adopting artwork for a clip the operator removed would copy
+// bytes into the image store purely so the GC could collect them again later.
+func (s *sqlStore) ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT hash, thumbnail, preview FROM clips
+		  WHERE removed_at = 0
+		    AND (   (thumbnail <> '' AND thumb_image_hash = '')
+		         OR (preview   <> '' AND hover_image_hash = ''))
+		  ORDER BY updated_at
+		  LIMIT ?`), limit)
+	if err != nil {
+		return nil, fmt.Errorf("list clips pending artwork adoption: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []ClipArtworkPending
+	for rows.Next() {
+		var p ClipArtworkPending
+		if err := rows.Scan(&p.Hash, &p.Thumbnail, &p.Preview); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
+// (§22, V52 phase 6). The ONLY writer of those two columns — which is why they are absent from
+// UpsertClip's DO UPDATE list, exactly like is_composite and the play counters.
+//
+// ⚠ Both are written together because they come from ONE ffmpeg pass and one ingest step, but
+// either may legitimately be "" — the still can succeed while the animation fails, and a caller
+// that had only one would otherwise have to read-modify-write to avoid blanking the other.
+func (s *sqlStore) SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET thumb_image_hash = ?, hover_image_hash = ?, updated_at = ? WHERE hash = ?`),
+		thumbHash, hoverHash, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip artwork images %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *sqlStore) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		s.ph(`UPDATE clips SET is_composite = ?, updated_at = ? WHERE hash = ?`),
+		composite, epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("set clip composite %s: %w", hash, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

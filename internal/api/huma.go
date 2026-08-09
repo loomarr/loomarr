@@ -53,7 +53,11 @@ type Server struct {
 	collections CollectionService
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
-	icons  IconService
+	icons IconService
+	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
+	// byte route 404s and the record route reports the image absent, which is the honest answer
+	// for an instance where the service is not wired.
+	images ImageService
 	events EventSource   // /v1/events SSE (Phase 11); nil ⇒ route 501
 	filler FillerService // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	pods   PodPreviewer  // /v1/channels/{id}/pods (§12); nil ⇒ 501
@@ -142,11 +146,36 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
+	// playoutHLS repackages a channel into browser-playable HLS for the Watch surface
+	// (§9.1 Watch, V46); nil ⇒ the /playout/hls routes report "not running", so an install
+	// without internal playout wired explains itself rather than 404ing.
+	playoutHLS PlayoutHLS
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
 	// nil ⇒ the route 501s.
 	playoutGuide PlayoutGuide
+	// timelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
+	// nil ⇒ the strip renders with no images (TMDB optional); it never fails the timeline.
+	timelineThumbs TimelineThumbResolver
 	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
 	playoutFont func() string
+	// playoutTonemap reports whether this ffmpeg build can tone-map HDR→SDR; nil ⇒ no, so an HDR
+	// source transcodes untone-mapped rather than emitting a filter the build would reject at
+	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
+	playoutTonemap func() bool
+	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
+	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
+	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
+	// or none), and the ladder skips straight from hardware to the software fallback.
+	reclaimVRAM func(ctx context.Context)
+	// residentLLMVRAM reports the VRAM the LLM ACTUALLY holds right now + its model tag, from a live
+	// Ollama /api/ps probe (§9.1 V47 doctor). The doctor uses it for the true contention picture,
+	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
+	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
+	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
+	// hwEncodeGate bounds concurrent HARDWARE transcodes to the box's measured capacity, choosing
+	// software up front when the GPU is saturated (playoutadmission.go, §9.1 V47). Nil ⇒ no gate,
+	// hardware is admitted unbounded (the pre-gate behaviour), so an install without it still runs.
+	hwEncodeGate *hwEncodeGate
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -671,10 +700,14 @@ type Options struct {
 	Search        SearchService     // /v1/search (Phase 11); nil ⇒ search route 501
 	Collections   CollectionService // /v1/library/collections (§2.2); nil ⇒ route 501
 	Icons         IconService       // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
-	Events        EventSource       // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler        FillerService     // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods          PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM     SystemLLMService  // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
+	// route 404s and the record route reports the image absent, which is the honest answer for an
+	// instance with no store behind it.
+	Images    ImageService
+	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
 	Database DatabaseService
@@ -705,13 +738,37 @@ type Options struct {
 	PlayoutResolver PlayoutResolver
 	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
 	PlayoutEncoder PlayoutEncoder
+	// PlayoutHLS repackages a channel into browser HLS for the Watch surface (§9.1, V46) —
+	// implemented by playout.HLSManager. Nil ⇒ the /playout/hls routes report "not running".
+	PlayoutHLS PlayoutHLS
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
 	PlayoutGuide PlayoutGuide
+	// TimelineThumbs resolves a TMDB preview image per programme for the Watch timeline (§9.1 V47).
+	// Nil ⇒ the strip renders with no images (TMDB optional, and it never fails the timeline).
+	TimelineThumbs TimelineThumbResolver
 	// PlayoutFont is the font the offline card is labelled with — a property of the HOST
 	// (filesystem + ffmpeg build), so it is injected like PlayoutSecret rather than resolved
 	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
 	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
 	PlayoutFont func() string
+	// PlayoutTonemap reports whether this ffmpeg build carries the HDR→SDR filters (zscale +
+	// tonemap). A property of the BUILD, so it is injected here rather than probed in the handler,
+	// which keeps ProgramArgs a pure function. Nil ⇒ no tone-mapping: an HDR source still plays,
+	// flat rather than dead. See playout.TonemapperFor.
+	PlayoutTonemap func() bool
+	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
+	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
+	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder
+	// calls it only after a hardware encode has already produced nothing.
+	ReclaimVRAM func(ctx context.Context)
+	// ResidentLLMVRAM reports the VRAM the LLM currently holds + its model tag, from a live Ollama
+	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
+	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
+	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
+	// HWEncodeSlots reports how many concurrent hardware transcodes this box sustains (the capability
+	// probe's measured_max_channels), sizing the admission gate (playoutadmission.go, §9.1 V47).
+	// Nil ⇒ no gate ⇒ hardware admitted unbounded (pre-gate behaviour). Called lazily, once.
+	HWEncodeSlots func(ctx context.Context) int
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.
@@ -737,12 +794,34 @@ type Options struct {
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).
 func humaConfig() huma.Config {
+	// ⚠ Arrays are NOT nullable (V53b). Huma's default is `true` because a Go nil slice really
+	// does marshal to `null`, so out of the box every list field in this API was typed
+	// `T[] | null` — 109 nullable type-unions against 4 plain arrays — and every client had to
+	// handle two representations of "nothing", forever.
+	//
+	// ⚠ This flag alone would make the document LIE, and Huma says so in its own doc comment:
+	// "any `nil` slice will still encode as `null` in JSON". It is only honest because
+	// `TestResponses_ContainNoJSONNull` drives every parameterless GET against an EMPTY store
+	// — the state that actually produces nil slices — and fails on any null in the body. Setting
+	// this without that guard would swap a truthful awkward spec for a tidy false one.
+	//
+	// ⚠ Set HERE deliberately: `humaConfig` is the single constructor behind both the served API
+	// (api.go) and the spec export (export.go), so the runtime and the document cannot disagree
+	// about it. It is a package-level global in Huma rather than a Config field, so there is no
+	// per-instance place to put it.
+	huma.DefaultArrayNullable = false
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
 	cfg.Info.Description = "Turn a sentence into a self-maintaining Tunarr channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a
 	// CDN which violates the offline rule (§7.1). We disable the built-in docs
-	// path and mount our own at /docs (docs.go).
+	// path and mount our own at /v1/reference (ops.go).
 	cfg.DocsPath = ""
+	// ⚠ The spec and schema paths move under /v1 with everything else. Huma writes SchemasPath
+	// into every `$ref` in the document, so changing it rewrites references throughout — that is
+	// expected, not drift. The bare /openapi* and /schemas/ prefixes stay in the SPA guard
+	// (api.go) so a stale bookmark 404s instead of being handed index.html with a 200.
+	cfg.OpenAPIPath = "/v1/openapi"
+	cfg.SchemasPath = "/v1/schemas"
 	return cfg
 }

@@ -131,6 +131,20 @@ func Start(ctx context.Context, bin string, args []string, log *slog.Logger, onP
 // for "frame=" substrings, and a chunked read can split a token across the buffer boundary —
 // a bufio.Scanner over a dedicated pipe cannot.
 func (p *Process) readProgress(r io.ReadCloser, onProgress func(Progress)) {
+	ReadProgress(r, onProgress)
+}
+
+// ReadProgress parses ffmpeg's `-progress` stream and calls onProgress once per block.
+//
+// ⚠ **Exported so the filler transcode stage shares this parser rather than growing a second
+// copy** (§10 V51b). It is the same fd, the same key set and the same block-boundary rule, and the
+// two would drift the moment ffmpeg changed a field name — `out_time_ms` already reports
+// MICROSECONDS despite its name, which is exactly the sort of fact that gets fixed in one copy.
+// The behaviour here is byte-for-byte what the method did before the extraction.
+//
+// It takes ownership of r and closes it. A nil onProgress still DRAINS the pipe: a full pipe
+// blocks ffmpeg's writes and stalls the encode.
+func ReadProgress(r io.ReadCloser, onProgress func(Progress)) {
 	defer func() { _ = r.Close() }()
 	if onProgress == nil {
 		// Still drain it: a full pipe blocks ffmpeg's writes and stalls the encode.

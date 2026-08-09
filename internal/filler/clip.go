@@ -82,9 +82,18 @@ type Clip struct {
 	Kind            Kind     // commercial | bumper | station_id | psa | trailer | interstitial
 	Era             int      // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience // kids | family | general | late_night; "" = untagged
-	Category        string   // toys | cereal | cars | tech | fast_food | movie_trailer | …; "" = untagged
-	DurationMs      int64    // from ffprobe (the core probes now — §14 bundles it for playout)
-	Rating          string   // optional content rating
+	// Category is the DERIVED SHADOW of the taxonomy tags (§10 V45a): the primary product leaf of
+	// `Tags`, computed at the single tag-write site (forest.PrimaryProductLeaf) and stored so the
+	// hot pod-selection read path stays a plain column read. ⚠ Never an input any more — it is
+	// always `PrimaryProductLeaf(Tags)`; the conformance suite pins the invariant. "" = no product
+	// tag (a clip tagged only `psa`/`christmas` has no product category, which is honest).
+	Category string
+	// Tags is the clip's DENORMALISED taxonomy tag set (§10 V45a): the full leaf+rollup expansion
+	// from `clip_tags`, loaded alongside the row. This is the source of truth for curation matching
+	// and selection; `Category` is derived from it. Empty for a clip the tagger has not reached.
+	Tags       []string
+	DurationMs int64  // from ffprobe (the core probes now — §14 bundles it for playout)
+	Rating     string // optional content rating
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//
@@ -118,6 +127,20 @@ type Clip struct {
 	// STILL succeeded, so a clip whose preview render failed would render a broken image on hover
 	// instead of simply not having one.
 	Preview string
+	// ThumbImageHash / HoverImageHash are the image-service identities of the same two assets
+	// (§22, V52 phase 6); "" = not ingested yet.
+	//
+	// ⚠ **They coexist with Thumbnail/Preview during the migration window rather than replacing
+	// them**, because those still point at real files the existing /v1/filler routes still serve,
+	// and the phase-8 backfill reads them to find artwork that predates this. Dropping them now
+	// would strand every clip that has not re-rendered — which is all of them the moment this
+	// lands. The pair retires in phase 8, once nothing reads it.
+	//
+	// ⚠ The two hashes are SEPARATE for the same reason Preview is stored rather than derived
+	// from Thumbnail: the still and the animation are ingested independently, so either can be
+	// present without the other. Deriving one from the other would assert bytes exist that do not.
+	ThumbImageHash string
+	HoverImageHash string
 	// Language is what the detection job heard, and it has THREE meaningful states (§10 V40,
 	// migration 00036):
 	//
@@ -137,7 +160,39 @@ type Clip struct {
 	// "not counted here" are different facts and a UI must not conflate them.
 	PlayCount    int64
 	LastPlayedAt time.Time
-	AITagged     bool // whether the era/audience/category came from AI classification
+	// Brand is the advertiser the clip is FOR — "Kellogg's", "Ford" (§10 V44). Free text, not an
+	// enum: the set of advertisers is open in a way the category set is not.
+	//
+	// ⚠ GROUNDED like era, and for the same reason. A brand is accepted only when it appears
+	// literally in a text signal (filename, sidecar, or the persisted Transcript) or in the
+	// VisibleText a vision pass read off the frame — never inferred from a category or a tone. An
+	// ungrounded brand is dropped, not persisted: "" is the honest common case, and a fabricated
+	// advertiser is exactly the confidently-wrong metadata §8's grounding rule exists to keep out.
+	Brand string
+	// Transcript is the clip's spoken text, when it has been transcribed (§10 V44) — persisted here
+	// rather than discarded after tagging (the splitter produced it and threw it away pre-V44).
+	//
+	// It is BOTH a searchable metadata field AND the richest input the tagger gets: a cereal advert
+	// with an empty source description still SAYS "Kellogg's", which is the only place a brand or
+	// era can be grounded for such a clip. "" has two meanings the transcribe job distinguishes the
+	// same way the language gate does — not-yet-transcribed vs transcribed-and-wordless — but the
+	// clip row does not need to; a wordless clip simply carries no transcript and is tagged from its
+	// other signals.
+	Transcript string
+	// VisibleText is the on-screen text a vision pass read off the keyframes (§10 V44) — a logo, a
+	// product name, a "1987" burned into the corner.
+	//
+	// ⚠ This is what makes vision AUDITABLE, and it is load-bearing, not display trivia. A brand or
+	// era the vision model asserts is grounded only if it is supported by text the model also says
+	// it can SEE here — reading "KELLOGG'S" off a box grounds the brand exactly as a year in the
+	// filename grounds the era. A vision-proposed tag with no VisibleText backing does not persist.
+	VisibleText string
+	// VisionTagged records that a VISION pass (keyframes → multimodal model) contributed to this
+	// clip's tags, distinct from AITagged (text-only classification). Separate because the two have
+	// different trust and different cost: a human reviewing Incoming wants to know a tag came from
+	// pixels, and a re-run wants to avoid paying for vision twice.
+	VisionTagged bool
+	AITagged     bool // whether the era/audience/category came from AI classification (text signals)
 	// SuggestedEra is an AI-proposed era whose year did NOT appear in the clip's
 	// text signals (§10 era grounding, V34) — demoted from Era by validateTags so
 	// an inferred-from-tone year is never persisted as fact.
@@ -179,7 +234,29 @@ type Clip struct {
 	// became playable. Not telemetry: it is what makes an unattended decision reversible, and
 	// the only thing that can answer "which of these did I never see?" after the fact.
 	AutoFiled bool
+	// IsComposite marks a clip that is a RECORDED BREAK — many adverts in one file, like
+	// "KCPQ/Fox commercials, 5/28/1996" (§10 V45). A composite is NOT airable: it is excluded from
+	// pod assembly exactly like Held/RemovedAt, because airing a 16-minute block as one "commercial"
+	// is the bug this flag removes. Its SEGMENTS (produced by splitting) are the airable clips.
+	//
+	// ⚠ A distinct axis from Kind, deliberately. A composite's segments are commercials/bumpers/PSAs;
+	// the composite itself is a CONTAINER. Overloading Kind with a `composite` value would force every
+	// `filterKinds` call site to special-case it — which is how a container leaks into a pod. A
+	// boolean the pod filter excludes ONCE (the same polarity as Held) is the safe shape.
+	IsComposite bool
+	// ParentHash is the identity of the COMPOSITE this clip was split out of (§10 V45), or "" for a
+	// clip that is not a split segment (a hand-dropped single advert, or a composite itself).
+	//
+	// ⚠ This is the lineage V45 keeps that V34 threw away. V34 deleted the compilation on confirm
+	// ("its identity is a path that now means twenty clips"); V45 keeps the parent as a composite and
+	// points each segment back at it. That is what makes "which break did this advert air in?"
+	// answerable (channel theming needs it), a re-split possible (detection improves), and the
+	// parent's broadcast context (network/market/date) inheritable by every segment for free.
+	ParentHash string
 }
+
+// IsSegment reports whether a clip was split out of a composite (§10 V45) — it has a parent.
+func (c Clip) IsSegment() bool { return c.ParentHash != "" }
 
 // At builds a clip whose identity and location are the same string.
 //
@@ -203,6 +280,11 @@ func (c Clip) ID() string { return c.Hash }
 // Tagged reports whether a clip has the metadata pod matching needs (§10). An
 // untagged clip can't be era/audience-matched, so it's only usable as a generic
 // bumper/flex fill, never as a matched commercial.
+//
+// ⚠ `Category` here is the DERIVED product-leaf shadow of the taxonomy tags (§10 V45a), so
+// `Category != ""` means "has at least one product tag" — the same completeness the flat category
+// string used to assert, now sourced from the graph. A clip tagged only on non-product axes
+// (`psa`, `christmas`) is correctly NOT "tagged" for matched-commercial purposes.
 func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""
 }
@@ -272,4 +354,20 @@ func AudienceFromString(s string) Audience {
 	default:
 		return ""
 	}
+}
+
+// ClipQuery is filler's view of a clip filter — deliberately tiny, because its callers want
+// "everything currently in the catalog" and do their own filtering.
+//
+// ⚠ It stays small on purpose. `language = ”` and `transcript = ”` are not concepts the store
+// should learn: they are the "not yet checked" sentinels of individual pipeline rungs, and pushing
+// them down would make the store's filter grow a clause per stage.
+//
+// (It lived in `languagejob.go` until V51b retired that job. The type outlived it because the
+// store adapters and the split stage read through it.)
+type ClipQuery struct {
+	// IncludeHeld covers clips still awaiting review. A held clip is a fine candidate for most
+	// work: knowing a clip's language, transcript or tags BEFORE a human looks is strictly more
+	// useful than after.
+	IncludeHeld bool
 }

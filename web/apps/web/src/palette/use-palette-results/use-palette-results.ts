@@ -10,6 +10,12 @@ import type { SearchResult } from "@loomarr/core";
 // machinery that grounds the LLM (§7.2, the leak §10 exists to prevent). So the palette
 // merges four sources client-side, which is correct at household scale: ≤50 channels, a
 // handful of help pages, and a clip search the store already indexes.
+
+// How many clip hits the palette shows. ⚠ ONE constant for the fetch AND the render (§10 V51d):
+// the slice used to be the only cap, with the request unbounded, and a limit that disagreed with
+// the slice would either drop hits or fetch rows nobody sees.
+const CLIP_RESULTS = 6;
+
 const usePaletteResults = (query: string) => {
   const enabled = query.trim().length > 1;
 
@@ -17,7 +23,11 @@ const usePaletteResults = (query: string) => {
   const titles = searchApi.useSearch({ q: query, limit: 8 }, { query: { enabled } });
   // Clips live on the filler endpoint, which returns real ClipDTOs — so a palette hit
   // carries a Tunarr program id and can deep-link, which a title-shaped result could not.
-  const clips = fillerApi.useListFiller({ q: query }, { query: { enabled } });
+  // ⚠ `limit: CLIP_RESULTS` matches EXACTLY what the palette renders — the same constant caps the
+  // slice below, so the two cannot drift. This was an UNBOUNDED catalog read feeding a list of six
+  // rows — the whole clip corpus fetched and discarded on every keystroke. The default page (100)
+  // would have hidden the waste rather than fixed it; asking for what is shown is the fix (§10 V51d).
+  const clips = fillerApi.useListFiller({ q: query, limit: CLIP_RESULTS }, { query: { enabled } });
   // Channels and help are small, fully-loaded lists: filtered in memory rather than
   // asking the server for a substring match it has no index for.
   const channels = channelsApi.useListChannels({ query: { enabled } });
@@ -49,9 +59,9 @@ const usePaletteResults = (query: string) => {
   }
 
   if (clips.data?.status === 200) {
-    for (const clip of (clips.data.data.clips ?? []).slice(0, 6)) {
+    for (const clip of (clips.data.data.clips ?? []).slice(0, CLIP_RESULTS)) {
       results.push({
-        id: clip.path,
+        id: clip.hash,
         scope: "clips",
         name: clip.name,
         ...(clip.era ? { meta: `${clip.era}s` } : {}),

@@ -189,16 +189,28 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 			return nil
 		}
 
-		// ⚠ The DISPLAY name comes from the sidecar's `originalName`, not from the file, because
-		// the file is now called `a3f9….mp4`. Falling back to the filename keeps a clip that has
-		// lost its sidecar readable rather than showing a hash to an operator — and keeps the
-		// era/kind heuristics below working on anything not yet through intake.
-		name := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
+		// ⚠ Two names, deliberately (§10 V44). `heuristicName` is what the era/kind filename rules
+		// read — it must be the FILENAME (or `originalName`), because §8 grounds an era only when the
+		// year appears in a text signal and the filename is one. `name` is what a HUMAN sees in the
+		// guide, and it prefers the sidecar's clean `title` over the filename.
+		//
+		// The file is now `a3f9….mp4`, so both fall back through the sidecar. The display preference
+		// order is: sidecar `title` → `originalName` → the bare filename. This fixes the doubled
+		// display the Archive downloader's collision-avoidance produced: it files clips as
+		// `"<archive-id> - <title>.mp4"`, so `originalName` reads "CampbellsSoupAdvert - Campbell's
+		// Soup Advert" while the `title` field carries just "Campbell's Soup Advert".
+		heuristicName := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 		id := ""
 		if tags, ok := ReadSidecarTags(path); ok {
 			if tags.OriginalName != "" {
-				name = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
+				heuristicName = strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
 			}
+		}
+		// Display name: the clean sidecar title when present, else the heuristic (filename) name —
+		// so a clip that lost its sidecar stays readable rather than showing a hash.
+		name := heuristicName
+		if title := SidecarTitle(path); title != "" {
+			name = title
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
 		// which is the same call the probe above makes about a file with no duration.
@@ -211,11 +223,15 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 			ID:   id,
 			Path: rel,
 			Name: name,
-			// Kind + Era from the filename — the cheapest tagging tier (§10). Without this a
-			// clip lands as a generic interstitial the pod assembler can never place, so
-			// filler would silently never build unless AI tagging is on.
-			Kind:       KindFromName(name),
-			Era:        EraFromName(name),
+			// Kind + Era from the HEURISTIC name (the filename), NOT the display name — the cheapest
+			// tagging tier (§10). ⚠ Must be `heuristicName`: the display `name` now prefers the
+			// sidecar title, which often drops the year ("Campbell's Soup Advert" has no 1993), and
+			// §8 grounds an era only when the year is literally in the text. Reading Era off the
+			// clean title would silently lose filename-encoded eras. Without this a clip lands as a
+			// generic interstitial the pod assembler can never place, so filler would silently never
+			// build unless AI tagging is on.
+			Kind:       KindFromName(heuristicName),
+			Era:        EraFromName(heuristicName),
 			DurationMs: pr.DurationMs,
 			// Quality is DERIVED, not probed: a clip with no video stream (or an
 			// unreadable one) simply has none, and the guide omits the badge rather

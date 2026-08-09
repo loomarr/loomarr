@@ -18,6 +18,7 @@ import (
 	"github.com/mantonx/loomarr/internal/programmer"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // fillerSourceAdapter bridges the Tunarr client → filler.FillerSource (§10): it
@@ -95,6 +96,52 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 	return a.st.DeleteClipsNotIn(ctx, keep)
 }
 
+// fillerPipelineClipAdapter bridges the store → the CLIP-facing seams the ingest pipeline needs
+// (§10 V51b): `filler.ClipStore` for the runner, plus the probe and transcode rungs' writers.
+//
+// ⚠ The PIPELINE table itself needs no adapter — `store.Store` satisfies `filler.PipelineStore`
+// directly, because those five methods already speak `filler.ClipPipeline`. This adapter exists
+// only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
+// adapter here performs.
+type fillerPipelineClipAdapter struct{ st store.Store }
+
+func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+	return fillerStoreAdapter(a).GetClip(ctx, id)
+}
+func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+	return fillerStoreAdapter(a).UpsertClip(ctx, c)
+}
+func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+
+// fillerRewindAdapter bridges the store → filler.RewindStore — the invalidation seam behind
+// re-running a stage (§10 V51b).
+//
+// ⚠ Every method here is an EXISTING single writer, called with the "not yet" value it already
+// defines. Rewind introduces no new writer of any clip column, which is what keeps the
+// single-writer story the store conformance suite pins.
+type fillerRewindAdapter struct{ st store.Store }
+
+func (a fillerRewindAdapter) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
+	return a.st.SetClipLanguage(ctx, path, language, at)
+}
+func (a fillerRewindAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	return a.st.SetClipTranscript(ctx, path, transcript, at)
+}
+func (a fillerRewindAdapter) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+	return a.st.ClearClipVisionTags(ctx, path, at)
+}
+func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
+}
+func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
 //
 // ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the
@@ -168,8 +215,28 @@ func (a fillerTagStoreAdapter) UpdateClipTags(ctx context.Context, id string, er
 	return a.st.UpdateClipTags(ctx, id, era, audience, category, suggestedEra, aiTagged, updatedAt)
 }
 
+func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
+	return a.st.SetClipBrand(ctx, path, brand, at)
+}
+
+func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
+	return a.st.SetClipConfidence(ctx, path, confidence, at)
+}
+
 func (a fillerTagStoreAdapter) SetClipsHeld(ctx context.Context, paths []string, held, autoFiled bool, at time.Time) (int, error) {
 	return a.st.SetClipsHeld(ctx, paths, held, autoFiled, at)
+}
+
+// The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
+// the grounded leaf set. All three forward straight to the store — the taxonomy is store-owned.
+func (a fillerTagStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
+}
+func (a fillerTagStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
+	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
+}
+func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error {
+	return a.st.SetClipTags(ctx, clipHash, leaves, forest, at)
 }
 
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
@@ -198,6 +265,54 @@ func (a fillerLanguageStoreAdapter) SetClipLanguage(ctx context.Context, path, l
 
 func (a fillerLanguageStoreAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+
+// fillerTranscribeStoreAdapter bridges the store → filler.TranscribeStore (§10 V44).
+//
+// ⚠ Like the language adapter above, it lists WITH held (a held clip is a fine candidate — knowing
+// what it says before a human files it is strictly more useful) but does NOT include removed clips:
+// a tombstoned clip must never come back round as work to be re-transcribed at ~341s a time.
+type fillerTranscribeStoreAdapter struct{ st store.Store }
+
+func (a fillerTranscribeStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	return a.st.SetClipTranscript(ctx, path, transcript, at)
+}
+
+// fillerVisionStoreAdapter bridges the store → filler.VisionStore (§10 V44). Same list polarity as
+// the transcribe adapter — held candidates in, removed clips out.
+type fillerVisionStoreAdapter struct{ st store.Store }
+
+func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
+	clips, err := a.st.ListClips(ctx, store.ClipFilter{IncludeHeld: f.IncludeHeld})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]filler.StoreClip, len(clips))
+	for i, c := range clips {
+		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
+	}
+	return out, nil
+}
+
+func (a fillerVisionStoreAdapter) SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error {
+	return a.st.SetClipVisionTags(ctx, path, brand, visibleText, era, suggestedEra, category, at)
+}
+
+// ListTaxa: the vision tier grounds its category against the taxonomy graph (§10 V45a).
+func (a fillerVisionStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
 }
 
 // fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
@@ -316,6 +431,14 @@ func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreC
 func (a fillerSplitStoreAdapter) DeleteClip(ctx context.Context, id string) error {
 	return a.st.DeleteClip(ctx, id)
 }
+func (a fillerSplitStoreAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+
+// ListTaxa: split-segment classification serves + grounds against the taxonomy graph (§10 V45a).
+func (a fillerSplitStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
+	return a.st.ListTaxa(ctx)
+}
 func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
 	return a.st.UpsertSplitProposal(ctx, p)
 }
@@ -324,6 +447,13 @@ func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string
 }
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
 	return a.st.DeleteSplitProposal(ctx, id)
+}
+
+// ListSplitProposals is the split RUNG's "is one already waiting?" read (§10 V51b) — one read of
+// the pending queue rather than an existence check per candidate. Re-detecting over a proposal an
+// operator is halfway through editing is what it prevents.
+func (a fillerSplitStoreAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
 }
 
 // fillerServiceAdapter bridges filler.Syncer/Tagger → api.FillerService.
@@ -345,6 +475,11 @@ type fillerServiceAdapter struct {
 	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
 	splitter   *filler.Splitter
 	splitClips fillerSplitStoreAdapter
+	// pipeline is the ingest pipeline (§10 V51b), so the operator-triggered paths reach the same
+	// machinery the cron driver does: a confirmed split enrols its segments, and an ingest nudges
+	// the runner instead of leaving a fresh download until the next tick. nil on an install with
+	// no drop-folder, where there is nothing to ingest.
+	pipeline *filler.Pipeline
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -418,10 +553,10 @@ func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_ingest",
-		Payload: map[string]any{
-			"jobId": jobID, "status": status,
-			"fetched": res.Fetched, "skipped": res.Skipped,
-			"failed": res.Failed, "empty": res.Empty, "error": errMsg,
+		Payload: api.FillerIngestEvent{
+			JobID: jobID, Status: status,
+			Fetched: res.Fetched, Skipped: res.Skipped,
+			Failed: res.Failed, Empty: res.Empty, Error: errMsg,
 		},
 	})
 }
@@ -470,20 +605,38 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}
-	return a.splitter.Confirm(ctx, proposalID, segments)
+	spawned, err := a.splitter.Confirm(ctx, proposalID, segments)
+	if err != nil {
+		return err
+	}
+	// ⚠ Enrol the cuts, exactly as the split RUNG does (§10 V51b). Without this a segment an
+	// operator confirmed by hand would sit outside the pipeline entirely — never transcoded, never
+	// tagged, never scored — while one the pipeline cut itself ran the full ladder. The manual and
+	// unattended paths must produce the same clip.
+	if a.pipeline != nil {
+		for _, hash := range spawned {
+			if err := a.pipeline.Enrol(ctx, hash); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // publishSplit emits one split-detection frame (§7, type=filler_split). The
 // terminal "success" frame is what hands the review UI its proposal id.
-func (a fillerServiceAdapter) publishSplit(jobID, clipPath, status, proposalID string, segments int, errMsg string) {
+// ⚠ The clip field is a HASH and is now named like one. Every caller already passed `clipID`;
+// only the parameter and the wire key said "path", which is the same naming drift that let the
+// proposal store a path in a field the lookup needed a hash for (§10 V51a).
+func (a fillerServiceAdapter) publishSplit(jobID, clipHash, status, proposalID string, segments int, errMsg string) {
 	if a.bus == nil {
 		return
 	}
 	a.bus.Publish(events.Event{
 		Type: "filler_split",
-		Payload: map[string]any{
-			"jobId": jobID, "clipPath": clipPath, "status": status,
-			"proposalId": proposalID, "segments": segments, "error": errMsg,
+		Payload: api.FillerSplitEvent{
+			JobID: jobID, ClipHash: clipHash, Status: status,
+			ProposalID: proposalID, Segments: segments, Error: errMsg,
 		},
 	})
 }
@@ -845,3 +998,8 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 		Format: req.Format, MaxTokens: req.MaxTokens,
 	})
 }
+
+// (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its
+// candidate-list half is gone with the sweep — the split RUNG acts on the `is_composite` mark the
+// probe rung sets, so nothing lists the catalog looking for long files any more. Its
+// pending-proposal read moved onto `fillerSplitStoreAdapter`, which the rung already used.)

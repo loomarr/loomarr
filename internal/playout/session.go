@@ -49,12 +49,33 @@ const viewerBuffer = 8
 // Session is one channel's encoder plus its connected viewers.
 type Session struct {
 	ChannelID string
+	// Plan is the EncodePlan (codec bucket) this session encodes for (§9.1 V47, V48) — part of the
+	// session's identity, not a viewer attribute. Two sessions can share a ChannelID and differ only
+	// here (a baseline one transcoding HEVC, an hevc8/full one copying it). Reported on SessionStat so
+	// the dashboard shows which audience an encoder serves.
+	Plan EncodePlan
+
+	// cost is this session's contribution to the manager's committedCost — 1 if it TRANSCODES video,
+	// 0 if it `-c copy`s (§9.1 V49 admission). Starts as Plan.EstimatedCost() at admission (a
+	// conservative guess) and is corrected to the real CopyPlan.Cost() when the first program reports.
+	// Read/written under Manager.mu (the manager owns the budget accounting), not the session mu.
+	cost int
 
 	// cancel stops the encoder. The context IS the lifetime (process.go) — there is no
-	// separate "stop the ffmpeg" path that could disagree with it.
+	// separate "stop the ffmpeg" path that could disagree with it. nil until the spawn completes
+	// (see ready): a placeholder is in the map before its ffmpeg exists.
 	cancel context.CancelFunc
 	proc   *Process
 	log    *slog.Logger
+
+	// ready is closed once the encoder spawn resolves (success OR initErr). It lets the manager
+	// insert a placeholder session under m.mu, release the lock, and spawn ffmpeg OUTSIDE it, while
+	// concurrent same-key viewers wait here for the one spawn instead of starting a second encoder.
+	// A nil ready means a fully-spawned session (the fake-spawner test path builds these directly).
+	ready chan struct{}
+	// initErr is the spawn failure, if any — read only after ready is closed. Set once by
+	// spawnPlaceholder; never mutated afterwards, so no lock is needed for it.
+	initErr error
 	// grace is how long this session survives its last viewer. Copied from the manager
 	// so onIdle does not need to reach back through a parent pointer (which would also
 	// mean taking two locks in an order that has to stay consistent).
@@ -67,6 +88,11 @@ type Session struct {
 	// startedAt is when the channel came on air — the dashboard's uptime, and the denominator
 	// for judging whether a low speed is a cold start or a sustained problem.
 	startedAt time.Time
+	// coldStartMs is the wall-clock from session start to the FIRST bytes the parent produced —
+	// the "time to first frame" the viewer waits through as a black screen (§9.1 V47 doctor). The
+	// one number that tracks the black-screen symptom directly; 0 until the first bytes arrive.
+	// Written once in pump under mu, read in stat().
+	coldStartMs int64
 	// encoder is the hardware/software choice the CURRENT program resolved (§9.1). The single
 	// most actionable telemetry an operator has: it is the difference between four concurrent
 	// streams and one.
@@ -102,16 +128,36 @@ type Session struct {
 // A VALUE, not a pointer into the live session: the caller reads it without holding a lock
 // and cannot accidentally mutate an encoder's state while it runs.
 type SessionStat struct {
-	ChannelID string  `json:"channelId"`
-	Viewers   int     `json:"viewers"`
-	Encoder   string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`
-	Hardware  bool    `json:"hardware" doc:"Whether the resolved encoder is hardware-accelerated"`
-	Speed     float64 `json:"speed" doc:"Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter"`
+	ChannelID string `json:"channelId"`
+	// Target names the codec audience this encoder serves — "browser" or "mediaserver" (§9.1 V47).
+	// A channel can have one row per target; the dashboard shows both so an operator seeing two
+	// encoders on one channel knows one is a browser transcode and one is a tuner copy.
+	Target   string  `json:"target"`
+	Viewers  int     `json:"viewers"`
+	Encoder  string  `json:"encoder" doc:"Resolved encoder: hardware vendor, or 'software'"`
+	Hardware bool    `json:"hardware" doc:"Whether the resolved encoder is hardware-accelerated"`
+	Speed    float64 `json:"speed" doc:"Realtime multiple from ffmpeg; sustained <1.0 means the channel will stutter"`
 	// BufferedMS is how far ahead of realtime the encoder has produced output — out_time
 	// minus wall-clock elapsed. Negative means it is BEHIND, which is the same condition a
 	// sub-1.0 speed reports, seen as accumulated deficit rather than an instantaneous rate.
 	BufferedMS int64 `json:"bufferedMs"`
 	UptimeMS   int64 `json:"uptimeMs"`
+	// ColdStartMS is how long this channel took from session start to first frame — the black-screen
+	// window a viewer waited through (§9.1 V47 doctor). 0 before the first bytes arrive.
+	ColdStartMS int64 `json:"coldStartMs"`
+}
+
+// sessionKey identifies one live encoder. A channel does NOT have a single stream — it has one
+// per codec AUDIENCE (§9.1 V47): a media-server tuner ingests HEVC, a browser needs h264, so the
+// two get different copy/transcode plans and therefore different encoders. The key is the pair.
+//
+// A struct rather than a "channel|target" string: it is a comparable value Go maps accept
+// directly, with no delimiter to escape and no parse to get wrong. For an h264 channel both
+// targets' plans are `-c copy`, so the "second" session is a cheap remux, not a second encode —
+// the split's cost is bounded by the copy plan, not the key (see §9.1).
+type sessionKey struct {
+	channel string
+	plan    EncodePlan
 }
 
 // Manager owns the live sessions. One per process.
@@ -125,8 +171,16 @@ type Manager struct {
 
 	// grace is how long a channel keeps encoding after its last viewer leaves.
 	grace time.Duration
-	// maxChannels is the admission bound (`playout.max_channels`).
-	maxChannels int
+	// budget returns the CURRENT admission budget: how many concurrent VIDEO TRANSCODES this box can
+	// sustain right now (§9.1 V49). A func, not a fixed int, because it is DYNAMIC — the measured
+	// encoder capacity (Detect) shaded by live VRAM headroom (a resident LLM leaves room for fewer
+	// hardware encodes) and capped by any operator override. Re-read on every admission so a settings
+	// change or a model loading/unloading re-applies without a restart. <=0 ⇒ unmeasured, never block.
+	budget func() int
+	// committedCost is the summed admission cost of live sessions — the number of them currently
+	// TRANSCODING video (a `-c copy` session costs 0). Compared against budget() to admit. Guarded by
+	// mu; each session's contribution is tracked on the Session (cost) so a report/teardown adjusts it.
+	committedCost int
 
 	// onChange fires after the live-session set changes — a channel starting or stopping.
 	// The composition root uses it to publish an SSE `playout` frame so the dashboard learns
@@ -139,7 +193,7 @@ type Manager struct {
 	onChange func()
 
 	mu       sync.Mutex
-	sessions map[string]*Session
+	sessions map[sessionKey]*Session
 }
 
 // OnChange registers the session-set change hook. Called once during composition, before any
@@ -155,7 +209,12 @@ func (m *Manager) notifyChange() {
 
 // Spawner starts an encoder for a channel and returns the supervised process. The
 // implementation builds args from the resolved Airing and the load-aware Profile.
-type Spawner func(ctx context.Context, channelID string) (*Process, error)
+//
+// It takes the TARGET as well as the channel (§9.1 V47): the parent fetches its ffconcat playlist
+// over HTTP, and that playlist URL must carry `?target=` so every program it requests plans its
+// copy for the right codec audience. A browser session's parent and a tuner session's parent read
+// DIFFERENT playlist URLs for the same channel.
+type Spawner func(ctx context.Context, channelID string, plan EncodePlan) (*Process, error)
 
 // NewManager builds a session manager.
 //
@@ -164,14 +223,20 @@ type Spawner func(ctx context.Context, channelID string) (*Process, error)
 // happens in the /playout/program handler, once per program, because that is the request the
 // concat demuxer makes. An earlier draft gave the manager a Resolver seam and nothing ever read
 // it — dead surface whose only effect was a nil argument at the call site.
-func NewManager(spawn Spawner, maxChannels int, grace time.Duration, log *slog.Logger) *Manager {
+// budget returns the CURRENT admission budget (concurrent video transcodes this box can sustain);
+// see the field doc. A nil budget means "unmeasured" — admission never blocks (Admit's budget<=0
+// path), which is the safe default for a unit Manager built without capacity wiring.
+func NewManager(spawn Spawner, budget func() int, grace time.Duration, log *slog.Logger) *Manager {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
+	if budget == nil {
+		budget = func() int { return 0 }
+	}
 	return &Manager{
-		spawn:       spawn,
-		maxChannels: maxChannels, grace: grace, log: log,
-		sessions: map[string]*Session{},
+		spawn:  spawn,
+		budget: budget, grace: grace, log: log,
+		sessions: map[sessionKey]*Session{},
 	}
 }
 
@@ -183,82 +248,138 @@ func NewManager(spawn Spawner, maxChannels int, grace time.Duration, log *slog.L
 // abandoned channel stops burning a core promptly.
 const DefaultGrace = 30 * time.Second
 
-// Attach connects a viewer to a channel, starting the encoder if it is not running.
+// Attach connects a viewer to a channel FOR A TARGET, starting the encoder if one is not already
+// running for that (channel, target) pair (§9.1 V47). A tuner attaches as TargetMediaServer and a
+// browser as TargetBrowser; they get separate sessions when the copy plan differs (HEVC) and
+// separate-but-both-cheap `-c copy` sessions when it does not (h264).
 //
 // Returns a chunk channel and a detach func. The caller MUST call detach — it is what
 // decrements the refcount, and a leaked viewer keeps a channel encoding forever.
-func (m *Manager) Attach(ctx context.Context, channelID string) (<-chan []byte, func(), error) {
-	// THE RACE (prior-art §6.3). This lock is held across the find-or-create, including
-	// the spawn — deliberately, and it is the whole point. Two viewers tuning the same
-	// channel in the same millisecond both find no session; if the lock were released
-	// between the lookup and the insert, both would start an encoder and one would be
-	// orphaned with no viewers and no map entry to ever find it again. Holding it means
-	// the loser finds the winner's session.
+func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan) (<-chan []byte, func(), error) {
+	key := sessionKey{channel: channelID, plan: plan}
+
+	// ⚠ **The find-or-create is atomic, but the SPAWN is not held under m.mu.** The lock protects
+	// only the map decision (reuse an existing session, or reserve a placeholder for a new one);
+	// the ffmpeg spawn then runs OUTSIDE the lock. This is what lets four channels cold-start in
+	// PARALLEL instead of queuing — the earlier design held m.mu across the whole spawn, so a
+	// simultaneous four-channel tune-in serialized, each waiting on the previous encoder's init.
 	//
-	// Cost of being wrong the other way (a brief serialization of channel starts) is a
-	// few hundred ms of added latency on simultaneous first-tunes. Cost of the race is a
-	// permanently leaked ffmpeg. Not a close call.
-	// `started` is set inside the critical section and read by the deferred notify, so the
-	// hook fires AFTER m.mu is released — calling out to the bus while holding this lock
-	// would couple two packages' locks for no reason.
-	started := false
+	// The race the old lock prevented (two viewers of the SAME channel starting two encoders, one
+	// orphaned) is still prevented: the placeholder is inserted atomically, so the second same-key
+	// caller finds it and WAITS on the winner's spawn (session.ready) rather than starting its own.
+	// Different keys never contend — each reserves its own placeholder and spawns concurrently.
 	m.mu.Lock()
-	defer func() {
+	if s := m.sessions[key]; s != nil {
 		m.mu.Unlock()
-		if started {
-			m.notifyChange()
-		}
-	}()
-
-	if s := m.sessions[channelID]; s != nil {
-		ch, detach, ok := s.addViewer()
-		if ok {
-			return ch, detach, nil
-		}
-		// The session is mid-teardown. Drop it and start fresh below rather than
-		// attaching to something that will never produce bytes.
-		delete(m.sessions, channelID)
+		return m.joinExisting(ctx, key, s)
 	}
-
-	// Admission, not eviction. See ErrAtCapacity.
-	if AtCapacity(m.maxChannels, len(m.sessions)) {
+	// Admission, not eviction (§9.1 V49 — COST-AWARE). The bound counts concurrent VIDEO TRANSCODES,
+	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
+	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
+	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
+	// ESTIMATED from the plan here (baseline→1, hevc→0) and corrected to the real cost on the first
+	// program report. Checked under the lock against the live committedCost so parallel starts cannot
+	// overshoot the budget.
+	newCost := plan.EstimatedCost()
+	if !Admit(m.budget(), m.committedCost, newCost) {
+		m.mu.Unlock()
 		return nil, nil, ErrAtCapacity
 	}
+	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
+	s := m.newPlaceholder(channelID, plan)
+	s.cost = newCost
+	m.committedCost += newCost
+	m.sessions[key] = s
+	m.mu.Unlock()
 
-	s, err := m.start(channelID)
-	if err != nil {
-		return nil, nil, err
+	m.spawnPlaceholder(ctx, s)
+	<-s.ready
+	if s.initErr != nil {
+		// Spawn failed: drop the placeholder so the next viewer starts fresh, and RELEASE its cost
+		// reservation (§9.1 V49) — a session that never started must not hold a transcode slot.
+		m.mu.Lock()
+		if m.sessions[key] == s {
+			delete(m.sessions, key)
+			m.committedCost -= s.cost
+			s.cost = 0
+		}
+		m.mu.Unlock()
+		return nil, nil, s.initErr
 	}
-	m.sessions[channelID] = s
-	started = true
-
-	ch, detach, _ := s.addViewer() // fresh session: cannot be closed
+	m.notifyChange()
+	ch, detach, _ := s.addViewer() // fresh, spawned session: cannot be closed yet
 	return ch, detach, nil
 }
 
-// start launches an encoder for a channel. Caller holds m.mu.
-func (m *Manager) start(channelID string) (*Session, error) {
-	// context.Background, NOT the attaching viewer's request context. The session
-	// outlives whoever started it — binding its lifetime to the first viewer's request
-	// would kill the channel for everybody the moment that one person's TV disconnected.
-	ctx, cancel := context.WithCancel(context.Background())
-
-	proc, err := m.spawn(ctx, channelID)
-	if err != nil {
-		cancel()
-		return nil, err
+// joinExisting attaches to a session another caller created. If it is mid-spawn (a same-key viewer
+// that arrived a moment after the winner), we wait on its readiness rather than starting a second
+// encoder; if it turns out to have failed or is tearing down, we retry the whole find-or-create so
+// the caller still gets a working session.
+func (m *Manager) joinExisting(ctx context.Context, key sessionKey, s *Session) (<-chan []byte, func(), error) {
+	<-s.ready
+	if s.initErr != nil {
+		// The winner's spawn failed; it will remove itself. Retry from the top.
+		return m.Attach(ctx, key.channel, key.plan)
 	}
+	ch, detach, ok := s.addViewer()
+	if ok {
+		return ch, detach, nil
+	}
+	// Mid-teardown: drop it and start fresh rather than joining something dying.
+	m.mu.Lock()
+	if m.sessions[key] == s {
+		delete(m.sessions, key)
+	}
+	m.mu.Unlock()
+	return m.Attach(ctx, key.channel, key.plan)
+}
 
-	s := &Session{
+// newPlaceholder builds a Session whose encoder is not spawned yet. `ready` gates every viewer until
+// spawnPlaceholder resolves it (success or initErr), so concurrent same-key callers share one spawn.
+func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
+	key := sessionKey{channel: channelID, plan: plan}
+	return &Session{
 		ChannelID: channelID,
-		cancel:    cancel, proc: proc, log: m.log,
+		Plan:      plan,
+		log:       m.log,
 		grace:     m.grace,
-		onClosed:  m.notifyChange,
+		// On terminal close (grace teardown, encoder death, or Stop), the session must both leave the
+		// map AND release its admission cost (§9.1 V49), then notify. close() is single-fire (guarded
+		// by s.closed), so forget runs exactly once — no double-subtract. forget does the notify.
+		onClosed:  func() { m.forget(key) },
 		startedAt: time.Now(),
 		viewers:   map[int]chan []byte{},
+		ready:     make(chan struct{}),
 	}
+}
+
+// spawnPlaceholder runs the ffmpeg spawn for a reserved placeholder OUTSIDE m.mu, then closes
+// s.ready. On failure it records s.initErr; Attach/joinExisting remove the placeholder from the map.
+func (m *Manager) spawnPlaceholder(ctx context.Context, s *Session) {
+	// context.Background, NOT the attaching viewer's request context. The session outlives whoever
+	// started it — binding its lifetime to the first viewer's request would kill the channel for
+	// everybody the moment that one person's TV disconnected. ctx is accepted only for symmetry with
+	// the spawner signature; the viewer's cancellation must not propagate here.
+	_ = ctx
+	sctx, cancel := context.WithCancel(context.Background())
+
+	if m.log != nil {
+		m.log.Info("playout: session.start spawning encoder", "channel", s.ChannelID, "target", s.Plan.String())
+	}
+	proc, err := m.spawn(sctx, s.ChannelID, s.Plan)
+	if err != nil {
+		cancel()
+		if m.log != nil {
+			m.log.Warn("playout: session.start spawn failed", "channel", s.ChannelID, "target", s.Plan.String(), "err", err)
+		}
+		s.initErr = err
+		close(s.ready)
+		return
+	}
+	s.cancel = cancel
+	s.proc = proc
 	go s.pump()
-	return s, nil
+	close(s.ready)
 }
 
 // pump reads the encoder's output and fans each chunk to every viewer.
@@ -274,9 +395,23 @@ func (s *Session) pump() {
 	// the per-chunk fan-out overhead is negligible, small enough that a viewer joining
 	// mid-stream waits milliseconds for its first bytes.
 	buf := make([]byte, 64*1024)
+	var total int64
 	for {
 		n, err := s.proc.Stdout.Read(buf)
 		if n > 0 {
+			if total == 0 {
+				// First bytes — the cold-start window (start → first frame) closes here.
+				s.mu.Lock()
+				s.coldStartMs = time.Since(s.startedAt).Milliseconds()
+				vc := len(s.viewers)
+				cold := s.coldStartMs
+				s.mu.Unlock()
+				if s.log != nil {
+					s.log.Info("playout: session first bytes from parent",
+						"channel", s.ChannelID, "n", n, "viewers", vc, "cold_start_ms", cold)
+				}
+			}
+			total += int64(n)
 			// Copy before broadcasting: buf is reused on the next iteration, and the
 			// viewers hold their chunk in a buffered channel across it. Handing them the
 			// shared slice would corrupt whatever they had not yet written — a data race
@@ -456,11 +591,26 @@ func (m *Manager) Stop() {
 	}
 }
 
-// session returns a live session by channel id, or nil. For tests and telemetry.
-func (m *Manager) session(channelID string) *Session {
+// forget removes a session from the map and releases its admission cost (§9.1 V49), then notifies.
+// Called from a session's onClosed, which close() fires exactly once — so the cost is subtracted
+// exactly once even if Stop races the grace timer. Idempotent against a key already gone (a manual
+// Stop that ran the map-delete first): only a still-present, identical session is subtracted.
+func (m *Manager) forget(key sessionKey) {
+	m.mu.Lock()
+	if s := m.sessions[key]; s != nil {
+		m.committedCost -= s.cost
+		s.cost = 0
+		delete(m.sessions, key)
+	}
+	m.mu.Unlock()
+	m.notifyChange()
+}
+
+// session returns a live session by (channel, target), or nil. For tests and telemetry.
+func (m *Manager) session(channelID string, plan EncodePlan) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessions[channelID]
+	return m.sessions[sessionKey{channel: channelID, plan: plan}]
 }
 
 // ActiveCount reports how many channels are encoding. This is the `active` input to
@@ -471,12 +621,13 @@ func (m *Manager) ActiveCount() int {
 	return len(m.sessions)
 }
 
-// Capacity reports the admission bound (`playout.max_channels`) — the denominator in the
-// dashboard's "2 / 4" load line.
+// Capacity reports the current admission budget — how many concurrent VIDEO TRANSCODES the box can
+// sustain right now (§9.1 V49), the denominator in the dashboard's "2 / 4" load line. It is the
+// measured/live budget, not a static setting, so the dashboard shows real headroom (which shrinks
+// when a model goes resident and grows when it unloads). Read outside m.mu — budget() is its own
+// source of truth and takes no manager lock.
 func (m *Manager) Capacity() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.maxChannels
+	return m.budget()
 }
 
 // Stats snapshots every live encoder for the dashboard (§12, V16).
@@ -505,7 +656,14 @@ func (m *Manager) Stats(now time.Time) []SessionStat {
 			out = append(out, st)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ChannelID < out[j].ChannelID })
+	// By channel, then target — a channel can now have two rows (browser + tuner), and a stable
+	// tiebreak keeps them from reshuffling between polls.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ChannelID != out[j].ChannelID {
+			return out[i].ChannelID < out[j].ChannelID
+		}
+		return out[i].Target < out[j].Target
+	})
 	return out
 }
 
@@ -530,17 +688,24 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 	buffered := s.last.OutTimeMS - uptime.Milliseconds()
 
 	return SessionStat{
-		ChannelID:  s.ChannelID,
-		Viewers:    len(s.viewers),
-		Encoder:    string(s.encoder),
-		Hardware:   s.encoder != "" && s.encoder != EncoderSoftware,
-		Speed:      s.last.Speed,
-		BufferedMS: buffered,
-		UptimeMS:   uptime.Milliseconds(),
+		ChannelID:   s.ChannelID,
+		Target:      s.Plan.String(),
+		Viewers:     len(s.viewers),
+		Encoder:     string(s.encoder),
+		Hardware:    s.encoder != "" && s.encoder != EncoderSoftware,
+		Speed:       s.last.Speed,
+		BufferedMS:  buffered,
+		UptimeMS:    uptime.Milliseconds(),
+		ColdStartMS: s.coldStartMs,
 	}, true
 }
 
-// ReportProgram records telemetry for the program currently encoding on a channel (V16).
+// ReportProgram records telemetry for the program currently encoding on a (channel, target) (V16).
+//
+// The TARGET is part of the address (§9.1 V47): a channel can have two live sessions (a browser
+// one and a tuner one), and a per-program child belongs to exactly one — the one whose parent
+// requested it, which is why the child carries its target through the program URL. Reporting to the
+// wrong session would put a browser transcode's speed on the tuner's dashboard row.
 //
 // Called by the per-program encode path, which is where the real encoder runs — see the
 // `encoder` field for why the session's own process is the wrong source. A report for a channel
@@ -550,8 +715,8 @@ func (s *Session) statIfLive(now time.Time) (SessionStat, bool) {
 //
 // Progress samples are a LATENCY signal, never load-bearing (§8) — the same discipline the SSE
 // bus documents. Dropping one costs a stale number for a second, nothing more.
-func (m *Manager) ReportProgram(channelID string, enc Encoder, p Progress) {
-	s := m.session(channelID)
+func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, transcoding bool, p Progress) {
+	s := m.session(channelID, plan)
 	if s == nil {
 		return
 	}
@@ -559,4 +724,21 @@ func (m *Manager) ReportProgram(channelID string, enc Encoder, p Progress) {
 	s.encoder = enc
 	s.last = p
 	s.mu.Unlock()
+
+	// Correct the session's admission cost to REALITY (§9.1 V49). At attach we ESTIMATED cost from the
+	// plan (baseline→1, hevc→0); now the program has actually resolved its copy plan, so we know the
+	// truth: cost 1 iff it transcodes video. This is what makes a baseline session on an h264 channel
+	// (estimated 1) correctly free up its slot (→0) once it proves it only copies — and an hevc plan
+	// that somehow had to transcode (estimated 0) correctly claim one. Adjust committedCost by the
+	// DELTA under m.mu, keyed to this live session so a report racing teardown cannot corrupt the sum.
+	realCost := 0
+	if transcoding {
+		realCost = 1
+	}
+	m.mu.Lock()
+	if m.sessions[sessionKey{channel: channelID, plan: plan}] == s && s.cost != realCost {
+		m.committedCost += realCost - s.cost
+		s.cost = realCost
+	}
+	m.mu.Unlock()
 }

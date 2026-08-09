@@ -126,7 +126,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 		Log:      log,
 		Channels: engine,
 		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
-		Binder:   binder.New(st, engine, log),
+		Binder:   binder.New(st, engine, nil, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

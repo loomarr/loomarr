@@ -58,6 +58,12 @@ type GuideAiring struct {
 	Year        int      `json:"year,omitempty"`
 	Rating      string   `json:"rating,omitempty"`
 	ItemID      string   `json:"itemId,omitempty" doc:"Media-server item id, when the content is available"`
+	// ThumbURL is a preview image for this block (§9.1 Watch timeline, V47): a TMDB episode still
+	// for a series, a poster for a movie, resolved server-side from the provisioning key. Empty for a
+	// break/flex block or when TMDB has no image — the client renders a fallback. Only the Watch
+	// timeline populates it (the main grid's hover card does not need per-block images); it is
+	// omitempty so the grid's payload is unchanged.
+	ThumbURL string `json:"thumbUrl,omitempty" doc:"TMDB preview image (episode still or poster); empty for breaks or when unavailable"`
 	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
 	// occupies the schedule). They normally agree; where they differ — a 22m episode in a 30m
 	// slot — the difference is what makes padding visible.

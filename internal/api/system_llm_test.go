@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.
@@ -55,10 +54,7 @@ func (f *fakeSystemLLM) Discover(_ context.Context) ([]api.DiscoverModelView, er
 
 func serverWithSystemLLM(t *testing.T, svc api.SystemLLMService) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:     st,

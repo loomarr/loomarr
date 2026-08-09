@@ -4,8 +4,9 @@ import type {
   DiscoveredClip,
   FillerSourceDTO,
   GuideChannelTimeline,
-  IncomingAskDTO,
+  IncomingClipDTO,
   IncomingReelDTO,
+  IncomingRejectDTO,
   PodEntryDTO,
   PodPoolDTO,
   PoolDTO,
@@ -63,8 +64,9 @@ const emptyPool: PoolDTO = { clips: 0, commercials: 0, eligible: 0, untagged: 0,
 
 // An era the tagger proposed but could NOT ground in the clip's text — a decision with a
 // proposed answer the operator confirms or rejects.
-const guessedEraAsk: IncomingAskDTO = {
+const guessedEraAsk: IncomingClipDTO = {
   path: "1988/toys.mp4",
+  hash: "hash-guessed-era-ask",
   name: "Transformers holiday spot",
   from: "archive",
   durationMs: 30_000,
@@ -76,18 +78,141 @@ const guessedEraAsk: IncomingAskDTO = {
 };
 
 // ⚠ A DIFFERENT question from the one above: nothing to confirm, so no proposed answer.
-const untaggedAsk: IncomingAskDTO = {
+const untaggedAsk: IncomingClipDTO = {
   path: "mystery.mp4",
+  hash: "hash-untagged-ask",
   name: "mystery.mp4",
   durationMs: 25_000,
   kind: "commercial",
   reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
 };
 
+// The ingest pipeline, mid-flight (§10 V51b).
+//
+// ⚠ **`stages` is the VISITED ladder and `stageLadder` is the whole one, and they are deliberately
+// DIFFERENT LENGTHS here.** A fixture whose visited list happened to be complete would make the
+// strip look right while it was drawn from the wrong source — the identical shape as the fixture
+// that collapsed two distinct ids onto one string and hid two shipped bugs.
+const stageLadder = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+
+// A clip on the rung that cannot measure itself: progress is the -1 sentinel, so the row must
+// show motion without a bar.
+//
+// ⚠ `needsDecision` is absent (falsy) — the MACHINE still owns this clip. That is the whole point
+// of the merged conveyor: it is one row on one belt, not an entry in a second list.
+const taggingClip: IncomingClipDTO = {
+  hash: "c4e2000000000000000000000000000000000000000000000000000000001985",
+  path: "c4/e2/c4e2000000000000000000000000000000000000000000000000000000001985.mp4",
+  name: "Coca-Cola 1985",
+  kind: "commercial",
+  durationMs: 31_000,
+  // ⚠ NO `thumbnail`, deliberately. The row derives its `<img src>` from the hash
+  // (`/v1/filler/thumb/{hash}`), and `storybook-static` has no server behind it — so a fixture
+  // claiming a thumbnail renders a BROKEN IMAGE into the visual baseline and fires a network
+  // request the snapshot can race. Caught by reading the generated image, not by any assertion.
+  // The thumbnail branch is covered in jsdom instead (`preparing-row.test.tsx`), where the
+  // question is "does an <img> render at all", which needs no bytes.
+  reason: "Loomarr is still working on this one.",
+  pipeline: {
+    stage: "tag",
+    status: "running",
+    progress: -1,
+    updatedAt: "2026-08-01T12:01:00Z",
+    stages: [
+      { stage: "probe", status: "done", at: "2026-08-01T12:00:00Z" },
+      { stage: "transcode", status: "done", at: "2026-08-01T12:00:20Z" },
+      {
+        stage: "split",
+        status: "skipped",
+        note: "it is a single advert, not a compilation",
+        at: "2026-08-01T12:00:21Z",
+      },
+      { stage: "language", status: "done", at: "2026-08-01T12:00:40Z" },
+      {
+        stage: "transcribe",
+        status: "skipped",
+        note: "the description already says enough",
+        at: "2026-08-01T12:00:41Z",
+      },
+    ],
+  },
+};
+
+// The ONE rung that can measure itself — ffmpeg reports out_time against a known duration.
+// ⚠ No thumbnail: a clip this early has not had one made, which is why the row reads `thumbnail`
+// rather than firing an <img> at the hash and hoping.
+const transcodingClip: IncomingClipDTO = {
+  hash: "d1a7000000000000000000000000000000000000000000000000000000001991",
+  path: "d1/a7/d1a7000000000000000000000000000000000000000000000000000000001991.mp4",
+  name: "Fanta 1991",
+  kind: "commercial",
+  durationMs: 28_000,
+  reason: "Loomarr is still working on this one.",
+  pipeline: {
+    stage: "transcode",
+    status: "running",
+    progress: 62,
+    stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:02:00Z" }],
+    updatedAt: "2026-08-01T12:02:10Z",
+  },
+};
+
+// ⚠ The other end of the SAME belt: the machine has finished and handed this one over. It exists
+// so a story can show both row shapes in one list — which is the arrangement the two-list version
+// made impossible, and where it rendered the same clip twice.
+const needsDecisionClip: IncomingClipDTO = {
+  hash: "e5f3000000000000000000000000000000000000000000000000000000001993",
+  path: "e5/f3/e5f3000000000000000000000000000000000000000000000000000000001993.mp4",
+  name: "Frosted Flakes 1993",
+  kind: "commercial",
+  durationMs: 30_000,
+  suggestedEra: 1993,
+  audience: "kids",
+  confidence: 62,
+  needsDecision: true,
+  reason: "The year isn't written anywhere in this clip's name or description, so Loomarr guessed it.",
+  pipeline: {
+    stage: "score",
+    status: "done",
+    progress: -1,
+    stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:03:00Z" }],
+    updatedAt: "2026-08-01T12:03:30Z",
+  },
+};
+
+// A soft refusal: nothing in the clip said what it was. ⚠ `restorable` because
+// `filler.reject.unidentified` is a judgement call an operator can settle — a wordless station
+// ident lands here, and §10 calls a silent advert some of the best filler there is.
+const unidentifiedReject: IncomingRejectDTO = {
+  hash: "e9b3000000000000000000000000000000000000000000000000000000000001",
+  name: "clip_0042.mp4",
+  reason: "unidentified",
+  detail: "no era, audience, tag, brand, transcript or on-screen text",
+  restorable: true,
+  stage: "score",
+  at: "2026-08-01T11:00:00Z",
+};
+
+// ⚠ A HARD refusal, and the fixture exists to prove the button does NOT render. Restoring a clip
+// with no audio puts silence in a break — a control that could not work is worse than none.
+const noAudioReject: IncomingRejectDTO = {
+  hash: "f2c8000000000000000000000000000000000000000000000000000000000002",
+  name: "silent-promo.mp4",
+  reason: "no_audio",
+  detail: "no audio stream in the container",
+  restorable: false,
+  stage: "probe",
+  at: "2026-08-01T11:05:00Z",
+};
+
 // A compilation mid-split, with the count of segments an operator cannot simply accept.
 const compilationReel: IncomingReelDTO = {
   proposalId: "sp_1",
-  clipPath: "comps/1987-saturday.mp4",
+  // ⚠ Identity and display name are separate, and the hash is realistic (64 hex). This fixture
+  // used to carry only a friendly `clipPath` no real catalog contains — a filed clip's path is
+  // `a3/f9/<hash>.mp4` — which made the row look better in the baseline than in production.
+  clipHash: "a3f9000000000000000000000000000000000000000000000000000000001987",
+  clipName: "1987 Saturday morning block",
   segments: 12,
   needsAttention: 3,
   createdAt: "2026-08-01T12:00:00Z",
@@ -95,7 +220,8 @@ const compilationReel: IncomingReelDTO = {
 
 const cleanReel: IncomingReelDTO = {
   proposalId: "sp_2",
-  clipPath: "comps/1993-toys.mp4",
+  clipHash: "b7c1000000000000000000000000000000000000000000000000000000001993",
+  clipName: "1993 toy commercials",
   segments: 8,
   needsAttention: 0,
   createdAt: "2026-08-01T13:00:00Z",
@@ -148,7 +274,7 @@ const bumperClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-bumper-open.mp4",
+  hash: "hash-bumper-open",
   tunarrProgramId: "clip-bumper-open",
 };
 
@@ -212,7 +338,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-sunnyd.mp4",
+    hash: "hash-sunnyd",
     tunarrProgramId: "clip-sunnyd",
   },
   {
@@ -225,7 +351,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-gushers.mp4",
+    hash: "hash-gushers",
     tunarrProgramId: "clip-gushers",
   },
   {
@@ -238,7 +364,7 @@ const podClips: ClipDTO[] = [
     aiTagged: false,
     playCount: 0,
     playsCounted: true,
-    path: "clip-bumper-close.mp4",
+    hash: "hash-bumper-close",
     tunarrProgramId: "clip-bumper-close",
   },
 ];
@@ -254,12 +380,12 @@ const taggedClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-sunnyd-tagged.mp4",
+  hash: "hash-sunnyd-tagged",
   tunarrProgramId: "clip-sunnyd-tagged",
 };
 
-// A clip whose frame was extracted (V17b/V30). The `path` carries an inline data URI rather
-// than a real clip path because `clipThumbURL` passes those through unchanged — stories render
+// A clip whose frame was extracted (V17b/V30). The `hash` carries an inline data URI rather
+// than a real content hash because `clipThumbURL` passes those through unchanged — stories render
 // offline against storybook-static with no server behind them, so a `/v1/filler/thumb/…` src
 // would be a broken image in the gallery and a flaky pixel in the visual suite.
 //
@@ -268,7 +394,7 @@ const taggedClip: ClipDTO = {
 const thumbnailedClip: ClipDTO = {
   ...taggedClip,
   name: "Frosted Flakes — They're Grrreat!",
-  path: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
+  hash: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
   thumbnail: "clip-frosted.jpg",
   tunarrProgramId: "clip-frosted",
 };
@@ -281,7 +407,7 @@ const untaggedClip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-unlabeled.mp4",
+  hash: "hash-unlabeled",
   tunarrProgramId: "clip-unlabeled",
 };
 
@@ -291,7 +417,7 @@ const aiTaggedClip: ClipDTO = {
   aiTagged: true,
   playCount: 0,
   playsCounted: true,
-  path: "clip-ai.mp4",
+  hash: "hash-ai",
   tunarrProgramId: "clip-ai",
 };
 
@@ -304,7 +430,7 @@ const suggestedEraClip: ClipDTO = {
   audience: "general",
   category: "tech",
   suggestedEra: 1985,
-  path: "clip-suggested-era.mp4",
+  hash: "hash-suggested-era",
   tunarrProgramId: "clip-suggested-era",
 };
 
@@ -313,7 +439,7 @@ const suggestedEraClip: ClipDTO = {
 // suggestion, a dHash duplicate flag, an unsplittable over-long span, and a transcript.
 const splitProposal: SplitProposal = {
   id: "split-testcard",
-  clipPath: "compilations/80s-tv-commercials.mp4",
+  clipHash: "c5e2000000000000000000000000000000000000000000000000000000000080",
   createdAt: "2026-07-25T20:00:00Z",
   segments: [
     {
@@ -753,6 +879,8 @@ export {
   guideTo,
   healthyPool,
   intentTemplates,
+  needsDecisionClip,
+  noAudioReject,
   pendingPull,
   podClips,
   podEntries,
@@ -760,10 +888,14 @@ export {
   sampleIntent,
   searchResults,
   splitProposal,
+  stageLadder,
   suggestedEraClip,
   taggedClip,
+  taggingClip,
   thinPool,
   thumbnailedClip,
+  transcodingClip,
+  unidentifiedReject,
   unplaceablePool,
   untaggedAsk,
   untaggedClip,

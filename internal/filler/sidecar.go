@@ -102,6 +102,17 @@ type SidecarTags struct {
 	Era          int    `json:"era,omitempty"`
 	Audience     string `json:"audience,omitempty"`
 	Category     string `json:"category,omitempty"`
+	// Brand is the GROUNDED advertiser (§10 V44) — carried here so a catalog rebuild restores it
+	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
+	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first
+	// place, so what round-trips here is a fact, never a guess — the same "metadata travels with
+	// the clip" rule `originalName`/`normalizedLufs` follow.
+	Brand string `json:"brand,omitempty"`
+	// Transcript is the clip's spoken text (§10 V44), persisted beside the file for the same reason
+	// as `normalizedLufs`: it must survive a catalog rebuild, because re-deriving it means re-running
+	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or
+	// not-yet-transcribed clip's sidecar unchanged.
+	Transcript string `json:"transcript,omitempty"`
 	// Confidence is the grounding-capped score (§10 V38). Carried so a restored catalog does not
 	// have to re-run the tagger to know what it already worked out.
 	Confidence int `json:"confidence,omitempty"`
@@ -109,6 +120,33 @@ type SidecarTags struct {
 	// separately for the same reason the column is separate: restoring it as `Era` would
 	// launder a guess into a fact, which is the §8 failure the grounding rule exists to prevent.
 	SuggestedEra int `json:"suggestedEra,omitempty"`
+	// NormalizedLUFS records that this clip's AUDIO WAS REWRITTEN to that target (§10 V42),
+	// set only by the opt-in on-file loudness pass.
+	//
+	// ⚠ This is an IDEMPOTENCY MARKER, not a measurement, and the pass is broken without it. A
+	// normalised file looks like any other file — a re-scan cannot tell by inspection that the
+	// work already happened — so every pass would normalise an already-normalised clip and walk
+	// its loudness down run after run. Compared against the CURRENT target, so lowering
+	// `filler.target_lufs` re-normalises once and then stops.
+	//
+	// ⚠ It lives in the sidecar rather than the database for the same reason `originalName`
+	// does: it must survive a catalog rebuild. A restored install that lost this marker would
+	// re-normalise the whole folder.
+	NormalizedLUFS float64 `json:"normalizedLufs,omitempty"`
+	// Mezzanine records that this clip was re-encoded to the ingest profile (§10 V51b), holding
+	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
+	//
+	// ⚠ An IDEMPOTENCY MARKER like `normalizedLufs`, and here the stakes are higher: a transcode
+	// is a GENERATION OF LOSS, and the original is deleted once the re-encode is installed. A
+	// second unnecessary pass therefore degrades a file whose source no longer exists. The
+	// pipeline ladder normally prevents that, but the ladder lives in a table and this lives
+	// beside the file — so a catalog rebuild that also loses the pipeline row still cannot cause
+	// a re-encode.
+	//
+	// ⚠ The profile ID rather than a flag, so a future profile CHANGE is expressible: a clip
+	// carrying an older id is re-encoded (from the operator's own file, once), while a bare `true`
+	// would silently pin every existing clip to whatever profile shipped first.
+	Mezzanine string `json:"mezzanine,omitempty"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
@@ -119,9 +157,17 @@ type SidecarTags struct {
 // delete every key yt-dlp wrote that we do not name: formats, thumbnails, chapters, view counts.
 // Writing into someone else's file means preserving what you do not understand.
 //
-// ⚠ **This is the only place Loomarr writes into the operator's media folder**, and the promise
-// it must keep is narrower than "never write": it may create or update `*.info.json` and nothing
-// else. The media files themselves stay byte-for-byte untouched (§10).
+// ⚠ **This writes only `*.info.json`** — never the media file beside it.
+//
+// ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
+// V42 made the unqualified version false. V51b makes it false unconditionally: the TRANSCODE rung
+// re-encodes every clip to the mezzanine profile as it is ingested, and deletes the original once
+// the new file is installed. `Transcode` (transcode.go) is the one function that may replace a
+// media file.
+//
+// The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
+// guarantee the PACKAGE keeps is now much weaker than it was, and a comment claiming otherwise
+// would be the drift the repo's do-not rules exist to catch.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	path := sidecarPathFor(mediaPath)
 
@@ -233,6 +279,29 @@ func SidecarFetchedByUs(mediaPath string) bool {
 		return false
 	}
 	return doc.Loomarr.FetchedBy == fetchedByUs
+}
+
+// SidecarTitle reads the source-declared `title` from the info-JSON beside a clip (yt-dlp and the
+// Archive downloader both write it). Returns "" when there is no sidecar, it does not parse, or the
+// source declared no title.
+//
+// ⚠ This is the CLEAN display name, distinct from `SidecarTags.OriginalName` (§10 V44). The Archive
+// downloader files clips as `"<archive-id> - <title>.mp4"` so ids cannot collide (archive.go), and
+// `originalName` preserves that mangled filename — which is why the guide showed
+// "CampbellsSoupAdvert - Campbell's Soup Advert". The `title` field carries just "Campbell's Soup
+// Advert", so the scan prefers it for the DISPLAY name. It is deliberately NOT used for era
+// grounding: `originalName` stays the grounding text (the year lives in the filename), so the two
+// concerns — what a human READS vs what the tagger GROUNDS against — do not collapse into one field.
+func SidecarTitle(mediaPath string) string {
+	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
+	if err != nil {
+		return ""
+	}
+	var info sidecarInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(info.Title)
 }
 
 // SidecarText reads the info-JSON beside a clip and renders the text signals as a

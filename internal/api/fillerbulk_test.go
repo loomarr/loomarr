@@ -50,7 +50,7 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 		Era: 1992, Audience: filler.General, Category: "cars",
 	})
 
-	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag", `{"paths":["a.mp4"],"audience":"kids"}`, adminToken)
+	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag", `{"hashes":["a.mp4"],"audience":"kids"}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -79,7 +79,7 @@ func TestBulkTagFiller_SettingAnEraConfirmsTheSuggestion(t *testing.T) {
 		Audience: filler.Kids, Category: "toys", SuggestedEra: 1988,
 	})
 
-	postBulk(t, srv.URL, "/v1/filler/bulk/tag", `{"paths":["guess.mp4"],"era":1988}`, adminToken)
+	postBulk(t, srv.URL, "/v1/filler/bulk/tag", `{"hashes":["guess.mp4"],"era":1988}`, adminToken)
 
 	got, err := st.GetClip(context.Background(), "guess.mp4")
 	if err != nil {
@@ -100,7 +100,7 @@ func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
 	_, body := postBulk(t, srv.URL, "/v1/filler/bulk/tag",
-		`{"paths":["a.mp4","gone.mp4"],"category":"toys"}`, adminToken)
+		`{"hashes":["a.mp4","gone.mp4"],"tags":["toys"]}`, adminToken)
 
 	if body.Updated != 1 || body.Missing != 1 {
 		t.Errorf("updated/missing = %d/%d, want 1/1", body.Updated, body.Missing)
@@ -114,7 +114,7 @@ func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	putClip(t, st, filler.Clip{Path: "b.mp4", Name: "b.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
-	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"paths":["a.mp4"]}`, adminToken)
+	res, body := postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["a.mp4"]}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -139,7 +139,7 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
-	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"paths":["a.mp4"]}`, adminToken)
+	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["a.mp4"]}`, adminToken)
 
 	// Exactly what a scan does when it finds the file again: upsert the row from the
 	// filesystem's view, which knows nothing about the tombstone.
@@ -162,12 +162,12 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
-	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"paths":["a.mp4"]}`, adminToken)
+	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["a.mp4"]}`, adminToken)
 	if got := listPaths(t, st, store.ClipFilter{}); len(got) != 0 {
 		t.Fatalf("setup: clip not removed, catalog = %v", got)
 	}
 
-	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"paths":["a.mp4"],"restore":true}`, adminToken)
+	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["a.mp4"],"restore":true}`, adminToken)
 
 	if got := listPaths(t, st, store.ClipFilter{}); len(got) != 1 {
 		t.Errorf("catalog = %v after restore, want the clip back", got)
@@ -180,7 +180,7 @@ func TestFillerBulkRoutes_RequireAdmin(t *testing.T) {
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 
 	for _, path := range []string{"/v1/filler/bulk/tag", "/v1/filler/bulk/remove"} {
-		if res, _ := postBulk(t, srv.URL, path, `{"paths":["a.mp4"],"category":"toys"}`, ""); res.StatusCode == http.StatusOK {
+		if res, _ := postBulk(t, srv.URL, path, `{"hashes":["a.mp4"],"tags":["toys"]}`, ""); res.StatusCode == http.StatusOK {
 			t.Errorf("%s succeeded with no credential", path)
 		}
 	}

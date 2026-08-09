@@ -39,6 +39,146 @@ const (
 	EncoderVulkan       Encoder = "h264_vulkan"       // cross-vendor, newer
 )
 
+// HEVC encoder variants (§9.1 V49). When an HEVC-capable client's session (EncodePlan hevc8/10)
+// must TRANSCODE a non-HEVC program (a VP9/h264/mpeg2 commercial), it transcodes to HEVC — not h264 —
+// so the fMP4 stream the browser plays stays uniformly one codec. (fMP4/MSE binds ONE decoder from
+// its init segment and cannot survive a mid-stream codec change; mixing h264 into an HEVC fMP4 is a
+// black frame.) Each is the hevc sibling of the h264 encoder above, on the same hardware engine, so
+// it shares that family's preset vocabulary — see hevcVariant and the family-keyed videoEncodeArgs.
+// ⚠ TYPED `Encoder`, not bare strings. They were untyped constants until 2026-08-09, and that is
+// the mechanical reason nine encoders silently skipped every `switch enc Encoder` in capability.go:
+// an untyped constant satisfies `Encoder` where one is expected, so nothing ever failed to compile
+// — it just never matched a case either. Typing them does not by itself fix a missing case, but it
+// makes the omission the kind of thing a reader and a linter can see.
+const (
+	EncoderSoftwareHEVC Encoder = "libx265"
+	EncoderNVENCHEVC    Encoder = "hevc_nvenc"
+	EncoderQSVHEVC      Encoder = "hevc_qsv"
+	EncoderVAAPIHEVC    Encoder = "hevc_vaapi"
+	EncoderAMFHEVC      Encoder = "hevc_amf"
+	EncoderVTHEVC       Encoder = "hevc_videotoolbox"
+	EncoderRKMPPHEVC    Encoder = "hevc_rkmpp"
+	EncoderV4L2M2MHEVC  Encoder = "hevc_v4l2m2m"
+	EncoderVulkanHEVC   Encoder = "hevc_vulkan"
+)
+
+// h264Engines is every encoder that NAMES a hardware engine — the canonical member of each
+// engine's h264/HEVC pair. It is the iteration source for engineOf below and, deliberately, the
+// same list encoderPreference draws from.
+var h264Engines = []Encoder{
+	EncoderSoftware, EncoderNVENC, EncoderQSV, EncoderVAAPI, EncoderAMF,
+	EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M, EncoderVulkan,
+}
+
+// engineOf normalizes an encoder to the h264 constant naming its HARDWARE ENGINE, so a switch over
+// engines matches an HEVC variant exactly as it matches its h264 sibling.
+//
+// ⚠ **Why this exists, and why it is DERIVED rather than written out.** Three functions in
+// capability.go — deviceInitArgs, hardwareUploadFilter, hardwareDecodeArgs — key on the raw encoder
+// value, and each listed only the h264 constants. So every hevc_* encoder fell to `default` and got
+// `deviceInit=[] hwdec=[] upload=""`: no `-vaapi_device`, no `-init_hw_device` for QSV/Vulkan, no
+// `-hwaccel cuda` for NVENC. The consequence was not a clean failure but a WORSE one — the
+// hardware encode produced nothing, the ladder fell through to libx264, and for an HEVC fMP4
+// session that mid-stream codec change is the black frame the plan exists to prevent.
+//
+// familyOf is NOT the right tool here and the distinction matters: it collapses VAAPI, Vulkan,
+// VideoToolbox, RKMPP and V4L2M2M into `familyOther` because they share a *preset vocabulary*.
+// These three functions need them kept APART, because they differ in exactly the thing being
+// selected — the device, the upload filter, the decode flag.
+//
+// The map is built from hevcVariant rather than hand-written, so the pair list has one home. A
+// tenth engine added there is normalized here with no second edit — which is the property the
+// original three switches lacked.
+var engineByEncoder = func() map[Encoder]Encoder {
+	m := make(map[Encoder]Encoder, len(h264Engines)*2)
+	for _, h := range h264Engines {
+		m[h] = h
+		m[hevcVariant(h)] = h
+	}
+	return m
+}()
+
+func engineOf(e Encoder) Encoder {
+	if base, ok := engineByEncoder[e]; ok {
+		return base
+	}
+	return e
+}
+
+// hevcVariant maps an h264 encoder to its HEVC sibling on the same hardware engine (§9.1 V49). The
+// caller uses this when an hevc-plan session must transcode a non-HEVC program to keep the fMP4
+// stream uniform. Returns the input unchanged if it has no known HEVC sibling — a safe degrade to
+// h264 (the program still plays; only the fMP4-uniformity optimisation is lost for that encoder).
+// HEVCEncoderFor is the exported entry the API's program path uses to pick the HEVC encoder for an
+// hevc-plan transcode (§9.1 V49) — a thin wrapper over hevcVariant so the mapping stays single-sourced.
+func HEVCEncoderFor(h264 Encoder) Encoder { return hevcVariant(h264) }
+
+func hevcVariant(h264 Encoder) Encoder {
+	switch h264 {
+	case EncoderSoftware:
+		return EncoderSoftwareHEVC
+	case EncoderNVENC:
+		return EncoderNVENCHEVC
+	case EncoderQSV:
+		return EncoderQSVHEVC
+	case EncoderVAAPI:
+		return EncoderVAAPIHEVC
+	case EncoderAMF:
+		return EncoderAMFHEVC
+	case EncoderVideoToolbox:
+		return EncoderVTHEVC
+	case EncoderRKMPP:
+		return EncoderRKMPPHEVC
+	case EncoderV4L2M2M:
+		return EncoderV4L2M2MHEVC
+	case EncoderVulkan:
+		return EncoderVulkanHEVC
+	default:
+		return h264
+	}
+}
+
+// encoderFamily groups an encoder (h264 OR hevc variant) by the hardware engine whose preset/rate
+// vocabulary it uses — nvenc's `-preset p7` and CQ mode are identical for h264_nvenc and hevc_nvenc,
+// libx26x share `-preset veryfast`, and so on. videoEncodeArgs switches on the FAMILY so an hevc
+// variant reuses its h264 sibling's argument logic without a parallel switch.
+type encoderFamily int
+
+const (
+	familyOther    encoderFamily = iota // takes quality from bitrate args alone (vaapi/vt/rkmpp/v4l2/vulkan)
+	familySoftware                      // libx264 / libx265
+	familyNVENC                         // h264_nvenc / hevc_nvenc
+	familyQSV                           // h264_qsv / hevc_qsv
+	familyAMF                           // h264_amf / hevc_amf
+)
+
+func familyOf(e Encoder) encoderFamily {
+	switch e {
+	case EncoderSoftware, EncoderSoftwareHEVC:
+		return familySoftware
+	case EncoderNVENC, EncoderNVENCHEVC:
+		return familyNVENC
+	case EncoderQSV, EncoderQSVHEVC:
+		return familyQSV
+	case EncoderAMF, EncoderAMFHEVC:
+		return familyAMF
+	default:
+		return familyOther
+	}
+}
+
+// IsHEVC reports whether an encoder produces HEVC output — used to decide the fMP4 tag and to know
+// whether a program's transcode already matches an hevc-plan's uniform-codec requirement.
+func (e Encoder) IsHEVC() bool {
+	switch e {
+	case EncoderSoftwareHEVC, EncoderNVENCHEVC, EncoderQSVHEVC, EncoderVAAPIHEVC,
+		EncoderAMFHEVC, EncoderVTHEVC, EncoderRKMPPHEVC, EncoderV4L2M2MHEVC, EncoderVulkanHEVC:
+		return true
+	default:
+		return false
+	}
+}
+
 // Profile is the normalized output every program is encoded to.
 //
 // Normalization is not cosmetic — it is what makes the concat mechanism legal. The
@@ -80,14 +220,17 @@ func (p Profile) videoEncodeArgs() []string {
 	// Each family has its OWN preset vocabulary, and an unknown preset name fails at init
 	// rather than being ignored. That is why this is a switch over families and not a
 	// shared "-preset" line: libx264's "veryfast" is meaningless to nvenc, and nvenc's
-	// "p4" is meaningless to everything else.
-	switch p.Encoder {
-	case EncoderSoftware:
+	// "p4" is meaningless to everything else. Keyed on the FAMILY (familyOf) so an hevc
+	// variant (hevc_nvenc, libx265, …) reuses its h264 sibling's args — the preset/rate
+	// vocabulary is identical within a hardware engine regardless of the output codec.
+	switch familyOf(p.Encoder) {
+	case familySoftware:
 		// veryfast because playout is realtime and a dropped frame is worse than a
 		// slightly larger one. `-tune zerolatency` stops the encoder buffering frames it
-		// would rather reorder — for live, latency beats compression.
+		// would rather reorder — for live, latency beats compression. (libx264 and libx265
+		// share these option names.)
 		args = append(args, "-preset", "veryfast", "-tune", "zerolatency")
-	case EncoderNVENC:
+	case familyNVENC:
 		// p7 (slowest/best) rather than p4. Measured with SSIM against a near-lossless
 		// reference of a hard scene — dark, grainy, 4K HDR source:
 		//
@@ -99,16 +242,16 @@ func (p Profile) videoEncodeArgs() []string {
 		// the CQ rate control below. p1/ll is still avoided: viewra found it produced
 		// visible grain artifacts in tone-mapped content (prior-art, viewra §6).
 		args = append(args, "-preset", "p7", "-tune", "hq")
-	case EncoderAMF:
+	case familyAMF:
 		// AMF speaks quality presets, not numbered ones.
 		args = append(args, "-quality", "balanced")
-	case EncoderQSV:
+	case familyQSV:
 		// QSV's preset names overlap libx264's spelling but are its own enum.
 		args = append(args, "-preset", "veryfast")
-	case EncoderVAAPI, EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M, EncoderVulkan:
-		// These take their quality from the bitrate args alone. Adding a preset from
-		// another family's vocabulary is an init failure, and several of them (notably
-		// v4l2m2m on a Pi) are strict about unknown options.
+	case familyOther:
+		// vaapi / videotoolbox / rkmpp / v4l2m2m / vulkan (h264 AND hevc) take their quality from
+		// the bitrate args alone. Adding a preset from another family's vocabulary is an init
+		// failure, and several (notably v4l2m2m on a Pi) are strict about unknown options.
 	}
 	args = append(args, p.rateControlArgs()...)
 	return append(args, p.gopArgs()...)
@@ -169,7 +312,9 @@ func (p Profile) rateControlArgs() []string {
 // its own SSIM run against real content before being switched on: a wrong quality value is a
 // channel that either looks bad or saturates the operator's uplink, and neither fails loudly.
 func (p Profile) constantQuality() int {
-	if p.Encoder != EncoderNVENC {
+	// NVENC's VBR+CQ rate control is identical for h264_nvenc and hevc_nvenc (same engine), so both
+	// get the measured CQ ladder; every other family stays bitrate-targeted until measured.
+	if familyOf(p.Encoder) != familyNVENC {
 		return 0
 	}
 	// Derived from the ladder rung so the operator's tier choice still governs. The rungs
@@ -203,9 +348,26 @@ const gopKeyframeSeconds = 2
 // nothing until the next one. `-sc_threshold 0` disables scene-change detection, which would
 // otherwise insert keyframes at unpredictable places and make segment durations vary — and a
 // TARGETDURATION that lies is a player error, not a warning.
+//
+// ⚠ **A keyframe is forced on FRAME 0, and this is the cold-start black-screen fix (measured).**
+// The HLS remux (`-c copy -f hls`) can only cut a `.ts` segment on a keyframe. With only the 2s GOP
+// below, a cold transcode child's first keyframe lands up to a full GOP in — and on a slow cold
+// encoder init it lands late enough that `awaitPlaylist` (45s) times out with NO segment and the
+// viewer gets a 502 / black frame (a channel measured at 45s vs 0.4s for a direct-play channel).
+// `-forced-idr 1` makes the forced points real IDRs (not just P-frames flagged as keyframes, which
+// some encoders emit and the remux cannot cut on), and the `eq(n,0)` term puts one on the very first
+// frame so segment 0 cuts immediately. The `gte(t,prev_forced_t+GOP)` term keeps the steady 2s
+// cadence. Output-side keyframe control, so it is hardware-agnostic — works for nvenc/vaapi/qsv/
+// vulkan/software alike, and only ever emitted on the transcode path (a `-c copy` program never
+// calls videoEncodeArgs).
 func (p Profile) gopArgs() []string {
 	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
-	return []string{"-g", gop, "-keyint_min", gop, "-sc_threshold", "0"}
+	return []string{
+		"-g", gop, "-keyint_min", gop, "-sc_threshold", "0",
+		// Force a keyframe on the first frame (instant segment 0), then every gopKeyframeSeconds.
+		"-forced-idr", "1",
+		"-force_key_frames", fmt.Sprintf("expr:if(eq(n,0),1,gte(t,prev_forced_t+%d))", gopKeyframeSeconds),
+	}
 }
 
 // audioEncodeArgs is fixed AAC stereo 48kHz — see Profile.AudioBitrate.

@@ -44,11 +44,53 @@ func (s *Server) registerChannels(api huma.API) {
 	}, RoleMember), s.channelUpcoming)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "channel-timeline", Method: http.MethodGet, Path: "/v1/channels/{id}/timeline",
+		Summary: "The Watch player's schedule strip for one channel",
+		Description: "The current programme, the next few, and the commercial breaks between them, from " +
+			"internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. " +
+			"Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).",
+		Tags: []string{"channels"},
+	}, RoleMember), s.channelTimeline)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "channel-icon-suggestions", Method: http.MethodGet, Path: "/v1/channels/{id}/icon-suggestions",
 		Summary:     "Suggest channel icons from the lineup",
 		Description: "Candidate poster images drawn from the channel's OWN lineup titles (§icon) — a Star Trek channel offers its five series' posters. Read-only, so any authenticated user may call it. 501 when TMDB isn't configured.",
 		Tags:        []string{"channels"},
 	}, RoleMember), s.channelIconSuggestions)
+
+	// ⚠ **RolePublic, and it has to be said out loud.** Tunarr and the media server fetch this
+	// with no credentials, machine-to-machine, exactly as they would a TMDB poster URL — the
+	// bytes are a non-secret channel icon. roleForOperation defaults an unmarked operation to
+	// ADMIN (routeauth.go, fail-closed), so omitting this line does not leave the route open,
+	// it silently breaks every channel logo in Tunarr. The upload half is admin and lives in
+	// channelicon.go.
+	rawOp[channelIDInput](api, bytesResponse(huma.Operation{
+		OperationID: "channel-icon", Method: http.MethodGet, Path: "/v1/channels/{id}/icon",
+		Summary: "A channel's uploaded icon",
+		Description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine " +
+			"while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. " +
+			"LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at " +
+			"/v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, " +
+			"and it retires with the channel_icons table in phase 8.",
+		Tags: []string{"channels"},
+	}, "The stored icon bytes.", "image/png", "image/jpeg", "image/webp", "image/gif"),
+		RolePublic, s.serveChannelIcon)
+
+	// The upload half — admin, multipart. MaxBodyBytes fences a hostile upload at the framework
+	// edge, before the handler's own read limit; the handler still checks, because the multipart
+	// header's declared size is a claim, not a measurement.
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "upload-channel-icon", Method: http.MethodPost, Path: "/v1/channels/{id}/icon",
+		Summary: "Upload a channel icon",
+		Description: "Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — " +
+			"SVG is refused because the serve half is public and an SVG can carry script). Ingests the " +
+			"bytes into the image service (§22), points the channel's logo at the content-addressed URL, " +
+			"and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a " +
+			"different image yields a different one, so no cache-bust is needed.",
+		Tags:         []string{"channels"},
+		MaxBodyBytes: maxIconBytes + 1024,
+	}, RoleAdmin), s.uploadChannelIcon)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
@@ -109,6 +151,10 @@ func (s *Server) registerChannels(api huma.API) {
 		Summary: "Remove a channel", Description: "Admin only. Detaches by default (§7).",
 		Tags: []string{"channels"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.deleteChannel)
+
+	// The Watch surface's play-url op (§9.1). Mounted here so both the live router and the
+	// OpenAPI-export parity path (export.go) pick it up from one call, never a hand-kept list.
+	s.registerChannelPlayURL(api)
 }
 
 type channelIDInput struct {
@@ -129,9 +175,17 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	}
 	out := &listChannelsOutput{}
 	out.Body.Channels = make([]ChannelDTO, 0, len(all))
+	// ⚠ Resolved ONCE for the whole list, before the loop. A lookup inside channelToDTO would be
+	// an N+1 — one image row read per channel — which is the shape a profile here has already
+	// caught once. Distinct hashes are fetched once each even when channels share an icon.
+	logos := make([]string, 0, len(all))
 	for _, ch := range all {
-		// nil resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil))
+		logos = append(logos, ch.Logo)
+	}
+	logoImage := s.logoImageResolver(ctx, logos)
+	for _, ch := range all {
+		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
+		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil, logoImage))
 	}
 	return out, nil
 }
@@ -144,7 +198,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -285,7 +339,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -423,7 +477,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 type refineChannelInput struct {
@@ -517,7 +571,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type deleteChannelInput struct {

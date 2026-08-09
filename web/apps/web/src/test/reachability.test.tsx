@@ -234,7 +234,7 @@ const stubFetch = () => {
       return Promise.resolve(
         json({
           id: "sp-1",
-          clipPath: "comp.mp4",
+          clipHash: "comp-hash",
           createdAt: "2026-07-25T20:00:00Z",
           segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
         }),
@@ -247,7 +247,7 @@ const stubFetch = () => {
         json({
           clips: [
             {
-              path: "comp.mp4",
+              hash: "hash-comp",
               name: "80s compilation",
               kind: "commercial",
               durationMs: 900000,

@@ -36,6 +36,18 @@ type PodEntryDTO struct {
 	// than a playback fault). Neither affects selection — see filler.Clip.Quality.
 	Era     int    `json:"era,omitempty" doc:"The clip's tagged era (1994); 0 when untagged"`
 	Quality string `json:"quality,omitempty" doc:"Resolution label from the probed video height (1080p, 480p); empty when unknown or audio-only"`
+	// Brand, Audience, Category and VisibleText are the richer §10 V44 display context, the
+	// same nature as Era/Quality: they explain what a break is FOR ("Kellogg's · cereal · kids"),
+	// never affect selection, and are omitempty because "" is the honest common case for an
+	// untagged clip. Each is GROUNDED at the source — it persists on the clip only when a text or
+	// visual signal literally contained it (§8) — so what reaches the card is fact, not inference.
+	Brand    string `json:"brand,omitempty" doc:"The advertiser the clip is for (Kellogg's, Ford); empty when ungrounded/untagged (V44)"`
+	Audience string `json:"audience,omitempty" enum:"kids,family,general,late_night" doc:"Who the clip suits; empty when untagged"`
+	Category string `json:"category,omitempty" doc:"The clip's category (cereal, toys, cars, …); empty when untagged"`
+	// VisibleText is the on-screen text a vision pass read off the keyframes (V44). It is what
+	// makes a vision-grounded brand/era AUDITABLE — the frame text the tag was read from — so the
+	// card can show the evidence, not just the conclusion. Empty when no vision pass ran or it read nothing.
+	VisibleText string `json:"visibleText,omitempty" doc:"On-screen text a vision pass read off the frame (V44); empty when none"`
 }
 
 type previewPodsInput struct {
@@ -273,6 +285,10 @@ func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 			IsFallbackCard:  e.IsFallbackCard,
 			Era:             e.Era,
 			Quality:         e.Quality,
+			Brand:           e.Brand,
+			Audience:        string(e.Audience),
+			Category:        e.Category,
+			VisibleText:     e.VisibleText,
 		})
 	}
 	return PodPoolDTO{Entries: entries, TotalMs: pod.TotalMs, MatchLevel: string(pod.MatchLevel)}

@@ -64,16 +64,18 @@ const ItemRow = ({
     </div>
     {onEdit && (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
-            aria-label={`Edit ${item.name}`}
-            onClick={() => onEdit(item)}
-          >
-            <Pencil aria-hidden />
-          </Button>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0"
+              aria-label={`Edit ${item.name}`}
+              onClick={() => onEdit(item)}
+            />
+          }
+        >
+          <Pencil aria-hidden />
         </TooltipTrigger>
         <TooltipContent>Edit pick</TooltipContent>
       </Tooltip>

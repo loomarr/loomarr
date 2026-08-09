@@ -1,10 +1,15 @@
-import type { IncomingAskDTO } from "@loomarr/api";
+import type { IncomingClipDTO } from "@loomarr/api";
 import { formatClipDuration, pluralize } from "@loomarr/core";
 import { Link } from "@tanstack/react-router";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { Badge, Button, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { IncomingPanelProps } from "./incoming-panel.type";
+// ⚠ Private siblings, deliberately absent from the filler barrel. `story-coverage.test.ts`
+// enumerates the barrel's runtime exports, so exporting these would demand a story file each for
+// two halves of one panel — `incoming-panel.stories.tsx` covers all three.
+import { PreparingRow, sentenceFor } from "./preparing-row";
+import { RejectedSection } from "./rejected-section";
 
 // IncomingPanel — what has been downloaded but is not yet filed (V35).
 //
@@ -77,7 +82,7 @@ const AskRow = ({
   onDismiss,
   onFile,
 }: {
-  ask: IncomingAskDTO;
+  ask: IncomingClipDTO;
   busy: boolean;
 } & Pick<IncomingPanelProps, "onConfirmEra" | "onEditTags" | "onDismiss" | "onFile">) => {
   const guessed = (ask.suggestedEra ?? 0) > 0;
@@ -104,6 +109,9 @@ const AskRow = ({
           {guessed && <Badge variant="suggest">{`guessed ${ask.suggestedEra}`}</Badge>}
           {ask.era ? <Badge variant="neutral">{String(ask.era)}</Badge> : null}
           {ask.audience && <Badge variant="neutral">{ask.audience}</Badge>}
+          {/* `IncomingClipDTO.category` is the same DERIVED primary-product-leaf shadow as
+              `ClipDTO.category` (§10 V45a) — this queue's summary DTO carries no `tags` array
+              of its own, so the shadow is the only tag signal there is to show, read-only. */}
           {ask.category && <Badge variant="neutral">{ask.category}</Badge>}
         </div>
 
@@ -145,23 +153,32 @@ const AskRow = ({
 };
 
 const IncomingPanel = ({
-  asks,
+  clips,
   reels,
   recentlyFiled,
+  stageOrder,
+  rejected,
   onConfirmEra,
   onEditTags,
   onDismiss,
   onFile,
   onFileAllAsSuggested,
   onSendBack,
+  onRestore,
   busyPath,
   className,
 }: IncomingPanelProps) => {
-  const nothingWaiting = asks.length === 0 && reels.length === 0;
+  // ⚠ **The belt is ONE list and the empty state is about the whole of it.** `clips` arrives
+  // ordered decisions-first, so the split below is a partition for the heading and the controls,
+  // never a second list: a clip appears exactly once, in whichever half `needsDecision` puts it.
+  const decisions = clips.filter((c) => c.needsDecision);
+  const preparing = clips.filter((c) => !c.needsDecision);
+  const nothingIncoming = clips.length === 0 && reels.length === 0;
+  const ladder = stageOrder ?? [];
   // "File all as suggested" only means something when something HAS a suggestion — otherwise it
   // is a button that files clips as whatever they already are, which "Use it" already does per
   // row and which nobody would expect from that label.
-  const anyGuessed = asks.some((a) => (a.suggestedEra ?? 0) > 0);
+  const anyGuessed = decisions.some((a) => (a.suggestedEra ?? 0) > 0);
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
@@ -172,18 +189,23 @@ const IncomingPanel = ({
           "when Loomarr can't work out what they are" described the pre-V38 heuristic, where the
           queue was INFERRED from missing tags. Holding is a STATE now: a clip waits because it
           was downloaded, including ones Loomarr understood perfectly. */}
-      {nothingWaiting && (
+      {nothingIncoming && (
         <EmptyState
           title="Nothing needs you"
           description="Nothing is waiting to be checked. Clips you download land here first, before they start playing."
         />
       )}
 
-      {asks.length > 0 && (
+      {clips.length > 0 && (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3">
+            {/* ⚠ The heading names the WORK, not the list length. `clips` includes rows the machine
+                still owns, so "85 clips need a decision" over a belt where 84 are mid-transcode
+                would be the same lie the two-list version told, moved into a string. */}
             <h2 className="font-medium text-sm">
-              {pluralize(asks.length, "clip")} {asks.length === 1 ? "needs" : "need"} a decision
+              {decisions.length > 0
+                ? `${pluralize(decisions.length, "clip")} ${decisions.length === 1 ? "needs" : "need"} a decision`
+                : `Loomarr is preparing ${pluralize(preparing.length, "clip")}`}
             </h2>
             {onFileAllAsSuggested && anyGuessed && (
               <Button
@@ -197,18 +219,38 @@ const IncomingPanel = ({
               </Button>
             )}
           </div>
+          {decisions.length > 0 && preparing.length > 0 && (
+            <Caption>{pluralize(preparing.length, "more clip")} still being prepared, further down.</Caption>
+          )}
+
+          {/* ⚠ ONE live region for the whole belt, carrying only the most recent transition. A
+              `role="status"` per row is the "chorus of live regions" frontend-design §5.3 forbids:
+              85 clips announcing themselves is unusable, not 85 times as useful. */}
+          <p role="status" className="sr-only">
+            {preparing[0]?.pipeline
+              ? `${preparing[0].name || preparing[0].hash}: ${sentenceFor(preparing[0].pipeline)}`
+              : ""}
+          </p>
+
+          {/* ⚠ ONE <ul>. The rows differ — a decision row carries controls, a preparing row carries
+              the pip strip — but they are the same belt, and splitting them into two lists is what
+              put the same clip on the page twice. */}
           <ul className="flex flex-col gap-2">
-            {asks.map((ask) => (
-              <AskRow
-                key={ask.path}
-                ask={ask}
-                busy={busyPath === ask.path}
-                {...(onConfirmEra ? { onConfirmEra } : {})}
-                {...(onEditTags ? { onEditTags } : {})}
-                {...(onDismiss ? { onDismiss } : {})}
-                {...(onFile ? { onFile } : {})}
-              />
-            ))}
+            {clips.map((clip) =>
+              clip.needsDecision ? (
+                <AskRow
+                  key={clip.hash}
+                  ask={clip}
+                  busy={busyPath === clip.path}
+                  {...(onConfirmEra ? { onConfirmEra } : {})}
+                  {...(onEditTags ? { onEditTags } : {})}
+                  {...(onDismiss ? { onDismiss } : {})}
+                  {...(onFile ? { onFile } : {})}
+                />
+              ) : (
+                <PreparingRow key={clip.hash} clip={clip} ladder={ladder} />
+              ),
+            )}
           </ul>
         </section>
       )}
@@ -255,6 +297,16 @@ const IncomingPanel = ({
         </section>
       )}
 
+      {/* The audit half of REFUSAL (§10 V51b) — sibling of the section above. Both answer "what
+          did Loomarr decide without me", from opposite ends. */}
+      {rejected && rejected.length > 0 && (
+        <RejectedSection
+          rows={rejected}
+          {...(onRestore ? { onRestore } : {})}
+          {...(busyPath ? { busyHash: busyPath } : {})}
+        />
+      )}
+
       {reels.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="font-medium text-sm">{pluralize(reels.length, "compilation")} to review</h2>
@@ -265,7 +317,10 @@ const IncomingPanel = ({
                 className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="truncate font-medium text-sm">{reel.clipPath}</span>
+                  {/* The compilation's NAME, not its identity — a 64-character hash is not a row
+                      title. The server falls back to the hash when the clip is gone, so a
+                      deleted compilation still renders as something an operator can act on. */}
+                  <span className="truncate font-medium text-sm">{reel.clipName}</span>
                   <Caption>
                     {pluralize(reel.segments, "clip")} found
                     {/* A reel of twelve clean segments and one with three problems are
@@ -278,10 +333,12 @@ const IncomingPanel = ({
                     <Outlet/>, so nesting the review under /filler would make the whole surface
                     unreachable while every unit test stayed green (PROGRESS.md records the
                     near-miss). This tab is an additional door to that route, not a replacement. */}
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/filler/splits/$proposalId" params={{ proposalId: reel.proposalId }}>
-                    Review cuts
-                  </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link to="/filler/splits/$proposalId" params={{ proposalId: reel.proposalId }} />}
+                >
+                  Review cuts
                 </Button>
               </li>
             ))}

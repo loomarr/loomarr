@@ -1,9 +1,10 @@
 import type { SplitSegment } from "@loomarr/api";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core";
 import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
+import { SegmentFilmstrip } from "../segment-filmstrip";
 import type { SplitReviewEditorProps } from "./split-review-editor.type";
 
 // SplitReviewEditor — the §10 V34 review gate. Detection quality is a property of the
@@ -71,6 +72,10 @@ const SplitReviewEditor = ({
   className,
 }: SplitReviewEditorProps) => {
   const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
+  // Which block the strip has focused. Local, not URL state: it is a pointer at a row on screen,
+  // and a shared link carrying it would deep-link someone to a segment index that a merge or a
+  // drop has since renumbered.
+  const [focusedKey, setFocusedKey] = useState<string>();
 
   const setSegment = (i: number, patch: Partial<DraftSegment>) =>
     setDraft((prev) => prev.map((d, j) => (j === i ? { ...d, ...patch } : d)));
@@ -80,6 +85,9 @@ const SplitReviewEditor = ({
   // Merge with next CONCATENATES THE SPANS (end becomes the next segment's end). Tags keep
   // the first segment's, inheriting from the next only what the first lacks; transcripts
   // join so the reviewer keeps the evidence for the new, longer span.
+  // ⚠ `category` (kept here as first-wins, matching every other single-value field) is a
+  // DERIVED shadow (§10 V45a) — this review gate never writes it directly, so first-wins is
+  // just which half's shadow happens to display until the confirmed segment is re-tagged.
   const mergeWithNext = (i: number) =>
     setDraft((prev) => {
       if (i + 1 >= prev.length) return prev;
@@ -103,14 +111,38 @@ const SplitReviewEditor = ({
 
   const confirmable = draft.length > 0 && draft.every(isValid);
 
+  // ⚠ The strip reads the DRAFT's edited timecodes, not the proposal's original spans, so a
+  // merge widens a block and a retyped cut point moves one AS IT HAPPENS. Reading the server's
+  // copy would leave the picture describing a split the operator already changed.
+  //
+  // ⚠ Parsed with a FALLBACK to the committed ms. `startText`/`endText` are free text the
+  // operator is mid-way through typing — "1:" is not a time yet — and letting an in-progress
+  // keystroke collapse a block to zero would make the strip flicker on every character.
+  const stripSegments = draft.map((d) => ({
+    key: d.key,
+    startMs: parseMmSs(d.startText) ?? d.startMs,
+    endMs: parseMmSs(d.endText) ?? d.endMs,
+    ...(d.name ? { name: d.name } : {}),
+    ...(d.unsplittable ? { unsplittable: d.unsplittable } : {}),
+  }));
+
   return (
     <div className={cn("flex flex-col gap-4", className)}>
+      {/* The reel at a glance, above the rows it describes (the v2 mock's `rl.strip`). Clicking
+          a block focuses that segment's row — the strip is a map, the rows are the work. */}
+      <SegmentFilmstrip
+        segments={stripSegments}
+        {...(focusedKey ? { activeKey: focusedKey } : {})}
+        onFocus={setFocusedKey}
+      />
+
       {draft.map((seg, i) => (
         <SegmentRow
           key={seg.key}
           segment={seg}
           position={i}
           last={i === draft.length - 1}
+          focused={focusedKey === seg.key}
           onChange={(patch) => setSegment(i, patch)}
           onDrop={() => drop(i)}
           onMergeWithNext={() => mergeWithNext(i)}
@@ -145,19 +177,36 @@ interface SegmentRowProps {
   segment: DraftSegment;
   position: number;
   last: boolean;
+  focused: boolean;
   onChange: (patch: Partial<DraftSegment>) => void;
   onDrop: () => void;
   onMergeWithNext: () => void;
 }
 
-const SegmentRow = ({ segment, position, last, onChange, onDrop, onMergeWithNext }: SegmentRowProps) => {
+const SegmentRow = ({
+  segment,
+  position,
+  last,
+  focused,
+  onChange,
+  onDrop,
+  onMergeWithNext,
+}: SegmentRowProps) => {
   const [showTranscript, setShowTranscript] = useState(false);
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
+  // its segments off-screen, so a highlight the operator has to go hunting for is the same as no
+  // response at all. `block: "nearest"` avoids yanking the page when the row is already visible.
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [focused]);
 
   return (
-    <Card>
+    <Card ref={ref} className={cn(focused && "ring-1 ring-signal-300")}>
       <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <span className="font-mono text-muted-foreground text-sm tabular-nums">#{n}</span>
@@ -223,7 +272,19 @@ const SegmentRow = ({ segment, position, last, onChange, onDrop, onMergeWithNext
           {segment.audience ? (
             <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
           ) : null}
+          {/* Tags (§10 V45a), same read-only rendering as ClipCard: the headline badge is the
+              derived primary product leaf (`category`); a "+N" chip signals more taxonomy tags
+              exist without listing the full rollup set. No inline cycle — a segment's tags ride
+              along from detection/grounding, not something this review gate edits directly. */}
           {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+          {(() => {
+            const extra = (segment.tags ?? []).filter((t) => t !== segment.category).length;
+            return extra > 0 ? (
+              <Badge variant="neutral" title="This segment has more tags">
+                +{extra}
+              </Badge>
+            ) : null;
+          })()}
 
           {/* An unconfirmed era (§10 grounding): the classifier guessed a year that appears
               in NO text signal. Accept grounds it as the operator's tag; reject drops the

@@ -4,37 +4,58 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/mantonx/loomarr/internal/llm"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // AI-assisted tagging (§10): classify an ingested clip's TEXT SIGNALS —
 // filename, the source title/description yt-dlp/Archive preserve, and (for clips
 // produced by compilation splitting, V34) the segment transcript — into
-// era/audience/category, via the configured LLM. Grounding here is
-// enum-validation PLUS the era rule: the model classifies a clip we hand it (it
-// can't invent a clip), its audience/category are validated against the known
-// sets, and its era is accepted ONLY when the year appears literally in the
-// text signals — a measured §8 hole (2 of 10 real transcripts got an era
-// inferred from tone, plan §6.4). An ungrounded era is NOT persisted as fact:
-// it comes back as SuggestedEra for the operator to confirm.
-
-// knownCategories is the closed set the classifier may assign (§10). An
-// out-of-set category is rejected (kept untagged rather than persisting garbage).
-var knownCategories = map[string]bool{
-	"toys": true, "cereal": true, "cars": true, "tech": true, "fast_food": true,
-	"movie_trailer": true, "candy": true, "games": true, "psa": true, "ident": true,
-	"bumper": true, "general": true,
-}
+// era/audience/a SET OF TAXONOMY TAGS, via the configured LLM. Grounding here is
+// resolve-or-drop against the taxonomy graph PLUS the era rule: the model
+// classifies a clip we hand it (it can't invent a clip), each tag it returns is
+// grounded through taxonomy.Forest.Resolve (an exact slug or a synonym → kept and
+// canonicalised; anything else → DROPPED, never a new taxon), and its era is
+// accepted ONLY when the year appears literally in the text signals — a measured
+// §8 hole (2 of 10 real transcripts got an era inferred from tone, plan §6.4).
+// An ungrounded era is NOT persisted as fact: it comes back as SuggestedEra for
+// the operator to confirm.
+//
+// ⚠ V45a: the flat closed `category` enum is GONE. It was one of THREE drifting
+// copies of the same list (this file's map, the inline prompt, and
+// schedule.fillerCategories mirrored to the FE); the taxonomy graph is now the one
+// vocabulary, SERVED to the model (forest.Vocab()) so the served set and the
+// grounded set are the same set by construction. `Category` survives only as a
+// DERIVED shadow — the primary product leaf of the tag set — for readers not yet
+// on the tag set (pod separation, the catalog filter).
 
 // TagSuggestion is the validated classification for one clip. Fields are zero
-// when the model gave an unusable/out-of-enum value (that field stays untagged).
+// when the model gave an unusable/ungrounded value (that field stays untagged).
 type TagSuggestion struct {
 	Era      int
 	Audience Audience
+	// Tags is the GROUNDED taxonomy leaf set (§10 V45a) — every tag the model returned that resolved
+	// against the graph, canonicalised to its slug, de-duplicated, in stable order. The empty slice is
+	// the honest "nothing groundable" case. These are the LEAVES; the store expands them to rollups.
+	Tags []string
+	// Category is the DERIVED shadow of Tags — the primary product leaf (forest.PrimaryProductLeaf),
+	// computed once in validateTags where the forest is in hand, so Score()/Complete() (which run
+	// without a forest) can keep asking "has a product tag?" as `Category != ""`. It is never an input;
+	// it always equals PrimaryProductLeaf(Tags). "" when the tag set has no product-axis leaf.
 	Category string
+	// Brand is the advertiser the clip is FOR — "Kellogg's", "Ford" (§10 V44). Free text, not an
+	// enum: the set of advertisers is open in a way the tag vocabulary is not.
+	//
+	// ⚠ GROUNDED like era, and dropped for the same reason it is. validateTags keeps a brand ONLY
+	// when it appears literally in the clip's text signals; a brand the model inferred from a
+	// category or a tone is emptied here, never persisted. Unlike era there is no "suggested brand"
+	// half — an ungrounded advertiser is not a question worth asking a human, it is a guess, so it
+	// simply vanishes. "" is the honest common case.
+	Brand string
 	// SuggestedEra is an era the model proposed whose year does NOT appear in the
 	// text signals (§10 era grounding, V34). It is never written to the clip's
 	// Era — matching must not see it — and is recorded on the clip as a
@@ -112,7 +133,16 @@ func (t TagSuggestion) Score(modelConfidence int) int {
 type tagOutput struct {
 	Era      int    `json:"era"`
 	Audience string `json:"audience"`
-	Category string `json:"category"`
+	// Tags is the model's proposed taxonomy tags (§10 V45a) — a list of slugs it picked from the
+	// served vocabulary. Untrusted: each is grounded through forest.Resolve in validateTags, and any
+	// that does not resolve (an off-vocabulary slug) is dropped, never minted. Replaces the old single
+	// `category` string.
+	Tags []string `json:"tags"`
+	// Brand is the advertiser the model read off the text (§10 V44). Untrusted like every other
+	// field here: validateTags keeps it only if it appears literally in the clip's text signals,
+	// otherwise it is dropped — a brand is never allowed to raise Confidence (it rides the existing
+	// grounded ceiling), so it does not appear in Score at all.
+	Brand string `json:"brand"`
 	// Confidence is the model's own 0-100 self-assessment (V38). ⚠ **Advisory only, and it can
 	// only LOWER the grounded ceiling** — see TagSuggestion.Score. It is read from the same
 	// untrusted JSON as everything else here, so it is clamped before use: a model returning 150
@@ -121,13 +151,20 @@ type tagOutput struct {
 }
 
 // Classify asks the LLM to tag a clip from its text signals and returns the
-// VALIDATED result (§10). It uses JSON mode; any field the model returns that
-// isn't a real enum value is dropped (that tag stays empty), and an era whose
+// VALIDATED result (§10). It uses JSON mode; every tag the model returns is
+// grounded against `forest` (dropped if it does not resolve), and an era whose
 // year is absent from the text comes back as SuggestedEra, never Era. Never
 // invents a clip — the caller hands it a real one from the catalog.
-func Classify(ctx context.Context, provider llm.Provider, name, sourceText string) (TagSuggestion, error) {
+//
+// ⚠ `forest` is REQUIRED (§10 V45a): it is both the vocabulary SERVED to the model
+// (so it never guesses a slug blind) and the grounding gate the answer is resolved
+// against — the served list and the accepted list are the same list by
+// construction, the same "BE is the single source of the vocabulary" discipline
+// the suggester uses. A nil forest tags nothing (every slug fails to resolve),
+// which is the safe direction.
+func Classify(ctx context.Context, provider llm.Provider, forest *taxonomy.Forest, name, sourceText string) (TagSuggestion, error) {
 	messages := []llm.Message{
-		{Role: llm.System, Content: tagSystemPrompt},
+		{Role: llm.System, Content: tagSystemPrompt(forest)},
 		{Role: llm.User, Content: tagUserPrompt(name, sourceText)},
 	}
 	resp, err := provider.Chat(ctx, messages, llm.ChatOptions{JSONMode: true})
@@ -135,14 +172,18 @@ func Classify(ctx context.Context, provider llm.Provider, name, sourceText strin
 		return TagSuggestion{}, fmt.Errorf("classify clip: %w", err)
 	}
 	var out tagOutput
-	if err := json.Unmarshal([]byte(resp.Content), &out); err != nil {
+	// Unwrap a code fence before parsing, the same robustness the vision tier needs (§10 V44):
+	// JSONMode keeps qwen3's output bare, but a model that wraps its answer in ```json … ``` would
+	// otherwise fail on the leading backtick. llm.ExtractJSONObject is a no-op on already-bare JSON.
+	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &out); err != nil {
 		return TagSuggestion{}, fmt.Errorf("classify clip: model output not JSON: %w", err)
 	}
-	return validateTags(out, name+"\n"+sourceText), nil
+	return validateTags(out, forest, name+"\n"+sourceText), nil
 }
 
 // validateTags is the grounding pass for tagging: every field must be a real enum
-// value / plausible year, else it's dropped (§10 — no hallucinated tags persisted).
+// value / plausible year / literally-present brand, else it's dropped (§10 — no
+// hallucinated tags persisted).
 //
 // ⚠ ERA IS SPECIAL (V34): a plausible year is not enough. Measured on real
 // transcripts, the model inferred a decade from TONE on 2 of 10 clips (era 1980
@@ -153,7 +194,7 @@ func Classify(ctx context.Context, provider llm.Provider, name, sourceText strin
 // SuggestedEra for operator confirmation. The asymmetry is safe: dropping a
 // true positive leaves the clip untagged (a human or a later run can tag it),
 // while accepting a fabrication corrupts era-matching silently.
-func validateTags(out tagOutput, text string) TagSuggestion {
+func validateTags(out tagOutput, forest *taxonomy.Forest, text string) TagSuggestion {
 	var t TagSuggestion
 	if out.Era >= 1930 && out.Era <= 2035 {
 		if strings.Contains(text, strconv.Itoa(out.Era)) {
@@ -165,8 +206,42 @@ func validateTags(out tagOutput, text string) TagSuggestion {
 	if aud := AudienceFromString(out.Audience); aud != "" {
 		t.Audience = aud
 	}
-	if cat := strings.ToLower(strings.TrimSpace(out.Category)); knownCategories[cat] {
-		t.Category = cat
+	// ⚠ TAGS ARE GROUNDED resolve-or-drop against the taxonomy (§10 V45a) — the anti-fabrication gate,
+	// the same discipline era and brand get. Each returned slug is run through forest.Resolve: an exact
+	// slug or a known synonym/retired alias is kept and canonicalised (`brew` → `beer`); anything else
+	// is DROPPED, never minted as a new taxon (only an operator adds taxa). De-duplicated and kept in
+	// stable order so a re-tag of the same clip is reproducible. A nil forest resolves nothing, so an
+	// install with no taxonomy tags nothing rather than persisting raw model output.
+	if forest != nil {
+		seen := map[string]bool{}
+		for _, raw := range out.Tags {
+			if slug, ok := forest.Resolve(raw); ok && !seen[slug] {
+				seen[slug] = true
+				t.Tags = append(t.Tags, slug)
+			}
+		}
+		sort.Strings(t.Tags)
+		// Category is the DERIVED shadow: the primary product leaf of the grounded set. Computed here,
+		// where the forest is in hand, so Score()/Complete() stay forest-free (see TagSuggestion.Category).
+		t.Category = forest.PrimaryProductLeaf(t.Tags)
+	}
+	// ⚠ BRAND IS GROUNDED, exactly like era and for the same §8 reason (V44). The advertiser set is
+	// open, so there is no enum to validate against — the only defence against a fabricated brand
+	// ("this FEELS like a Coke ad") is the text itself. A brand is kept ONLY when it appears
+	// literally in the clip's text signals, and dropped otherwise. There is deliberately no
+	// SuggestedBrand counterpart — an ungrounded era is a question a human can confirm from the
+	// year, an ungrounded brand is just a guess, so it vanishes rather than riding along.
+	//
+	// ⚠ Matched on a PUNCTUATION-FOLDED form, not a raw substring. A live test found the raw check
+	// too brittle: the model answers "Campbell's" while the archive.org identifier is
+	// "CampbellsSoupAdvert" — no apostrophe — so `Contains` rejected a CORRECT brand. Folding
+	// apostrophes/punctuation and collapsing spaces on BOTH sides lets "Campbell's" ground against
+	// "campbellssoupadvert" while still requiring the brand's letters to appear in order — the
+	// anti-fabrication guarantee is unchanged (a brand the text does not contain still cannot pass;
+	// "Coke" does not fold into a Campbell's filename), only the punctuation noise is tolerated.
+	if brand := strings.TrimSpace(out.Brand); brand != "" &&
+		strings.Contains(foldForGrounding(text), foldForGrounding(brand)) {
+		t.Brand = brand
 	}
 	// ⚠ Clamped before it reaches Score, because this arrives in the same untrusted JSON as the
 	// tags: a model returning 150 (or -1) must not become a score. Out-of-range reads as "the
@@ -179,10 +254,45 @@ func validateTags(out tagOutput, text string) TagSuggestion {
 	return t
 }
 
-const tagSystemPrompt = `You classify a short TV filler clip (a commercial/bumper/PSA) from its text only.
+// foldForGrounding normalises a string for the brand containment check: lowercased, with every
+// character that is not a letter or digit removed (apostrophes, spaces, punctuation, hyphens).
+//
+// ⚠ This is what makes brand grounding survive real filenames without weakening it (§10 V44, found
+// by a live test). The model answers "Campbell's"; archive.org's identifier is "CampbellsSoupAdvert"
+// — folding both to "campbells…" lets the correct brand ground, while a brand the text genuinely
+// does NOT contain still fails: the letters must appear IN ORDER, so "coke" cannot fold into a
+// Campbell's filename. It tolerates punctuation noise, not fabrication. Deliberately NOT applied to
+// era — a year is digits only, has no punctuation to fold, and its literal-substring rule is the
+// exact §8 guarantee that must stay strict.
+func foldForGrounding(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// tagSystemPrompt builds the classifier prompt, SERVING the taxonomy vocabulary (§10 V45a) so the
+// model picks tags from the same list the grounding will accept — the served set and the accepted set
+// are one set by construction (mirrors how the suggester serves schedule.BuildVocabulary). The vocab is
+// grouped by axis (product / format / seasonal / audience-cue); the model may return several tags
+// across axes (a Christmas beer ad is `beer` + `christmas`). A nil forest serves an empty vocabulary,
+// which yields no groundable tags — the safe direction for an install with no taxonomy.
+func tagSystemPrompt(forest *taxonomy.Forest) string {
+	vocab := ""
+	if forest != nil {
+		vocab = forest.Vocab()
+	}
+	return `You classify a short TV filler clip (a commercial/bumper/PSA) from its text only.
 Return ONLY this JSON, no prose:
-{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","category":"toys|cereal|cars|tech|fast_food|movie_trailer|candy|games|psa|ident|bumper|general","confidence":<0-100>}
-Rules: give era ONLY when a 4-digit year literally appears in the text — never infer a decade from tone, style, or products; use 0 for era if no year appears; pick the closest audience and category from the lists ONLY; never invent values outside the lists; set confidence to how certain you are that these tags are right, where 100 means the text states them outright and 0 means you are guessing.`
+{"era":<4-digit year or 0 if unknown>,"audience":"kids|family|general|late_night","tags":["<slug>", ...],"brand":"<advertiser name or empty>","confidence":<0-100>}
+Choose "tags" ONLY from this vocabulary, grouped by axis (you may pick several, across axes, most specific that applies):
+` + vocab + `
+Rules: give era ONLY when a 4-digit year literally appears in the text — never infer a decade from tone, style, or products; use 0 for era if no year appears; pick the closest audience from the list ONLY; for tags, use ONLY slugs from the vocabulary above — never invent a tag not in the list, and return [] if none apply; give brand ONLY when the advertiser's name literally appears in the text (e.g. "Kellogg's", "Ford") — never guess it from the products, and use "" if no name appears; set confidence to how certain you are that these tags are right, where 100 means the text states them outright and 0 means you are guessing.`
+}
 
 func tagUserPrompt(name, sourceText string) string {
 	var b strings.Builder

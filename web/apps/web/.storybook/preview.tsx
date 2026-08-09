@@ -19,10 +19,11 @@ const preview: Preview = {
     controls: { expanded: true },
   },
   // Mirror the app root (__root.tsx): a single TooltipProvider so any story with an
-  // icon-only button's tooltip renders exactly as it does in the app.
+  // icon-only button's tooltip renders exactly as it does in the app — including the same
+  // 300ms delay, which this decorator used to leave at the library default.
   decorators: [
     (Story) => (
-      <TooltipProvider>
+      <TooltipProvider delay={300}>
         <Story />
       </TooltipProvider>
     ),

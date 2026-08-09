@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/store"
@@ -39,12 +40,16 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 		if got.Type != "title" {
 			t.Errorf("event type = %q, want title", got.Type)
 		}
-		payload, ok := got.Payload.(map[string]string)
+		// ⚠ A TYPED payload, not a map — and the assertion is on the concrete type for a
+		// reason beyond tidiness. huma names an SSE frame after its payload's Go type
+		// (internal/api/events.go), so publishing anything else here would ship the frame
+		// unnamed and every browser listener for "title" would silently stop firing.
+		payload, ok := got.Payload.(api.TitleEvent)
 		if !ok {
-			t.Fatalf("payload type = %T, want map[string]string", got.Payload)
+			t.Fatalf("payload type = %T, want api.TitleEvent", got.Payload)
 		}
-		if payload["key"] != "movie:tmdb:603" || payload["state"] != "available" || payload["name"] != "The Matrix" {
-			t.Errorf("payload = %v, want key/state/name for The Matrix available", payload)
+		if payload.Key != "movie:tmdb:603" || payload.State != "available" || payload.Name != "The Matrix" {
+			t.Errorf("payload = %+v, want key/state/name for The Matrix available", payload)
 		}
 	default:
 		t.Fatal("no event published to the bus — #11 seam still open (nothing reached the subscriber)")
@@ -70,7 +75,7 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	}
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("/readyz = %d, want 503 (not ready, but answering)", rec.Code)
 	}
@@ -79,7 +84,7 @@ func TestBuildHandlerWithoutStoreServesReadinessInsteadOfPanicking(t *testing.T)
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("/healthz = %d, want 200 (the process is alive)", rec.Code)
 	}

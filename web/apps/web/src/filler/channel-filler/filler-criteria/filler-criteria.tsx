@@ -1,4 +1,4 @@
-import { ClipDTOAudience, ClipDTOKind, type FillerSelection } from "@loomarr/api";
+import { ClipDTOAudience, ClipDTOKind, type FillerSelection, fillerApi } from "@loomarr/api";
 import { FieldHelp } from "@/components/loomarr";
 import {
   Checkbox,
@@ -21,24 +21,17 @@ const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: s
   </div>
 );
 
-// The filler category closed set — MIRRORS internal/schedule/policy.go `fillerCategories`
-// (the backend validates against it; `category` is a free string in the DTO, not a
-// generated enum, so it has no orval counterpart to import). Keep this in sync if the
-// backend set changes — a new category here without one there would 422 on apply.
-const CATEGORIES = [
-  "toys",
-  "cereal",
-  "cars",
-  "tech",
-  "fast_food",
-  "movie_trailer",
-  "candy",
-  "games",
-  "psa",
-  "ident",
-  "bumper",
-  "general",
-] as const;
+// ⚠ The hardcoded category mirror is GONE (§10 V45a). Categories are now the PRODUCT-axis taxa of the
+// operator-editable taxonomy graph, fetched live from /v1/taxonomy — the one source of truth, so this
+// selector cannot drift from what the backend accepts. Selecting a ROLLUP node (e.g. `food`) now
+// matches every descendant (`cereal`, `candy`…) via the server's rollup-set intersection — the power
+// the flat list could not offer. `useProductCategories` returns {slug,label} for the product axis.
+const useProductCategories = (): { slug: string; label: string }[] => {
+  const vocab = fillerApi.useListTaxonomy();
+  // The orval hook wraps the body: data.status===200 ? data.data.<body>. Match the page's own pattern.
+  const taxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : [];
+  return taxa.filter((t) => t.axis === "product").map((t) => ({ slug: t.slug, label: t.label }));
+};
 
 // Audiences from the generated ClipDTOAudience enum, minus the "" (any) sentinel — "Any"
 // is the Select's own placeholder value, not a listed option (Radix forbids an empty item
@@ -93,6 +86,7 @@ const FillerCriteria = ({
   const era = selection.era;
   const categories = selection.categories ?? [];
   const kinds = selection.kinds ?? [];
+  const productCategories = useProductCategories();
 
   return (
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
@@ -180,15 +174,15 @@ const FillerCriteria = ({
           Categories
         </FieldLabel>
         <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map((c) => {
-            const on = categories.includes(c);
+          {productCategories.map((c) => {
+            const on = categories.includes(c.slug);
             return (
               <button
-                key={c}
+                key={c.slug}
                 type="button"
                 disabled={disabled}
                 aria-pressed={on}
-                onClick={() => onChange({ ...selection, categories: toggle(categories, c) })}
+                onClick={() => onChange({ ...selection, categories: toggle(categories, c.slug) })}
                 className={cn(
                   "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                   on
@@ -196,7 +190,7 @@ const FillerCriteria = ({
                     : "border-border text-muted-foreground hover:border-input hover:text-foreground",
                 )}
               >
-                {prettyCategory(c)}
+                {c.label}
               </button>
             );
           })}
@@ -226,4 +220,4 @@ const FillerCriteria = ({
   );
 };
 
-export { AUDIENCE_LABEL, CATEGORIES, FillerCriteria, KIND_LABEL, prettyCategory, toggle };
+export { AUDIENCE_LABEL, FillerCriteria, KIND_LABEL, prettyCategory, toggle };

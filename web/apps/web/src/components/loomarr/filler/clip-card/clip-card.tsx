@@ -1,8 +1,8 @@
 import type { ClipDTO } from "@loomarr/api";
 import { clipHoverURL, clipThumbURL, formatClipDuration, formatRelative } from "@loomarr/core";
-import { Pin, Play, Scissors, Sparkles, Tag } from "lucide-react";
+import { Pin, Play, Scissors, Tag } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, Image } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -31,29 +31,42 @@ const AUDIENCE_LABEL: Record<string, string> = {
 // can only advance through would make a wrongly-tagged clip impossible to blank without
 // opening the dialog, and §10's likely error is exactly a mis-tagged clip.
 const AUDIENCES = ["kids", "family", "general", "late_night", ""] as const;
-// Decades, not years: `era` is rendered "1990s" and matched by decade, so cycling by 1 would
-// be 10 clicks per useful step. Bounded to the span of television advertising the catalog
-// actually holds, then back to unset.
+// The CYCLE steps by decade (cycling by 1 would be 10 clicks per useful step), bounded to the span
+// of TV advertising the catalog holds, then back to unset.
 const ERAS = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 0] as const;
-// ⚠ NOT an enum on the wire — `category` is a free-string the AI tagger fills from the
-// clip's text, so this list is the common set for CYCLING only. The dialog remains the way
-// to type anything else, which is why the chip renders a value it cannot cycle to.
-const CATEGORIES = ["food", "toys", "auto", "retail", "media", "service", ""] as const;
+
+// eraLabel renders an era for display. ⚠ The tagger grounds a LITERAL YEAR from the clip's text
+// (§8), so `era` is often a specific year (1996), NOT a decade — and "1996s" is nonsense. Append the
+// decade "s" ONLY when the value is a decade boundary (divisible by 10); a specific year renders
+// as-is. 1990 → "1990s"; 1996 → "1996". 0/undefined → "" (the caller shows an "era" placeholder).
+const eraLabel = (era: number | undefined): string => {
+  if (!era) return "";
+  return era % 10 === 0 ? `${era}s` : String(era);
+};
+// ⚠ The hardcoded CATEGORIES cycle list was DELETED (§10 V45a). `category` is now a DERIVED shadow
+// of the taxonomy tags, not a directly-editable free string — there is nothing to cycle. Tags are
+// shown as read-only badges and edited in the tag dialog, which serves the real vocabulary. (The list
+// was also a rule violation: operator-editable data hardcoded on the FE — see the no-hardcode rule.)
 
 const next = <T,>(list: readonly T[], current: T): T => list[(list.indexOf(current) + 1) % list.length] as T;
 
-// How much this clip has actually aired — the mock's `usedLine`.
+// How much this clip has actually AIRED — the mock's `usedLine`.
 //
-// ⚠ Exported because the LIST row (V35b) shows the same line, and this is a three-branch rule
-// where the wrong branch states a falsehood. `playsCounted:false` is NOT zero plays: it means
-// this install cannot OBSERVE airings (Tunarr-backed playout owns the stream), so "Never
-// played" there would be a lie the DTO's own comment warns against. Two renderers agreeing
-// today and drifting tomorrow is exactly how one of them starts lying, so there is one rule.
+// ⚠ The verb is "aired", not "played", deliberately (fixed after a live review: "played" read as
+// "have I watched this", and the Play button on the card visibly did not move the number). The count
+// is an AIRINGS counter — incremented only when internal playout actually broadcasts the clip
+// (store.RecordClipPlay, "written from playout only"), NEVER by watching the preview. "Aired" is what
+// the number measures, and it disambiguates from the Play button (which is watching, not airing).
+//
+// ⚠ Exported because the LIST row (V35b) shows the same line, and this is a three-branch rule where
+// the wrong branch states a falsehood. `playsCounted:false` is NOT zero airings: it means this install
+// cannot OBSERVE airings (Tunarr-backed playout owns the stream), so "Never aired" there would be a
+// lie the DTO's own comment warns against. One rule, shared, so the two renderers cannot drift.
 const playsLine = (clip: ClipDTO): string => {
-  if (!clip.playsCounted) return "Plays aren't counted on this setup";
-  if (clip.playCount === 0) return "Never played";
-  const plays = `${clip.playCount} ${clip.playCount === 1 ? "play" : "plays"}`;
-  return clip.lastPlayedAt ? `${plays} · last ${formatRelative(clip.lastPlayedAt)}` : plays;
+  if (!clip.playsCounted) return "Airings aren't counted on this setup";
+  if (clip.playCount === 0) return "Never aired";
+  const airings = `${clip.playCount} ${clip.playCount === 1 ? "airing" : "airings"}`;
+  return clip.lastPlayedAt ? `${airings} · last ${formatRelative(clip.lastPlayedAt)}` : airings;
 };
 
 // A tag chip you can click to advance. Styled to match Badge (mono/uppercase, §2.2) rather
@@ -153,34 +166,67 @@ const ClipFrame = ({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      <img
-        src={clipThumbURL(clip.path)}
-        // Empty alt, deliberately: the clip's name is the very next element, so a description
-        // here would have a screen reader announce the same clip twice. The frame is decoration
-        // for a label that is already present.
-        alt=""
-        className="size-full object-cover"
-        // A catalog is hundreds of cards; without this every frame is fetched on mount.
-        loading="lazy"
-      />
+      {/* ⚠ Two paths during the §22 migration window. `thumbImage` is present once the adoption
+          job has copied this clip's artwork into the image service; until then the legacy route
+          still serves it, and a freshly-imported catalog is entirely in that state. Both retire
+          in phase 8.
+
+          Empty alt on BOTH, deliberately: the clip's name is the very next element, so a
+          description here would have a screen reader announce the same clip twice. The frame is
+          decoration for a label that is already present. */}
+      {clip.thumbImage ? (
+        // No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
+        // which is exactly right below the fold.
+        <Image
+          image={clip.thumbImage}
+          alt=""
+          sizes="(max-width: 640px) 45vw, 220px"
+          className="size-full object-cover"
+        />
+      ) : (
+        <img
+          src={clipThumbURL(clip.hash)}
+          alt=""
+          className="size-full object-cover"
+          // A catalog is hundreds of cards; without this every frame is fetched on mount.
+          loading="lazy"
+        />
+      )}
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
           simply covered once there is something to cover it with. */}
-      {showPreview && (
-        <img
-          src={clipHoverURL(clip.path)}
-          alt=""
-          className="absolute inset-0 size-full object-cover"
-          // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
-          // A broken-image glyph over the frame would be a visible fault where the honest state
-          // is "this clip has no preview" — the common case on any install that has not re-synced
-          // since V39.
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
-        />
-      )}
+      {showPreview &&
+        (clip.hoverImage ? (
+          // ⚠ `fallback={null}` — render NOTHING on failure, revealing the still beneath. This is
+          // the one caller that wants no visible failure state at all: a colour block (the
+          // primitive's default) would be a visible fault over the frame where the honest answer
+          // is "this clip has no preview", which is the common case on any install that has not
+          // re-synced.
+          //
+          // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
+          // nominal here — it is the still beneath that does the responsive work.
+          <Image
+            image={clip.hoverImage}
+            alt=""
+            sizes="(max-width: 640px) 45vw, 220px"
+            className="absolute inset-0 size-full object-cover"
+            fallback={null}
+          />
+        ) : (
+          <img
+            src={clipHoverURL(clip.hash)}
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+            // ⚠ If the render is missing or corrupt this hides itself, revealing the still beneath.
+            // A broken-image glyph over the frame would be a visible fault where the honest state
+            // is "this clip has no preview" — the common case on any install that has not re-synced
+            // since V39.
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ))}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
           top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
@@ -317,13 +363,13 @@ const ClipCard = ({
           the dialog stays for anything the cycle cannot reach, e.g. a typed category. */}
       {onCycle ? (
         <CycleChip
-          label={clip.era ? `${clip.era}s` : "era"}
+          label={clip.era ? eraLabel(clip.era) : "era"}
           unset={!clip.era}
-          title={`Click to change the era (now ${clip.era ? `${clip.era}s` : "unset"})`}
+          title={`Click to change the era (now ${clip.era ? eraLabel(clip.era) : "unset"})`}
           onClick={() => onCycle({ era: next(ERAS, (clip.era ?? 0) as (typeof ERAS)[number]) })}
         />
       ) : clip.era ? (
-        <Badge variant="neutral">{`${clip.era}s`}</Badge>
+        <Badge variant="neutral">{eraLabel(clip.era)}</Badge>
       ) : null}
       {/* An UNCONFIRMED era (§10 V34): the year is in none of the clip's text signals, so
           the grounding validator refused to persist it. It renders as a question — suggest
@@ -349,25 +395,24 @@ const ClipCard = ({
       ) : clip.audience ? (
         <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge>
       ) : null}
-      {onCycle ? (
-        <CycleChip
-          label={clip.category || "category"}
-          unset={!clip.category}
-          title={`Click to change the category (now ${clip.category || "unset"})`}
-          onClick={() =>
-            onCycle({ category: next(CATEGORIES, (clip.category ?? "") as (typeof CATEGORIES)[number]) })
-          }
-        />
-      ) : clip.category ? (
-        <Badge variant="neutral">{clip.category}</Badge>
-      ) : null}
-      {clip.aiTagged && (
-        <Badge variant="suggest">
-          <Sparkles className="mr-1 size-3" aria-hidden />
-          AI-tagged
-        </Badge>
-      )}
-      {!clip.tagged && !clip.aiTagged && <Badge variant="caution">Untagged</Badge>}
+      {/* Tags (§10 V45a): read-only badges from the taxonomy tag set. No inline "cycle" — a tag must
+          be a real taxon, so editing routes to the tag dialog (which serves the vocabulary). The
+          headline badge is the primary product leaf (`category`, derived); a "+N" chip signals the
+          clip carries more tags without cluttering the card with the full rollup set (beer implies
+          alcohol, drinks — matched on, not shown). The dialog shows them all. */}
+      {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
+      {(() => {
+        // Extra LEAF-ish tags beyond the headline: the full set minus the rollups of `category` is not
+        // known on the wire, so approximate "more than the headline" by count. A clip with only its
+        // category's own lineage shows no "+N"; one tagged on another axis (christmas, psa) shows it.
+        const extra = (clip.tags ?? []).filter((t) => t !== clip.category).length;
+        return extra > 0 ? (
+          <Badge variant="neutral" title="This clip has more tags — open it to see them all">
+            +{extra}
+          </Badge>
+        ) : null;
+      })()}
+      {!clip.tagged && <Badge variant="caution">Untagged</Badge>}
       {/* Resolution, from the probed video height. Display-only unless an operator sets the
           filler.min_quality floor (off by default), so it is a neutral fact here — NOT a
           warning. Colouring a 480p clip as a problem would invent a policy the install has

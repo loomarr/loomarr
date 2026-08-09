@@ -1,8 +1,1 @@
-export {
-  AUDIENCE_LABEL,
-  CATEGORIES,
-  FillerCriteria,
-  KIND_LABEL,
-  prettyCategory,
-  toggle,
-} from "./filler-criteria";
+export { AUDIENCE_LABEL, FillerCriteria, KIND_LABEL, prettyCategory, toggle } from "./filler-criteria";

@@ -28,8 +28,8 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
   // The per-channel note. ⚠ Enabled only with a clip: the dialog renders nothing without one,
   // but the hook must still be called unconditionally (hooks cannot sit below an early return).
   const fit = fillerApi.useClipChannelFit(
-    { clip: clip?.path ?? "" },
-    { query: { enabled: Boolean(clip?.path) } },
+    { clip: clip?.hash ?? "" },
+    { query: { enabled: Boolean(clip?.hash) } },
   );
   const channels = unwrap(fit.data, (b) => b.channels) ?? [];
 
@@ -69,9 +69,9 @@ const PinClipDialog = ({ clip, onClose }: PinClipDialogProps) => {
     // ⚠ `string[] | null | undefined`, not just `string[]`: the generated list types are
     // nullable because the server omits an empty list, so an absent override arrives as `null`
     // rather than `[]` and a signature without it silently narrows.
-    const without = (ids: string[] | null | undefined) => (ids ?? []).filter((id) => id !== clip.path);
-    const pinned = next.pinned ? [...without(f.pinned), clip.path] : without(f.pinned);
-    const excluded = next.excluded ? [...without(f.excluded), clip.path] : without(f.excluded);
+    const without = (ids: string[] | null | undefined) => (ids ?? []).filter((id) => id !== clip.hash);
+    const pinned = next.pinned ? [...without(f.pinned), clip.hash] : without(f.pinned);
+    const excluded = next.excluded ? [...without(f.excluded), clip.hash] : without(f.excluded);
 
     update.mutate({
       id: channelId,

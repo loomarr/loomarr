@@ -1,126 +1,46 @@
-// Frame payloads, matching the BE bus (internal/app/emitter.go, systemllm.go).
-interface TitleEvent {
-  key: string;
-  state: string;
-  name: string;
-}
-
-interface ChannelEvent {
-  id?: string;
-  [k: string]: unknown;
-}
-
-type SuggestionPhase = "searching" | "reasoning" | "scoring" | "done" | "failed";
-
-interface SuggestionEvent {
-  jobId: string;
-  phase: SuggestionPhase;
-  // The 1-based tool-loop round, "0" outside the loop. A STRING because the SSE payload
-  // is a flat map of strings on the BE (emitter.go) — declaring it as a number here would
-  // typecheck and then compare wrong at runtime.
-  //
-  // Phases repeat: the model thinks, searches, then thinks again about what came back. The
-  // round is what distinguishes "still working, third pass" from "stuck", which is the
-  // whole reason a long run needs to look like it is progressing.
-  round?: string;
-}
-
-// Mirrors the BE's llm_pull frame (internal/app/systemllm.go publishPull). Every field
-// it actually sends is declared, because the index signature below otherwise hides a
-// missing one: `percent` was absent here while the BE had been sending it all along, so
-// the UI recomputed a worse version and showed nothing during "starting".
-interface LlmPullEvent {
-  jobId?: string;
-  model?: string;
-  // Ollama's own status strings pass through, plus Loomarr's terminal "success"/"error".
-  status?: string;
-  // BE-computed, 0-100. It is -1 on failure — a sentinel, never a percentage to render.
-  percent?: number;
-  completed?: number;
-  total?: number;
-  // Set when status is "error"; the reason the download failed.
-  error?: string;
-  [k: string]: unknown;
-}
-
-// Mirrors the BE's filler_ingest frame (internal/app/filler.go publishIngest). Every
-// field it sends is declared for the same reason LlmPullEvent's are: the index signature
-// would otherwise hide a missing one, and the UI would silently render a worse version.
-interface FillerIngestEvent {
-  jobId?: string;
-  // "starting" | "success" | "error".
-  status?: string;
-  fetched?: number;
-  skipped?: number;
-  failed?: number;
-  // Sources that returned no clips AND no error — almost always a typo'd Archive id,
-  // which returns 200 with nothing. Surfaced so "fetched: 0" has a reason attached.
-  empty?: number;
-  error?: string;
-  [k: string]: unknown;
-}
-
-// Mirrors the BE's filler_split frame (internal/app/filler.go publishSplit, §10 V34).
-// Compilation-split detection runs minutes per file, so the POST returns a job id and the
-// terminal frame hands the review UI its proposal id. Every field declared, for the same
-// reason as FillerIngestEvent above.
-interface FillerSplitEvent {
-  jobId?: string;
-  clipPath?: string;
-  // "running" | "success" | "error" — running fires first; success carries proposalId.
-  status?: string;
-  proposalId?: string;
-  segments?: number;
-  error?: string;
-  [k: string]: unknown;
-}
-
-// Mirrors the BE's `job` frame (internal/app/emitter.go JobChanged): a scheduled job's
-// state changed (started, finished ok/error, or Run-now'd). Carries only the job name — the
-// Tasks page refetches GET /v1/jobs on this, keeping the BE the single source of timing truth
-// (§18.1).
-interface JobEvent {
-  name?: string;
-  [k: string]: unknown;
-}
-
-// Mirrors the BE's `playout` frame (internal/app/app.go, Manager.OnChange): a channel started
-// or stopped encoding. Carries only the active count — deliberately a "something changed"
-// signal rather than the full telemetry, because the dashboard re-reads
-// GET /v1/playout/sessions, which owns the shape.
+// Frame payloads for the /v1/events SSE stream.
 //
-// Fired on session lifecycle only, NOT per ffmpeg progress sample: those arrive about once a
-// second per stream, and republishing each would push several frames a second at every open
-// browser for numbers that move by fractions.
-interface PlayoutEvent {
-  active?: number;
-  [k: string]: unknown;
-}
-
-// Mirrors the BE's `database` frame (internal/app/database.go emit): the SQLite→PostgreSQL
-// migration moved (§18, V11). Carries the phase, the parity verdict and per-table counts so
-// the stepper's bars can advance without polling.
+// ⚠ **GENERATED, not hand-mirrored.** These used to be interfaces written here by hand to
+// match `map[string]string` literals at ten Go publish sites — one shape defined twice, in two
+// languages, with nothing binding them. It drifted exactly as you would expect:
 //
-// Like every frame this is a latency optimization — GET /v1/system/database is the truth on
-// reconnect — so a dropped frame costs a stale progress bar, never a wrong outcome. That
-// matters more here than elsewhere: the operator is watching a data migration, and a UI that
-// invented progress it had not been told about would be actively misleading.
-interface DatabaseEvent {
-  phase?: string;
-  parity?: string;
-  error?: string;
-  [k: string]: unknown;
-}
-
-// ActivityEvent announces that a Dashboard feed row was written (§7, §12, V32).
+//   - `ChannelEvent` declared `id` while the backend has always sent `channelId`, so the field
+//     read `undefined` forever. An `[k: string]: unknown` index signature hid it, and the
+//     handler only invalidates by prefix, so nothing ever noticed.
+//   - `LlmPullEvent.percent` was missing while the backend sent it all along, so the UI
+//     recomputed a worse version and showed nothing during "starting".
+//   - `SuggestionEvent.round` was a STRING, carrying a comment warning that declaring it a
+//     number "would typecheck and then compare wrong at runtime" — a wart of the flat
+//     string map, documented instead of fixed.
 //
-// ⚠ **Deliberately EMPTY.** The frame says "something happened"; the page refetches
-// GET /v1/activity, which is the truth on reconnect (§8). Carrying the row would invite a
-// client to build the list from frames — and this bus drops frames for a slow subscriber by
-// design, so that list would be silently missing entries.
-interface ActivityEvent {
-  [k: string]: unknown;
-}
+// The Go frames are typed DTOs now (internal/api/events.go), they reach api/openapi.yaml
+// through huma's sse.Register, and orval generates these. `round` is a number and `channelId`
+// is spelled right because the spec says so, not because someone remembered.
+//
+// Re-exported (rather than imported directly at each call site) so the SSE vocabulary still
+// reads as one list, and so a frame added on the backend shows up here as a compile error
+// rather than as a listener that never fires.
+
+import type {
+  ActivityEvent,
+  ChannelEvent,
+  DatabaseEvent,
+  FillerClipEvent,
+  FillerIngestEvent,
+  FillerSplitEvent,
+  JobEvent,
+  LLMPullEvent,
+  PlayoutEvent,
+  SuggestionEvent,
+  SuggestionEventPhase,
+  TitleEvent,
+} from "@loomarr/api";
+
+// Kept under the frontend's historical names so call sites don't churn: the Go type is
+// LLMPullEvent (Go initialisms), the frontend has always called it LlmPullEvent, and
+// SuggestionPhase reads better than SuggestionEventPhase at a use site.
+type LlmPullEvent = LLMPullEvent;
+type SuggestionPhase = SuggestionEventPhase;
 
 interface EventHandlers {
   onTitle?: (e: TitleEvent) => void;
@@ -129,6 +49,7 @@ interface EventHandlers {
   onLlmPull?: (e: LlmPullEvent) => void;
   onFillerIngest?: (e: FillerIngestEvent) => void;
   onFillerSplit?: (e: FillerSplitEvent) => void;
+  onFillerClip?: (e: FillerClipEvent) => void;
   onJob?: (e: JobEvent) => void;
   onPlayout?: (e: PlayoutEvent) => void;
   onDatabase?: (e: DatabaseEvent) => void;
@@ -140,6 +61,7 @@ export type {
   ChannelEvent,
   DatabaseEvent,
   EventHandlers,
+  FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
   JobEvent,

@@ -105,21 +105,32 @@ func TestLadders_BitrateFallsBeforeResolution(t *testing.T) {
 	}
 }
 
-// THE refusal. Admitting an N+1th channel that makes all N stutter is worse than declining
-// it — and this is the admission bound viewra lacked, where a new session EVICTED others.
-func TestAtCapacity_RefusesRatherThanDegradingEveryone(t *testing.T) {
-	if AtCapacity(4, 3) {
-		t.Error("3 of 4 must be admitted")
+// THE refusal, now COST-AWARE (§9.1 V49). Admit counts concurrent TRANSCODES against a budget: a
+// new transcode is refused when the budget is full, but a COPY (cost 0) is ALWAYS admitted — that is
+// what stops the plan-double from halving capacity. This is the admission bound viewra lacked, where
+// a new session EVICTED others.
+func TestAdmit_CostAware(t *testing.T) {
+	// A transcode (cost 1) against a budget of 4:
+	if !Admit(4, 3, 1) {
+		t.Error("a 4th transcode (3 committed) must be admitted")
 	}
-	if !AtCapacity(4, 4) {
-		t.Error("4 of 4 must be REFUSED, not admitted at reduced quality")
+	if Admit(4, 4, 1) {
+		t.Error("a 5th transcode (4 committed, budget 4) must be REFUSED")
 	}
-	if !AtCapacity(4, 5) {
-		t.Error("over capacity must be refused")
+	if Admit(4, 5, 1) {
+		t.Error("over budget must be refused")
 	}
-	// An unconfigured cap must not block playout entirely.
-	if AtCapacity(0, 99) {
-		t.Error("an unset max_channels must not refuse everything")
+	// ⚠ A COPY (cost 0) is ALWAYS admitted, even at/over budget — it costs ~no GPU and cannot starve
+	// a transcode. This is the plan-double fix: an hevc copy never blocks a channel.
+	if !Admit(4, 4, 0) {
+		t.Error("a copy (cost 0) must be admitted even when the transcode budget is full")
+	}
+	if !Admit(1, 99, 0) {
+		t.Error("a copy must be admitted regardless of committed transcodes")
+	}
+	// An unmeasured/zero budget must not block playout entirely.
+	if !Admit(0, 99, 1) {
+		t.Error("an unmeasured (<=0) budget must not refuse everything")
 	}
 }
 
@@ -145,13 +156,27 @@ func TestQualityArgs_CrfIsSoftwareOnly(t *testing.T) {
 	if !strings.Contains(sw, "-crf") {
 		t.Errorf("software should get a CRF target, got %q", sw)
 	}
-	for _, enc := range []Encoder{
-		EncoderNVENC, EncoderQSV, EncoderVAAPI, EncoderAMF,
-		EncoderVideoToolbox, EncoderRKMPP, EncoderV4L2M2M, EncoderVulkan,
-	} {
-		p := Profile{Encoder: enc, VideoBitrate: 5000}
-		if got := p.qualityArgs(); len(got) != 0 {
-			t.Errorf("%s must not get CRF args, got %v", enc, got)
+	// libx265 is SOFTWARE too. Keying on the value rather than the family excluded it, so an HEVC
+	// software encode got the bitrate ladder with no `-crf` — the exact thing this function exists
+	// to override. Asserted explicitly because it is the case that was wrong.
+	swHEVC := strings.Join(Profile{Encoder: EncoderSoftwareHEVC, VideoBitrate: 5000}.qualityArgs(), " ")
+	if !strings.Contains(swHEVC, "-crf") {
+		t.Errorf("libx265 is software and should get a CRF target, got %q", swHEVC)
+	}
+
+	// ⚠ Derived from h264Engines, NOT a hand-written list. The previous version enumerated the
+	// eight h264 hardware encoders, which is why V49's nine HEVC additions were invisible to it:
+	// a test whose iteration source cannot contain the failing case is green by construction.
+	// Anything added to h264Engines is now covered here, in both codecs, with no second edit.
+	for _, base := range h264Engines {
+		if base == EncoderSoftware {
+			continue // asserted above — software is the one that DOES get CRF
+		}
+		for _, enc := range []Encoder{base, hevcVariant(base)} {
+			p := Profile{Encoder: enc, VideoBitrate: 5000}
+			if got := p.qualityArgs(); len(got) != 0 {
+				t.Errorf("%s is hardware and must not get CRF args, got %v", enc, got)
+			}
 		}
 	}
 }
@@ -162,5 +187,29 @@ func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
 	got := Resolve(TierBalanced, EncoderVulkan, 8, 0)
 	if got.Encoder != EncoderVulkan {
 		t.Errorf("Resolve dropped the encoder: %q", got.Encoder)
+	}
+}
+
+// lastSpeed must return the PEAK sample, not the last — a cold encoder ramps, and taking whichever
+// sample landed last collapsed a warm ~8x to ~1x and capped the box at one hardware channel.
+func TestLastSpeed_TakesThePeakNotTheLast(t *testing.T) {
+	// A realistic cold ramp that then falls off at teardown: peak is 8.66, last is a cold 0.90.
+	progress := strings.NewReader(strings.Join([]string{
+		"frame=10", "speed=0.75x",
+		"frame=60", "speed=6.20x",
+		"frame=140", "speed=8.66x", // the peak — the honest capability
+		"frame=150", "speed=0.90x", // a depressed final sample
+		"progress=end",
+	}, "\n"))
+	if got := lastSpeed(progress); got != 8.66 {
+		t.Errorf("lastSpeed = %v, want the peak 8.66", got)
+	}
+}
+
+// A trial that never emitted a usable speed (all N/A) reports 0, which channelsFromSpeed floors to 1.
+func TestLastSpeed_NoUsableSampleIsZero(t *testing.T) {
+	r := strings.NewReader("speed=N/A\nspeed=0x\nprogress=end\n")
+	if got := lastSpeed(r); got != 0 {
+		t.Errorf("lastSpeed = %v, want 0 when no usable sample", got)
 	}
 }

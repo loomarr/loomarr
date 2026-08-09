@@ -2,11 +2,14 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // The Catalog tab's bulk bar (§10 V35): retag a selection, or remove it from the catalog.
@@ -22,12 +25,15 @@ import (
 // bulkTagFillerInput retags a selection in one request.
 type bulkTagFillerInput struct {
 	Body struct {
-		Paths []string `json:"paths" minItems:"1" doc:"Clip identities (paths relative to FILLER_DIR)"`
+		Hashes []string `json:"hashes" minItems:"1" doc:"Clip identities (content hashes, §10 V45a)"`
 		// Each field is optional: the bulk bar has three independent dropdowns, and an
 		// operator setting only the audience must not blank the other two.
 		Era      *int    `json:"era,omitempty" doc:"Set the era on every selected clip. Omit to leave it alone."`
 		Audience *string `json:"audience,omitempty" enum:"kids,family,general,late_night" doc:"Omit to leave it alone."`
-		Category *string `json:"category,omitempty" doc:"Omit to leave it alone."`
+		// Tags REPLACES the old flat category (§10 V45a): the taxonomy tag set applied to every
+		// selected clip. Grounded against the live vocabulary (an unknown slug 422s the whole batch);
+		// each clip's `category` shadow is derived. Omit to leave tags alone; send [] to clear them.
+		Tags *[]string `json:"tags,omitempty" doc:"Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a)."`
 	}
 }
 
@@ -72,8 +78,38 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 
 	out := &bulkResultOutput{}
 	now := time.Now().UTC()
-	for _, path := range in.Body.Paths {
-		clip, err := s.store.GetClip(ctx, path)
+
+	// Ground the requested tag set ONCE against the live taxonomy (§10 V45a) — an unknown slug 422s
+	// the whole batch before any clip is touched (all-or-nothing on a bad request, like the single
+	// PATCH). `leaves` is the grounded, canonical, de-duplicated set applied to every selected clip;
+	// nil `Tags` means "leave each clip's tags alone".
+	var leaves []string
+	var forest *taxonomy.Forest
+	if in.Body.Tags != nil {
+		taxa, err := s.store.ListTaxa(ctx)
+		if err != nil {
+			return nil, err
+		}
+		forest = taxonomy.New(taxa)
+		seen := map[string]bool{}
+		for _, raw := range *in.Body.Tags {
+			slug, ok := forest.Resolve(raw)
+			if !ok {
+				return nil, errUnprocessable("Unknown tag",
+					fmt.Sprintf("The tag %q is not in the taxonomy vocabulary. Add it under Filler → Taxonomy first, or choose an existing tag.", raw))
+			}
+			if !seen[slug] {
+				seen[slug] = true
+				leaves = append(leaves, slug)
+			}
+		}
+		sort.Strings(leaves)
+	}
+
+	for _, hash := range in.Body.Hashes {
+		// The selection carries HASHES (§10 V45a) — the wire identity. GetClip is hash-keyed, so a
+		// stale hash (a clip removed by a re-sync between selection and apply) counts as missing.
+		clip, err := s.store.GetClip(ctx, hash)
 		if err != nil {
 			out.Body.Missing++
 			continue
@@ -85,8 +121,14 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if in.Body.Audience != nil {
 			audience = filler.Audience(*in.Body.Audience)
 		}
-		if in.Body.Category != nil {
-			category = *in.Body.Category
+		// Tags: persist the grounded set and DERIVE category from it (never take category from the
+		// client). Only when Tags was sent — otherwise the clip's existing tags and category shadow
+		// are left untouched.
+		if in.Body.Tags != nil {
+			if err := s.store.SetClipTags(ctx, clip.Hash, leaves, forest, now); err != nil {
+				return nil, huma.Error500InternalServerError("retag clips", err)
+			}
+			category = forest.PrimaryProductLeaf(leaves)
 		}
 
 		// ⚠ Setting an era CONFIRMS an outstanding suggestion, and the existing single-clip
@@ -97,8 +139,8 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		if in.Body.Era != nil {
 			suggested = 0
 		}
-		// aiTagged=false: a human just made this decision, so it is no longer an AI tag.
-		if err := s.store.UpdateClipTags(ctx, path, era, string(audience), category, suggested, false, now); err != nil {
+		// aiTagged=false: a human just made this decision, so it is no longer an AI tag. Hash-keyed.
+		if err := s.store.UpdateClipTags(ctx, clip.Hash, era, string(audience), category, suggested, false, now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
 		out.Body.Updated++
@@ -108,7 +150,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 
 type bulkRemoveFillerInput struct {
 	Body struct {
-		Paths   []string `json:"paths" minItems:"1"`
+		Hashes  []string `json:"hashes" minItems:"1" doc:"Clip identities (content hashes, §10 V45a)"`
 		Restore bool     `json:"restore,omitempty" doc:"Put the clips back in the catalog instead of removing them"`
 	}
 }
@@ -121,18 +163,70 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 		return nil, huma.Error501NotImplemented("no store configured")
 	}
 
+	// ⚠ The selection carries HASHES (§10 V45a), but SetClipsRemoved is PATH-keyed by design (V38 —
+	// the tombstone tracks the file on disk by location). Resolve hash → path at the boundary, so the
+	// store keeps its path key and the wire keeps its hash identity. A hash that no longer resolves (a
+	// clip removed by a re-sync between selection and apply) is dropped and reported as missing.
+	paths := make([]string, 0, len(in.Body.Hashes))
+	for _, hash := range in.Body.Hashes {
+		clip, err := s.store.GetClip(ctx, hash)
+		if err != nil {
+			continue // stale hash — counted as missing below
+		}
+		paths = append(paths, clip.Path)
+	}
+
 	// The zero time is the restore value: `removed_at = 0` is what "present" means, so undo
 	// needs no second method and cannot drift from the removal path.
 	at := time.Now().UTC()
 	if in.Body.Restore {
 		at = time.Time{}
 	}
-	n, err := s.store.SetClipsRemoved(ctx, in.Body.Paths, at)
+	n, err := s.store.SetClipsRemoved(ctx, paths, at)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("remove clips from the catalog", err)
 	}
+	if in.Body.Restore {
+		s.clearPipelineRejects(ctx, in.Body.Hashes)
+	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = n
-	out.Body.Missing = len(in.Body.Paths) - n
+	// Missing = requested hashes that did not resolve OR did not match a removable row.
+	out.Body.Missing = len(in.Body.Hashes) - n
 	return out, nil
+}
+
+// clearPipelineRejects turns a restored clip's pipeline row from `rejected` back to `review`
+// (§10 V51b) — the other half of an undo.
+//
+// ⚠ **Restore is ONE endpoint, not two.** The obvious alternative was a dedicated
+// `POST /v1/filler/clips/{hash}/restore` for pipeline rejects beside this one for catalog
+// removals. They would then be two ways to un-remove a clip that could disagree — one clearing
+// the tombstone, one clearing the reason — and an operator hitting the wrong one would see the
+// clip return to the catalog while Incoming still called it rejected, or the reverse. Two places,
+// one truth: `removed_at` is WHETHER, the pipeline row is WHY, and undoing has to move both.
+//
+// ⚠ **It does NOT re-run the pipeline**, and that is the point of a restore rather than a rewind.
+// The same rule that refused the clip would refuse it again in seconds, so re-running would make
+// the button a two-second round trip to nowhere. `review` is the honest destination: the machine
+// has done everything it can and is waiting on a person, which is exactly the state a restored
+// clip is in. An operator who genuinely wants it re-examined asks for that separately.
+//
+// Best-effort: the clip IS back in the catalog by this point (the tombstone is cleared and
+// airability is what matters), so failing the request over the bookkeeping half would report a
+// failure for an undo that mostly worked. A stale `rejected` row shows a wrong reason on the audit
+// list until the next write — visible and harmless, unlike a clip that is silently still hidden.
+func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
+	for _, hash := range hashes {
+		row, found, err := s.store.GetClipPipeline(ctx, hash)
+		if err != nil || !found || row.Disposition != filler.DispositionRejected {
+			continue
+		}
+		row.Disposition = filler.DispositionReview
+		row.RejectReason, row.RejectDetail = "", ""
+		row.UpdatedAt = time.Now().UTC()
+		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
+			s.log.Warn("could not clear a restored clip's rejection", "clip", hash, "err", err)
+		}
+	}
 }

@@ -84,17 +84,19 @@ const FillerClipList = ({
                   ) : null}
                 </div>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      disabled={disabled}
-                      aria-label={`Remove ${clip?.name ?? id}`}
-                      onClick={() => remove(id)}
-                    >
-                      <X aria-hidden />
-                    </Button>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0"
+                        disabled={disabled}
+                        aria-label={`Remove ${clip?.name ?? id}`}
+                        onClick={() => remove(id)}
+                      />
+                    }
+                  >
+                    <X aria-hidden />
                   </TooltipTrigger>
                   <TooltipContent>Remove</TooltipContent>
                 </Tooltip>
@@ -119,9 +121,9 @@ const FillerClipList = ({
             // Only clips not already in THIS list and not in the counterpart list are
             // offered — the same filter-don't-disable choice the lineup editor makes.
             results={clips
-              .filter((c) => !chosen.has(c.path) && !blocked.has(c.path))
+              .filter((c) => !chosen.has(c.hash) && !blocked.has(c.hash))
               .map((c) => ({
-                id: c.path,
+                id: c.hash,
                 scope: "clips" as const,
                 name: c.name,
                 meta: formatClipDuration(c.durationMs),

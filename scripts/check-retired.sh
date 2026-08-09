@@ -3,6 +3,38 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # §10 V51b — four per-capability sweeps became one ingest pipeline. Their schedule keys are the
+  # dangerous half: `docs/help/` ships inside the binary and is read as INSTRUCTIONS, so a page
+  # telling an operator to tune `JOB_FILLER_VISION_SCHEDULE` sends them to set an env var nothing
+  # reads, on a box where vision is now scheduled by `job.filler_pipeline.schedule`. That is the
+  # exact shape the deleted `/hooks/arr` webhook left behind.
+  'job.filler_language.schedule|V51b: the language gate is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_split.schedule|V51b: splitting is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_transcribe.schedule|V51b: transcription is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_vision.schedule|V51b: vision is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'JOB_FILLER_LANGUAGE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
+  # an answer, because every long recording reaches the split rung as it is ingested. An operator
+  # told to raise this to split more often would be tuning nothing; the real bound is
+  # `filler.pipeline.max_splits`.
+  'filler.split.every|V51b: splitting is a pipeline rung, not a sweep; the bound is filler.pipeline.max_splits'
+  'FILLER_SPLIT_EVERY|V51b: splitting is a pipeline rung, not a sweep; the bound is FILLER_PIPELINE_MAX_SPLITS'
+  # V51b folded on-file loudness normalisation into the transcode rung. `NormalizeInPlace` had no
+  # production caller at all — the capability existed and the setting that gated it was inert —
+  # so a doc describing it as a separate pass describes something that never ran.
+  'NormalizeInPlace|V51b: loudness is applied by the transcode rung, in the pass that is already re-encoding'
+  # §10 V51e — Incoming became ONE conveyor. `asks` and `pipeline` were separate arrays over
+  # overlapping populations, and on a fresh scan 84 of 85 clips appeared in BOTH: a row demanding
+  # a decision above a row captioned "nothing here needs you". The names are the dangerous half
+  # here for the same reason the schedule keys were — a doc or a comment that still says "the
+  # asks list" sends the next reader looking for a field the response does not have, and the
+  # honest answer (`clips`, with `needsDecision` per row) is one word away from it.
+  'IncomingAskDTO|V51e: one belt, one type — IncomingClipDTO, with needsDecision saying which end a clip is at'
+  'NonTerminalOnly|V51e: PipelineFilter.ConveyorOnly returns running AND review — the two halves of one belt'
+  'body.Asks|V51e: the response carries `clips`; a clip appears exactly once, whichever end it is at'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
   'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'
@@ -21,6 +53,32 @@ RETIRED=(
   # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
   # back in help text an operator would follow to a 404.
   'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
+  # V47b: renamed the playout "doctor" to "playout status" — same read-only health projection,
+  # clearer name. The old operation id and path must not survive in help text an operator would
+  # follow to a 404.
+  'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
+  'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
+  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
+  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
+  # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
+  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
+  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  # Live TV wiring stopped being an operator ACTION: it is idempotent and fully derived from the
+  # Tunarr connection, so it auto-runs on a Connections save (settings.go autoWireAfterSave) and a
+  # manual endpoint would be a redundant no-op. The route was deleted; five documents kept telling
+  # operators to call it, including the wizard walkthrough and the §7 route table — the exact
+  # "docs/help ships as instructions" failure this script exists for. ⚠ NOT the same thing as
+  # /v1/setup/livetv-reconnect, which is the force-re-wire for a stale channel→stream binding.
+  'setup/livetv-connect|Live TV wiring auto-runs on a Connections save (settings.go autoWireAfterSave); there is no manual route. The force-re-wire is /v1/setup/livetv-reconnect'
+  # V50a: the primitive vendor moved Radix → Base UI (design §14). Both are headless React
+  # libraries with near-identical part names, so a copy-pasted snippet or a re-added dependency
+  # would look ordinary in review while quietly pulling a second vendor back into the tree — which
+  # is precisely what the consolidation bought. `asChild` rides along because it is the one API
+  # that cannot survive the move: Base UI composes through a `render` PROP, so a prop still named
+  # for merging onto a CHILD is the half-migrated vocabulary that outlives whoever reintroduced it.
+  '@radix-ui|the primitive vendor is Base UI since V50a (design §14) — import from @base-ui/react'
+  'asChild|Radix composition prop; Base UI composes with render={<El />} (design §14, V50a)'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
@@ -36,7 +94,13 @@ ALLOW_LINE='retired-ok|[Rr]etired|[Ss]uperseded|no longer exist|was deleted|was 
 # ⚠ internal/ and docker/ are searched too. They were not before, which is how a Go doc
 # comment could keep describing "the sidecar's OWN configuration" — and how a dead
 # LoadConfig reading five env vars absent from §15 survived as apparently-live architecture.
-SEARCH=(docs internal docker web/apps/web/src README.md CLAUDE.md .env.example)
+#
+# ⚠ scripts/ is searched for the same reason, found the same way: latency-sweep.sh had been
+# probing the retired /v1/suggestions since V41 — a hand-maintained ROUTE array sitting in the
+# one directory the ban could not see, so the sweep silently measured a 404 as if it were an
+# endpoint. This file excludes itself via ALLOW_PATH, so the RETIRED array above does not
+# self-trip.
+SEARCH=(docs internal docker scripts web/apps/web/src README.md CLAUDE.md .env.example)
 fail=0
 for row in "${RETIRED[@]}"; do
   id="${row%%|*}"; why="${row#*|}"

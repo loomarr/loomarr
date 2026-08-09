@@ -45,22 +45,48 @@ func fillerFetchJob(f *filler.Fetcher) scheduler.Job {
 	}
 }
 
-// fillerLanguageJob declares the language gate (§10 V40) — detecting what a clip's speech is in
-// and removing the ones that are confidently not `filler.language`.
+// fillerPipelineJob declares the ingest pipeline (§10 V51b) — the ONE driver that replaced
+// `filler-language`, `filler-split`, `filler-transcribe` and `filler-vision`.
 //
-// ⚠ **Its own job, and on a much slower cron than its siblings**, because it is the expensive one.
-// On the local backend a clip costs ~3s natively and ~341s under QEMU, so a batch of 25 is
-// minutes-to-hours of work depending on the machine — nothing like the folder read `filler-sync`
-// does. Hourly drains a catalog steadily without a pass ever overlapping the next.
+// ⚠ **Four rows became one deliberately, reversing the "its own row" reasoning above, and it is
+// worth saying why the earlier argument no longer holds.** Each of those jobs was its own row so
+// an operator could see it ran, pause it, and connect an effect to a cause. That works when the
+// jobs are independent. They were not: they operated on the same clips, in an order nobody owned,
+// and the thing an operator actually wanted to see — *where is this clip up to?* — was the one
+// question four job rows could not answer, because it lives across all of them. The per-clip
+// LADDER answers it, so the visibility moved to where the work is rather than being deleted.
 //
-// ⚠ It is also the only filler job that DELETES something. A separate row on the Tasks page is
-// what lets an operator see it ran, pause it, and connect "my Spanish advert disappeared" to a job
-// rather than to a mystery.
-func fillerLanguageJob(j *filler.LanguageJob) scheduler.Job {
+// Pausing is preserved and is now more honest: pausing this row stops the whole ingest, which is
+// what pausing "the expensive one" was usually trying to do anyway.
+//
+// ⚠ Every TWO MINUTES, far more often than the hourly sweeps it replaces, and that is affordable
+// for the same reason it is necessary. A pass is bounded by the budget rather than by the catalog,
+// so an idle install does one cheap work-list query; a busy one advances the next clip promptly
+// instead of leaving a fresh download sitting for up to an hour. The sweeps had to be rare because
+// each one re-read the entire catalog.
+func fillerPipelineJob(p *filler.Pipeline) scheduler.Job {
 	return scheduler.Job{
-		Name: "filler-language", Title: "Check filler languages",
-		Description: "Listens to a few seconds of each new clip and removes the ones spoken in a different language. Clips with no speech — music or visuals only — are always kept.",
-		DefaultCron: "0 30 * * * *", ScheduleKey: "job.filler_language.schedule",
+		Name: "filler-pipeline", Title: "Prepare new filler clips",
+		Description: "Takes each new clip through the same steps in order — measuring it, re-encoding it, cutting up long recordings, listening to it, and working out what it advertises — so it's ready to air. Watch a clip move under Filler → Incoming.",
+		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
+		Run: func(ctx context.Context) error { _, err := p.RunOnce(ctx); return err },
+	}
+}
+
+// fillerReindexJob declares the taxonomy reindex (§10 V45a) — recomputing every clip's rolled-up tags
+// from the current tag graph.
+//
+// ⚠ A lifecycle sibling of the media jobs above (its own Tasks-page row, off by default, read live
+// inside Run) but NOT an expensive one: its body is two bulk SQL statements (rebuild the closure, then
+// the rollups), no whisper/vision/ffmpeg, no per-clip loop. It exists because clip rollups are a
+// DERIVED cache of (clips × graph) that goes stale when an operator edits the graph — this is the job
+// that re-converges them. Its own row, like its siblings, so an operator can see it ran and connect a
+// tag change to it.
+func fillerReindexJob(j *filler.ReindexJob) scheduler.Job {
+	return scheduler.Job{
+		Name: "filler-reindex", Title: "Update clip tags to match the vocabulary",
+		Description: "Recomputes every clip's rolled-up tags so they match the current tag categories. Runs after you edit the tag vocabulary yourself.",
+		DefaultCron: "0 5 * * * *", ScheduleKey: "job.filler_reindex.schedule",
 		Run: func(ctx context.Context) error { _, err := j.Run(ctx); return err },
 	}
 }

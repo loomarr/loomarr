@@ -4,6 +4,1297 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V52 — the image service: phases 0–6 of 8.** Merged: `ca15ba1d` (#199, phases 0–4),
+`309c5dfc` (#209, phase 5). **Phase 6 is PR #217.** **Next: 7** TMDB, **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ 7 regenerates the orval client, so per
+CLAUDE.md's worktree rule it is not parallelisable with anything that adds an endpoint.
+
+**Phase 6 — clip artwork onto the service (2026-08-09, PR #217).** Stills and hover loops lived
+only as files under `FILLER_DIR`; they now carry image-service identities, so they get srcset, a
+modern format on the STILL (the only WebP in the product was the animated hover), content
+addressing and honest caching. Gate: `make check` + `make openapi-verify` + `make fe` (1243 app +
+19 api) + `make fe-visual` (782), all exit 0.
+
+⚠ **Adoption is a JOB (`images-adopt-artwork`, every 5 min), and choosing that over an inline call
+is what removes work from phase 8.** Its work list is "artwork on disk with no image identity", so
+EXISTING and newly-rendered artwork adopt through one path — there is no separate clip backfill to
+write, and therefore no second implementation to drift. Inline would also have coupled
+`internal/filler` to `internal/images`, which the layering does not allow.
+
+⚠ **`thumb_image_hash`/`hover_image_hash` are OMITTED from `UpsertClip`'s DO UPDATE.** The folder
+scan calls the same upsert knowing nothing about image identities; including them would blank every
+clip's artwork on re-sync. That block now documents SIX columns sharing this rule — V51d's
+`created_at` joined it in the same merge, for the same class of reason.
+
+⚠ **`<Image>` gained a THIRD fallback state, and a real caller forced it.** The clip card's hover
+loop stacks ON its still and must render NOTHING on failure to reveal it; a colour block there is a
+visible fault where the honest state is "no preview". `fallback ?? default` cannot express that —
+it collapses "unspecified" and "explicitly nothing". Now `!== undefined`, so **`null` means
+nothing**. ⚠ Biome rejecting the `<></>` workaround is what surfaced it: the lint was pointing at an
+API gap, not a style nit.
+
+⚠ **The SECOND migration collision of this arc.** V51d took `00046` while phase 6 was open; mine
+renumbered to `00047`. Migration numbers are a hand-allocated global namespace with **no reservation
+step**, and git merges two same-numbered files without complaint — different names, no textual
+conflict. `ls internal/store/migrations/sqlite | tail` after EVERY merge, not only when writing one.
+Both sides also added columns to one INSERT: verify column count against placeholder count
+programmatically, because an arity mismatch is a runtime error no compiler catches.
+
+⚠ **Main was ALREADY RED when phase 6 merged it in** (`6f7269aa`), and the mechanism is one this
+file has recorded before under a different name. #214 added
+`getListFillerMockHandler({ clips: [] })`; #203 made `total` REQUIRED on `ListFillerOutputBody`.
+Each was green against the main it branched from; together they do not typecheck, and #203 merged
+because its CI ran against a base without #214. **The generated client is the coupling, and neither
+diff mentions the other's file** — exactly the `playoutApi` barrel story. Fixed in this PR (one
+line), so merging phase 6 returns main to green.
+
+Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
+`make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
+**14** `Images` conformance subtests **verified to actually execute under Postgres** +
+`make fe` (**15** `Image` unit tests, verified by NAME under `--reporter=verbose`, not by exit
+code) + `make fe-visual` (**780** passed, against a **freshly rebuilt** `storybook-static`) +
+phase 5 **verified live in a browser** against an isolated store.
+
+⚠ **This header named a branch that no longer exists and a phase count two behind, within an hour
+of the merge that made both wrong.** It is the same failure this file already warns about for a
+"Next up" that outlives its work — a stale pointer reads as current, and the session-start ritual
+reads THIS line first. When a V52 phase merges, this paragraph is part of the phase, not paperwork
+after it.
+
+⚠ **One open issue blocks the NEXT phase's evidence, not its code: #210.** The `UI/Image` stories'
+`srcset` uses base64 data URIs, which always contain a comma — `srcset`'s candidate separator — so
+those images never load and the baselines captured a ThumbHash placeholder rather than an image.
+Phase 6 puts `<Image>` into a clip GRID, which is precisely what those baselines would need to
+prove. Fixing #210 first (a Storybook `staticDirs` asset, so candidates are same-origin and
+comma-free) is the difference between phase 6 having a real visual gate and inheriting a blind one.
+
+⚠ **"Exit 0" and "the assertions ran" are two different claims, and this branch has now been
+bitten by both halves.** The pipe version is already recorded below (`make … | tail` reports the
+pipe's status over a red suite). The second: `go test -run TestPostgresConformance ./internal/store/`
+prints **`ok … [no tests to run]` and exits 0** without `-tags=integration`, because the file is
+not compiled at all — so the filter matches nothing and the run proves nothing. The only sufficient
+evidence is seeing the subtest NAMES in `-v` output. `make test-pg` passes the tag; a hand-rolled
+`go test` does not.
+
+Commits, rebased onto main `d7868a9`: `7f80749` (§22 doc), `fd18f29` (codec), `511cb97`
+(service + store + migration), `1049395` (routes), `872872b` (renumber to 00045), `c68ec2d`
+(the 10.4× test-harness fix), `c9a05d7` (phase 3a — wiring + `IMAGES_*` settings),
+`05e1aee` (gofmt fix, see below), `cc754e6` (phase 3b — the four jobs).
+
+⚠ **Phase 3a's recorded gate evidence was WRONG and this is the correction.** `c9a05d7` says
+`make check` exit 0; it did not. Adding `Images ImageService` to `api.Server` landed inside an
+aligned run of struct fields, so gofmt wanted to re-align its five neighbours and the tree failed
+at the FIRST step of `make check` — `fmt`, before vet, lint or a single test. CI on PR #199 would
+have been red the whole time. Fixed in `05e1aee`.
+
+The mechanism is worth keeping because it is not a typo class: **gofmt aligns a whole run of
+adjacent fields, so inserting one line re-writes lines you did not touch** — a hand-added field in
+an aligned block is unformatted by default rather than by accident. And the reason it was reported
+green is the same masking this file already warns about one paragraph up.
+
+Loomarr shows images from four sources and handled each differently — icons as **database
+blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
+the operator's browser**. `internal/images` (§22) is one pipeline: sha256 content addressing,
+disk storage sharded 2/2 under `images.dir`, AVIF+WebP+JPEG, ThumbHash placeholders, immutable
+cache headers. **Nothing is wired yet** — phases 2–8 add the routes, jobs, FE primitive, and
+migrate the four existing paths onto it.
+
+⚠ **Three measurements contradicted the research the plan was built on, and the doc was corrected
+rather than left to be discovered.** (1) `-tags nodynamic` costs **5.3×**, not ~3× — 12.5ms →
+66.9ms per 500px WebP encode, and the fast path is fast *because* this box has a system libwebp
+the library `dlopen`s, which is exactly the non-reproducibility the tag prevents. (2) **AVIF is
+NOT an order of magnitude past WebP**: with `libaom -still-picture -cpu-used 6` it is **86ms vs
+67ms**, about 1.3×. The scary 300–1200ms figures come from running a *video* encoder at video
+defaults — asked for ONE frame, SVT-AV1 allocated **2.34 GB**, spawned **82 threads**, and
+produced a file **78% larger** than libaom. The AVIF-is-a-job decision survives on a reason
+measurement supports — **concurrency, not latency**: each encode forks a multithreaded process,
+so a cold grid of 50 posters forks 50 at once. (3) A benchmark caught the plan's own rule being
+broken in its own implementation (`Resize` per rung re-walks the halving chain: 231ms → 100ms).
+
+⚠ **Two pre-existing defects found by adding one test group, both worth knowing:**
+
+1. **`make test-pg | tail` reports exit 0 while `make` exited 1.** The pipe masks the status; the
+   suite was RED and looked green. Capture the exit code directly, always.
+2. **The Postgres conformance `TRUNCATE` list was a hand-written literal** covering ~8 of 20
+   tables, under a comment asking the next person to keep it in step. Rows leaked between
+   sub-tests, so an assertion over a GLOBAL query passed on SQLite (fresh file per sub-test) and
+   failed only on Postgres. ⚠ **Completing the list is WRONG** — proven by two Filler tests going
+   red: `filler_sources` and the taxonomy carry **migration-seeded** rows, and nothing in the
+   literal distinguished "omitted by accident" from "omitted on purpose". Replaced with
+   `DROP SCHEMA` + `CREATE SCHEMA` so `Open` re-runs every migration: seeded rows return by
+   construction and new tables are covered the day they exist. Integration suite 9s → 21s.
+
+**Phase 2 is also done** (`1049395`): three Huma operations — `rawOp` byte serve, typed record,
+multipart upload — registered in both register lists, spec regenerated, `openapi-verify` green.
+
+**MERGED as `ca15ba1d` (PR #199).** It was held at one hand-off because CI had not reported, and
+merging past an unreported check is not a thing this project does — that judgement was right and is
+kept here, but the branch is gone; do not go looking for `v52-image-service`.
+⚠ A fresh worktree needs `npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen`
+before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
+*after* a successful install.
+
+✅ **BLOCKER 1 — the migration collision, resolved.** This branch defined `00044_images.sql`;
+**V51b merged `00044_filler_clip_pipeline.sql` to main** while it was open. Rebased onto main
+(`d7868a9`) and renumbered both dialects to **`00045_images.sql`**; the postgres file's
+"mirror of the sqlite 00044" cross-reference moved with it.
+
+⚠ Keep the reasoning, because the next branch that sits open across a merge hits it again.
+This was worse than a rename: goose records applied migrations **by version parsed from the
+filename prefix**, so a database that already ran one `00044` **silently skips** the other — no
+error, no failure, until something queries a table that was never created. Forward-only (§16)
+decides which one moves: the **unmerged** migration renumbers, never the merged one. Check
+`goose_db_version` on a dev DB for a stale `44`; if it is there, rebuild rather than hand-edit.
+This is the concrete form of the conflict CLAUDE.md's worktree table warns about, and 00043
+carries a comment about the same trap. The renumber was cheap only because
+`internal/store/embed.go` globs `migrations/*/*.sql` — there is no hand-maintained list to
+drift.
+
+✅ **BLOCKER 2 — the CI timeout, resolved, and the diagnosis in this entry was WRONG.** It read
+`panic: test timed out after 10m0s` → `FAIL internal/api 600.060s` as "the suite is big; raise
+`-timeout` or split the package". Both readings were wrong, and measuring before changing anything
+is what showed it: **462 top-level tests, 258.8s of a 259.7s package, slowest single test 5.3s,
+median ~0.6s.** There is no slow test and nothing to split out.
+
+Benchmarking the shared harness under `-race` found it — `store.Open` on a fresh file **503ms**
+(45 goose migrations), `api.Router` **17ms**, and 462 tests, so **~232s of the 259s was the same
+45 migrations re-run once per test.** Fixed by migrating ONCE per package into a template SQLite
+file and copying it per test (**26ms**): measured **259.7s → 25.0s**, a **10.4×** drop, `make
+check` exit 0 with zero failures (`c68ec2d`).
+
+⚠ **Not a weakened gate** (prime directive 2). Every test still runs against a real, fully-migrated
+database built by the real `store.Open`, on its own private copy — nothing shared, no assertion
+changed. `autoMigrate` stays true on the per-test open, which is what makes both failure modes
+safe: an empty or truncated copy is a version-0 database goose migrates the old way (slow, still
+correct), and a corrupt one fails `store.Open` and calls `t.Fatal`. There is no path where a test
+runs against a schema it did not ask for.
+
+⚠ **The reason a split would have "worked" is worth keeping**: Go's `-timeout` is per test binary,
+so N packages each get their own 10 minutes. The panic goes away while all 232s of wasted work
+stays, and every test added later still pays 503ms. It buys headroom, not speed — and this branch
+tipped the package over precisely by adding `00045`, one more migration on the 503ms path.
+
+⚠ **`newServer` covered only 15 of the 462 tests** — converting it alone measured 247s, i.e. almost
+nothing. The other 45 `store.Open` call sites are file-local helpers serving ~10 tests each, and
+all of them moved to the shared `openTestStore`. **This is a per-package fix and 56 test files
+across the repo open a store the same way**; `internal/store` (33s), `internal/integration` (25s)
+and `internal/recurate` (15s) are the next candidates if the Go job ever needs more.
+
+**Phase 3a done** (`c9a05d7`): the service is WIRED and proven end-to-end.
+
+⚠ **`Server.images` was nil, so all three phase-2 routes 404'd in a running instance** — the
+"a built component nobody imported" pattern this file already records against V1, V17a and V23.
+No unit test can catch it, because the defect IS the absence of a caller, so the guard drives the
+real composition root: `TestImageRoutesAreWired` goes through `BuildHandler`, uploads a real PNG,
+reads the record and fetches a rendition over HTTP. **Sabotage-verified** — returning nil from
+`imageService` makes it fail with the 501 its message names.
+
+The adapter (`internal/app/imageadapter.go`) is the whole cost of "no domain package imports
+internal/store": a type-for-type translation across a typing boundary. ⚠ Boxing goes through
+`imageService()` because a nil `*images.Service` assigned straight into an interface field is a
+**non-nil interface holding a nil pointer**, so `if s.images == nil` would silently stop working —
+app.go already carries that warning for `*tmdb.Client`.
+
+Settings: the seven `images.*` keys from §15 under a new `GroupImages`, plus the four job schedule
+keys (an undeclared `ScheduleKey` **panics the settings service at startup**, so they land before
+the jobs do). `Groups()` is consumed only by the docs generator, so a group with no Settings page
+adds a docs section and nothing else — the keys are reachable via Settings → All until a later
+phase gives them a form.
+
+⚠ **Two defects in phase-1 code, both fixed in 3a:**
+
+1. **`images.formats` was a DEAD KNOB.** `Config.Formats` existed, `New` defaulted it, and nothing
+   read it — an operator dropping `avif` to save CPU or `jpeg` to save storage would have changed
+   nothing while `docs/configuration.md` promised both. `Produces` is now its single reader, with a
+   test that names the setting, because a setting with no reader cannot be caught by a test that
+   does not name it.
+2. **`Config` promised hot-apply and could not deliver it.** Its doc comment claimed the values
+   were "resolved live from settings by the caller", but they were plain fields captured at
+   construction. `MaxUploadBytes`/`PublicBaseURL`/`Formats` are funcs now; `Dir` stays a value
+   because the blob store is built from it and re-pointing it at runtime would orphan every file
+   already written. **The shape now encodes which knobs hot-apply.** `server.public_url` is the one
+   that matters — Tunarr fetches stored icon URLs machine-to-machine, so setting it in the wizard
+   must not need a restart.
+
+**Phase 3b done** (`cc754e6`): the four jobs — `images-fetch`, `images-avif`, `images-rehydrate`,
+`images-gc` — registered through `registerImageJobs` and pinned by `TestJobSet`, which went red the
+moment they appeared and is the only test that can see a job constructed and never registered.
+
+⚠ **The re-key is the part to understand before touching the fetcher.** `Adopt` keys a
+not-yet-fetched row on `sha256("url:"+srcURL)` — a namespaced placeholder, because the content hash
+cannot be known before the bytes arrive. When the bytes land, identity MUST become the real content
+hash or `Cache-Control: immutable` stops being true: a URL would keep its name while its content
+changed, which is the one thing content addressing exists to prevent. So `fetchOne` writes a new
+row, moves the refs, and deletes the placeholder — **in that order**, because `image_refs` cascades
+on delete and the obvious ordering drops the association silently. Sabotage-verified: swapping them
+loses the ref and the test says so.
+
+The same machinery covers a case that is not a placeholder at all — a TTL refresh or rehydrate of
+artwork upstream has REPLACED. Hashes differ, the row re-keys, every derivative URL changes. That
+is the honest outcome; the bytes really are different.
+
+⚠ **The store needed FOUR new methods, not the two this file predicted.** The two known ones were
+the GC's (`TotalImageDerivativeBytes`, `ListColdestDerivatives`). The two that were missed:
+`RepointImageRefs` for the re-key above, and `ListImagesByOrigin` because rehydrate's work list —
+"every remote row, whatever its fetch state" — is expressible by neither `ListImagesAwaitingFetch`
+(scoped to the never-fetched sentinel) nor `ListImagesExpiredBefore` (scoped to a cutoff). A file
+can go missing under a row in either state. The prediction "the other three jobs need no store
+change" was an estimate, not a gate.
+
+⚠ `RepointImageRefs` is **insert-then-delete, never `UPDATE image_refs SET image_hash`**. Two
+distinct source URLs can hold identical bytes, so both placeholders re-key onto ONE content hash and
+the second update violates the primary key. `DO NOTHING` makes the collision the no-op it should be.
+
+**The TTL decision (maintainer's call): purge-then-requeue.** The GC deletes the original and every
+derivative, clears `origin_fetched_at`, and `images-fetch` re-downloads within the minute. Rejected:
+re-fetch in place and delete only on failure, which reads as strictly nicer and puts the compliance
+question **inside an error branch** — TMDB unreachable for a day would silently keep serving expired
+bytes, and the ceiling would be enforced by nothing. A ceiling that holds only while the network is
+up is not a ceiling. Recorded doc-first in §22.
+
+⚠ **The GC collects orphans BEFORE it expires, and a test found the interaction.** Both sweeps can
+select the same row (past its TTL *and* unreferenced). Expiring first purges the bytes and queues a
+fresh download moments before the orphan sweep deletes it — and if that delete fails, a download
+instruction for an image no surface will ever show is what survives.
+
+⚠ **Eviction is image-level LRU**, as decided: order by `images.last_used_at`, drop the coldest
+derivatives, stop once under `images.cache_budget_mb`. Per-derivative LRU stays rejected —
+`image_derivatives` has no `last_used_at` and adding one would make every image request a row WRITE
+(a 50-poster grid = 50 writes per page load, on SQLite with `SetMaxOpenConns(1)`). The conformance
+test pins the ordering by making `created_at` and `last_used_at` **disagree**: the coldest image's
+derivative is the NEWEST file, so a `created_at` ordering returns exactly the wrong answer and still
+looks plausible. Sabotage-verified.
+
+**SSRF** (`images-fetch` is the second job to reach the internet unattended, after `filler-fetch`,
+and the first driven by a URL in a row rather than a source an operator added): https only, host
+allowlist, redirects capped at 3 and refused into private/loopback/link-local ranges, body capped on
+the READ. ⚠ **The private-range rule deliberately does NOT apply to the first hop.** A self-hosted
+media server is normally ON a private address — that is what self-hosted means — so a blanket ban
+would refuse exactly the artwork the install owns. What makes hop one safe is that its host came
+from the install's own configuration; hop two is the one an allowlisted host controls.
+
+⚠ The allowlist is **derived** (`tmdb.org` + the `library.url` host), not a settings key. An
+allowlist is only a control if something other than the attacker decides what is on it, and a knob
+whose only correct values are these two is a third place to get it wrong. ⚠ Matching is exact-or-
+dot-anchored-suffix, never a bare `HasSuffix` — sabotage-verified that the bare version accepts
+`eviltmdb.org` against an allowlist containing `tmdb.org`.
+
+⚠ **`Derivative.Path` was documented as "relative to the images dir" and never was.** Nothing read
+the field before, so the lie was free; the GC hands it straight to a remove, where believing the
+comment would have deleted nothing, reported success, and left the budget permanently over.
+
+**The known Dockerfile gap is CLOSED** — `/data/images` is pre-created alongside `/data/filler`.
+Phase 3b is what made it bite rather than merely untidy: `images-fetch` runs every minute, so on a
+zero-env first run the first thing to touch that path is a background job failing into a root-owned
+volume once a minute forever, with nothing connecting it to a directory nobody created. ⚠ This edits
+`Dockerfile`, so the CI **Image job runs** (~30 min, both platforms under QEMU) — expected, not a
+misfire.
+
+**Phase 4 — the FE `<Image>` primitive (2026-08-09).** One Layer-1 component, seven Storybook
+stories, 15 unit tests, 14 visual baselines, both hand-maintained barrels (`ui/index.ts` and
+`packages/api/src/index.ts`'s `imagesApi`), and the `thumbhash` §14 row. §22's *Frontend contract*
+was already written at phase 0 and the implementation matches it as specified — explicit
+`width`/`height`, a `priority` mode flipping loading/fetchPriority/decoding **together**, a built-in
+error fallback, and explicit `sizes` (never `sizes="auto"`; Safari supports it in no version).
+
+⚠ **The failure flag was a bare `useState(false)`, and that is a bug a full green suite could not
+see.** React reconciles by POSITION, so a grid that paginates, filters or sorts hands a *different*
+`image` to the same instance — and the flag survived the swap, rendering a perfectly good image as a
+colour block permanently. It would not have looked broken either: the block reads the NEW image's
+`dominantHex`, so it reads as a deliberate empty state. Every existing test rendered one image and
+never swapped it, which is exactly why nothing caught it; the probe that found it was a `rerender`.
+
+Fixed by giving the failure an identity — `const failed = failedHash === image.hash` — which needs
+no effect and no reset, because the comparison goes false in the same render the hash changes.
+⚠ **Sticky per image, deliberately:** a `logo` is an operator-pasted arbitrary URL (§22), so a
+failure is usually permanent and retrying known-bad bytes on every re-render is the worse default.
+
+⚠ **Both halves are sabotage-verified, and the second one mattered.** The recovery test was proven
+red before the fix. The stickiness test passed on the FIRST try, which this file already treats as
+suspect — so the plausible-wrong implementation (reset-on-hash-change via a during-render
+`setState`) was written and run: it passes recovery and **fails** stickiness. The two tests together
+pin the semantics rather than merely the bug.
+
+⚠ **A comment that contradicted its own code, corrected rather than left.** The placeholder memo
+was documented as keyed on the hash while the dep array read `image.placeholder`. The code was
+right and the comment was wrong, and the reason is specific to this service: phase 3b's fetch
+**re-keys** a row from `url:`-hash to content-hash and back-fills `placeholder`, so a hash-keyed
+memo is the classic stale-closure shape — it would hold the previous row's blur.
+
+⚠ **Nothing in the app renders `<Image>` yet, so there is no browser verification to have.** The
+Storybook gallery is the only real surface until phase 5 wires the first consumer; this is stated
+rather than glossed, because "green tests" and "seen working" are different claims and only the
+first one is available here.
+
+⚠ **Merged `origin/main` in (V51c + V53a/b/d/e landed while this branch was open), and the merge
+found a drift this file has a standing warning about.** `make check`, `openapi-verify` and
+`retired-verify` stayed green; `make fe` went **red on two `barrel.test.ts` cases**. The cause is
+the interesting part: when phase 4 was written there was **one** hand-maintained API barrel, and
+V53d/e added **two more** (`src/zod/index.ts`, `src/msw/index.ts`) plus the guard test that catches
+an unexported tag. So `images` was correctly exported from the barrel that existed and missing from
+two that did not. **A hand-maintained list can drift because the list MULTIPLIED, not only because
+someone forgot an entry** — and no amount of care on the branch could have anticipated it. The
+guard main added is what turned a silent gap into a red gate; a fourth barrel would behave the same.
+
+⚠ **`rebase` was the wrong tool and `merge` was the right one, for a reason worth reusing.** All 16
+commits touch `PROGRESS.md`, so the rebase demanded the same resolution up to 16 times; one merge
+resolved it once. That is only safe because this repo **squash-merges** — the branch's internal
+shape is discarded at merge, so linear history buys nothing here. ⚠ `pnpm-lock.yaml` auto-merged
+**textually**, which is precisely how a corrupt lockfile enters a tree; `pnpm install
+--frozen-lockfile` is the cheap proof that the merged lockfile and merged `package.json` agree, and
+`pnpm codegen` had to re-run because main changed `orval.config.ts` (it now emits `zod` and `msw`).
+
+**Phase 5 — channel icons onto the service (2026-08-09, branch `v52-phase5-channel-icons`).**
+The upload ingests through the image service (role=icon, visibility=public, origin=upload) with the
+owner Ref that stops the GC collecting a live icon as an orphan, and the channel's logo becomes the
+content-addressed URL. `ChannelDTO` gains `logoImage`, and the icon field's preview renders through
+`<Image>`. Gate: `make check` + `make fe` (1239) + `make openapi-verify`, 9 new Go tests.
+
+⚠ **The `?v=` cache-bust is DELETED rather than reimplemented, and that is the shape of the win.**
+The old URL addressed a CHANNEL, so replacing an icon reused the URL and needed a query param to
+defeat Tunarr's and Emby's caches. The new URL addresses the BYTES, so a different icon is
+structurally a different URL. `TestUploadChannelIcon_URLFollowsTheBytesNotTheChannel` pins both
+halves — same bytes ⇒ same URL, different bytes ⇒ different URL — because a regression to a
+channel-addressed URL would serve a stale logo indefinitely and nothing else would notice.
+
+⚠ **JPEG at w500, and this is the one place §22's compatibility floor earns its keep.** The floor
+exists for old iOS and legacy Android WebViews; this URL is consumed by exactly that chain — Tunarr
+hands it to Emby, which hands it to a television. WebP's ~97% support is a BROWSER number, and
+browsers are not the population fetching this.
+
+⚠ **`logoImage` ENRICHES `logo`, it does not replace it**, because an operator-pasted URL is a
+supported way to set a channel icon rather than a legacy state. `imageHashFromLogo` therefore
+VALIDATES (64 lowercase hex) rather than merely extracting: `PATCH /v1/channels/{id}` accepts any
+logo string, so its output is attacker-influenced by construction and is handed straight to the
+image store as a lookup key. A bare "take the segment after `/v1/images/`" would forward
+`../../etc/passwd`. Pinned in `channellogo_internal_test.go`, traversal case included.
+
+⚠ **The list handler pre-resolves BEFORE the loop, deduped by hash.** `channelToDTO` runs once per
+channel, so a lookup inside it is an N+1 — the shape a profile here has already caught once, and the
+reason `LineupEntryDTO.State` is documented as list-omitted. Twenty channels sharing an icon cost
+one lookup. `imageToDTO` was extracted at the same time so there is ONE construction of that
+projection; two hand-written copies is the drift class where the second one forgets `srcSetAvif`
+when the AVIF job lands and quietly serves WebP forever on one surface.
+
+⚠ **Two operation descriptions were corrected in the same pass** — the serve route still advertised
+"the ?v= cache-bust changes on re-upload" and the upload still said "points the channel's logo at
+the serve URL". Both became false the moment the handler changed. The serve route is now marked
+LEGACY: it is the migration window for pre-V52 icons and retires with `channel_icons` in phase 8.
+
+⚠ **A sabotage check nearly recorded a false verification, and the mechanism generalises.** The
+first attempt to challenge the `logoImage` wiring test used a LINE-NUMBERED `sed` that silently
+no-opped — earlier edits in the same file had shifted the target line by four — so it reported
+success while changing nothing, and the test "passed" having never been challenged. Same shape as
+`go test` printing `[no tests to run]` and exiting 0. **Make a sabotage PRINT what it changed before
+running the test**; a verification you cannot see happen is not one. Redone correctly: red, then
+green on restore.
+
+⚠ **gofmt's aligned-block trap bit again, exactly as phase 3a recorded it.** Adding `LogoImage` to
+`ChannelDTO` re-aligned nine neighbouring fields, and `make check` failed at `fmt` — its FIRST step,
+before vet or a single test. This is now the second occurrence on this branch; the durable reading
+is that a hand-added field in an aligned struct block is unformatted BY DEFAULT, so run `gofmt -l`
+after any struct edit rather than waiting for the gate.
+
+**Backfill deferred to phase 8, deliberately.** Existing `channel_icons` rows still serve through
+the legacy route, so nothing breaks; a backfill job built now would sit idle through phases 6 and 7
+and only matter the moment the table is dropped. It belongs next to the retirement it enables.
+
+⚠ **One seam is open and named rather than hidden:** a logo that is an external URL gets no
+`logoImage`, so the preview falls back to a plain `<img>`. That is correct today — the instance does
+not own those bytes and knows no dimensions for them. **Phase 7 is where adopting remote logos would
+close it**; if that is wanted, it is a decision to make BEFORE phase 7, not after.
+
+**Next up: 6–7** clip artwork and TMDB onto the service; **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
+so per CLAUDE.md's worktree rule they are **not** parallelisable. ⚠ A fresh worktree needs
+`npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen` first —
+`packages/api/generated/` is gitignored, so a skipped codegen typechecks red *after* a successful
+install.
+
+⚠ **One known gap remains**: the WebP `-tags nodynamic` gap, unchanged and still open.
+
+**V53d — one mock layer instead of 31, and the first migrated file found two defects in the stub
+it replaced (2026-08-09, branch `feat/msw-fixtures`).** Gate: `make fe` (**1222** app + **19** api +
+51 core + 5 tokens, biome clean on 922 files) + `make retired-verify` (25). Zero Go files touched.
+
+31 test files each hand-rolled a local `stubFetch`, so **31 places independently encoded what the
+wire looks like** — the frontend doing exactly what the Go side bans (*"Phases do not invent private
+mocks; extend the testkit"*). This is that shared layer: `msw` + orval-generated handlers behind
+`@loomarr/api/msw`, with `src/test/msw/server.ts` owning the lifecycle.
+
+⚠ **V53c was PLANNED AND DISSOLVED, on evidence.** It was to be runtime response validation through
+the mutator. Orval cannot do it here: `runtimeValidation` does not exist in 7.21.0 (zero occurrences
+in any `@orval/*` package), and in 8.24.0 the **only** `.parse()` injection is the Angular
+`.pipe(map(...))` path — the fetch client's mutator branch builds its request function and returns
+before reaching it. Loomarr's transport IS a custom mutator (CSRF, cookie auth, RFC 7807), and orval
+PR #3226 — *"pass zod schema to custom fetch response implementation"* — is still open. **But the
+value survived the design dying:** what it was actually for was catching FIXTURE drift, not backend
+drift (`openapi-verify` already covers that), and a test knows which endpoint it stubs, so
+`validated(schema, fixture)` needs no URL→schema map and no transport change.
+
+**What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so
+a renamed route is fixed by a regenerate where a hand-written path silently stops matching and its
+test keeps passing against nothing. ⚠ **The generated DATA is never trusted:** optional fields emit
+as `arrayElement([value, undefined])`, so presence varies per CALL and nothing is seeded — flaky
+rather than merely arbitrary. `useExamples` stays unset (it reads singular `example`; Huma emits 3.1
+plural `examples:`).
+
+⚠ **`onUnhandledRequest: "error"` is NOT used, because it does not fail a test.** MSW's docs define
+it as *"print an error and halt request execution"*, and the maintainer confirms in mswjs/msw#946
+that the interceptor handles the exception as the native class would, so *"from MSW's perspective no
+exception has happened"* and the runner never sees it. The server records unhandled requests and
+throws in `afterEach` instead. **Verified by direct probe** — a fetch to an unrouted path fails the
+test by name — after a first sabotage attempt passed and looked like a broken guard. It was not: the
+sabotage was invalid, because the component never made the request I removed the handler for.
+
+⚠ **THE FIRST MIGRATED FILE FOUND TWO REAL DEFECTS IN THE STUB IT REPLACED, and this is the argument
+for the sweep.** Neither was findable by reading:
+
+- The old stub answered every non-PATCH call with `{ entries: [] }`, which read as *"the modal loads
+  the settings list on mount."* It does not. **A catch-all stub structurally cannot distinguish
+  "handled" from "never asked for"** — MSW can, because an unmatched request is now an error.
+- It returned `{ results: {} }` where the wire says `results: SettingResult[]`. **The test asserted
+  against a shape the API never produces**, and passed for as long as it existed, because a
+  hand-rolled stub is untyped by construction. The generated handler is typed, so it is now a
+  compile error.
+
+Also: the old stub matched on `init?.method === "PATCH"` alone, so it would have accepted a PATCH to
+ANY url — including one the component should never call.
+
+**Migration is incremental by construction.** MSW installs globally with NO handlers, and an
+unmigrated test's `vi.stubGlobal("fetch", …)` replaces global fetch outright and never reaches the
+interceptor — verified: all 158 files still pass with the server installed. The two mechanisms
+coexist until the last stub is gone.
+
+⚠ **`retired-verify` caught this entry's own prose**: the §14 row and `server.ts` both cite
+`/v1/suggestions` → `/v1/proposals` as the historical rename example, which is a banned identifier.
+Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
+fire on that string, and a mention that is deliberate should say so.
+
+**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 12 of 31 migrated; 19 remain.**
+Batch 1 (`#206`): `use-auth`, `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`#207`):
+`wizard-ai-block`, `channel-row-menu`, `use-channel-refine`, plus the shared `channel()` fixture.
+Batch 3 (`#213`): `incoming-tab`, `split-review-page`. Batch 4: `channel-watch`, `app-router`, plus
+the shared `appHandlers()` baseline.
+
+⚠ **The count is COUNTED, never tallied** — a running total in a commit message is exactly the sort
+of number that drifts, and it drifted twice before this rule:
+
+```
+grep -rl 'const stubFetch\|vi.stubGlobal("fetch"' --include=*.test.tsx --include=*.test.ts .   # remaining
+grep -rl '@/test/msw/server' --include=*.test.tsx --include=*.test.ts .                        # migrated
+```
+
+### How to migrate one (the playbook, so the next session does not re-derive it)
+
+1. **Read the old stub for its catch-all.** Nearly every one ends in `return json({})` or similar.
+   That branch is answering real requests — `channel-watch`'s hid THREE, `app-router`'s hid NINE.
+2. **Use the generated handler** from `@loomarr/api/msw`; add `appHandlers()` first for anything
+   that mounts the real route tree. Run the test and let the **unhandled-request guard enumerate**
+   what the catch-all was covering — it reports the full list per test, by name.
+3. **Expect the types to reject the old fixtures.** They are usually missing required fields;
+   `MeBody.local` alone has been absent in FOUR files. Fix the fixture, never cast — `as ChannelDTO`
+   in `channel-watch` was silencing eleven fields.
+4. **Error cases stay hand-written** (`http.get(...)` + `HttpResponse.json(..., { status })`): the
+   spec declares errors via `default:` (RFC 7807) on 132 of 134 operations, with ZERO explicit
+   4xx/5xx, so orval has no status to generate from. Safe against renames anyway — a stale path
+   stops matching and the real request goes unhandled, failing the test by name.
+5. **Replace `mock.calls` assertions with resolver-recorded values.** A url-substring filter only
+   proves the test's own spelling; reaching a route-bound resolver proves the route.
+
+### What is left
+
+**Route-level (8)** — all mount the real app, all had the same catch-all, and `appHandlers()` now
+covers the common surface, so these should go far faster than `app-router` did (it paid the
+discovery cost for the set): `test/reachability` (538), `test/filler` (468), `test/wizard-router`
+(440), `test/settings` (359), `test/guide-page` (269), `settings/tasks-page` (285), `test/users`
+(202), `test/help` (154).
+
+**Component-level (11)** — the established pattern applies directly: `channel-filler` (214),
+`channel-lineup-editor` (209), `tune-panel` (190), `use-channel-rules-draft` (189),
+`use-channel-filler-draft` (175), `refine-panel` (173), `filler-page` (167),
+`channel-suggest-panel` (164), `sources-panel` (152), `pin-clip-dialog` (152),
+`use-channel-lineup` (143).
+
+⚠ **`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the FINAL batch only** — adding
+it sooner fails on every file still waiting. Until it lands, nothing stops a new test adding stub
+#20.
+
+⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
+wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
+
+- **Required fields no stub ever supplied.** `MeBody` requires `local`; `SystemLLMStatus` requires
+  `local` AND `reachable`; `ChannelDTO` requires **eleven** fields where tests invented
+  `{ id, name, status }`. A component reading `pendingCount` off one of those would see `undefined`
+  where the server always sends a number.
+- **A response shape the API never produces.** `{ results: {} }` where the wire says
+  `results: SettingResult[]` — the test asserted against a fiction and passed for as long as it
+  existed.
+- **Catch-all branches answering requests that are never made** (three of them), and one hiding a
+  request that IS made: `WizardAiBlock` calls `/v1/system/llm/discover`, which `json({})` answered
+  silently, so that path ran against an empty object.
+- **Assertions matching a url SUBSTRING the test wrote itself** — `calls.find(c => c.method ===
+  "PATCH")` would match a PATCH to any endpoint at all. Reaching a route-bound resolver is the
+  stronger claim.
+
+⚠ **Error cases stay hand-written, and it is the SPEC's shape, not convenience:** this API declares
+errors with OpenAPI `default:` (RFC 7807) on 132 of 134 operations — **zero** explicit 4xx/5xx codes
+— so orval has no status to generate an error handler from. Verified safe against a rename: with the
+path deliberately broken, the component's real request goes unhandled and the guard fails the test
+BY NAME. The failure mode is "no handler" (loud), never "wrong data" (silent).
+
+⚠ **`make fe` does NOT run `fe-visual`**, so a green local gate never covers the Playwright job.
+Batch 1's first CI run went red on `mcr.microsoft.com` TLS handshake timeout — a Docker image pull,
+`Error 125`, no browser ever started. **The tell was shard asymmetry**: 1/2 passed in 8m49s on the
+identical commit while 2/2 died in 57s, and a real snapshot diff cannot be shard-asymmetric on the
+same code. Re-run, not a code change.
+
+**Next up: V53f+** — the remaining 23 files in batches of 5–8, then add `vi.stubGlobal("fetch"` to
+`scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard would fail on every file
+still waiting. `use-channel-refine` is deliberately deferred — deferred promises plus method-only
+dispatch (its own comment says it avoids "pinning to exact URL strings", which is the weakness being
+removed), so it needs a careful pass rather than a batch slot.
+
+**V50d(a) — the collapsed-body focus gap V50c left behind (2026-08-09).** Gate: `make fe`
+(**1223** app + 19 api + 51 core + 5 tokens, biome clean on 923 files).
+
+`connection-block` closed with `grid-template-rows: 0fr` + `overflow:hidden` — zero height but
+**NOT `display:none`** — so its body stayed in the accessibility tree and stayed **focusable**. That
+body holds a "Test connection" button and, when a check fails, a "Fix" link into the Help centre:
+**a keyboard user tabbing the wizard reached both while the section was visibly shut.**
+
+⚠ **V50c fixed exactly this in `CollapsibleSection` and left its lookalike behind**, so the two
+disagreed for three phases. That is the cost of the duplication the component's own header comment
+flags — it borrows `.reveal` from CollapsibleSection but is a separate implementation, and a fix to
+one is not a fix to the other. `Collapsible.Panel hiddenUntilFound` now renders the closed body as
+`content-visibility: hidden`: out of the a11y tree, still mounted (a half-filled connection form
+keeps its state), still reachable by find-in-page.
+
+⚠ **It has no story, so axe never sees this component** — which is why the regression is a UNIT test
+asserting `hidden="until-found"` plus the absence of the inner control, not a visual one.
+Sabotage-verified: swapping `hiddenUntilFound` for `keepMounted` (mounted but reachable — precisely
+the old bug) fails it while the other nine pass.
+
+**Also in this PR: `make fe-visual`/`e2e` now run Docker as the host user.** The Playwright image
+runs as root, so everything it wrote into the bind mount was root-owned — and the symptom surfaced
+far from the cause: `git worktree remove` half-failed on `test-results/`, git **deregistered the
+worktree anyway**, and ~550MB per worktree was stranded with no git record it existed. Three
+worktrees had accumulated **1.7GB** that way. `--user $(id -u):$(id -g)` fixes it; `-e HOME=/tmp`
+rides along because a non-root uid's default `/root` is unwritable and fails in a way that reads
+like a Playwright bug. ⚠ **Unverifiable locally by policy** (Playwright is not run on this machine)
+— CI is the verifier, and a broken job shows up red on this PR rather than silently.
+
+**Next up: the rest of V50d** — house-style conformance across `components/ui`, which is what the
+phase was originally about; this PR only took its one accessibility defect.
+
+**V53b — arrays are not nullable; `null` stops being a second empty list (2026-08-09, branch
+`feat/non-nullable-arrays`).** Gate: `make check` (0 lint, `-race`) + `make openapi-verify` +
+`make retired-verify` (25) + `make fe` (**1222** app + 18 api + 51 core + 5 tokens, biome clean on
+919 files).
+
+Every list field in this API was typed `T[] | null` — **109 nullable type-unions against 4 plain
+arrays** — so every client handled two representations of "nothing", forever. The generated zod
+carried `.nullish()` on every array and the FE coalesced `?? []` at each use.
+
+The cause was `huma.DefaultArrayNullable`, which defaults to true *correctly*: a Go nil slice really
+does marshal to `null`. It is now false, set in `humaConfig` — the single constructor behind both
+the served API and the spec export, so runtime and document cannot disagree.
+
+⚠ **The flag alone would have made the spec LIE**, and Huma says so in its own doc comment: *"any
+`nil` slice will still encode as `null` in JSON."* Flipping it changes what the document CLAIMS
+without changing what the wire SENDS. It ships with a guard or not at all.
+
+**The guard.** `TestResponses_ContainNoJSONNull` drives every parameterless GET — **derived from the
+exported spec**, not a hand-kept roster, because a new list endpoint nobody added to a list is
+exactly the one that would regress — against an **EMPTY STORE**, and fails on any JSON null in a
+success body. ⚠ The empty store is the point, not an accident: nil slices are what a repository
+returns when it finds no rows, so a fresh database is precisely the state that produces them, and a
+seeded fixture would hide the entire class by never taking the empty branch. Since the spec now
+declares nothing nullable, *"no null anywhere in the body"* is the exact invariant.
+
+**It found one leak in 46 paths, and it was the one that matters most.** `/v1/setup/status`
+returned `checks: null`: `runConnectionChecks` used `var checks []SetupCheck` and deliberately
+contributes no check for unwired services — so an **unconfigured install, the wizard's entire reason
+to exist**, was the case that produced it. One leak in 46 is also the shape of the change: 51
+`make([]T, 0)` guards already existed across the handlers, so this finishes an inconsistency rather
+than inventing a convention.
+
+**Frontend fallout, all benign and all worth naming:**
+
+- The generated zod lost `.nullish()` **entirely** (count: 0) — the ambiguity is gone from the
+  schemas, not merely handled at each call site.
+- ⚠ `VocabularyWhen`/`VocabularyWhat`/`VocabularyHow` **stopped being generated, and nothing was
+  renamed.** Orval only emitted those aliases because `X[] | null` needed a name; a non-nullable
+  array inlines to `WhenVocab[]`, so they had no reason to exist. First read was "orval renamed
+  them" — worth checking rather than assuming, because the fix differs.
+- `presets.ts` carried a comment stating the served arrays *"are nullable on the wire"*. True when
+  written, and about to become a lie. The coalescing it justified **stays**, for a different and
+  still-real reason: the vocabulary is `undefined` until its query resolves. **Null is gone;
+  unloaded is not.**
+- Three fixtures passed `models: null`; the component already does `hp.models ?? []` and branches on
+  `length === 0`, so `[]` is the identical branch rather than a changed one — checked before
+  swapping, since a fixture edit that silently moves a branch is how a test stops testing.
+
+⚠ **This also unblocks orval's MOCK generator, which V53a recorded as rejected** — it degraded
+`type: ["array","null"]` to `arrayElement([[], null])` without descending into `items`. Re-measured
+on the new spec: **137 never-populated list mocks → 0**, and **247** populated `Array.from(...)`
+generators. That is a consequence, not the justification: `null` vs `[]` was an API defect on its
+own terms, and if codegen had been the only argument the right answer would have been to leave it
+alone.
+
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, branch
+`v51g-pipeline-budget`).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+Diagnosed from a live catalog, and the measurements are in §10 (V51g) because they are what
+corrected the diagnosis twice.
+
+**The symptom.** `WAGA-5/Fox Commercial Breaks(2/5/1995)`, a 16m47s reel, sat at *"Finding the ads
+inside"* through **twelve** passes — `attempts: 12` against a `MaxAttempts` of 3 — failing every
+two minutes with `context deadline exceeded` and starting over. ~25 minutes of GPU re-doing the
+same first third while the row animated as though it were progressing.
+
+**Measured on the real file, which is what found the cause** (the first two theories were wrong —
+"the detection scan is too slow" and "cutting is too slow" are both off by two orders of magnitude):
+
+| Step of `split` | Cost |
+| --- | --- |
+| blackdetect + silencedetect | **4s** (319× realtime) |
+| dedup — `GrayFrames` × 51 | **33s** |
+| cut — stream copy × 51 | **3s** |
+| **`classify` — one LLM turn × 51** | **≈377s**, against a 120s pass |
+
+⚠ **`classify` was strictly-worse duplicate work, not merely expensive.** It called the same
+`Classify` the `tag` rung calls, but with `SplitSegment.Transcript` — EMPTY unless `rescue` ran, and
+rescue only transcribes segments over ~120s (none qualified). So it classified 51 adverts from a
+generated name, `"… part 7"`, identical bar the number — then every spawned segment ran
+`transcribe` → `tag` and called the same function again with a real transcript. **Deleted, not
+unwired**: an orphaned method reads as a capability someone can switch back on.
+
+⚠ **The severe half is not about split at all.** `onFailure` computed the failure record, the
+backoff and the `MaxAttempts` resolution and wrote them through **the context whose expiry caused
+the failure** — so every one was discarded, and only the pre-work write (`status=running`,
+`attempts++`) survived. **Any rung that ever times out loops forever**; split was just the first
+slow enough to prove it. All decision-writes now go through a detached context.
+
+⚠ **Running out of time is not failing.** A cancelled context is a DEFERRAL: back to `queued`, the
+attempt rolled back (it was counted before the work began), no backoff, resume next pass — which is
+exactly how budget exhaustion already behaved. `ErrDeferred` and `PipelineResult.Deferred` keep it
+out of the failure count, because a reel too slow for one pass was emitting an identical WARN every
+two minutes and the summary blamed the clip.
+
+⚠ **The fake store had to start honouring cancellation before any of this was testable.**
+`pipeMemStore.UpsertClipPipeline` ignored `ctx`, so the code path that wrote through a dead context
+looked perfect in tests and failed only against a real store. Sabotage-verified: restoring the
+attached save reproduces the original bug precisely — `Advance` returns `context canceled`, the row
+keeps its burnt attempt, and the run counts it as a clip failure.
+
+**Three grounding assertions MOVED rather than being dropped** (§8 is not negotiable). They
+exercised `Classify` through `Propose`'s removed call; the rule is tested at its own seam —
+`TestClassify_EraGroundedBySourceText` and `TestClassify_UngroundedEraBecomesSuggestion`. What
+`Propose` owes now is the CUT, and the tests assert segments arrive with **no** tags at all.
+
+⚠ **Known gap, deliberately not built.** A ~3-hour capture is ~500 segments, so the fingerprint pass
+alone would be ~5 minutes and exceed a pass again. The fix then is a per-pass SEGMENT budget with
+resume by `(ParentHash, index)` — the lineage column exists (§10 V45, migration 00039). Not built
+because the measured corpus does not reach it, and resume interacts with proposal editing in ways
+that need their own design.
+
+**V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
+`v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
+(biome + tsc + unit + SPA + storybook build) + `make openapi-verify`. ⚠ **`make fe-visual` and
+`make e2e` were NOT run locally** — the maintainer's machine cannot carry Playwright, so both are
+**CI-verified only**, and three new stories mean the visual job may legitimately need baselines.
+Said plainly rather than implied green.
+
+**V51b built an ordered, watchable pipeline and shipped it to an audience of zero.**
+`GET /v1/filler/incoming` carried `pipeline` and `rejected`, `eventTypeMap` carried a
+`filler_clip` frame, `FillerClipEvent` was a typed DTO reaching orval — and `grep onFillerClip
+web/apps/web/src` returned nothing. The operator-visible symptom V51b existed to remove ("I
+downloaded forty commercials and nothing is happening") **survived V51b unchanged**, because
+every fact needed to fix it was being served to a frontend that never asked. That is the shape
+worth remembering: a phase can be complete on its own terms and deliver none of its purpose.
+
+⚠ **Two contract gaps between the V51 plan and what V51b actually built, both found by reading
+the Go rather than the plan.**
+
+**1. The plan's reason for "stages come from the server" was wrong; its conclusion was right for a
+different reason.** It argued installs vary in ladder LENGTH (vision off → 7 rungs). They do not:
+`filler.StageOrder` is a fixed eight-element compile-time constant and a disabled rung is recorded
+as `skipped`, which the plan separately insists must be rendered *with its reason*. The real
+constraint is that `IncomingPipelineDTO.stages` is the **visited** ladder — a clip at `split`
+sends three records — so a strip drawn from it would GROW as the clip advanced instead of filling.
+The response now carries `stageOrder`, derived from `StageOrder` itself. ⚠ Its guard compares
+against `filler.StageOrder` rather than a literal list, because a literal here would be the second
+copy of the sequence the field exists to prevent, and editing it is exactly how a real drift gets
+buried.
+
+**2. The plan's out-of-order guard had nothing to key on.** It specified "merge only ever advances,
+using the BE's monotonic `seq`" — `FillerClipEvent` has no `seq` and no timestamp. Ordering is
+derived from the ladder instead, and the rule is deliberately narrow: **a stage or status change
+is always applied; only the percentage within one rung is guarded.** Strictly advance-only was
+rejected on the maintainer's call — `Rewind` moves a clip backward on purpose, and a strict guard
+would blank the entire re-run until something forced a refetch. ⚠ **The status half is
+load-bearing and was not in the original choice**: `pipeline.go`'s retry path re-runs a failed rung
+with `Progress` reset to 0, so guarding on progress alone would pin the row at "failed at 80%"
+while the transcode had genuinely restarted. It has its own test.
+
+**Three defects found while building, none of which any existing test could see.**
+
+⚠ **A false green, and the mechanism is worth recording.** The Bash cwd silently reverted from the
+worktree to the primary repo mid-session (the trap `loomarr-bash-cwd-resets-use-git-c` already
+documents for *commits*). Edits landed correctly by absolute path; `go test ./internal/api/` ran
+against **main's** copy and printed `ok`. A brand-new test was reported verified having never been
+compiled — and once run in the right tree it did not even BUILD (`int` vs `int64`,
+`filler.KindCommercial` undefined). The tell was `[no tests to run]` on a `-run` regex naming a
+test that certainly existed: **a `-run` filter matching nothing exits 0**, so a typo and a
+wrong-directory run are indistinguishable from a pass. Use `-v` on a new test's first run; `--- PASS:
+<name>` proves it existed, `ok` does not.
+
+⚠ **The pipeline half of `/v1/filler/incoming` shipped in V51b with no API test of its contents at
+all** — the same shape as V51a's `clips.confidence`, where a column round-tripped perfectly and had
+no producer. A row is drawn as a clip card, so `durationMs` and `thumbnail` were added from the
+lookup `pipelineDTO` was already performing, and all three fields are now asserted against a clip
+whose values are deliberately distinct from each other and from its hash.
+
+⚠ **The strip and the expanded ladder both claimed the accessible name `Progress for <clip>`**,
+putting two identically-named lists in the tree for one row. It surfaced only because
+`hidden="until-found"` keeps a collapsed panel in the DOM — so `queryByText` found detail that was
+never exposed, and the first draft of the "stays collapsed" test **would have passed against a
+panel that never collapsed**. Names are now variant-specific and the test queries by ROLE, which
+asserts exposure rather than presence.
+
+**What was deliberately not built, so it reads as sequenced rather than forgotten.** Preview-then-
+accept on a pipeline row (a clip mid-`transcode` is being rewritten by ffmpeg; previewing it is a
+question this phase does not answer); the `CollapsibleSection` refactor onto the new `Disclosure`;
+migrating the app's three other progress bars onto `Progress`; and V51d's two parked capabilities
+(the composite container row, the sort control). The catalog decomposition of `filler-page.tsx`
+also stays open — this slice took the Incoming half only.
+
+**Sabotage-verified, each confirmed red then reverted:** the `stageOrder` drift guard (dropped one
+rung), the pipeline-row DTO (dropped `DurationMs`), the SSE merge guard (always-advance), the merge
+itself (wholesale row replacement), the ladder source (drew from `stages` — took 3 tests red), the
+events provider drift guard (removed one of the two wirings), and the collapse rule (`defaultOpen`).
+
+**V51d — the catalog is paged, sorted, and searched wider (2026-08-09).** Gate: `make check`
+(0 lint, `-race`) + `make test-pg` (both dialects, **4 new conformance suites × 2 backends**) +
+`make fe` (biome clean on 918 files + tsc + unit + SPA + storybook build) + `make openapi-verify`
++ `make retired-verify` (25 identifiers) + `make config-docs`.
+
+`GET /v1/filler` returned **every clip in the install** on every call, and four clients depended on
+it. `limit` now defaults to 100 and caps at 500, `total` rides every response, and the listing
+sorts by `name|duration|added|plays|confidence` in either direction. This also removes a latent
+hard failure: `attachTags` binds one parameter per clip in a single `IN (…)` and Postgres caps a
+statement at 65535, so the unpaginated read stopped working north of ~65k clips.
+
+⚠ **`ClipFilter.Limit == 0` means NO limit, and the default lives in the API.** Pod assembly loads
+the catalog through the zero filter, so a store-side default of 100 would silently cut every
+channel's break pool to a hundred clips — no error, no log line. `TestListFiller_DefaultsToOnePage…`
+pins the number at the HTTP edge for exactly that reason, and `minimum:"1"` on the parameter stops
+a client reaching the store's unbounded sentinel with `limit=0`.
+
+⚠ **The sabotage pass found the property I expected to be load-bearing was not.** Deleting the
+`hash` tie-break left `PagesConcatenateToTheWholeList` **green on SQLite** — its plan happens to be
+stable across `LIMIT/OFFSET` re-executions, so the property that exists to catch a missing total
+order could not catch it there. What does catch it, deterministically and on both backends, is
+`DescendingIsTheExactReverse`. Removing `LOWER(name)` fails loudly (SQLite's BINARY collation puts
+`'Z' < 'a'`), and removing the frontend's `page: undefined` reset turns its own test red. A
+first-try green on a new constraint stays suspect.
+
+**Four unbounded consumers, four different fixes** — the point is that paging *deleted* three of
+them rather than paginating them: the dashboard's clip count reads `/v1/filler/watch`'s SQL-counted
+total (it was fetching every column of every clip for one `.length`); the channel pin/exclude
+resolver asks for **the hashes it holds** (`ClipFilter.Hashes`) — the old catalog-and-map shape was
+not merely wasteful under paging but WRONG, resolving whichever pins landed on page one; the ⌘K
+palette asks for the six rows it renders, through one `CLIP_RESULTS` constant shared with the
+slice; and the Filler page wires the pager.
+
+⚠ **The highest-risk line is the frontend's, not the store's**: every filter change must reset
+`page`. `setFilters` merges blindly, so without it, typing in the search box on page 7 lands on an
+empty page 7 of a two-page result and renders "No clips match" over a catalog that matches plenty.
+The rule lives in the one function every filter control calls, and is sabotage-verified.
+
+**Search widens** to `name | brand | visible_text | tags` (an `EXISTS` over `clip_tags`, never a
+JOIN — a clip with three matching tags must be one row, or `CountClips` counts it three times and
+the total contradicts the rows). `transcript` stays behind `QueryTranscript`: kilobytes per clip
+and "ford" matches "afford". **No FTS** — FTS5 and `tsvector` are different engines with different
+tokenizers, which would force `ListClips` to branch on dialect and the suite to assert
+equivalent-but-not-identical results per backend (§5 forbids it).
+
+**Migration `00046`.** V51b took `00044`; `00045` went to V52's images table, which merged first — so this was renumbered from `00045` before landing, while it was still unapplied anywhere. `clips.created_at`, because
+`updated_at` is bumped by every re-sync and an "added" sort backed by it would reshuffle the whole
+catalog after a routine scan. Existing rows backfill from `updated_at` as a stated estimate. It is
+the **fourth** column omitted from `UpsertClip`'s `DO UPDATE`, and the only one with no `Set…`
+writer at all: nothing may ever change when a clip arrived.
+
+**Two capabilities land in the store and API but are deliberately NOT switched on in the UI yet**,
+both sequenced to V51e rather than left as accidents:
+
+- **Composites-as-containers.** `TopLevelOnly` + `IncludeComposites` work and are conformance-
+  tested, but the catalog listing does not pass them, because **nothing in the frontend renders
+  `isComposite`** (`grep` finds zero uses outside the generated client). Turning them on today
+  would draw a 16-minute recorded break as an ordinary playable clip card with no "NOT AIRABLE"
+  marker — worse than the current inverse, where segments show as flat rows. V51e owns the
+  container row (the `NN CUTS` badge, the expand chevron, the segment grid).
+- **Sort.** The five keys and both directions are live on the wire and pinned by the concatenation
+  property; the catalog sends none of them, because the control is V51e's `Select` with the
+  direction baked into each option. Recorded here so it is a sequenced gap, not a surface-audit
+  orphan.
+
+⚠ **`hashes` is comma-separated on the wire, not repeated.** Huma emits `explode: false`, so
+`?hashes=a&hashes=b` parses as one value and silently resolves one clip; orval's generated URL
+builder calls `value.toString()` on the array, which produces the right thing. An API test asserts
+the comma form so the two halves cannot drift.
+
+**V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
+`feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean
+on 919 files) + `make retired-verify` (25 identifiers). Zero Go files touched.
+
+`packages/core`'s three zod schemas mirrored wire field names **by hand**, and that shipped a bug:
+`intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` and `runtimeTarget` where it
+says `runtimeTargetMin`. Both parsed, both serialized into JSON the server ignored, and a user's
+acquisition cap and runtime target silently vanished. A contract test was written afterwards to
+catch it — and covered **one of the three**. `bootstrapSchema` and `loginSchema` were unguarded
+(checked: neither had drifted, yet).
+
+Orval now emits zod schemas from the same spec (`@loomarr/api/zod`), and each form schema is
+`.pick()`ed off its wire schema, then `.extend()`ed with the rules. **A lookalike name is now a
+compile error at the schema definition**, for all three and every future one.
+
+⚠ **The error message is cryptic and worth recognising**: picking a key that is not on the wire
+fails as `Type 'true' is not assignable to type 'never'`. It means exactly one thing — *that field
+does not exist on the wire*. Verified by sabotage: restoring `maxAcquire`/`runtimeTarget` fails
+`tsc` at both lines.
+
+⚠ **Generation carries NAMES and TYPES, not RULES — and the split is deliberate, not a shortcut.**
+This spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` across ~9k lines, `maxAcquisitions`
+has no bounds at all, and OpenAPI has nowhere to put a user-facing message. So the trims, the 0–200
+cap, the 8-character password floor and every message stay hand-authored in `.extend()` — and
+`confirm` (form-only, never sent) is added there too. That is why the pattern is pick-then-extend
+rather than a straight derive: **the wire decides which names are real; the form is free to add its
+own on top.**
+
+⚠ **The contract test was kept, not deleted, and the reason is a real distinction.** `.pick()`
+guarantees the NAMES exist on the wire; `intent-contract.test.ts`'s assignability check guarantees
+the parsed OUTPUT still satisfies `Intent` after `.extend()` rewrites the value types. Proven
+complementary rather than assumed: changing `maxAcquisitions` to `z.string()` in the extend produced
+**0 errors** in core and **failed** the assignability check. Two claims, two guards.
+
+**The zod barrel is hand-written and therefore guarded** (`barrel.test.ts`), same as the endpoint
+barrel — a generated module nobody can import is indistinguishable from one that was never built.
+⚠ It checks the ZOD output directory, not the endpoint one: `events` is SSE and has no schemas to
+generate, so comparing against endpoints would fail forever on a tag that is correct to be absent.
+Sabotage-verified (dropping `users` reports it by name). It is FLAT where the endpoint barrel is
+namespaced — namespacing exists there only because orval repeats helper enums per tag file, and zod
+names are operation-scoped and collision-free.
+
+⚠ **Only the zod half of orval's generation was adopted; the mock generator was measured and
+rejected for its DATA.** It targets OpenAPI 3.0 idioms and this spec is 3.1: **109 nullable
+type-unions vs 4 plain arrays, 0 `nullable: true`**. Meeting `type: ["array","null"]` it emits
+`arrayElement([[], null])` without descending into `items` — **137 list fields that are never
+populated** — and `useExamples` reads singular `.example` where Huma emits plural `examples:`, so
+**0 of 53** example tags are used, across **1304 unseeded faker calls**. Not configurable away. The
+zod generator handled the same 3.1 spec correctly, which is what isolates the gap to the mock half.
+
+
+**V51c — sources roll up by provider, with no column, no table and no migration (2026-08-09).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` + `make config-docs`.
+
+Three archive.org collections sat as three sibling rows with no indication they are one service.
+The Sources tab now shows one **Archive.org** row and one **YouTube** row, each twirling down to
+the targets beneath it — and the whole thing is **derived from `kind` at read time**.
+
+⚠ **The argument for deriving it is a correctness argument, not a shortcut: the grouping being
+asked for is already a column.** Every `archive` row belongs under Archive.org and there is no
+representable case where it belongs elsewhere, so a stored `parent_id` would be a second encoding
+of a fact `kind` already carries — and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`). Three concrete costs it would have added, each
+measured against code that exists: a **duplicate** blank-URI YouTube row beside migration 00034's
+seeded one (both invisible to `idx_filler_sources_uri`, whose `WHERE uri <> ''` excludes them —
+"one source appears twice", which 00023 and 00029 both exist to prevent); a **four-state** inherit
+problem for the nil/0/N fetch overrides whose own ⚠ says callers "must not re-derive this
+three-state logic separately"; and a 409 on any pending pull, because `filler_pulls.plan_json`
+stores `SourceID` strings looked up at approve time.
+
+The escape hatch is recorded in §10 so it is not re-litigated: a provider that ever gains state of
+its own gets a `filler_providers` table keyed on the existing `kind` vocabulary — **not**
+`parent_id`, because that state is per-provider, not per-node.
+
+⚠ **The phase found a guard that had been protecting nothing for two phases.**
+`TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop` asserted a 409 for `PATCH
+/v1/filler/sources/remote`. V37 retired that container, so from that point no read model could
+produce the id and no client could send it — the test stayed green by asserting a refusal for a
+row that did not exist, and the handler kept a `case "remote"` that read as protection. The DELETE
+handler had already removed its twin for exactly this reason, in a comment saying so; the PATCH
+side was simply missed. The guard is now a **prefix test over the derived provider ids**, which
+the read model emits on every request, so it covers a case an operator can actually reach.
+
+**Three things deliberately do not inherit**, each an opinionated call: `enabled` (no group switch
+— cascade-on-write destroys each child's own choice, which the store forbids in as many words, and
+a computed `effective = parent && child` fails in the direction of *fetching from a provider the
+operator switched off*); fetch overrides (leaf only); and `lastFetchedAt`, which becomes a
+read-only `MAX` over children computed in the API so no column can disagree.
+
+⚠ **Both new behaviours were sabotage-verified**: splitting the pre-order into "all groups, then
+all children" turns the ordering test red, and disabling the prefix guard turns the 409 test red
+(404, not 409 — the id resolves to nothing). A first-try green on a new constraint is suspect.
+
+**Honest gap, exposed rather than created:** `sync.go` writes `Source = "filler-dir"` for every
+clip the folder scan finds and nothing records which SOURCE a downloaded clip came from, so
+`bySource["archive"]` is 0 on essentially every install. A group reports the **sum of its
+children's counts** — honest arithmetic over whatever they claim, never an invented number.
+Per-source attribution is an intake change, filed separately.
+
+**V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` (**25 identifiers**, up from 9) + `make config-docs`.
+
+Filler had grown **one cron sweep per capability** — sync, fetch, language, split, transcribe,
+vision, reindex — each scanning the whole catalog for its own kind of work, on its own schedule,
+knowing nothing about what the others had done to a clip. The operator-visible consequence was
+that a download of forty commercials said *"waiting to be checked"* for up to an hour while three
+jobs worked on it at :15, :30 and :50. **The system was working and looked broken.**
+
+Eight rungs now run in order per clip — `probe → transcode → split → language → transcribe → tag →
+vision → score` — behind one `filler-pipeline` job every two minutes. Each rung answers two
+questions separately: *does this apply to this clip, in this install?* (no exec, re-evaluated
+every pass, so flipping `filler.vision.enabled` on picks up clips that already went past it) and
+*do the work*. State lives in `filler_clip_pipeline`, a **sibling of `clips`** — the cache has
+been DROP-TABLE-recreated twice, and these rows record that ~341s of Whisper and a paid vision
+call have already been spent.
+
+⚠ **Three findings, all live on `main` before this phase, none of which any test could have
+caught.**
+
+**1. `filler.autofile.normalize_loudness` has been inert since V42 shipped.** `NormalizeInPlace`
+had **no production caller at all** — only tests. The settings comment asserted the opposite,
+citing §15's own rule that a setting nothing reads does not exist: *"this one lands with its
+consumer (`filler.NormalizeInPlace`, called from the auto-file step)"*. A comment claiming a
+consumer exists is not a consumer existing, and nothing failed when it stopped being true. The
+transcode rung applies the loudness filter in the pass that is already re-encoding, which finally
+wires the toggle.
+
+**2. The score rung would have silently disabled half of `Score`.** `Score(modelConfidence)` lets
+the model LOWER the grounded ceiling and never raise it — so *"unsure about a clip whose tags all
+verify"* still reaches a human. That self-report exists only inside the tag rung; recomputing from
+the persisted row with 0 would score the clip a full 100 and auto-file it. `ScoreClip` passes the
+row's confidence as the model layer, so lowering survives and raising stays impossible.
+
+**3. A composite reaching the score rung would have destroyed the reel its segments come from.**
+Composite detection moved to `probe` (so a 16-minute recording stops being airable when it is
+MEASURED, not when someone finally splits it — §10 V45's bug). But a compilation has no coherent
+grounding, so `filler.reject.unidentified` — **ON by default** — would tombstone it. The skip is
+**one rule in `advance`**, not six `Applies` checks: six copies is six chances for a new rung to
+forget it, and forgetting is silent.
+
+**What was retired, and the one reversal.** Four jobs and their schedule keys, `filler.split.every`
+(splitting is a rung every long recording reaches, so "how often do we go looking" stopped being a
+question with an answer), and `NormalizeInPlace`. ⚠ **`filler.autosplit.enabled` flips to ON**,
+reversing a default whose ⚠ argued for OFF because a mis-cut clip plays half an advert and the
+source is consumed either way. That risk is unchanged; the evidence moved — the gate's measured
+failure mode is refusing GOOD reels, and off-by-default meant every compilation waited for a click
+the design says should be unnecessary.
+
+⚠ **Both drift guards fired during the work, which is the best evidence they work.**
+`TestEveryPublishedEventIsInTheEventTypeMap` reads `internal/app` as SOURCE for
+`Type: "…", Payload: api.X{` — hoisting the new frame into a local variable hid it, and the guard
+reported `filler_clip` as declared-but-never-published. `retired-verify` then caught eleven stale
+references to the retired identifiers, including two settings comments that were now simply false.
+
+**Tests: the four retired jobs' suites were PORTED, not deleted** — `stage_language_test.go`,
+`stage_transcribe_test.go`, `stage_vision_test.go`. Three cases went with the sweeps rather than
+being rewritten (`BoundsOnePass` × 3): the bound is now the runner's budget, and asserting it
+against a stage would be testing something that file no longer owns. The grounding tests — the
+ones that matter — survive unchanged, because `groundVisionTags` did not change.
+
+**V51a — the filler pre-flight: four dead code paths, one blind fixture class (2026-08-08, `7119d92`).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` (9 identifiers) + `make fe` (**1196 tests**, up from 1190).
+
+⚠ **This is the V41 lesson recurring, in the one place V41 did not look.** V41's entry below says
+the identity/location fixture blind spot "was written into a comment and the fixture was never
+fixed" — it fixed `clipAt`, `sampleClip`, `untaggedClip` and `tagMemStore`, and left the SPLIT
+fixtures alone. All four defects here lived behind exactly those.
+
+**1. Split confirm had never worked since V38c.** The persisted proposal stored `clip.Path` in a
+field named `clipPath`; `Confirm` fed it to `GetClip`, which is `WHERE hash = ?`. Every confirm
+returned *"compilation … no longer in the catalog"* for a clip that was in the catalog — an
+operator could detect, open a 41-segment reel, edit it, and never commit. Reproduced first against
+a real store, then fixed: the proposal carries `clipHash`, the file location is derived from the
+row exactly as `Propose` already derives it.
+
+**2. Every segment upserted with an empty hash.** `UpsertClip` is `ON CONFLICT(hash)`, so segment
+N overwrote segment N−1 and a whole reel became **one** row. Cuts are now hashed the moment they
+are written and filed at their own shard path, which retires `uniqueClipPath`/`sanitizeClipName`
+(content addressing leaves no name to sanitise and no collision to break). **Sabotage-verified**:
+removing the hash assignment collapses the test to one row.
+
+**3. `dedup`'s self-exclusion never fired.** Parameter named `clipPath`, tested against `c.Path`,
+called with the hash — so every segment was compared against the compilation it was cut from and
+came back flagged a duplicate. Noise in the review, and enough for `AutoConfirmable` to reject a
+sound reel.
+
+**4. `clips.confidence` had no writer, in any catalog, ever.** `Score` computed the
+grounding-capped number and `Tagger.Run` used it for the filing decision and dropped it. Auto-file
+worked; the number an operator judges it by was permanently 0, so the Incoming meter never
+rendered. `SetClipConfidence` is the writer now. ⚠ The store's conformance case passed the whole
+time because it seeded the value through `UpsertClip`'s INSERT — **a column can round-trip
+perfectly and still have no producer**.
+
+**Plus a live FE defect found on the way.** `useLoomarrEventListener` never re-dispatched
+`onPlayout` or `onDatabase`, so `settings/system/database.tsx`'s migration progress was dead. The
+drift guard was green because it regexed BOTH handler objects in one pass and asserted their
+**union** — a guard that ORs its two sources cannot see drift between them. It now slices and
+asserts each independently, and throws rather than degrading if its anchors move.
+
+**The durable half.** Both split fixtures are hash-keyed with identity and location deliberately
+unequal; `seedCompilation` returns the hash so no test can re-derive it; the fake `Cut` writes
+span-derived bytes (identical bytes would make segments legitimately collapse, masking the bug);
+and `Confirm` is exercised end to end against a real store for the first time.
+
+⚠ **The register is still behind.** V42, V44, V45a and V46–V49 shipped without rows; this entry
+sits above V41 because that is the last recorded phase, not because nothing happened between.
+Back-filling them is scheduled with the V51 doc pass — see the plan.
+
+**V50c — CollapsibleSection onto Base UI, and a collapsed section stops being focusable
+(2026-08-08, branch `feat/base-ui-v50c`).** Gate: `make fe` (**1222** app + 17 api + 51 core + 5
+tokens, biome clean on 918 files) + `make fe-visual` (**764 passed, 0 failed, 0 flaky, 0 axe**, no
+baseline changed) + `make check` + `retired-verify` (14 identifiers).
+
+⚠ **Scope is ONE component, deliberately.** V50c was sketched as "disclosure/form primitives" and
+the form half is dropped: `checkbox` and `switch` are native `<input>`s carrying explicit decisions
+AGAINST a primitive, and both record that the reasoning **predates V50a and survives the vendor
+change**. Porting them would re-implement semantics the platform already gets right. `search-command`'s
+hand-written `role="combobox"` was audited in the same pass and honours its contract in full. **The
+sketch was written before anyone read the files; the files had already decided.**
+
+**What the port buys.** The old version's header a11y was already correct (a real
+`<button aria-expanded aria-controls>`), so the win is `hiddenUntilFound`: the browser's find-in-page
+reaches text inside a CLOSED section and opens it, where `overflow:hidden` left it findable by
+nothing.
+
+⚠ **And it removes a defect two tests were resting on.** The old `.reveal` closed with
+`grid-template-rows: 0fr` + `overflow:hidden` — zero height but **NOT `display:none`** — so collapsed
+controls stayed in the accessibility tree and stayed **focusable**. A keyboard user could Tab into a
+section they could not see. Two `channel-filler` tests reached a control inside a closed body with
+`findByRole` and passed; they open the section first now, as a user must. **The bug surfaced as a
+test that could only pass while it existed.** ⚠ Its failure mode is deliberately unhelpful and worth
+recognising: `asyncUtilTimeout` and `testTimeout` are both 5000ms, so findBy's own "Unable to find
+role" never surfaces — the test times out first and reports only `Test timed out in 5000ms`.
+
+⚠ **`hiddenUntilFound` is load-bearing, not a bonus.** Sabotaging it to prove the new test could fail
+showed both tests failing with *"Unable to find an element with the text"* — Base UI's Panel
+**unmounts its children when closed** by default, where the hand-rolled version always kept the body
+mounted and merely clipped it. A port that swapped the elements and adjusted assertions to match
+would have shipped a silent change to a **mounting** contract, breaking anything holding form state,
+scroll position or a ref in a collapsed section. Nothing in the gate reads a mounting contract.
+
+⚠ **The motion stayed hand-rolled, verified rather than assumed.** Base UI measures the panel
+(`scrollHeight` → `--collapsible-panel-height`) so an author can transition `height`; the `.reveal`
+grid-rows 0fr→1fr trick is height-agnostic, so nothing is measured and a body that changes size
+mid-open cannot desync from a stale measurement. The primitive owns state and semantics; the
+stylesheet still owns motion. Reduced-motion needed no work — it is a global `*` rule inside a media
+query, independent of implementation.
+
+⚠ **The CSS rule is two selectors on purpose.** `.reveal` has a second consumer: `connection-block`
+borrows its mechanics and passes `data-open={open}`, a React boolean, while Base UI emits `data-open`
+VALUELESS when open. Loosening the rule to `.reveal[data-open]` would match the **string `"false"`**
+that React renders for `data-open={false}` — React stringifies booleans for `data-*` rather than
+omitting them — and pin connection-block permanently open. **Caught by nothing:** jsdom does not
+apply the stylesheet, and connection-block has no story for the visual suite to snapshot.
+
+**Doc-first (§14):** no dependency conversation needed, because the row already anticipated this
+("the primitives the app still hand-rolls … stop needing a §14 conversation each"). ⚠ But its list
+was stale in **two** places — `menu` left it in V50b without the doc catching up, and `collapsible`
+leaves it here. Both removed, with `combobox` recorded as deliberately kept rather than merely
+omitted.
+
+⚠ **KNOWN GAP, not fixed here.** `connection-block` still closes with the bare `.reveal`, so its
+collapsed body — a Test action and a Fix link — **remains focusable and announced**. Same defect,
+left alone because scope is one component; it has no story, so axe never sees it. This is the
+strongest candidate for the next slice.
+
+
+**V50b — the hand-rolled overlays fold onto the primitives (2026-08-08, branch
+`feat/base-ui-v50b`).** Gate: `make fe` (**1221** app + 17 api + 51 core + 5 tokens, biome clean on
+911 files + tsc + SPA build + storybook build) + `make fe-visual` (**764 passed, 0 failed, 0 flaky,
+0 axe**, and **no baseline changed** — V50b touches no story or spec) + `make check` +
+`retired-verify` (14 identifiers).
+
+Five components, and **two of them were asserting accessibility they did not implement**. That is
+the through-line: a hand-rolled overlay can spell `role="dialog" aria-modal="true"` into the DOM
+without owning a single behaviour the role promises, and nothing in this repo's gate reads a role
+and checks whether it is TRUE. Not types, not lint, and — the surprising one — not axe, which
+validates that attributes are well-formed, not that they are honest.
+
+- **`channel-row-menu` → Menu.** Deletes the app's only `createPortal`, a `getBoundingClientRect`
+  layout effect, three hardcoded pixel constants, both-axis viewport clamping, flip-up-on-overflow,
+  `invisible`-until-measured, a full-bleed `<button>` backdrop, capture-phase scroll/resize
+  listeners, and hand-written menu roles. ⚠ Two were latent BUGS, not verbosity: `PANEL_MAX_H = 210`
+  went stale the moment the menu's content changed (nothing enforced it, and the armed-confirm state
+  is the tallest), and **dismiss-on-scroll was a workaround for an anchor the portal could not
+  track** — the popup follows its trigger now instead of closing. Gains arrow-key nav, typeahead, a
+  focus trap, focus restore and Escape, none of which it had.
+- **`command-palette` → Dialog.** It claimed `aria-modal="true"` on a `fixed inset-0` div with no
+  portal, no focus trap, no focus restore, no scroll lock and no inert background: a screen-reader
+  user was told the page behind was inert while Tab walked straight into it, and closing dropped
+  focus at the top of the document. ⚠ Escape moved WITH it — `useCommandShortcut` bound Escape at
+  the window only because the palette had no dismiss of its own; keeping both would be two closers
+  racing.
+- **`restart-overlay` — ⚠ DELIBERATELY NOT AlertDialog, against the plan.** It made the same false
+  claim, and the planned fix was to make the claim true. Reading the spec says otherwise:
+  `alertdialog` is defined for interrupting with a REQUIRED RESPONSE and needs a focusable element,
+  and this overlay has no interactive content in any of its three states. Worse, its "came back"
+  state is deliberately `pointer-events-none` so a lingering confirmation cannot swallow the
+  operator's next click — which a modal forbids. The false attributes are dropped instead: `status`
+  (polite) normally, `alert` (assertive) on failure. **A real modal would have satisfied the audit
+  and broken the interaction.**
+- **`timeline-scrubber` → Tooltip positioner with a virtual anchor.** Deletes `CARD_WIDTH = 256`,
+  which duplicated the `w-64` class and would decouple the moment either changed; `shift()` now
+  keeps the card on screen against the VIEWPORT, measured rather than assumed, and the portal
+  removes the `overflow:hidden` clipping risk.
+- **`search-command` — ⚠ RE-EXAMINED AND DELIBERATELY KEPT**, with the reasoning written into the
+  file so it is not re-litigated from scratch. The standing objection ("cmdk would need a §14
+  change") dissolved when Base UI landed, but Autocomplete still does not fit on SHAPE, not effort:
+  it is Portal→Positioner→Popup with no inline mode, and this is an always-visible panel embedded in
+  six layouts that each position it themselves. The v2 mock decides it — the ⌘K block draws a modal
+  overlay with the list in a centred card, which is what the Dialog port produces; a floating
+  combobox would be moving AWAY from the mock.
+
+⚠ **A hooks-order violation shipped in the first cut of the scrubber and is worth recording**,
+because the test that should have caught it existed and could not. The anchor's `useMemo` sat BELOW
+the empty-airings `return null`, so an empty render runs one fewer hook than a populated one and
+React — which matches hooks by CALL ORDER — throws on a channel whose guide data empties out. The
+existing "renders nothing when there are no airings" test mounts once with `[]`, so it never sees a
+change in hook count and passes either way. **A test can cover a state and still not cover the
+TRANSITION into it.** The added regression test rerenders one instance both ways; confirmed red
+against the pre-fix component with the other three tests passing beside it. `trackW` left hover
+state in the same pass — the clamp was its only reader, and a width still riding in state would read
+as though the card bounds itself to the strip, which is exactly what stopped being true.
+
+⚠ **The scrubber's visible behaviour change is NOT covered by the visual suite, and the reason
+generalises**: near the track's ends the hover card now stops at the viewport edge rather than the
+strip edge. No baseline moved — because the card only exists while hovering and the gallery never
+hovers. Those stories cover the STRIP, not the card, and they would not have moved if the change
+had broken it either.
+
+**Test harness:** `asyncUtilTimeout` raised to 5s. Turning `getBy` into `findBy` across the
+migration took the suite from 2 intermittent failures to 6 — every one passing in isolation, all CPU
+contention across parallel specs rather than anything in the code. ⚠ A longer wait cannot make a
+broken assertion pass; it only stops a red build that means nothing. Net effect: the two
+PRE-EXISTING baseline flakes (help, filler) are green too.
+
+**V50a — Radix → Base UI, the vendor consolidation (2026-08-08, branch `feat/base-ui-v50a`).**
+Gate: `make fe` (**1219** app + 17 api + 51 core + 5 tokens, biome + tsc + SPA build + storybook
+build) + `make fe-visual` (**760 passed, 0 failed, 0 flaky, 0 axe** on a CLEAN verify run, after a
+reviewed 2-baseline update) + `make e2e` (7) + `make check` + `retired-verify` (14 identifiers).
+
+Six `@radix-ui/*` packages → one `@base-ui/react`; **823 lines of transitive lockfile closure
+deleted**. Doc-first per directive 1: §14's stack row keeps every primitive's ORIGINAL rationale
+(Select-over-native, tooltip-over-`title=`, slider-owns-the-WAI-ARIA-contract, menu-is-not-a-select)
+because only the vendor moved.
+
+⚠ **Two user-visible regressions that a compile-clean port would have shipped.** Neither is caught
+by types, lint, or axe:
+
+1. **Every Select trigger would have shown its RAW VALUE.** Base UI resolves `<SelectValue>` to the
+   item's label only when Root is given an `items` map; all 23 selects here pass options as inline
+   `<SelectItem>` JSX. Triggers would read "240" where the list says "4 hours". Hand-writing
+   `items={[…]}` per site would duplicate every label expression (several computed) — the
+   two-lists-that-must-agree pattern this repo has been bitten by — so the wrapper DERIVES them
+   from the items. Found only because the assertion was written before the port was believed.
+2. **Tooltips lost their accessible description.** Base UI's tooltip is visual-only BY DESIGN — no
+   `role="tooltip"`, no `aria-describedby`. Harmless for 36 of 37 consumers, whose trigger
+   `aria-label` restates the content. Not for `FieldHelp`, which renders each setting's `doc`
+   prose: a screen-reader user got "About Ordering, button" and nothing else.
+
+⚠ **The durable half is the COMMENTS.** Three explained why something was the way it was, each was
+true under Radix, and each would have silently become a lie: `field-help` claimed the SR user
+"hears the same guidance"; `volume-control` put `aria-label` on the Thumb "because Radix puts
+role=slider there" (still the right placement — Base UI nests an `<input type="range">` — but a
+different reason); `setup.ts` credited five jsdom shims to Radix. Removing the shims one at a time
+proved the pointer-capture trio was **dead weight** and that `scrollIntoView`, the one that matters,
+was never Radix's need — it is our own `search-command`, and removing it fails 31 tests.
+
+Other findings: Base UI mounts portalled popups **asynchronously**, so six tests needed `findBy`
+over `getBy` (waiting, not weakening); `closeOnClick` defaults false where Radix closed on select
+(preserved for the track picker); Menu has no standalone Label, so the heading now NAMES its group;
+`asChild` renamed to `render` at all 11 sites, with both `@radix-ui` and `asChild` added to
+`check-retired.sh` so neither vocabulary creeps back. **The single visual delta in 760 snapshots**
+was the volume thumb at value 0 — Radix clamped it inside the track at the extremes, Base UI centres
+it on the value; 54px, reviewed, baseline updated. Debt register 43 → 40 (tooltip, select, dialog).
+
+**V41 — the audit pass: three live defects, six cleanups (2026-08-05, `aba3b22`, PRs #169–#175).**
+Gate, per PR: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +
+`retired-verify`; the web PRs additionally `make fe` (**1116 tests**, up from 1108) + `fe-visual`
+(**716 passed, 0 axe**, on CLEAN verify runs, never `--update-snapshots`) + `make e2e` (7).
+
+Started as "what needs refactoring?" and found working code was the smaller half of the answer.
+
+⚠ **THE AI TAGGER HAD NEVER TAGGED A CLIP, and play counters had never moved** (#169). V38c split
+clip identity (`Hash`) from location (`Path`); three callers kept passing the path into hash-keyed
+store methods. `UpdateClipTags` returns `ErrNotFound` and the tagger treats that as **fatal**, so
+every run aborted on its first taggable clip. Playout's `RecordClipPlay` swallowed the same miss as
+telemetry. `PATCH /v1/filler/{id}` 404'd from the UI. `PodEntry` had no `Hash` field at all — which
+is *why* playout had only a path to pass.
+
+⚠ **The reason it survived two releases is the durable half.** `clipAt`/`sampleClip` (store) and
+`untaggedClip` (filler) all set hash and path to the SAME STRING, so a hash-keyed call and a
+path-keyed one were indistinguishable to every test. **This is the identical blind spot that already
+shipped the `DeleteClipsNotIn` catastrophe** — the lesson was written into a comment and the fixture
+was never fixed. All three now derive one field from the other and are never equal; `tagMemStore`
+mirrors the real store's split (hash for tags, path for held) instead of accepting either. Making
+them honest surfaced **four tagger tests passing for the wrong reason**, including one whose comment
+documented the bug as the design, and a V28 play-count test still pinning the pre-V38c contract.
+
+Also #169: the **visual gate was asserting an error page** — all four `ChecklistItem` stories × both
+viewports were ONE byte-identical 1160-byte PNG of the words "Not Found", because `/wizard` was
+missing from `RouterHarness`'s `NAV_PATHS`. The error page satisfies every wait the spec does and is
+perfectly stable, so it passed forever. `RouterHarness` now **throws** on an unregistered path.
+And five endpoints loaded the whole catalog to produce an integer (`CountClips`,
+`CountClipsBySource`, `AutoFiledOnly`; `Pool` went from one full-table read *per channel* to one).
+
+**The cleanups.** `recurate` was a **second lineup writer** — it trimmed `ch.Lineup` and persisted
+the channel moments before the binder's additive union ran over the same field, the two ordered
+against each other by a code comment (#171). Retirements now ride the proposal (`Proposal.Retired`)
+and the binder applies them through the one `schedule.ApplyLineup` primitive; `UpsertChannel` is
+**gone from `CuratorStore`**, so the two-writer arrangement is unexpressible rather than merely
+discouraged. Incoming and Sources own their own queries (#170, #172). `/v1/suggestions` →
+**`/v1/proposals`** (#172), the glossary's own rule finally followed — with three deliberate
+survivors recorded in `CONTEXT.md` (the persisted job kind `"suggest"`, the SSE phase frame, the
+`FeatureSuggestions` capability: all the verb, never the artifact). Dead `schedule/backfill.go`
+deleted, two indexed lookups replacing full-table scans (migration `00037`), and `conformance.go`
+split 2,650 lines → an 89-line runner + five domain files, **verified by diffing the subtest names
+the suite actually runs: 39 before, 40 after, zero dropped** (#173).
+
+⚠ **Every fix was sabotage-verified** — reintroduce the bug, confirm the tests go red. That is what
+caught the near-miss: the first fixture fix left the suite GREEN, which proved the tests had never
+exercised the distinction at all. It also stopped a wrong deletion (the shell's `confirmEra` looks
+redundant but serves the Catalog's tag-cycling) and it is how the ffmpeg helper's **total absence of
+coverage** was found (#174): the two language backends carried byte-identical copies of one ffmpeg
+invocation, and changing `-ar 16000` to `-ar 8000` failed **nothing**.
+
+**CI now installs ffmpeg** (#175), measured rather than assumed — a probe reported `ffmpeg: MISSING`
+with three tests reporting SKIP while the job stayed green. Cached debs: ~38s → **~14s** on a hit.
+⚠ Cache apt's **delta** (87 debs / 61MB), never the `--recurse` closure (298 packages / **244MB** —
+it includes base packages the runner already has, and would cost more of the 10GB budget than it
+saves). `--no-download` makes a broken cache FAIL rather than silently re-fetch.
+
+**Deliberately NOT done, and each argued rather than skipped:** `app.go`'s 1,187 lines and
+`api.Server`'s 44 fields (§14.1 examined and kept both; `architecture_test.go` encodes it), the 75
+in-body `requireAdmin` calls (defence-in-depth on an authorization boundary — the wrong direction to
+tidy), and extracting the Catalog tab (its query feeds the shell's own badge and it is what renders
+when no other tab does, so extraction buys no runtime saving and costs a ~10-prop interface).
+
+**V40 — language detection, two backends behind one seam (2026-08-05, `b7ef76a`, PR #167).** The
+detection §10 designed and the V40 quality-gate entry below records as *unbuilt*. A scheduled job
+over a ~10s span (never an inline scan pass — `whisper-cli` is ~3s natively but **~341s under
+QEMU**), with two interchangeable backends: local `whisper-cli`, or an audio-capable hosted model
+through the §8.1 provider. ⚠ The silence guard is the load-bearing part: a 978s recorded ad break
+whose first 10s measure −70 LUFS was answered `ar` and **tombstoned**. Asked what language silence
+is in, a model does not decline — it guesses, and re-asked it answered `en`. Two fixes: `LanguageSpan`
+samples long recordings from the MIDDLE (where we look), and `spanIsSilent` refuses to ask below the
+floor (holds wherever we land). Parser pinned to REAL whisper output, not remembered field names.
+
 **V40 — the quality gate: reject the broken, normalise the quiet (2026-08-03, PR #166).** Gate:
 `make check` (0 lint, `-race`) + the settings suite green **with ffmpeg hidden from PATH** + the
 filler/playout/api suites. Automatic by maintainer decision — no badges, no review step, no
@@ -1052,6 +2343,19 @@ orval could type them, but their consumers are Docker HEALTHCHECK and orchestrat
 which hold no session — registering them in the authenticated /v1 API would put auth in
 front of a container health probe. The UI gets the typed twin instead. Pinned by a test,
 because "type the health endpoints" is a tempting future change.
+
+> ⚠ **REVERSED LATER, and the pin did its job.** The probes are Huma operations under
+> `/v1/healthz` and `/v1/readyz` now. What changed is not the concern above but its
+> premise: "registering them in huma" no longer implies "in the authenticated API",
+> because `RolePublic` makes non-authentication an explicit, greppable property of an
+> operation. The two things this entry actually cared about are both preserved and still
+> tested — the probes answer with **no credential**, and a **storeless boot** still gets
+> 200 from healthz and 503-with-a-reason from readyz (the 503 keeps carrying `ready` and
+> `detail` rather than becoming an RFC 7807 problem; huma additionally emits its standard
+> `$schema` link, as on every other typed response here). Their bare paths stay as permanent
+> aliases, because a healthcheck lives in someone's compose file and cannot be migrated
+> by editing this repo. `TestOpsProbesStayUnauthenticated` survives, now covering both
+> paths, plus `TestOpsProbeAliasesAgreeWithTheCanonicalPaths`.
 
 **Found and fixed a startup panic (pre-existing, from the 2026-07-18 guide-reader work).**
 Starting with no DATABASE_URL is a SUPPORTED mode — main logs "running without a store

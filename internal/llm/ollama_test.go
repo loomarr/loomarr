@@ -296,3 +296,69 @@ func TestOllama_WarmSkipsAGuessedModel(t *testing.T) {
 		t.Errorf("explicit model: %d warm request(s), want 1", calls)
 	}
 }
+
+// EVICT (§9.1 V47) is the mirror of Warm: it POSTs to /api/chat with the model, NO messages, and
+// keep_alive=0 — Ollama's documented immediate-unload. This is what playout calls to free VRAM for
+// its hardware encoders when they can't fit alongside a resident model.
+func TestOllama_EvictUnloadsWithKeepAliveZero(t *testing.T) {
+	var sentReq map[string]any
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &sentReq)
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":""}}`))
+	}))
+	defer srv.Close()
+
+	// keep_alive is set to 30m on the client — Evict must OVERRIDE it with 0, or the "unload" would
+	// instead re-arm a long residency, the exact opposite of the intent.
+	o := llm.NewOllama(srv.URL, "qwen3:8b").WithKeepAlive("30m")
+	if err := o.Evict(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/api/chat" {
+		t.Errorf("evict path = %q, want /api/chat", path)
+	}
+	if sentReq["model"] != "qwen3:8b" {
+		t.Errorf("evict model = %v, want qwen3:8b", sentReq["model"])
+	}
+	// The whole point: keep_alive must be "0" (unload now), not the client's 30m.
+	if sentReq["keep_alive"] != "0" {
+		t.Errorf("evict keep_alive = %v, want \"0\" (immediate unload)", sentReq["keep_alive"])
+	}
+	if msgs, _ := sentReq["messages"].([]any); len(msgs) != 0 {
+		t.Errorf("evict should send no messages, got %v", msgs)
+	}
+}
+
+// A guessed model is never evicted — nothing was resident to unload (mirror of the warm guard).
+func TestOllama_EvictSkipsAGuessedModel(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	err := llm.NewOllama(srv.URL, "").Evict(context.Background())
+	if !errors.Is(err, llm.ErrNothingToEvict) {
+		t.Errorf("evicting a guessed model = %v, want ErrNothingToEvict", err)
+	}
+	if calls != 0 {
+		t.Errorf("evict made %d request(s) for a guessed model; want 0", calls)
+	}
+}
+
+// An evict failure is reported (best-effort by contract, but not swallowed) so the caller can log
+// it — the encode still falls back to software, so a failed evict costs VRAM, never correctness.
+func TestOllama_EvictReportsFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	if err := llm.NewOllama(srv.URL, "m").Evict(context.Background()); err == nil {
+		t.Fatal("expected an error from a failing evict")
+	}
+}

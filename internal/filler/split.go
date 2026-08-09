@@ -13,9 +13,16 @@ import (
 //
 // The pipeline (plan §6.4, designed from measurement on six real compilations):
 // triage (chapters) → coarse split (blackdetect + silencedetect) → transcript
-// rescue for over-long segments → classify each segment (existing tagger) →
-// dHash dedup → REVIEW (not optional — detection quality is a property of the
-// source, measured 69–100%, so nothing enters the catalog unconfirmed).
+// rescue for over-long segments → dHash dedup → REVIEW (not optional —
+// detection quality is a property of the source, measured 69–100%, so nothing
+// enters the catalog unconfirmed).
+//
+// ⚠ "classify each segment" used to sit before dedup and is GONE (§10 V51g). It
+// was one LLM turn per segment — 51 × 7.4s ≈ 377s on a 16m47s reel, against a
+// 120s pass — so the rung could never finish and restarted every two minutes.
+// **Split cuts; it does not describe.** Each segment is spawned as its own clip
+// and reaches `tag` on its own ladder, after `transcribe`, with a real
+// transcript instead of the string "… part 7".
 
 const (
 	// MinSegmentMs drops slivers: black/silence detection on real compilations
@@ -44,13 +51,17 @@ type SplitSegment struct {
 	// Name is the proposed clip name (from the LLM's product label, or
 	// "<compilation> part N"). It becomes the clip's filename on confirm.
 	Name string `json:"name"`
-	// Era/Audience/Category come from the SAME Classify the tag job uses, over the
+	// Era/Audience/Tags come from the SAME Classify the tag job uses, over the
 	// segment's transcript. Era is grounded (year in the text) or zero — an
 	// ungrounded guess is carried ONLY as SuggestedEra (§10 era rule).
 	Era          int      `json:"era,omitempty"`
 	SuggestedEra int      `json:"suggestedEra,omitempty"`
 	Audience     Audience `json:"audience,omitempty"`
-	Category     string   `json:"category,omitempty"`
+	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
+	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
+	// the same Classify the tag job uses.
+	Tags     []string `json:"tags,omitempty"`
+	Category string   `json:"category,omitempty"`
 	// DupOf is the path of an existing catalog clip this segment duplicates
 	// (dHash, measured 25× separation). ⚠ A FLAG, never a silent drop — the
 	// reviewer sees "already in the catalog" and decides.
@@ -70,8 +81,22 @@ type SplitSegment struct {
 // in a compilation clip (§10 V34). It is NOT a clip: nothing here is visible to
 // pod matching, and the only way segments become clips is Confirm.
 type SplitProposal struct {
-	ID        string         `json:"id"`
-	ClipPath  string         `json:"clipPath"` // the compilation's clip identity
+	ID string `json:"id"`
+	// ClipHash is the compilation's IDENTITY — its content hash (§10 V38c), the value
+	// `GetClip` is keyed on.
+	//
+	// ⚠ **This field was `ClipPath` and held `clip.Path`, and that mismatch broke Confirm
+	// outright.** `Propose` wrote the shard path (`a3/f9/<hash>.mp4`); `Confirm` handed the same
+	// string to a HASH-keyed `GetClip`, which never matched — so every confirm returned
+	// "compilation … no longer in the catalog" for a clip sitting in the catalog. An operator
+	// could open a 41-segment reel, edit it, and never commit it. It survived because the
+	// splitter's test store keys its map on `Path`, so the fixture answered a question
+	// production's store does not (the same collapsed-key class `conformance_filler.go` records).
+	//
+	// ⚠ The FILE PATH is DERIVED from this, never stored beside it: `ClipPath(dropDir, hash, ext)`
+	// is the containment boundary, and one identity with a derived location is what stops the two
+	// disagreeing again.
+	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
 }

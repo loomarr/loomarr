@@ -23,7 +23,13 @@ import (
 // live mux — cannot distinguish "absent because it drifted" from "absent because it is
 // nil-guarded", which several routes legitimately are.
 func TestRegisterListsMatchBetweenRouterAndExporter(t *testing.T) {
-	call := regexp.MustCompile(`srv\.(register[A-Za-z]+)\(humaAPI\)`)
+	// ⚠ **The delimiter after `humaAPI` is `[,)]`, not `)`, and that is a bug fix.** The pattern
+	// used to demand exactly `(humaAPI)`, so the first registrar taking a second argument —
+	// `srv.registerOps(humaAPI, opts.Pprof)` — was invisible to this guard. It was missing from
+	// export.go, its routes served traffic, and the spec did not list them: the exact
+	// live-but-undocumented failure recorded above, walking straight through the check meant to
+	// catch it, because the check was matching a call SHAPE rather than a call.
+	call := regexp.MustCompile(`srv\.(register[A-Za-z]+)\(humaAPI[,)]`)
 
 	read := func(path string) []string {
 		b, err := os.ReadFile(path)

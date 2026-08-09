@@ -97,10 +97,7 @@ func (f *fakeLiveTVSvc) Reconnect(ctx context.Context) (int, error) {
 
 func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeChannelSvc, *fakeLiveTVSvc) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	chSvc := &fakeChannelSvc{}
 	ltv := &fakeLiveTVSvc{}
@@ -114,7 +111,7 @@ func newServerWithScheduler(t *testing.T) (*httptest.Server, store.Store, *fakeC
 		// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
 		// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
 		// approved proposals in these tests, same as production wiring.
-		Binder: binder.New(st, chSvc, log),
+		Binder: binder.New(st, chSvc, nil, log),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -492,10 +489,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // service, so refine (which needs the suggester) can be exercised end to end.
 func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/refine.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/refine.db")
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -1149,10 +1143,7 @@ func (f fakeGuide) Upcoming(_ context.Context, tunarrID string, _ time.Time, lim
 // 1.22's ServeMux, but that is a routing detail worth pinning rather than assuming: if
 // precedence ever flipped, the page would 404 on a channel that does not exist.
 func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/nn.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/nn.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	// A reconciled channel (has a Tunarr id) and one that has never reconciled.

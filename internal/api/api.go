@@ -6,10 +6,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/http/pprof"
 	"strings"
 	"time"
 
@@ -26,46 +26,17 @@ type ReadyFunc func() (ready bool, detail string)
 func Router(log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
 
-	// Ops endpoints, unauthenticated on the LAN (§7).
 	ready := opts.Ready
 	if ready == nil {
 		ready = func() (bool, string) { return true, "ok" }
 	}
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ok, detail := ready()
-		code := http.StatusOK
-		if !ok {
-			code = http.StatusServiceUnavailable
-		}
-		writeJSON(w, code, map[string]any{"ready": ok, "detail": detail})
-	})
 
-	// Prometheus exposition (§7 /metrics, §18). Unauthenticated on the LAN like
-	// the other ops probes; the metrics.Middleware below records every request.
-	mux.Handle("GET /metrics", metrics.Handler())
+	// ⚠ The ops surface (liveness, readiness, Prometheus, the profiler, the API reference) now
+	// registers with everything else, in registerOps — under /v1, with its bare paths kept as
+	// hidden aliases. It was the last of the raw-mux world; see ops.go for why the aliases are
+	// not optional and why moving these reverses a decision that was pinned on purpose.
 
-	// Go's profiler (§7), mounted ONLY when the server was started with LOOMARR_PPROF=1.
-	// Not registering is the gate, the same posture as /v1/auth/dev-login: an install without
-	// the flag 404s because the routes genuinely do not exist, not because a handler refused.
-	//
-	// Unauthenticated by nature — a profiler is not a browser and holds no session — which is
-	// precisely why it is off by default: these handlers expose stack traces and memory
-	// contents, and a repeated CPU profile degrades a running server.
-	//
-	// Registered by explicit path rather than by prefix so the surface is exactly the four
-	// handlers listed, and `pprof.Index` serves its own links off /debug/pprof/.
-	if opts.Pprof {
-		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-		mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-	}
-
-	// The Huma API (§7.1): /v1 operations, /openapi.{json,yaml}. Auth is applied
+	// The Huma API (§7.1): /v1 operations, /v1/openapi.{json,yaml}. Auth is applied
 	// as Huma middleware so every /v1 op resolves a role (§7 authorization model).
 	cfg := humaConfig()
 	// Stamp every error response with the request's correlation id + log its full cause
@@ -81,7 +52,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store:     opts.Store, auth: opts.Auth, log: log, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, cookieSecure: opts.CookieSecure, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunarrConnect: opts.TunarrConnect,
-		suggest: opts.Suggest, search: opts.Search, collections: opts.Collections, icons: opts.Icons, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
+		suggest: opts.Suggest, search: opts.Search, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, filler: opts.Filler, pods: opts.Pods,
 		jobs:      opts.Jobs,
 		systemLLM: opts.SystemLLM, database: opts.Database, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		bootstrapDrift: opts.BootstrapDrift,
@@ -91,7 +62,17 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		binder:          opts.Binder,
 		playoutSessions: opts.PlayoutSessions, playoutSecret: opts.PlayoutSecret,
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
+		playoutHLS:   opts.PlayoutHLS,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
+		playoutTonemap:  opts.PlayoutTonemap,
+		timelineThumbs:  opts.TimelineThumbs,
+		reclaimVRAM:     opts.ReclaimVRAM,
+		residentLLMVRAM: opts.ResidentLLMVRAM,
+	}
+	if opts.HWEncodeSlots != nil {
+		// The gate reads the slot count lazily on first use, on a background context — the capability
+		// probe outlives any one request and must not be cancelled by the viewer who triggered it.
+		srv.hwEncodeGate = newHWEncodeGate(func() int { return opts.HWEncodeSlots(context.Background()) })
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)
@@ -99,6 +80,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerUsers(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
+	srv.registerPlayout(humaAPI) // §9.1 streaming routes (V47): Huma-mounted, shared auth
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
@@ -112,8 +94,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
 	srv.registerFillerFile(humaAPI)
+	srv.registerTaxonomy(humaAPI)
+	srv.registerImages(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
+	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
 	srv.registerSystemBackups(humaAPI)
@@ -121,75 +106,44 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
+	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
+	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider
 	srv.registerProvisioning(humaAPI)
+	srv.registerOps(humaAPI, opts.Pprof) // §17 probes/metrics/profiler + the API reference
 
-	// GET /v1/backup streams a binary snapshot, so it's a plain mux handler
-	// (not a typed Huma op — §16). Auth checked inline.
-	mux.HandleFunc("GET /v1/backup", srv.backupHandler)
+	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
+	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp
+	// (rawop.go). They stream bytes and keep the (w, r) signature that http.ServeContent needs,
+	// but they mount on the SAME Huma API as every other route, so they are covered by the one
+	// authorization middleware and appear in api/openapi.yaml. Splitting one resource across two
+	// registration mechanisms is what let /v1/system/backups be spec'd while its download was not.
+	//
+	// Internal playout (§9.1) mounts the same way — see registerPlayout.
 
-	// Downloading an ALREADY-WRITTEN backup (§16, V12) — same reason it isn't a Huma op:
-	// it streams a file. The list half of /v1/system/backups IS typed and lives with the
-	// other system routes.
-	mux.HandleFunc("GET /v1/system/backups/{name}", srv.downloadBackupHandler)
-
-	// SSO's two routes are browser REDIRECTS (§11, V8), so they are plain mux handlers like
-	// /v1/backup — Huma models typed JSON, and a 302 carrying Set-Cookie is neither. Not
-	// mounted at all when no provider is wired.
-	srv.registerSSO(mux)
-
-	// GET /v1/events streams SSE (§7/§8) — a plain mux handler (Huma returns typed
-	// bodies). Auth checked inline via the same authorizer.
-	mux.HandleFunc("GET /v1/events", srv.eventsHandler)
-
-	// Channel icon upload (multipart) + serve (raw image bytes) are plain mux handlers —
-	// neither fits Huma's typed-JSON model. Upload is admin-only (checked inline); serve is
-	// public so Tunarr can fetch the icon machine-to-machine, like a TMDB poster URL.
-	mux.HandleFunc("POST /v1/channels/{id}/icon", srv.uploadChannelIcon)
-	mux.HandleFunc("GET /v1/channels/{id}/icon", srv.serveChannelIcon)
-
-	// Clip thumbnails (V30) — image bytes, so a plain handler like the icon above. The
-	// `{path...}` wildcard is required, not stylistic: a clip's id is its path relative to
-	// FILLER_DIR and therefore contains slashes, which a plain {path} would not match.
-	// ⚠ Called `thumb`, not `preview` — /channels/{id}/filler/preview is a different thing
-	// entirely (the pod pool a channel would get, as JSON).
-	mux.HandleFunc("GET /v1/filler/thumb/{path...}", srv.serveFillerThumb)
-
-	// Clip media (V35) — the clip's own bytes, so the operator can watch one before deciding
-	// about it. Same wildcard reason as thumbnails, and the same naming rule: `media`, never
-	// `preview`. Range-capable, so a <video> element can seek.
-	mux.HandleFunc("GET /v1/filler/media/{path...}", srv.serveFillerMedia)
-
-	// Clip hover previews (V39) — a few seconds of silent animation per clip, so a grid of
-	// stills can answer "is this actually the advert it says it is?" without opening anything.
-	// ⚠ `hover`, not `preview`, for the third time on this surface: /channels/{id}/filler/preview
-	// and PodAdapter.Preview already mean "the pod pool a channel would get", as JSON.
-	mux.HandleFunc("GET /v1/filler/hover/{path...}", srv.serveFillerHover)
-
-	// Internal playout (§9.1): the tuner M3U, the ffconcat playlist, and the continuous
-	// MPEG-TS stream. Plain mux handlers (they stream bytes, two of them forever) with
-	// DEVICE auth by `playout_token` rather than session auth — a television cannot hold a
-	// cookie (§11).
-	srv.registerPlayout(mux)
-
-	// Self-hosted offline docs (§7.1) — override Huma's CDN default.
-	mux.HandleFunc("GET /docs", docsHandler)
-
-	// The embedded SPA at / (§12): the catch-all. Guard the prefix-based API
-	// surfaces so an unknown /v1 or /hooks path 404s as an API error rather than
-	// silently serving index.html. Exact ops routes (/healthz, /docs, …) already
-	// win by ServeMux specificity and never reach here.
+	// The embedded SPA at / (§12): the catch-all, and now the ONLY raw mux registration —
+	// it serves embedded static assets and is not an API route. Guard the prefix-based API
+	// surfaces so an unmatched path under one 404s as an API error rather than silently
+	// serving index.html. Exact routes already win by ServeMux specificity and never reach here.
 	spa := web.Handler()
-	// /playout/ is in this list for a real reason, not tidiness: without it an unmatched
-	// playout path (a typo'd channel id, a route we have not built yet) falls through to the
-	// SPA and returns index.html with a 200. ffmpeg would then read HTML as a transport
-	// stream, and the failure surfaces as a corrupt-stream error naming neither the URL nor
-	// the typo.
-	// `/debug/` is here even though pprof is usually NOT mounted, and that is the point: with
-	// the flag off, a request to /debug/pprof/profile would otherwise fall through to the SPA
-	// and return index.html with a 200. `go tool pprof` then reports "unrecognized profile
-	// format" — which reads as a broken profiler rather than as a disabled endpoint, and cost
-	// two failed capture attempts before a test caught it.
-	apiPrefixes := []string{"/v1/", "/hooks/", "/openapi", "/schemas/", "/metrics", "/playout/", "/debug/"}
+	// ⚠ Each entry earns its place by a failure it prevents, and "it moved under /v1" does not
+	// remove the need for the OLD prefix — a stale bookmark, a scrape config or a docs link
+	// still resolves against this server.
+	//
+	// `/openapi` and `/schemas/` stay even though both now live under /v1: without them a
+	// request to the old /openapi.json falls through and returns index.html with a 200, so a
+	// client parsing it reports malformed YAML rather than "moved".
+	// `/debug/` stays even though pprof is usually NOT mounted, and that is the point: with the
+	// flag off, /debug/pprof/profile would otherwise return index.html with a 200 and
+	// `go tool pprof` reports "unrecognized profile format" — reading as a broken profiler
+	// rather than a disabled endpoint. That cost two failed capture attempts before a test
+	// caught it.
+	// `/metrics` likewise: a scrape hitting HTML should fail as a 404, not parse-error.
+	//
+	// ⚠ `/hooks/` is GONE. No /hooks route has existed since the inbound arr webhook was
+	// deleted, so the guard was reserving a prefix against nothing.
+	// `/playout/` is likewise absent: those routes have been under /v1/playout since V47, so
+	// /v1/ already covers them.
+	apiPrefixes := []string{"/v1/", "/openapi", "/schemas/", "/metrics", "/debug/", "/healthz", "/readyz", "/docs"}
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, p := range apiPrefixes {
 			if strings.HasPrefix(r.URL.Path, p) {

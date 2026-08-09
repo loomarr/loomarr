@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -108,17 +106,11 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	wav := filepath.Join(dir, "span.wav")
-	ff := h.FFmpegPath
-	if ff == "" {
-		ff = "ffmpeg"
-	}
-	cut := exec.CommandContext(ctx, ff,
-		"-nostdin", "-v", "error",
-		"-ss", msToFFmpegTime(startMs), "-t", msToFFmpegTime(endMs-startMs),
-		"-i", file, "-vn", "-ac", "1", "-ar", "16000", "-y", wav)
-	if out, cutErr := cut.CombinedOutput(); cutErr != nil {
-		return LangUndetermined, fmt.Errorf("extract audio for language: %w: %s", cutErr, truncate(string(out), 200))
+	// Shared with the local whisper backend (`extractSpanWAV`): both feed a model that requires
+	// 16 kHz mono, so the extraction is the same job whoever runs the inference.
+	wav := spanWAVPath(dir)
+	if err := extractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {
+		return LangUndetermined, err
 	}
 	audio, err := os.ReadFile(wav)
 	if err != nil {
@@ -136,7 +128,7 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 	// Found live: a 978s recorded ad break whose first 10s measure -70 LUFS was answered `ar` and
 	// tombstoned. `LanguageSpan` now samples long recordings from the middle, but that fixes WHERE
 	// we look; this is the guard that holds wherever we land, including on a genuinely silent clip.
-	if silent, err := spanIsSilent(ctx, ff, wav); err == nil && silent {
+	if silent, err := spanIsSilent(ctx, h.FFmpegPath, wav); err == nil && silent {
 		return LangNone, nil
 	}
 

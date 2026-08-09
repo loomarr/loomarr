@@ -29,9 +29,18 @@ type fakeResolver struct {
 	// audioTrack is the index AudioTrackFor returns — zero (the file's first track) unless a
 	// test is specifically about audio selection.
 	audioTrack int
-	profile    playout.Profile
-	calls      int
-	mu         sync.Mutex
+	// tracks is what Tracks returns (the Watch pickers' media-derived options) — empty unless a
+	// test is specifically about track discovery.
+	tracks playout.MediaTracks
+	// plan is what PlanFor returns — zero value (transcode both) unless a test is about direct play.
+	plan playout.CopyPlan
+	// sourceFormat is the probe PlanFor returns alongside the plan. Zero unless a test is about
+	// something the probe learned about the SOURCE (as opposed to the copy decision derived from
+	// it) — HDR is the first such thing.
+	sourceFormat playout.MediaFormat
+	profile      playout.Profile
+	calls        int
+	mu           sync.Mutex
 }
 
 func (f *fakeResolver) AiringNow(_ context.Context, _ string) (playout.Airing, string, error) {
@@ -51,6 +60,21 @@ func (f *fakeResolver) Profile(context.Context) playout.Profile {
 // AudioTrackFor returns whatever the test set, defaulting to the file's first track — the same
 // answer the real resolver gives when no language preference is configured.
 func (f *fakeResolver) AudioTrackFor(context.Context, string) int { return f.audioTrack }
+
+// Tracks returns whatever the test set (empty by default) — the Watch pickers' media-derived
+// options. These tests exercise the program/stream path, not the pickers, so empty is the right
+// default.
+func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
+	return f.tracks, nil
+}
+
+// PlanFor returns whatever plan the test set — zero value (transcode both) by default, which is
+// what the existing program-path assertions expect (they check the transcode args) — plus the
+// source format it was derived from. `sourceFormat` is zero unless a test is about something the
+// probe learned (HDR is the first), which reads as "not probed": SDR, unknown geometry.
+func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
+	return f.plan, f.sourceFormat
+}
 
 func (f *fakeResolver) callCount() int {
 	f.mu.Lock()
@@ -113,14 +137,14 @@ type programOpts struct {
 	// config overlays LiveConfig, for tests about a setting the handler reads live —
 	// `filler.target_lufs` (§10 V40) is the first.
 	config map[string]string
+	// reclaimVRAM is the LLM-eviction seam the retry ladder calls (§9.1 V47) — set by ladder tests
+	// to observe that eviction fired; nil for every other test (the ladder then skips that step).
+	reclaimVRAM func(ctx context.Context)
 }
 
 func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/prog.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/prog.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := map[string]string{
@@ -138,6 +162,7 @@ func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 		PlayoutEncoder:  o.encoder,
 		PlayoutSessions: o.sessions,
 		LiveConfig:      func(k string) string { return cfg[k] },
+		ReclaimVRAM:     o.reclaimVRAM,
 	}
 	if !o.noToken {
 		opts.PlayoutSecret = func() string { return playoutToken }
@@ -161,7 +186,7 @@ func TestPlayoutProgram_RequiresTheDeviceToken(t *testing.T) {
 		encoder:  (&fakeEncoder{output: "ts"}).start,
 	})
 	for _, q := range []string{"", "?token=wrong", "?token=" + playoutToken[:8]} {
-		resp := getPlayout(t, srv, "/playout/program/ch1"+q)
+		resp := getPlayout(t, srv, "/v1/playout/program/ch1"+q)
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("token %q: status %d, want 404", q, resp.StatusCode)
 		}
@@ -178,7 +203,7 @@ func TestPlayoutProgram_StreamsOneProgramThenEnds(t *testing.T) {
 		encoder:  enc.start,
 	})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
@@ -211,7 +236,7 @@ func TestPlayoutProgram_PassesTheSeekAndTheSlotBound(t *testing.T) {
 		encoder: enc.start,
 	})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.ReadAll(resp.Body)
 
 	got := strings.Join(enc.args(), " ")
@@ -236,7 +261,7 @@ func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 		encoder:  enc.start,
 	})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d, want 200 — an unplayable channel still gets a card", resp.StatusCode)
 	}
@@ -261,16 +286,39 @@ func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 	}
 }
 
-// A resolver failure is a RETRYABLE 502, not a 500. The usual cause is the media server being
-// unreachable, which is upstream of us, and the demuxer will come back.
-func TestPlayoutProgram_ResolverFailureIsRetryable(t *testing.T) {
+// A resolver failure shows the CARD, not a 502.
+//
+// ⚠ This test used to be TestPlayoutProgram_ResolverFailureIsRetryable and asserted the opposite,
+// on the stated premise that a 502 was "retryable — the demuxer will come back". That premise was
+// false: `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP
+// error STATUS, so a 5xx written into a concat entry ends the parent ffmpeg (measured on the
+// pinned n7.1 build: `Error during demuxing` then `signal: segmentation fault`) and drops every
+// viewer on the channel.
+//
+// The usual cause of a resolver failure is the media server being briefly unreachable — the single
+// most likely failure this handler sees. Trading the whole broadcast for it is the wrong trade, so
+// the handler now renders the card and the demuxer re-asks 30s later, by which time the outage has
+// usually passed.
+func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
+	enc := &fakeEncoder{output: "card-bytes"}
 	srv := newProgramServer(t, programOpts{
 		resolver: &fakeResolver{err: errors.New("emby unreachable")},
-		encoder:  (&fakeEncoder{}).start,
+		encoder:  enc.start,
 	})
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status %d, want 502", resp.StatusCode)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200 — a 5xx here kills the parent demuxer and the whole channel", resp.StatusCode)
+	}
+	if string(body) != "card-bytes" {
+		t.Errorf("body = %q, want the card's bytes", body)
+	}
+	// It must be the CARD, not a half-built program: the resolver failed, so there is no source
+	// to read and the args have to come from the synthetic lavfi generator.
+	if got := strings.Join(enc.args(), " "); !strings.Contains(got, "color=c=black") {
+		t.Errorf("did not render the offline card on a resolver failure: %q", got)
 	}
 }
 
@@ -280,7 +328,7 @@ func TestPlayoutProgram_UnknownChannelIs404(t *testing.T) {
 		resolver: &fakeResolver{err: store.ErrNotFound},
 		encoder:  (&fakeEncoder{}).start,
 	})
-	resp := getPlayout(t, srv, "/playout/program/nope?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/nope?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)
 	}
@@ -292,7 +340,7 @@ func TestPlayoutProgram_EncoderStartFailureIsReported(t *testing.T) {
 		resolver: &fakeResolver{airing: playableAiring(0, time.Hour), url: "http://emby/v/1"},
 		encoder:  (&fakeEncoder{failErr: errors.New("no such binary")}).start,
 	})
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status %d, want 502", resp.StatusCode)
 	}
@@ -310,7 +358,7 @@ func TestPlayoutProgram_MapsTheResolvedAudioTrack(t *testing.T) {
 	enc := &fakeEncoder{output: "chunk"}
 	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d, want 200", resp.StatusCode)
 	}
@@ -328,7 +376,7 @@ func TestPlayoutProgram_MapsTheResolvedAudioTrack(t *testing.T) {
 // Playout not running is a 501 that explains itself, not a 404 that reads as a wiring mistake.
 func TestPlayoutProgram_NotRunningExplainsItself(t *testing.T) {
 	srv := newProgramServer(t, programOpts{resolver: nil, encoder: nil})
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", resp.StatusCode)
 	}
@@ -342,7 +390,7 @@ func TestPlayoutProgram_IsCalledRepeatedlyAndStaysConsistent(t *testing.T) {
 	srv := newProgramServer(t, programOpts{resolver: res, encoder: enc.start})
 
 	for i := 0; i < 5; i++ {
-		resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+		resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("request %d: status %d", i, resp.StatusCode)
 		}
@@ -380,7 +428,7 @@ func TestPlayoutProgram_DisconnectStopsTheEncoder(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
-		srv.URL+"/playout/program/ch1?token="+playoutToken, nil)
+		srv.URL+"/v1/playout/program/ch1?token="+playoutToken, nil)
 	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -416,10 +464,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/zero.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/zero.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
@@ -436,7 +481,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 
@@ -444,6 +489,148 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	if !strings.Contains(got, "NO OUTPUT") {
 		t.Errorf("a channel that produced zero bytes logged nothing at INFO — the operator "+
 			"sees a buffering player and an empty log. Got:\n%s", got)
+	}
+}
+
+// --- V47: the transcode retry ladder (hardware → evict+retry → software) --------
+
+// ladderEncoder is a fakeEncoder that FAILS (zero output) whenever the args ask for the hardware
+// encoder, and SUCCEEDS (real bytes) for libx264 — modelling a GPU that cannot fit the encode
+// (VRAM full) while software always works. It records every encoder it was asked to run so a test
+// can assert the ladder's path.
+type ladderEncoder struct {
+	mu     sync.Mutex
+	hwEnc  string   // the hardware encoder token that should FAIL, e.g. "h264_vulkan"
+	tried  []string // "hardware" or "software", in call order — PROGRAM attempts only
+	cards  []string // the same, for OFFLINE CARD renders
+	output string
+}
+
+// start classifies each invocation on two independent axes, because the ladder's invariants are
+// about the two SEPARATELY and a single counter cannot express either.
+//
+// The card renders through this same encoder — it is a real encode of a synthetic source — so a
+// bare "how many times were you called?" conflates "the handler retried the PROGRAM" (which a copy
+// failure must never do) with "the handler fell back to the CARD" (which every failure now should).
+// Discriminating on the lavfi source is not a test convenience: `color=c=black` is what makes the
+// card a card, so the classification tracks the thing itself rather than a label we chose.
+func (e *ladderEncoder) start(ctx context.Context, args []string, _ func(playout.Progress)) (*playout.Process, error) {
+	software, card := false, false
+	for _, a := range args {
+		if a == "libx264" {
+			software = true
+		}
+		if strings.Contains(a, "color=c=black") {
+			card = true
+		}
+	}
+	step := "hardware"
+	if software {
+		step = "software"
+	}
+	e.mu.Lock()
+	if card {
+		e.cards = append(e.cards, step)
+	} else {
+		e.tried = append(e.tried, step)
+	}
+	e.mu.Unlock()
+
+	// Hardware writes nothing (device won't allocate); software writes real bytes.
+	script := "exit 0"
+	if software {
+		script = "printf %s " + shellQuote(e.output)
+	}
+	return playout.Start(ctx, "sh", []string{"-c", script}, nil, nil)
+}
+
+func (e *ladderEncoder) path() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.tried...)
+}
+
+// cardPath is the ladder the OFFLINE CARD climbed, empty when no card was rendered.
+func (e *ladderEncoder) cardPath() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.cards...)
+}
+
+// THE LADDER, END TO END: a hardware encode that produces nothing must not black the channel. The
+// handler reclaims VRAM (evicts the LLM), retries hardware, and — since the fake's hardware still
+// fails — falls back to libx264, which plays. The channel serves bytes; the operator never sees a
+// black frame. This is the fix for the Ollama-vs-encoder VRAM contention (§9.1 V47).
+func TestPlayoutProgram_TranscodeFallsBackToSoftware(t *testing.T) {
+	enc := &ladderEncoder{hwEnc: "h264_vulkan", output: "software-bytes"}
+	var evicted int
+	srv := newProgramServer(t, programOpts{
+		// A hardware profile + the default transcode plan (CopyVideo=false) → the ladder applies.
+		resolver: &fakeResolver{
+			airing:  playableAiring(0, time.Hour),
+			url:     "http://emby/v/1",
+			profile: playout.Profile{Width: 1280, Height: 720, Framerate: 30, Encoder: "h264_vulkan", VideoBitrate: 4000, AudioBitrate: 128},
+		},
+		encoder:     enc.start,
+		reclaimVRAM: func(context.Context) { evicted++ },
+	})
+
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	// The channel PLAYS — the whole point. It served the software encoder's bytes, not a black frame.
+	if resp.StatusCode != http.StatusOK || string(body) != "software-bytes" {
+		t.Fatalf("channel did not play: status %d body %q (want 200 + software bytes)", resp.StatusCode, body)
+	}
+	// The ladder was climbed in order: hardware, (evict), hardware retry, software.
+	path := enc.path()
+	if len(path) != 3 || path[0] != "hardware" || path[1] != "hardware" || path[2] != "software" {
+		t.Errorf("ladder path = %v, want [hardware hardware software]", path)
+	}
+	// VRAM was reclaimed exactly once (before the hardware retry), not speculatively.
+	if evicted != 1 {
+		t.Errorf("reclaimVRAM called %d times, want 1 (once, before the hardware retry)", evicted)
+	}
+}
+
+// A COPY plan is NOT laddered: a `-c copy` that produces nothing is a bad source file, which no
+// encoder swap fixes. So a failing copy must NOT evict the LLM or try software — it fails straight
+// through. This keeps the ladder scoped to transcodes, where it can actually help.
+func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
+	// An encoder that always produces nothing, and a resolver whose plan COPIES the video.
+	enc := &ladderEncoder{hwEnc: "h264_vulkan", output: "never"}
+	var evicted int
+	srv := newProgramServer(t, programOpts{
+		resolver: &fakeResolver{
+			airing: playableAiring(0, time.Hour),
+			url:    "http://emby/v/1",
+			plan:   playout.CopyPlan{CopyVideo: true, CopyAudio: true}, // direct play
+		},
+		encoder:     enc.start,
+		reclaimVRAM: func(context.Context) { evicted++ },
+	})
+
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	// One attempt at the PROGRAM only — no evict, no software retry of the bad file.
+	if path := enc.path(); len(path) != 1 {
+		t.Errorf("copy plan made %d program encode attempts, want 1 (no ladder for a copy): %v", len(path), path)
+	}
+	if evicted != 0 {
+		t.Errorf("a failing COPY evicted the LLM %d times; a bad file is not a VRAM problem", evicted)
+	}
+	// ...but the CHANNEL survives it. The card is a separate encode of a synthetic source, so it
+	// carries its own hardware→software fallback; what matters is that one was rendered at all.
+	if cards := enc.cardPath(); len(cards) == 0 {
+		t.Error("a failing copy produced no offline card — the channel is left with nothing to play")
+	}
+	// The status is the point: a 5xx here is written INTO the concat demuxer's stream and kills the
+	// parent ffmpeg, taking every viewer with it. One bad file must not end the broadcast.
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200: a 5xx on a concat entry kills the parent and drops every viewer", resp.StatusCode)
 	}
 }
 
@@ -473,7 +660,7 @@ func TestProgramEncoder_ReportsProgressToTheSession(t *testing.T) {
 		sessions: sessions,
 	})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("program → %d, want 200", resp.StatusCode)
 	}
@@ -530,7 +717,7 @@ func TestProgramEncoder_ReportsTheResolvedEncoder(t *testing.T) {
 		sessions: sessions,
 	})
 
-	resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	got := sessions.reports()
@@ -566,7 +753,7 @@ func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
 		config:   map[string]string{"filler.target_lufs": "-23"},
 	})
 
-	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 	if joined := strings.Join(enc.args(), " "); !strings.Contains(joined, "loudnorm=I=-23") {
@@ -587,7 +774,7 @@ func TestPlayoutProgram_LeavesLibraryProgramsAlone(t *testing.T) {
 		config:   map[string]string{"filler.target_lufs": "-23"},
 	})
 
-	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {
@@ -605,7 +792,7 @@ func TestPlayoutProgram_EmptyTargetDisablesNormalisation(t *testing.T) {
 		config:   map[string]string{"filler.target_lufs": ""},
 	})
 
-	if resp := getPlayout(t, srv, "/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
 	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") {

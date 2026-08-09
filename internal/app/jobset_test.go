@@ -37,14 +37,50 @@ func TestJobSet(t *testing.T) {
 		// unattended crawler", and this row is what a future reader sees when they check whether
 		// that is still true.
 		"filler-fetch | 0 0 */6 * * * | job.filler_fetch.schedule",
-		// ⚠ The language gate (§10 V40) is the first job that DELETES catalog rows unattended —
-		// the same kind of record the fetch row above is for reaching the internet. Its presence
-		// here is what a future reader sees when they ask "does anything remove clips on its own?"
+		// ⚠ **The ingest pipeline (§10 V51b) — this ONE row replaced FOUR**: `filler-language`
+		// (:30), `filler-split` (:45), `filler-transcribe` (:15) and `filler-vision` (:50). Their
+		// staggered minutes were a hand-maintained scheduling discipline that kept four expensive
+		// sweeps off each other's runner, and the note that used to sit here spelled it out. The
+		// pipeline runs ONE clip at a time through all the rungs in order, so there is nothing
+		// left to stagger.
 		//
-		// Hourly, not the sync's 15 minutes: on the local backend a batch is minutes natively and
-		// hours under QEMU, so it drains a catalog steadily rather than overlapping itself.
-		"filler-language | 0 30 * * * * | job.filler_language.schedule",
+		// ⚠ It also inherits the record the language row carried: this is the job that DELETES
+		// catalog rows unattended — now for several reasons rather than one (a wrong language, a
+		// file with no audio, a clip nothing could identify), each recorded with a reason and each
+		// reversible for the soft cases. A future reader asking "does anything remove clips on its
+		// own?" is looking at this row.
+		//
+		// Every two minutes, far tighter than the hourly sweeps: a pass is bounded by the budget
+		// rather than the catalog, and this is the only thing that advances a new download.
+		"filler-pipeline | 0 */2 * * * * | job.filler_pipeline.schedule",
+		// ⚠ The taxonomy reindex (§10 V45a). A lifecycle sibling of the media jobs (its own row,
+		// registered unconditionally, default-off) but NOT an expensive one — its body is two bulk SQL
+		// statements (rebuild the closure, then every clip's rollups), no whisper/vision, no per-clip
+		// loop. It stays a cron job rather than a rung deliberately: it is bulk SQL over the whole
+		// catalog after a GRAPH edit, not per-clip work, and folding it in would make a taxonomy
+		// edit wait behind a whisper backlog.
+		"filler-reindex | 0 5 * * * * | job.filler_reindex.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
+		// ⚠ The image service's four (§22, V52). `images-fetch` is the SECOND job to reach out to
+		// the internet unattended — the record `filler-fetch` above carries — and it differs in a
+		// way worth writing down: filler-fetch pulls from sources an operator ADDED, while this
+		// one fetches whatever URL a row happens to hold, which is why it is the only job in this
+		// list behind a host allowlist and an SSRF guard (imagejobs.go).
+		//
+		// ⚠ `images-gc` is the second job that DELETES unattended. It removes image rows nothing
+		// references and evicts derivative FILES, and one of its duties is not tidying at all: the
+		// six-month TMDB ceiling is a licence term, so this row is the only thing keeping the
+		// install compliant. A future reader asking "what enforces the TTL?" is looking at it.
+		// ⚠ `images-adopt-artwork` runs every FIVE MINUTES, the tightest cadence in this list after
+		// images-fetch, and that is deliberate: it is the step between a clip's thumbnail being
+		// rendered and that thumbnail being visible through the image service. An hourly cadence
+		// would mean an operator importing clips watches the legacy artwork for an hour and reads
+		// it as the feature not working. Its work list is empty on a healthy install.
+		"images-adopt-artwork | 0 */5 * * * * | job.images_adopt_artwork.schedule",
+		"images-avif | 0 20 * * * * | job.images_avif.schedule",
+		"images-fetch | 0 * * * * * | job.images_fetch.schedule",
+		"images-gc | 0 0 5 * * * | job.images_gc.schedule",
+		"images-rehydrate | 0 45 4 * * * | job.images_rehydrate.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",
 		"reconcile | 0 */5 * * * * | job.reconcile.schedule",

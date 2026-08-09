@@ -98,10 +98,57 @@ type PlayoutPolicy struct {
 	// nil *PlayoutPolicy; both are tolerated so a hand-edited policy cannot mean
 	// something surprising).
 	Backend string `json:"backend,omitempty"`
+	// AudioLanguage overrides `playout.audio_language` for THIS channel (§9.1, V46): an
+	// ISO 639-2 code (eng, fra, jpn). Empty = inherit the global. Channel-wide, not
+	// per-viewer — one encoder serves everyone (§9.1), so this re-picks the track for the
+	// whole channel, exactly as changing the instance default would.
+	AudioLanguage string `json:"audioLanguage,omitempty"`
+	// Subtitles is the channel's subtitle mode (§9.1, V46): "" / "off" = none (default);
+	// "burn" = burn the preferred-language subtitle track into the shared encode. Burn-in
+	// rather than a soft toggle for the same reason as audio: a viewer-toggled soft track
+	// would need per-viewer output, which the one-encoder-per-channel model forbids.
+	Subtitles string `json:"subtitles,omitempty"`
 }
 
 // PlayoutBackendInternal is the `playout.backend` enum value meaning "Loomarr streams it".
 const PlayoutBackendInternal = "internal"
+
+// Subtitle modes for PlayoutPolicy.Subtitles / the `playout.subtitles` global (§9.1, V46).
+const (
+	SubtitlesOff  = "off"  // no subtitles (the default; "" resolves to this)
+	SubtitlesBurn = "burn" // burn the preferred-language track into the shared encode
+)
+
+// ResolveAudioLanguage picks the audio language for a channel: its own
+// `policy.playout.audioLanguage` when set, else the global `playout.audio_language`.
+//
+// ONE COPY, same discipline as PlaysInternally: this is consulted by the encoder (args)
+// and could be consulted by the Watch API, and a drifted second copy would silently encode
+// the wrong track. Callers pass the resolved global rather than reading settings here, so
+// this package stays free of the settings registry.
+func ResolveAudioLanguage(policy ChannelPolicy, globalAudioLanguage string) string {
+	if p := policy.Playout; p != nil && strings.TrimSpace(p.AudioLanguage) != "" {
+		return strings.TrimSpace(p.AudioLanguage)
+	}
+	return strings.TrimSpace(globalAudioLanguage)
+}
+
+// ResolveSubtitles picks the subtitle mode for a channel: its own
+// `policy.playout.subtitles` when set, else the global `playout.subtitles`. Normalizes to
+// SubtitlesOff when neither names a mode, so callers never branch on "".
+func ResolveSubtitles(policy ChannelPolicy, globalSubtitles string) string {
+	pick := ""
+	if p := policy.Playout; p != nil {
+		pick = strings.TrimSpace(p.Subtitles)
+	}
+	if pick == "" {
+		pick = strings.TrimSpace(globalSubtitles)
+	}
+	if pick == "" {
+		return SubtitlesOff
+	}
+	return pick
+}
 
 // PlaysInternally resolves the nil-means-inherit precedence §15 defines: a channel's own
 // `policy.playout.backend` wins when set, otherwise the global `playout.backend`.
@@ -158,11 +205,14 @@ var (
 	fillerAudiences = map[string]bool{
 		"kids": true, "family": true, "general": true, "late_night": true,
 	}
-	fillerCategories = map[string]bool{
-		"toys": true, "cereal": true, "cars": true, "tech": true, "fast_food": true,
-		"movie_trailer": true, "candy": true, "games": true, "psa": true,
-		"ident": true, "bumper": true, "general": true,
-	}
+	// ⚠ `fillerCategories` was DELETED (§10 V45a). It was the THIRD hardcoded copy of the flat
+	// category enum (the tagger's knownCategories and the LLM prompt were the others, both also gone),
+	// and the taxonomy replaced all three with an operator-editable graph. A selection's Categories are
+	// now taxonomy SLUGS — an open, operator-editable set this pure domain package cannot know
+	// (validating against a fixed list would drift AND reject operator-added taxa). So they are OPAQUE
+	// here, exactly like Pinned/Excluded clip ids: not validated in `schedule`, matched at assembly
+	// (a stale slug simply matches nothing in filterCategories). The API layer, which can reach the
+	// live taxonomy, is where an unknown slug is rejected on write.
 )
 
 // validate rejects a selection with an unknown non-empty enum value or an inverted era
@@ -180,11 +230,10 @@ func (f *FillerSelection) validate() error {
 			return fmt.Errorf("filler: unknown kind %q", k)
 		}
 	}
-	for _, c := range f.Categories {
-		if !fillerCategories[c] {
-			return fmt.Errorf("filler: unknown category %q", c)
-		}
-	}
+	// ⚠ Categories are NOT validated here (§10 V45a). They are taxonomy slugs — an open, operator-
+	// editable set — so they are opaque to this pure domain package, exactly like Pinned/Excluded clip
+	// ids above: a stale or unknown slug simply matches nothing at assembly (filterCategories). The API
+	// layer, which can read the live taxonomy graph, rejects an unknown slug on write.
 	if f.Era != nil && f.Era.From > 0 && f.Era.To > 0 && f.Era.From > f.Era.To {
 		return fmt.Errorf("filler: era range %d–%d is inverted", f.Era.From, f.Era.To)
 	}

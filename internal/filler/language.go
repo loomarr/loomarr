@@ -223,18 +223,11 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span.
-	wav := filepath.Join(dir, "span.wav")
-	ff := w.FFmpegPath
-	if ff == "" {
-		ff = "ffmpeg"
-	}
-	cut := exec.CommandContext(ctx, ff,
-		"-nostdin", "-v", "error",
-		"-ss", msToFFmpegTime(startMs), "-t", msToFFmpegTime(endMs-startMs),
-		"-i", file, "-vn", "-ac", "1", "-ar", "16000", "-y", wav)
-	if out, cutErr := cut.CombinedOutput(); cutErr != nil {
-		return LangUndetermined, fmt.Errorf("extract audio for language: %w: %s", cutErr, truncate(string(out), 200))
+	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
+	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
+	wav := spanWAVPath(dir)
+	if err := extractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+		return LangUndetermined, err
 	}
 
 	base := filepath.Join(dir, "out")
@@ -298,11 +291,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	ff := ffmpegPath
-	if ff == "" {
-		ff = "ffmpeg"
-	}
-	out, err := exec.CommandContext(ctx, ff,
+	out, err := exec.CommandContext(ctx, ffmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err

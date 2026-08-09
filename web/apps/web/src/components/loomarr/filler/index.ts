@@ -1,5 +1,6 @@
 export * from "./channel-override-picker";
 export * from "./clip-card";
+export * from "./clip-pipeline";
 export * from "./clip-player";
 export * from "./clip-row";
 export * from "./coverage-meter";
@@ -16,6 +17,7 @@ export * from "./incoming-panel";
 export * from "./pod-timeline";
 export * from "./pool-health";
 export * from "./pull-card";
+export * from "./segment-filmstrip";
 export * from "./source-search";
 export * from "./split-review-editor";
 export * from "./watch-pill";

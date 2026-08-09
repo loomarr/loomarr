@@ -15,11 +15,11 @@ import { useAuth } from "@/auth";
 import {
   ActivityFeed,
   EmptyState,
+  PlayoutPanel,
   RestartNeededBanner,
   ServiceControl,
   ServicesPanel,
   StatCard,
-  TranscodingPanel,
 } from "@/components/loomarr";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib";
@@ -44,7 +44,10 @@ const DashboardScreen = () => {
   const enabled = isAdmin;
 
   const channels = channelsApi.useListChannels({ query: { enabled } });
-  const playout = dashboardApi.useGetPlayoutTelemetry({ query: { enabled } });
+  // The single live-playout picture (§9.1 V47): channels on air with their throughput + cold-start,
+  // AND the GPU/LLM-VRAM contention header — one endpoint, one panel. Refreshed by the `playout` SSE
+  // frame (wired in @loomarr/core), so no refetchInterval here.
+  const playout = dashboardApi.useGetPlayoutStatus({ query: { enabled } });
   // The approval queue's depth — the mock's `pendingCount`, the same number Queue's nav badge
   // and its "Needs approval" tab show. One source, so they cannot disagree.
   const pending = proposalsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
@@ -59,7 +62,13 @@ const DashboardScreen = () => {
   });
   const acquiringCount = acquiring.reduce((n, q) => n + (unwrap(q.data, (b) => b.titles?.length) ?? 0), 0);
 
-  const clips = fillerApi.useListFiller(undefined, { query: { enabled } });
+  // The catalog's size comes from the WATCH endpoint, which counts it in SQL (§10 V51d).
+  //
+  // ⚠ This used to be an unbounded `useListFiller()` whose only use was `.length` — every column
+  // of every clip fetched to render one number. Paging would have made it not merely wasteful but
+  // WRONG: a 100-row default page reports "100 clips" on an install with a thousand. The same
+  // endpoint backs the Filler page header, so the two cannot disagree.
+  const fillerWatch = fillerApi.useFillerWatch({ query: { enabled } });
 
   // Restart control (§9.2, V13). One cost query drives the restart-needed banner AND the
   // confirm line, so the two can never disagree about what a restart would do.
@@ -100,8 +109,8 @@ const DashboardScreen = () => {
 
   const rows = unwrap(channels.data, (b) => b.channels) ?? [];
   const onAir = rows.filter((c) => c.status === "live").length;
-  const telemetry = unwrap(playout.data);
-  const clipCount = unwrap(clips.data, (b) => b.clips?.length) ?? 0;
+  const playoutStatus = unwrap(playout.data);
+  const clipCount = unwrap(fillerWatch.data, (b) => b.clips) ?? 0;
   const cost = unwrap(restartCost.data);
 
   return (
@@ -110,7 +119,13 @@ const DashboardScreen = () => {
         <h1 className="font-semibold text-xl">Dashboard</h1>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
+      {/* ⚠ `[&>*]:shrink-0` is load-bearing: the column is a flex-col that scrolls (overflow-auto).
+          Without it, when the stacked panels are taller than the viewport, flex SHRINKS each panel
+          below its content height — and every panel Card is `overflow-hidden` (for its rounded
+          corners), so the shrunk height CLIPS its last rows (Filler/livetv vanished from Services).
+          Pinning children to their natural height makes the COLUMN scroll instead of the panels
+          clipping. This is the vertical twin of PanelRow's horizontal wrap fix. */}
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6 *:shrink-0">
         {/* Above the cards, because a setting that has not taken effect changes how every
             number below it should be read. The restart ITSELF is announced by the shell's
             overlay, which covers every page rather than just this one. */}
@@ -142,7 +157,10 @@ const DashboardScreen = () => {
           </Link>
         </div>
 
-        <TranscodingPanel telemetry={telemetry} loading={playout.isLoading} />
+        {/* One live-playout picture (§9.1 V47): channels on air with throughput + cold-start, and the
+            GPU/LLM-VRAM contention header. Merged from the former Transcoding + Playout-health panels,
+            which duplicated channel id/speed/hardware per row. */}
+        <PlayoutPanel status={playoutStatus} loading={playout.isLoading} />
 
         {services.data?.status === 200 ? (
           <ServicesPanel

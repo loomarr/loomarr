@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -160,10 +161,7 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 
 func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/f.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -256,7 +254,7 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 func TestPatchClip_RequiresAdmin(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
-	resp := do(t, srv, http.MethodPatch, "/v1/filler/u1", "", `{"era":1994,"audience":"kids","category":"cereal"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", "", `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member patch → %d, want 401", resp.StatusCode)
 	}
@@ -265,13 +263,17 @@ func TestPatchClip_RequiresAdmin(t *testing.T) {
 func TestPatchClip_AdminEditsTags(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
-	resp := do(t, srv, http.MethodPatch, "/v1/filler/u1", adminToken, `{"era":1994,"audience":"kids","category":"cereal"}`)
+	// §10 V45a: the PATCH carries a taxonomy TAG SET, not a flat category. `cereal` is a product leaf
+	// in the seeded forest, so it grounds; `category` in the response is the DERIVED product-leaf shadow.
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","tags":["cereal"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin patch → %d", resp.StatusCode)
 	}
 	var body struct {
 		Era      int
 		Audience string
+		Category string
+		Tags     []string
 		Tagged   bool
 		AITagged bool
 	}
@@ -279,11 +281,18 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	if body.Era != 1994 || body.Audience != "kids" || !body.Tagged {
 		t.Errorf("patch didn't apply: %+v", body)
 	}
+	// The tag set persisted, and category is derived from it (cereal → its own product leaf).
+	if body.Category != "cereal" {
+		t.Errorf("derived category = %q, want cereal (the primary product leaf of the tag set)", body.Category)
+	}
+	if !slices.Contains(body.Tags, "cereal") {
+		t.Errorf("tags = %v, want to contain cereal", body.Tags)
+	}
 	if body.AITagged {
 		t.Error("a manual edit should clear the AI-tagged flag")
 	}
 	// Missing clip → 404.
-	resp = do(t, srv, http.MethodPatch, "/v1/filler/nope", adminToken, `{"era":1990}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"nope","era":1990}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("patch missing → %d, want 404", resp.StatusCode)
 	}
@@ -311,7 +320,7 @@ func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
 		t.Fatalf("suggestion not surfaced: %+v", list.Clips)
 	}
 	// Confirm: era lands, suggestion clears.
-	resp = do(t, srv, http.MethodPatch, "/v1/filler/u1", adminToken, `{"era":1985}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1985}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("confirm patch → %d", resp.StatusCode)
 	}
@@ -374,15 +383,16 @@ func TestFiller_NameSearch(t *testing.T) {
 	}
 	var body struct {
 		Clips []struct {
-			Path string `json:"path"`
+			Hash string `json:"hash"`
 		} `json:"clips"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	// Case-insensitive, and the result carries the Tunarr program id — the identity that
-	// makes a search hit deep-linkable, which a title-shaped Candidate could not carry.
-	if len(body.Clips) != 1 || body.Clips[0].Path != "c1" {
+	// Case-insensitive, and the result carries the clip's content HASH — the wire identity (V45a)
+	// that makes a search hit addressable, which a title-shaped Candidate could not carry. (seedClip
+	// sets hash==id, so the hit is "c1".)
+	if len(body.Clips) != 1 || body.Clips[0].Hash != "c1" {
 		t.Errorf("q=C1 → %+v, want exactly clip c1", body.Clips)
 	}
 }
@@ -394,8 +404,8 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
 
-	resp := do(t, srv, http.MethodPatch, "/v1/filler/t1", adminToken,
-		`{"era":1994,"audience":"kids","category":"toys","kind":"trailer"}`)
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
+		`{"hash":"t1","era":1994,"audience":"kids","tags":["toys"],"kind":"trailer"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d, want 200", resp.StatusCode)
 	}
@@ -408,7 +418,7 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	}
 
 	// Omitting kind must leave it alone, so a tag-only edit never rewrites it.
-	resp = do(t, srv, http.MethodPatch, "/v1/filler/t1", adminToken, `{"era":1995,"audience":"kids","category":"toys"}`)
+	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"t1","era":1995,"audience":"kids","tags":["toys"]}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tag-only patch → %d, want 200", resp.StatusCode)
 	}
@@ -754,13 +764,13 @@ func TestDiscoverFiller_RefusesBothModesAtOnce(t *testing.T) {
 func TestSplitFiller_Route(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 
-	// Member negative (§19): a member must not start detection.
-	resp := do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", "", "")
+	// Member negative (§19): a member must not start detection. §10 V45a: the clip path is in the BODY.
+	resp := do(t, srv, http.MethodPost, "/v1/filler/split", "", `{"hash":"comps/1987.mp4"}`)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member split → %d, want 401", resp.StatusCode)
 	}
 
-	resp = do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", adminToken, "")
+	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"comps/1987.mp4"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin split → %d", resp.StatusCode)
 	}
@@ -777,7 +787,7 @@ func TestSplitFiller_Route(t *testing.T) {
 
 	// Missing clip → 404, not an SSE error seconds later.
 	ff.splitNotFound = true
-	resp = do(t, srv, http.MethodPost, "/v1/filler/gone.mp4/split", adminToken, "")
+	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"gone.mp4"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("split of a missing clip → %d, want 404", resp.StatusCode)
 	}
@@ -785,7 +795,7 @@ func TestSplitFiller_Route(t *testing.T) {
 
 	// No drop-folder → 409 with the remedy named (Settings, not a different image).
 	ff.splitUnavailable = true
-	resp = do(t, srv, http.MethodPost, "/v1/filler/comps%2F1987.mp4/split", adminToken, "")
+	resp = do(t, srv, http.MethodPost, "/v1/filler/split", adminToken, `{"hash":"comps/1987.mp4"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("split with no drop-folder → %d, want 409", resp.StatusCode)
 	}
@@ -795,7 +805,7 @@ func TestSplitFiller_Route(t *testing.T) {
 func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	p := filler.SplitProposal{
-		ID: "sp_1", ClipPath: "comps/1987.mp4", CreatedAt: time.Now().UTC(),
+		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true},
@@ -868,5 +878,118 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("missing proposal → %d, want 404", resp.StatusCode)
+	}
+}
+
+// ⚠ **The default page size is an API concern, and this test is what pins it there** (§10 V51d).
+// `store.ClipFilter.Limit == 0` means "no LIMIT" because pod assembly loads the catalog through
+// the zero filter; if the default ever migrates into the store, every channel's break pool
+// silently truncates to 100 clips with no error and no log line. Asserting it at the HTTP edge is
+// what keeps the two layers honest about which one owns the number.
+func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for i := range 120 {
+		seedClip(t, st, fmt.Sprintf("p%03d", i), filler.Commercial, 1992, filler.Kids, "cereal")
+	}
+
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 100 {
+		t.Errorf("unparameterised list returned %d clips, want the 100-row default page", len(body.Clips))
+	}
+	if body.Total != 120 {
+		t.Errorf("total = %d, want 120 — the total is how many MATCH, not how many are on the page", body.Total)
+	}
+
+	// The last page is short, and the total does not change with it.
+	resp = do(t, srv, http.MethodGet, "/v1/filler?limit=100&offset=100", adminToken, "")
+	body.Clips = nil
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 20 || body.Total != 120 {
+		t.Errorf("page 2 = %d clips / total %d, want 20 / 120", len(body.Clips), body.Total)
+	}
+}
+
+// The cap and the floor are both real. ⚠ The floor matters as much: `limit=0` would otherwise
+// reach the store's "unbounded" sentinel and restore the exact behaviour paging removed.
+func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	for _, q := range []string{"limit=0", "limit=501", "limit=-1", "sort=path", "order=sideways"} {
+		resp := do(t, srv, http.MethodGet, "/v1/filler?"+q, adminToken, "")
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s → %d, want 422 — an out-of-range page or an unknown sort must be refused, "+
+				"never quietly coerced to something else", q, resp.StatusCode)
+		}
+	}
+}
+
+// Held clips are opt-in on the wire, and the DTO says which ones they are (§10 V38/V51d). ⚠ The
+// pair is the point: a client that can ASK for held clips but cannot TELL which they are renders
+// an unreviewed clip identically to a filed one.
+func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
+	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
+	if _, err := st.SetClipsHeld(context.Background(), []string{"waiting"}, true, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	var body struct {
+		Clips []struct {
+			Hash string
+			Held bool
+		}
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 1 || body.Total != 1 {
+		t.Fatalf("default list = %d clips / total %d, want just the filed one — a held clip is not "+
+			"in the playable catalog", len(body.Clips), body.Total)
+	}
+
+	body.Clips = nil
+	resp = do(t, srv, http.MethodGet, "/v1/filler?includeHeld=true", adminToken, "")
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 2 || body.Total != 2 {
+		t.Fatalf("includeHeld = %d clips / total %d, want 2 / 2", len(body.Clips), body.Total)
+	}
+	var labelled int
+	for _, c := range body.Clips {
+		if c.Held {
+			labelled++
+		}
+	}
+	if labelled != 1 {
+		t.Errorf("%d clips carry held=true, want exactly 1 — the flag ships WITH the parameter, "+
+			"or the client cannot tell an unreviewed clip from a filed one", labelled)
+	}
+}
+
+// The batch read the pin/exclude editor uses instead of loading the catalog (§10 V51d).
+func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for _, id := range []string{"k1", "k2", "k3"} {
+		seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "cereal")
+	}
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=k1,k3,gone", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("hashes → %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 2 || body.Total != 2 {
+		t.Errorf("got %d clips / total %d, want the 2 that exist (an unknown hash is absent, not an error)",
+			len(body.Clips), body.Total)
 	}
 }

@@ -33,7 +33,18 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 
 .PHONY: test
 test: ## unit tests only (never touch the network — §19)
-	$(GO) test -race $(PKG)
+# ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
+# past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
+# is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out
+# after 10m0s`. The dump named one test at `(0s)`, which is the tell that nothing HUNG: tests were
+# still starting when the alarm fired, and the package was simply long. A genuine hang shows the
+# stuck test with a large duration beside it.
+#
+# ⚠ This is an infrastructure limit, not the gate — raising it weakens nothing, because the gate is
+# the assertions and every one of them still runs. What it must not do is hide growth: `internal/api`
+# is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
+# to share that setup, NOT to raise the number a second time.
+	$(GO) test -race -timeout 25m $(PKG)
 
 .PHONY: test-ffmpeg
 test-ffmpeg: ## playout tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in `make check`)
@@ -69,7 +80,23 @@ dev-be: ## backend with live reload (Air) — rebuilds + restarts on any Go chan
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
 	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
 	@# is how this box spent a session serving a stale binary.
-	$(GO) run github.com/air-verse/air@v1.67.3
+	@#
+	@# ⚠ SINGLE-INSTANCE GUARD (scripts/dev-be-guard.sh). Air itself has no "am I already
+	@# running?" check, so a SECOND `make dev-be` used to start a second Air + binary that lost
+	@# the :8080 bind and exited — while the stale one kept serving OLD code. That zombie cost
+	@# DAYS of "my fix didn't take". The guard refuses to start a duplicate (or, with
+	@# DEV_BE_REPLACE=1, cleanly replaces ONLY the loomarr dev binary — never a blanket kill).
+	@sh scripts/dev-be-guard.sh
+	@# ⚠ STALE-BINARY WATCHDOG (scripts/dev-be-watchdog.sh). Even with `.air.toml`'s
+	@# stop_on_error=false + poll=true, Air can still end up ALIVE but not rebuilding (poll loop
+	@# stalled) — serving a frozen binary while your saves do nothing. Config can't detect its own
+	@# watcher dying; this out-of-band watchdog does. It runs beside Air, notices when the running
+	@# binary stays older than the newest .go source, and self-heals (nudge Air, then restart the
+	@# binary via Air's own path — never a competing process). Backgrounded here; the `trap` reaps
+	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
+	@sh -c 'if [ "$${DEV_BE_NO_WATCHDOG:-0}" != "1" ]; then \
+	    sh scripts/dev-be-watchdog.sh & wd=$$!; trap "kill $$wd 2>/dev/null" EXIT INT TERM; fi; \
+	  exec $(GO) run github.com/air-verse/air@v1.67.3'
 
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)
@@ -184,14 +211,28 @@ PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 # free, so N runners cost the same as one and finish sooner.
 PW_SHARD ?=
 
+# ⚠ Run the container AS THE HOST USER, or everything it writes into the bind mount is owned by
+# root. The Playwright image runs as root by default, so `test-results/` and its per-test artifacts
+# land root-owned in a directory the host user cannot delete — and the symptom shows up far from
+# the cause: `git worktree remove` half-fails ("Permission denied"), git DEREGISTERS the worktree
+# anyway, and ~550MB per worktree is stranded on disk with no git record that it exists. Three
+# worktrees had accumulated 1.7GB that way before this flag was added.
+#
+# ⚠ `HOME=/tmp` rides along and is not optional. As a non-root uid the container's default HOME is
+# `/root`, which is not writable, so anything wanting a cache/config dir fails in a way that reads
+# like a Playwright bug rather than a permissions one. `/tmp` is writable for any uid.
+#
+# The browsers themselves are unaffected: they live in /ms-playwright, which is world-readable.
+PW_DOCKER_USER ?= --user $(shell id -u):$(shell id -g) -e HOME=/tmp
+
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test $(PW_SHARD)
 
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --update-snapshots
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
@@ -199,7 +240,7 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
 e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
 
 ## ---- Maintainer smoke (NOT CI) -------------------------------------------
@@ -222,7 +263,7 @@ smoke-down: ## tear down the smoke stack (container, volume, temp database)
 
 .PHONY: e2e-update
 e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
 
 # Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't

@@ -3,7 +3,7 @@ import { fillerApi, isOk, settingsApi, toProblem, unwrap } from "@loomarr/api";
 import { formatRelative, pluralize } from "@loomarr/core";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import {
@@ -38,8 +38,10 @@ import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { FillerPageProps } from "./filler-page.type";
 
 // One cycled tag. Deliberately the same shape ClipCard's onCycle emits, so the card and the
-// page cannot drift on what a retag carries.
-type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
+// page cannot drift on what a retag carries. ⚠ `category` is GONE (§10 V45a): it is a DERIVED
+// shadow of the taxonomy tags, not a directly-cycled field — the card cycles only era/audience now,
+// and tags are edited in the dialog (which serves the real vocabulary).
+type TagChange = Partial<Pick<ClipDTO, "era" | "audience">>;
 
 // The bulk bar's three dropdowns (V35). ⚠ Each is INDEPENDENT — picking one sends only that
 // field, and the server leaves the other two alone. A single "apply" that posted all three
@@ -55,14 +57,24 @@ type TagChange = Partial<Pick<ClipDTO, "era" | "audience" | "category">>;
 // anyone driving by keyboard or screen reader — a test caught it as "found multiple elements",
 // which is the same collision seen from the outside. The verb also says what each one does:
 // the filter narrows what you see, this changes what the clips ARE.
+// ⚠ Bulk "Set category" was REMOVED (§10 V45a). Category is a DERIVED shadow of the taxonomy tags —
+// not a directly-settable field — and a single-value bulk menu cannot express a tag SET without either
+// wiping a clip's other tags or inventing a questionable "add one tag to N clips" affordance. Tag
+// editing is per-clip in the dialog, which serves the real vocabulary. Bulk era/audience stay: those
+// ARE single closed-enum values a menu fits. (The old category options were also a rule violation —
+// hardcoded, and a DIFFERENT 6-value set than every other place used; see the no-hardcode rule.)
+
+// How many clips one page of the catalog holds (§10 V51d).
+//
+// ⚠ **ONE size for both the grid and the list**, deliberately. A per-view size would renumber the
+// pages under the operator the moment they switched rendering — page 3 of the grid and page 3 of
+// the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
+// 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
+const CATALOG_PAGE_SIZE = 60;
+
 const BULK_TAG_FIELDS = [
   { key: "era", label: "Set era", options: ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"] },
   { key: "audience", label: "Set audience", options: ["kids", "family", "general", "late_night"] },
-  {
-    key: "category",
-    label: "Set category",
-    options: ["food", "toys", "auto", "retail", "media", "service"],
-  },
 ] as const;
 
 // The catalog's two renderings (V35b, the mock's `catViews`). Grid is the default because
@@ -106,9 +118,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     audience = "",
     untagged = false,
     view = "grid",
+    page = 1,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
+  // ⚠ **Every filter change RESETS the page, and this is the single highest-risk line on the
+  // page** (§10 V51d). `setFilters` merges blindly; without the reset, typing in the search box
+  // while on page 7 lands on an empty page 7 of a two-page result and renders "No clips match"
+  // over a catalog that matches plenty. The rule lives HERE, in the one function every filter
+  // control calls, rather than at each control — six call sites is six chances to forget it.
+  //
+  // ⚠ Paging itself is the exception, so it passes `page` explicitly and keeps it.
   const setFilters = (next: Partial<FillerSearch>) =>
-    navigate({ to: "/filler", search: (prev) => ({ ...prev, ...next }), replace: true });
+    navigate({
+      to: "/filler",
+      search: (prev) => ({ ...prev, page: undefined, ...next }),
+      replace: true,
+    });
 
   // What the Catalog tab's link carries back.
   //
@@ -123,6 +147,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
     ...(audience ? { audience } : {}),
     ...(untagged ? { untagged } : {}),
     ...(view !== "grid" ? { view } : {}),
+    // ⚠ The page rides back too: returning to Catalog from Incoming should land where you left,
+    // not silently on page one of a catalog you were seven pages into.
+    ...(page > 1 ? { page } : {}),
   };
   const [tagging, setTagging] = useState<string>();
   const [pinning, setPinning] = useState<string>();
@@ -135,11 +162,16 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const features = unwrap(settings.data, (b) => b.features);
   const fillerConfigured = Boolean(features?.filler);
 
+  // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
+  // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
+  // silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller({
     ...(q ? { q } : {}),
     ...(kind ? { kind: kind as never } : {}),
     ...(audience ? { audience: audience as never } : {}),
     ...(untagged ? { untagged: true } : {}),
+    limit: CATALOG_PAGE_SIZE,
+    ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
   });
 
   // ⚠ `invalidateLifecycle` invalidates the clip list AND the two queue views (Incoming, pool).
@@ -213,13 +245,29 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // transient intent about the rows in front of you, and a shared link that carried it would
   // hand someone else a pre-armed destructive action over clips they never chose.
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const toggleSelected = (path: string) =>
+  const toggleSelected = (hash: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (!next.delete(path)) next.add(path);
+      if (!next.delete(hash)) next.add(hash);
       return next;
     });
   const clearSelection = () => setSelected(new Set());
+  // Paging (§10 V51d).
+  //
+  // ⚠ `replace: false`, unlike `setFilters`: paging IS navigation, so the back button should walk
+  // back through the pages. Typing in a search box should not stack one history entry per
+  // keystroke, which is why the two differ.
+  //
+  // ⚠ It clears the selection. "Select this page" means the rows in front of you, and the next
+  // control on the bulk bar is Remove-from-catalog — a selection that survived paging would let
+  // one click remove clips from a page nobody is looking at.
+  const goToPage = (next: number) => {
+    clearSelection();
+    navigate({
+      to: "/filler",
+      search: (prev) => ({ ...prev, page: next > 1 ? next : undefined }),
+    });
+  };
   // "Select all" over the rows currently RENDERED (V35b). ⚠ Scoped to the filtered set on
   // purpose: `rows` is what the operator can see, and the bulk bar's next control is
   // "Remove from catalog". Selecting clips hidden behind a filter would arm a destructive
@@ -228,9 +276,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // It doubles as the un-select once everything shown is picked, so the control is not a
   // one-way door that needs a second button to undo.
   const allSelected = (rows: readonly ClipDTO[]) =>
-    rows.length > 0 && rows.every((clip) => selected.has(clip.path));
+    rows.length > 0 && rows.every((clip) => selected.has(clip.hash));
   const selectAll = (rows: readonly ClipDTO[]) =>
-    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.path)));
+    setSelected(allSelected(rows) ? new Set() : new Set(rows.map((clip) => clip.hash)));
 
   // Bulk retag. Each field is independent on the server, so sending only what the operator
   // picked leaves the other two alone rather than blanking them.
@@ -281,14 +329,17 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // call site gets to remember or forget the siblings.
   const retag = (clip: ClipDTO, change: TagChange) =>
     confirmEra.mutate({
-      id: clip.path,
       data: {
+        // ⚠ The clip is identified by `hash` IN THE BODY (§10 V45a) — no {id} URL segment (the
+        // path has slashes a route can't match / a proxy decodes).
+        hash: clip.hash,
         // Kind is deliberately absent: the BE writes it separately (a shared code path with
         // the AI tagger), and sending it here would be a second opinion on a field this
-        // interaction never edits.
+        // interaction never edits. ⚠ `category`/`tags` are absent too (§10 V45a): a cycle only
+        // ever changes era or audience, and omitting tags leaves the clip's taxonomy tags alone —
+        // the derived category shadow rides along unchanged. Tag edits go through the dialog.
         era: change.era ?? clip.era,
         audience: (change.audience ?? clip.audience) as never,
-        category: change.category ?? clip.category,
       },
     });
 
@@ -297,7 +348,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   // gate. Same shape as the ingest job below — request returns immediately, progress
   // arrives on the bus.
   const [splitJob, setSplitJob] = useState<{
-    clipPath: string;
+    clipHash: string;
+    // The status line reads better with a name than a content hash; carried alongside the
+    // identity because the DTO's wire identity (hash) is meaningless to read in a sentence.
+    clipName: string;
     jobId: string;
     status: string;
     error?: string;
@@ -305,10 +359,21 @@ const FillerPage = ({ tab }: FillerPageProps) => {
   const split = fillerApi.useSplitFiller({
     mutation: {
       onSuccess: (res, vars) => {
-        if (isOk(res)) setSplitJob({ clipPath: vars.id, jobId: res.data.jobId, status: "running" });
+        if (isOk(res)) {
+          setSplitJob({
+            clipHash: vars.data.hash,
+            clipName: pendingSplitName.current ?? vars.data.hash,
+            jobId: res.data.jobId,
+            status: "running",
+          });
+        }
       },
     },
   });
+  // The clip name for whatever split is currently in flight (§10 V45a) — a ref, not state,
+  // because it is write-then-read-once inside the mutation callback above and never rendered
+  // itself; only the resulting `splitJob.clipName` is.
+  const pendingSplitName = useRef<string | undefined>(undefined);
 
   useLoomarrEventListener({
     onFillerSplit: (e) => {
@@ -345,6 +410,14 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
   const rows = clips.data?.status === 200 ? (clips.data.data.clips ?? []) : undefined;
   const clipList = rows ?? [];
+  // ⚠ `total` is how many clips MATCH THE FILTER, counted in SQL through the same predicate as
+  // the rows (§10 V51d) — not `rows.length`, which is one page. The two are the same number only
+  // on a single-page result, which is exactly why deriving one from the other looked fine for as
+  // long as the listing was unbounded.
+  const total = clips.data?.status === 200 ? (clips.data.data.total ?? 0) : 0;
+  const pageCount = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
+  const firstOnPage = (page - 1) * CATALOG_PAGE_SIZE + 1;
+  const lastOnPage = (page - 1) * CATALOG_PAGE_SIZE + clipList.length;
 
   const filtered = Boolean(q || kind || audience || untagged);
 
@@ -437,7 +510,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
         // sources on"), and a bare "5" beside the label answers a question nobody asked while
         // implying the tab is a backlog.
         tabs={[
-          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: clipList.length },
+          // ⚠ `total`, not the page length (§10 V51d) — a tab badge reading "60" on a catalog of
+          // 1,204 is a worse lie than no badge, and `clipList.length` became exactly that the
+          // moment the listing started paging.
+          { id: "catalog", label: "Catalog", to: "/filler", search: catalogSearch, count: total },
           ...(isAdmin
             ? [{ id: "incoming", label: "Incoming", to: "/filler/incoming", count: incomingTotal }]
             : []),
@@ -476,7 +552,9 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                   onValueChange={(value) =>
                     bulkTag.mutate({
                       data: {
-                        paths: [...selected],
+                        // The selection is HASHES (§10 V45a) — the bulk endpoint now keys on hashes,
+                        // matching the single-clip PATCH.
+                        hashes: [...selected],
                         [field.key]: field.key === "era" ? Number(value) : value,
                       },
                     })
@@ -502,7 +580,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 variant="outline"
                 size="sm"
                 disabled={removeClips.isPending}
-                onClick={() => removeClips.mutate({ data: { paths: [...selected] } })}
+                // ⚠ Same KNOWN GAP as the bulk-tag selects above: `paths` is genuinely path-keyed
+                // server-side and `selected` can only carry `clip.hash` now that `ClipDTO` has no
+                // path. See the comment on the bulk-tag Select's onValueChange.
+                onClick={() => removeClips.mutate({ data: { hashes: [...selected] } })}
                 title="Stop using these clips. The files stay in your folder."
               >
                 Remove from catalog
@@ -526,7 +607,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             >
               {splitJob.status === "error"
                 ? (splitJob.error ?? "Split detection failed.")
-                : `Detecting cuts in ${splitJob.clipPath}… this can take a few minutes for a long compilation.`}
+                : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
             </p>
           )}
 
@@ -665,15 +746,30 @@ const FillerPage = ({ tab }: FillerPageProps) => {
             />
           ) : (
             <>
+              {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
+                  ("what's next?") — never both in one place. */}
               <div className="flex items-center gap-3">
-                <p className="text-muted-foreground text-sm">{pluralize(rows.length, "clip")}</p>
+                <p className="text-muted-foreground text-sm">
+                  {pageCount > 1
+                    ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
+                    : pluralize(total, "clip")}
+                </p>
                 {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                     what is on screen — not the whole catalog. Selecting rows the operator
                     cannot see, then offering "Remove from catalog", is how a bulk action
-                    surprises someone. The label says so when a filter is active. */}
+                    surprises someone. The label says so when a filter is active.
+                    ⚠ Paging sharpened that: "on screen" is now one PAGE, so the label says
+                    "Select this page" whenever there is more than one — and `goToPage` clears
+                    the selection, or a Remove would reach rows from a page nobody is looking at. */}
                 {isAdmin && (
                   <Button variant="ghost" size="sm" onClick={() => selectAll(rows)}>
-                    {allSelected(rows) ? "Clear selection" : filtered ? "Select these" : "Select all"}
+                    {allSelected(rows)
+                      ? "Clear selection"
+                      : pageCount > 1
+                        ? "Select this page"
+                        : filtered
+                          ? "Select these"
+                          : "Select all"}
                   </Button>
                 )}
               </div>
@@ -681,10 +777,10 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 <div className="overflow-hidden rounded-lg border border-border">
                   {rows.map((clip) => (
                     <ClipRow
-                      key={clip.path}
+                      key={clip.hash}
                       clip={clip}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
-                      selected={selected.has(clip.path)}
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+                      selected={selected.has(clip.hash)}
                     />
                   ))}
                 </div>
@@ -692,35 +788,72 @@ const FillerPage = ({ tab }: FillerPageProps) => {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {rows.map((clip) => (
                     <ClipCard
-                      key={clip.path}
+                      key={clip.hash}
                       clip={clip}
-                      {...(isAdmin ? { onTag: () => setTagging(clip.path) } : {})}
-                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.path) } : {})}
-                      {...(isAdmin ? { onPin: () => setPinning(clip.path) } : {})}
+                      {...(isAdmin ? { onTag: () => setTagging(clip.hash) } : {})}
+                      {...(isAdmin && clip.aiTagged ? { onConfirmTags: () => setTagging(clip.hash) } : {})}
+                      {...(isAdmin ? { onPin: () => setPinning(clip.hash) } : {})}
                       {...(isAdmin && clip.suggestedEra
                         ? { onConfirmEra: () => retag(clip, { era: clip.suggestedEra ?? 0 }) }
                         : {})}
                       {...(isAdmin ? { onCycle: cycleFor(clip) } : {})}
-                      {...(isAdmin ? { onSplit: () => split.mutate({ id: clip.path }) } : {})}
-                      splitPending={splitJob?.clipPath === clip.path && splitJob.status === "running"}
-                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.path) } : {})}
-                      selected={selected.has(clip.path)}
+                      {...(isAdmin
+                        ? {
+                            onSplit: () => {
+                              pendingSplitName.current = clip.name;
+                              split.mutate({ data: { hash: clip.hash } });
+                            },
+                          }
+                        : {})}
+                      splitPending={
+                        Boolean(splitJob) && splitJob?.clipHash === clip.hash && splitJob.status === "running"
+                      }
+                      {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
+                      selected={selected.has(clip.hash)}
                       // ⚠ NOT gated on isAdmin, unlike every other action on this card. Watching
                       // a clip mutates nothing, and `/v1/filler/media` is member-readable by
                       // design — these are the same commercials the household's channels play at
                       // them. Gating it would hide a safe capability from exactly the people who
                       // would want to check what is airing.
-                      onPlay={() => setPlaying(clip.path)}
+                      onPlay={() => setPlaying(clip.hash)}
                     />
                   ))}
                 </div>
+              )}
+
+              {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers
+                  "did my filter work?". Rendered only when there is more than one page, so the
+                  common household catalog never grows a control it does not need.
+
+                  ⚠ Prev/Next plus a position, not a numbered page strip. A strip is the V51e
+                  catalog redesign's call to make; what this must not do is leave the clips past
+                  row 60 unreachable, which is what a page size with no pager would be. */}
+              {pageCount > 1 && (
+                <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+                    Previous
+                  </Button>
+                  {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
+                      announcement a screen-reader user gets a silently different list. */}
+                  <p aria-live="polite" className="text-muted-foreground text-sm">
+                    Page {page.toLocaleString()} of {pageCount.toLocaleString()}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= pageCount}
+                    onClick={() => goToPage(page + 1)}
+                  >
+                    Next
+                  </Button>
+                </nav>
               )}
             </>
           )}
 
           {tagging && rows && (
             <ClipTagDialog
-              clip={rows.find((c) => c.path === tagging)}
+              clip={rows.find((c) => c.hash === tagging)}
               onClose={() => setTagging(undefined)}
               onSaved={() => {
                 setTagging(undefined);
@@ -731,7 +864,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
 
           {pinning && rows && (
             <PinClipDialog
-              clip={rows.find((c) => c.path === pinning)}
+              clip={rows.find((c) => c.hash === pinning)}
               onClose={() => setPinning(undefined)}
             />
           )}
@@ -742,7 +875,7 @@ const FillerPage = ({ tab }: FillerPageProps) => {
               closed. A row that has vanished under a filter closes the player, which is the
               honest outcome — the clip it was showing is no longer in the list. */}
           <ClipPlayer
-            clip={rows?.find((c) => c.path === playing) ?? null}
+            clip={rows?.find((c) => c.hash === playing) ?? null}
             onClose={() => setPlaying(undefined)}
           />
         </div>

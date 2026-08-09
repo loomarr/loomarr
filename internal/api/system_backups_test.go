@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeBackups is a scriptable BackupsService. It records the name Open was asked for, so
@@ -53,10 +52,7 @@ func writeFile(t *testing.T, dir, name, content string) string {
 
 func serverWithBackups(t *testing.T, svc api.BackupsService) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:   st,

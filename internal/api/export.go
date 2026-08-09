@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"sort"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -38,6 +39,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerUsers(humaAPI)
 	srv.registerPasswords(humaAPI)
 	srv.registerChannels(humaAPI)
+	srv.registerPlayout(humaAPI) // Hidden ops — present for register-list parity, absent from the spec (§9.1)
 	srv.registerGuide(humaAPI)
 	srv.registerProgramming(humaAPI)
 	srv.registerSetup(humaAPI)
@@ -51,6 +53,8 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerFillerIncoming(humaAPI)
 	srv.registerFillerBulk(humaAPI)
 	srv.registerFillerFile(humaAPI)
+	srv.registerTaxonomy(humaAPI)
+	srv.registerImages(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerSystemLLM(humaAPI)
 	srv.registerSystemDatabase(humaAPI)
@@ -59,12 +63,38 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
 	srv.registerHelp(humaAPI)
+	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
+	// the generated client always has the event types even when this export ran without one.
+	srv.registerEvents(humaAPI)
+	// registerSSO is nil-guarded on the provider, same schemaOnly escape.
+	srv.registerSSO(humaAPI)
+	// pprof=false: the profiler routes are Hidden on both paths anyway (they exist only when a
+	// flag is set, so advertising them would describe a surface most installs do not have), and
+	// the exporter has no Options to read the flag from.
+	srv.registerOps(humaAPI, false)
 	srv.registerDashboard(humaAPI)
+	srv.registerPlayoutStatus(humaAPI)
 	// registerProvisioning is nil-guarded (like registerAuth): with no provisioner
 	// wired here, /v1/setup/bootstrap + /v1/users/import stay out of the exported
 	// spec, matching how /v1/auth/* is handled. Documented via §11.
 	srv.registerProvisioning(humaAPI)
 	return srv, humaAPI
+}
+
+// EventFrameTypes reports the SSE frame vocabulary as event-name → payload Go type name.
+// Exported so the guard in api_test can compare it against what internal/app actually
+// publishes without reaching into the package.
+//
+// ⚠ The failure this enables detection of is silent: huma names an SSE frame after the Go
+// TYPE of its payload, so publishing a type absent from eventTypeMap emits a frame with no
+// `event:` line. Every addEventListener keyed to that name stops firing, nothing errors, and
+// the feature just looks broken.
+func EventFrameTypes() map[string]string {
+	out := make(map[string]string, len(eventTypeMap()))
+	for name, v := range eventTypeMap() {
+		out[name] = reflect.TypeOf(v).Name()
+	}
+	return out
 }
 
 // OperationsMissingARole reports every registered operation that declares no required role

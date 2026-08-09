@@ -131,7 +131,13 @@ const SettingField = ({
         {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
             so the form isn't a wall of helper paragraphs. It stays programmatically associated
             via the sr-only doc below (aria-describedby), so screen readers still get it. */}
-        {entry.doc && <FieldHelp label={humanizeSettingKey(entry.key)}>{entry.doc}</FieldHelp>}
+        {entry.doc && (
+          // `describedById` points at the sr-only doc this component already renders below, so the
+          // help prose lives in the DOM ONCE rather than once per carrier.
+          <FieldHelp label={humanizeSettingKey(entry.key)} describedById={describedBy}>
+            {entry.doc}
+          </FieldHelp>
+        )}
         {/* THE LOCK IS THE CONTROL (config-design §3.1). The chip already says why the field
             is read-only, so hanging a separate "unlock" button beside it would put the
             explanation and the way out in two places — the operator reads "set via

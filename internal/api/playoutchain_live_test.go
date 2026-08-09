@@ -31,10 +31,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 		t.Skip("no ffmpeg")
 	}
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/chain.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/chain.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	// Each program request returns a SHORT synthetic encode. Counting requests is how we
@@ -81,7 +78,7 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 	}
 
 	// The REAL parent args against the REAL playlist endpoint.
-	playlistURL := srv.URL + "/playout/playlist/ch1?token=" + playoutToken
+	playlistURL := srv.URL + "/v1/playout/playlist/ch1?token=" + playoutToken
 	args := playout.ConcatArgs(playlistURL)
 	// Bound the infinite parent and write to a file we can probe.
 	out := t.TempDir() + "/joined.ts"
@@ -112,7 +109,11 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 	// Each card is ~4s, so 12s of output requires the demuxer to have advanced at least twice.
 	if got < 2 {
 		t.Errorf("only %d program request(s) — the demuxer did not ADVANCE, so programs are "+
-			"not sequencing", got)
+			"not sequencing.\n"+
+			"  ⚠ BEFORE suspecting Loomarr: run TestLive_ConcatAdvancesPastAChunkedHTTPEntry\n"+
+			"  (internal/playout). If that also fails, the ffmpeg on PATH cannot read a chunked\n"+
+			"  concat entry to EOF and this failure is environmental, not a regression — ffmpeg\n"+
+			"  n9.0 is known bad, n7.1.x (the Dockerfile pin) is known good.", got)
 	}
 
 	probe, err := exec.LookPath("ffprobe")
@@ -153,5 +154,33 @@ func (c *chainResolver) Profile(context.Context) playout.Profile { return c.prof
 // answer here — and 0 is also the interface's documented fallback, which keeps this double
 // from asserting a language preference the chain test does not exercise.
 func (c *chainResolver) AudioTrackFor(context.Context, string) int { return 0 }
+
+// Tracks and PlanFor complete api.PlayoutResolver.
+//
+// ⚠ This double had been INCOMPLETE and therefore uncompilable since V47 added PlanFor to the
+// interface — in the same commit, which left the stub behind. Nothing noticed for months because
+// `make check` runs untagged, so every file behind `//go:build ffmpeg` (plus `eval` and
+// `integration`) is invisible to the gate: `go vet ./...` exits 0 in silence while
+// `go vet -tags 'ffmpeg eval integration' ./...` exits 1.
+//
+// The cost was specific. TestLiveChain_RealFfmpegAdvancesThroughPrograms is, by its own comment,
+// "the only test that proves programs actually sequence" — so the one test covering the concat
+// mechanism had not run since the direct-play work that most needed it.
+//
+// A CI step that BUILDS the tagged tests (no hardware required) is the durable fix and is not part
+// of this change; this restores the double so the suite compiles again.
+func (c *chainResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
+	return playout.MediaTracks{}, nil
+}
+
+// PlanFor: transcode both, with no source probe.
+//
+// The zero MediaFormat is the honest answer here — this double has no prober — and it is also the
+// value the real resolver returns when a probe fails, so the chain test exercises the same
+// fail-safe path a live install falls back to. It means no tone-mapping, which is correct: the
+// fixture is SDR `testsrc`.
+func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
+	return playout.CopyPlan{}, playout.MediaFormat{}
+}
 
 var _ = http.MethodGet

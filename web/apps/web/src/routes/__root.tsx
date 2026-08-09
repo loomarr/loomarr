@@ -6,9 +6,9 @@ import { TooltipProvider } from "@/components/ui";
 // beforeLoad guards (the _authed gate, login) can ensureQueryData without prop-drilling
 // (design §14). It renders the routed Outlet — the app chrome lives in _authed — inside a
 // single TooltipProvider so every route (login, wizard, app) can label its icon-only
-// affordances. delayDuration is snappy (300ms) so a hover reveals the label promptly.
+// affordances. The delay is snappy (300ms) so a hover reveals the label promptly.
 const RootLayout = () => (
-  <TooltipProvider delayDuration={300}>
+  <TooltipProvider delay={300}>
     <Outlet />
   </TooltipProvider>
 );

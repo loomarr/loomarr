@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeSettings is a scripted api.SettingsService for the route tests.
@@ -105,10 +104,7 @@ func (f *fakeSettings) Test(_ context.Context, check string) (bool, string) {
 
 func newSettingsServer(t *testing.T) (*httptest.Server, *fakeSettings) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/s.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSettings{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -364,10 +360,7 @@ func (a mediaSourceAdapter) LibrariesReady(context.Context) (bool, error) { retu
 
 func newAutoWireServer(t *testing.T, live, source *fakeConnector, cfg map[string]string) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/s.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:         st,

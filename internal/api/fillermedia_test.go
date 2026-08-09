@@ -15,6 +15,16 @@ import (
 	"github.com/mantonx/loomarr/internal/store"
 )
 
+// The content hashes the byte-route tests address the seeded clips by. ⚠ Since V45a the byte
+// routes take the clip HASH (a plain, slash-free segment) and resolve the disk path via the store,
+// so each hash is mapped to a nested on-disk path whose file exists.
+const (
+	// A catalogued MP4, nested on disk (V28 preserves directory structure).
+	mediaHash = "mediahash000000000000000000000000000000000000000000000000000000"
+	// A catalogued but hostile row: an .html that must never be served as a document.
+	htmlHash = "htmlhash0000000000000000000000000000000000000000000000000000000"
+)
+
 // A drop-folder holding one catalogued clip, one file that exists on disk but is NOT a catalog
 // row, and a secret outside the folder entirely. All three are load-bearing: the secret is what
 // makes a traversal assertion mean something, and the uncatalogued file is what proves the
@@ -41,16 +51,13 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
 		t.Fatal(err)
 	}
 
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/m.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/m.db")
 	t.Cleanup(func() { _ = st.Close() })
-	for _, p := range []string{"80s/toys/intro.mp4", "notes.html"} {
+	// Hash → disk path. The wire identity is the hash (V45a); the route looks a clip up by hash
+	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
+	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
 		if err := st.UpsertClip(ctx, store.Clip{
-			// Hash AND Path: identity is the hash since V38c, and this route looks a clip up by
-			// id then serves the row's path. A Path-only literal has an empty id and 404s.
-			Clip:      filler.Clip{Hash: p, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
+			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
@@ -89,12 +96,13 @@ func getMedia(t *testing.T, srv *httptest.Server, path, token string) *http.Resp
 	return res
 }
 
-// The clip id is a PATH with slashes, so the route needs a `{path...}` wildcard — a plain
-// {path} silently 404s every nested clip, which is most of a real catalog.
+// The clip is addressed by its content HASH (V45a); the handler resolves it to the nested disk
+// path whose file exists. Nesting is preserved on disk (V28) and the hash lookup finds it
+// regardless — the slash-in-URL hazard the old `{path...}` route carried is gone.
 func TestServeFillerMedia_ServesANestedCataloguedClip(t *testing.T) {
 	srv, _, _ := newMediaServer(t)
 
-	res := getMedia(t, srv, "/v1/filler/media/80s/toys/intro.mp4", memberToken)
+	res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, memberToken)
 
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
@@ -113,17 +121,20 @@ func TestServeFillerMedia_ServesANestedCataloguedClip(t *testing.T) {
 }
 
 // The catalog gate. `stray.mp4` is a real, allowlisted, contained file — everything except a
-// clip. Without the store lookup this route serves any media file in a folder the operator
-// also keeps their own things in.
+// clip. Since V45a the route resolves a HASH via the store, so an uncatalogued file simply has no
+// addressable hash: the only value a caller could supply for it is one the store does not know,
+// which resolves to nothing and 404s. The drop-folder is not a public share.
 func TestServeFillerMedia_RefusesAFileThatIsNotACatalogRow(t *testing.T) {
 	srv, _, _ := newMediaServer(t)
 
-	// Sanity: it really is there, or this passes for the boring reason.
-	if res := getMedia(t, srv, "/v1/filler/media/80s/toys/intro.mp4", memberToken); res.StatusCode != http.StatusOK {
+	// Sanity: a catalogued clip really is served, or this passes for the boring reason.
+	if res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, memberToken); res.StatusCode != http.StatusOK {
 		t.Fatalf("fixture broken: a catalogued clip returned %d", res.StatusCode)
 	}
 
-	if res := getMedia(t, srv, "/v1/filler/media/stray.mp4", memberToken); res.StatusCode == http.StatusOK {
+	// `stray.mp4` exists on disk but was never catalogued, so no hash resolves to it.
+	uncatalogued := "strayhash000000000000000000000000000000000000000000000000000000"
+	if res := getMedia(t, srv, "/v1/filler/media/"+uncatalogued, memberToken); res.StatusCode == http.StatusOK {
 		t.Error("served a file that is not in the catalog — the drop-folder is not a public share")
 	}
 }
@@ -134,7 +145,7 @@ func TestServeFillerMedia_RefusesAFileThatIsNotACatalogRow(t *testing.T) {
 func TestServeFillerMedia_RefusesNonMediaEvenWhenCatalogued(t *testing.T) {
 	srv, _, _ := newMediaServer(t)
 
-	res := getMedia(t, srv, "/v1/filler/media/notes.html", memberToken)
+	res := getMedia(t, srv, "/v1/filler/media/"+htmlHash, memberToken)
 
 	if res.StatusCode == http.StatusOK {
 		t.Errorf("served notes.html as %q — an operator-writable folder must never yield a "+
@@ -142,15 +153,15 @@ func TestServeFillerMedia_RefusesNonMediaEvenWhenCatalogued(t *testing.T) {
 	}
 }
 
-// ⚠ **This test does NOT exercise the containment check, and saying so is the point** — the same
-// finding `TestServeFillerThumb_TraversalNeverReturnsBytes` records. net/http's client rewrites
-// the URL before sending, and Go 1.22+ ServeMux refuses to decode `%2f` into a separator when
-// matching `{path...}`, so an encoded attempt is rejected by the MUX. The guard's real assertion
-// is `TestSafeFillerPath`, in-package.
+// Traversal is UNEXPRESSIBLE since V45a: the wire identity is a clip's content HASH, not a path,
+// so a caller cannot address an arbitrary disk location — the handler only serves a path it looked
+// up in the store from the supplied hash, and that path was written by the scanner, not the client.
+// The strongest attack a client can spell is "a value that isn't a catalogued hash", which
+// resolves to nothing and 404s.
 //
-// What this pins is the outcome — no spelling of the attack returns bytes — and the assumption
-// that the layers above behave as described. If a future Go relaxes the mux, this starts failing
-// and the in-package guard is what stops it being a breach.
+// This pins that outcome: no traversal-shaped value, and no unknown hash, returns bytes. The old
+// `../../secret.txt` spellings are kept not because they could reach the file (they can't — there
+// is no path in the URL anymore) but to prove the classic attack yields a 404, never the secret.
 func TestServeFillerMedia_TraversalNeverReturnsBytes(t *testing.T) {
 	srv, root, _ := newMediaServer(t)
 
@@ -162,9 +173,11 @@ func TestServeFillerMedia_TraversalNeverReturnsBytes(t *testing.T) {
 		"/v1/filler/media/../../secret.txt",
 		"/v1/filler/media/%2e%2e%2f%2e%2e%2fsecret.txt",
 		"/v1/filler/media/sub/%2e%2e/%2e%2e/%2e%2e/secret.txt",
+		// A hash-shaped but uncatalogued value: resolves to nothing in the store.
+		"/v1/filler/media/deadbeef000000000000000000000000000000000000000000000000000000",
 	} {
 		if res := getMedia(t, srv, target, memberToken); res.StatusCode == http.StatusOK {
-			t.Errorf("%s returned 200 — traversal reached a file outside the drop-folder", target)
+			t.Errorf("%s returned 200 — a caller reached bytes it should not have; only a catalogued clip's hash resolves", target)
 		}
 	}
 }
@@ -173,7 +186,7 @@ func TestServeFillerMedia_TraversalNeverReturnsBytes(t *testing.T) {
 func TestServeFillerMedia_RequiresASession(t *testing.T) {
 	srv, _, _ := newMediaServer(t)
 
-	if res := getMedia(t, srv, "/v1/filler/media/80s/toys/intro.mp4", ""); res.StatusCode == http.StatusOK {
+	if res := getMedia(t, srv, "/v1/filler/media/"+mediaHash, ""); res.StatusCode == http.StatusOK {
 		t.Error("served clip bytes with no credential")
 	}
 }

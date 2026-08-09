@@ -12,6 +12,7 @@ import (
 
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/provision"
+	"github.com/mantonx/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound is returned by Get* methods when no row matches.
@@ -40,7 +41,13 @@ type TitleStore interface {
 type ChannelStore interface {
 	GetChannel(ctx context.Context, id string) (Channel, error)
 	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
+	// GetChannelByIntentRef finds the channel bound to a suggestion job (its intent_ref).
+	// Indexed (00037); replaces two copy-pasted ListChannels-and-scan helpers.
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
 	UpsertChannel(ctx context.Context, ch Channel) error
+	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
+	// a targeted write used after the lineup is bound, so it never races the binder's row write.
+	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
 	ListChannels(ctx context.Context) ([]Channel, error)
 	DeleteChannel(ctx context.Context, id string) error
 	// PutChannelIcon stores (or replaces) a channel's uploaded icon bytes + MIME (the
@@ -97,6 +104,10 @@ type ProposalStore interface {
 	GetProposal(ctx context.Context, id string) (Proposal, error)
 	UpdateProposal(ctx context.Context, p Proposal) error
 	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
+	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
+	// one job in one status. Newest wins because a refine produces a newer approved proposal
+	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
 	// PurgeDeniedProposals removes denied proposals older than `before` (§5
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
@@ -155,9 +166,17 @@ type ClipStore interface {
 	// ⚠ Clips the operator removed from the catalog (V35) are excluded unless the filter opts
 	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
 	// a ZERO filter, so an opt-out would keep a removed clip airing.
+	//
+	// ⚠ Sorted and pageable since V51d, and the same warning applies to the page size: `Limit == 0`
+	// means NO limit, because pod assembly's zero filter must keep loading the whole catalog. The
+	// operator-facing default of 100 lives in the API.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
 	// CountClips is ListClips' question answered without the rows, for callers that only ever
 	// took len() of the result. Same filter, same predicate (they share the WHERE builder).
+	//
+	// ⚠ It IGNORES Limit/Offset/Sort by construction — those live outside the WHERE builder — so
+	// it answers "how many match?", which is what a pager's total means, not "how many are on this
+	// page". Sharing the predicate is why a page's total can never disagree with its rows.
 	CountClips(ctx context.Context, filter ClipFilter) (int, error)
 	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
 	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
@@ -174,6 +193,61 @@ type ClipStore interface {
 	// what stops a folder scan blanking a detected language and making the job re-detect the whole
 	// catalog every sync (~341s per clip under QEMU on the local backend).
 	SetClipLanguage(ctx context.Context, path, language string, at time.Time) error
+	// SetClipTranscript records the transcribe job's result (§10 V44). The ONLY writer of
+	// `transcript`, like SetClipLanguage above: UpsertClip omits it so a re-sync cannot blank a
+	// transcribed clip and re-trigger Whisper (~341s per clip under QEMU).
+	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
+	// SetClipConfidence records the tagger's grounding-capped score (§10 V38). The ONLY writer of
+	// `confidence` — and until V51a there was none at all, so the column sat at 0 for every clip
+	// ever catalogued while `TagSuggestion.Score` computed a value the tagger then discarded. The
+	// value must be `Score`'s output, never the model's own self-assessment.
+	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
+	// SetClipBrand records a GROUNDED advertiser found by the TEXT tagger (§10 V44) — path-keyed,
+	// writes `brand` and nothing else. It SHARES the `brand` column with SetClipVisionTags (text
+	// grounds a brand in the filename/sidecar/transcript, vision grounds one in the on-screen text);
+	// UpsertClip omits `brand` from DO UPDATE so a re-sync cannot blank either. The caller has
+	// already applied the grounding rule, so this writes what it is given.
+	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
+	// SetClipVisionTags records a vision pass — the on-screen text it read, a grounded brand, and
+	// (when the frame supported them) an era/category (§10 V44). The ONLY writer of `visible_text`
+	// and `vision_tagged`; `brand` it shares with SetClipBrand above. UpsertClip omits them so a
+	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
+	// text tags intact.
+	SetClipVisionTags(ctx context.Context, path, brand, visibleText string, era, suggestedEra int, category string, at time.Time) error
+	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
+	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
+	// composite back to an airable clip. Keyed by hash.
+	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// SetClipArtworkImages records the image-service identities of a clip's still and hover loop
+	// (§22, V52 phase 6). Sole writer of those columns — they are omitted from UpsertClip's
+	// DO UPDATE so a folder re-sync cannot blank them.
+	SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error
+	// ListClipsPendingArtworkAdoption is the adoption job's work list: clips with rendered
+	// artwork but no image-service identity for it yet. Paths are relative to the artwork cache.
+	ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error)
+	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
+	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+	// UpsertTaxon / DeleteTaxon are the operator-edit path; the caller reindexes after a graph edit.
+	UpsertTaxon(ctx context.Context, t taxonomy.Taxon, at time.Time) error
+	DeleteTaxon(ctx context.Context, slug string) error
+	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
+	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
+	// SetClipTags REPLACES one clip's tags with the rollup expansion of the given leaves (the per-clip
+	// re-tag path — the tagger writing a single clip). GetClipTags reads them (leavesOnly = the asserted
+	// set, else full). ⚠ It must produce the SAME rows RebuildRollups would for the same leaves; the
+	// conformance suite pins the two writers as equivalent.
+	SetClipTags(ctx context.Context, clipHash string, leaves []string, forest *taxonomy.Forest, at time.Time) error
+	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
+	// ListClipHashesLeaves returns every clip's asserted leaves — a work list for a per-clip job (the
+	// future re-embed sibling). The bulk rollup reindex does NOT use it: it is a set-based SQL rebuild.
+	ListClipHashesLeaves(ctx context.Context) (map[string][]string, error)
+	// RebuildClosure recomputes taxa_closure from the forest — the ONLY writer of the closure, run when
+	// the GRAPH edits (rare). The graph walk stays in Go; the closure makes the rollup rebuild plain SQL.
+	RebuildClosure(ctx context.Context, forest *taxonomy.Forest, at time.Time) error
+	// RebuildRollups recomputes EVERY clip's rollup rows from the closure in one set-based statement —
+	// the reindex (§10 V45a). Preserves asserted leaves; call after RebuildClosure on a graph edit.
+	RebuildRollups(ctx context.Context) error
 	// SetClipsHeld files clips into the catalog or sends them back for review (§10 V38).
 	//
 	// ⚠ The ONLY writer of `held`/`auto_filed`, for the same reason as the tombstone above:
@@ -215,6 +289,30 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
+
+	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
+	//
+	// ⚠ A SIBLING of `clips`, never columns on it: `clips` is a synced cache that has been dropped
+	// and recreated twice, and these rows record that Whisper seconds and a paid vision call have
+	// ALREADY been spent. `UpsertClipPipeline` is the table's only writer, so unlike the clip
+	// columns there is no DO UPDATE omission list to keep in step.
+
+	// UpsertClipPipeline writes a clip's pipeline row — the ONLY writer of that table.
+	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
+	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
+	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
+	// total order so one clip cannot starve while another is worked repeatedly.
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
+	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
+	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
+	// lazy and self-healing rather than a data migration.
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
+	// ClearClipVisionTags drops the vision stamp so the rung looks again (§10 V51b). ⚠ It does NOT
+	// clear brand/era/category — those are shared with the text tagger and nothing records which
+	// tier wrote them. See the implementation for why that asymmetry is the safe one.
+	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
 }
 
 // FillerPullStore is the filler approval gate (§10 V35).
@@ -357,6 +455,7 @@ type Store interface {
 	ActivityStore
 	SettingStore
 	CountStore
+	ImageStore
 
 	// Close releases the underlying database handle.
 	Close() error

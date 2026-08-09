@@ -11,6 +11,15 @@ import (
 	"github.com/mantonx/loomarr/internal/schedule"
 )
 
+// The two legal channel broadcast codecs (§9.1 V50). Kept as plain strings to match
+// how codecs flow everywhere else (playout.MediaFormat.VideoCodec, the plan capability
+// maps) — a fresh typed enum here would only need converting at every boundary. H264 is
+// the migration default, so an un-backfilled channel broadcasts h264/TS exactly as today.
+const (
+	BroadcastCodecH264 = "h264"
+	BroadcastCodecHEVC = "hevc"
+)
+
 // Channel is the persisted form of a scheduler channel (§9). It carries the
 // domain schedule.Channel fields plus persistence concerns: the approved lineup
 // and last-computed desired lineup (stored as JSON blobs, like titles.title_json)
@@ -28,6 +37,13 @@ type Channel struct {
 	// separation/ordering/seasonal + the last reconcile's applied relaxations.
 	// Stored as policy_json, sparse (omitted fields resolve to built-in defaults).
 	Policy schedule.ChannelPolicy
+	// BroadcastCodec is the channel's uniform broadcast video codec (§9.1 V50): the
+	// codec every program on the timeline is normalized TO so the stream stays
+	// single-codec (which is what makes HEVC-fMP4 legal — fMP4 can't switch codec
+	// mid-stream). Derived from the majority of the library titles' codecs at curation,
+	// not probed at runtime. One of BroadcastCodecH264 / BroadcastCodecHEVC; empty
+	// (an un-backfilled row read before the DDL default applies) reads as H264.
+	BroadcastCodec string
 	// ReconcileDeadline: the channel is due for a sweep reconcile at/before this
 	// time. Leased forward on claim (§9/§18).
 	ReconcileDeadline time.Time
@@ -40,6 +56,23 @@ func (s *sqlStore) GetChannel(ctx context.Context, id string) (Channel, error) {
 
 func (s *sqlStore) GetChannelByNumber(ctx context.Context, number int) (Channel, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(channelSelect+` WHERE number = ?`), number)
+	return scanChannel(row)
+}
+
+// GetChannelByIntentRef finds the channel bound to a suggestion job. A channel's `intent_ref` IS
+// the job id that produced it, so this answers "which channel does this proposal belong to?" —
+// asked once per bind and once per auto-curate consideration.
+//
+// ⚠ Indexed (00037), and it replaces two byte-identical `ListChannels`-then-linear-scan helpers
+// that had been copy-pasted into `binder` and `recurate`. Two packages walking the whole channel
+// table for one row is the shape a missing store method leaves behind.
+//
+// ⚠ Returns ErrNotFound rather than a zero Channel. Both former callers treated "no match" as
+// benign (a job with no channel is simply not an auto-curate candidate), and they still can — but
+// that has to be the CALLER's decision: a lookup that silently answers with an empty struct is one
+// a caller can forget to check, and the zero Channel has an empty ID that reads as valid.
+func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error) {
+	row := s.db.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), intentRef)
 	return scanChannel(row)
 }
 
@@ -58,24 +91,52 @@ func (s *sqlStore) UpsertChannel(ctx context.Context, ch Channel) error {
 	if err != nil {
 		return fmt.Errorf("marshal policy: %w", err)
 	}
+	// An empty BroadcastCodec (a Channel built without setting it) persists as the
+	// DDL default h264, so the round-trip never writes "" — matching what an
+	// un-backfilled row reads back as.
+	broadcastCodec := ch.BroadcastCodec
+	if broadcastCodec == "" {
+		broadcastCodec = BroadcastCodecH264
+	}
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO channels
 		   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-		    status, shuffle_seed, lineup_json, desired_json, policy_json, reconcile_deadline, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+		    reconcile_deadline, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   intent_ref=excluded.intent_ref, name=excluded.name, number=excluded.number,
 		   grp=excluded.grp, logo=excluded.logo, strategy=excluded.strategy,
 		   filler_ref=excluded.filler_ref, tunarr_id=excluded.tunarr_id, status=excluded.status,
 		   shuffle_seed=excluded.shuffle_seed, lineup_json=excluded.lineup_json,
 		   desired_json=excluded.desired_json, policy_json=excluded.policy_json,
+		   broadcast_codec=excluded.broadcast_codec,
 		   reconcile_deadline=excluded.reconcile_deadline, updated_at=excluded.updated_at`),
 		ch.ID, ch.IntentRef, ch.Name, ch.Number, ch.Group, ch.Logo, string(ch.Strategy),
 		ch.FillerRef, ch.TunarrID, string(ch.Status), ch.Shuffle.Seed,
-		string(lineupBlob), string(desiredBlob), string(policyBlob),
+		string(lineupBlob), string(desiredBlob), string(policyBlob), broadcastCodec,
 		epoch(ch.ReconcileDeadline), ch.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upsert channel %s: %w", ch.ID, err)
+	}
+	return nil
+}
+
+// SetChannelBroadcastCodec updates ONLY the channel's broadcast_codec column (§9.1 V50) — the
+// uniform codec the timeline normalizes to, computed from the library titles' codecs at curation.
+//
+// A targeted single-column UPDATE rather than a read-modify-write UpsertChannel: the codec is
+// derived state written after the lineup is bound, and the binder is the ONE lineup writer
+// (loomarr-one-lineup-writer). Reusing UpsertChannel here would mean re-reading the whole row and
+// racing the reconciler's own writes for no benefit — this only ever touches the one derived column.
+func (s *sqlStore) SetChannelBroadcastCodec(ctx context.Context, id, codec string) error {
+	if codec == "" {
+		codec = BroadcastCodecH264
+	}
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE channels SET broadcast_codec = ? WHERE id = ?`), codec, id)
+	if err != nil {
+		return fmt.Errorf("set broadcast_codec %s: %w", id, err)
 	}
 	return nil
 }
@@ -151,7 +212,8 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 // channelSelect is the shared column list; claim SQL RETURNs the same columns in
 // this order so scanChannel serves both paths (mirrors scanTitle).
 const channelSelect = `SELECT id, intent_ref, name, number, grp, logo, strategy, filler_ref,
-	tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, reconcile_deadline, updated_at
+	tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
+	reconcile_deadline, updated_at
 	FROM channels`
 
 func scanChannel(sc scannable) (Channel, error) {
@@ -163,7 +225,7 @@ func scanChannel(sc scannable) (Channel, error) {
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
-		&lineupBlob, &desiredBlob, &policyBlob, &deadline, &updatedAt)
+		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &deadline, &updatedAt)
 	if err == sql.ErrNoRows {
 		return Channel{}, ErrNotFound
 	}

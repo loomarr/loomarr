@@ -23,10 +23,8 @@ const Default: Story = {
   render: () => (
     <div className="flex justify-center py-12">
       <Tooltip open>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Reconcile now">
-            ↻
-          </Button>
+        <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label="Reconcile now" />}>
+          ↻
         </TooltipTrigger>
         <TooltipContent>Reconcile now</TooltipContent>
       </Tooltip>

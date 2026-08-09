@@ -139,17 +139,19 @@ const SortableLineupRow = ({
       </div>
 
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0"
-            disabled={disabled}
-            aria-label={`Remove ${entry.name}`}
-            onClick={onRemove}
-          >
-            <X aria-hidden />
-          </Button>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0"
+              disabled={disabled}
+              aria-label={`Remove ${entry.name}`}
+              onClick={onRemove}
+            />
+          }
+        >
+          <X aria-hidden />
         </TooltipTrigger>
         <TooltipContent>Remove from lineup</TooltipContent>
       </Tooltip>

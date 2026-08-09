@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // useRestartWatch tracks a restart from the moment it is accepted until the app answers
 // again (§9.2, V13).
 //
-// ⚠ **It polls /healthz, not a typed endpoint.** During a restart the server is genuinely
-// down for a moment, so every request fails — and `/healthz` is the one route that is
-// unauthenticated and has no dependencies, which makes "it answered" mean "the new
-// generation is serving" rather than "some subsystem happens to be up".
+// ⚠ **It polls `/v1/healthz` with a bare fetch, not through the generated client.** During a
+// restart the server is genuinely down for a moment, so every request fails — and healthz is the
+// one route that is unauthenticated and has no dependencies, which makes "it answered" mean "the
+// new generation is serving" rather than "some subsystem happens to be up". Going through
+// TanStack Query would add caching and a retry policy to a poll whose whole job is to observe
+// failure honestly.
 //
 // ⚠ **`back` lingers deliberately.** Clearing the banner the instant health returns makes
 // a successful restart indistinguishable from one that never happened — the operator
@@ -54,7 +56,12 @@ const useRestartWatch = (): RestartWatch => {
 
     const poll = async () => {
       try {
-        const res = await fetch("/healthz", { cache: "no-store" });
+        // Deliberately a bare fetch rather than the generated client: this polls ACROSS a
+        // restart, so it must answer while the app is mid-reboot and must not go through
+        // TanStack Query's cache or retry policy. `/v1/healthz` is the canonical path (the
+        // probes moved under /v1 with the rest of the ops surface); the bare `/healthz` alias
+        // still answers, for consumers configured outside this repo.
+        const res = await fetch("/v1/healthz", { cache: "no-store" });
         if (res.ok) {
           setRestarting(false);
           setJustCameBack(true);

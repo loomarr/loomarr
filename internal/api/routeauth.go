@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -82,32 +80,21 @@ func authorizeRole(want, have Role) bool {
 	}
 }
 
-// requireRole is the plain-mux equivalent, for the handlers Huma's middleware never sees
-// (SSE, backup download, icons, playout, SSO redirects — §7). It writes the refusal and
-// reports whether the caller may proceed.
+// ⚠ **`requireRole` USED TO LIVE HERE, AND ITS DELETION IS THE POINT OF THIS WORK.**
 //
-// ⚠ **This exists because two hand-written guards had already diverged on what a nil
-// authorizer means.** `backupHandler` denied when `s.auth == nil`; `eventsHandler` allowed.
-// Same package, same concern, opposite fail-safe defaults — which is what a rule that is
-// re-derived per handler decays into. There is one answer here: no authorizer ⇒ denied.
-func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, want Role) bool {
-	if want == RolePublic {
-		return true
-	}
-	if s.auth == nil {
-		s.writeProblem(w, r, http.StatusForbidden, "Not allowed",
-			"This install has no authorization configured, so this route is closed.")
-		return false
-	}
-	have := s.auth.Authorize(r)
-	if authorizeRole(want, have) {
-		return true
-	}
-	if have == RoleAnonymous {
-		s.writeProblem(w, r, http.StatusUnauthorized, "Not signed in",
-			"You need to sign in to do this.")
-		return false
-	}
-	s.writeProblem(w, r, http.StatusForbidden, "Not allowed", "This action needs an admin account.")
-	return false
-}
+// It was the plain-mux twin of the middleware above: the same rule, written a second time, for
+// the handlers Huma never saw. It existed because two hand-written guards had already diverged
+// on what a nil authorizer means — `backupHandler` denied, `eventsHandler` allowed, one package
+// apart — so consolidating them into one function was an improvement over three copies.
+//
+// One function was still one too many. Every route it guarded is now a Huma operation carrying
+// its required role in Metadata, enforced once in registerMiddleware, which ALSO applies the
+// CSRF check the raw handlers had to hand-roll and fails closed for an operation that declared
+// nothing. When the SSE stream and the multipart icon upload moved, the last two callers went
+// with them and the linter reported the function unused — which is the shape of this being
+// finished rather than merely started.
+//
+// ⚠ **Do not reintroduce it.** A route that streams bytes, redirects, or takes multipart still
+// belongs on the Huma API: use `rawOp` (rawop.go), which keeps the raw `(w, r)` signature and
+// takes the required role as an argument. There is one authorization path now; a second one
+// cannot disagree with the first if it does not exist.

@@ -28,10 +28,7 @@ func (f *fakeIconSvc) IconSuggestions(_ context.Context, channelID string) ([]ap
 
 func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *fakeIconSvc) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},
@@ -117,10 +114,7 @@ func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
 // rather than 500 — the same nil-service contract every optional TMDB-gated feature
 // follows (search, suggest, …).
 func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons2.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/icons2.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},

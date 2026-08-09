@@ -20,6 +20,7 @@ var groupTitles = map[Group]string{
 	GroupBackup:        "Backup",
 	GroupUsersSecurity: "Users & security",
 	GroupSSO:           "Single sign-on",
+	GroupImages:        "Images",
 	GroupAdvanced:      "Advanced",
 }
 

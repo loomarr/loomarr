@@ -48,7 +48,17 @@ const (
 	// among session TTLs would read as more session config. It also gives the block
 	// somewhere to state what SSO does NOT do — §11's model is unusual enough that the
 	// absence of "create people on first sign-in" needs saying.
-	GroupSSO      Group = "sso"
+	GroupSSO Group = "sso"
+	// GroupImages is the image service (§22, V52) — where images live on disk, which formats
+	// are produced, and the remote-fetch/retention knobs.
+	//
+	// Its own group for the same reason `backup` and `filler` have one: `images.dir` is an
+	// operator's storage decision, and a storage path filed under "Advanced" beside job cron
+	// expressions reads as something you should not touch. ⚠ There is no Settings → Images PAGE
+	// yet — phase 3 declares the registry, and these keys are reachable via Settings → All
+	// until a later phase gives them a form. `Groups()` is consumed only by the docs generator,
+	// so a group with no page adds a docs section and nothing else.
+	GroupImages   Group = "images"
 	GroupAdvanced Group = "advanced"
 )
 

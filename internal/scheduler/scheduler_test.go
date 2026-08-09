@@ -25,7 +25,14 @@ func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]store.Schedu
 // ⚠ Upsert PRESERVES `paused`, exactly as the SQL does by omitting it from ON CONFLICT DO
 // UPDATE. A fake that let the flag through would pass tests the database fails: this call runs
 // after every execution, so carrying paused would clear it on the next run of a paused job.
-func (f *fakeStore) UpsertScheduledJob(_ context.Context, j store.ScheduledJob) error {
+// ⚠ It HONOURS cancellation, and that is what makes the timeout case testable at all. A fake that
+// ignored `ctx` is why the record-through-a-dead-context bug was invisible: the write that records
+// a job's outcome was made through the very context whose expiry caused that outcome, so a job
+// that timed out never persisted its result — and against this double it looked perfect.
+func (f *fakeStore) UpsertScheduledJob(ctx context.Context, j store.ScheduledJob) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	j.Paused = f.rows[j.Name].Paused
@@ -227,6 +234,42 @@ func TestErroringJobRecordsErrorAndIsolated(t *testing.T) {
 	bad, _ := st.GetScheduledJob(ctx, "bad")
 	if bad.LastError == "" {
 		t.Error("erroring job should record last_error")
+	}
+}
+
+// ⚠ **A job that runs out of time must still RECORD that it did** (§10 V51g). The result write
+// used the same context the job ran under, so a job killed by its own deadline failed to persist
+// `last_result`, `last_error` and `next_run` — the Tasks page kept showing the previous outcome
+// and nothing anywhere said the job had been timing out.
+//
+// Observed live: `filler-pipeline` logged "scheduled job failed" immediately followed by
+// "scheduler: record job result … context deadline exceeded", once every two minutes.
+func TestTimedOutJobStillRecordsItsResult(t *testing.T) {
+	st := newFakeStore()
+	clk := &fakeClock{t: time.Unix(1000, 0)}
+	// The job cancels the context it was handed, then reports it — what an exec'd ffmpeg or
+	// whisper does when the deadline lands mid-run.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reg := NewRegistry().Add(Job{
+		Name: "slow", Title: "Slow", Description: "test job slow.", DefaultCron: everyMinute,
+		Run: func(c context.Context) error { cancel(); return c.Err() },
+	})
+	s := New(st, reg, nil, clk.now, testLog())
+	s.reconcileRegistry(ctx)
+
+	s.tick(ctx)
+
+	waitFor(t, func() bool {
+		j, _ := st.GetScheduledJob(context.Background(), "slow")
+		return j.LastResult == "error"
+	})
+	j, _ := st.GetScheduledJob(context.Background(), "slow")
+	if j.LastError == "" {
+		t.Error("a job killed by its deadline recorded no error — the record died with the context")
+	}
+	if j.NextRun.IsZero() {
+		t.Error("no next run scheduled; the job's own timeout erased its schedule")
 	}
 }
 

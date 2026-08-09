@@ -1,8 +1,11 @@
+import { getDeleteChannelMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { ChannelRowMenu } from "./channel-row-menu";
 
 const makeWrapper = () => {
@@ -14,37 +17,37 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-// Records PATCH/DELETE method + url + parsed body so a test can prove pause sends
-// status:paused and delete sends purge=true.
-const stubFetch = () => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      calls.push({
-        method,
-        url: String(url),
-        body: init?.body ? JSON.parse(init.body as string) : undefined,
-      });
-      return Promise.resolve(jsonResponse(method === "DELETE" ? 204 : 200, { id: "ch-1" }));
+// Records the PATCH body and the DELETE url so a test can prove pause sends status:paused and
+// delete carries purge=true.
+//
+// ⚠ The stub this replaced recorded `method + url + body` for EVERY request and the assertions then
+// filtered by method — `calls.find((c) => c.method === "PATCH")`. That filter is the weak part: it
+// would have matched a PATCH to any endpoint at all. These handlers are bound to
+// `*/v1/channels/:id`, so being in the resolver already proves the route, and only the payload
+// still needs recording.
+const stubChannel = () => {
+  const patches: unknown[] = [];
+  const deletes: string[] = [];
+  server.use(
+    getUpdateChannelMockHandler(async ({ request }) => {
+      patches.push(await request.json());
+      return channel();
+    }),
+    getDeleteChannelMockHandler(({ request }) => {
+      deletes.push(request.url);
+      return undefined as never;
     }),
   );
-  return { calls };
+  return { patches, deletes };
 };
 
 const live = { id: "ch-1", name: "Late Night Noir", status: "live" as const };
 const paused = { ...live, status: "paused" as const };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("ChannelRowMenu", () => {
   it("opening the menu does not navigate (the row is a Link; the menu swallows its clicks)", async () => {
     const user = userEvent.setup();
-    stubFetch();
+    stubChannel();
     // The menu is rendered inside a real anchor to mirror the row: a click that leaked to the
     // Link would fire this handler. It must NOT.
     const onLinkClick = vi.fn((e: React.MouseEvent) => e.preventDefault());
@@ -57,42 +60,42 @@ describe("ChannelRowMenu", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    // `findBy`: the popup is portalled and mounts asynchronously (V50b — Base UI Menu).
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
     expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("Pause sends a PATCH with status:paused", async () => {
     const user = userEvent.setup();
-    const { calls } = stubFetch();
+    const { patches } = stubChannel();
     render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: "Pause" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Pause" }));
 
-    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-    const patch = calls.find((c) => c.method === "PATCH");
-    expect(patch?.body).toMatchObject({ status: "paused" });
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({ status: "paused" });
   });
 
   it("a paused channel offers Resume (status:building)", async () => {
     const user = userEvent.setup();
-    const { calls } = stubFetch();
+    const { patches } = stubChannel();
     render(<ChannelRowMenu channel={paused} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: "Resume" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Resume" }));
 
-    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-    expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ status: "building" });
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({ status: "building" });
   });
 
   it("Delete is a two-step confirm (no name typing) and DELETEs with purge=true", async () => {
     const user = userEvent.setup();
-    const { calls } = stubFetch();
+    const { deletes } = stubChannel();
     render(<ChannelRowMenu channel={live} />, { wrapper: makeWrapper() });
 
     await user.click(screen.getByRole("button", { name: /actions for/i }));
-    await user.click(screen.getByRole("menuitem", { name: /delete/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
 
     // Step 2 is a plain confirm — no textbox to fill, the execute button is enabled.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
@@ -100,10 +103,9 @@ describe("ChannelRowMenu", () => {
     expect(confirm).toBeEnabled();
     await user.click(confirm);
 
-    await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
-    const del = calls.find((c) => c.method === "DELETE");
+    await waitFor(() => expect(deletes).toHaveLength(1));
     // Purge — a list delete fully removes the channel (the maintainer's choice), so the URL
     // carries purge=true.
-    expect(del?.url).toContain("purge=true");
+    expect(deletes[0]).toContain("purge=true");
   });
 });

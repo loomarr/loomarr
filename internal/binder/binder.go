@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -33,9 +34,12 @@ import (
 // Store is the slice of store.Store the binder needs. Narrow, so a fake in tests
 // doesn't have to satisfy the entire store.
 type Store interface {
+	// ListChannels backs nextFreeChannelNumber ONLY — that genuinely needs every number in
+	// use. Looking a channel up BY something is GetChannelByIntentRef below.
 	ListChannels(ctx context.Context) ([]store.Channel, error)
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 	UpsertChannel(ctx context.Context, ch store.Channel) error
-	ListProposalsByStatus(ctx context.Context, status string) ([]store.Proposal, error)
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (store.Proposal, error)
 	// GetTitle backs the additive-merge availability check (§8.2): re-curation may keep a
 	// title only if it's still available, so it needs to read each title's state.
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
@@ -49,18 +53,31 @@ type Reconciler interface {
 	Reconcile(ctx context.Context, channelID string) error
 }
 
+// CodecComputer derives + stores a channel's uniform broadcast codec from its content (§9.1 V50):
+// it samples the just-bound lineup's files, probes their codecs, and persists the majority. The
+// binder stays codec-agnostic (it has no library/probe access by design) and only TRIGGERS this
+// after the lineup is written — the probe itself lives in the composition root's playout resolver,
+// which already owns library resolution + ffprobe. Nil ⇒ the channel keeps its stored codec (h264
+// by migration default), so an install without playout wiring binds exactly as before.
+type CodecComputer interface {
+	ComputeChannelCodec(ctx context.Context, channelID string) (string, error)
+}
+
 // Binder materializes approved proposals onto channels (§7). Holds the store + an
 // optional Reconciler + a logger.
 type Binder struct {
 	store Store
 	rec   Reconciler
+	codec CodecComputer
 	log   *slog.Logger
 }
 
 // New builds a Binder. rec may be nil (no Tunarr wired yet); the bind still
 // creates/patches the channel row, it just skips the immediate reconcile push.
-func New(st store.Store, rec Reconciler, log *slog.Logger) *Binder {
-	return &Binder{store: st, rec: rec, log: log}
+// codec may be nil (no playout wiring); the bind then leaves the channel's stored
+// broadcast codec (h264 default) untouched — see CodecComputer.
+func New(st store.Store, rec Reconciler, codec CodecComputer, log *slog.Logger) *Binder {
+	return &Binder{store: st, rec: rec, codec: codec, log: log}
 }
 
 // newChannelID mints the id for a channel created by approving an intent. The
@@ -165,6 +182,18 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 		return "", err
 	}
 
+	// Compute + store the channel's uniform broadcast codec from the just-bound content (§9.1 V50):
+	// the majority codec of the lineup's landed programs, which the timeline normalizes to. Runs here
+	// so the codec is set BEFORE the first play (no default-h264 window). Best-effort — a probe
+	// failure logs and leaves the stored codec at its current value (h264 default on a first bind),
+	// never failing the bind: the channel must go on air even if the codec measurement can't.
+	if b.codec != nil {
+		if _, cerr := b.codec.ComputeChannelCodec(ctx, ch.ID); cerr != nil && b.log != nil {
+			b.log.Warn("broadcast codec not computed (channel keeps stored codec)",
+				"channel", ch.ID, "err", cerr)
+		}
+	}
+
 	// Go live immediately (§9 "never dead air"); best-effort, the sweep retries.
 	if b.rec != nil {
 		if err := b.rec.Reconcile(ctx, ch.ID); err != nil {
@@ -176,18 +205,21 @@ func (b *Binder) BindApprovedChannel(ctx context.Context, p store.Proposal) (str
 }
 
 // channelByIntent finds the channel already bound to this intent, if any. Returns a
-// zero Channel when none exists.
+// zero Channel when none exists — the caller distinguishes "rebind an existing channel" from
+// "create a new one" on `ch.ID == ""`, so not-found is an ordinary answer here, not an error.
+//
+// ⚠ An INDEXED lookup since V41 (00037). This was `ListChannels` plus a linear walk, duplicated
+// byte-for-byte in `recurate.channelForJob` — two packages reading the whole channel table to
+// find one row, which is what a missing store method leaves behind.
 func (b *Binder) channelByIntent(ctx context.Context, intentRef string) (store.Channel, error) {
-	all, err := b.store.ListChannels(ctx)
+	ch, err := b.store.GetChannelByIntentRef(ctx, intentRef)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Channel{}, nil
+	}
 	if err != nil {
 		return store.Channel{}, err
 	}
-	for _, c := range all {
-		if c.IntentRef == intentRef {
-			return c, nil
-		}
-	}
-	return store.Channel{}, nil
+	return ch, nil
 }
 
 // nextFreeChannelNumber returns the lowest unused positive channel number, so an
@@ -298,20 +330,24 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 	// proposal's picks become a live channel, so we enforce the §8 gate by only
 	// ever looking at status "approved". An intent that was never approved (or was
 	// denied) simply has no match here → a hard error, not an empty channel.
-	// Ordered created_at DESC (store.ListProposalsByStatus), so the FIRST match is the
-	// NEWEST approved proposal for this job. That is deliberate and load-bearing for
-	// refine (§7): a refine re-runs the channel's own job, producing a newer approved
-	// proposal, and the channel must bind to THAT — the latest approved lineup — not the
-	// original. (A job can therefore have several approved proposals over its life; newest
-	// wins.) Asserted by TestRefine_NewestApprovedWins.
-	approved, err := b.store.ListProposalsByStatus(ctx, "approved")
-	if err != nil {
-		return store.Proposal{}, err
+	//
+	// ⚠ NEWEST wins, and the store method's ORDER BY created_at DESC is what guarantees it.
+	// Load-bearing for refine (§7): a refine re-runs the channel's own job, producing a newer
+	// approved proposal, and the channel must bind to THAT — the latest approved lineup — not
+	// the original. A job therefore has several approved proposals over its life. Asserted by
+	// TestRefine_NewestApprovedWins.
+	//
+	// ⚠ Filtered and LIMITed in SQL since V41. This read EVERY approved proposal in the install
+	// and took the first match, relying on an ordering guaranteed by a different method — and
+	// retention deliberately never purges approved proposals (they are the audit trail), so the
+	// table it scanned grows monotonically while denied ones are swept. It ran on every bind,
+	// including every scheduled auto-curate cycle for every channel.
+	p, err := b.store.NewestProposalByStatusForJob(ctx, jobID, "approved")
+	if err == nil {
+		return p, nil
 	}
-	for _, p := range approved {
-		if p.JobID == jobID {
-			return p, nil // newest approved proposal for this job (list is created_at DESC)
-		}
+	if !errors.Is(err, store.ErrNotFound) {
+		return store.Proposal{}, err
 	}
 	// No approved proposal for this intent. Refuse to build — don't let unapproved
 	// content reach a live channel (prime directive #3). createChannel maps this to

@@ -14,7 +14,7 @@ const base: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  path: "clip-test.mp4",
+  hash: "hash-clip-test",
   tunarrProgramId: "clip-test",
 };
 
@@ -35,9 +35,10 @@ describe("ClipCard", () => {
     expect(screen.getByRole("button", { name: /tag clip/i })).toBeInTheDocument();
   });
 
-  it("marks AI-suggested tags and offers a confirm", () => {
+  // §10 V45a: the "AI-tagged" badge was removed (it told an operator nothing actionable). The
+  // confirm-tags affordance for an AI-suggested clip remains — that IS the useful action.
+  it("offers a confirm for AI-suggested tags", () => {
     render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onConfirmTags={() => {}} />);
-    expect(screen.getByText("AI-tagged")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /confirm tags/i })).toBeInTheDocument();
   });
 
@@ -61,13 +62,13 @@ describe("ClipCard", () => {
 
   it("renders the extracted frame when the clip has one", () => {
     const { container } = render(
-      <ClipCard clip={{ ...base, path: "80s/toys/intro.mp4", thumbnail: "80s/toys/intro.jpg" }} />,
+      <ClipCard clip={{ ...base, hash: "hash-intro", thumbnail: "80s/toys/intro.jpg" }} />,
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
-    // Built from the clip's PATH, not from `thumbnail` — the route derives the .jpg itself,
+    // Built from the clip's HASH, not from `thumbnail` — the route derives the .jpg itself,
     // so passing the thumbnail path would request `intro.jpg.jpg`.
-    expect(img).toHaveAttribute("src", "/v1/filler/thumb/80s/toys/intro.mp4");
+    expect(img).toHaveAttribute("src", "/v1/filler/thumb/hash-intro");
     // A catalog is hundreds of cards; without this every frame is fetched on mount.
     expect(img).toHaveAttribute("loading", "lazy");
   });
@@ -99,36 +100,38 @@ describe("ClipCard", () => {
   // ⚠ These four pin fields the API has always sent and the card never rendered — a clip
   // that never airs looked identical to one on every break. The last case is the one that
   // matters most: `playsCounted:false` is NOT zero plays.
-  it("reads as never played when the count is zero", () => {
+  it("reads as never aired when the count is zero", () => {
     render(<ClipCard clip={{ ...base, playCount: 0, playsCounted: true }} />);
-    expect(screen.getByText(/never played/i)).toBeInTheDocument();
+    expect(screen.getByText(/never aired/i)).toBeInTheDocument();
   });
 
-  it("shows the play count and when it last aired", () => {
+  // §10 V45a: the counter is AIRINGS (broadcast), so the copy is "aired"/"airings", not "played"
+  // — "played" read as "have I watched this" next to a Play button that never moves the count.
+  it("shows the airing count and when it last aired", () => {
     render(
       <ClipCard
         clip={{ ...base, playCount: 12, playsCounted: true, lastPlayedAt: new Date().toISOString() }}
       />,
     );
-    expect(screen.getByText(/12 plays/)).toBeInTheDocument();
+    expect(screen.getByText(/12 airings/)).toBeInTheDocument();
     expect(screen.getByText(/just now/i)).toBeInTheDocument();
   });
 
-  it("singularises a single play", () => {
+  it("singularises a single airing", () => {
     render(<ClipCard clip={{ ...base, playCount: 1, playsCounted: true }} />);
-    expect(screen.getByText(/1 play\b/)).toBeInTheDocument();
-    expect(screen.queryByText(/1 plays/)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 airing\b/)).toBeInTheDocument();
+    expect(screen.queryByText(/1 airings/)).not.toBeInTheDocument();
   });
 
   // ⚠ The distinction the DTO's own comment warns about: an install whose playout is
-  // Tunarr-backed cannot observe airings, so rendering "0 plays" would assert something
+  // Tunarr-backed cannot observe airings, so rendering "0 airings" would assert something
   // Loomarr does not know. Sabotaging the branch to fall through to the zero case makes
   // this fail — which is the point of asserting the absence too.
-  it("says plays are not counted rather than claiming zero", () => {
+  it("says airings are not counted rather than claiming zero", () => {
     render(<ClipCard clip={{ ...base, playCount: 0, playsCounted: false }} />);
-    expect(screen.getByText(/plays aren't counted/i)).toBeInTheDocument();
-    expect(screen.queryByText(/never played/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/0 plays/)).not.toBeInTheDocument();
+    expect(screen.getByText(/airings aren't counted/i)).toBeInTheDocument();
+    expect(screen.queryByText(/never aired/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 airings/)).not.toBeInTheDocument();
   });
 
   // Quality is display-only unless filler.min_quality is set (off by default), so it is a
@@ -185,7 +188,7 @@ describe("ClipCard", () => {
 
   // The hover preview and its play button (V39).
   describe("preview and play", () => {
-    const framed = { ...base, path: "80s/toys/intro.mp4", thumbnail: "80s/toys/intro.jpg" };
+    const framed = { ...base, hash: "hash-intro", thumbnail: "80s/toys/intro.jpg" };
 
     // ⚠ **The name says WHICH clip.** A grid of buttons all called "Play" is meaningless in a
     // screen reader's element list and unusable by voice control ("click play" — which one?).
@@ -218,9 +221,9 @@ describe("ClipCard", () => {
 
       fireEvent.mouseEnter(container.querySelector(".group") as HTMLElement);
       const preview = container.querySelector('img[src*="/v1/filler/hover/"]');
-      // Built from the clip's PATH, like the thumbnail: the route derives the .webp itself, so
+      // Built from the clip's HASH, like the thumbnail: the route derives the .webp itself, so
       // passing `preview` would request `intro.webp.webp`.
-      expect(preview).toHaveAttribute("src", "/v1/filler/hover/80s/toys/intro.mp4");
+      expect(preview).toHaveAttribute("src", "/v1/filler/hover/hash-intro");
     });
 
     // ⚠ **Unmounting on leave is what makes the animation RESTART on the next hover.** An

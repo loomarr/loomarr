@@ -2,35 +2,19 @@ import { ApiError, channelsApi, toProblem, unwrap } from "@loomarr/api";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr";
-import { Button, Input, Label } from "@/components/ui";
+import { Button, Image, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
-// The multipart upload (POST …/icon) is a raw mux handler, not part of the generated
-// orval client (it doesn't speak JSON in), so it can't go through a generated hook —
-// but it MUST still honor the same transport contract every other mutation does
-// (frontend-design §4.2 / the mutator, packages/api/src/mutator/mutator.ts): same-origin,
-// cookie session (`credentials: "include"`), and the double-submit CSRF header on any
-// state-changing request. That contract is replicated here rather than imported because
-// customFetch always JSON-encodes and JSON-decodes the body, which a FormData upload
-// can't use.
-const CSRF_HEADER = "X-Loomarr-Csrf";
+// ⚠ The multipart upload used to be hand-written here, replicating the mutator's transport
+// contract (same-origin, `credentials: "include"`, the double-submit CSRF header) because
+// POST …/icon was a raw mux handler outside the generated client. It is a Huma operation with
+// a huma.MultipartFormFiles body now, so orval generates the call — it builds the FormData
+// itself, and customFetch adds CSRF and credentials without touching the body.
+//
+// The old comment justified the copy by saying "customFetch always JSON-encodes the body".
+// That was not true even then: the mutator passes `options.body` straight through to fetch.
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-
-const uploadChannelIcon = async (channelId: string, file: File): Promise<{ logo: string }> => {
-  const body = new FormData();
-  body.append("file", file);
-  const res = await fetch(`/v1/channels/${channelId}/icon`, {
-    method: "POST",
-    body,
-    credentials: "include",
-    headers: { [CSRF_HEADER]: "1" },
-  });
-  const text = await res.text();
-  const parsed = text ? (JSON.parse(text) as unknown) : undefined;
-  if (!res.ok) throw new ApiError(res.status, (parsed as { title?: string; detail?: string }) ?? {});
-  return parsed as { logo: string };
-};
 
 // ChannelIconField — the channel-detail "info" section's icon picker. One current-icon
 // preview, three ways in (pick from the lineup's own TMDB posters, upload a file, paste a
@@ -46,6 +30,7 @@ const uploadChannelIcon = async (channelId: string, file: File): Promise<{ logo:
 const ChannelIconField = ({
   channelId,
   logo,
+  logoImage,
   onSetLogo,
   isAdmin = false,
   className,
@@ -59,6 +44,7 @@ const ChannelIconField = ({
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string>();
+  const upload = channelsApi.useUploadChannelIcon();
 
   const [clearing, setClearing] = useState(false);
 
@@ -107,7 +93,7 @@ const ChannelIconField = ({
     try {
       // The backend already sets `logo` on the channel and reconciles — this component
       // has no `logo` to adopt from the response, just a cue that the channel changed.
-      await uploadChannelIcon(channelId, file);
+      await upload.mutateAsync({ id: channelId, data: { file } });
       await onSetLogo(logo ?? "");
     } catch (e) {
       setUploadError(toProblem(e).title ?? "Couldn't upload that image.");
@@ -135,7 +121,28 @@ const ChannelIconField = ({
         {/* The 64px preview — a muted placeholder box when there's no icon yet, never a
             broken-image glyph. */}
         <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-static-800">
-          {logo ? (
+          {/*
+            Three states, and the middle one is the interesting one.
+
+            `logoImage` present ⇒ the bytes are ours (§22), so the <Image> primitive applies:
+            srcset at the icon ladder, a ThumbHash while it loads, and — the reason this matters
+            here specifically — a DESIGNED failure state. §22 names this field's glyph as that
+            state, because an upload is the one origin that cannot be re-fetched if /data/images
+            is lost, and a broken-image icon would read as a bug rather than as missing bytes.
+
+            ⚠ `logo` without `logoImage` is an operator-pasted external URL, which stays
+            supported — a plain <img> is the only honest thing to render for bytes this instance
+            does not own and knows no dimensions for.
+          */}
+          {logoImage ? (
+            <Image
+              image={logoImage}
+              alt="Channel icon"
+              sizes="64px"
+              className="size-full object-cover"
+              fallback={<ImageOff className="size-6 text-static-500" aria-hidden />}
+            />
+          ) : logo ? (
             <img src={logo} alt="Channel icon" className="size-full object-cover" />
           ) : (
             <ImageOff className="size-6 text-static-500" aria-hidden />

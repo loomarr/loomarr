@@ -1,0 +1,96 @@
+package app
+
+import (
+	"context"
+	"log/slog"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/mantonx/loomarr/internal/activity"
+	"github.com/mantonx/loomarr/internal/images"
+	"github.com/mantonx/loomarr/internal/scheduler"
+)
+
+// The image service's job wiring (§22, §18.1 — V52 phase 3b).
+//
+// ⚠ **Registration is the whole point of this file, and it is the step with no unit test.** Phase
+// 3a shipped three routes that 404'd in a running instance because `Server.images` was nil —
+// the "a built component nobody imported" defect this repo has now recorded against V1, V17a, V23
+// and V52 phase 2. Four jobs constructed here and never handed to the registry would fail the same
+// way and look identical from inside every test that constructs them directly, which is why the
+// guard for this lives in jobset_test.go, against the real BuildHandler.
+
+// registerImageJobs constructs the four jobs and adds them to the registry.
+func registerImageJobs(ctx context.Context, reg *scheduler.Registry, svc *images.Service, st imageStore, set resolved, rec *activity.Recorder, log *slog.Logger) {
+	fetcher := images.NewFetcher(svc, st,
+		func() bool { return set.boolv("images.remote_fetch_enabled") },
+		func() int { return set.intv("images.remote_max_concurrency") },
+		func() []string { return imageFetchHosts(set) },
+		log)
+
+	reg.Add(images.FetchJob(fetcher))
+	reg.Add(images.RehydrateJob(fetcher))
+
+	// ⚠ The AVIF encoder is PROBED, not assumed. `HasAVIFEncoder` runs `ffmpeg -encoders` once at
+	// boot because a build whose ffmpeg carries no libaom-av1 produces an install where every pass
+	// fails forever and the only symptom is that clients quietly keep taking WebP — a degradation
+	// nobody would notice for months. `--help`-style checks are what let the arm64 whisper layout
+	// ship broken (§34), so this asks the binary what it can actually do.
+	ffmpeg := set.str("playout.ffmpeg_path")
+	var enc images.AVIFEncoder
+	var avifDisabled string
+	if images.HasAVIFEncoder(ctx, ffmpeg) {
+		enc = images.FFmpegAVIF(ffmpeg)
+	} else {
+		// A DisabledReason rather than an omitted row: an absent Tasks row is indistinguishable
+		// from a job that runs fine and has never failed, and this state is worth an operator
+		// being able to see. It is a fact about the build, not a switch — nothing they click
+		// changes it.
+		avifDisabled = "this build's ffmpeg has no AV1 encoder, so AVIF copies cannot be made; browsers take the WebP version instead"
+		log.Warn("no libaom-av1 in ffmpeg — the AVIF job is disabled", "ffmpeg", ffmpeg)
+	}
+	reg.Add(images.AVIFJobSpec(images.NewAVIFJob(svc, st, enc, log), avifDisabled))
+
+	// ⚠ The adoption pass, and it is what makes the clip half of §22 real: without it, artwork
+	// keeps living only as files under FILLER_DIR and every clip surface stays on the legacy route.
+	// `st.st` is the underlying store rather than the image-shaped adapter — this job speaks to the
+	// CLIPS table, which the image adapter deliberately knows nothing about.
+	reg.Add(images.AdoptJobSpec(images.NewAdoptJob(svc, artworkAdoptStore{
+		st:        st.st,
+		fillerDir: func() string { return set.str("filler.dir") },
+	}, nil, log)))
+
+	// ⚠ `rec` may be nil (no store-backed activity feed), and NewGC takes the interface, so this
+	// cannot be handed over unconditionally: a nil *activity.Recorder assigned into a non-nil
+	// interface is the same trap `imageService` exists to avoid one file over.
+	var notify images.Notifier
+	if rec != nil {
+		notify = rec
+	}
+	reg.Add(images.GCJob(images.NewGC(svc, st,
+		func() time.Duration { return set.dur("images.remote_ttl") },
+		func() int { return set.intv("images.cache_budget_mb") },
+		notify, log)))
+}
+
+// imageFetchHosts is the SSRF allowlist the fetcher enforces (§22).
+//
+// ⚠ **Derived from what this install is configured to talk to, never an operator free-text list.**
+// A host allowlist is only a control if something other than the attacker decides what is on it,
+// and the two legitimate origins are already configured elsewhere: TMDB's image CDN, which is a
+// constant, and the media server, whose URL the operator set in the wizard. A settings key here
+// would be a third place to get it wrong and a knob whose only correct values are these two.
+//
+// The media server is normally on a PRIVATE address — that is what self-hosted means — which is
+// why the fetcher's private-range rule applies to redirects rather than to the first hop. See
+// Fetcher.checkURL.
+func imageFetchHosts(set resolved) []string {
+	hosts := []string{"tmdb.org"} // covers image.tmdb.org and any sibling CDN name
+	if raw := strings.TrimSpace(set.str("library.url")); raw != "" {
+		if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, u.Hostname())
+		}
+	}
+	return hosts
+}

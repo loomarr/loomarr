@@ -23,15 +23,15 @@ import (
 // operations assemble *the pool a channel would get* — a JSON listing, not media. A third
 // meaning on a route name is how an endpoint ends up called by the wrong handler a year later.
 //
-// A plain mux handler rather than a Huma op, for the same reason as the backup download and the
-// channel icon.
+// A rawOp (rawop.go) rather than a plain mux handler, for the same reason as the backup download
+// and the channel icon: it keeps the `(w, r)` escape hatch that `http.ServeContent` needs for
+// Range, If-Modified-Since and 206, while mounting on the same Huma API as everything else — so
+// authorization is the operation's declared role, enforced once, and the route is in the spec.
 //
-// ⚠ That reason is NOT "Huma only supports JSON" — it supports arbitrary content types, and this
-// comment used to imply otherwise. It is that `http.ServeContent` does Range, If-Modified-Since
-// and 206 in a single call, and reaching it through an op means dropping to the raw
-// ResponseWriter anyway — so the wrapper would buy a spec entry for an opaque byte body and cost
-// the escape hatch. The tradeoff is that this route is absent from openapi.yaml, which is why its
-// client URL is hand-written (`clipThumbURL`) rather than generated.
+// ⚠ The reason was never "Huma only supports JSON" — it supports arbitrary content types. The
+// earlier version of this comment accepted being absent from openapi.yaml as the price; that
+// price is no longer paid. `clipThumbURL` remains because an `<img src>` needs a URL, not a
+// generated fetch.
 
 // serveFillerThumb streams a clip's thumbnail JPEG.
 //
@@ -40,10 +40,6 @@ import (
 // the channel icon — that one is deliberately open so Tunarr can fetch it machine-to-machine,
 // which is a reason that does not apply here.
 func (s *Server) serveFillerThumb(w http.ResponseWriter, r *http.Request) {
-	if !s.requireRole(w, r, RoleMember) {
-		return
-	}
-
 	// Read live rather than captured at wiring, so changing filler.dir in Settings applies to
 	// the next request (config-design §3 hot-apply) — the same treatment the scan and sync
 	// give it. `liveConfig` is nil in unit tests that build a bare Server.
@@ -58,10 +54,10 @@ func (s *Server) serveFillerThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The clip id is its path relative to FILLER_DIR, so it arrives with slashes and must be
-	// matched by a wildcard segment rather than a plain {id}.
-	clipPath := r.PathValue("path")
-	if clipPath == "" {
+	// The clip is addressed by its content HASH (V45a); resolve it to the disk path (server-internal
+	// now) to locate the thumbnail. A missing clip is an ordinary 404, like a missing thumbnail.
+	clipPath, ok := s.clipPathByHash(r.Context(), r.PathValue("hash"))
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}

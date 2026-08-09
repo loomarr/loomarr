@@ -6,11 +6,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/metrics"
@@ -264,7 +267,13 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// Internal playout (§9.1). Nil until wired below, which keeps the routes reporting "not
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutSessions api.PlayoutSessions
+	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
+	// until then so the /playout/hls routes report "not running" on an unwired install.
+	var playoutHLS api.PlayoutHLS
 	var playoutResolverSvc api.PlayoutResolver
+	// hwEncodeSlots reports the box's concurrent hardware-transcode capacity for the admission gate
+	// (§9.1 V47). Nil until playout is wired below — nil leaves the gate off (hardware unbounded).
+	var hwEncodeSlots func(context.Context) int
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -273,6 +282,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	// built alongside the channel engine, while the pod adapter needs the filler catalog that
 	// is wired later. Both halves are required before a break can play a real commercial.
 	var playoutRes *playoutResolver
+	// residentVRAM — the admission budget's late-bound "VRAM a resident LLM holds now" hook (§9.1
+	// V49). Declared at FUNCTION scope (not inside the playout block) because it is SET far below,
+	// where the LLM residency getter is built, yet READ by the budget closure inside the block. A no-op
+	// (nil) until assigned, which the budget treats as "no contention".
+	var residentVRAM func(context.Context) (gib float64, model string)
 	if st != nil {
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		prog := programmer.NewDynamic(set.tunarrConn(), set.str("tunarr.transcode_config_id")).WithFillerPolicy(set.intv("filler.weight"), set.intv("filler.cooldown_seconds"))
@@ -377,11 +391,57 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}
 			return secrets.Value(settings.SecretPlayout)
 		}
+		// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
+		// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
+		// LLM wiring. The budget closure reads it through that pointer; nil ⇒ assume no contention.
+		//
+		// playoutBudget is the DYNAMIC admission budget: concurrent VIDEO transcodes this box can
+		// sustain right now (§9.1 V49). Composed from three live sources, re-read on every admission:
+		//   1. MEASURED capacity — what Detect's encoder trial found this box sustains (playoutRes,
+		//      set async at adapter start). The source of truth for "how many encodes fit".
+		//   2. OPERATOR OVERRIDE — playout.max_channels, applied as a HARD CAP (min): an operator may
+		//      only LOWER below the measurement (a safety throttle), never claim more than the hardware
+		//      proved. 0/unset ⇒ no cap, use the measurement.
+		//   3. VRAM SHADING — a resident LLM steals VRAM each hardware encode needs for its device
+		//      context; the original black screen was an encoder that could not allocate under a
+		//      resident model. So when a model is resident, shade the budget down by the encodes that
+		//      VRAM can no longer host (~1 hardware encode per few GiB held). Reactive to the model
+		//      loading/unloading, so headroom grows back when it evicts.
+		playoutBudget := func() int {
+			measured := 0
+			if playoutRes != nil {
+				measured = playoutRes.maxChannels // set async by Detect at adapter start; stable after
+			}
+			// The operator override WINS VERBATIM when set (§9.1 V49). It is not a `min()` cap: the
+			// measured capacity is a conservative estimate that can under-count a capable GPU (the
+			// 3080-Ti-read-as-1 bug), so an operator who sets playout.max_channels is trusted to RAISE
+			// above it as well as lower it. Unset (0) ⇒ use the measurement, which is now warm-measured
+			// and clamped to a sane floor so it is a reasonable default on its own.
+			budget := measured
+			if override := set.intv("playout.max_channels"); override > 0 {
+				budget = override
+			}
+			// Shade by resident-LLM VRAM. ~4 GiB per hardware encode is a conservative device-context
+			// estimate; a resident 8B model (~6 GiB) thus costs ~1–2 slots, which matches the live
+			// black-screen incident. Never shade below 1 while any capacity exists — a resident model
+			// should degrade headroom, not take playout to zero.
+			if residentVRAM != nil {
+				if gib, _ := residentVRAM(rootCtx); gib > 0 {
+					const gibPerEncode = 4.0
+					shaded := budget - int(gib/gibPerEncode)
+					if shaded < 1 && budget >= 1 {
+						shaded = 1
+					}
+					budget = shaded
+				}
+			}
+			return budget
+		}
 		playoutMgr := playout.NewManager(
 			playoutSpawner(set.str("playout.ffmpeg_path"),
 				func() string { return set.str("server.public_url") },
 				playoutTokenFn, log),
-			set.intv("playout.max_channels"),
+			playoutBudget,
 			playout.DefaultGrace,
 			log,
 		)
@@ -402,6 +462,9 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// request's CPU. GUIDE PATHS ONLY — AiringNow stays on the live computation, so a
 			// cache bug degrades a grid rather than a broadcast.
 			channels: st,
+			// The store, narrowed to the single derived-column write ComputeChannelCodec makes
+			// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
+			codecs:   st,
 			cycles:   newCycleCache(time.Now),
 			tier:     func() string { return set.str("playout.quality_tier") },
 			encoder:  func() string { return set.str("playout.encoder") },
@@ -414,12 +477,22 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			// playout.encoder is unset — so a box with a working GPU uses it instead of
 			// silently falling back to software.
 			ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
+			// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
+			// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
+			// so playout picks NVENC on an NVIDIA card rather than young cross-vendor Vulkan. Called
+			// once, lazily, inside the memoised capability probe; "" (unknown GPU) is a fine default.
+			gpuName: func() string { return llm.GPUName(rootCtx) },
 			// Preferred audio language (§9.1), read live so a Settings change applies to the
 			// next programme rather than the next restart. The prober derives ffprobe from the
 			// ffmpeg path — the two ship together, so an operator who moved one moved both.
 			audioLanguage: func() string { return set.str("playout.audio_language") },
 			probeAudio:    playout.FFprobeAudioNextTo(set.str("playout.ffmpeg_path")),
-			log:           log,
+			probeTracks:   playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path")),
+			probeFormat:   playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path")),
+			// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
+			// applies without a restart — the same hot-apply posture as fillerDir/audioLanguage.
+			pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+			log:     log,
 			// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
 			// It is called UNGUARDED (playout.Resolve → r.activeChannels()), so a missing
 			// assignment is a nil-func panic on the quality-ladder path — i.e. when a viewer
@@ -442,11 +515,68 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		playoutMgr.OnChange(func() {
 			eventBus.Publish(events.Event{
 				Type:    "playout",
-				Payload: map[string]int{"active": playoutMgr.ActiveCount()},
+				Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
 			})
 		})
 		playoutSessions = playoutMgr
+
+		// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
+		// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
+		// failure to create its scratch root is not fatal — the media-server streams work without
+		// it — so log and leave the /playout/hls routes reporting "not running" rather than
+		// refusing to boot.
+		if hlsMgr, herr := playout.NewHLSManager(
+			playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
+			playout.DefaultGrace, log,
+		); herr != nil {
+			log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
+				"err", herr)
+		} else {
+			playoutHLS = hlsMgr
+			go func() {
+				<-rootCtx.Done()
+				hlsMgr.Stop()
+			}()
+		}
 		playoutResolverSvc = playoutRes
+
+		// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
+		// channel to h264 — a data migration runs in the store with no library access, so it
+		// cannot probe. Channels bound AFTER this upgrade get their codec at bind; the ones that
+		// predate it would otherwise stay h264 (and needlessly transcode an HEVC library down)
+		// until their next re-curation. This pass recomputes each once, off the boot path.
+		//
+		// Async and best-effort: channels still play (as h264) while it runs, so a slow or
+		// failing probe delays convergence, never startup. Idempotent — ComputeChannelCodec
+		// writes the measured majority every time — so it needs no "already backfilled" marker
+		// and re-running on a later boot is harmless bounded work.
+		if st != nil {
+			go func() {
+				chans, lerr := st.ListChannels(rootCtx)
+				if lerr != nil {
+					log.Warn("playout: broadcast-codec backfill skipped (channel list failed)", "err", lerr)
+					return
+				}
+				for _, ch := range chans {
+					if rootCtx.Err() != nil {
+						return // shutting down mid-backfill
+					}
+					if _, cerr := playoutRes.ComputeChannelCodec(rootCtx, ch.ID); cerr != nil {
+						log.Debug("playout: broadcast-codec backfill for a channel failed",
+							"channel", ch.ID, "err", cerr)
+					}
+				}
+				log.Info("playout: broadcast-codec backfill complete", "channels", len(chans))
+			}()
+		}
+
+		// Wrap the resolver's capacity so the chosen HW-encode slot count is logged once, when the
+		// admission gate first reads it — the operator-facing counterpart to "encoder probed".
+		hwEncodeSlots = func(ctx context.Context) int {
+			n := playoutRes.HWEncodeSlots(ctx)
+			log.Info("playout: hardware encode admission", "hw_slots", n)
+			return n
+		}
 		// ⚠ A test-only observation point, unexported and write-only from here.
 		//
 		// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
@@ -491,7 +621,16 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		if channelSvc != nil {
 			rec = channelSvc
 		}
-		chBinder = binder.New(st, rec, log)
+		// The playout resolver doubles as the CodecComputer (§9.1 V50): it owns library
+		// resolution + ffprobe, so it measures + stores the channel's broadcast codec after a
+		// bind. Assigned only when playout is wired — passing a typed-nil *playoutResolver as a
+		// non-nil interface would defeat the binder's nil-guard and panic on the first bind, so
+		// it stays a nil interface unless playoutRes actually exists.
+		var codec binder.CodecComputer
+		if playoutRes != nil {
+			codec = playoutRes
+		}
+		chBinder = binder.New(st, rec, codec, log)
 	}
 
 	// Suggester + search (§8, Phase 11): the catalog boundary (library + TMDB),
@@ -503,7 +642,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
 	var iconSvc api.IconService
+	// imageSvc is the image service (§22, V52) — the one pipeline every image travels. Built
+	// below on the store alone; nil without one, which the /v1/images routes answer as "absent".
+	var imageSvc *images.Service
+	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
+	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
+	// timeline handles by rendering the strip with no images.
+	var timelineThumbs api.TimelineThumbResolver
 	if st != nil {
+		// The image service (§22, V52). First in this block deliberately: it depends on nothing
+		// else here, and the jobs registered later need it.
+		imageSvc = newImageService(st, set)
+		registerImageJobs(rootCtx, jobReg, imageSvc, imageStore{st}, set, activityRec, log)
+
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
 		if k := set.str("tmdb.api_key"); k != "" {
@@ -511,6 +662,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		if ov.TMDB != nil { // tests point TMDB at an in-process double (offline)
 			tmdbClient = ov.TMDB
+		}
+		// The Watch timeline's preview images (§9.1 V47) — a series episode's still or a movie's
+		// poster, from the provisioning key. Only when TMDB is configured; without it the strip
+		// renders with no images, which is a supported (image-less) rendering.
+		if tmdbClient != nil {
+			timelineThumbs = timelineThumbResolver{tmdb: tmdbClient}
 		}
 		// Franchise ordering (§5): teach the channel engine to heal each movie's TMDB
 		// collection id at reconcile, so a franchise's films play together in release order.
@@ -682,9 +839,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		syncer = syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 
+		// ⚠ Hoisted out of the `if` because the ingest pipeline's tag rung needs the SAME provider
+		// (§10 V51b). Nil is the honest un-opted-in state and both readers treat it that way: the
+		// manual sweep is a no-op, and the rung reports "no language model is configured" on every
+		// clip's ladder rather than silently doing nothing.
+		var taggerProvider llm.Provider
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
 			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
+			taggerProvider = provider
 			// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars
 			// ingest writes beside each clip (§10). An unset FILLER_DIR yields a nil FS
 			// and tagging falls back to filenames — the same result as a drop-folder
@@ -760,7 +923,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 			splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
 		}
-		fillerSvc = fillerServiceAdapter{
+		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
+		// below. The pipeline needs the vision provider and the splitter, which are wired further
+		// down, while this adapter is needed further up — so one of the two has to be completed
+		// late. A pointer receiver would avoid the second assignment, but every other adapter here
+		// is a value and making one of them special is worse than one honest re-assignment.
+		fillerAdapter := fillerServiceAdapter{
 			syncer: syncer, tagger: tagger, fetcher: fetcher,
 			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
 			sources: st, now: time.Now,
@@ -841,13 +1009,145 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				set.str("ingest.whisper_path"), set.str("filler.language_model"),
 				set.str("playout.ffmpeg_path"), "")
 		}
-		jobReg.Add(fillerLanguageJob(filler.NewLanguageJob(
-			fillerLanguageStoreAdapter{st}, langDetect,
-			func() string { return set.str("filler.dir") },
-			func() string { return set.str("filler.language") },
-			time.Now, log)))
-		log.Info("filler language gate registered",
-			"provider", set.str("filler.language_provider"), "want", set.str("filler.language"))
+		// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
+		// they run on files already on disk regardless of whether yt-dlp is present).
+		fillerTools := filler.NewFFmpegTools(
+			set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
+			set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
+
+		// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
+		// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
+		// MORE work, never wrongly skips).
+		var fillerDrop fs.FS
+		if dir := set.str("filler.dir"); dir != "" {
+			fillerDrop = os.DirFS(dir)
+		}
+
+		// Vision: keyframes → a multimodal model. The provider is nil unless a vision model is
+		// configured AND the wired LLM actually implements llm.VisionProvider — the same type
+		// assertion the model Warmer uses (§8.2). A nil provider makes the job a no-op, so an
+		// install without a vision model never touches ffmpeg or spends a token.
+		var visionProvider llm.VisionProvider
+		if set.boolv("filler.vision.enabled") && set.str("llm.url") != "" {
+			// ⚠ `filler.vision.model` when set, ELSE `llm.model` — vision needs an images-capable
+			// model, which the tagging model often is not (a text model like qwen3). The dedicated
+			// knob lets an operator point vision at a vision model without switching their whole LLM;
+			// empty reuses the main model for installs whose model already sees images. Same
+			// separation `filler.language_model` makes for the audio gate.
+			visionModel := set.str("filler.vision.model")
+			if visionModel == "" {
+				visionModel = set.str("llm.model")
+			}
+			p := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), visionModel, set.str("llm.api_key"))
+			if vp, ok := p.(llm.VisionProvider); ok {
+				visionProvider = vp
+			} else {
+				log.Warn("filler vision enabled but the configured LLM provider has no vision path; job will no-op",
+					"provider", set.str("llm.provider"))
+			}
+			log.Info("filler vision provider wired", "model", visionModel)
+		}
+		// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
+		//
+		// One driver over eight rungs, replacing `filler-language`, `filler-split`,
+		// `filler-transcribe` and `filler-vision`.
+		//
+		// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
+		// A stage missing from this slice is reported as "not available on this install" on every
+		// clip's ladder, while one that is present says WHY it skipped in the operator's own terms
+		// ("vision tagging is off", "no language backend is configured"). Registering all of them
+		// and letting `Applies` answer is what makes the ladder explain an install rather than
+		// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
+		clipDir := set.str("filler.dir")
+		pipelineStages := []filler.Stage{
+			filler.NewProbeStage(
+				filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
+				func() int64 { return set.dur("filler.min_duration").Milliseconds() },
+				fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
+			filler.NewTranscodeStage(
+				fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+				clipDir, filler.DefaultMezzanine(),
+				func() string { return set.str("playout.ffmpeg_path") },
+				// ⚠ The loudness target is applied only when the operator opted in. This is the
+				// FIRST production caller of on-file loudness normalisation: V42 built the pass,
+				// and `filler.autofile.normalize_loudness` gated a function nothing called, so the
+				// setting has been inert since it shipped. Folding it into the encode that is
+				// happening anyway is what finally wires it.
+				func() float64 {
+					if !set.boolv("filler.autofile.normalize_loudness") {
+						return 0
+					}
+					// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
+					// normalisation at all", which no numeric kind can express), so it is parsed
+					// here. An unparseable value yields 0 — the same as off, which is the safe
+					// direction: the alternative is applying a garbage target to the operator's
+					// audio.
+					lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+					if err != nil {
+						return 0
+					}
+					return lufs
+				}, time.Now),
+			filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
+				func() string { return set.str("filler.language") }, time.Now),
+			filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
+				func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
+			filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st}, fillerDrop, time.Now),
+			filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
+				func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
+			filler.NewScoreStage(fillerTagStoreAdapter{st}, &filler.AutoFilePolicy{
+				// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
+				// settings service cannot answer, and here that difference is the safety property:
+				// failing OPEN would publish unreviewed clips to live channels exactly when the
+				// install is degraded.
+				Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
+				MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
+			}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
+		}
+		if splitter != nil {
+			// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
+			// and `StageOrder` is the ONE definition of the sequence, so the order here is
+			// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
+			// invites someone to "fix" its order.
+			pipelineStages = append(pipelineStages,
+				filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st}).
+					WithAutoConfirm(filler.AutoSplitPolicy{
+						Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
+						MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
+						MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+					}, func() time.Duration { return set.dur("filler.min_duration") }))
+		}
+		fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
+			filler.Budget{
+				MaxClips: func() int { return set.intv("filler.pipeline.max_clips") },
+				// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
+				// different state from a nil closure meaning "use the default". That three-state
+				// encoding is the only way an operator can turn the most expensive rung off.
+				MaxTranscodes: func() int { return set.intv("filler.transcode.max_per_run") },
+				MaxWhisper:    func() int { return set.intv("filler.pipeline.max_whisper") },
+				MaxVision:     func() int { return set.intv("filler.pipeline.max_vision") },
+				MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
+			},
+			emitter.FillerClipStage, time.Now, log).
+			WithRewind(fillerRewindAdapter{st}, clipDir)
+		jobReg.Add(fillerPipelineJob(fillerPipeline))
+		// The operator-triggered paths now reach the same machinery as the cron driver — see the
+		// note on `fillerAdapter` above for why this lands here rather than at construction.
+		fillerAdapter.pipeline = fillerPipeline
+		fillerSvc = fillerAdapter
+		log.Info("filler ingest pipeline registered",
+			"stages", len(pipelineStages), "language", set.str("filler.language"),
+			"transcribe", set.boolv("filler.transcribe.enabled"),
+			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
+			"autosplit", set.boolv("filler.autosplit.enabled"))
+
+		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
+		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
+		// RebuildRollups are all direct store methods), unlike the transcribe/vision jobs that bridge a
+		// path-vs-hash mismatch. Off unless `filler.reindex.enabled`, read live inside Run, so the row
+		// stays visible on the Tasks page even when idle.
+		jobReg.Add(fillerReindexJob(filler.NewReindexJob(
+			st, func() bool { return set.boolv("filler.reindex.enabled") }, time.Now, log)))
 
 		// Auto-fetch (§10 V38b): registered sources are polled and new clips download unattended.
 		// Every limit is a closure so it hot-applies — an operator lowering a ceiling expects the
@@ -868,6 +1168,11 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		).WithEnabled(func() bool { return set.dur("filler.fetch.every") > 0 })
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
+
+		// (The scheduled compilation split job registered here until V51b. It is now the `split`
+		// rung of the pipeline above — same detection, same auto-confirm gate, but its output is
+		// SPAWNED into the pipeline so each cut advert runs the whole ladder for itself instead of
+		// waiting for whichever sweep noticed it next.)
 	}
 
 	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`
@@ -1122,6 +1427,41 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			func() string { return set.str("backup.dir") }, eventBus)
 	}
 
+	// residentLLMVRAMFn — the TRUE resident-VRAM reading (§9.1 V47): ask Ollama /api/ps what is
+	// actually loaded now, rather than estimating from on-disk size. Extracted to a named var (not an
+	// inline opts field) because TWO consumers need it: the doctor's GPU header (below) AND the
+	// admission budget's VRAM shading (V49) — the manager was built earlier with a late-bound hook
+	// (residentVRAM), which we now point at this. Local ollama only; a hosted provider holds no local
+	// VRAM → (0, ""). Read LIVE so a provider/URL change hot-applies.
+	residentLLMVRAMFn := func(ctx context.Context) (float64, string) {
+		if set.str("llm.provider") != "ollama" {
+			return 0, ""
+		}
+		url := set.str("llm.url")
+		if url == "" {
+			return 0, ""
+		}
+		resident, err := llm.NewOllama(url, set.str("llm.model")).ListResident(ctx)
+		if err != nil {
+			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
+			return 0, ""
+		}
+		var total float64
+		var largest llm.ResidentModel
+		for _, m := range resident {
+			total += m.VRAMGiB
+			if m.VRAMGiB > largest.VRAMGiB {
+				largest = m
+			}
+		}
+		return total, largest.Name
+	}
+	// Point the admission budget's late-bound VRAM hook at the real getter now that it exists, so a
+	// resident model shades the transcode budget down (V49). Guarded: playout may be unwired.
+	if playoutRes != nil {
+		residentVRAM = residentLLMVRAMFn
+	}
+
 	return api.Router(log, api.Options{
 		Store:         st,
 		Auth:          authorizer,
@@ -1142,6 +1482,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Search:        searchSvc,
 		Collections:   collectionsSvc,
 		Icons:         iconSvc,
+		Images:        imageService(imageSvc),
 		Events:        eventBus,
 		Filler:        fillerSvc,
 		Pods:          podPreview,
@@ -1167,14 +1508,48 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
 		PlayoutSessions: playoutSessions,
+		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
+		PlayoutHLS:      playoutHLS,
 		PlayoutResolver: playoutResolverSvc,
 		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:  playoutGuideSvc,
-		PlayoutSecret: playoutSecret,
+		PlayoutGuide:   playoutGuideSvc,
+		TimelineThumbs: timelineThumbs,
+		PlayoutSecret:  playoutSecret,
 		// Bound to the ffmpeg path once, like probeAudio above: the answer depends on the
 		// BUILD, so it cannot change without the binary changing. Memoised inside, so the
 		// `-filters` exec happens on the first offline card and never again.
-		PlayoutFont: playout.CardFontFor(set.str("playout.ffmpeg_path")),
+		PlayoutFont:    playout.CardFontFor(set.str("playout.ffmpeg_path")),
+		PlayoutTonemap: playout.TonemapperFor(set.str("playout.ffmpeg_path")),
+		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
+		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
+		// always targets whatever model is currently resident. Only the local ollama provider holds
+		// VRAM on this box — a hosted provider has nothing local to reclaim, so it is a no-op there
+		// (the ladder then goes straight to the software fallback).
+		ReclaimVRAM: func(ctx context.Context) {
+			if set.str("llm.provider") != "ollama" {
+				return // hosted: nothing local to evict
+			}
+			url := set.str("llm.url")
+			if url == "" {
+				return
+			}
+			p := llm.NewProvider("ollama", url, set.str("llm.model"), "")
+			ev, ok := p.(llm.Evictor)
+			if !ok {
+				return
+			}
+			if err := ev.Evict(ctx); err != nil && !errors.Is(err, llm.ErrNothingToEvict) {
+				log.Debug("playout: LLM eviction failed (encode will fall back to software)", "err", err)
+			}
+		},
+		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
+		// the admission budget's VRAM shading (V49) shares the exact same source.
+		ResidentLLMVRAM: residentLLMVRAMFn,
+		// Hardware-encode admission (§9.1 V47): the box's measured concurrent-transcode capacity sizes
+		// the gate that routes an over-capacity channel to software up front instead of stalling on a
+		// saturated GPU. Delegates to the resolver's memoised capability probe; nil when playout is not
+		// wired, which leaves the gate off (hardware unbounded — the pre-gate behaviour).
+		HWEncodeSlots: hwEncodeSlots,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

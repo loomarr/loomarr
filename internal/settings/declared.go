@@ -71,6 +71,15 @@ func declared() []Setting {
 			Doc: "An API key from your media server. Lets Loomarr read your library and set up the TV guide.",
 		},
 		{
+			// Direct play (§9.1 V47): translate the media server's file paths to where Loomarr can
+			// read them, so playout reads the FILE and copies it instead of transcoding the media
+			// server's HTTP stream. Empty = no mapping, so playout falls back to the HTTP stream —
+			// which is what a media server on another host with no shared mount needs.
+			Key: "library.path_map", EnvVar: "LIBRARY_PATH_MAP", Group: GroupMediaServer,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
+		},
+		{
 			Key: "season.precision", EnvVar: "SEASON_PRECISION", Group: GroupMediaServer,
 			Kind: KindEnum, Enum: []EnumOption{opt("series", "Whole series"), opt("seasons", "Requested seasons")}, Default: "series", Advanced: true,
 			Doc: "When adding a series, get the whole show (default) or just the seasons you asked for.",
@@ -206,7 +215,19 @@ func declared() []Setting {
 		{
 			Key: "playout.audio_language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
 			Kind: KindString, Default: "eng",
-			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original.",
+			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1).",
+		},
+		{
+			// Subtitles are burned into the shared encode, not offered as a soft toggle: one
+			// encoder serves every viewer of a channel (§9.1), so a viewer-selectable soft
+			// track would require per-viewer output. Off is the default and costs nothing.
+			Key: "playout.subtitles", EnvVar: "PLAYOUT_SUBTITLES", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("off", "Off — no subtitles"),
+				opt("burn", "Burn in — the preferred-language track, rendered into the picture"),
+			},
+			Default: "off",
+			Doc:     "Whether internal playout burns subtitles into the channel. Off is the default. Burn in renders the preferred-language subtitle track into the picture for the whole channel — everyone watching sees the same thing, because one encoder serves them all. A channel can override this on its Watch tab (§9.1).",
 		},
 		{
 			Key: "playout.quality_tier", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -231,6 +252,18 @@ func declared() []Setting {
 			Key: "playout.ffmpeg_path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Default: "ffmpeg", Advanced: true,
 			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
+		},
+		{
+			// Where the in-app HLS player's segments are written (§9.1 Watch, V46). Empty =
+			// the OS temp dir, which is the right default for most installs. An operator points
+			// it at a fast disk or a tmpfs when playing several channels to browsers, or away
+			// from a small root filesystem — the footprint is a rolling window of a few segments
+			// per watched channel, cleaned up when the last viewer leaves. Advanced: a wrong
+			// value degrades in-app playback, never the media-server streams (those never touch
+			// this dir).
+			Key: "playout.hls_dir", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching.",
 		},
 		{
 			Key: "playout.max_channels", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
@@ -279,6 +312,56 @@ func declared() []Setting {
 			Doc: "Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
+		// --- Images (§15, §22, V52) ---
+		{
+			// ⚠ Defaults inside /data for the same reason `filler.dir` and `backup.dir` do — the
+			// documented volume carries it — but with a consequence neither of those has: the
+			// application backup is a DATABASE backup, and no image bytes are in the database
+			// (§22). Everything here is regenerable or re-fetchable EXCEPT operator uploads, which
+			// is why `images-gc` counts unrecoverable-missing rows as a warning rather than
+			// pretending it can repair them.
+			Key: "images.dir", EnvVar: "IMAGES_DIR", Group: GroupImages,
+			Kind: KindString, Default: "/data/images",
+			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume.",
+		},
+		{
+			Key: "images.formats", EnvVar: "IMAGES_FORMATS", Group: GroupImages,
+			Kind: KindStringList, Default: "avif,webp,jpeg",
+			Doc: "Which image formats to produce, best first. Dropping jpeg saves storage but breaks very old iOS and legacy Android WebViews; dropping avif saves considerable CPU at about 25% more bytes on the wire.",
+		},
+		{
+			Key: "images.max_upload_bytes", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
+			Kind: KindInt, Default: "8388608",
+			Doc: "The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares.",
+		},
+		{
+			Key: "images.remote_fetch_enabled", EnvVar: "IMAGES_REMOTE_FETCH_ENABLED", Group: GroupImages,
+			Kind: KindBool, Default: true,
+			Doc: "Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made.",
+		},
+		{
+			// ⚠ TMDB caps a client at 20 simultaneous connections. 12 stays under it with room for
+			// the other outbound callers (search, ratings, franchise healing) that share the same
+			// budget. Raising it past 20 earns 429s, not throughput.
+			Key: "images.remote_max_concurrency", EnvVar: "IMAGES_REMOTE_MAX_CONCURRENCY", Group: GroupImages,
+			Kind: KindInt, Default: "12", Advanced: true,
+			Doc: "How many artwork downloads run at once. TMDB allows 20 simultaneous connections in total, so raising this past 20 earns rate-limit errors rather than speed.",
+		},
+		{
+			// ⚠ A COMPLIANCE CEILING, not a tuning knob. TMDB's API terms forbid caching their
+			// content longer than six months, so this is the one setting here where raising the
+			// value puts the instance out of compliance rather than merely using more disk. Said
+			// in the Doc as well as here, because the Doc is what an operator actually reads.
+			Key: "images.remote_ttl", EnvVar: "IMAGES_REMOTE_TTL", Group: GroupImages,
+			Kind: KindDuration, Default: "4320h", Advanced: true,
+			Doc: "How long downloaded artwork may be kept before it is re-fetched or removed (about six months). This is a compliance limit, not a preference: TMDB's terms forbid caching their images for longer, so raising it puts your instance out of compliance with them.",
+		},
+		{
+			Key: "images.cache_budget_mb", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
+			Kind: KindInt, Default: "2048", Advanced: true,
+			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
+		},
+
 		// --- Connections: TMDB (§15, Phase 11) ---
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
@@ -320,8 +403,8 @@ func declared() []Setting {
 			// Local-only (§8.2): a hosted service has no model to hold in memory, so this
 			// is hidden for the openai provider rather than shown as an inert control.
 			Key: "llm.keep_alive", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
-			Kind: KindDuration, Default: "30m", Advanced: true,
-			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster. Set to 0 to free the memory as soon as each request finishes.",
+			Kind: KindDuration, Default: "2m", Advanced: true,
+			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
 		},
 		{
@@ -483,6 +566,45 @@ func declared() []Setting {
 			Doc: "File confidently-tagged clips into the catalog automatically. Anything Loomarr is unsure about waits for you under Filler → Incoming.",
 		},
 		{
+			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
+			// the language gate (~341s per clip under QEMU), so it is a deliberate opt-in, not a
+			// silent background cost. The job is SELECTIVE even when on — it only transcribes clips
+			// whose source described them thinly, never the whole catalog.
+			Key: "filler.transcribe.enabled", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the same speech engine as language detection.",
+		},
+		{
+			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
+			// hosted path spends multimodal tokens per clip and sends frames off the box, the local
+			// path needs an Ollama vision model. Off, or with no vision model, the job is inert.
+			Key: "filler.vision.enabled", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
+		},
+		{
+			// Taxonomy reindex (§10 V45a). ⚠ OFF by default like its siblings, but for a DIFFERENT
+			// reason: not cost (it is two cheap bulk SQL statements, no whisper/vision), but relevance
+			// — clip rollups only go stale when an operator EDITS the tag graph. An install that never
+			// hand-edits the taxonomy never needs it; one that does turns it on so the derived rollups
+			// re-converge on the current graph. When the taxonomy CRUD API can kick a rebuild directly,
+			// this job remains the eventual-convergence guarantee.
+			Key: "filler.reindex.enabled", EnvVar: "FILLER_REINDEX_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Keep clip tags in step with the tag vocabulary. Turn this on if you edit the tag categories yourself — Loomarr then recomputes every clip's rolled-up tags to match the current vocabulary.",
+		},
+		{
+			// ⚠ Its OWN model knob, exactly like filler.language_model — and the live test that
+			// added it found why: the tagging model (`llm.model`) is often a TEXT model with no
+			// vision path (qwen3 in dev), while the box has a separate vision-capable one (gemma-4).
+			// Tying vision to `llm.model` would force an operator to switch their whole LLM to a
+			// vision model just to tag clips. Empty ⇒ fall back to `llm.model`, so an install whose
+			// main model already sees images needs no second setting.
+			Key: "filler.vision.model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
+			Kind: KindString, Default: "", Advanced: true,
+			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
+		},
+		{
 			// ⚠ Max is filler.MaxAutoFileConfidence (95), and the ceiling is load-bearing rather
 			// than cosmetic: an ungrounded era is capped BELOW it, so no settable value can admit
 			// a fabricated era. Raising this bound without raising that cap breaks the guarantee.
@@ -490,11 +612,139 @@ func declared() []Setting {
 			Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
 			Doc: "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
 		},
-		// ⚠ `filler.autofile.normalize_loudness` is NOT declared here yet, deliberately. The
-		// loudness pass (ffmpeg `loudnorm`) is real work that is not built, and §15's rule is that
-		// a setting nothing READS does not exist — the exact defect that got the two keys above
-		// removed in V35's review. Declaring the toggle first would repeat it inside the very
-		// phase that records the lesson. It lands with its consumer.
+		{
+			// On-file loudness normalisation (§10 V42, wired for real in V51b).
+			//
+			// ⚠ **This key spent three phases gating a function nothing called, and the note that
+			// used to sit here claimed the opposite.** It said the setting "lands with its
+			// consumer (`filler.NormalizeInPlace`, called from the auto-file step)" (retired-ok) — invoking
+			// §15's own rule that a setting nothing READS does not exist. The consumer was
+			// deleted or never wired; V51b found the function with no production caller at all,
+			// so the toggle has been inert since it shipped. It is now read by the TRANSCODE rung,
+			// which applies the loudness filter in the pass that is already re-encoding the clip.
+			//
+			// The lesson is the one §15's rule was written for, arriving from the other side: a
+			// COMMENT asserting a consumer exists is not the same as a consumer existing, and
+			// nothing failed when it stopped being true.
+			//
+			// ⚠ DEFAULT OFF, and the default is the safety property rather than a preference.
+			// This REWRITES the operator's file in FILLER_DIR: the original is unrecoverable.
+			// V40 chose playout-only normalisation for exactly that reason and it remains the
+			// default path; this is an explicit opt-in for operators who want the correction
+			// baked in.
+			//
+			// ⚠ There is deliberately NO separate target here. The pass reuses
+			// `filler.target_lufs` (−23), because two targets in one system means a clip
+			// normalised on file gets corrected again at playout toward a different number —
+			// double processing, and quieter than either setting asks for.
+			//
+			// ⚠ Idempotency is NOT optional for this one. A re-scan cannot tell by looking that
+			// a file was already normalised, so without the sidecar's `normalizedLufs` marker
+			// every pass would normalise an already-normalised file and walk the loudness down
+			// run after run. The transcode rung writes that marker after the encode lands, and
+			// its own `mezzanine` marker stops the re-encode independently.
+			Key: "filler.autofile.normalize_loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
+			Group: GroupFiller, Kind: KindBool, Default: false,
+			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
+		},
+
+		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
+		// its result always required a human, which made compilations the most manual part of a
+		// system whose claim is that it maintains itself — while the tagger beside it files
+		// clips unattended above a threshold.
+		{
+			// (`filler.split.every` was retired here in V51b. Splitting is no longer a sweep with
+			// its own cadence — it is a rung every long recording reaches as it is ingested, so
+			// "how often do we go looking" stopped being a question with an answer. Detection is
+			// still bounded, by `filler.pipeline.max_splits` per pass.)
+			//
+			// ⚠ **ON by default as of V51b, reversing the note this comment used to carry.** It
+			// said: off, because cutting is destructive in a way tagging is not — a mis-cut clip
+			// plays HALF AN ADVERT and the source is consumed either way. That reasoning was
+			// sound and the risk has not changed; what changed is the evidence. The gate is
+			// strict — the whole reel qualifies or none of it does, an ungrounded era disqualifies
+			// at every threshold, and any segment the detector admits it could not resolve sends
+			// the whole reel to a human — and the measured failure mode is the gate REFUSING good
+			// reels, not admitting bad ones. Off by default meant every compilation waited for a
+			// click that the design says should be unnecessary.
+			Key: "filler.autosplit.enabled", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
+		},
+		{
+			// ⚠ A SEPARATE number from `filler.autofile.min_confidence`, and the separation is
+			// the point: one dial would force the stricter of two different failure modes to
+			// govern both. Bounded by the same range for the same reason — an ungrounded era is
+			// capped below 95, so no settable value can auto-confirm a fabricated one.
+			Key: "filler.autosplit.min_confidence", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
+			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoFileConfidenceRange,
+			Doc: "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
+		},
+		{
+			// ⚠ ONE key doing two jobs on purpose. It selects which clips the split job even
+			// looks at (longer than this ⇒ a compilation worth detecting) AND it is the ceiling
+			// every segment must clear to auto-confirm. Two keys could disagree — a clip the job
+			// considers too long to be an advert must not then auto-confirm as one.
+			Key: "filler.autosplit.max_duration", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
+			Group: GroupFiller, Kind: KindDuration, Default: "120s",
+			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
+		},
+		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
+		// the catalog: a backlog drains over cycles, which is the property the per-job batch
+		// constants they replace (LanguageBatch 25, TranscribeBatch 10, VisionBatch 5,
+		// defaultSplitsPerRun 3) were chosen to defend. The numbers are carried forward unchanged.
+		//
+		// ⚠ **Zero means NONE, and that is a distinct state from the default.** It is the only way
+		// an operator can say "never do this kind of work on this box" — the same three-state
+		// encoding `filler.fetch.every` uses, and the reason these are integers rather than
+		// booleans-plus-a-rate.
+		{
+			Key: "filler.pipeline.max_clips", EnvVar: "FILLER_PIPELINE_MAX_CLIPS", Group: GroupFiller,
+			Kind: KindInt, Default: 25, Advanced: true,
+			Doc: "How many clips Loomarr advances through preparation in one pass. A large import drains over several passes rather than occupying the machine in one.",
+		},
+		{
+			// ⚠ THREE, the tightest budget here, because a transcode competes with playout for
+			// the GPU and this is what makes the existing catalog backfill converge over a day
+			// instead of pinning the box. Zero switches re-encoding off entirely — an escape
+			// hatch that matters, because this is the one rung that rewrites the operator's file.
+			Key: "filler.transcode.max_per_run", EnvVar: "FILLER_TRANSCODE_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 3, Advanced: true,
+			Doc: "How many clips Loomarr re-encodes to its standard format in one pass. Set to 0 to never re-encode — clips then play in whatever format they arrived in.",
+		},
+		{
+			Key: "filler.pipeline.max_whisper", EnvVar: "FILLER_PIPELINE_MAX_WHISPER", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Advanced: true,
+			Doc: "How many clips Loomarr listens to in one pass, for language and transcription together. Listening is slow — minutes per clip on some machines — so this keeps a pass from running away.",
+		},
+		{
+			Key: "filler.pipeline.max_vision", EnvVar: "FILLER_PIPELINE_MAX_VISION", Group: GroupFiller,
+			Kind: KindInt, Default: 5, Advanced: true,
+			Doc: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
+		},
+		{
+			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
+			Kind: KindInt, Default: 3, Advanced: true,
+			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
+		},
+		{
+			// ⚠ **ON by default, and it is the only reject an operator can turn off** — because
+			// "we could not identify it" is not the same claim as "it is not a commercial". A
+			// wordless station ident is exactly that case, and §10 calls a silent advert some of
+			// the best filler there is.
+			//
+			// ⚠ It is also why the rejected list is NOT optional: an operator has to be able to
+			// see what this caught and put it back. The reject is recorded with its reason and is
+			// reversible in one click; a silent tombstone would not be acceptable at this default.
+			//
+			// The guard that makes it safe lives in the score rung: a clip is only "unidentified"
+			// if something actually LOOKED and found nothing. A clip the tagger never reached —
+			// an install with no LLM, a catalog imported before tagging existed — falls through
+			// to review, never to a reject.
+			Key: "filler.reject.unidentified", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back.",
+		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
 		// survives as these bounds rather than as a prohibition.
@@ -773,14 +1023,92 @@ func declared() []Setting {
 			// expensive one: on the local backend a batch of 25 clips is minutes natively and
 			// hours under QEMU (~341s per clip). Hourly drains a catalog steadily without a pass
 			// overlapping the next.
-			Key: "job.filler_language.schedule", EnvVar: "JOB_FILLER_LANGUAGE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 30 * * * *",
-			Doc: "How often Loomarr checks what language new filler clips are spoken in (cron).",
+			// ⚠ **This one key replaced FOUR** (§10 V51b), all now retired-ok:
+			// `job.filler_language.schedule`, `job.filler_split.schedule` (retired-ok),
+			// `job.filler_transcribe.schedule` and `job.filler_vision.schedule` (retired-ok).
+			// Those four existed to keep expensive sweeps off each
+			// other's toes by PHASE-OFFSETTING them (:15, :30, :45, :50) — a scheduling discipline
+			// that only works while nobody adds a fifth, and which the comments they carried
+			// spelled out at length.
+			//
+			// The pipeline makes the whole arrangement unnecessary rather than tidier: it runs
+			// ONE clip at a time through all the rungs in order, so two expensive stages cannot
+			// share the runner by construction. There is nothing left to offset.
+			//
+			// ⚠ Every two minutes, far tighter than the hourly sweeps, and affordable for the
+			// reason the sweeps were not: a pass is bounded by the per-run budget rather than by
+			// the catalog size, so an idle install costs one indexed query. It has to be tight,
+			// because this is now the ONLY thing that advances a freshly downloaded clip.
+			//
+			// ⚠ Every job needs its schedule key declared or the settings service PANICS at
+			// startup on `Resolve` of an undeclared key — so a new job and its key always land in
+			// the same change.
+			Key: "job.filler_pipeline.schedule", EnvVar: "JOB_FILLER_PIPELINE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */2 * * * *",
+			Doc: "How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron).",
+		},
+		{
+			// §10 V45a. At :05, CLEAR of the expensive media-job cluster (:15/:30/:45/:50) rather than
+			// phase-offset FROM it — this job is two cheap bulk SQL statements, not a whisper/vision
+			// pass, so it does not contend for the runner the way they do. Only runs when reindex is
+			// enabled (an install that hand-edits the tag graph).
+			Key: "job.filler_reindex.schedule", EnvVar: "JOB_FILLER_REINDEX_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 5 * * * *",
+			Doc: "How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled.",
 		},
 		{
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 0 * * * *",
 			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",
+		},
+
+		// --- The image service's four jobs (§22, V52) ---
+		//
+		// ⚠ Every job needs its schedule key declared or the settings service PANICS at startup on
+		// `Resolve` of an undeclared key, so all four land with the jobs themselves.
+		{
+			// Every minute, because this is what stands between an adopted row and a visible
+			// image: `Adopt` deliberately does NOT fetch (a page adopting fifty posters would put
+			// TMDB's latency on Loomarr's own page load), so until this runs the surface shows a
+			// placeholder. A pass is bounded by the concurrency cap and an indexed work-list
+			// query, so an idle install costs one cheap SELECT.
+			Key: "job.images_fetch.schedule", EnvVar: "JOB_IMAGES_FETCH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *",
+			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
+		},
+		{
+			// ⚠ Every five minutes: this is the step between a clip's artwork being RENDERED and
+			// that artwork being visible through the image service, so a slow cadence reads as the
+			// feature not working while an operator watches an import. Cheap to run often — the
+			// work list selects only clips with artwork on disk and no image identity yet, so a
+			// healthy install pays one indexed query.
+			Key: "job.images_adopt_artwork.schedule", EnvVar: "JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see.",
+		},
+		{
+			// At :20, clear of the filler media cluster (:15/:30/:45/:50) and of the two 04:xx
+			// backup/retention jobs. AVIF encoding forks a multithreaded ffmpeg per image, so this
+			// is the one image job that genuinely contends for the box — the reason §22 makes AVIF
+			// a job at all is concurrency, not latency (a cold grid of 50 posters would otherwise
+			// fork 50 encoders at once).
+			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 20 * * * *",
+			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
+		},
+		{
+			// Daily, not hourly: this is the POST-RESTORE path (§22 durability). A restored
+			// database has rows whose files are gone, and this re-fetches everything recoverable.
+			// On a healthy install it finds nothing, which is exactly why it does not need to run
+			// often — and why it must exist at all, since nothing else notices a missing file.
+			Key: "job.images_rehydrate.schedule", EnvVar: "JOB_IMAGES_REHYDRATE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 4 * * *",
+			Doc: "How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder.",
+		},
+		{
+			Key: "job.images_gc.schedule", EnvVar: "JOB_IMAGES_GC_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 5 * * *",
+			Doc: "How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork.",
 		},
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,

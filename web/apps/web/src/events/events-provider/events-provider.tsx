@@ -57,6 +57,9 @@ const LoomarrEventsProvider = ({ children }: LoomarrEventsProviderProps) => {
       onFillerSplit: (e) => {
         for (const l of listeners.current) l.onFillerSplit?.(e);
       },
+      onFillerClip: (e) => {
+        for (const l of listeners.current) l.onFillerClip?.(e);
+      },
       onPlayout: (e) => {
         for (const l of listeners.current) l.onPlayout?.(e);
       },
@@ -91,8 +94,20 @@ const useLoomarrEventListener = (handlers: EventHandlers): void => {
       onLlmPull: (e) => ref.current.onLlmPull?.(e),
       onFillerIngest: (e) => ref.current.onFillerIngest?.(e),
       onFillerSplit: (e) => ref.current.onFillerSplit?.(e),
+      onFillerClip: (e) => ref.current.onFillerClip?.(e),
       onJob: (e) => ref.current.onJob?.(e),
       onActivity: (e) => ref.current.onActivity?.(e),
+      // ⚠ **These two were MISSING, and the drift guard was green over it.** The provider fanned
+      // `playout` and `database` out correctly, but this re-dispatch — the half a component
+      // actually subscribes through — dropped both, so every handler passed for them could never
+      // fire. `settings/system/database.tsx` subscribes `onDatabase` to refetch migration status:
+      // that page's live progress was simply dead, and the only symptom was a bar that never moved.
+      //
+      // The guard missed it because it regexed BOTH handler objects in one pass and asserted their
+      // UNION against core — so a key present in either satisfied it. Two objects, two independent
+      // assertions now; see events-provider.test.tsx.
+      onPlayout: (e) => ref.current.onPlayout?.(e),
+      onDatabase: (e) => ref.current.onDatabase?.(e),
     });
   }, [subscribe]);
 };

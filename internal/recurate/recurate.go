@@ -18,6 +18,7 @@ package recurate
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -38,7 +39,10 @@ type Thresholds interface {
 // (suggest.ApproveStore) plus channel + proposal lookups.
 type CuratorStore interface {
 	suggest.ApproveStore
-	ListChannels(ctx context.Context) ([]store.Channel, error)
+	// GetChannelByIntentRef identifies WHICH channel a re-curation proposal authorizes: the
+	// proposal's JobID is the channel's IntentRef. Indexed (00037) — it was `ListChannels`
+	// plus a linear walk, duplicated byte-for-byte in `binder`.
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 	UpdateProposal(ctx context.Context, p store.Proposal) error
 	// ⚠ NO UpsertChannel, deliberately. This package decides retirements (§8.2a) but must not
 	// APPLY them: it records them on the proposal and the binder — the single writer of a
@@ -159,15 +163,18 @@ func (c *Curator) Consider(ctx context.Context, p store.Proposal) (suggest.Decis
 
 // channelForJob finds the channel bound to a suggestion job (its IntentRef). A re-curation
 // proposal's JobID IS the channel's IntentRef, so this identifies which channel to authorize.
+//
+// ⚠ An INDEXED lookup since V41 (00037). This was `ListChannels` plus a linear walk — the same
+// function, byte for byte, as `binder.channelByIntent`, because neither package had a store
+// method to reach for. A zero Channel still means "no channel for this job", which `Consider`
+// reads as not-opted-in and fails closed on.
 func (c *Curator) channelForJob(ctx context.Context, jobID string) (store.Channel, error) {
-	all, err := c.store.ListChannels(ctx)
+	ch, err := c.store.GetChannelByIntentRef(ctx, jobID)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Channel{}, nil
+	}
 	if err != nil {
 		return store.Channel{}, err
 	}
-	for _, ch := range all {
-		if ch.IntentRef == jobID {
-			return ch, nil
-		}
-	}
-	return store.Channel{}, nil // no channel for this job → caller treats as not-opted-in
+	return ch, nil
 }

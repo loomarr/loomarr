@@ -22,8 +22,10 @@ const playoutToken = "playout-token-abcdefghijklmnop"
 // fakePlayoutSessions stands in for playout.Manager. The session lifecycle is tested in
 // internal/playout; here the question is what the HTTP layer does with it.
 type fakePlayoutSessions struct {
-	mu       sync.Mutex
-	attached []string
+	mu sync.Mutex
+	// attached records each Attach as (channel, target) so a test can assert the tuner attaches as
+	// PlanFull (§9.1 V47) — the identity that keeps HEVC a copy for a media server.
+	attached []attachRecord
 	err      error
 	chunks   chan []byte
 	detached int
@@ -33,12 +35,20 @@ type fakePlayoutSessions struct {
 	reported []reportedProgram
 }
 
-// reportedProgram is one ReportProgram call, so a test can assert the per-program encode path
-// actually reports its telemetry rather than silently dropping it.
-type reportedProgram struct {
+// attachRecord is one Attach call — its channel and codec target.
+type attachRecord struct {
 	channelID string
-	encoder   playout.Encoder
-	progress  playout.Progress
+	target    playout.EncodePlan
+}
+
+// reportedProgram is one ReportProgram call, so a test can assert the per-program encode path
+// actually reports its telemetry rather than silently dropping it — to the right (channel, target).
+type reportedProgram struct {
+	channelID   string
+	target      playout.EncodePlan
+	encoder     playout.Encoder
+	transcoding bool
+	progress    playout.Progress
 }
 
 func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
@@ -53,19 +63,19 @@ func (f *fakePlayoutSessions) Capacity() int {
 	return f.capacity
 }
 
-func (f *fakePlayoutSessions) ReportProgram(channelID string, enc playout.Encoder, p playout.Progress) {
+func (f *fakePlayoutSessions) ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.reported = append(f.reported, reportedProgram{channelID: channelID, encoder: enc, progress: p})
+	f.reported = append(f.reported, reportedProgram{channelID: channelID, target: target, encoder: enc, transcoding: transcoding, progress: p})
 }
 
-func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-chan []byte, func(), error) {
+func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
 		return nil, nil, f.err
 	}
-	f.attached = append(f.attached, channelID)
+	f.attached = append(f.attached, attachRecord{channelID: channelID, target: target})
 	if f.chunks == nil {
 		f.chunks = make(chan []byte, 8)
 	}
@@ -91,6 +101,7 @@ func (f *fakePlayoutSessions) detachCount() int {
 
 type playoutOpts struct {
 	sessions   api.PlayoutSessions
+	hls        api.PlayoutHLS
 	token      string
 	publicURL  string
 	backend    string
@@ -100,10 +111,7 @@ type playoutOpts struct {
 
 func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/playout.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/playout.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	if o.token == "" {
@@ -121,6 +129,7 @@ func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Stor
 		Auth:            api.NewTokenAuthorizer(adminToken),
 		Log:             slog.New(slog.DiscardHandler),
 		PlayoutSessions: o.sessions,
+		PlayoutHLS:      o.hls,
 	}
 	if !o.noSecret {
 		opts.PlayoutSecret = func() string { return o.token }
@@ -168,9 +177,12 @@ func TestPlayout_RejectsMissingOrWrongToken(t *testing.T) {
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	for _, path := range []string{
-		"/playout/tuner.m3u",
-		"/playout/stream/ch1",
-		"/playout/playlist/ch1",
+		"/v1/playout/tuner.m3u",
+		"/v1/playout/stream/ch1",
+		"/v1/playout/playlist/ch1",
+		// The in-app HLS surface (§9.1 Watch, V46) authenticates exactly like the rest.
+		"/v1/playout/hls/ch1/master.m3u8",
+		"/v1/playout/hls/ch1/seg-0.ts",
 	} {
 		for name, q := range map[string]string{
 			"no token":    "",
@@ -195,8 +207,8 @@ func TestPlayout_WrongTokenIsIndistinguishableFromNoRoute(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	real := getPlayout(t, srv, "/playout/stream/ch1?token=wrong")
-	fake := getPlayout(t, srv, "/playout/stream/does-not-exist?token=wrong")
+	real := getPlayout(t, srv, "/v1/playout/stream/ch1?token=wrong")
+	fake := getPlayout(t, srv, "/v1/playout/stream/does-not-exist?token=wrong")
 
 	if real.StatusCode != fake.StatusCode {
 		t.Errorf("a real channel with a bad token (%d) is distinguishable from a "+
@@ -211,7 +223,7 @@ func TestPlayout_NoConfiguredTokenRefusesEverything(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, noSecret: true})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	for _, path := range []string{"/playout/tuner.m3u", "/playout/stream/ch1", "/playout/playlist/ch1"} {
+	for _, path := range []string{"/v1/playout/tuner.m3u", "/v1/playout/stream/ch1", "/v1/playout/playlist/ch1"} {
 		// Even presenting an empty token — which would "match" an unset secret under a naive
 		// equality check — must be refused.
 		for _, q := range []string{"", "?token=", "?token=" + playoutToken} {
@@ -230,7 +242,7 @@ func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	if resp := getPlayout(t, srv, "/playout/stream/ch1?token="+adminToken); resp.StatusCode != http.StatusNotFound {
+	if resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+adminToken); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("the admin token authorized a playout route: status %d", resp.StatusCode)
 	}
 	// And the playout token grants no PRIVILEGED API access. POST /v1/channels is admin-only
@@ -252,12 +264,12 @@ func TestPlayout_AdminTokenIsNotAPlayoutToken(t *testing.T) {
 }
 
 // A playout path that matches no route must 404, not fall through to the SPA. Without the
-// /playout/ prefix guard, ffmpeg would read index.html as a transport stream and report a
+// /v1/ prefix guard, ffmpeg would read index.html as a transport stream and report a
 // corrupt stream naming neither the URL nor the typo.
 func TestPlayout_UnknownPathDoesNotServeTheSPA(t *testing.T) {
 	srv, _ := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 
-	resp := getPlayout(t, srv, "/playout/not-a-route?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/not-a-route?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)
 	}
@@ -281,7 +293,7 @@ func TestPlayoutStream_LooksLikeALiveStreamNotAFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
-		srv.URL+"/playout/stream/ch1?token="+playoutToken, nil)
+		srv.URL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
 
 	// Feed one chunk so the handler writes something and we know it is streaming.
 	f.chunks = make(chan []byte, 1)
@@ -328,7 +340,7 @@ func TestPlayoutStream_ClientDisconnectDetaches(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
-		srv.URL+"/playout/stream/ch1?token="+playoutToken, nil)
+		srv.URL+"/v1/playout/stream/ch1?token="+playoutToken, nil)
 	f.chunks <- []byte("x")
 
 	resp, err := srv.Client().Do(req)
@@ -361,7 +373,7 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	f.chunks <- []byte("y")
-	resp := getPlayout(t, srv, "/playout/stream/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
 	buf := make([]byte, 1)
 	if _, err := io.ReadFull(resp.Body, buf); err != nil {
 		t.Fatalf("stream did not start: %v", err)
@@ -387,7 +399,7 @@ func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 	})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/stream/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", resp.StatusCode)
 	}
@@ -406,7 +418,7 @@ func TestPlayoutStream_NotRunningExplainsItself(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: nil})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/stream/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/stream/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", resp.StatusCode)
 	}
@@ -420,7 +432,7 @@ func TestPlayoutPlaylist_IsTheTwoLineFfconcat(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/playlist/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
@@ -435,7 +447,7 @@ func TestPlayoutPlaylist_IsTheTwoLineFfconcat(t *testing.T) {
 	}
 	// Entries must be ABSOLUTE and carry the token: ffmpeg is a separate process with no
 	// notion of "the origin this came from", and it cannot set headers.
-	if !strings.Contains(got, "http://loomarr.local:8080/playout/program/ch1") {
+	if !strings.Contains(got, "http://loomarr.local:8080/v1/playout/program/ch1") {
 		t.Errorf("entries are not absolute URLs built from server.public_url: %q", got)
 	}
 	if !strings.Contains(got, "token="+playoutToken) {
@@ -450,7 +462,7 @@ func TestPlayoutPlaylist_IgnoresHostHeaderSpoofing(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/playout/playlist/ch1?token="+playoutToken, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/playout/playlist/ch1?token="+playoutToken, nil)
 	req.Host = "evil.example.com"
 	req.Header.Set("X-Forwarded-Host", "evil.example.com")
 	resp, err := srv.Client().Do(req)
@@ -475,7 +487,7 @@ func TestPlayoutPlaylist_UnsetPublicURLIsExplained(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}, publicURL: " "})
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/playlist/ch1?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/playlist/ch1?token="+playoutToken)
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503 when public_url is unset", resp.StatusCode)
 	}
@@ -493,7 +505,7 @@ func TestPlayoutTuner_CarriesGuideCorrelationAttributes(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", "Channel One", 3, "internal")
 
-	resp := getPlayout(t, srv, "/playout/tuner.m3u?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
@@ -514,7 +526,7 @@ func TestPlayoutTuner_CarriesGuideCorrelationAttributes(t *testing.T) {
 	if !strings.Contains(got, `tvg-chno="3"`) {
 		t.Errorf("no tvg-chno — the media server would impose its own numbering: %q", got)
 	}
-	if !strings.Contains(got, "http://loomarr.local:8080/playout/stream/ch1?token="+playoutToken) {
+	if !strings.Contains(got, "http://loomarr.local:8080/v1/playout/stream/ch1?token="+playoutToken) {
 		t.Errorf("stream URL is not absolute + tokenized: %q", got)
 	}
 }
@@ -527,7 +539,7 @@ func TestPlayoutTuner_ExcludesTunarrBackedChannels(t *testing.T) {
 	seedChannel(t, st, "mine", "Internal Channel", 1, "internal")
 	seedChannel(t, st, "theirs", "Tunarr Channel", 2, "tunarr")
 
-	resp := getPlayout(t, srv, "/playout/tuner.m3u?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
 	body, _ := io.ReadAll(resp.Body)
 	got := string(body)
 
@@ -547,7 +559,7 @@ func TestPlayoutTuner_InheritsTheGlobalBackend(t *testing.T) {
 	seedChannel(t, st, "inherits", "Inherits Global", 1, "")  // no policy
 	seedChannel(t, st, "opted-in", "Opted In", 2, "internal") // explicit override
 
-	resp := getPlayout(t, srv, "/playout/tuner.m3u?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
 	body, _ := io.ReadAll(resp.Body)
 	got := string(body)
 
@@ -565,7 +577,7 @@ func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
 	srv, st := newPlayoutServer(t, playoutOpts{sessions: &fakePlayoutSessions{}})
 	seedChannel(t, st, "ch1", `Bob's "Best" Movies`, 1, "internal")
 
-	resp := getPlayout(t, srv, "/playout/tuner.m3u?token="+playoutToken)
+	resp := getPlayout(t, srv, "/v1/playout/tuner.m3u?token="+playoutToken)
 	body, _ := io.ReadAll(resp.Body)
 	got := string(body)
 
