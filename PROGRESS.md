@@ -62,9 +62,44 @@ coexist until the last stub is gone.
 Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
 fire on that string, and a mention that is deliberate should say so.
 
-**Next up: V53e+** — migrate the remaining 30 `stubFetch` files in batches of 5–8, then add
-`vi.stubGlobal("fetch"` to `scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard
-would fail on every file still waiting.
+**V53e — the migration, in batches (IN PROGRESS, 2026-08-09).** Batch 1 (`#206`): `use-auth`,
+`users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`feat/msw-batch-2`): `wizard-ai-block`,
+`channel-row-menu`, plus a shared `channel()` fixture. **8 of 31 migrated; 23 remain.**
+
+⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
+wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
+
+- **Required fields no stub ever supplied.** `MeBody` requires `local`; `SystemLLMStatus` requires
+  `local` AND `reachable`; `ChannelDTO` requires **eleven** fields where tests invented
+  `{ id, name, status }`. A component reading `pendingCount` off one of those would see `undefined`
+  where the server always sends a number.
+- **A response shape the API never produces.** `{ results: {} }` where the wire says
+  `results: SettingResult[]` — the test asserted against a fiction and passed for as long as it
+  existed.
+- **Catch-all branches answering requests that are never made** (three of them), and one hiding a
+  request that IS made: `WizardAiBlock` calls `/v1/system/llm/discover`, which `json({})` answered
+  silently, so that path ran against an empty object.
+- **Assertions matching a url SUBSTRING the test wrote itself** — `calls.find(c => c.method ===
+  "PATCH")` would match a PATCH to any endpoint at all. Reaching a route-bound resolver is the
+  stronger claim.
+
+⚠ **Error cases stay hand-written, and it is the SPEC's shape, not convenience:** this API declares
+errors with OpenAPI `default:` (RFC 7807) on 132 of 134 operations — **zero** explicit 4xx/5xx codes
+— so orval has no status to generate an error handler from. Verified safe against a rename: with the
+path deliberately broken, the component's real request goes unhandled and the guard fails the test
+BY NAME. The failure mode is "no handler" (loud), never "wrong data" (silent).
+
+⚠ **`make fe` does NOT run `fe-visual`**, so a green local gate never covers the Playwright job.
+Batch 1's first CI run went red on `mcr.microsoft.com` TLS handshake timeout — a Docker image pull,
+`Error 125`, no browser ever started. **The tell was shard asymmetry**: 1/2 passed in 8m49s on the
+identical commit while 2/2 died in 57s, and a real snapshot diff cannot be shard-asymmetric on the
+same code. Re-run, not a code change.
+
+**Next up: V53f+** — the remaining 23 files in batches of 5–8, then add `vi.stubGlobal("fetch"` to
+`scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard would fail on every file
+still waiting. `use-channel-refine` is deliberately deferred — deferred promises plus method-only
+dispatch (its own comment says it avoids "pinning to exact URL strings", which is the weakness being
+removed), so it needs a careful pass rather than a batch slot.
 
 **Also still open, and not superseded by the V53 arc: V50d** (house-style conformance across
 `components/ui`), carrying `connection-block`'s collapsed-body focus gap — its Test action and Fix
