@@ -246,12 +246,15 @@ storybook-build: ## offline storybook-static build (what fe-visual snapshots)
 PW_CI ?= 1
 PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 
-# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/2`). Empty by
+# PW_SHARD is a CI-only passthrough (`make fe-visual PW_SHARD=--shard=1/4`). Empty by
 # default, so a local `make fe-visual` still runs the WHOLE suite — sharding must never
 # be the default, or someone runs half the gate and reads it as green. CI splits the
-# suite across runners purely for wall-clock: 624 browser screenshots on a 4-core runner
-# are the critical path (~6 min of a ~7 min build), and public-repo standard runners are
-# free, so N runners cost the same as one and finish sooner.
+# suite across runners purely for wall-clock, and public-repo standard runners are free,
+# so N runners cost the same as one and finish sooner.
+#
+# ⚠ The shard COUNT lives in ci.yml's `matrix.shard` and nowhere else — the denominator is
+# derived there from `strategy.job-total`. Do not write a specific N into this file: the
+# "1/2" that used to be in the line above outlived the 2-shard config it described.
 PW_SHARD ?=
 
 # ⚠ Run the container AS THE HOST USER, or everything it writes into the bind mount is owned by
