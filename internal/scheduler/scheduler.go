@@ -279,7 +279,19 @@ func (s *Scheduler) execute(ctx context.Context, j Job) {
 		s.log.Warn("scheduled job failed", "job", j.Name, "err", err)
 	}
 	next := s.nextRun(j, now)
-	if uerr := s.store.UpsertScheduledJob(ctx, store.ScheduledJob{
+	// ⚠ **DETACHED, because the commonest reason a job needs recording is the reason this write
+	// would fail.** A job that exceeds its deadline returns `context deadline exceeded` — and this
+	// write, made through that same context, then failed too, so `last_result`, `last_error` and
+	// `next_run` were never persisted. The Tasks page showed the job's previous outcome
+	// indefinitely and the operator had no way to see that it had been timing out.
+	//
+	// Observed live (§10 V51g): `filler-pipeline` logged "scheduled job failed" immediately
+	// followed by "scheduler: record job result … context deadline exceeded", every two minutes.
+	// The same shape as the pipeline's own bookkeeping bug, in a different package — writing the
+	// record of a failure through the thing that failed.
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if uerr := s.store.UpsertScheduledJob(recCtx, store.ScheduledJob{
 		Name: j.Name, LastRun: start, LastResult: result, LastError: errText, NextRun: next, UpdatedAt: now,
 	}); uerr != nil {
 		s.log.Error("scheduler: record job result", "job", j.Name, "err", uerr)

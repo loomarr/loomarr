@@ -2,6 +2,7 @@ package filler_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -103,7 +104,16 @@ func (m *pipeMemStore) ListClipPipelines(_ context.Context, f filler.PipelineFil
 	return out, nil
 }
 
-func (m *pipeMemStore) UpsertClipPipeline(_ context.Context, p filler.ClipPipeline) error {
+// ⚠ **It HONOURS cancellation, and that is the point** (§10 V51g). A fake that ignored `ctx` is
+// why the original bug was invisible: `onFailure` computed the failure record, the backoff and the
+// `MaxAttempts` resolution, then wrote them through the very context whose expiry caused the
+// failure — and against a real store every one of those writes was silently discarded. With a fake
+// that accepts anything, that code path looks perfect. Rejecting a dead context here is what makes
+// the detached-write fix provable rather than asserted.
+func (m *pipeMemStore) UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.rows[p.ClipHash] = p
 	return nil
 }
@@ -117,6 +127,7 @@ type fakeStage struct {
 	result  filler.StageResult
 	err     error
 	runs    int
+	killCtx func()
 }
 
 func (f *fakeStage) ID() filler.StageID     { return f.id }
@@ -124,8 +135,15 @@ func (f *fakeStage) Cost() filler.StageCost { return f.cost }
 func (f *fakeStage) Applies(context.Context, filler.StoreClip) (bool, string) {
 	return f.applies, f.note
 }
-func (f *fakeStage) Run(context.Context, filler.StoreClip) (filler.StageResult, error) {
+func (f *fakeStage) Run(ctx context.Context, _ filler.StoreClip) (filler.StageResult, error) {
 	f.runs++
+	// killCtx models the rung whose work outlives the pass: the deadline lands mid-exec, the
+	// child process dies, and the stage reports the context error — exactly what ffmpeg, whisper
+	// and an LLM turn all do when the budget ends underneath them.
+	if f.killCtx != nil {
+		f.killCtx()
+		return filler.StageResult{}, ctx.Err()
+	}
 	return f.result, f.err
 }
 
@@ -322,6 +340,68 @@ func TestPipeline_FailureBacksOffBeforeGivingUp(t *testing.T) {
 	}
 	if row.Disposition != filler.DispositionRunning {
 		t.Errorf("one failure resolved the clip to %q; it has attempts left", row.Disposition)
+	}
+}
+
+// ⚠ **THE bug this phase exists for, and it had no test at all** (§10 V51g). A rung whose work
+// outlives the pass looped forever: `attempts` was incremented and saved BEFORE the work, the
+// failure bookkeeping was written through the context that had just expired and was therefore
+// discarded, and the row stayed `running` at whatever attempt count it had reached. Measured live:
+// one 16m47s reel at **12 attempts against a MaxAttempts of 3**, re-doing the same first third
+// every two minutes while the UI showed it advancing.
+//
+// Out of TIME is not failing. The clip goes back to `queued`, spends no attempt, takes no backoff,
+// and resumes next pass.
+func TestPipeline_ADeadlineDefersInsteadOfBurningAnAttempt(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stages[filler.StageProbe].killCtx = cancel
+
+	err := newPipe(st, asSlice(stages), filler.DefaultBudget()).Advance(ctx, "c1")
+
+	if !errors.Is(err, filler.ErrDeferred) {
+		t.Fatalf("Advance = %v, want ErrDeferred — a deadline is not a failure", err)
+	}
+	row := st.rows["c1"]
+	// ⚠ The write LANDED despite the dead context. That is the whole fix: before it, this row
+	// still said `running` at attempt 1 because the save was made through the cancelled context.
+	if row.Status != filler.StatusQueued {
+		t.Errorf("status = %q, want queued — the row must resume, not sit in `running` forever", row.Status)
+	}
+	if row.Attempts != 0 {
+		t.Errorf("attempts = %d, want 0 — the clip did nothing wrong; the pass ran out of time", row.Attempts)
+	}
+	if !row.NextRun.IsZero() {
+		t.Error("a backoff was scheduled for a deadline; the clip has not earned one")
+	}
+	if row.Disposition != filler.DispositionRunning {
+		t.Errorf("disposition = %q, want running", row.Disposition)
+	}
+}
+
+// …and the run summary says DEFERRED, not failed. A reel too slow for one pass produced an
+// identical WARN every two minutes forever, and the count blamed the clip for the budget.
+func TestPipeline_ADeferralIsNotCountedAsAFailure(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stages[filler.StageProbe].killCtx = cancel
+
+	res, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if res.Failed != 0 {
+		t.Errorf("failed = %d, want 0 — running out of time is not the clip failing", res.Failed)
+	}
+	if res.Deferred != 1 {
+		t.Errorf("deferred = %d, want 1", res.Deferred)
 	}
 }
 
