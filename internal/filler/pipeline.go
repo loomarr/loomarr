@@ -159,6 +159,14 @@ func backoff(attempts int) time.Duration {
 // MaxAttempts is how many times a stage is retried before it resolves.
 const MaxAttempts = 3
 
+// deferYield is how long a clip that could not finish inside a pass waits before it is due again.
+//
+// ⚠ One pass interval, deliberately — long enough to let the rest of the queue through, short
+// enough that a clip which merely met a busy pass is not parked. It is not a penalty: a deferral
+// spends no attempt. Without it, the oldest-first work list hands the whole budget back to the same
+// unfinishable clip every pass, which starved 84 others in the run that found this.
+const deferYield = 2 * time.Minute
+
 // fatalStages are the ones whose exhausted failure REJECTS the clip rather than skipping it.
 //
 // ⚠ Only probe and transcode. A file we cannot measure is not a clip, and one we cannot re-encode
@@ -299,8 +307,15 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		}
 	}
 	if p.log != nil {
+		// ⚠ `deferred` is HERE because leaving it out was worse than the failure count it replaced.
+		// Observed live: `advanced=0 completed=0 rejected=0 failed=0` on every pass, while one
+		// clip's whisper rescue consumed the whole budget — an all-zero line that reads as a
+		// healthy idle run and is in fact the job achieving nothing, repeatedly. The old code at
+		// least said "failed". A number removed from a log is a number an operator stops being
+		// able to act on.
 		p.log.Info("filler pipeline run", "enrolled", res.Enrolled, "advanced", res.Advanced,
-			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed)
+			"completed", res.Completed, "rejected", res.Rejected, "failed", res.Failed,
+			"deferred", res.Deferred)
 	}
 	return res, nil
 }
@@ -462,6 +477,17 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 				if row.Attempts > 0 {
 					row.Attempts--
 				}
+				// ⚠ **A deferral YIELDS, and this was found by watching it not.** The work list is
+				// oldest-first, so a clip that cannot fit a pass sits at the head and consumes the
+				// whole budget again on the very next one. Observed live: a 2.4-hour recording's
+				// whisper rescue took every pass, and the other **84 clips were never reached** —
+				// `advanced=0 completed=0 failed=0`, a run that looks idle and is starving.
+				//
+				// ⚠ This is NOT the backoff a failure earns; it is a turn-taking rule. The clip is
+				// not being punished (no attempt spent) — it is being asked to let the queue
+				// through. One pass interval is enough: it comes back promptly, but behind work
+				// that can actually finish.
+				row.NextRun = p.now().UTC().Add(deferYield)
 				if err := p.persist(ctx, row, clip); err != nil {
 					return row.Disposition, err
 				}
