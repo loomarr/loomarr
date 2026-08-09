@@ -747,17 +747,17 @@ alone.
 
 **Next up: V51f** — the last unbuilt phase of the V51 plan: the era RANGE whose `To` is rendered,
 typed, validated and never read; the audience setting that silently empties every ladder rung on an
-untagged catalog; three dead policy fields. ⚠ Before it, close the V51g loop that is still open —
-`WAGA-5/Fox Commercial Breaks(2/5/1995)` has never been seen to finish a split. It sat at
-`split/running` all session because it was STARVED, not because splitting is broken; with the yield
-in (#225) it should now get a turn. Watch it reach review before believing V51g is done.
+untagged catalog; three dead policy fields. **The V51g loop this line used to hold open is CLOSED —
+and the answer was not the one it predicted** (fix 4 below): WAGA-5 was not starved after #225, it
+had finished in **three seconds** and been waiting on a person ever since. Nothing could show that,
+which is why "never been seen to finish" was the honest observation and the wrong conclusion.
 
 **V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, PRs #223 and
 #225).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
 
-⚠ **Three fixes, and only the first was the one that was planned.** Each was correct and exposed
-the next, one layer up — and **none of the last two were reachable from any test**; all three were
-found by reading a log line that looked fine.
+⚠ **Four fixes, and only the first was the one that was planned.** Each was correct and exposed
+the next, one layer up — and **none of the last three were reachable from any test**; all four were
+found by reading output that looked fine.
 
 1. **The planned fix** (#223): delete `classify`, defer instead of failing, detach the writes.
 2. **The scheduler had the identical bug** — `UpsertScheduledJob` recorded a job's outcome through
@@ -768,6 +768,30 @@ found by reading a log line that looked fine.
    recording that could not fit a pass was handed the whole budget again on the next one — the
    other **84 clips were never reached**. A deferral now yields (`NextRun` one pass ahead): not the
    backoff a failure earns, a turn-taking rule.
+4. **And then the belt could not show that any of it had worked** (#225). `Status` is the CURRENT
+   rung's state, `Disposition` is the clip's. The `VerdictReview`/`VerdictReject` paths — and the
+   fatal branch of `onFailure`, one function away — set the disposition and recorded the rung, but
+   left `Status` at the `running` written on entry. A clip handed to a person persisted as
+   `split/running, 0%` while its own ladder entry said `done`: **one row disagreeing with itself.**
+   `Record` is now the single writer of `Status`, so the next verdict path cannot reintroduce it by
+   forgetting a line.
+
+⚠ **Nothing FUNCTIONAL broke, which is exactly why the suite was green over it.** Every store
+predicate in `clippipeline.go` keys on `disposition`; not one selects on `status`. What broke was
+the picture — `ClipPipeline.resolve` prefers `row.stage`/`row.status` over the visited ladder
+(correctly: a rung mid-run has no entry yet), so the pip pulsed *"in progress"* forever and the
+rung's note was never rendered. **Nine reels were in that state on the live catalog, not one.**
+The three new assertions check the ROW AGAINST ITS OWN LADDER rather than a literal `done` — the
+value differs per verdict and is not the point; the disagreement is. Verified by sabotage: all
+three go red without the fix, each naming the mismatch.
+
+⚠ **The pre-fix rows do NOT self-heal, and no backfill is shipping for them.** `review` is terminal,
+so those clips are never re-run and keep their stale `running`. Live evidence of both halves, taken
+either side of the rebuild: `Jacobs Ladder Commercial blocks` reached review at 17:36:05Z and
+reports `split/done`; `WAGA-5` reached it at 16:46:06Z and still reports `split/running` against a
+ladder that says `done`. They clear when an operator reviews them, which is what they are waiting
+for. Same reasoning as V52 phase 8: no production installs, so a migration would be code written to
+fix data that exists only on this dev box.
 
 ⚠ **`advanced=0 completed=0 rejected=0 failed=0` is what total starvation looks like**, and it is
 also what a healthy idle pass looks like. The field that distinguishes them — `deferred` — was the
