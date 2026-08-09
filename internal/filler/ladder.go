@@ -48,10 +48,13 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 
 	audienceMatch := filterAudience(commercials, w.Audience)
 
+	// ⚠ The era rungs draw from the STRICT audience pool and only the bottom rung widens to
+	// ungrounded clips — that ordering is the whole point. An unclassified clip with a perfect
+	// era must not outrank a clip Loomarr actually knows is right for this channel.
 	return []pool{
 		{MatchExact, filterEra(audienceMatch, w.Era)},
 		{MatchWidened, filterEra(audienceMatch, w.Era.Widened())},
-		{MatchAudience, audienceMatch},
+		{MatchAudience, filterAudienceWithUngrounded(commercials, w.Audience)},
 	}
 }
 
@@ -256,6 +259,45 @@ func filterAudience(clips []Clip, aud Audience) []Clip {
 		// A general-audience clip fits any channel; otherwise require an exact
 		// audience match (kids ads on the kids channel, not late-night).
 		if c.Audience == aud || c.Audience == General {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// admitsUngroundedAudience reports whether a channel targeting `aud` may draw clips whose
+// audience Loomarr could not work out.
+//
+// ⚠ **An ALLOWLIST, deliberately, and this is the one rule here that is about safety.** A
+// denylist (`aud != Kids`) would hand every audience added later the permissive default —
+// exactly the wrong direction. Only `general` and `late_night` admit an unclassified clip.
+// `family` is excluded alongside `kids`: family channels are watched by children, and the
+// asymmetry the §10 audience ceiling encodes is that "we could not tell who this is for" must
+// never resolve to "so show it to children".
+//
+// An empty `aud` (the channel expressed no audience) never reaches here — `filterAudience`
+// returns everything, untagged clips included, before this is consulted.
+func admitsUngroundedAudience(aud Audience) bool {
+	return aud == General || aud == LateNight
+}
+
+// filterAudienceWithUngrounded is the BOTTOM rung's pool: everything `filterAudience` admits,
+// plus — on a channel allowed to take them — the clips whose audience could not be grounded.
+//
+// ⚠ **This rung is why picking an Audience stopped emptying the whole ladder (§10 V51f).**
+// `filler.ai_tagging` defaulted off for most of this project's life, so a real catalog is full of
+// clips carrying `""`, which equals no audience and matches `General` either. The moment an
+// operator chose an audience, every rung went empty and the channel fell to its bumper card —
+// while the meter said "nothing in the catalog fits", which reads as a catalog problem rather
+// than a tagging one. Admitting them at the BOTTOM means a grounded match always wins when one
+// exists, and the untagged clips are a floor rather than a competitor.
+func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
+	if aud == "" || !admitsUngroundedAudience(aud) {
+		return filterAudience(clips, aud)
+	}
+	out := make([]Clip, 0, len(clips))
+	for _, c := range clips {
+		if c.Audience == aud || c.Audience == General || c.Audience == "" {
 			out = append(out, c)
 		}
 	}

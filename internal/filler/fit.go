@@ -130,7 +130,11 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitCategory
 		return fit
 	}
-	if len(filterAudience(one, w.Audience)) == 0 {
+	// ⚠ The BOTTOM rung's predicate, not the strict one — otherwise this reports "wrong audience"
+	// for a clip `candidatePools` actually places on the audience rung, and the note tells an
+	// operator to fix a setting that is not the problem. `TestFitFor_AgreesWithTheLadder` is what
+	// catches this pair drifting apart.
+	if len(filterAudienceWithUngrounded(one, w.Audience)) == 0 {
 		fit.Reason = FitAudience
 		return fit
 	}
