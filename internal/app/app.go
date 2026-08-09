@@ -26,6 +26,7 @@ import (
 	"github.com/mantonx/loomarr/internal/config"
 	"github.com/mantonx/loomarr/internal/events"
 	"github.com/mantonx/loomarr/internal/filler"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/library"
 	"github.com/mantonx/loomarr/internal/llm"
 	"github.com/mantonx/loomarr/internal/metrics"
@@ -641,11 +642,18 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 	var collectionsSvc api.CollectionService
 	var systemLLM api.SystemLLMService
 	var iconSvc api.IconService
+	// imageSvc is the image service (§22, V52) — the one pipeline every image travels. Built
+	// below on the store alone; nil without one, which the /v1/images routes answer as "absent".
+	var imageSvc *images.Service
 	// timelineThumbs resolves TMDB preview images for the Watch player's schedule strip (§9.1 V47).
 	// Assigned only when TMDB is configured (in the tmdb block below); nil otherwise, which the
 	// timeline handles by rendering the strip with no images.
 	var timelineThumbs api.TimelineThumbResolver
 	if st != nil {
+		// The image service (§22, V52). First in this block deliberately: it depends on nothing
+		// else here, and the jobs registered later need it.
+		imageSvc = newImageService(st, set)
+
 		lib := library.NewDynamic(flavorOrDefault(set), set.libraryConn(), instanceDeviceID(rootCtx, st))
 		var tmdbClient *tmdb.Client
 		if k := set.str("tmdb.api_key"); k != "" {
@@ -1473,6 +1481,7 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		Search:        searchSvc,
 		Collections:   collectionsSvc,
 		Icons:         iconSvc,
+		Images:        imageService(imageSvc),
 		Events:        eventBus,
 		Filler:        fillerSvc,
 		Pods:          podPreview,

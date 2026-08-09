@@ -46,22 +46,38 @@ type IngestRequest struct {
 	Meta      string
 }
 
-// Config is the service's tunables, resolved live from settings by the caller so a change applies
-// to the next request rather than the next restart (config-design §3 hot-apply).
+// Config is the service's tunables.
+//
+// ⚠ The shape encodes WHICH knobs hot-apply (config-design §3). `Dir` is a plain value because the
+// blob store is built from it once, and re-pointing it at runtime would orphan every file already
+// written — that one genuinely needs a restart. The rest are funcs, read per call, so an operator
+// saving `server.public_url` in the wizard gets absolute image URLs on the next request instead of
+// after a reboot. A struct of plain values would have quietly frozen all four at boot while this
+// comment claimed otherwise, which is the failure worth designing out.
+//
+// All three funcs tolerate being nil; New fills in the declared defaults.
 type Config struct {
 	Dir string
 	// MaxUploadBytes caps an ingested original. Enforced on the READ, never on a declared size.
-	MaxUploadBytes int64
+	MaxUploadBytes func() int64
 	// PublicBaseURL is the operator-configured server.public_url.
 	//
 	// ⚠ Never derived from request headers. Host and X-Forwarded-Host are attacker-controllable and
 	// these URLs are STORED and fetched downstream by Tunarr, so a spoofed header would poison an
 	// icon URL persistently. Empty falls back to a relative URL, which is safe and works whenever
 	// the fetcher resolves Loomarr at the same origin.
-	PublicBaseURL string
-	// Formats is the rendition set, in <picture> preference order.
-	Formats []Format
+	PublicBaseURL func() string
+	// Formats is the rendition set, in <picture> preference order — `images.formats`.
+	//
+	// ⚠ This was declared and never read: the field existed, New defaulted it, and nothing
+	// consulted it, so dropping `avif` or `jpeg` from the setting would have changed nothing while
+	// the docs said it saved CPU or storage. `Produces` is the reader; the AVIF job and the record
+	// handler both go through it.
+	Formats func() []Format
 }
+
+// DefaultFormats is the rendition set when `images.formats` says nothing — §22's full ladder.
+func DefaultFormats() []Format { return []Format{FormatAVIF, FormatWebP, FormatJPEG} }
 
 // Service is the concrete implementation.
 type Service struct {
@@ -81,10 +97,34 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	if len(cfg.Formats) == 0 {
-		cfg.Formats = []Format{FormatAVIF, FormatWebP, FormatJPEG}
+	if cfg.MaxUploadBytes == nil {
+		cfg.MaxUploadBytes = func() int64 { return defaultMaxUploadBytes }
+	}
+	if cfg.PublicBaseURL == nil {
+		cfg.PublicBaseURL = func() string { return "" }
+	}
+	if cfg.Formats == nil {
+		cfg.Formats = DefaultFormats
 	}
 	return &Service{cfg: cfg, store: store, blob: newBlobStore(cfg.Dir), now: now}
+}
+
+// defaultMaxUploadBytes mirrors `images.max_upload_bytes` (§15). Declared here too so a Service
+// built without a settings service — a test, or a boot with no store — still refuses an unbounded
+// read rather than treating a nil func as "no limit".
+const defaultMaxUploadBytes = 8 << 20
+
+// Produces reports whether this install emits a format, per `images.formats`.
+//
+// The one reader of cfg.Formats, so the setting has exactly one meaning. AVIF asks before
+// encoding; the record handler asks before advertising a <source> that will never exist.
+func (s *Service) Produces(f Format) bool {
+	for _, want := range s.cfg.Formats() {
+		if want == f {
+			return true
+		}
+	}
+	return false
 }
 
 // Ingest stores bytes and returns the canonical record.
@@ -93,12 +133,13 @@ func New(cfg Config, store Store, now func() time.Time) *Service {
 // already held updates the row's mutable half and rewrites nothing on disk. That is what makes the
 // upload path safe to retry.
 func (s *Service) Ingest(ctx context.Context, r io.Reader, req IngestRequest) (Image, error) {
-	data, err := io.ReadAll(io.LimitReader(r, s.cfg.MaxUploadBytes+1))
+	max := s.cfg.MaxUploadBytes()
+	data, err := io.ReadAll(io.LimitReader(r, max+1))
 	if err != nil {
 		return Image{}, fmt.Errorf("images: read upload: %w", err)
 	}
-	if int64(len(data)) > s.cfg.MaxUploadBytes {
-		return Image{}, fmt.Errorf("images: larger than the %d byte limit", s.cfg.MaxUploadBytes)
+	if int64(len(data)) > max {
+		return Image{}, fmt.Errorf("images: larger than the %d byte limit", max)
 	}
 
 	// ⚠ Decode BEFORE storing. It is both the format allowlist (a sniff the client cannot lie past)
@@ -310,7 +351,7 @@ func (s *Service) encodeRendition(ctx context.Context, rec Image, f Format, w in
 //
 // ⚠ Built from the operator-configured public base, never from a request header — see Config.
 func (s *Service) URLFor(hash string, width int, f Format) string {
-	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL), "/")
+	base := strings.TrimRight(strings.TrimSpace(s.cfg.PublicBaseURL()), "/")
 	return fmt.Sprintf("%s/v1/images/%s/w%d.%s", base, hash, width, f.Ext())
 }
 

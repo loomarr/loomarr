@@ -63,6 +63,18 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `backup.retain` (`BACKUP_RETAIN`) | int | `7` | How many backups to keep before pruning the oldest. |
 | `backup.dir` (`BACKUP_DIR`) | string | `/data/backups` | Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database. |
 
+## Images
+
+| Setting (env) | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `images.dir` (`IMAGES_DIR`) | string | `/data/images` | Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume. |
+| `images.formats` (`IMAGES_FORMATS`) | string_list | `avif,webp,jpeg` | Which image formats to produce, best first. Dropping jpeg saves storage but breaks very old iOS and legacy Android WebViews; dropping avif saves considerable CPU at about 25% more bytes on the wire. |
+| `images.max_upload_bytes` (`IMAGES_MAX_UPLOAD_BYTES`) | int | `8388608` | The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares. |
+| `images.remote_fetch_enabled` (`IMAGES_REMOTE_FETCH_ENABLED`) | bool | `true` | Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made. |
+| `images.remote_max_concurrency` (`IMAGES_REMOTE_MAX_CONCURRENCY`) | int | `12` | How many artwork downloads run at once. TMDB allows 20 simultaneous connections in total, so raising this past 20 earns rate-limit errors rather than speed. _(advanced)_ |
+| `images.remote_ttl` (`IMAGES_REMOTE_TTL`) | duration | `4320h` | How long downloaded artwork may be kept before it is re-fetched or removed (about six months). This is a compliance limit, not a preference: TMDB's terms forbid caching their images for longer, so raising it puts your instance out of compliance with them. _(advanced)_ |
+| `images.cache_budget_mb` (`IMAGES_CACHE_BUDGET_MB`) | int | `2048` | How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image. _(advanced)_ |
+
 ## Connections — TMDB
 
 | Setting (env) | Kind | Default | Notes |
@@ -98,6 +110,10 @@ Every setting resolves **`env > database > default`** (config-design §3). An en
 | `job.filler_pipeline.schedule` (`JOB_FILLER_PIPELINE_SCHEDULE`) | cron | `0 */2 * * * *` | How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron). |
 | `job.filler_reindex.schedule` (`JOB_FILLER_REINDEX_SCHEDULE`) | cron | `0 5 * * * *` | How often Loomarr recomputes clip tags to match the tag vocabulary (cron). Only runs when reindex is enabled. |
 | `job.session_sweep.schedule` (`JOB_SESSION_SWEEP_SCHEDULE`) | cron | `0 0 * * * *` | How often Loomarr clears out expired sign-in sessions (cron). |
+| `job.images_fetch.schedule` (`JOB_IMAGES_FETCH_SCHEDULE`) | cron | `0 * * * * *` | How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders. |
+| `job.images_avif.schedule` (`JOB_IMAGES_AVIF_SCHEDULE`) | cron | `0 20 * * * *` | How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP. |
+| `job.images_rehydrate.schedule` (`JOB_IMAGES_REHYDRATE_SCHEDULE`) | cron | `0 45 4 * * *` | How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder. |
+| `job.images_gc.schedule` (`JOB_IMAGES_GC_SCHEDULE`) | cron | `0 0 5 * * *` | How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork. |
 | `job.library_scan.schedule` (`JOB_LIBRARY_SCAN_SCHEDULE`) | cron | `0 */5 * * * *` | How often Loomarr scans the media server for newly-added titles to mark requested items available (cron). |
 | `job.library_full_scan.schedule` (`JOB_LIBRARY_FULL_SCAN_SCHEDULE`) | cron | `0 0 3 * * *` | How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron). |
 | `job.library_scan.lookback` (`JOB_LIBRARY_SCAN_LOOKBACK`) | duration | `1h` | How far back the incremental library scan looks for newly-added titles (should exceed the scan interval). |
