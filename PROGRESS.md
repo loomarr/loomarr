@@ -4,10 +4,15 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–1 of 8 done.**
-Gate for what has landed: `make check` green (0 lint, `-race`) + `make test-pg` green with the
-11 new `Images` conformance subtests **verified to actually execute under Postgres**.
-Commits `a47cc1a` (§22 doc), `7a6c48a` (codec), `931e23a` (service + store + migration 00045).
+**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–3a of 8 done.**
+Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
+`make config-docs` regenerated + `make test-pg` green with the 11 new `Images` conformance
+subtests **verified to actually execute under Postgres**. ⚠ Capture the exit code directly —
+`make … | tail` reports 0 over a red suite (see the defect list below).
+
+Commits, rebased onto main `d7868a9`: `7f80749` (§22 doc), `fd18f29` (codec), `511cb97`
+(service + store + migration), `1049395` (routes), `872872b` (renumber to 00045), `c68ec2d`
+(the 10.4× test-harness fix), `c9a05d7` (phase 3a — wiring + `IMAGES_*` settings).
 
 Loomarr shows images from four sources and handled each differently — icons as **database
 blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
@@ -67,35 +72,98 @@ carries a comment about the same trap. The renumber was cheap only because
 `internal/store/embed.go` globs `migrations/*/*.sql` — there is no hand-maintained list to
 drift.
 
-⚠⚠ **BLOCKER 2 — CI is RED on the Go job, and the local gate did not catch it.**
-`panic: test timed out after 10m0s` → `FAIL internal/api 600.060s`. Locally that package takes
-**253s** on a 24-thread i9; a 2–4 core runner is ~2.5× slower, which lands past Go's default 10m
-per-package timeout. ⚠ **Read this as a pre-existing fragility this branch tipped over, not as a
-bug in the image routes** — nothing here adds an `internal/api` test, and `internal/images` only
-joins that package's *compile*. Postgres conformance **passed** in CI, including the schema-reset
-change. The honest fixes are to raise the timeout (`-timeout` in the Makefile's test target) or to
-split that suite; picking one is a maintainer call, because "make the gate laxer" deserves a
-decision rather than a quiet flag.
+✅ **BLOCKER 2 — the CI timeout, resolved, and the diagnosis in this entry was WRONG.** It read
+`panic: test timed out after 10m0s` → `FAIL internal/api 600.060s` as "the suite is big; raise
+`-timeout` or split the package". Both readings were wrong, and measuring before changing anything
+is what showed it: **462 top-level tests, 258.8s of a 259.7s package, slowest single test 5.3s,
+median ~0.6s.** There is no slow test and nothing to split out.
 
-⚠ **THEN: `Server.images` is nil, so those three routes 404 in a running instance.** The
-app adapter (`store.Store` → `images.Store`, constructing `images.Service` from settings) is not
-written. This is precisely the *"a built component nobody imported"* pattern recorded against
-V1/V17a/V23 above — flagged deliberately rather than left to be discovered, and it is the first
-task of phase 3, not a later cleanup.
+Benchmarking the shared harness under `-race` found it — `store.Open` on a fresh file **503ms**
+(45 goose migrations), `api.Router` **17ms**, and 462 tests, so **~232s of the 259s was the same
+45 migrations re-run once per test.** Fixed by migrating ONCE per package into a template SQLite
+file and copying it per test (**26ms**): measured **259.7s → 25.0s**, a **10.4×** drop, `make
+check` exit 0 with zero failures (`c68ec2d`).
 
-**Then: phase 3** the jobs (fetch / avif / rehydrate / gc) + the `IMAGES_*` settings registry
-entries + `make config-docs`; **4** the FE `<Image>` primitive (+ Storybook, visual baselines,
-and the `ui/index.ts` barrel, which is hand-maintained); **5–7** migrating channel icons, clip
-artwork and TMDB onto the service; **8** retirements + `scripts/check-retired.sh` + the
-`docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client, so per CLAUDE.md's worktree
-rule they are **not** parallelisable with each other.
+⚠ **Not a weakened gate** (prime directive 2). Every test still runs against a real, fully-migrated
+database built by the real `store.Open`, on its own private copy — nothing shared, no assertion
+changed. `autoMigrate` stays true on the per-test open, which is what makes both failure modes
+safe: an empty or truncated copy is a version-0 database goose migrates the old way (slow, still
+correct), and a corrupt one fails `store.Open` and calls `t.Fatal`. There is no path where a test
+runs against a schema it did not ask for.
 
-⚠ **Two known gaps neither phase closed.** `images.dir` has no `Dockerfile` pre-create;
-`/data/filler` has one and `/data/images` needs the same, or a zero-env first run writes into a
-root-owned volume. And the WebP encoder is **not yet built with `-tags nodynamic`** in the
-Makefile or Dockerfile: without it the library `dlopen`s a system libwebp when present, so the
-same image encodes to different bytes on different base layers — and derivative paths are
-content-addressed, so that is a different URL per host.
+⚠ **The reason a split would have "worked" is worth keeping**: Go's `-timeout` is per test binary,
+so N packages each get their own 10 minutes. The panic goes away while all 232s of wasted work
+stays, and every test added later still pays 503ms. It buys headroom, not speed — and this branch
+tipped the package over precisely by adding `00045`, one more migration on the 503ms path.
+
+⚠ **`newServer` covered only 15 of the 462 tests** — converting it alone measured 247s, i.e. almost
+nothing. The other 45 `store.Open` call sites are file-local helpers serving ~10 tests each, and
+all of them moved to the shared `openTestStore`. **This is a per-package fix and 56 test files
+across the repo open a store the same way**; `internal/store` (33s), `internal/integration` (25s)
+and `internal/recurate` (15s) are the next candidates if the Go job ever needs more.
+
+**Phase 3a done** (`c9a05d7`): the service is WIRED and proven end-to-end.
+
+⚠ **`Server.images` was nil, so all three phase-2 routes 404'd in a running instance** — the
+"a built component nobody imported" pattern this file already records against V1, V17a and V23.
+No unit test can catch it, because the defect IS the absence of a caller, so the guard drives the
+real composition root: `TestImageRoutesAreWired` goes through `BuildHandler`, uploads a real PNG,
+reads the record and fetches a rendition over HTTP. **Sabotage-verified** — returning nil from
+`imageService` makes it fail with the 501 its message names.
+
+The adapter (`internal/app/imageadapter.go`) is the whole cost of "no domain package imports
+internal/store": a type-for-type translation across a typing boundary. ⚠ Boxing goes through
+`imageService()` because a nil `*images.Service` assigned straight into an interface field is a
+**non-nil interface holding a nil pointer**, so `if s.images == nil` would silently stop working —
+app.go already carries that warning for `*tmdb.Client`.
+
+Settings: the seven `images.*` keys from §15 under a new `GroupImages`, plus the four job schedule
+keys (an undeclared `ScheduleKey` **panics the settings service at startup**, so they land before
+the jobs do). `Groups()` is consumed only by the docs generator, so a group with no Settings page
+adds a docs section and nothing else — the keys are reachable via Settings → All until a later
+phase gives them a form.
+
+⚠ **Two defects in phase-1 code, both fixed in 3a:**
+
+1. **`images.formats` was a DEAD KNOB.** `Config.Formats` existed, `New` defaulted it, and nothing
+   read it — an operator dropping `avif` to save CPU or `jpeg` to save storage would have changed
+   nothing while `docs/configuration.md` promised both. `Produces` is now its single reader, with a
+   test that names the setting, because a setting with no reader cannot be caught by a test that
+   does not name it.
+2. **`Config` promised hot-apply and could not deliver it.** Its doc comment claimed the values
+   were "resolved live from settings by the caller", but they were plain fields captured at
+   construction. `MaxUploadBytes`/`PublicBaseURL`/`Formats` are funcs now; `Dir` stays a value
+   because the blob store is built from it and re-pointing it at runtime would orphan every file
+   already written. **The shape now encodes which knobs hot-apply.** `server.public_url` is the one
+   that matters — Tunarr fetches stored icon URLs machine-to-machine, so setting it in the wizard
+   must not need a restart.
+
+**Next up: phase 3b — the four background jobs** (`images-fetch`, `images-avif`,
+`images-rehydrate`, `images-gc`). Their schedule keys and settings are already declared, so this is
+job bodies + scheduler registration only.
+
+⚠ **The GC's eviction policy is DECIDED: plain image-level LRU** — order by `images.last_used_at`,
+drop the coldest images' derivatives entirely, stop once under `images.cache_budget_mb`. Rejected
+per-derivative LRU: `image_derivatives` has `created_at` but no `last_used_at`, and adding one
+would make every image request a row WRITE (a 50-poster grid = 50 writes per page load, on SQLite
+with `SetMaxOpenConns(1)`). Every derivative is regenerable by definition, so a wrong eviction
+costs one re-encode and never data — and at the documented envelope (≤50 channels, ≤10k clips) the
+2 GB budget is a backstop, not a routine event. ⚠ **Eviction is the LEAST important of the GC's
+four duties**; the TMDB TTL is a *compliance* requirement, and orphan deletion and the
+unrecoverable-missing warning both have clear right answers.
+
+⚠ `images-gc` needs two store methods that do not exist (total derivative bytes; derivatives
+ordered by their image's last use), which extends the `ImageStore` contract and its Postgres
+conformance suite. The other three jobs need no store change.
+
+**Then: 4** the FE `<Image>` primitive (+ Storybook, visual baselines, and the `ui/index.ts`
+barrel, which is hand-maintained); **5–7** migrating channel icons, clip artwork and TMDB onto the
+service; **8** retirements + `scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each
+regenerate the orval client, so per CLAUDE.md's worktree rule they are **not** parallelisable.
+
+⚠ **One known gap remains.** `images.dir` has no `Dockerfile` pre-create; `/data/filler` has one
+and `/data/images` needs the same, or a zero-env first run writes into a root-owned volume. (The
+WebP `-tags nodynamic` gap is unchanged and still open.)
 
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
