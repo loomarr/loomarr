@@ -20,6 +20,7 @@ export * from "../../generated/endpoints/dashboard/dashboard.msw";
 export * from "../../generated/endpoints/events/events.msw";
 export * from "../../generated/endpoints/filler/filler.msw";
 export * from "../../generated/endpoints/help/help.msw";
+export * from "../../generated/endpoints/images/images.msw";
 export * from "../../generated/endpoints/jobs/jobs.msw";
 export * from "../../generated/endpoints/library/library.msw";
 export * from "../../generated/endpoints/ops/ops.msw";

@@ -270,6 +270,24 @@ Storybook gallery is the only real surface until phase 5 wires the first consume
 rather than glossed, because "green tests" and "seen working" are different claims and only the
 first one is available here.
 
+⚠ **Merged `origin/main` in (V51c + V53a/b/d/e landed while this branch was open), and the merge
+found a drift this file has a standing warning about.** `make check`, `openapi-verify` and
+`retired-verify` stayed green; `make fe` went **red on two `barrel.test.ts` cases**. The cause is
+the interesting part: when phase 4 was written there was **one** hand-maintained API barrel, and
+V53d/e added **two more** (`src/zod/index.ts`, `src/msw/index.ts`) plus the guard test that catches
+an unexported tag. So `images` was correctly exported from the barrel that existed and missing from
+two that did not. **A hand-maintained list can drift because the list MULTIPLIED, not only because
+someone forgot an entry** — and no amount of care on the branch could have anticipated it. The
+guard main added is what turned a silent gap into a red gate; a fourth barrel would behave the same.
+
+⚠ **`rebase` was the wrong tool and `merge` was the right one, for a reason worth reusing.** All 16
+commits touch `PROGRESS.md`, so the rebase demanded the same resolution up to 16 times; one merge
+resolved it once. That is only safe because this repo **squash-merges** — the branch's internal
+shape is discarded at merge, so linear history buys nothing here. ⚠ `pnpm-lock.yaml` auto-merged
+**textually**, which is precisely how a corrupt lockfile enters a tree; `pnpm install
+--frozen-lockfile` is the cheap proof that the merged lockfile and merged `package.json` agree, and
+`pnpm codegen` had to re-run because main changed `orval.config.ts` (it now emits `zod` and `msw`).
+
 **Next up: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
 `scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
 so per CLAUDE.md's worktree rule they are **not** parallelisable. ⚠ A fresh worktree needs
