@@ -257,7 +257,33 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile,
 	_ = out.Close()
 	defer func() { _ = os.Remove(outPath) }()
 
-	args := []string{"-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats"}
+	// ⚠ `-y` IS LOAD-BEARING, and its absence made this entire function vacuous from the commit
+	// that introduced it until 2026-08-09.
+	//
+	// os.CreateTemp above CREATES the file, so the path handed to ffmpeg always exists. Without
+	// `-y` ffmpeg refuses to overwrite it — and it does so by EXITING ZERO:
+	//
+	//	File '/tmp/loomarr-trial-123.ts' already exists. Overwrite? [y/N] Not overwriting - exiting
+	//	Error opening output file /tmp/loomarr-trial-123.ts.
+	//	$ echo $?
+	//	0
+	//
+	// Exit 0 means `cmd.Wait()` returns nil, so the failure branch never runs; no frames are
+	// encoded so `-progress` emits no `speed=` line and Speed stays 0; and the output is 0 bytes,
+	// which ffprobe cannot read — so hasKeyframe's deliberate best-effort ("do NOT fail on a probe
+	// that cannot run") rubber-stamps it. Three independently reasonable decisions compose into
+	// `Works: true` for EVERY encoder the build lists, including ones with no hardware present.
+	//
+	// Measured consequence on an RTX 3080 Ti: h264_amf reported WORKS (it exits 171 —
+	// "DLL libamfrt64.so.1 failed to open"), h264_nvenc reported speed 0.0 (it really runs at
+	// 16.2×), and MaxChannels sat at capacityFloor. The nine-family probe never encoded anything.
+	//
+	// Nothing caught it because the failure is silent in the success direction:
+	// TestLive_DetectChoosesSomethingThatActuallyWorks asserts the chosen encoder has Works=true,
+	// which is exactly what a vacuous probe reports. The header comment above quotes real per-
+	// encoder results, but those were measured by running ffmpeg BY HAND — a measurement the code
+	// never reproduced.
+	args := []string{"-hide_banner", "-loglevel", "error", "-y", "-progress", "pipe:1", "-nostats"}
 	args = append(args, deviceInitArgs(enc)...)
 	// `testsrc` rather than a flat colour field: it has detail and motion, so the encoder
 	// does representative work. A flat colour compresses to nearly nothing and would
