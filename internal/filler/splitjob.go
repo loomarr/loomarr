@@ -304,23 +304,27 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 // The segments arrive operator-edited and are re-validated: inside the clip,
 // start<end, non-overlapping. Anything else is an error, not a best effort —
 // this is the write path, and the review gate is the whole point of the phase.
-func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []SplitSegment) error {
+//
+// It returns the HASHES of the clips it created, in cut order (§10 V51b). They are what the
+// ingest pipeline enrols, so each segment runs the full ladder for itself; a caller that does not
+// need them can ignore the slice.
+func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []SplitSegment) ([]string, error) {
 	p, err := sp.store.GetSplitProposal(ctx, proposalID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !found {
-		return fmt.Errorf("compilation %s no longer in the catalog", p.ClipHash)
+		return nil, fmt.Errorf("compilation %s no longer in the catalog", p.ClipHash)
 	}
 	if len(segments) == 0 {
-		return fmt.Errorf("%w: zero segments — reject the proposal instead of gutting the compilation", ErrSplitValidation)
+		return nil, fmt.Errorf("%w: zero segments — reject the proposal instead of gutting the compilation", ErrSplitValidation)
 	}
 	if err := validateConfirmedSegments(segments, clip.DurationMs); err != nil {
-		return err
+		return nil, err
 	}
 
 	// ⚠ The LOCATION comes from the row, not from the proposal — the same rule (and the same
@@ -339,7 +343,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	// own helper and carries the EXDEV copy fallback that makes crossing back in safe.
 	tmpDir, err := os.MkdirTemp("", "loomarr-split-")
 	if err != nil {
-		return fmt.Errorf("split confirm: temp dir: %w", err)
+		return nil, fmt.Errorf("split confirm: temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
@@ -355,18 +359,18 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	for i, seg := range segments {
 		tmp := filepath.Join(tmpDir, fmt.Sprintf("seg-%03d%s", i, ext))
 		if err := sp.tools.Cut(ctx, src, seg.StartMs, seg.EndMs, tmp); err != nil {
-			return err
+			return nil, err
 		}
 		id, err := ClipID(tmp)
 		if err != nil {
-			return fmt.Errorf("split confirm: hash segment %d: %w", i, err)
+			return nil, fmt.Errorf("split confirm: hash segment %d: %w", i, err)
 		}
 		dst, err := ClipPath(sp.dropDir, id, ext)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return fmt.Errorf("split confirm: segment %d: %w", i, err)
+			return nil, fmt.Errorf("split confirm: segment %d: %w", i, err)
 		}
 		// ⚠ An existing destination is a byte-identical cut, not a collision: the path IS the
 		// hash. The old code guarded this with a `-2`, `-3` suffix loop over operator-shaped
@@ -374,13 +378,18 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		// are one clip, and giving them separate rows would double-count them in every pool.
 		if _, statErr := os.Stat(dst); statErr != nil {
 			if err := movePath(tmp, dst); err != nil {
-				return fmt.Errorf("split confirm: file segment %d: %w", i, err)
+				return nil, fmt.Errorf("split confirm: file segment %d: %w", i, err)
 			}
 		}
 		cuts = append(cuts, written{seg: seg, hash: id, path: ClipRelPath(id, ext)})
 	}
 	now := sp.now().UTC()
+	// ⚠ The hashes are RETURNED, not merely written. The ingest pipeline enrols each one at
+	// `probe` so a fresh segment runs the whole ladder for itself (§10 V51b) — before this, a cut
+	// advert had to wait for whichever of six catalog sweeps happened to reach it next.
+	spawned := make([]string, 0, len(cuts))
 	for _, c := range cuts {
+		spawned = append(spawned, c.hash)
 		nc := StoreClip{UpdatedAt: now}
 		// ⚠ **The identity, and it was MISSING.** `UpsertClip` is `ON CONFLICT(hash) DO UPDATE`,
 		// so every segment used to insert with `hash=''` and each one overwrote the last — a
@@ -418,7 +427,7 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 		// an empty Category shadow but real tags, and is still AI-tagged.
 		nc.AITagged = c.seg.Era > 0 || c.seg.Audience != "" || c.seg.Category != "" || len(c.seg.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	// ⚠ V45 KEEPS the parent, marking it a composite — it does NOT delete the row or the file (the
@@ -430,9 +439,12 @@ func (sp *Splitter) Confirm(ctx context.Context, proposalID string, segments []S
 	// The file stays on disk too: a re-scan finds it, but UpsertClip omits `is_composite` from its
 	// DO UPDATE list, so the re-synced row keeps its composite mark rather than reverting to airable.
 	if err := sp.store.SetClipComposite(ctx, clip.Hash, true, now); err != nil {
-		return err
+		return nil, err
 	}
-	return sp.store.DeleteSplitProposal(ctx, proposalID)
+	if err := sp.store.DeleteSplitProposal(ctx, proposalID); err != nil {
+		return nil, err
+	}
+	return spawned, nil
 }
 
 // validateConfirmedSegments enforces the invariants the write path needs:

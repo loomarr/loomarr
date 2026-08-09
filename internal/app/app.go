@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -829,9 +830,15 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		}
 		syncer = syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
 
+		// ⚠ Hoisted out of the `if` because the ingest pipeline's tag rung needs the SAME provider
+		// (§10 V51b). Nil is the honest un-opted-in state and both readers treat it that way: the
+		// manual sweep is a no-op, and the rung reports "no language model is configured" on every
+		// clip's ladder rather than silently doing nothing.
+		var taggerProvider llm.Provider
 		var tagger *filler.Tagger
 		if set.boolv("filler.ai_tagging") && set.str("llm.url") != "" {
 			provider := llm.NewProvider(set.str("llm.provider"), set.str("llm.url"), set.str("llm.model"), set.str("llm.api_key"))
+			taggerProvider = provider
 			// The drop-folder as an fs.FS so tagging can read the info-JSON sidecars
 			// ingest writes beside each clip (§10). An unset FILLER_DIR yields a nil FS
 			// and tagging falls back to filenames — the same result as a drop-folder
@@ -907,7 +914,12 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 			splitter = filler.NewSplitter(fillerSplitStoreAdapter{st}, tools, splitProvider, dir, newID, time.Now, log)
 		}
-		fillerSvc = fillerServiceAdapter{
+		// ⚠ Built as a CONCRETE value and re-assigned to the interface once the pipeline exists
+		// below. The pipeline needs the vision provider and the splitter, which are wired further
+		// down, while this adapter is needed further up — so one of the two has to be completed
+		// late. A pointer receiver would avoid the second assignment, but every other adapter here
+		// is a value and making one of them special is worse than one honest re-assignment.
+		fillerAdapter := fillerServiceAdapter{
 			syncer: syncer, tagger: tagger, fetcher: fetcher,
 			bus: eventBus, newID: newID, timeout: set.dur("ingest.timeout"),
 			sources: st, now: time.Now,
@@ -988,36 +1000,19 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 				set.str("ingest.whisper_path"), set.str("filler.language_model"),
 				set.str("playout.ffmpeg_path"), "")
 		}
-		jobReg.Add(fillerLanguageJob(filler.NewLanguageJob(
-			fillerLanguageStoreAdapter{st}, langDetect,
-			func() string { return set.str("filler.dir") },
-			func() string { return set.str("filler.language") },
-			time.Now, log)))
-		log.Info("filler language gate registered",
-			"provider", set.str("filler.language_provider"), "want", set.str("filler.language"))
-
-		// Richer metadata jobs (§10 V44): transcribe + vision. Both share the ffmpeg tooling the
-		// splitter built above (a core runtime dep — NOT the ingest pair, so they run on files
-		// already on disk regardless of whether yt-dlp is present). Registered UNCONDITIONALLY so
-		// their rows stay visible on the Tasks page; each is a no-op inside Run unless its own
-		// opt-in setting is on (and, for vision, unless a vision model is configured) — the same
-		// visible-but-idle contract the language gate and auto-fetch use.
+		// The ffmpeg tooling the metadata rungs share (a core runtime dep — NOT the ingest pair, so
+		// they run on files already on disk regardless of whether yt-dlp is present).
 		fillerTools := filler.NewFFmpegTools(
 			set.str("playout.ffmpeg_path"), filler.FFprobePathNextTo(set.str("playout.ffmpeg_path")),
 			set.str("ingest.whisper_path"), set.str("ingest.whisper_model"), "")
 
-		// Transcribe: whisper over clips whose source text is thin. `drop` is the drop-folder FS so
-		// the job can measure source-text thinness from the sidecar (nil ⇒ every clip reads as thin,
-		// which only ever transcribes more, the safe direction).
-		var transcribeDrop fs.FS
+		// The drop-folder FS, for reading the info-JSON sidecars ingest writes beside each clip
+		// (nil ⇒ every clip reads as thin-sourced and filename-only tagged, which only ever does
+		// MORE work, never wrongly skips).
+		var fillerDrop fs.FS
 		if dir := set.str("filler.dir"); dir != "" {
-			transcribeDrop = os.DirFS(dir)
+			fillerDrop = os.DirFS(dir)
 		}
-		jobReg.Add(fillerTranscribeJob(filler.NewTranscribeJob(
-			fillerTranscribeStoreAdapter{st}, fillerTools,
-			func() string { return set.str("filler.dir") }, transcribeDrop,
-			func() bool { return set.boolv("filler.transcribe.enabled") },
-			time.Now, log)))
 
 		// Vision: keyframes → a multimodal model. The provider is nil unless a vision model is
 		// configured AND the wired LLM actually implements llm.VisionProvider — the same type
@@ -1043,14 +1038,99 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 			}
 			log.Info("filler vision provider wired", "model", visionModel)
 		}
-		jobReg.Add(fillerVisionJob(filler.NewVisionJob(
-			fillerVisionStoreAdapter{st}, fillerTools, visionProvider,
-			func() string { return set.str("filler.dir") },
-			func() bool { return set.boolv("filler.vision.enabled") },
-			time.Now, log)))
-		log.Info("filler metadata jobs registered",
+		// ── The ingest pipeline (§10 V51b) ────────────────────────────────────────────────────
+		//
+		// One driver over eight rungs, replacing `filler-language`, `filler-split`,
+		// `filler-transcribe` and `filler-vision`.
+		//
+		// ⚠ **Every rung is registered unconditionally, even when the thing it needs is absent.**
+		// A stage missing from this slice is reported as "not available on this install" on every
+		// clip's ladder, while one that is present says WHY it skipped in the operator's own terms
+		// ("vision tagging is off", "no language backend is configured"). Registering all of them
+		// and letting `Applies` answer is what makes the ladder explain an install rather than
+		// merely show gaps in it — the same visible-but-idle contract the Tasks page rows use.
+		clipDir := set.str("filler.dir")
+		pipelineStages := []filler.Stage{
+			filler.NewProbeStage(
+				filler.FFprobeNextTo(set.str("playout.ffmpeg_path")), fillerPipelineClipAdapter{st}, clipDir,
+				func() int64 { return set.dur("filler.min_duration").Milliseconds() },
+				fillerTools, func() time.Duration { return set.dur("filler.autosplit.max_duration") }, time.Now),
+			filler.NewTranscodeStage(
+				fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
+				clipDir, filler.DefaultMezzanine(),
+				func() string { return set.str("playout.ffmpeg_path") },
+				// ⚠ The loudness target is applied only when the operator opted in. This is the
+				// FIRST production caller of on-file loudness normalisation: V42 built the pass,
+				// and `filler.autofile.normalize_loudness` gated a function nothing called, so the
+				// setting has been inert since it shipped. Folding it into the encode that is
+				// happening anyway is what finally wires it.
+				func() float64 {
+					if !set.boolv("filler.autofile.normalize_loudness") {
+						return 0
+					}
+					// ⚠ `filler.target_lufs` is a STRING setting (an empty value means "no
+					// normalisation at all", which no numeric kind can express), so it is parsed
+					// here. An unparseable value yields 0 — the same as off, which is the safe
+					// direction: the alternative is applying a garbage target to the operator's
+					// audio.
+					lufs, err := strconv.ParseFloat(set.str("filler.target_lufs"), 64)
+					if err != nil {
+						return 0
+					}
+					return lufs
+				}, time.Now),
+			filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir,
+				func() string { return set.str("filler.language") }, time.Now),
+			filler.NewTranscribeStage(fillerTools, fillerTranscribeStoreAdapter{st}, clipDir, fillerDrop,
+				func() bool { return set.boolv("filler.transcribe.enabled") }, time.Now),
+			filler.NewTagStage(taggerProvider, fillerTagStoreAdapter{st}, fillerDrop, time.Now),
+			filler.NewVisionStage(fillerTools, visionProvider, fillerVisionStoreAdapter{st}, clipDir,
+				func() bool { return set.boolv("filler.vision.enabled") }, time.Now),
+			filler.NewScoreStage(fillerTagStoreAdapter{st}, &filler.AutoFilePolicy{
+				// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn`. The two differ only when the
+				// settings service cannot answer, and here that difference is the safety property:
+				// failing OPEN would publish unreviewed clips to live channels exactly when the
+				// install is degraded.
+				Enabled:       func() bool { return set.boolv("filler.autofile.enabled") },
+				MinConfidence: func() int { return set.intv("filler.autofile.min_confidence") },
+			}, func() bool { return set.boolv("filler.reject.unidentified") }, time.Now),
+		}
+		if splitter != nil {
+			// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
+			// and `StageOrder` is the ONE definition of the sequence, so the order here is
+			// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
+			// invites someone to "fix" its order.
+			pipelineStages = append(pipelineStages,
+				filler.NewSplitStage(splitter, fillerSplitStoreAdapter{st}).
+					WithAutoConfirm(filler.AutoSplitPolicy{
+						Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
+						MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
+						MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+					}, func() time.Duration { return set.dur("filler.min_duration") }))
+		}
+		fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,
+			filler.Budget{
+				MaxClips: func() int { return set.intv("filler.pipeline.max_clips") },
+				// ⚠ A closure RETURNING ZERO means "never transcode on this box", which is a
+				// different state from a nil closure meaning "use the default". That three-state
+				// encoding is the only way an operator can turn the most expensive rung off.
+				MaxTranscodes: func() int { return set.intv("filler.transcode.max_per_run") },
+				MaxWhisper:    func() int { return set.intv("filler.pipeline.max_whisper") },
+				MaxVision:     func() int { return set.intv("filler.pipeline.max_vision") },
+				MaxSplits:     func() int { return set.intv("filler.pipeline.max_splits") },
+			},
+			emitter.FillerClipStage, time.Now, log).
+			WithRewind(fillerRewindAdapter{st}, clipDir)
+		jobReg.Add(fillerPipelineJob(fillerPipeline))
+		// The operator-triggered paths now reach the same machinery as the cron driver — see the
+		// note on `fillerAdapter` above for why this lands here rather than at construction.
+		fillerAdapter.pipeline = fillerPipeline
+		fillerSvc = fillerAdapter
+		log.Info("filler ingest pipeline registered",
+			"stages", len(pipelineStages), "language", set.str("filler.language"),
 			"transcribe", set.boolv("filler.transcribe.enabled"),
-			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil)
+			"vision", set.boolv("filler.vision.enabled"), "vision_provider", visionProvider != nil,
+			"autosplit", set.boolv("filler.autosplit.enabled"))
 
 		// Taxonomy reindex (§10 V45a): rebuild the closure + every clip's rollups from the current tag
 		// graph. ⚠ No adapter — ReindexStore is a pure SUBSET of store.Store (ListTaxa/RebuildClosure/
@@ -1080,33 +1160,10 @@ func BuildHandler(rootCtx context.Context, st store.Store, log *slog.Logger, ov 
 		jobReg.Add(fillerFetchJob(autoFetch))
 		log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"), "max_per_run", set.intv("filler.fetch.max_per_run"))
 
-		// Scheduled compilation splitting (§10 V43). Proposes cuts for over-long catalog clips
-		// so review is waiting when the operator looks, instead of costing a click and minutes
-		// of ffmpeg once they decide to.
-		//
-		// ⚠ Registered only when a splitter exists — it needs media tools and an LLM provider.
-		// An install without them gets no row rather than a job that fails every hour.
-		if splitter != nil {
-			splitRunner := filler.NewSplitRunner(
-				fillerSplitRunStoreAdapter{st},
-				splitter,
-				func() time.Duration { return set.dur("filler.autosplit.max_duration") },
-				log,
-			).WithAutoConfirm(filler.AutoSplitPolicy{
-				// ⚠ `boolv`, the FAIL-CLOSED read, not `boolOn` — the same polarity
-				// `AutoFilePolicy.Enabled` uses and for a sharper reason. When settings cannot
-				// answer, the safe answer is "don't cut": failing open would consume the
-				// operator's compilations unattended precisely when the install is degraded.
-				Enabled:       func() bool { return set.boolv("filler.autosplit.enabled") },
-				MinConfidence: func() int { return set.intv("filler.autosplit.min_confidence") },
-				MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
-			}, func() time.Duration { return set.dur("filler.min_duration") })
-			jobReg.Add(fillerSplitJob(splitRunner))
-			log.Info("filler auto-split registered",
-				"every", set.dur("filler.split.every"),
-				"autoconfirm", set.boolv("filler.autosplit.enabled"),
-				"max_duration", set.dur("filler.autosplit.max_duration"))
-		}
+		// (The scheduled compilation split job registered here until V51b. It is now the `split`
+		// rung of the pipeline above — same detection, same auto-confirm gate, but its output is
+		// SPAWNED into the pipeline so each cut advert runs the whole ladder for itself instead of
+		// waiting for whichever sweep noticed it next.)
 	}
 
 	// Scheduled backups with rotation (§16, §18.1, V12) — the consumer `backup.schedule`

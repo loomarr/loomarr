@@ -231,8 +231,15 @@ func TestConfirmSplit_WritesEverySegmentAsItsOwnRow(t *testing.T) {
 		t.Fatalf("proposal.ClipHash = %q, want the compilation's hash %q", prop.ClipHash, compHash)
 	}
 
-	if err := sp.Confirm(ctx, prop.ID, prop.Segments); err != nil {
+	spawned, err := sp.Confirm(ctx, prop.ID, prop.Segments)
+	if err != nil {
 		t.Fatalf("Confirm: %v — this is the failure that made split review a dead end", err)
+	}
+	// ⚠ The returned hashes are what the pipeline enrols (§10 V51b). An empty slice here means a
+	// confirmed reel produces segments nothing ever prepares — never transcoded, never tagged.
+	if len(spawned) != len(prop.Segments) {
+		t.Errorf("Confirm returned %d hashes for %d segments — every cut must be enrollable",
+			len(spawned), len(prop.Segments))
 	}
 
 	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true})

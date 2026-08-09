@@ -427,6 +427,16 @@ func (s *sqlStore) UpdateClipKind(ctx context.Context, id, kind string, updatedA
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
+	// ⚠ **The pipeline rows go with the clips, in the same call** (§10 V51b). `filler_clip_pipeline`
+	// is a sibling table with no foreign key — deliberately, so it survives a `clips` rebuild — and
+	// the price of that independence is that nothing else will ever clean it up. An orphan row is
+	// not inert either: `ListPipelineWork` would keep returning it, `advance` would fail to find
+	// the clip, and it would be re-tombstoned as "no longer in the catalog" on every pass, forever.
+	//
+	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
+	// branches below and cannot disagree with whichever DELETE ran.
+	defer func() { _ = s.pruneOrphanPipelines(ctx) }()
+
 	if len(keepIDs) == 0 {
 		res, err := s.db.ExecContext(ctx, `DELETE FROM clips`)
 		if err != nil {
@@ -794,6 +804,29 @@ func (s *sqlStore) SetClipVisionTags(ctx context.Context, path, brand, visibleTe
 		epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip vision tags %s: %w", path, err)
+	}
+	return nil
+}
+
+// ClearClipVisionTags removes the vision stamp so the rung will look again (§10 V51b) — the
+// invalidation half of `Rewind`.
+//
+// ⚠ **It clears the STAMP and the text vision read; it does NOT clear brand, era or category.**
+// Those three are SHARED with the text tagger — `SetClipBrand` and `UpdateClipTags` write the same
+// columns — and nothing on the row records which tier put a value there. Blanking them would
+// therefore destroy a text-grounded brand, or an era an operator confirmed by hand, in order to
+// re-run a tier that may not even find one. A re-read simply overwrites what it can ground, which
+// is the same additive contract `SetClipVisionTags` has.
+//
+// ⚠ A separate narrow method rather than calling `SetClipVisionTags` with empty strings: that one
+// is pinned as the ONLY writer of visible_text/vision_tagged and writes what it is GIVEN, so the
+// empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
+func (s *sqlStore) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
+		false, epoch(at), path)
+	if err != nil {
+		return fmt.Errorf("clear clip vision tags %s: %w", path, err)
 	}
 	return nil
 }

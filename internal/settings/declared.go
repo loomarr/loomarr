@@ -563,10 +563,19 @@ func declared() []Setting {
 			Doc: "How sure Loomarr must be before filing a clip without asking (50–95). Lower files more automatically; higher sends more to Incoming for you to check.",
 		},
 		{
-			// On-file loudness normalisation (§10 V42, maintainer decision). Declared NOW rather
-			// than earlier because §15's rule is that a setting nothing READS does not exist —
-			// this one lands with its consumer (`filler.NormalizeInPlace`, called from the
-			// auto-file step), which is why the note that used to sit here is gone.
+			// On-file loudness normalisation (§10 V42, wired for real in V51b).
+			//
+			// ⚠ **This key spent three phases gating a function nothing called, and the note that
+			// used to sit here claimed the opposite.** It said the setting "lands with its
+			// consumer (`filler.NormalizeInPlace`, called from the auto-file step)" (retired-ok) — invoking
+			// §15's own rule that a setting nothing READS does not exist. The consumer was
+			// deleted or never wired; V51b found the function with no production caller at all,
+			// so the toggle has been inert since it shipped. It is now read by the TRANSCODE rung,
+			// which applies the loudness filter in the pass that is already re-encoding the clip.
+			//
+			// The lesson is the one §15's rule was written for, arriving from the other side: a
+			// COMMENT asserting a consumer exists is not the same as a consumer existing, and
+			// nothing failed when it stopped being true.
 			//
 			// ⚠ DEFAULT OFF, and the default is the safety property rather than a preference.
 			// This REWRITES the operator's file in FILLER_DIR: the original is unrecoverable.
@@ -582,7 +591,8 @@ func declared() []Setting {
 			// ⚠ Idempotency is NOT optional for this one. A re-scan cannot tell by looking that
 			// a file was already normalised, so without the sidecar's `normalizedLufs` marker
 			// every pass would normalise an already-normalised file and walk the loudness down
-			// run after run. `NormalizeInPlace` skips anything already marked at the target.
+			// run after run. The transcode rung writes that marker after the encode lands, and
+			// its own `mezzanine` marker stops the re-encode independently.
 			Key: "filler.autofile.normalize_loudness", EnvVar: "FILLER_AUTOFILE_NORMALIZE_LOUDNESS",
 			Group: GroupFiller, Kind: KindBool, Default: false,
 			Doc: "Rewrite each clip's audio to a consistent loudness as it is filed. ⚠ This changes the file itself and cannot be undone — the original is replaced. Leave off to have Loomarr even out the volume during playback instead, which changes nothing on disk.",
@@ -593,19 +603,22 @@ func declared() []Setting {
 		// system whose claim is that it maintains itself — while the tagger beside it files
 		// clips unattended above a threshold.
 		{
-			// ⚠ ON by default, because PROPOSING costs nothing an operator must undo: an
-			// unconfirmed proposal writes no clips. What it removes is the click and the
-			// minutes of ffmpeg an operator otherwise waits through once they decide to look.
-			Key: "filler.split.every", EnvVar: "FILLER_SPLIT_EVERY", Group: GroupFiller,
-			Kind: KindDuration, Default: "6h",
-			Doc: "How often Loomarr looks for long recordings in your catalog and works out where the adverts inside them start and end. Set to 0 to only split when you ask.",
-		},
-		{
-			// ⚠ OFF by default, unlike `filler.autofile.enabled` which is ON. Cutting is
-			// destructive in a way tagging is not: a mis-tagged clip plays in the wrong break,
-			// a mis-cut clip plays HALF AN ADVERT, and the source is consumed either way.
+			// (`filler.split.every` was retired here in V51b. Splitting is no longer a sweep with
+			// its own cadence — it is a rung every long recording reaches as it is ingested, so
+			// "how often do we go looking" stopped being a question with an answer. Detection is
+			// still bounded, by `filler.pipeline.max_splits` per pass.)
+			//
+			// ⚠ **ON by default as of V51b, reversing the note this comment used to carry.** It
+			// said: off, because cutting is destructive in a way tagging is not — a mis-cut clip
+			// plays HALF AN ADVERT and the source is consumed either way. That reasoning was
+			// sound and the risk has not changed; what changed is the evidence. The gate is
+			// strict — the whole reel qualifies or none of it does, an ungrounded era disqualifies
+			// at every threshold, and any segment the detector admits it could not resolve sends
+			// the whole reel to a human — and the measured failure mode is the gate REFUSING good
+			// reels, not admitting bad ones. Off by default meant every compilation waited for a
+			// click that the design says should be unnecessary.
 			Key: "filler.autosplit.enabled", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: false,
+			Kind: KindBool, Default: true,
 			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
 		},
 		{
@@ -625,6 +638,62 @@ func declared() []Setting {
 			Key: "filler.autosplit.max_duration", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
 			Group: GroupFiller, Kind: KindDuration, Default: "120s",
 			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
+		},
+		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
+		// the catalog: a backlog drains over cycles, which is the property the per-job batch
+		// constants they replace (LanguageBatch 25, TranscribeBatch 10, VisionBatch 5,
+		// defaultSplitsPerRun 3) were chosen to defend. The numbers are carried forward unchanged.
+		//
+		// ⚠ **Zero means NONE, and that is a distinct state from the default.** It is the only way
+		// an operator can say "never do this kind of work on this box" — the same three-state
+		// encoding `filler.fetch.every` uses, and the reason these are integers rather than
+		// booleans-plus-a-rate.
+		{
+			Key: "filler.pipeline.max_clips", EnvVar: "FILLER_PIPELINE_MAX_CLIPS", Group: GroupFiller,
+			Kind: KindInt, Default: 25, Advanced: true,
+			Doc: "How many clips Loomarr advances through preparation in one pass. A large import drains over several passes rather than occupying the machine in one.",
+		},
+		{
+			// ⚠ THREE, the tightest budget here, because a transcode competes with playout for
+			// the GPU and this is what makes the existing catalog backfill converge over a day
+			// instead of pinning the box. Zero switches re-encoding off entirely — an escape
+			// hatch that matters, because this is the one rung that rewrites the operator's file.
+			Key: "filler.transcode.max_per_run", EnvVar: "FILLER_TRANSCODE_MAX_PER_RUN", Group: GroupFiller,
+			Kind: KindInt, Default: 3, Advanced: true,
+			Doc: "How many clips Loomarr re-encodes to its standard format in one pass. Set to 0 to never re-encode — clips then play in whatever format they arrived in.",
+		},
+		{
+			Key: "filler.pipeline.max_whisper", EnvVar: "FILLER_PIPELINE_MAX_WHISPER", Group: GroupFiller,
+			Kind: KindInt, Default: 10, Advanced: true,
+			Doc: "How many clips Loomarr listens to in one pass, for language and transcription together. Listening is slow — minutes per clip on some machines — so this keeps a pass from running away.",
+		},
+		{
+			Key: "filler.pipeline.max_vision", EnvVar: "FILLER_PIPELINE_MAX_VISION", Group: GroupFiller,
+			Kind: KindInt, Default: 5, Advanced: true,
+			Doc: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
+		},
+		{
+			Key: "filler.pipeline.max_splits", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
+			Kind: KindInt, Default: 3, Advanced: true,
+			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
+		},
+		{
+			// ⚠ **ON by default, and it is the only reject an operator can turn off** — because
+			// "we could not identify it" is not the same claim as "it is not a commercial". A
+			// wordless station ident is exactly that case, and §10 calls a silent advert some of
+			// the best filler there is.
+			//
+			// ⚠ It is also why the rejected list is NOT optional: an operator has to be able to
+			// see what this caught and put it back. The reject is recorded with its reason and is
+			// reversible in one click; a silent tombstone would not be acceptable at this default.
+			//
+			// The guard that makes it safe lives in the score rung: a clip is only "unidentified"
+			// if something actually LOOKED and found nothing. A clip the tagger never reached —
+			// an install with no LLM, a catalog imported before tagging existed — falls through
+			// to review, never to a reject.
+			Key: "filler.reject.unidentified", EnvVar: "FILLER_REJECT_UNIDENTIFIED", Group: GroupFiller,
+			Kind: KindBool, Default: true,
+			Doc: "Set aside clips that nothing could identify — no era, brand, speech or on-screen text. They're listed under Filler → Incoming with a reason, and you can put any of them back.",
 		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
@@ -904,37 +973,29 @@ func declared() []Setting {
 			// expensive one: on the local backend a batch of 25 clips is minutes natively and
 			// hours under QEMU (~341s per clip). Hourly drains a catalog steadily without a pass
 			// overlapping the next.
-			Key: "job.filler_language.schedule", EnvVar: "JOB_FILLER_LANGUAGE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 30 * * * *",
-			Doc: "How often Loomarr checks what language new filler clips are spoken in (cron).",
-		},
-		{
-			// ⚠ Hourly, and off-phase from the language gate (:45 vs :30). Both are expensive —
-			// ffmpeg then whisper — and overlapping them would put two multi-minute media jobs
-			// on the same runner at the same time, on a box that is also streaming.
+			// ⚠ **This one key replaced FOUR** (§10 V51b), all now retired-ok:
+			// `job.filler_language.schedule`, `job.filler_split.schedule` (retired-ok),
+			// `job.filler_transcribe.schedule` and `job.filler_vision.schedule` (retired-ok).
+			// Those four existed to keep expensive sweeps off each
+			// other's toes by PHASE-OFFSETTING them (:15, :30, :45, :50) — a scheduling discipline
+			// that only works while nobody adds a fifth, and which the comments they carried
+			// spelled out at length.
 			//
-			// ⚠ Every job needs this key declared or the settings service PANICS at startup on
-			// `Resolve` of an undeclared key. That is the right failure — it caught this
-			// omission at boot rather than at 45 minutes past the hour — but it means a new job
-			// and its schedule key land in the same change, always.
-			Key: "job.filler_split.schedule", EnvVar: "JOB_FILLER_SPLIT_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 45 * * * *",
-			Doc: "How often Loomarr looks for adverts inside long recordings in your catalog (cron).",
-		},
-		{
-			// §10 V44. Off-phase from its expensive siblings (:15 vs the language gate's :30 and
-			// split's :45) so three multi-minute media jobs never share the runner at once — the
-			// same scheduling discipline the split key's comment above states.
-			Key: "job.filler_transcribe.schedule", EnvVar: "JOB_FILLER_TRANSCRIBE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 15 * * * *",
-			Doc: "How often Loomarr transcribes filler clips whose source told us little (cron). Only runs when transcription is enabled.",
-		},
-		{
-			// §10 V44. Latest phase (:50) — vision is the most expensive tier and runs last, on the
-			// clips the cheaper passes could not identify.
-			Key: "job.filler_vision.schedule", EnvVar: "JOB_FILLER_VISION_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 50 * * * *",
-			Doc: "How often Loomarr reads filler clips' frames to identify them (cron). Only runs when vision tagging is enabled.",
+			// The pipeline makes the whole arrangement unnecessary rather than tidier: it runs
+			// ONE clip at a time through all the rungs in order, so two expensive stages cannot
+			// share the runner by construction. There is nothing left to offset.
+			//
+			// ⚠ Every two minutes, far tighter than the hourly sweeps, and affordable for the
+			// reason the sweeps were not: a pass is bounded by the per-run budget rather than by
+			// the catalog size, so an idle install costs one indexed query. It has to be tight,
+			// because this is now the ONLY thing that advances a freshly downloaded clip.
+			//
+			// ⚠ Every job needs its schedule key declared or the settings service PANICS at
+			// startup on `Resolve` of an undeclared key — so a new job and its key always land in
+			// the same change.
+			Key: "job.filler_pipeline.schedule", EnvVar: "JOB_FILLER_PIPELINE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */2 * * * *",
+			Doc: "How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron).",
 		},
 		{
 			// §10 V45a. At :05, CLEAR of the expensive media-job cluster (:15/:30/:45/:50) rather than

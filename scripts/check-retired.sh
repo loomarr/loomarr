@@ -3,6 +3,29 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  # §10 V51b — four per-capability sweeps became one ingest pipeline. Their schedule keys are the
+  # dangerous half: `docs/help/` ships inside the binary and is read as INSTRUCTIONS, so a page
+  # telling an operator to tune `JOB_FILLER_VISION_SCHEDULE` sends them to set an env var nothing
+  # reads, on a box where vision is now scheduled by `job.filler_pipeline.schedule`. That is the
+  # exact shape the deleted `/hooks/arr` webhook left behind.
+  'job.filler_language.schedule|V51b: the language gate is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_split.schedule|V51b: splitting is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_transcribe.schedule|V51b: transcription is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'job.filler_vision.schedule|V51b: vision is a rung of the ingest pipeline; use job.filler_pipeline.schedule'
+  'JOB_FILLER_LANGUAGE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_SPLIT_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_TRANSCRIBE_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  'JOB_FILLER_VISION_SCHEDULE|V51b: replaced by JOB_FILLER_PIPELINE_SCHEDULE'
+  # ⚠ Not a rename: "how often do we go LOOKING for compilations" stopped being a question with
+  # an answer, because every long recording reaches the split rung as it is ingested. An operator
+  # told to raise this to split more often would be tuning nothing; the real bound is
+  # `filler.pipeline.max_splits`.
+  'filler.split.every|V51b: splitting is a pipeline rung, not a sweep; the bound is filler.pipeline.max_splits'
+  'FILLER_SPLIT_EVERY|V51b: splitting is a pipeline rung, not a sweep; the bound is FILLER_PIPELINE_MAX_SPLITS'
+  # V51b folded on-file loudness normalisation into the transcode rung. `NormalizeInPlace` had no
+  # production caller at all — the capability existed and the setting that gated it was inert —
+  # so a doc describing it as a separate pass describes something that never ran.
+  'NormalizeInPlace|V51b: loudness is applied by the transcode rung, in the pass that is already re-encoding'
   'hooks/arr|the inbound arr webhook was deleted; acquisition state comes from polling'
   'WEBHOOK_SECRET|never existed as a generated secret; only session_secret and api_token do'
   'capture-collections.sh|deleted; running the app against a real Emby answered every question it existed to ask (design §6 records the findings)'

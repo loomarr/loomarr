@@ -186,9 +186,47 @@ func (s *Server) bulkRemoveFiller(ctx context.Context, in *bulkRemoveFillerInput
 	if err != nil {
 		return nil, huma.Error500InternalServerError("remove clips from the catalog", err)
 	}
+	if in.Body.Restore {
+		s.clearPipelineRejects(ctx, in.Body.Hashes)
+	}
 	out := &bulkResultOutput{}
 	out.Body.Updated = n
 	// Missing = requested hashes that did not resolve OR did not match a removable row.
 	out.Body.Missing = len(in.Body.Hashes) - n
 	return out, nil
+}
+
+// clearPipelineRejects turns a restored clip's pipeline row from `rejected` back to `review`
+// (§10 V51b) — the other half of an undo.
+//
+// ⚠ **Restore is ONE endpoint, not two.** The obvious alternative was a dedicated
+// `POST /v1/filler/clips/{hash}/restore` for pipeline rejects beside this one for catalog
+// removals. They would then be two ways to un-remove a clip that could disagree — one clearing
+// the tombstone, one clearing the reason — and an operator hitting the wrong one would see the
+// clip return to the catalog while Incoming still called it rejected, or the reverse. Two places,
+// one truth: `removed_at` is WHETHER, the pipeline row is WHY, and undoing has to move both.
+//
+// ⚠ **It does NOT re-run the pipeline**, and that is the point of a restore rather than a rewind.
+// The same rule that refused the clip would refuse it again in seconds, so re-running would make
+// the button a two-second round trip to nowhere. `review` is the honest destination: the machine
+// has done everything it can and is waiting on a person, which is exactly the state a restored
+// clip is in. An operator who genuinely wants it re-examined asks for that separately.
+//
+// Best-effort: the clip IS back in the catalog by this point (the tombstone is cleared and
+// airability is what matters), so failing the request over the bookkeeping half would report a
+// failure for an undo that mostly worked. A stale `rejected` row shows a wrong reason on the audit
+// list until the next write — visible and harmless, unlike a clip that is silently still hidden.
+func (s *Server) clearPipelineRejects(ctx context.Context, hashes []string) {
+	for _, hash := range hashes {
+		row, found, err := s.store.GetClipPipeline(ctx, hash)
+		if err != nil || !found || row.Disposition != filler.DispositionRejected {
+			continue
+		}
+		row.Disposition = filler.DispositionReview
+		row.RejectReason, row.RejectDetail = "", ""
+		row.UpdatedAt = time.Now().UTC()
+		if err := s.store.UpsertClipPipeline(ctx, row); err != nil {
+			s.log.Warn("could not clear a restored clip's rejection", "clip", hash, "err", err)
+		}
+	}
 }

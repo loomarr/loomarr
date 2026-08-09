@@ -274,6 +274,30 @@ type SplitProposalStore interface {
 	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
 	// DeleteSplitProposal removes a proposal after confirm or on reject.
 	DeleteSplitProposal(ctx context.Context, id string) error
+
+	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
+	//
+	// ⚠ A SIBLING of `clips`, never columns on it: `clips` is a synced cache that has been dropped
+	// and recreated twice, and these rows record that Whisper seconds and a paid vision call have
+	// ALREADY been spent. `UpsertClipPipeline` is the table's only writer, so unlike the clip
+	// columns there is no DO UPDATE omission list to keep in step.
+
+	// UpsertClipPipeline writes a clip's pipeline row — the ONLY writer of that table.
+	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
+	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
+	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
+	// total order so one clip cannot starve while another is worked repeatedly.
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
+	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
+	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
+	// lazy and self-healing rather than a data migration.
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
+	// ClearClipVisionTags drops the vision stamp so the rung looks again (§10 V51b). ⚠ It does NOT
+	// clear brand/era/category — those are shared with the text tagger and nothing records which
+	// tier wrote them. See the implementation for why that asymmetry is the safe one.
+	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
 }
 
 // FillerPullStore is the filler approval gate (§10 V35).

@@ -133,6 +133,20 @@ type SidecarTags struct {
 	// does: it must survive a catalog rebuild. A restored install that lost this marker would
 	// re-normalise the whole folder.
 	NormalizedLUFS float64 `json:"normalizedLufs,omitempty"`
+	// Mezzanine records that this clip was re-encoded to the ingest profile (§10 V51b), holding
+	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
+	//
+	// ⚠ An IDEMPOTENCY MARKER like `normalizedLufs`, and here the stakes are higher: a transcode
+	// is a GENERATION OF LOSS, and the original is deleted once the re-encode is installed. A
+	// second unnecessary pass therefore degrades a file whose source no longer exists. The
+	// pipeline ladder normally prevents that, but the ladder lives in a table and this lives
+	// beside the file — so a catalog rebuild that also loses the pipeline row still cannot cause
+	// a re-encode.
+	//
+	// ⚠ The profile ID rather than a flag, so a future profile CHANGE is expressible: a clip
+	// carrying an older id is re-encoded (from the operator's own file, once), while a bare `true`
+	// would silently pin every existing clip to whatever profile shipped first.
+	Mezzanine string `json:"mezzanine,omitempty"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
@@ -146,11 +160,14 @@ type SidecarTags struct {
 // ⚠ **This writes only `*.info.json`** — never the media file beside it.
 //
 // ⚠ That used to read "the media files themselves stay byte-for-byte untouched", full stop, and
-// V42 made the unqualified version false: `filler.autofile.normalize_loudness` (default OFF,
-// opt-in) rewrites the clip's audio in place. `NormalizeInPlace` is the ONE function that may
-// touch a media file, and it is reached only through that setting. The guarantee this function
-// keeps is unchanged; the guarantee the PACKAGE keeps is now conditional, and a comment claiming
-// otherwise would be the drift the repo's do-not rules exist to catch.
+// V42 made the unqualified version false. V51b makes it false unconditionally: the TRANSCODE rung
+// re-encodes every clip to the mezzanine profile as it is ingested, and deletes the original once
+// the new file is installed. `Transcode` (transcode.go) is the one function that may replace a
+// media file.
+//
+// The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
+// guarantee the PACKAGE keeps is now much weaker than it was, and a comment claiming otherwise
+// would be the drift the repo's do-not rules exist to catch.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
 	path := sidecarPathFor(mediaPath)
 

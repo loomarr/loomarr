@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/fs"
 	"log/slog"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -20,44 +19,11 @@ import (
 // which is inherent here: we hand the model real catalog clips) plus the
 // enum-validation in Classify.
 
-// sidecarText reads the info-JSON beside a clip and renders its text signals. Returns "" when
-// there is no clip folder, no sidecar, or nothing useful in it — tagging then proceeds on the
-// name alone, the honest fallback for a clip that never had a sidecar.
-//
-// ⚠ **Read by PATH, which V38c made both possible and necessary.** This used to walk the whole
-// folder comparing NORMALIZED BASENAMES, because clip identity was a display name that Tunarr's
-// scan might have tidied and no reliable name→path mapping existed. Intake now files every clip
-// as `a3/f9/<hash>.mp4`, so that walk compares "frostedflakes1993" against "a3f9…" and matches
-// nothing: every filed clip would silently lose its sidecar text and fall back to filename-only
-// tagging. The row carries the path, so guessing was replaced by reading.
-func (t *Tagger) sidecarText(clip StoreClip) string {
-	if t.drop == nil || clip.Path == "" {
-		return ""
-	}
-	return SidecarText(t.drop, clip.Path)
-}
-
-// displayName is the text the tagger reasons about — the clip's ORIGINAL filename where one was
-// recorded, falling back to its catalog name.
-//
-// ⚠ **This is what keeps era grounding alive after the rename** (§10 V38c). §8's rule accepts an
-// era only when the year appears literally in the clip's text signals, and the filename is one of
-// them (`Frosted Flakes 1993.mp4`). Once intake files that as `a3f9….mp4` the path carries no
-// year at all, so without reading `originalName` back out of the sidecar every clip whose era
-// came from its filename would become ungrounded — the model's guess would be capped to a
-// suggestion and no one would ever be told why.
-//
-// The catalog `Name` is the fallback rather than the primary because it is DERIVED from the same
-// sidecar field by the scan, and a clip whose sidecar has gone missing keeps whatever name it was
-// last catalogued with.
-func (t *Tagger) displayName(clip StoreClip) string {
-	if t.drop != nil && clip.Path != "" {
-		if tags, ok := ReadSidecarTagsFS(t.drop, clip.Path); ok && tags.OriginalName != "" {
-			return strings.TrimSuffix(tags.OriginalName, filepath.Ext(tags.OriginalName))
-		}
-	}
-	return clip.Name
-}
+// (`sidecarText` and `displayName` lived here until V51b. They now sit on `TagStage`, because the
+// per-clip tagging logic does — this sweep and the pipeline's tag rung share ONE implementation,
+// and a second copy of the sidecar read is how the two would drift on the thing that keeps era
+// grounding alive: after intake renames a clip to its hash, the sidecar's `originalName` is the
+// only surviving copy of `Frosted Flakes 1993.mp4`.)
 
 // (`normalizeForMatch` lived here until V38c. It reduced a filename to a comparable form so the
 // sidecar walk above could survive Tunarr's display-name tidying. Both went together: with clips
@@ -195,22 +161,33 @@ func (t *Tagger) WithAutoFile(p AutoFilePolicy) *Tagger {
 	return t
 }
 
-// shouldAutoFile reports whether a clip scoring `score` may be filed unattended.
+// Allows reports whether a clip scoring `score` may be filed unattended.
 //
 // ⚠ The threshold is clamped to MaxAutoFileConfidence here as well as in the registry. The
 // registry validates what an operator TYPES; this guards what the code READS — an env pin, a
 // migration, or a hand-edited database row can all put an out-of-range value in front of this,
 // and a threshold of 0 would file everything including ungrounded eras.
-func (t *Tagger) shouldAutoFile(score int) bool {
-	if t.autoFile == nil || !t.autoFile.Enabled() {
+//
+// ⚠ **On the policy, not on the Tagger**, so the pipeline's score stage and the tagger apply the
+// SAME clamp rather than each carrying a copy. Two implementations of a safety ceiling is how one
+// of them ends up missing the guard — and the guard is the only thing keeping a fabricated era out
+// of a live channel.
+func (p *AutoFilePolicy) Allows(score int) bool {
+	if p == nil || p.Enabled == nil || !p.Enabled() {
 		return false
 	}
-	min := t.autoFile.MinConfidence()
+	min := MaxAutoFileConfidence
+	if p.MinConfidence != nil {
+		min = p.MinConfidence()
+	}
 	if min <= 0 || min > MaxAutoFileConfidence {
 		min = MaxAutoFileConfidence
 	}
 	return score >= min
 }
+
+// shouldAutoFile defers to the policy so there is one clamp.
+func (t *Tagger) shouldAutoFile(score int) bool { return t.autoFile.Allows(score) }
 
 // TagResult reports what a tagging run did.
 type TagResult struct {
@@ -234,14 +211,13 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 	if err != nil {
 		return TagResult{}, err
 	}
-	// Load the taxonomy ONCE per run and build the forest the whole pass serves + grounds against
-	// (§10 V45a) — the reindex pattern. A graph edit thus applies on the next run; a nil/empty forest
-	// grounds no tags, the safe direction.
-	taxa, err := t.store.ListTaxa(ctx)
-	if err != nil {
-		return TagResult{}, err
-	}
-	forest := taxonomy.New(taxa)
+	// ⚠ **ONE implementation of per-clip tagging, shared with the ingest pipeline's tag rung**
+	// (§10 V51b). This sweep is the operator's "tag everything now" action; the rung is the
+	// unattended path that runs as a clip arrives. They were separate code paths for about an hour
+	// during V51b, which is exactly long enough to notice that a second copy of the grounding
+	// merge is how one of them ends up missing a guard — the union rule, the gap-fill rule and the
+	// hash-vs-path split are all easy to get subtly wrong twice.
+	stage := NewTagStage(t.provider, t.store, t.drop, t.now)
 	res := TagResult{Considered: len(work)}
 	for _, clip := range work {
 		select {
@@ -249,130 +225,48 @@ func (t *Tagger) Run(ctx context.Context) (TagResult, error) {
 			return res, ctx.Err()
 		default:
 		}
-		// Text signals: the clip's ORIGINAL filename + the info-JSON sidecar beside it (§10).
-		//
-		// This used to pass `clip.Source` — a PROVENANCE enum — so every prompt read
-		// "Source description: tunarr-local", feeding the classifier a misleading constant
-		// while the real title/description sat unread in the sidecar.
-		//
-		// ⚠ And it must be `displayName`, not `clip.Name`, since V38c: the era can only be
-		// GROUNDED if the year appears literally in a text signal, and after intake renames a
-		// clip to its hash the only surviving copy of `Frosted Flakes 1993.mp4` is the
-		// sidecar's `originalName`.
-		//
-		// The clip's persisted TRANSCRIPT is a THIRD text signal (§10 V44), concatenated after the
-		// sidecar. It is where a brand or an era grounds for the wordless-description case the
-		// archive.org walker leaves behind — a cereal advert with an empty sidecar still SAYS
-		// "Kellogg's · since 1978", and until V44 that copy was thrown away after the split. Empty
-		// when the clip was never transcribed (or was and is wordless); `Classify` degrades to the
-		// signals it does have, exactly as it does for a missing sidecar.
-		sug, err := Classify(ctx, t.provider, forest, t.displayName(clip), sourceSignals(t.sidecarText(clip), clip.Transcript))
+		// ⚠ `Applies` is asked even here, where the work list has already filtered. The list answers
+		// "is this an untagged commercial?" from SQL; the rung answers "is there a model to ask?".
+		// A sweep that skipped the second question would report every clip as Skipped on an install
+		// with no LLM and give no reason for it.
+		if ok, _ := stage.Applies(ctx, clip); !ok {
+			res.Skipped++
+			continue
+		}
+		out, err := stage.Run(ctx, clip)
 		if err != nil {
+			// ⚠ Per-clip tolerance, unlike the rung. A sweep that aborted on one unreadable clip
+			// would leave the rest of the catalog untagged and report a failure the operator
+			// cannot act on; the pipeline can afford to fail one clip because it retries it.
 			if t.log != nil {
-				t.log.Warn("clip classify failed", "clip", clip.Path, "err", err)
+				t.log.Warn("clip tagging failed", "clip", clip.Path, "err", err)
 			}
 			res.Skipped++
 			continue
 		}
-		// Merge with any existing partial tags (e.g. an era already seeded from the
-		// filename) — the classification only fills gaps, never clears a set field.
-		era := clip.Era
-		if era == 0 {
-			era = sug.Era
-		}
-		audience := string(clip.Audience)
-		if audience == "" {
-			audience = string(sug.Audience)
-		}
-		// ⚠ TAXONOMY TAGS UNION, then DERIVE category (§10 V45a). Unlike the scalar fields above (which
-		// gap-fill), the tag set is UNIONed: a re-tag adds newly-grounded leaves to whatever the clip
-		// already had, never replacing them. `category` is then RE-DERIVED from the merged set (the
-		// primary product leaf) rather than gap-filled — so the stored shadow always equals
-		// PrimaryProductLeaf(the persisted leaves), the invariant the whole design turns on.
-		existingLeaves, err := t.store.GetClipTags(ctx, clip.Hash, true)
-		if err != nil {
-			return res, err
-		}
-		mergedLeaves := unionLeaves(existingLeaves, sug.Tags)
-		category := forest.PrimaryProductLeaf(mergedLeaves)
-		// Brand fills a gap the same way, and never clears a set one (§10 V44). A vision pass or an
-		// earlier run may already have grounded a brand off the frame; a text run that reads none
-		// must not blank it. `sug.Brand` is empty unless it appeared literally in the text signals —
-		// validateTags saw to that — so an ungrounded advertiser never reaches this merge at all.
-		brand := clip.Brand
-		if brand == "" {
-			brand = sug.Brand
-		}
-		// An UNGROUNDED era (§10, V34) is never written to era — it rides along as
-		// a suggestion for the operator, and only while the clip has no era at all
-		// (a known era needs no suggestion). A suggestion alone is still worth the
-		// write: it is the difference between "the model guessed" and silence.
-		suggestedEra := 0
-		if era == 0 {
-			suggestedEra = sug.SuggestedEra
-		}
-		// A newly-grounded brand counts as usable output even when nothing else did (§10 V44): a
-		// wordless spot whose transcript only yields "Kellogg's" is still worth recording, and the
-		// searchable brand is the whole reason V44 persists transcripts. Without brand in this guard
-		// a brand-only clip would be skipped and its one grounded fact thrown away.
-		newBrand := clip.Brand == "" && brand != ""
-		// ⚠ NEW LEAVES also count as usable (§10 V45a). A clip grounded only on a non-product axis
-		// (`psa`, `christmas`) has an empty `category` shadow but real tags — without this it would be
-		// discarded as "nothing usable" and its taxonomy tags thrown away. `gainedLeaves` is true when
-		// the merge added a leaf the clip did not already have.
-		gainedLeaves := len(mergedLeaves) > len(existingLeaves)
-		if era == 0 && audience == "" && category == "" && suggestedEra == 0 && !newBrand && !gainedLeaves {
+		if out.Clip.Hash == "" {
 			res.Skipped++
-			continue // nothing usable
-		}
-		// ⚠ Hash, not Path. `UpdateClipTags` is keyed `WHERE hash = ?` while `SetClipsHeld`
-		// eleven lines below is keyed `WHERE path IN (…)` — the same loop legitimately needs
-		// both. This call passed `clip.Path` from V38c until V41, so every run returned
-		// ErrNotFound on its first taggable clip and the fatal `return` below meant NO clip was
-		// ever AI-tagged. Invisible to tests because the store fixtures set hash == path.
-		if err := t.store.UpdateClipTags(ctx, clip.Hash, era, audience, category, suggestedEra, true, t.now()); err != nil {
-			return res, err
-		}
-		// ⚠ Persist the GROUNDED TAG SET (§10 V45a) — the source of truth `category` above is derived
-		// from. Only when the merge actually gained a leaf, to avoid rewriting an unchanged clip_tags
-		// every pass (the same churn-avoidance the brand write uses). SetClipTags re-derives rollups
-		// from these leaves, so the stored full set and the derived category stay in lockstep.
-		if gainedLeaves {
-			if err := t.store.SetClipTags(ctx, clip.Hash, mergedLeaves, forest, t.now()); err != nil {
-				return res, err
-			}
-		}
-		// The grounded brand is written separately (§10 V44), and only when this run newly grounded
-		// one — re-writing an unchanged brand every pass is pointless churn on `updated_at`. PATH-
-		// keyed, unlike the tag write just above: `SetClipBrand` sits with the transcript/vision
-		// writers, which the job addresses by path, not by hash.
-		if newBrand {
-			if err := t.store.SetClipBrand(ctx, clip.Path, brand, t.now()); err != nil {
-				return res, err
-			}
-		}
-		// ⚠ **Persist the score BEFORE the filing decision reads it.** This is the write that did
-		// not exist: `Score` produced the number, the comparison below consumed it, and nothing
-		// ever put it in the database — so an operator was shown "0" (rendered as "never scored")
-		// for a clip the tagger had just scored 92 and filed. Written unconditionally, including
-		// for clips that stay held, because a low score is exactly the case a human needs to see.
-		if err := t.store.SetClipConfidence(ctx, clip.Path, sug.Confidence, t.now()); err != nil {
-			return res, err
+			continue // the rung found nothing usable and wrote nothing
 		}
 		// The filing decision (§10 V38). Only HELD clips are candidates: a clip already in the
 		// catalog was filed by a human or by an earlier run, and re-filing it would flip its
 		// `auto_filed` attribution — rewriting the answer to "did anyone look at this?".
 		//
-		// ⚠ The score is `sug.Confidence`, which is grounding-CAPPED (TagSuggestion.Score), not
-		// the model's self-report. An ungrounded era cannot reach any settable threshold, so the
-		// fabrication class this section guards stays with a person however this is configured.
-		if clip.Held && t.shouldAutoFile(sug.Confidence) {
+		// ⚠ The score is the rung's grounding-CAPPED confidence, not the model's self-report. An
+		// ungrounded era cannot reach any settable threshold, so the fabrication class this guards
+		// stays with a person however this install is configured.
+		//
+		// ⚠ It lives here rather than in the rung because the two drivers file at different
+		// moments: the pipeline files at the SCORE rung, after vision has had its turn, while this
+		// sweep has no later rung to defer to. Filing inside the tag rung would file a clip before
+		// the tier that exists for wordless spots had run.
+		if clip.Held && t.shouldAutoFile(out.Clip.Confidence) {
 			if _, err := t.store.SetClipsHeld(ctx, []string{clip.Path}, false, true, t.now()); err != nil {
 				return res, err
 			}
 			res.AutoFiled++
 		}
-		if era > 0 && audience != "" && category != "" {
+		if out.Clip.Tagged() {
 			res.Tagged++
 		} else {
 			res.Partial++

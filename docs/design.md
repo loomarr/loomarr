@@ -2291,6 +2291,101 @@ self-assessment, so the grounding cap keeps its teeth.
 true of a column with no producer. A column can round-trip perfectly and still be dead. The case
 now exercises the writer itself.
 
+### Ingest is a pipeline, and it is watchable (V51b)
+
+Filler grew one cron job per capability: `filler-sync`, `filler-fetch`, `filler-language`,
+`filler-split`, `filler-transcribe`, `filler-vision`, `filler-reindex`. Each **sweeps the whole
+catalog looking for its own kind of work**, on its own schedule, knowing nothing about what the
+others have done to a clip.
+
+Two consequences, and the second is the one an operator feels:
+
+1. **A clip's journey is invisible.** Download forty commercials and the queue says "Downloaded
+   and waiting to be checked" for up to an hour, because language runs at :30, vision at :50, and
+   tagging on its own cron. Nothing reports which stage a clip is in, or that it is being worked
+   on at all. The system is working and looks broken.
+2. **Nothing owns the order.** Tagging can run before transcription, so it grounds against a
+   transcript that does not exist yet and scores the clip low; the transcribe job fills it in
+   later and nothing re-tags. Cheap work and expensive work compete for the same hour with no
+   budget between them.
+
+V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one driver job.
+
+**The stages, in order:** `probe → transcode → split → language → transcribe → tag → vision →
+score`. Each stage answers two questions separately — *does this stage apply to this clip, in this
+install?* (no exec, re-evaluated every pass) and *do the work* — so switching `filler.vision.enabled`
+on picks up clips that already passed that rung, without a migration or a re-sweep.
+
+**The pipeline is sequential and budget-bounded, and that is not a limitation.** Whisper is ~341s
+per clip under QEMU and ffmpeg competes with playout for the GPU, so one clip at a time is what
+keeps a catalog import from starving live channels. It is also the answer to SSE volume: at most
+one clip is running, so "forty clips × eight stages" never arrives at once. The per-run budget
+(`MaxClips`, `MaxTranscodes`, `MaxWhisper`, `MaxVision`, `MaxSplits`) carries forward the existing
+batch constants, so the "backlog drains over cycles" property those constants defend is preserved
+exactly.
+
+**Retry with backoff is new.** The cron jobs had none — `Work` always returned nil, so a failure
+simply waited for the next tick and a permanently-broken clip was retried at full cost forever.
+Stages now retry 5m / 30m / 2h and then resolve: a `probe` failure is a **reject** (a file we
+cannot measure is not a clip), while `transcribe`/`vision`/`language` **skip and advance** — a
+missing transcript must never strand a clip.
+
+#### Stage state is persisted, in a sibling table
+
+⚠ **`filler_clip_pipeline` is a durable table beside `clips`, NOT columns on it**, and the reason
+is the same one every ⚠ in `UpsertClip`'s DO UPDATE block states. `clips` is a synced **cache** of
+the drop-folder and has been dropped and recreated twice (00006, 00033). Pipeline state records
+that we *already spent* ~341s of Whisper and a paid vision call on a clip; in the cache, the next
+identity change silently re-runs all of it and re-spends the money. In a sibling table, a rebuilt
+`clips` re-syncs from disk and the pipeline correctly sees the work as done.
+
+It also makes the single-writer story **structural rather than by convention**: the folder scan
+cannot touch a table it does not know about, so there is no omission list to forget.
+
+The finished ladder is one JSON document (`stages_json`), the same call `filler_split_proposals`
+makes for `segments_json` and for the same stated reason — it is authored and read as a unit and
+never queried relationally. The columns above it (`stage`, `status`, `disposition`, `next_run`) are
+exactly the ones the work-list query and the Incoming tab filter on.
+
+#### Watching it happen
+
+⚠ **Stage state is PERSISTED and served by `GET /v1/filler/incoming`; the SSE frame is a latency
+optimisation.** That is §8's standing rule, and it is load-bearing here rather than ceremonial: the
+bus drops frames for a slow subscriber by design, so a client that assembled the ladder from frames
+would show a queue that is silently missing steps. Every `filler_clip` frame is therefore a
+**self-sufficient snapshot** — any single frame fully describes where the clip is now — and the GET
+is the truth on reconnect.
+
+⚠ **Only one stage reports a real percentage.** The transcode stage reads ffmpeg's
+`-progress pipe:3` and the clip's duration is already known, so `outTime / duration` is exact and
+free. Whisper and an LLM turn are single opaque calls: interpolating a bar over them would be the
+fabricated-progress failure the database-migration frame already warns about. Other stages report
+**step boundaries** where genuine sub-steps exist and 0-then-100 where they do not. **A running
+stage with no measurement shows no bar**, for the same reason a confidence of 0 renders nothing:
+absence of measurement and a measurement of zero are different claims.
+
+Intra-stage progress is throttled in the emitter (≥1s and ≥5 points since the last frame for that
+clip) and in the database (≥2s / ≥10 points); status *transitions* always publish and always
+write. The percentage is decoration — what has to survive a reload is which stage, and whether it
+is running.
+
+#### Three outcomes, not two
+
+The lifecycle gains a third terminal state. `held` and `filed` were decided in different files by
+different jobs with no shared vocabulary: the language job tombstoned, the tagger filed, and the
+scan silently skipped. A single `Verdict` — **continue / review / reject** — is now what every
+rule answers, so adding a criterion means adding a rule rather than editing three jobs.
+
+⚠ **A reject is visible and reversible.** It carries a stable reason CODE (never generated prose)
+plus the measured detail behind it — `"8.2s; floor is 10s"` — and appears in Incoming under *"we
+didn't use N clips"* with a one-click restore for the soft cases. A hard reject (no audio, no
+video) offers no override, because that is a control that could not work. The rule §10 has held
+since V35 applies unchanged: **an unattended decision that cannot be found is not one an appliance
+gets to make.**
+
+⚠ `clips.removed_at` stays the *airability* gate and pod assembly is untouched. Two places, one
+truth: `removed_at` is **whether**, the pipeline row is **why**.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
@@ -2977,8 +3072,9 @@ wins. See `config-design.md` §1. Every app-managed setting is unchanged at
 | `INGEST_MAX_CONCURRENT` / `INGEST_TIMEOUT` | `2` / `30m` (bounded parallel downloads; per-item wall-clock ceiling so one wedged fetch can't hold a worker forever) |
 | `FILLER_STARTER_COLLECTION` | the archive.org collection the **starter pack** lists on a fresh install (§10). A curated default, not a hardcoded truth: point it at your own collection, or **set it empty to turn the pack off entirely**. Listing only — nothing downloads without the operator keeping a row. ⚠ **From V35 this seeds a pull** rather than driving its own flow, so the "nothing downloads" property is now enforced by the approval gate instead of by a UI convention |
 | `FILLER_AUTOFILE_ENABLED` / `FILLER_AUTOFILE_MIN_CONFIDENCE` | **`true` / `85`** (§10 V38). Whether a tagged clip is filed automatically, and the score it must reach. ⚠ **These keys were REMOVED from this table in V35's review** as declared-but-unconsumed — §15's own rule is that a setting not in the registry does not exist. They return **with their consumer, in the same PR**: the filing path reads them, and a test proves a clip below the threshold reaches Incoming instead of the catalog. ⚠ **ON by default means an existing install starts auto-filing on its first tagging run after upgrade** (maintainer, 2026-08-02) — a deliberate product call. What makes it safe is not the number but §10's grounding **cap**: an ungrounded era cannot reach any threshold, so the fabrication class stays with a human regardless |
-| `FILLER_SPLIT_EVERY` | `6h` (§10 V43). How often the `filler-split` job looks for over-long catalog clips and proposes cuts. ⚠ **On by default, because PROPOSING costs nothing an operator must undo** — an unconfirmed proposal writes no clips. What it buys is that review is waiting when they look, instead of a click and minutes of ffmpeg. `0` disables the job. ⚠ Only clips longer than `FILLER_AUTOSPLIT_MAX_DURATION` are candidates: a 30-second advert is not a compilation, and running detection over the whole catalog every cycle would spend hours proving that |
-| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`false` / `85`** (§10 V43). Whether an unambiguous split is confirmed without a human, and the score every segment must reach. ⚠ **OFF by default, unlike auto-file** — the one it resembles is ON. Cutting is destructive in a way tagging is not: a mis-tagged clip plays in the wrong break, a mis-cut clip plays half an advert, and the source file is consumed either way. An operator opts in once they have seen the judgement on their own reels. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
+| `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the one rung that rewrites the operator's file. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
+| `FILLER_REJECT_UNIDENTIFIED` | **`true`** (§10 V51b). Set aside a clip when every signal tier ran and grounded nothing — no era, audience, tag, brand, speech or on-screen text. ⚠ **The only reject an operator can switch off**, because "we could not identify it" is not the claim "it is not a commercial", and a wordless station ident is exactly that case. ⚠ It is also why the rejected list is not optional: every refusal carries a stable reason code plus the measured detail and is reversible in one click. The guard that makes the default safe lives in the score rung — a clip is only unidentified if something actually LOOKED, so a clip the tagger never reached falls through to review, never to a reject |
+| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every segment must reach. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert and the source is consumed either way. That risk has not changed; the evidence has. The gate is strict (the whole reel qualifies or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the whole reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. ⚠ **A SEPARATE threshold from `FILLER_AUTOFILE_MIN_CONFIDENCE`, deliberately.** One dial would force the stricter of two different failure modes to govern both |
 | `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
 | `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
