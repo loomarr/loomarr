@@ -801,18 +801,28 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 // return the zero CopyPlan (copy nothing → transcode both). A copy of an unprobed source could ship
 // a codec the target cannot play — a black frame — whereas an unnecessary transcode is merely slow.
 // So when we cannot know, we transcode.
-func (r *playoutResolver) PlanFor(ctx context.Context, input string, target playout.EncodePlan) playout.CopyPlan {
+//
+// It returns the PROBE ALONGSIDE THE PLAN, and that is the point of the second return value. This
+// function used to reduce a fully-parsed MediaFormat — geometry, framerate, pixel format, colour
+// transfer, duration, bitrate — to two booleans and discard the rest, which is why copyplan.go's
+// "Probe once, keep it all… so later features need no second ffprobe" was a promise nothing
+// collected on, and why its HDR() had no production caller. The zero MediaFormat travels with the
+// zero CopyPlan on every failure path, so an unprobed source reads as SDR/unknown rather than as
+// anything asserted.
+func (r *playoutResolver) PlanFor(
+	ctx context.Context, input string, target playout.EncodePlan,
+) (playout.CopyPlan, playout.MediaFormat) {
 	if r.probeFormat == nil || input == "" {
-		return playout.CopyPlan{} // transcode both
+		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
 	}
 	f, err := r.probeFormat(ctx, input)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: format not probed, transcoding", "input", library.RedactStreamURL(input), "err", err)
 		}
-		return playout.CopyPlan{}
+		return playout.CopyPlan{}, playout.MediaFormat{}
 	}
-	return playout.PlanCopy(f, target)
+	return playout.PlanCopy(f, target), f
 }
 
 func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {

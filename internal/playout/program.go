@@ -50,6 +50,44 @@ type ProgramSpec struct {
 	AudioTrack    int      // the N in -map 0:a:N (PickAudioTrack); 0 = the file's first track
 	TargetLUFS    string   // filler loudness normalisation (§10 V40); "" = none (library titles)
 	Plan          CopyPlan // per-stream copy/transcode decision (PlanCopy); zero value = transcode both
+
+	// Source is the PROBE the Plan was derived from — the full MediaFormat, not the two booleans
+	// it reduces to.
+	//
+	// copyplan.go has promised this since it was written ("Probe once, keep it all… so later
+	// features need no second ffprobe"), and until now nothing collected on it: the resolver
+	// probed, computed CopyVideo/CopyAudio, and dropped everything else, so the HDR flag it went
+	// to the trouble of parsing had no production caller at all. Tone-mapping is the first
+	// feature to need it; SAR, field order and the copy path's missing geometry guard are the
+	// same shape and can now read from here rather than growing a second probe each.
+	//
+	// The zero value is the safe direction on purpose. A probe that failed yields a zero
+	// MediaFormat, whose HDR() is false, so an unprobed source is treated as SDR — washed-out at
+	// worst. The opposite default would tone-map SDR content, which damages a picture that was
+	// correct.
+	Source MediaFormat
+	// Tonemap reports whether this ffmpeg BUILD can tone-map (zscale + tonemap present). Resolved
+	// by the composition root via TonemapperFor, not probed here, because ProgramArgs is a pure
+	// function and asking a binary from inside it would make every arg test exec ffmpeg.
+	//
+	// It is deliberately separate from Source.HDR(): one is a property of the CONTENT, the other
+	// of the INSTALL, and both must hold. See filters.go for why a missing filter is fatal rather
+	// than degrading if emitted anyway.
+	Tonemap bool
+}
+
+// tonemapStep returns the HDR→SDR filter chain for this program, or "" when it should not run.
+//
+// Both conditions are required and they fail in opposite directions, which is why neither is
+// folded into the other: HDR content on a build without zscale must NOT emit the filter (the graph
+// would fail at init and the channel would die — see filters.go), and an SDR source on a build
+// that CAN tone-map must not be tone-mapped either (it would compress a range that was already
+// correct).
+func (s ProgramSpec) tonemapStep() string {
+	if !s.Tonemap || !s.Source.HDR() {
+		return ""
+	}
+	return hdrToSDRChain
 }
 
 // ProgramArgs builds the args to encode (or COPY) ONE program, starting Offset in, for Limit.
@@ -155,7 +193,10 @@ func ProgramArgs(spec ProgramSpec) []string {
 		// re-encode.
 		args = append(args, "-c:v", "copy")
 	} else {
-		args = append(args, p.scaleFilterArgs()...)
+		// The tone-map carries its own output labelling — its final zscale rewrites the frames'
+		// colour properties and ffmpeg propagates them, so no `-colorspace`/`-color_trc` flags
+		// are added here. See hdrToSDRChain: they were measured to be redundant.
+		args = append(args, p.scaleFilterArgs(spec.tonemapStep())...)
 		args = append(args, p.videoEncodeArgs()...)
 	}
 
@@ -192,7 +233,11 @@ func ProgramArgs(spec ProgramSpec) []string {
 // 4:3 episode in a 16:9 profile keeps its geometry. The pad is what preserves the profile's
 // exact output dimensions, which `-c copy` requires — a bare aspect-preserving scale would
 // emit 960x720 for 4:3 content and break concatenation.
-func (p Profile) scaleFilterArgs() []string {
+// `tonemap` is the HDR→SDR chain (ProgramSpec.tonemapStep), or "" for the overwhelmingly common
+// SDR case. It is a PARAMETER rather than something derived here because a Profile describes the
+// OUTPUT and tone-mapping is a fact about the INPUT — and because capability.go builds this same
+// chain for its trial encode against a synthetic lavfi source that has no input to speak of.
+func (p Profile) scaleFilterArgs(tonemap string) []string {
 	if p.Width <= 0 || p.Height <= 0 {
 		return nil
 	}
@@ -205,6 +250,24 @@ func (p Profile) scaleFilterArgs() []string {
 	fps := fmt.Sprintf("fps=%d", p.Framerate)
 
 	parts := []string{scale, fps}
+
+	// TONE-MAP AFTER THE SCALE, BEFORE THE FORMAT/UPLOAD STEP. Both placements are deliberate:
+	//
+	//   - After scale, because tone-mapping is per-pixel and the scale has already cut a 4K frame
+	//     to 1080p by this point. Doing it first would tone-map four times the pixels for a
+	//     result no viewer can distinguish, on a realtime budget.
+	//   - Before the format/upload step, because the chain's last zscale preserves BIT DEPTH — a
+	//     10-bit HDR source is still 10-bit when it leaves the tone-map, and `format=yuv420p`
+	//     (or `format=nv12,hwupload`) is what takes it to 8. Reversed, the tone-map would work on
+	//     an already-truncated picture, which is most of what this was meant to fix.
+	//
+	// Both orders RUN — neither errors — so nothing but the assertions in program_test.go protects
+	// this. Measured against a real HDR10 source (2026-08-09, ffmpeg n9.0): swapping the tone-map
+	// and the format step yields a different frame hash, so the order is doing work rather than
+	// being a stylistic preference.
+	if tonemap != "" {
+		parts = append(parts, tonemap)
+	}
 
 	// The upload step comes from the capability prober's own helper, not a local copy. It is
 	// per-encoder correct in ways a generic "format=nv12,hwupload" is not — QSV needs

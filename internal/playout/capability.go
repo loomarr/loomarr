@@ -268,7 +268,10 @@ func trialEncode(ctx context.Context, ffmpegPath string, enc Encoder, p Profile,
 	// The SAME scale/format/upload filter the live child builds (scaleFilterArgs), not just the bare
 	// upload — a filter-graph mismatch (CPU frames into a GPU encoder) is one of the real cold-path
 	// failures, so the trial must exercise it.
-	args = append(args, probe.scaleFilterArgs()...)
+	// No tone-map: the source is a synthetic SDR `testsrc`, so there is no HDR to map and adding
+	// the step would make the trial fail on a build without zscale — which is a real, working
+	// encoder configuration for every SDR program on that box.
+	args = append(args, probe.scaleFilterArgs("")...)
 	args = append(args, probe.videoEncodeArgs()...)
 	// Mux to MPEG-TS exactly like the child, so an encoder that cannot feed the muxer fails HERE.
 	args = append(args, "-f", "mpegts", outPath)

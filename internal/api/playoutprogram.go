@@ -54,7 +54,12 @@ type PlayoutResolver interface {
 	// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play,
 	// V47): copy the streams the target can play, transcode the rest. Fails safe toward transcode
 	// (the zero CopyPlan) when the source cannot be probed.
-	PlanFor(ctx context.Context, input string, target playout.EncodePlan) playout.CopyPlan
+	//
+	// It also returns the MediaFormat the plan was derived from, so the transcode path can act on
+	// what the probe already learned without paying for a second ffprobe on the program boundary.
+	// Tone-mapping is the first caller; the zero value means "not probed", which every consumer
+	// must treat as unknown rather than as a positive claim.
+	PlanFor(ctx context.Context, input string, target playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat)
 }
 
 // PlayoutEncoder starts a supervised ffmpeg for the given args. Injected so the handlers can be
@@ -177,7 +182,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// fMP4. A channel's stream is not one thing — different clients attach their own session with their
 	// own served plan — and this handler feeds that session's parent. ParseEncodePlan defaults to
 	// PlanBaseline, so an un-parameterised request stays h264/TS (the black-frame-safe floor).
-	plan := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
+	//
+	// `source` is the probe the plan came from, kept rather than discarded so the transcode below
+	// can act on what was already learned (HDR today) without a second ffprobe at the program
+	// boundary — the one moment continuity is most fragile.
+	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 
 	// ⚠ Keep an HEVC-plan session's stream UNIFORMLY HEVC (§9.1 V49). An hevc8/hevc10 client watches
 	// over fMP4, which binds ONE decoder from its init segment and cannot survive a mid-stream codec
@@ -197,6 +206,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		AudioTrack: audioTrack,
 		TargetLUFS: targetLUFS,
 		Plan:       plan,
+		Source:     source,
+		// Whether this BUILD can tone-map, asked once per process by the composition root. Nil
+		// here means "no" — the same fail-safe direction as playoutFont: a missing filter emitted
+		// anyway fails at graph-init and kills the channel, so an unknown answer must never be
+		// optimistic.
+		Tonemap: s.playoutTonemap != nil && s.playoutTonemap(),
 	}
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
