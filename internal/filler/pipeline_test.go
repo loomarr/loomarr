@@ -374,8 +374,13 @@ func TestPipeline_ADeadlineDefersInsteadOfBurningAnAttempt(t *testing.T) {
 	if row.Attempts != 0 {
 		t.Errorf("attempts = %d, want 0 — the clip did nothing wrong; the pass ran out of time", row.Attempts)
 	}
-	if !row.NextRun.IsZero() {
-		t.Error("a backoff was scheduled for a deadline; the clip has not earned one")
+	// ⚠ It YIELDS. Found by watching the fix starve the queue: the work list is oldest-first, so a
+	// clip that cannot fit a pass took the whole budget again on the next one, and 84 other clips
+	// were never reached. Not a penalty — no attempt was spent — but it goes behind work that can
+	// finish. A ZERO NextRun here is the starvation bug, which is why this asserts the opposite of
+	// what a failure-backoff test would.
+	if !row.NextRun.After(row.UpdatedAt) {
+		t.Error("a deferred clip is due immediately; it will take the next pass too, and the queue behind it starves")
 	}
 	if row.Disposition != filler.DispositionRunning {
 		t.Errorf("disposition = %q, want running", row.Disposition)

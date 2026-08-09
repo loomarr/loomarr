@@ -1,8 +1,12 @@
-import type { ChannelPolicy } from "@loomarr/api";
+import type { ChannelPolicy, PodPoolDTO } from "@loomarr/api";
+import { getPreviewDraftChannelPodsMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft } from "./use-channel-filler-draft";
 
 const makeWrapper = () => {
@@ -12,10 +16,7 @@ const makeWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const previewBody = {
+const previewBody: PodPoolDTO = {
   entries: [
     {
       path: "p1.mp4",
@@ -30,26 +31,33 @@ const previewBody = {
   matchLevel: "exact",
 };
 
-// Records every request so a test can assert what the preview POST / apply PATCH sent, and
-// dispatches a canned response by method + path: POST …/pods/preview is the draft preview,
-// PATCH …/channels/{id} is apply. Bodies are captured parsed.
-const stubFetch = (opts: { previewStatus?: number } = {}) => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      const body = init?.body ? JSON.parse(init.body as string) : undefined;
-      calls.push({ method, url: String(url), body });
-      if (method === "POST" && String(url).endsWith("/pods/preview")) {
-        return Promise.resolve(jsonResponse(opts.previewStatus ?? 200, previewBody));
-      }
-      if (method === "PATCH") return Promise.resolve(jsonResponse(200, { id: "ch-1" }));
-      // The catalog read (GET /v1/filler) the hook's callers use — harmless empty here.
-      return Promise.resolve(jsonResponse(200, { clips: [] }));
+// Records what the preview POST / apply PATCH sent, each from the resolver bound to its own route:
+// POST …/pods/preview is the draft preview, PATCH …/channels/{id} is apply.
+//
+// ⚠ `previewStatus` stays HAND-WRITTEN, and it has to be: the spec declares errors via `default:`
+// (RFC 7807) with no explicit 422, so orval generates nothing to fail with. The generated handler
+// is skipped entirely in that mode rather than layered under a guard — there is only one request
+// in flight and it is the one that must fail.
+const stubDraft = (opts: { previewStatus?: number } = {}) => {
+  const previews: unknown[] = [];
+  const saves: unknown[] = [];
+
+  server.use(
+    opts.previewStatus
+      ? http.post("*/v1/channels/:id/pods/preview", () =>
+          HttpResponse.json({ title: "Unprocessable" }, { status: opts.previewStatus }),
+        )
+      : getPreviewDraftChannelPodsMockHandler(async ({ request }) => {
+          previews.push(await request.json());
+          return previewBody;
+        }),
+    getUpdateChannelMockHandler(async ({ request }) => {
+      saves.push(await request.json());
+      return channel();
     }),
   );
-  return { calls };
+
+  return { previews, saves };
 };
 
 const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
@@ -80,7 +88,7 @@ describe("canonicalize", () => {
 
 describe("useChannelFillerDraft", () => {
   it("seeds the draft from policy.filler", () => {
-    stubFetch();
+    stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
@@ -89,24 +97,23 @@ describe("useChannelFillerDraft", () => {
   });
 
   it("fires a debounced preview POST with the canonical draft, and renders its result", async () => {
-    const { calls } = stubFetch();
+    const { previews } = stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
 
     // Edit the draft; the POST must NOT fire until the debounce elapses.
     act(() => result.current.setDraft({ audience: "kids", categories: ["toys"] }));
-    expect(calls.filter((c) => c.url.endsWith("/pods/preview"))).toHaveLength(0);
+    expect(previews).toHaveLength(0);
 
     await act(async () => {
       vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS);
     });
 
     await waitFor(() => expect(result.current.preview?.entries).toHaveLength(1));
-    const post = calls.filter((c) => c.url.endsWith("/pods/preview")).at(-1);
-    expect(post?.body).toMatchObject({ filler: { audience: "kids", categories: ["toys"] } });
+    expect(previews.at(-1)).toMatchObject({ filler: { audience: "kids", categories: ["toys"] } });
   });
 
   it("coalesces a burst of edits into a single preview POST", async () => {
-    const { calls } = stubFetch();
+    const { previews } = stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
 
     act(() => result.current.setDraft({ audience: "kids" }));
@@ -117,14 +124,13 @@ describe("useChannelFillerDraft", () => {
     });
 
     // The initial mount preview (empty draft) plus exactly one for the settled burst.
-    const posts = calls.filter((c) => c.url.endsWith("/pods/preview"));
-    await waitFor(() => expect(posts.at(-1)?.body).toMatchObject({ filler: { audience: "general" } }));
+    await waitFor(() => expect(previews.at(-1)).toMatchObject({ filler: { audience: "general" } }));
     // Three rapid edits collapsed — not three separate POSTs for them.
-    expect(posts.filter((p) => (p.body as { filler: { audience?: string } }).filler.audience).length).toBe(1);
+    expect(previews.filter((p) => (p as { filler: { audience?: string } }).filler.audience).length).toBe(1);
   });
 
   it("flips isDirty when the draft diverges and back when it matches saved", () => {
-    stubFetch();
+    stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
@@ -136,23 +142,23 @@ describe("useChannelFillerDraft", () => {
   });
 
   it("apply PATCHes the draft MERGED onto the rest of the saved policy", async () => {
-    const { calls } = stubFetch();
+    const { saves } = stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "family", pinned: ["p9"] }));
     act(() => result.current.apply());
 
-    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
-    const patch = calls.find((c) => c.method === "PATCH");
+    // ⚠ Was `calls.some(c => c.method === "PATCH")`, satisfied by a PATCH to anything.
+    await waitFor(() => expect(saves).toHaveLength(1));
     // The filler is the new draft…
-    expect(patch?.body).toMatchObject({ policy: { filler: { audience: "family", pinned: ["p9"] } } });
+    expect(saves[0]).toMatchObject({ policy: { filler: { audience: "family", pinned: ["p9"] } } });
     // …and the rest of the policy is carried, not wiped (PATCH replaces policy whole).
-    expect(patch?.body).toMatchObject({ policy: { ordering: "shuffle", scope: { era: { from: 1990 } } } });
+    expect(saves[0]).toMatchObject({ policy: { ordering: "shuffle", scope: { era: { from: 1990 } } } });
   });
 
   it("discard resets the draft to saved", () => {
-    stubFetch();
+    stubDraft();
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
@@ -164,7 +170,7 @@ describe("useChannelFillerDraft", () => {
   });
 
   it("surfaces a preview failure instead of an empty timeline", async () => {
-    stubFetch({ previewStatus: 422 });
+    stubDraft({ previewStatus: 422 });
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), { wrapper: makeWrapper() });
     act(() => result.current.setDraft({ audience: "kids" }));
     await act(async () => {

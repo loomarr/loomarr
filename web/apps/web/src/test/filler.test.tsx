@@ -1,14 +1,39 @@
+import type { ClipDTO, FillerWatchOutputBody, MeBody } from "@loomarr/api";
+import {
+  getBulkRemoveFillerMockHandler,
+  getBulkTagFillerMockHandler,
+  getFillerIncomingMockHandler,
+  getFillerPoolMockHandler,
+  getFillerWatchMockHandler,
+  getGetFillerSplitMockHandler,
+  getIngestFillerMockHandler,
+  getListFillerMockHandler,
+  getListTaxonomyMockHandler,
+  getMeMockHandler,
+  getSettingsListMockHandler,
+  getSplitFillerMockHandler,
+  getSyncFillerMockHandler,
+  getTagFillerClipMockHandler,
+  getTagFillerMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { me } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
-const MEMBER = { ...ADMIN, role: "member" };
+const ADMIN = me();
+const MEMBER: MeBody = me({ role: "member" });
 
-const clip = (over: Record<string, unknown> = {}) => ({
+// ⚠ `playCount` and `playsCounted` are REQUIRED on ClipDTO and this fixture omitted both. It was
+// typed `Record<string, unknown>`, so nothing objected — and `playsCounted` is precisely the field
+// whose absence is indistinguishable from `false`, which the DTO's own comment says must render as
+// "not counted" rather than "0".
+const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   hash: "c1-hash",
   tunarrProgramId: "c1",
   name: "Frosted Flakes",
@@ -19,20 +44,19 @@ const clip = (over: Record<string, unknown> = {}) => ({
   category: "cereal",
   tagged: true,
   aiTagged: false,
+  playCount: 0,
+  playsCounted: true,
   ...over,
 });
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
 type Opts = {
   features?: Record<string, boolean>;
-  clips?: Array<Record<string, unknown>>;
-  me?: Record<string, unknown>;
+  clips?: ClipDTO[];
+  me?: MeBody;
   // Overrides the header pill's payload. Needed because `clips` here seeds the CATALOG, and the
   // states worth testing in the header are the ones where the catalog and the review queue
   // disagree — a fresh auto-fetch has zero of one and a dozen of the other.
-  watch?: Record<string, unknown>;
+  watch?: FillerWatchOutputBody;
 };
 
 // The SSE stream, captured so a test can fire frames at the app: the split job's terminal
@@ -55,86 +79,106 @@ const fireFrame = (type: string, payload: unknown) => {
   }
 };
 
-const stubFetch = ({
+// ⚠ The stub this replaces was a ten-branch `includes` ladder whose CORRECTNESS DEPENDED ON ITS
+// ORDER, and it said so out loud: "Stubbed BEFORE the catch-all `/v1/filler` branch below, which
+// would otherwise answer these with a clip list". That comment is the bug report. Three of the
+// branches were wrong in ways nothing could see:
+//
+//   • `u.includes("/v1/filler/") && method === "PATCH"` matched BOTH `PATCH /v1/filler/tags`
+//     (tag one clip) and `PATCH /v1/filler/sources/:id` (enable/disable a source). Three separate
+//     assertions in this file then searched for "a PATCH, to anything" and read its body.
+//   • `u.endsWith("/split")` and `u.includes("/v1/filler/splits/")` are two different endpoints
+//     distinguished only by a trailing slash and a plural.
+//   • `u.includes("/v1/filler/tag")` also matches `/v1/filler/tags`, so the whole-catalog AI
+//     tagger and the single-clip tag write shared one branch.
+//
+// Every one is route-bound now, and the recorded values below come from the resolver that owns
+// the route rather than from a scan of the test's own call log.
+const stubFiller = ({
   features = { filler: true, suggestions: true },
   clips = [clip()],
-  me = ADMIN,
+  me: who = ADMIN,
   watch,
 }: Opts = {}) => {
   CaptureEventSource.listeners = new Map();
-  const mock = vi.fn((url: string, init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
-    if (u.includes("/v1/filler/sync"))
-      return Promise.resolve(json({ total: 3, added: 2, updated: 1, pruned: 0 }));
-    if (u.includes("/v1/filler/tag"))
-      return Promise.resolve(json({ considered: 2, tagged: 2, partial: 0, skipped: 0 }));
-    if (u.includes("/v1/filler/ingest")) return Promise.resolve(json({ jobId: "job-1" }));
+  const tagPatches: unknown[] = [];
+  const bulkRemoves: unknown[] = [];
+  const bulkTags: unknown[] = [];
+  const listQueries: string[] = [];
+  let splits = 0;
+
+  server.use(
+    getMeMockHandler(who),
+    getSyncFillerMockHandler({ total: 3, added: 2, updated: 1, pruned: 0 }),
+    getTagFillerMockHandler({ considered: 2, tagged: 2, partial: 0, skipped: 0 }),
+    getIngestFillerMockHandler({ jobId: "job-1" }),
     // Split (V34): detection starts as a job; the review route reads the proposal back.
-    if (u.endsWith("/split")) return Promise.resolve(json({ jobId: "job-split-1" }));
-    if (u.includes("/v1/filler/splits/")) {
-      return Promise.resolve(
-        json({
-          id: "sp-1",
-          clipHash: "c1",
-          createdAt: "2026-07-25T20:00:00Z",
-          segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
-        }),
-      );
-    }
-    if (u.includes("/v1/filler/") && String(init?.method) === "PATCH") {
-      return Promise.resolve(json(clips[0]));
-    }
-    // V35 reads. Stubbed BEFORE the catch-all `/v1/filler` branch below, which would otherwise
-    // answer these with a clip list — a wrong shape that renders as an empty strip rather than
-    // an error, i.e. exactly the kind of silence a test should not have to chase.
-    if (u.includes("/v1/filler/pool")) {
-      return Promise.resolve(
-        json({
-          clips: clips.length,
-          commercials: clips.length,
-          eligible: clips.length,
-          untagged: 0,
-          channels: [],
-        }),
-      );
-    }
-    if (u.includes("/v1/filler/incoming")) {
-      return Promise.resolve(json({ asks: [], reels: [], total: 0 }));
-    }
+    getSplitFillerMockHandler(() => {
+      splits += 1;
+      return { jobId: "job-split-1" };
+    }),
+    getGetFillerSplitMockHandler({
+      id: "sp-1",
+      clipHash: "c1",
+      createdAt: "2026-07-25T20:00:00Z",
+      segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
+    }),
+    getTagFillerClipMockHandler(async ({ request }) => {
+      tagPatches.push(await request.json());
+      return clips[0] ?? clip();
+    }),
+    getFillerPoolMockHandler({
+      clips: clips.length,
+      commercials: clips.length,
+      eligible: clips.length,
+      untagged: 0,
+      channels: [],
+    }),
+    getFillerIncomingMockHandler({
+      clips: [],
+      reels: [],
+      recentlyFiled: [],
+      rejected: [],
+      stageOrder: [],
+      total: 0,
+    }),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
     // the SERVER — counts and health verdict both — rather than deriving them from the sources
     // list, which is admin-only and would leave a member's pill permanently grey.
-    if (u.includes("/v1/filler/watch")) {
-      return Promise.resolve(
-        json(
-          watch ?? {
-            health: "healthy",
-            sourcesOn: 1,
-            sourcesTotal: 2,
-            clips: clips.length,
-            held: 0,
-          },
-        ),
-      );
-    }
-    if (u.includes("/v1/filler/bulk/")) return Promise.resolve(json({ updated: 1, missing: 0 }));
-    if (u.includes("/v1/filler")) {
+    getFillerWatchMockHandler(
+      watch ?? { health: "healthy", sourcesOn: 1, sourcesTotal: 2, clips: clips.length, held: 0 },
+    ),
+    getBulkRemoveFillerMockHandler(async ({ request }) => {
+      bulkRemoves.push(await request.json());
+      return { updated: 1, missing: 0 };
+    }),
+    getBulkTagFillerMockHandler(async ({ request }) => {
+      bulkTags.push(await request.json());
+      return { updated: 1, missing: 0 };
+    }),
+    getListFillerMockHandler(({ request }) => {
       // Honor the query string so a filter test proves the SERVER did the filtering.
-      const query = u.includes("?") ? u.slice(u.indexOf("?")) : "";
-      const params = new URLSearchParams(query);
+      const params = new URL(request.url).searchParams;
+      listQueries.push(params.toString());
       let out = clips;
       const q = params.get("q");
-      if (q) out = out.filter((c) => String(c.name).toLowerCase().includes(q.toLowerCase()));
-      if (params.get("kind")) out = out.filter((c) => c.kind === params.get("kind"));
-      return Promise.resolve(json({ clips: out }));
-    }
-    if (u.includes("/v1/settings")) return Promise.resolve(json({ features, settings: [] }));
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
+      if (q) out = out.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+      const kind = params.get("kind");
+      if (kind) out = out.filter((c) => c.kind === kind);
+      // ⚠ `total` is the count IGNORING limit/offset (§10 V51d's pager). It is required, and no
+      // hand-rolled stub in this suite ever sent it.
+      return { clips: out, total: out.length };
+    }),
+    // ⚠ FOUND BY THE GUARD. The tag editor reads the taxonomy to build its tag picker, and the
+    // old catch-all answered it with `{}` — so `taxa` was undefined every time the editor opened
+    // and the picker rendered from nothing.
+    getListTaxonomyMockHandler({ taxa: [] }),
+    getSettingsListMockHandler({ features, settings: [] }),
+    ...appHandlers(),
+  );
+
   vi.stubGlobal("EventSource", CaptureEventSource);
-  return mock;
+  return { tagPatches, bulkRemoves, bulkTags, listQueries, splitCount: () => splits };
 };
 
 const renderAt = (path: string) => {
@@ -152,11 +196,14 @@ const renderAt = (path: string) => {
   return router;
 };
 
-afterEach(() => vi.restoreAllMocks());
+// ⚠ `unstubAllGlobals`, not `restoreAllMocks` — CaptureEventSource is installed with
+// `vi.stubGlobal`, and restoreAllMocks does not undo a stubbed global. Leaving it in place leaks
+// the capture map into whatever runs next.
+afterEach(() => vi.unstubAllGlobals());
 
 describe("Filler page", () => {
   it("lists the catalog with each clip's match tags", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
     // §10 V45a era label: a SPECIFIC year renders plain (the tagger grounds a literal year, §8), only
@@ -167,7 +214,7 @@ describe("Filler page", () => {
   // Search is executed SERVER-side (§7.2 name LIKE) rather than filtering in memory —
   // the store already indexes these columns and the catalog can run to thousands.
   it("sends the search term to the server", async () => {
-    const fetchMock = stubFetch({
+    const { listQueries } = stubFiller({
       clips: [
         clip(),
         clip({ hash: "c2-hash", tunarrProgramId: "c2", name: "TMNT figures", category: "toys" }),
@@ -180,8 +227,12 @@ describe("Filler page", () => {
 
     await screen.findByText("TMNT figures");
     expect(screen.queryByText("Frosted Flakes")).not.toBeInTheDocument();
-    const searched = fetchMock.mock.calls.some(([u]) => String(u).includes("q=tmnt"));
-    expect(searched, "the filter must reach the API, not filter a cached list").toBe(true);
+    // The query params are read off the REQUEST inside the handler bound to `GET /v1/filler`, so
+    // this cannot be satisfied by a `q=tmnt` appearing on some other endpoint's URL.
+    expect(
+      listQueries.some((s) => new URLSearchParams(s).get("q") === "tmnt"),
+      "the filter must reach the API, not filter a cached list",
+    ).toBe(true);
   });
 
   // ⚠ The whole-catalog Sync and AI-tag buttons are GONE (V38c, maintainer). Two tests here
@@ -194,7 +245,7 @@ describe("Filler page", () => {
   // something that already happens invites the reading that it does NOT happen unless pressed.
   // This test is what stops them being re-added by reflex.
   it("offers no whole-catalog sync or tag button — that work runs on its own", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
@@ -206,7 +257,7 @@ describe("Filler page", () => {
   // sources on" rather than a bare count — an operator who switched a source off wants to see
   // that, and "3 sources" on an install where one is dark is a reassuring lie.
   it("heads the page with how many sources are on", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
@@ -222,7 +273,7 @@ describe("Filler page", () => {
   // The two counts stay SEPARATE clauses. Summing them would be the opposite lie: it would claim a
   // channel can play clips nobody has approved yet.
   it("says how many clips are waiting rather than reporting an empty catalog", async () => {
-    stubFetch({
+    stubFiller({
       clips: [],
       watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 0, held: 12 },
     });
@@ -235,7 +286,7 @@ describe("Filler page", () => {
   // zero is noise on the many installs that never hold anything, and noise in a status line is
   // how an operator learns to stop reading it.
   it("omits the waiting clause when nothing is held", async () => {
-    stubFetch({
+    stubFiller({
       watch: { health: "healthy", sourcesOn: 5, sourcesTotal: 5, clips: 9, held: 0 },
     });
     renderAt("/filler");
@@ -245,7 +296,7 @@ describe("Filler page", () => {
   });
 
   it("explains rather than listing when no filler folder is configured", async () => {
-    stubFetch({ features: { filler: false } });
+    stubFiller({ features: { filler: false } });
     renderAt("/filler");
     expect(await screen.findByText(/no filler folder configured/i)).toBeInTheDocument();
   });
@@ -263,7 +314,7 @@ describe("Filler page", () => {
   // which is stronger than one component test asserting one string is missing from one panel.
 
   it("opens the tag editor and saves a corrected kind", async () => {
-    const fetchMock = stubFetch({ clips: [clip({ kind: "commercial", name: "Some Trailer" })] });
+    const { tagPatches } = stubFiller({ clips: [clip({ kind: "commercial", name: "Some Trailer" })] });
     renderAt("/filler");
     await screen.findByText("Some Trailer");
 
@@ -278,9 +329,10 @@ describe("Filler page", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
     await userEvent.click(within(editor).getByRole("button", { name: /save tags/i }));
 
-    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
-    expect(patch, "saving tags should PATCH the clip").toBeDefined();
-    expect(JSON.parse(String(patch?.[1]?.body)).kind).toBe("trailer");
+    // ⚠ Was `find(([, i]) => i?.method === "PATCH")` — "a PATCH, to anything". `tagPatches` is fed
+    // only by the resolver bound to `PATCH /v1/filler/tags`.
+    await expect.poll(() => tagPatches).toHaveLength(1);
+    expect((tagPatches[0] as { kind: string }).kind).toBe("trailer");
   });
 
   // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the
@@ -289,7 +341,7 @@ describe("Filler page", () => {
   // audience. `category` is NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags,
   // and this confirm never touches tags.
   it("confirms an era suggestion, keeping the clip's other tags", async () => {
-    const fetchMock = stubFetch({
+    const { tagPatches } = stubFiller({
       clips: [clip({ era: 0, suggestedEra: 1985, audience: "kids", category: "cereal", tagged: false })],
     });
     renderAt("/filler");
@@ -298,10 +350,10 @@ describe("Filler page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /confirm 1985/i }));
 
-    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
-    expect(patch, "the confirm should PATCH the clip").toBeDefined();
     // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment).
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ hash: "c1-hash", era: 1985, audience: "kids" });
+    await expect
+      .poll(() => tagPatches, { message: "the confirm should PATCH the clip" })
+      .toEqual([{ hash: "c1-hash", era: 1985, audience: "kids" }]);
   });
 
   // ⚠ THE FOOTGUN, pinned at the page level. `UpdateClipTags` overwrites era and audience on
@@ -311,7 +363,7 @@ describe("Filler page", () => {
   // cycle never touches the clip's taxonomy tags — omitting `tags` leaves them, and therefore
   // the shadow, unchanged server-side.
   it("sends the clip's other tags when one is cycled, so none are wiped", async () => {
-    const fetchMock = stubFetch({
+    const { tagPatches } = stubFiller({
       clips: [clip({ era: 1990, audience: "kids", category: "cereal", tagged: true })],
     });
     renderAt("/filler");
@@ -319,21 +371,17 @@ describe("Filler page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /change the audience/i }));
 
-    const patch = fetchMock.mock.calls.find(([, i]) => String(i?.method) === "PATCH");
-    expect(patch, "cycling a chip should PATCH the clip").toBeDefined();
     // era rides along UNCHANGED; only audience advances; category/tags are absent entirely.
     // §10 V45a: the clip is identified by `hash` in the body.
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
-      hash: "c1-hash",
-      era: 1990,
-      audience: "family",
-    });
+    await expect
+      .poll(() => tagPatches, { message: "cycling a chip should PATCH the clip" })
+      .toEqual([{ hash: "c1-hash", era: 1990, audience: "family" }]);
   });
 
   // A member sees the suggestion but NOT its answer — the PATCH is admin-only server-side
   // (§19), and the UI gate is the courtesy that keeps the console clean.
   it("shows a member the era question without the confirm action", async () => {
-    stubFetch({ me: MEMBER, clips: [clip({ era: 0, suggestedEra: 1985, tagged: false })] });
+    stubFiller({ me: MEMBER, clips: [clip({ era: 0, suggestedEra: 1985, tagged: false })] });
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     expect(screen.getByText("1985s?")).toBeInTheDocument();
@@ -344,15 +392,14 @@ describe("Filler page", () => {
   // The V34 handoff: POST returns a job id, the terminal filler_split frame carries the
   // proposal id, and the app navigates to the review gate, which reads the proposal back.
   it("starts split detection and navigates to the review on the success frame", async () => {
-    const fetchMock = stubFetch();
+    const { splitCount } = stubFiller();
     const router = renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
-    const posted = fetchMock.mock.calls.find(
-      ([u, i]) => String(u).endsWith("/split") && String(i?.method) === "POST",
-    );
-    expect(posted, "the action should POST the split job").toBeDefined();
+    // ⚠ `u.endsWith("/split")` was one trailing character away from `/v1/filler/splits/:id`, the
+    // read that follows it. Two endpoints, one predicate.
+    await expect.poll(splitCount, { message: "the action should POST the split job" }).toBe(1);
     // The status line now reads the clip's NAME (§10 V45a): `ClipDTO` carries no path any more,
     // and a content hash is meaningless to read in a sentence.
     expect(await screen.findByText(/detecting cuts in frosted flakes/i)).toBeInTheDocument();
@@ -375,7 +422,7 @@ describe("Filler page", () => {
   });
 
   it("surfaces the split job's terminal error instead of navigating", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("button", { name: /split into clips/i }));
@@ -396,7 +443,7 @@ describe("Filler page", () => {
   // --- bulk selection (V35) ---
 
   it("shows the bulk bar only once something is selected", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
@@ -411,7 +458,7 @@ describe("Filler page", () => {
   // and stops being used in breaks, and the file stays where the operator put it. A label
   // saying "Delete" would describe something Loomarr deliberately does not do.
   it("offers removal in terms of the catalog, never the files", async () => {
-    stubFetch();
+    stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
@@ -422,24 +469,22 @@ describe("Filler page", () => {
   });
 
   it("bulk-removes the selection through the bulk route", async () => {
-    const mock = stubFetch();
+    const { bulkRemoves } = stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
     await userEvent.click(await screen.findByRole("button", { name: /remove from catalog/i }));
 
-    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/remove"));
-    expect(call).toBeDefined();
     // §10 V45a: the bulk endpoint takes HASHES (the wire identity `selected` is built from), matching
     // the single-clip PATCH. The backend resolves hash → path internally for the path-keyed tombstone.
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ hashes: ["c1-hash"] });
+    await expect.poll(() => bulkRemoves).toEqual([{ hashes: ["c1-hash"] }]);
   });
 
   // ⚠ Each dropdown sends ONLY its own field. A bar that posted all three would blank whatever
   // the operator had not touched — the failure the server's per-field optionality prevents, and
   // which only holds if the client sends a partial body.
   it("sends only the tag field the operator picked", async () => {
-    const mock = stubFetch();
+    const { bulkTags } = stubFiller();
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
     await userEvent.click(screen.getByRole("checkbox", { name: /select frosted flakes/i }));
@@ -450,16 +495,14 @@ describe("Filler page", () => {
     await userEvent.click(await screen.findByRole("combobox", { name: "Set audience" }));
     await userEvent.click(await screen.findByRole("option", { name: "family" }));
 
-    const call = mock.mock.calls.find(([url]) => String(url).includes("/v1/filler/bulk/tag"));
-    expect(call).toBeDefined();
     // §10 V45a: bulk edit is hash-keyed (see the bulk-remove test above).
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ hashes: ["c1-hash"], audience: "family" });
+    await expect.poll(() => bulkTags).toEqual([{ hashes: ["c1-hash"], audience: "family" }]);
   });
 
   // A member cannot bulk-edit, so the control that would 403 is simply absent rather than
   // present-and-failing.
   it("gives a member no way to select clips", async () => {
-    stubFetch({ me: MEMBER });
+    stubFiller({ me: MEMBER });
     renderAt("/filler");
     await screen.findByText("Frosted Flakes");
 
