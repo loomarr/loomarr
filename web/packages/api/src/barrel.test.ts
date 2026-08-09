@@ -26,4 +26,23 @@ describe("@loomarr/api barrel", () => {
     );
     expect(missing, `generated but not exported from the barrel: ${missing.join(", ")}`).toEqual([]);
   });
+
+  // The zod barrel is the same hand-written-list-versus-generated-output problem, so it gets the
+  // same guard rather than a convention nobody can enforce. ⚠ It is checked against the ZOD output
+  // directory, not the endpoint one: they are deliberately not the same set — `events` is SSE and
+  // has no request/response schemas to generate, so comparing against endpoints would fail forever
+  // on a tag that is correct to be absent.
+  it("exports every generated zod tag", () => {
+    const generated = readdirSync(join(here, "../generated/zod"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    const barrel = readFileSync(join(here, "zod/index.ts"), "utf8");
+
+    // ⚠ `../../` — the zod barrel is a folder module (`src/zod/index.ts`) per this repo's
+    // folder-per-module rule, so it sits one level deeper than the endpoint barrel above.
+    const missing = generated.filter(
+      (tag) => !barrel.includes(`from "../../generated/zod/${tag}/${tag}.zod"`),
+    );
+    expect(missing, `generated but not exported from the zod barrel: ${missing.join(", ")}`).toEqual([]);
+  });
 });

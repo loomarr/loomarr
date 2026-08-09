@@ -9,10 +9,15 @@ import { describe, expect, it } from "vitest";
 // cap and runtime target just vanished. Types alone didn't catch it because the form
 // never had to satisfy `Intent`.
 //
-// This is the compile-time half: if a schema field is renamed, `tsc` fails here (and
-// `make fe` typechecks), rather than the value quietly going nowhere at runtime.
-// Derived from the schema itself rather than importing zod, which apps/web does not
-// depend on directly (the schemas live in packages/core).
+// ⚠ THE COMPILE-TIME HALF MOVED TO THE SCHEMA ITSELF. `intentSchema` is now `.pick()`ed off the
+// generated `submitProposalBody`, so a lookalike name cannot be WRITTEN — it fails as
+// `Type 'true' is not assignable to type 'never'` at the pick, before this file is reached.
+// That guard covers all three schemas in packages/core; this test only ever covered one.
+//
+// The assignability check below is kept anyway, and deliberately: `.pick()` guarantees the
+// NAMES exist on the wire, while this guarantees the parsed OUTPUT still satisfies `Intent`
+// after the hand-authored `.extend()` rewrites the value types. Those are different claims —
+// an `.extend()` that changed `maxAcquisitions` to a string would sail past `.pick()`.
 type IntentForm = ReturnType<typeof intentSchema.parse>;
 const _formIsAValidIntent: (form: IntentForm) => Intent = (form) => form;
 
