@@ -1,5 +1,5 @@
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { clipMediaURL } from "@loomarr/core";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Button, VideoPlayer } from "@/components/ui";
 import { cn } from "@/lib";
@@ -12,7 +12,7 @@ import type { ClipPlayerProps } from "./clip-player.type";
 // surface the mock sketches reuse the same player for a live stream without inheriting
 // `ClipDTO`.
 //
-// ⚠ Built on Radix's Dialog PRIMITIVE rather than the app's `DialogContent` wrapper. The wrapper
+// ⚠ Built on the Dialog PRIMITIVE rather than the app's `DialogContent` wrapper. The wrapper
 // hardcodes `max-w-md` and `p-6` and renders its own close button in the top-right — this needs a
 // wide, unpadded surface, and the top-right corner is where the clip's title goes. The primitive
 // still supplies the focus trap, Escape handling, scroll-lock and aria-modal, which is the part
@@ -25,17 +25,17 @@ const ClipPlayer = ({ clip, onClose, className }: ClipPlayerProps) => (
     }}
   >
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=open]:animate-in" />
-      <DialogPrimitive.Content
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/80" />
+      <DialogPrimitive.Popup
         className={cn(
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-static-950 shadow-lg focus:outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+          "fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-static-950 shadow-lg focus:outline-none",
           className,
         )}
       >
-        {/* ⚠ Radix REQUIRES a title (it warns loudly without one) and it is what names the dialog
-            for a screen reader. It is sr-only here because the visible title is rendered inside
-            the player's own overlay, where the maintainer's spec puts it — announcing both would
-            read the clip's name twice. */}
+        {/* ⚠ The title is what NAMES the dialog for a screen reader — keep it even though Base UI,
+            unlike Radix, does not warn when it is missing. It is sr-only here because the visible
+            title is rendered inside the player's own overlay, where the maintainer's spec puts it —
+            announcing both would read the clip's name twice. */}
         <DialogPrimitive.Title className="sr-only">
           {clip ? `Playing ${clip.name}` : "Clip player"}
         </DialogPrimitive.Title>
@@ -55,23 +55,25 @@ const ClipPlayer = ({ clip, onClose, className }: ClipPlayerProps) => (
             // autoplay has already happened.
             autoPlay
             leading={
-              // `asChild` so Radix's Close behaviour composes onto the app's Button rather than
-              // onto a hand-styled <button> that would have to re-derive the cursor and the focus
-              // ring itself.
-              <DialogPrimitive.Close asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close player"
-                  className="size-8 bg-static-900/80 text-static-100 hover:bg-static-900 hover:text-white focus-visible:ring-offset-0"
-                >
-                  <X aria-hidden />
-                </Button>
+              // `render` so the Close behaviour composes onto the app's Button rather than onto a
+              // hand-styled <button> that would have to re-derive the cursor and the focus ring
+              // itself. (Base UI's replacement for the old Radix composition prop — retired-ok.)
+              <DialogPrimitive.Close
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Close player"
+                    className="size-8 bg-static-900/80 text-static-100 hover:bg-static-900 hover:text-white focus-visible:ring-offset-0"
+                  />
+                }
+              >
+                <X aria-hidden />
               </DialogPrimitive.Close>
             }
           />
         )}
-      </DialogPrimitive.Content>
+      </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   </DialogPrimitive.Root>
 );

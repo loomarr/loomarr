@@ -269,7 +269,9 @@ describe("ChannelPolicyFields", () => {
     );
 
     await userEvent.click(screen.getByLabelText("Playback"));
-    await userEvent.click(screen.getByRole("option", { name: "Shuffled" }));
+    // `findBy`: the listbox popup mounts asynchronously (Base UI portals it after the click
+    // resolves, where Radix had it in the DOM already).
+    await userEvent.click(await screen.findByRole("option", { name: "Shuffled" }));
 
     // Separate callbacks because strategy is a CHANNEL field: it takes its own PATCH, and
     // folding it into the policy object would send it where the server does not read it.

@@ -187,17 +187,19 @@ const RuleRow = ({
         </button>
         <span className="min-w-0 flex-1 truncate font-medium text-sm">{label}</span>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              disabled={disabled}
-              aria-label={`Remove ${label}`}
-              onClick={onRemove}
-            >
-              <X aria-hidden />
-            </Button>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                disabled={disabled}
+                aria-label={`Remove ${label}`}
+                onClick={onRemove}
+              />
+            }
+          >
+            <X aria-hidden />
           </TooltipTrigger>
           <TooltipContent>Remove this rule</TooltipContent>
         </Tooltip>

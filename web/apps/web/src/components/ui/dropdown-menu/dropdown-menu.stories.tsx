@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
@@ -29,18 +30,18 @@ const SingleSelect = () => {
   ];
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Audio">
-          <Volume2 aria-hidden />
-        </Button>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Audio" />}>
+        <Volume2 aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Audio</DropdownMenuLabel>
-        {opts.map((o) => (
-          <DropdownMenuCheckboxItem key={o.v} checked={value === o.v} onCheckedChange={() => setValue(o.v)}>
-            {o.label}
-          </DropdownMenuCheckboxItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Audio</DropdownMenuLabel>
+          {opts.map((o) => (
+            <DropdownMenuCheckboxItem key={o.v} checked={value === o.v} onCheckedChange={() => setValue(o.v)}>
+              {o.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

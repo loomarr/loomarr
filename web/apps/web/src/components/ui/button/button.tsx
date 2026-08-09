@@ -1,6 +1,6 @@
-import { Slot } from "@radix-ui/react-slot";
+import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
 import { cva } from "class-variance-authority";
-import * as React from "react";
 import { cn } from "@/lib";
 import type { ButtonProps } from "./button.type";
 
@@ -43,12 +43,16 @@ const buttonVariants = cva(
   },
 );
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
-  },
-);
-Button.displayName = "Button";
+// No `forwardRef`: on React 19 `ref` is an ordinary prop, and `useRender` merges it onto whatever
+// `render` produces. `mergeProps` (not a plain spread) is what makes composition safe — it CHAINS
+// event handlers and CONCATENATES className instead of letting the outer props clobber the inner
+// ones, so `render={<Link onClick={…} className="…" />}` keeps both the Link's behaviour and the
+// button's styling.
+const Button = ({ className, variant, size, render, ...props }: ButtonProps) =>
+  useRender({
+    defaultTagName: "button",
+    render,
+    props: mergeProps<"button">({ className: cn(buttonVariants({ variant, size, className })) }, props),
+  });
 
 export { Button, buttonVariants };

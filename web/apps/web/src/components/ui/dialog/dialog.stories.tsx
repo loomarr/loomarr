@@ -23,9 +23,7 @@ type Story = StoryObj<typeof meta>;
 const Default: Story = {
   render: () => (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="destructive">Delete channel</Button>
-      </DialogTrigger>
+      <DialogTrigger render={<Button variant="destructive" />}>Delete channel</DialogTrigger>
     </Dialog>
   ),
 };
