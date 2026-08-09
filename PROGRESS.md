@@ -4,6 +4,68 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` (**25 identifiers**, up from 9) + `make config-docs`.
+
+Filler had grown **one cron sweep per capability** — sync, fetch, language, split, transcribe,
+vision, reindex — each scanning the whole catalog for its own kind of work, on its own schedule,
+knowing nothing about what the others had done to a clip. The operator-visible consequence was
+that a download of forty commercials said *"waiting to be checked"* for up to an hour while three
+jobs worked on it at :15, :30 and :50. **The system was working and looked broken.**
+
+Eight rungs now run in order per clip — `probe → transcode → split → language → transcribe → tag →
+vision → score` — behind one `filler-pipeline` job every two minutes. Each rung answers two
+questions separately: *does this apply to this clip, in this install?* (no exec, re-evaluated
+every pass, so flipping `filler.vision.enabled` on picks up clips that already went past it) and
+*do the work*. State lives in `filler_clip_pipeline`, a **sibling of `clips`** — the cache has
+been DROP-TABLE-recreated twice, and these rows record that ~341s of Whisper and a paid vision
+call have already been spent.
+
+⚠ **Three findings, all live on `main` before this phase, none of which any test could have
+caught.**
+
+**1. `filler.autofile.normalize_loudness` has been inert since V42 shipped.** `NormalizeInPlace`
+had **no production caller at all** — only tests. The settings comment asserted the opposite,
+citing §15's own rule that a setting nothing reads does not exist: *"this one lands with its
+consumer (`filler.NormalizeInPlace`, called from the auto-file step)"*. A comment claiming a
+consumer exists is not a consumer existing, and nothing failed when it stopped being true. The
+transcode rung applies the loudness filter in the pass that is already re-encoding, which finally
+wires the toggle.
+
+**2. The score rung would have silently disabled half of `Score`.** `Score(modelConfidence)` lets
+the model LOWER the grounded ceiling and never raise it — so *"unsure about a clip whose tags all
+verify"* still reaches a human. That self-report exists only inside the tag rung; recomputing from
+the persisted row with 0 would score the clip a full 100 and auto-file it. `ScoreClip` passes the
+row's confidence as the model layer, so lowering survives and raising stays impossible.
+
+**3. A composite reaching the score rung would have destroyed the reel its segments come from.**
+Composite detection moved to `probe` (so a 16-minute recording stops being airable when it is
+MEASURED, not when someone finally splits it — §10 V45's bug). But a compilation has no coherent
+grounding, so `filler.reject.unidentified` — **ON by default** — would tombstone it. The skip is
+**one rule in `advance`**, not six `Applies` checks: six copies is six chances for a new rung to
+forget it, and forgetting is silent.
+
+**What was retired, and the one reversal.** Four jobs and their schedule keys, `filler.split.every`
+(splitting is a rung every long recording reaches, so "how often do we go looking" stopped being a
+question with an answer), and `NormalizeInPlace`. ⚠ **`filler.autosplit.enabled` flips to ON**,
+reversing a default whose ⚠ argued for OFF because a mis-cut clip plays half an advert and the
+source is consumed either way. That risk is unchanged; the evidence moved — the gate's measured
+failure mode is refusing GOOD reels, and off-by-default meant every compilation waited for a click
+the design says should be unnecessary.
+
+⚠ **Both drift guards fired during the work, which is the best evidence they work.**
+`TestEveryPublishedEventIsInTheEventTypeMap` reads `internal/app` as SOURCE for
+`Type: "…", Payload: api.X{` — hoisting the new frame into a local variable hid it, and the guard
+reported `filler_clip` as declared-but-never-published. `retired-verify` then caught eleven stale
+references to the retired identifiers, including two settings comments that were now simply false.
+
+**Tests: the four retired jobs' suites were PORTED, not deleted** — `stage_language_test.go`,
+`stage_transcribe_test.go`, `stage_vision_test.go`. Three cases went with the sweeps rather than
+being rewritten (`BoundsOnePass` × 3): the bound is now the runner's budget, and asserting it
+against a stage would be testing something that file no longer owns. The grounding tests — the
+ones that matter — survive unchanged, because `groundVisionTags` did not change.
+
 **V51a — the filler pre-flight: four dead code paths, one blind fixture class (2026-08-08, `7119d92`).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
 `make retired-verify` (9 identifiers) + `make fe` (**1196 tests**, up from 1190).

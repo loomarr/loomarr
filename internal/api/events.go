@@ -109,6 +109,40 @@ type FillerSplitEvent struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// FillerClipEvent reports where one clip is in the ingest pipeline (§10 V51b).
+//
+// ⚠ **A SELF-SUFFICIENT SNAPSHOT — any single frame fully describes where the clip is now.** The
+// tempting alternative is a per-stage frame ("transcode finished"), which would make the client
+// assemble the ladder from the sequence it received. This bus DROPS frames for a slow subscriber
+// by design, so that ladder would be silently missing rungs — verbatim the failure the
+// ActivityRecorded comment names. Every field needed to render the row travels in every frame,
+// and GET /v1/filler/incoming is the truth on reconnect.
+type FillerClipEvent struct {
+	Hash  string `json:"hash"`
+	Stage string `json:"stage" enum:"probe,transcode,split,language,transcribe,tag,vision,score"`
+	// Status is how the CURRENT stage is going. `skipped` means the stage does not apply to this
+	// clip in this install — a different fact from `done`, and re-evaluated on every pass.
+	Status string `json:"status" enum:"queued,running,done,failed,skipped"`
+	// Progress is 0-100 WITHIN the running stage, and **-1 when the stage cannot measure itself**.
+	//
+	// ⚠ -1 is a sentinel, not a small number: it must render as an indeterminate spinner, never as
+	// a bar frozen at zero. Only the transcode stage has a real percentage (ffmpeg reports
+	// out_time and the duration is known, so the ratio is exact). Whisper and an LLM turn are
+	// single opaque calls, and a bar interpolated over them would be invented progress — the same
+	// distinction `confidence == 0` draws between "no measurement" and "a measurement of none".
+	Progress int `json:"progress"`
+	// Disposition is the CLIP-level outcome. `review` is terminal for the pipeline even though it
+	// is not terminal for the operator.
+	Disposition string `json:"disposition" enum:"running,review,filed,rejected"`
+	// Reason is a stable CODE, never prose — the frontend owns the wording, the §11 refusal-code
+	// precedent. Empty unless disposition is `rejected`.
+	Reason string `json:"reason,omitempty"`
+	// Detail is the measured fact behind the reason — "8.2s; the floor is 10.0s" — which is what
+	// makes a reject arguable rather than an assertion.
+	Detail string `json:"detail,omitempty"`
+	Name   string `json:"name,omitempty"`
+}
+
 // LLMPullEvent tracks a model download (§8.1).
 type LLMPullEvent struct {
 	JobID  string `json:"jobId"`
@@ -161,6 +195,7 @@ func eventTypeMap() map[string]any {
 		"activity":      ActivityEvent{},
 		"filler_ingest": FillerIngestEvent{},
 		"filler_split":  FillerSplitEvent{},
+		"filler_clip":   FillerClipEvent{},
 		"llm_pull":      LLMPullEvent{},
 		"database":      DatabaseEvent{},
 		"playout":       PlayoutEvent{},

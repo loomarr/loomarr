@@ -1629,6 +1629,53 @@ components:
       required:
         - paths
       type: object
+    FillerClipEvent:
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+        disposition:
+          enum:
+            - running
+            - review
+            - filed
+            - rejected
+          type: string
+        hash:
+          type: string
+        name:
+          type: string
+        progress:
+          format: int64
+          type: integer
+        reason:
+          type: string
+        stage:
+          enum:
+            - probe
+            - transcode
+            - split
+            - language
+            - transcribe
+            - tag
+            - vision
+            - score
+          type: string
+        status:
+          enum:
+            - queued
+            - running
+            - done
+            - failed
+            - skipped
+          type: string
+      required:
+        - hash
+        - stage
+        - status
+        - progress
+        - disposition
+      type: object
     FillerIncomingOutputBody:
       additionalProperties: false
       properties:
@@ -1645,6 +1692,12 @@ components:
           type:
             - array
             - "null"
+        pipeline:
+          items:
+            $ref: "#/components/schemas/IncomingPipelineDTO"
+          type:
+            - array
+            - "null"
         recentlyFiled:
           items:
             $ref: "#/components/schemas/IncomingAskDTO"
@@ -1657,6 +1710,12 @@ components:
           type:
             - array
             - "null"
+        rejected:
+          items:
+            $ref: "#/components/schemas/IncomingRejectDTO"
+          type:
+            - array
+            - "null"
         total:
           description: Everything waiting on a human — asks plus reels
           format: int64
@@ -1664,6 +1723,8 @@ components:
       required:
         - asks
         - reels
+        - pipeline
+        - rejected
         - recentlyFiled
         - total
       type: object
@@ -2323,6 +2384,41 @@ components:
         - kind
         - reason
       type: object
+    IncomingPipelineDTO:
+      additionalProperties: false
+      properties:
+        attempts:
+          description: Retries spent on the current stage; absent on the first try
+          format: int64
+          type: integer
+        hash:
+          type: string
+        name:
+          type: string
+        progress:
+          format: int64
+          type: integer
+        stage:
+          type: string
+        stages:
+          items:
+            $ref: "#/components/schemas/IncomingStageDTO"
+          type:
+            - array
+            - "null"
+        status:
+          type: string
+        updatedAt:
+          description: RFC3339
+          type: string
+      required:
+        - hash
+        - stage
+        - status
+        - progress
+        - stages
+        - updatedAt
+      type: object
     IncomingReelDTO:
       additionalProperties: false
       properties:
@@ -2349,6 +2445,49 @@ components:
         - segments
         - needsAttention
         - createdAt
+      type: object
+    IncomingRejectDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC3339
+          type: string
+        detail:
+          type: string
+        hash:
+          type: string
+        name:
+          type: string
+        reason:
+          type: string
+        restorable:
+          type: boolean
+        stage:
+          description: Which stage refused it
+          type: string
+      required:
+        - hash
+        - reason
+        - restorable
+        - stage
+        - at
+      type: object
+    IncomingStageDTO:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC3339
+          type: string
+        note:
+          type: string
+        stage:
+          type: string
+        status:
+          type: string
+      required:
+        - stage
+        - status
+        - at
       type: object
     IngestFillerInputBody:
       additionalProperties: false
@@ -6314,6 +6453,24 @@ paths:
                         - data
                         - event
                       title: Event database
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/FillerClipEvent"
+                        event:
+                          const: filler_clip
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event filler_clip
                       type: object
                     - properties:
                         data:

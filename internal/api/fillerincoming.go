@@ -100,10 +100,69 @@ type IncomingReelDTO struct {
 	CreatedAt      string `json:"createdAt" doc:"RFC3339"`
 }
 
+// IncomingPipelineDTO is one clip still moving through ingest (§10 V51b).
+//
+// ⚠ **It carries the WHOLE ladder, not just the current rung**, because this GET is the truth on
+// a cold load and on reconnect. The `filler_clip` SSE frames are a latency optimisation that the
+// bus drops under load, so a client that built the ladder from frames would render a queue
+// silently missing steps.
+type IncomingPipelineDTO struct {
+	Hash string `json:"hash"`
+	Name string `json:"name,omitempty"`
+	// Stage/Status/Progress are where it is now. Progress is **-1 when the stage cannot measure
+	// itself** — a sentinel to render as an indeterminate spinner, never as 0%.
+	Stage    string `json:"stage"`
+	Status   string `json:"status"`
+	Progress int    `json:"progress"`
+	Attempts int    `json:"attempts,omitempty" doc:"Retries spent on the current stage; absent on the first try"`
+	// Stages is the finished ladder — what ran, what was skipped, and why.
+	Stages    []IncomingStageDTO `json:"stages"`
+	UpdatedAt string             `json:"updatedAt" doc:"RFC3339"`
+}
+
+// IncomingStageDTO is one rung of a clip's ladder.
+type IncomingStageDTO struct {
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	// Note is the operator-facing sentence for a skip or a failure ("vision tagging is off").
+	// Empty for an ordinary success — a rung that needs no explanation gets none.
+	Note string `json:"note,omitempty"`
+	At   string `json:"at" doc:"RFC3339"`
+}
+
+// IncomingRejectDTO is one clip ingest refused, and why (§10 V51b).
+//
+// ⚠ **Not optional, and not telemetry.** `filler.reject.unidentified` is ON by default, so clips
+// begin leaving the catalog unattended — including wordless station idents, which §10 calls some
+// of the best filler there is. The same rule the auto-file audit list is built on applies with
+// more force here: an unattended decision that cannot be found is not one an appliance gets to
+// make. This list is how an operator finds it and puts it back.
+type IncomingRejectDTO struct {
+	Hash string `json:"hash"`
+	Name string `json:"name,omitempty"`
+	// Reason is a stable CODE, never prose — the frontend owns the wording (the §11 refusal-code
+	// precedent `FitReason` follows).
+	Reason string `json:"reason"`
+	// Detail is the measured fact behind it — "8.2s; the floor is 10.0s" — which is what makes a
+	// reject arguable rather than an assertion.
+	Detail string `json:"detail,omitempty"`
+	// Restorable reports whether an operator may override this one. A HARD reject (no audio, no
+	// video, unreadable) offers no override, because that is a control that could not work:
+	// restoring a clip with no audio puts silence in a break.
+	Restorable bool   `json:"restorable"`
+	Stage      string `json:"stage" doc:"Which stage refused it"`
+	At         string `json:"at" doc:"RFC3339"`
+}
+
 type fillerIncomingOutput struct {
 	Body struct {
 		Asks  []IncomingAskDTO  `json:"asks"`
 		Reels []IncomingReelDTO `json:"reels"`
+		// Pipeline is what is still being prepared — the answer to "I downloaded forty clips and
+		// nothing is happening", which before V51b no endpoint could give.
+		Pipeline []IncomingPipelineDTO `json:"pipeline"`
+		// Rejected is the audit half of refusal, the sibling of RecentlyFiled.
+		Rejected []IncomingRejectDTO `json:"rejected"`
 		// RecentlyFiled is what Loomarr filed WITHOUT asking (§10 V38) — the audit half of
 		// auto-filing.
 		//
@@ -204,11 +263,88 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 		})
 	}
 
+	// The pipeline halves (§10 V51b) — what is moving, and what was refused. ⚠ Both are
+	// non-fatal reads, the same call the split proposals and the audit list make: losing the
+	// whole tab because a secondary list did not load would take away the queue an operator CAN
+	// act on.
+	out.Body.Pipeline = make([]IncomingPipelineDTO, 0)
+	if rows, perr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{NonTerminalOnly: true, Limit: incomingPipelineLimit}); perr != nil {
+		s.log.Warn("list pipeline rows for incoming", "err", perr)
+	} else {
+		for _, r := range rows {
+			out.Body.Pipeline = append(out.Body.Pipeline, pipelineDTO(ctx, s, r))
+		}
+	}
+	out.Body.Rejected = make([]IncomingRejectDTO, 0)
+	if rows, rerr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true, Limit: incomingRejectLimit}); rerr != nil {
+		s.log.Warn("list rejected clips for incoming", "err", rerr)
+	} else {
+		for _, r := range rows {
+			out.Body.Rejected = append(out.Body.Rejected, rejectDTO(ctx, s, r))
+		}
+	}
+
 	// ⚠ Total counts what is WAITING, so recentlyFiled is deliberately excluded: it is an audit
 	// list, not work. Including it would put a badge on the tab that never clears, and a count
 	// that cannot reach zero stops being read.
+	//
+	// ⚠ **`pipeline` and `rejected` are excluded for the SAME reason, and the reason differs
+	// between them.** A clip mid-ingest is not waiting on a person — it is waiting on the machine,
+	// and badging it would make the tab count tick up every time a download starts. A reject is
+	// an audit row exactly like an auto-filed one. Neither is work the operator owes.
 	out.Body.Total = len(out.Body.Asks) + len(out.Body.Reels)
 	return out, nil
+}
+
+// The two lists are BOUNDED, and each bound is a different judgement.
+//
+// `pipeline` is naturally small — the runner advances one clip at a time and a pass is budgeted —
+// so this cap only matters during a large import, where showing the first hundred movers is as
+// useful as showing four hundred. `rejected` is an audit feed ordered newest-first, so the cap is
+// a page rather than a filter: what an operator is looking for is what was just refused.
+const (
+	incomingPipelineLimit = 100
+	incomingRejectLimit   = 100
+)
+
+// pipelineDTO renders one in-flight clip, resolving its display name.
+//
+// ⚠ A missing clip is not an error. A row whose clip has gone is what a pruned catalog looks like
+// mid-pass, and falling back to the identity is more honest than a blank row.
+func pipelineDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingPipelineDTO {
+	dto := IncomingPipelineDTO{
+		Hash: r.ClipHash, Stage: string(r.Stage), Status: string(r.Status),
+		Progress: r.Progress, Attempts: r.Attempts,
+		Stages:    make([]IncomingStageDTO, 0, len(r.Stages)),
+		UpdatedAt: r.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if clip, err := s.store.GetClip(ctx, r.ClipHash); err == nil && clip.Name != "" {
+		dto.Name = clip.Name
+	}
+	for _, rec := range r.Stages {
+		dto.Stages = append(dto.Stages, IncomingStageDTO{
+			Stage: string(rec.Stage), Status: string(rec.Status), Note: rec.Note,
+			At: rec.At.UTC().Format(time.RFC3339),
+		})
+	}
+	return dto
+}
+
+// rejectDTO renders one refusal.
+func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRejectDTO {
+	dto := IncomingRejectDTO{
+		Hash: r.ClipHash, Reason: string(r.RejectReason), Detail: r.RejectDetail,
+		// ⚠ `Soft()` owns which reasons a human may overturn, so the button's presence and the
+		// endpoint's behaviour cannot disagree. Deriving it here from a second list would be the
+		// drift class this codebase keeps finding.
+		Restorable: r.RejectReason.Soft(),
+		Stage:      string(r.Stage),
+		At:         r.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if clip, err := s.store.GetClip(ctx, r.ClipHash); err == nil && clip.Name != "" {
+		dto.Name = clip.Name
+	}
+	return dto
 }
 
 // incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row
