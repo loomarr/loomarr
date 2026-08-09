@@ -300,7 +300,12 @@ COPY --from=build /out/loomarr /loomarr
 # fresh named volume arrives with the drop-folder already present and nonroot-owned. The app
 # also MkdirAll's it at boot — belt and braces, because a BIND mount ignores what the image
 # seeded and only the runtime create covers that case.
-RUN install -d -o 65532 -g 65532 /data /data/filler
+# /data/images for the same reason (§22, V52): `images.dir` defaults there. ⚠ This became
+# load-bearing with phase 3b rather than merely tidy — `images-fetch` runs EVERY MINUTE, so on a
+# zero-env first run the very first thing to touch this path is a background job. Without the
+# pre-create it writes into a root-owned volume, fails, and reports the failure on the Tasks page
+# once a minute forever, with nothing connecting it to a directory nobody created.
+RUN install -d -o 65532 -g 65532 /data /data/filler /data/images
 VOLUME /data
 # These paths are what the `ingest` feature gate probes for. Set here rather than
 # discovered, so the gate is a config question with an operator override (§10).

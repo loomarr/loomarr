@@ -73,10 +73,7 @@ func (f *fakeXMLTVGuide) BroadcastsWithPending(
 
 func newGuideServer(t *testing.T, g api.PlayoutGuide) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/guide.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/guide.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := map[string]string{

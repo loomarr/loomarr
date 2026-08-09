@@ -32,10 +32,7 @@ func (f *fakeSessions) RevokeHash(_ context.Context, hash string) error {
 
 func newSessionsServer(t *testing.T) (*httptest.Server, *fakeSessions, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/s.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertUser(context.Background(), store.User{ID: "u1", Name: "Ada", Role: store.RoleAdmin}); err != nil {
 		t.Fatal(err)
@@ -138,10 +135,7 @@ func TestSessions_RevokeIsIdempotent(t *testing.T) {
 // This wires an int seam that would have panicked under the old code, so the Users list
 // is exercised on the path a real install actually takes.
 func TestListUsers_ReadsTheIntConfigSeam(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/u.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/u.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertUser(context.Background(), store.User{ID: "u1", Name: "Ada", Role: store.RoleAdmin}); err != nil {
 		t.Fatal(err)

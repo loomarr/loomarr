@@ -312,6 +312,56 @@ func declared() []Setting {
 			Doc: "Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
+		// --- Images (§15, §22, V52) ---
+		{
+			// ⚠ Defaults inside /data for the same reason `filler.dir` and `backup.dir` do — the
+			// documented volume carries it — but with a consequence neither of those has: the
+			// application backup is a DATABASE backup, and no image bytes are in the database
+			// (§22). Everything here is regenerable or re-fetchable EXCEPT operator uploads, which
+			// is why `images-gc` counts unrecoverable-missing rows as a warning rather than
+			// pretending it can repair them.
+			Key: "images.dir", EnvVar: "IMAGES_DIR", Group: GroupImages,
+			Kind: KindString, Default: "/data/images",
+			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume.",
+		},
+		{
+			Key: "images.formats", EnvVar: "IMAGES_FORMATS", Group: GroupImages,
+			Kind: KindStringList, Default: "avif,webp,jpeg",
+			Doc: "Which image formats to produce, best first. Dropping jpeg saves storage but breaks very old iOS and legacy Android WebViews; dropping avif saves considerable CPU at about 25% more bytes on the wire.",
+		},
+		{
+			Key: "images.max_upload_bytes", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
+			Kind: KindInt, Default: "8388608",
+			Doc: "The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares.",
+		},
+		{
+			Key: "images.remote_fetch_enabled", EnvVar: "IMAGES_REMOTE_FETCH_ENABLED", Group: GroupImages,
+			Kind: KindBool, Default: true,
+			Doc: "Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made.",
+		},
+		{
+			// ⚠ TMDB caps a client at 20 simultaneous connections. 12 stays under it with room for
+			// the other outbound callers (search, ratings, franchise healing) that share the same
+			// budget. Raising it past 20 earns 429s, not throughput.
+			Key: "images.remote_max_concurrency", EnvVar: "IMAGES_REMOTE_MAX_CONCURRENCY", Group: GroupImages,
+			Kind: KindInt, Default: "12", Advanced: true,
+			Doc: "How many artwork downloads run at once. TMDB allows 20 simultaneous connections in total, so raising this past 20 earns rate-limit errors rather than speed.",
+		},
+		{
+			// ⚠ A COMPLIANCE CEILING, not a tuning knob. TMDB's API terms forbid caching their
+			// content longer than six months, so this is the one setting here where raising the
+			// value puts the instance out of compliance rather than merely using more disk. Said
+			// in the Doc as well as here, because the Doc is what an operator actually reads.
+			Key: "images.remote_ttl", EnvVar: "IMAGES_REMOTE_TTL", Group: GroupImages,
+			Kind: KindDuration, Default: "4320h", Advanced: true,
+			Doc: "How long downloaded artwork may be kept before it is re-fetched or removed (about six months). This is a compliance limit, not a preference: TMDB's terms forbid caching their images for longer, so raising it puts your instance out of compliance with them.",
+		},
+		{
+			Key: "images.cache_budget_mb", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
+			Kind: KindInt, Default: "2048", Advanced: true,
+			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
+		},
+
 		// --- Connections: TMDB (§15, Phase 11) ---
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
@@ -1010,6 +1060,45 @@ func declared() []Setting {
 			Key: "job.session_sweep.schedule", EnvVar: "JOB_SESSION_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 0 * * * *",
 			Doc: "How often Loomarr clears out expired sign-in sessions (cron).",
+		},
+
+		// --- The image service's four jobs (§22, V52) ---
+		//
+		// ⚠ Every job needs its schedule key declared or the settings service PANICS at startup on
+		// `Resolve` of an undeclared key, so all four land with the jobs themselves.
+		{
+			// Every minute, because this is what stands between an adopted row and a visible
+			// image: `Adopt` deliberately does NOT fetch (a page adopting fifty posters would put
+			// TMDB's latency on Loomarr's own page load), so until this runs the surface shows a
+			// placeholder. A pass is bounded by the concurrency cap and an indexed work-list
+			// query, so an idle install costs one cheap SELECT.
+			Key: "job.images_fetch.schedule", EnvVar: "JOB_IMAGES_FETCH_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 * * * * *",
+			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
+		},
+		{
+			// At :20, clear of the filler media cluster (:15/:30/:45/:50) and of the two 04:xx
+			// backup/retention jobs. AVIF encoding forks a multithreaded ffmpeg per image, so this
+			// is the one image job that genuinely contends for the box — the reason §22 makes AVIF
+			// a job at all is concurrency, not latency (a cold grid of 50 posters would otherwise
+			// fork 50 encoders at once).
+			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 20 * * * *",
+			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
+		},
+		{
+			// Daily, not hourly: this is the POST-RESTORE path (§22 durability). A restored
+			// database has rows whose files are gone, and this re-fetches everything recoverable.
+			// On a healthy install it finds nothing, which is exactly why it does not need to run
+			// often — and why it must exist at all, since nothing else notices a missing file.
+			Key: "job.images_rehydrate.schedule", EnvVar: "JOB_IMAGES_REHYDRATE_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 45 4 * * *",
+			Doc: "How often Loomarr re-downloads images whose files are missing but can be got again (cron). This is what repopulates artwork after you restore a backup onto an empty image folder.",
+		},
+		{
+			Key: "job.images_gc.schedule", EnvVar: "JOB_IMAGES_GC_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 0 5 * * *",
+			Doc: "How often Loomarr tidies up images (cron): removing resized copies over the disk budget, deleting images nothing references any more, and enforcing the six-month limit on downloaded artwork.",
 		},
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,

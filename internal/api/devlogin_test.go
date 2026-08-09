@@ -20,10 +20,7 @@ import (
 // the negative and positive cases below differ ONLY by that flag (§11/§19).
 func devLoginServer(t *testing.T, devLogin bool, seed func(store.Store)) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/devlogin.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/devlogin.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	ms := testkit.NewMediaServer(t)

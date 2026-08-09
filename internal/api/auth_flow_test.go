@@ -23,10 +23,7 @@ import (
 // admin and a member account.
 func authServer(t *testing.T) (*httptest.Server, store.Store, *testkit.MediaServer) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/auth.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/auth.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	ms := testkit.NewMediaServer(t)

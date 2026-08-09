@@ -161,10 +161,7 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 
 func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/f.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{

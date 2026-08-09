@@ -61,6 +61,20 @@ func TestJobSet(t *testing.T) {
 		// edit wait behind a whisper backlog.
 		"filler-reindex | 0 5 * * * * | job.filler_reindex.schedule",
 		"filler-sync | 0 */15 * * * * | job.filler_sync.schedule",
+		// ⚠ The image service's four (§22, V52). `images-fetch` is the SECOND job to reach out to
+		// the internet unattended — the record `filler-fetch` above carries — and it differs in a
+		// way worth writing down: filler-fetch pulls from sources an operator ADDED, while this
+		// one fetches whatever URL a row happens to hold, which is why it is the only job in this
+		// list behind a host allowlist and an SSRF guard (imagejobs.go).
+		//
+		// ⚠ `images-gc` is the second job that DELETES unattended. It removes image rows nothing
+		// references and evicts derivative FILES, and one of its duties is not tidying at all: the
+		// six-month TMDB ceiling is a licence term, so this row is the only thing keeping the
+		// install compliant. A future reader asking "what enforces the TTL?" is looking at it.
+		"images-avif | 0 20 * * * * | job.images_avif.schedule",
+		"images-fetch | 0 * * * * * | job.images_fetch.schedule",
+		"images-gc | 0 0 5 * * * | job.images_gc.schedule",
+		"images-rehydrate | 0 45 4 * * * | job.images_rehydrate.schedule",
 		"library-full-scan | 0 0 3 * * * | job.library_full_scan.schedule",
 		"library-scan | 0 */5 * * * * | job.library_scan.schedule",
 		"reconcile | 0 */5 * * * * | job.reconcile.schedule",

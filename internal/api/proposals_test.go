@@ -53,10 +53,7 @@ func (fakeSearch) Search(_ context.Context, q, scope string, limit int) ([]api.S
 
 func newSuggestServer(t *testing.T) (*httptest.Server, store.Store, *fakeSuggest) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/s.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/s.db")
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	log := slog.New(slog.DiscardHandler)

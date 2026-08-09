@@ -4,6 +4,299 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–4 of 8 done.**
+Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
+`make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
+**14** `Images` conformance subtests **verified to actually execute under Postgres** +
+`make fe` (**15** `Image` unit tests, verified by NAME under `--reporter=verbose`, not by exit
+code) + `make fe-visual` (**778** passed, 14 new `UI/Image` baselines, against a
+**freshly rebuilt** `storybook-static`).
+
+⚠ **"Exit 0" and "the assertions ran" are two different claims, and this branch has now been
+bitten by both halves.** The pipe version is already recorded below (`make … | tail` reports the
+pipe's status over a red suite). The second: `go test -run TestPostgresConformance ./internal/store/`
+prints **`ok … [no tests to run]` and exits 0** without `-tags=integration`, because the file is
+not compiled at all — so the filter matches nothing and the run proves nothing. The only sufficient
+evidence is seeing the subtest NAMES in `-v` output. `make test-pg` passes the tag; a hand-rolled
+`go test` does not.
+
+Commits, rebased onto main `d7868a9`: `7f80749` (§22 doc), `fd18f29` (codec), `511cb97`
+(service + store + migration), `1049395` (routes), `872872b` (renumber to 00045), `c68ec2d`
+(the 10.4× test-harness fix), `c9a05d7` (phase 3a — wiring + `IMAGES_*` settings),
+`05e1aee` (gofmt fix, see below), `cc754e6` (phase 3b — the four jobs).
+
+⚠ **Phase 3a's recorded gate evidence was WRONG and this is the correction.** `c9a05d7` says
+`make check` exit 0; it did not. Adding `Images ImageService` to `api.Server` landed inside an
+aligned run of struct fields, so gofmt wanted to re-align its five neighbours and the tree failed
+at the FIRST step of `make check` — `fmt`, before vet, lint or a single test. CI on PR #199 would
+have been red the whole time. Fixed in `05e1aee`.
+
+The mechanism is worth keeping because it is not a typo class: **gofmt aligns a whole run of
+adjacent fields, so inserting one line re-writes lines you did not touch** — a hand-added field in
+an aligned block is unformatted by default rather than by accident. And the reason it was reported
+green is the same masking this file already warns about one paragraph up.
+
+Loomarr shows images from four sources and handled each differently — icons as **database
+blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
+the operator's browser**. `internal/images` (§22) is one pipeline: sha256 content addressing,
+disk storage sharded 2/2 under `images.dir`, AVIF+WebP+JPEG, ThumbHash placeholders, immutable
+cache headers. **Nothing is wired yet** — phases 2–8 add the routes, jobs, FE primitive, and
+migrate the four existing paths onto it.
+
+⚠ **Three measurements contradicted the research the plan was built on, and the doc was corrected
+rather than left to be discovered.** (1) `-tags nodynamic` costs **5.3×**, not ~3× — 12.5ms →
+66.9ms per 500px WebP encode, and the fast path is fast *because* this box has a system libwebp
+the library `dlopen`s, which is exactly the non-reproducibility the tag prevents. (2) **AVIF is
+NOT an order of magnitude past WebP**: with `libaom -still-picture -cpu-used 6` it is **86ms vs
+67ms**, about 1.3×. The scary 300–1200ms figures come from running a *video* encoder at video
+defaults — asked for ONE frame, SVT-AV1 allocated **2.34 GB**, spawned **82 threads**, and
+produced a file **78% larger** than libaom. The AVIF-is-a-job decision survives on a reason
+measurement supports — **concurrency, not latency**: each encode forks a multithreaded process,
+so a cold grid of 50 posters forks 50 at once. (3) A benchmark caught the plan's own rule being
+broken in its own implementation (`Resize` per rung re-walks the halving chain: 231ms → 100ms).
+
+⚠ **Two pre-existing defects found by adding one test group, both worth knowing:**
+
+1. **`make test-pg | tail` reports exit 0 while `make` exited 1.** The pipe masks the status; the
+   suite was RED and looked green. Capture the exit code directly, always.
+2. **The Postgres conformance `TRUNCATE` list was a hand-written literal** covering ~8 of 20
+   tables, under a comment asking the next person to keep it in step. Rows leaked between
+   sub-tests, so an assertion over a GLOBAL query passed on SQLite (fresh file per sub-test) and
+   failed only on Postgres. ⚠ **Completing the list is WRONG** — proven by two Filler tests going
+   red: `filler_sources` and the taxonomy carry **migration-seeded** rows, and nothing in the
+   literal distinguished "omitted by accident" from "omitted on purpose". Replaced with
+   `DROP SCHEMA` + `CREATE SCHEMA` so `Open` re-runs every migration: seeded rows return by
+   construction and new tables are covered the day they exist. Integration suite 9s → 21s.
+
+**Phase 2 is also done** (`1049395`): three Huma operations — `rawOp` byte serve, typed record,
+multipart upload — registered in both register lists, spec regenerated, `openapi-verify` green.
+
+**Open as PR #199**, branch `v52-image-service`, worktree `../loomarr-v52-images`. Not merged:
+CI had not reported at hand-off, and merging past an unreported check is not a thing this project
+does. Re-check with `gh pr checks 199`; the local gate was green on the same tree.
+⚠ A fresh worktree needs `npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen`
+before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
+*after* a successful install.
+
+✅ **BLOCKER 1 — the migration collision, resolved.** This branch defined `00044_images.sql`;
+**V51b merged `00044_filler_clip_pipeline.sql` to main** while it was open. Rebased onto main
+(`d7868a9`) and renumbered both dialects to **`00045_images.sql`**; the postgres file's
+"mirror of the sqlite 00044" cross-reference moved with it.
+
+⚠ Keep the reasoning, because the next branch that sits open across a merge hits it again.
+This was worse than a rename: goose records applied migrations **by version parsed from the
+filename prefix**, so a database that already ran one `00044` **silently skips** the other — no
+error, no failure, until something queries a table that was never created. Forward-only (§16)
+decides which one moves: the **unmerged** migration renumbers, never the merged one. Check
+`goose_db_version` on a dev DB for a stale `44`; if it is there, rebuild rather than hand-edit.
+This is the concrete form of the conflict CLAUDE.md's worktree table warns about, and 00043
+carries a comment about the same trap. The renumber was cheap only because
+`internal/store/embed.go` globs `migrations/*/*.sql` — there is no hand-maintained list to
+drift.
+
+✅ **BLOCKER 2 — the CI timeout, resolved, and the diagnosis in this entry was WRONG.** It read
+`panic: test timed out after 10m0s` → `FAIL internal/api 600.060s` as "the suite is big; raise
+`-timeout` or split the package". Both readings were wrong, and measuring before changing anything
+is what showed it: **462 top-level tests, 258.8s of a 259.7s package, slowest single test 5.3s,
+median ~0.6s.** There is no slow test and nothing to split out.
+
+Benchmarking the shared harness under `-race` found it — `store.Open` on a fresh file **503ms**
+(45 goose migrations), `api.Router` **17ms**, and 462 tests, so **~232s of the 259s was the same
+45 migrations re-run once per test.** Fixed by migrating ONCE per package into a template SQLite
+file and copying it per test (**26ms**): measured **259.7s → 25.0s**, a **10.4×** drop, `make
+check` exit 0 with zero failures (`c68ec2d`).
+
+⚠ **Not a weakened gate** (prime directive 2). Every test still runs against a real, fully-migrated
+database built by the real `store.Open`, on its own private copy — nothing shared, no assertion
+changed. `autoMigrate` stays true on the per-test open, which is what makes both failure modes
+safe: an empty or truncated copy is a version-0 database goose migrates the old way (slow, still
+correct), and a corrupt one fails `store.Open` and calls `t.Fatal`. There is no path where a test
+runs against a schema it did not ask for.
+
+⚠ **The reason a split would have "worked" is worth keeping**: Go's `-timeout` is per test binary,
+so N packages each get their own 10 minutes. The panic goes away while all 232s of wasted work
+stays, and every test added later still pays 503ms. It buys headroom, not speed — and this branch
+tipped the package over precisely by adding `00045`, one more migration on the 503ms path.
+
+⚠ **`newServer` covered only 15 of the 462 tests** — converting it alone measured 247s, i.e. almost
+nothing. The other 45 `store.Open` call sites are file-local helpers serving ~10 tests each, and
+all of them moved to the shared `openTestStore`. **This is a per-package fix and 56 test files
+across the repo open a store the same way**; `internal/store` (33s), `internal/integration` (25s)
+and `internal/recurate` (15s) are the next candidates if the Go job ever needs more.
+
+**Phase 3a done** (`c9a05d7`): the service is WIRED and proven end-to-end.
+
+⚠ **`Server.images` was nil, so all three phase-2 routes 404'd in a running instance** — the
+"a built component nobody imported" pattern this file already records against V1, V17a and V23.
+No unit test can catch it, because the defect IS the absence of a caller, so the guard drives the
+real composition root: `TestImageRoutesAreWired` goes through `BuildHandler`, uploads a real PNG,
+reads the record and fetches a rendition over HTTP. **Sabotage-verified** — returning nil from
+`imageService` makes it fail with the 501 its message names.
+
+The adapter (`internal/app/imageadapter.go`) is the whole cost of "no domain package imports
+internal/store": a type-for-type translation across a typing boundary. ⚠ Boxing goes through
+`imageService()` because a nil `*images.Service` assigned straight into an interface field is a
+**non-nil interface holding a nil pointer**, so `if s.images == nil` would silently stop working —
+app.go already carries that warning for `*tmdb.Client`.
+
+Settings: the seven `images.*` keys from §15 under a new `GroupImages`, plus the four job schedule
+keys (an undeclared `ScheduleKey` **panics the settings service at startup**, so they land before
+the jobs do). `Groups()` is consumed only by the docs generator, so a group with no Settings page
+adds a docs section and nothing else — the keys are reachable via Settings → All until a later
+phase gives them a form.
+
+⚠ **Two defects in phase-1 code, both fixed in 3a:**
+
+1. **`images.formats` was a DEAD KNOB.** `Config.Formats` existed, `New` defaulted it, and nothing
+   read it — an operator dropping `avif` to save CPU or `jpeg` to save storage would have changed
+   nothing while `docs/configuration.md` promised both. `Produces` is now its single reader, with a
+   test that names the setting, because a setting with no reader cannot be caught by a test that
+   does not name it.
+2. **`Config` promised hot-apply and could not deliver it.** Its doc comment claimed the values
+   were "resolved live from settings by the caller", but they were plain fields captured at
+   construction. `MaxUploadBytes`/`PublicBaseURL`/`Formats` are funcs now; `Dir` stays a value
+   because the blob store is built from it and re-pointing it at runtime would orphan every file
+   already written. **The shape now encodes which knobs hot-apply.** `server.public_url` is the one
+   that matters — Tunarr fetches stored icon URLs machine-to-machine, so setting it in the wizard
+   must not need a restart.
+
+**Phase 3b done** (`cc754e6`): the four jobs — `images-fetch`, `images-avif`, `images-rehydrate`,
+`images-gc` — registered through `registerImageJobs` and pinned by `TestJobSet`, which went red the
+moment they appeared and is the only test that can see a job constructed and never registered.
+
+⚠ **The re-key is the part to understand before touching the fetcher.** `Adopt` keys a
+not-yet-fetched row on `sha256("url:"+srcURL)` — a namespaced placeholder, because the content hash
+cannot be known before the bytes arrive. When the bytes land, identity MUST become the real content
+hash or `Cache-Control: immutable` stops being true: a URL would keep its name while its content
+changed, which is the one thing content addressing exists to prevent. So `fetchOne` writes a new
+row, moves the refs, and deletes the placeholder — **in that order**, because `image_refs` cascades
+on delete and the obvious ordering drops the association silently. Sabotage-verified: swapping them
+loses the ref and the test says so.
+
+The same machinery covers a case that is not a placeholder at all — a TTL refresh or rehydrate of
+artwork upstream has REPLACED. Hashes differ, the row re-keys, every derivative URL changes. That
+is the honest outcome; the bytes really are different.
+
+⚠ **The store needed FOUR new methods, not the two this file predicted.** The two known ones were
+the GC's (`TotalImageDerivativeBytes`, `ListColdestDerivatives`). The two that were missed:
+`RepointImageRefs` for the re-key above, and `ListImagesByOrigin` because rehydrate's work list —
+"every remote row, whatever its fetch state" — is expressible by neither `ListImagesAwaitingFetch`
+(scoped to the never-fetched sentinel) nor `ListImagesExpiredBefore` (scoped to a cutoff). A file
+can go missing under a row in either state. The prediction "the other three jobs need no store
+change" was an estimate, not a gate.
+
+⚠ `RepointImageRefs` is **insert-then-delete, never `UPDATE image_refs SET image_hash`**. Two
+distinct source URLs can hold identical bytes, so both placeholders re-key onto ONE content hash and
+the second update violates the primary key. `DO NOTHING` makes the collision the no-op it should be.
+
+**The TTL decision (maintainer's call): purge-then-requeue.** The GC deletes the original and every
+derivative, clears `origin_fetched_at`, and `images-fetch` re-downloads within the minute. Rejected:
+re-fetch in place and delete only on failure, which reads as strictly nicer and puts the compliance
+question **inside an error branch** — TMDB unreachable for a day would silently keep serving expired
+bytes, and the ceiling would be enforced by nothing. A ceiling that holds only while the network is
+up is not a ceiling. Recorded doc-first in §22.
+
+⚠ **The GC collects orphans BEFORE it expires, and a test found the interaction.** Both sweeps can
+select the same row (past its TTL *and* unreferenced). Expiring first purges the bytes and queues a
+fresh download moments before the orphan sweep deletes it — and if that delete fails, a download
+instruction for an image no surface will ever show is what survives.
+
+⚠ **Eviction is image-level LRU**, as decided: order by `images.last_used_at`, drop the coldest
+derivatives, stop once under `images.cache_budget_mb`. Per-derivative LRU stays rejected —
+`image_derivatives` has no `last_used_at` and adding one would make every image request a row WRITE
+(a 50-poster grid = 50 writes per page load, on SQLite with `SetMaxOpenConns(1)`). The conformance
+test pins the ordering by making `created_at` and `last_used_at` **disagree**: the coldest image's
+derivative is the NEWEST file, so a `created_at` ordering returns exactly the wrong answer and still
+looks plausible. Sabotage-verified.
+
+**SSRF** (`images-fetch` is the second job to reach the internet unattended, after `filler-fetch`,
+and the first driven by a URL in a row rather than a source an operator added): https only, host
+allowlist, redirects capped at 3 and refused into private/loopback/link-local ranges, body capped on
+the READ. ⚠ **The private-range rule deliberately does NOT apply to the first hop.** A self-hosted
+media server is normally ON a private address — that is what self-hosted means — so a blanket ban
+would refuse exactly the artwork the install owns. What makes hop one safe is that its host came
+from the install's own configuration; hop two is the one an allowlisted host controls.
+
+⚠ The allowlist is **derived** (`tmdb.org` + the `library.url` host), not a settings key. An
+allowlist is only a control if something other than the attacker decides what is on it, and a knob
+whose only correct values are these two is a third place to get it wrong. ⚠ Matching is exact-or-
+dot-anchored-suffix, never a bare `HasSuffix` — sabotage-verified that the bare version accepts
+`eviltmdb.org` against an allowlist containing `tmdb.org`.
+
+⚠ **`Derivative.Path` was documented as "relative to the images dir" and never was.** Nothing read
+the field before, so the lie was free; the GC hands it straight to a remove, where believing the
+comment would have deleted nothing, reported success, and left the budget permanently over.
+
+**The known Dockerfile gap is CLOSED** — `/data/images` is pre-created alongside `/data/filler`.
+Phase 3b is what made it bite rather than merely untidy: `images-fetch` runs every minute, so on a
+zero-env first run the first thing to touch that path is a background job failing into a root-owned
+volume once a minute forever, with nothing connecting it to a directory nobody created. ⚠ This edits
+`Dockerfile`, so the CI **Image job runs** (~30 min, both platforms under QEMU) — expected, not a
+misfire.
+
+**Phase 4 — the FE `<Image>` primitive (2026-08-09).** One Layer-1 component, seven Storybook
+stories, 15 unit tests, 14 visual baselines, both hand-maintained barrels (`ui/index.ts` and
+`packages/api/src/index.ts`'s `imagesApi`), and the `thumbhash` §14 row. §22's *Frontend contract*
+was already written at phase 0 and the implementation matches it as specified — explicit
+`width`/`height`, a `priority` mode flipping loading/fetchPriority/decoding **together**, a built-in
+error fallback, and explicit `sizes` (never `sizes="auto"`; Safari supports it in no version).
+
+⚠ **The failure flag was a bare `useState(false)`, and that is a bug a full green suite could not
+see.** React reconciles by POSITION, so a grid that paginates, filters or sorts hands a *different*
+`image` to the same instance — and the flag survived the swap, rendering a perfectly good image as a
+colour block permanently. It would not have looked broken either: the block reads the NEW image's
+`dominantHex`, so it reads as a deliberate empty state. Every existing test rendered one image and
+never swapped it, which is exactly why nothing caught it; the probe that found it was a `rerender`.
+
+Fixed by giving the failure an identity — `const failed = failedHash === image.hash` — which needs
+no effect and no reset, because the comparison goes false in the same render the hash changes.
+⚠ **Sticky per image, deliberately:** a `logo` is an operator-pasted arbitrary URL (§22), so a
+failure is usually permanent and retrying known-bad bytes on every re-render is the worse default.
+
+⚠ **Both halves are sabotage-verified, and the second one mattered.** The recovery test was proven
+red before the fix. The stickiness test passed on the FIRST try, which this file already treats as
+suspect — so the plausible-wrong implementation (reset-on-hash-change via a during-render
+`setState`) was written and run: it passes recovery and **fails** stickiness. The two tests together
+pin the semantics rather than merely the bug.
+
+⚠ **A comment that contradicted its own code, corrected rather than left.** The placeholder memo
+was documented as keyed on the hash while the dep array read `image.placeholder`. The code was
+right and the comment was wrong, and the reason is specific to this service: phase 3b's fetch
+**re-keys** a row from `url:`-hash to content-hash and back-fills `placeholder`, so a hash-keyed
+memo is the classic stale-closure shape — it would hold the previous row's blur.
+
+⚠ **Nothing in the app renders `<Image>` yet, so there is no browser verification to have.** The
+Storybook gallery is the only real surface until phase 5 wires the first consumer; this is stated
+rather than glossed, because "green tests" and "seen working" are different claims and only the
+first one is available here.
+
+⚠ **Merged `origin/main` in (V51c + V53a/b/d/e landed while this branch was open), and the merge
+found a drift this file has a standing warning about.** `make check`, `openapi-verify` and
+`retired-verify` stayed green; `make fe` went **red on two `barrel.test.ts` cases**. The cause is
+the interesting part: when phase 4 was written there was **one** hand-maintained API barrel, and
+V53d/e added **two more** (`src/zod/index.ts`, `src/msw/index.ts`) plus the guard test that catches
+an unexported tag. So `images` was correctly exported from the barrel that existed and missing from
+two that did not. **A hand-maintained list can drift because the list MULTIPLIED, not only because
+someone forgot an entry** — and no amount of care on the branch could have anticipated it. The
+guard main added is what turned a silent gap into a red gate; a fourth barrel would behave the same.
+
+⚠ **`rebase` was the wrong tool and `merge` was the right one, for a reason worth reusing.** All 16
+commits touch `PROGRESS.md`, so the rebase demanded the same resolution up to 16 times; one merge
+resolved it once. That is only safe because this repo **squash-merges** — the branch's internal
+shape is discarded at merge, so linear history buys nothing here. ⚠ `pnpm-lock.yaml` auto-merged
+**textually**, which is precisely how a corrupt lockfile enters a tree; `pnpm install
+--frozen-lockfile` is the cheap proof that the merged lockfile and merged `package.json` agree, and
+`pnpm codegen` had to re-run because main changed `orval.config.ts` (it now emits `zod` and `msw`).
+
+**Next up: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
+so per CLAUDE.md's worktree rule they are **not** parallelisable. ⚠ A fresh worktree needs
+`npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen` first —
+`packages/api/generated/` is gitignored, so a skipped codegen typechecks red *after* a successful
+install.
+
+⚠ **One known gap remains**: the WebP `-tags nodynamic` gap, unchanged and still open.
+
 **V53d — one mock layer instead of 31, and the first migrated file found two defects in the stub
 it replaced (2026-08-09, branch `feat/msw-fixtures`).** Gate: `make fe` (**1222** app + **19** api +
 51 core + 5 tokens, biome clean on 922 files) + `make retired-verify` (25). Zero Go files touched.

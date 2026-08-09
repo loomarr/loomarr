@@ -69,10 +69,7 @@ func newThumbServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(root, "thumb.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, filepath.Join(root, "thumb.db"))
 	t.Cleanup(func() { _ = st.Close() })
 	seedThumbClip(t, st)
 

@@ -111,10 +111,7 @@ type playoutOpts struct {
 
 func newPlayoutServer(t *testing.T, o playoutOpts) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/playout.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/playout.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	if o.token == "" {
