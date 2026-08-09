@@ -6,7 +6,7 @@ import { RouterHarness } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
 // The `.reveal` grid trick keeps the body in the DOM even when collapsed (clipped, not
-// unmounted), so open/closed is asserted via aria-expanded + the reveal's data-open — the
+// unmounted), so open/closed is asserted via aria-expanded + the reveal state attribute — the
 // same convention CollapsibleSection uses. A failing block's "Fix" is a routed Link, so the
 // tree renders inside RouterHarness (which mounts async — hence findBy* on first query).
 const withRouter = (ui: ReactElement) => render(<RouterHarness content={ui} initialPath="/settings" />);
@@ -25,7 +25,7 @@ describe("ConnectionBlock", () => {
 
     const header = await screen.findByRole("button", { name: /media server/i });
     expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-closed");
 
     await user.click(header);
     expect(onToggle).toHaveBeenCalledOnce();
@@ -45,7 +45,39 @@ describe("ConnectionBlock", () => {
       "aria-expanded",
       "true",
     );
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "true");
+    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "");
+  });
+
+  // ⚠ THE BUG V50d FIXED, and it is asserted here because nothing else can see it: this component
+  // has no story, so the visual suite's axe sweep never renders it.
+  //
+  // The hand-rolled reveal closed with `grid-template-rows: 0fr` + `overflow:hidden` — zero height
+  // but NOT `display:none` — so the collapsed body stayed in the accessibility tree and stayed
+  // FOCUSABLE. This block's body holds a "Test connection" button and a "Fix" link into Help, so a
+  // keyboard user tabbing the wizard reached both while the section was visibly shut.
+  //
+  // `hidden="until-found"` is the whole fix: out of the a11y tree, still mounted (nothing loses
+  // state), still reachable by the browser's find-in-page.
+  it("keeps a collapsed body out of the accessibility tree, not merely clipped", async () => {
+    withRouter(
+      <ConnectionBlock
+        title="Media server"
+        open={false}
+        onToggle={() => {}}
+        action={<button type="button">Test connection</button>}
+      >
+        <p>{bodyText}</p>
+      </ConnectionBlock>,
+    );
+
+    await screen.findByRole("button", { name: /media server/i });
+    const panel = screen.getByText(bodyText).closest(".reveal");
+    expect(panel).toHaveAttribute("hidden", "until-found");
+    // Still MOUNTED — the fix must not unmount the body, or a half-filled connection form would
+    // lose its state every time the block collapsed.
+    expect(panel).toBeInTheDocument();
+    // And the action inside it is no longer reachable as a control: only the header button is.
+    expect(screen.queryByRole("button", { name: /test connection/i })).toBeNull();
   });
 
   it("shows a failing verdict inline with a Fix link into the Help center", async () => {

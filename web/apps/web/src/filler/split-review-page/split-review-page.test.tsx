@@ -1,3 +1,9 @@
+import type { MeBody } from "@loomarr/api";
+import {
+  getConfirmFillerSplitMockHandler,
+  getGetFillerSplitMockHandler,
+  getMeMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -8,14 +14,25 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { server } from "@/test/msw/server";
 import { SplitReviewPage } from "./split-review-page";
 
 // A MINIMAL router, not the app tree: the page navigates on confirm/back, and TanStack
 // throws navigating to a route the tree doesn't have — so the tree is exactly the two
 // paths this page can land on.
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
-const MEMBER = { ...ADMIN, role: "member" };
+// ⚠ `local` is REQUIRED on MeBody and this fixture omitted it — the third file in this migration
+// to carry the same incomplete user object, all of them invisible while the stub was untyped.
+const ADMIN = {
+  id: "u1",
+  name: "Ada",
+  role: "admin" as const,
+  local: true,
+  autoApprove: true,
+  disabled: false,
+  quota: 0,
+};
+const MEMBER = { ...ADMIN, role: "member" as const };
 
 const PROPOSAL = {
   id: "sp-1",
@@ -27,20 +44,32 @@ const PROPOSAL = {
   ],
 };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const stubFetch = (me: unknown = ADMIN) => {
-  const mock = vi.fn((url: string, _init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(me));
-    if (u.includes("/v1/filler/splits/sp-1/confirm")) return Promise.resolve(json({ clips: 2 }));
-    if (u.includes("/v1/filler/splits/")) return Promise.resolve(json(PROPOSAL));
-    if (u.includes("/v1/filler")) return Promise.resolve(json({ clips: [] }));
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  return mock;
+// ⚠ The stub this replaced dispatched by URL SUBSTRING, in order, with a catch-all `{}` at the
+// end — and the ordering was load-bearing: `/v1/filler/splits/sp-1/confirm` had to be tested
+// before `/v1/filler/splits/`, which had to precede `/v1/filler`. A prefix that also matches its
+// own sibling is a bug waiting for someone to reorder the list. Route-bound handlers have no
+// order at all.
+//
+// ⚠ `fetchedProposal` / `confirms` replace assertions over `fetchMock.mock.calls`. The NEGATIVE
+// one matters most here (§19's member case): "the proposal was never fetched" used to mean "no
+// recorded url contained that substring", which is only as good as the substring. Now the handler
+// simply never fires — AND, if the member path ever did fetch something unmodelled, the
+// unhandled-request guard fails the test by name rather than letting a catch-all answer it.
+const stubSplit = (me: MeBody = ADMIN) => {
+  let fetchedProposal = false;
+  const confirms: unknown[] = [];
+  server.use(
+    getMeMockHandler({ ...me }),
+    getGetFillerSplitMockHandler(() => {
+      fetchedProposal = true;
+      return PROPOSAL;
+    }),
+    getConfirmFillerSplitMockHandler(async ({ request }) => {
+      confirms.push(await request.json());
+      return { clips: 2 };
+    }),
+  );
+  return { wasFetched: () => fetchedProposal, confirms };
 };
 
 const renderPage = () => {
@@ -69,11 +98,9 @@ const renderPage = () => {
   return router;
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("SplitReviewPage", () => {
   it("loads the persisted proposal and renders the cut list", async () => {
-    stubFetch();
+    stubSplit();
     renderPage();
     expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: /segment 1: first ad/i })).toBeInTheDocument();
@@ -81,7 +108,7 @@ describe("SplitReviewPage", () => {
   });
 
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {
-    const fetchMock = stubFetch();
+    const { confirms } = stubSplit();
     const router = renderPage();
     const second = await screen.findByRole("region", { name: /segment 2: second ad/i });
     // Answer the open era question, then commit.
@@ -89,9 +116,8 @@ describe("SplitReviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /confirm cuts/i }));
 
     await screen.findByText("the catalog");
-    const posted = fetchMock.mock.calls.find(([u]) => String(u).includes("/confirm"));
-    expect(posted, "confirm should POST the edited cut list").toBeDefined();
-    const body = JSON.parse(String(posted?.[1]?.body)) as { segments: Array<Record<string, unknown>> };
+    expect(confirms, "confirm should POST the edited cut list").toHaveLength(1);
+    const body = confirms[0] as { segments: Array<Record<string, unknown>> };
     expect(body.segments).toHaveLength(2);
     expect(body.segments[1]).toMatchObject({ index: 1, era: 1985 });
     expect(body.segments[1]?.suggestedEra).toBeUndefined();
@@ -99,20 +125,20 @@ describe("SplitReviewPage", () => {
   });
 
   it("Back leaves without calling confirm", async () => {
-    const fetchMock = stubFetch();
+    const { confirms } = stubSplit();
     renderPage();
     await screen.findByRole("region", { name: /segment 1: first ad/i });
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
     await screen.findByText("the catalog");
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/confirm"))).toBe(false);
+    expect(confirms).toHaveLength(0);
   });
 
   // §19's negative half, on the UI side: a member gets the explanation, and the proposal
   // query never fires (the server would 403 it anyway — the gate keeps the console clean).
   it("explains rather than fetching for a member", async () => {
-    const fetchMock = stubFetch(MEMBER);
+    const { wasFetched } = stubSplit(MEMBER);
     renderPage();
     expect(await screen.findByText(/admins only/i)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/filler/splits/"))).toBe(false);
+    expect(wasFetched()).toBe(false);
   });
 });
