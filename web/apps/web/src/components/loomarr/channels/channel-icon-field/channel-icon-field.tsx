@@ -2,7 +2,7 @@ import { ApiError, channelsApi, toProblem, unwrap } from "@loomarr/api";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr";
-import { Button, Input, Label } from "@/components/ui";
+import { Button, Image, Input, Label } from "@/components/ui";
 import { cn } from "@/lib";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
@@ -30,6 +30,7 @@ const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const ChannelIconField = ({
   channelId,
   logo,
+  logoImage,
   onSetLogo,
   isAdmin = false,
   className,
@@ -120,7 +121,28 @@ const ChannelIconField = ({
         {/* The 64px preview — a muted placeholder box when there's no icon yet, never a
             broken-image glyph. */}
         <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-static-800">
-          {logo ? (
+          {/*
+            Three states, and the middle one is the interesting one.
+
+            `logoImage` present ⇒ the bytes are ours (§22), so the <Image> primitive applies:
+            srcset at the icon ladder, a ThumbHash while it loads, and — the reason this matters
+            here specifically — a DESIGNED failure state. §22 names this field's glyph as that
+            state, because an upload is the one origin that cannot be re-fetched if /data/images
+            is lost, and a broken-image icon would read as a bug rather than as missing bytes.
+
+            ⚠ `logo` without `logoImage` is an operator-pasted external URL, which stays
+            supported — a plain <img> is the only honest thing to render for bytes this instance
+            does not own and knows no dimensions for.
+          */}
+          {logoImage ? (
+            <Image
+              image={logoImage}
+              alt="Channel icon"
+              sizes="64px"
+              className="size-full object-cover"
+              fallback={<ImageOff className="size-6 text-static-500" aria-hidden />}
+            />
+          ) : logo ? (
             <img src={logo} alt="Channel icon" className="size-full object-cover" />
           ) : (
             <ImageOff className="size-6 text-static-500" aria-hidden />
