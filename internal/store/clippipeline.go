@@ -130,9 +130,11 @@ func (s *sqlStore) ListClipPipelines(ctx context.Context, f filler.PipelineFilte
 	q := clipPipelineSelect
 	var where []string
 	var args []any
-	if f.NonTerminalOnly {
-		where = append(where, `disposition = ?`)
-		args = append(args, string(filler.DispositionRunning))
+	if f.ConveyorOnly {
+		// ⚠ `running` OR `review` — the two halves of one belt. `review` is terminal for the
+		// PIPELINE and not for the operator, so a clip sitting there is still Incoming's business.
+		where = append(where, `disposition IN (?, ?)`)
+		args = append(args, string(filler.DispositionRunning), string(filler.DispositionReview))
 	}
 	if f.RejectedOnly {
 		where = append(where, `disposition = ?`)

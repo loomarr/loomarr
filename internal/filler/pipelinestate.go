@@ -142,8 +142,16 @@ func (p *ClipPipeline) Record(stage StageID, status StageStatus, note string, at
 
 // PipelineFilter narrows a pipeline listing.
 type PipelineFilter struct {
-	// NonTerminalOnly returns the clips still moving — what the Incoming tab watches.
-	NonTerminalOnly bool
+	// ConveyorOnly returns everything on the Incoming belt: clips the machine is still working on
+	// (`running`) AND clips it has finished with and handed to a person (`review`).
+	//
+	// ⚠ **It is deliberately BOTH, and the predecessor's name is why this changed.**
+	// `NonTerminalOnly` (retired-ok) meant `running` alone, which forced Incoming to answer "who
+	// needs a human?" from a second, older query over tag-shape — and the two disagreed: every clip
+	// is enrolled at `probe/queued` AND held-and-untagged, so the same clip appeared in both lists,
+	// one saying it needed a decision while the other said nothing needed the operator at all.
+	// `review` is the pipeline's own word for the handoff, so one query now answers both halves.
+	ConveyorOnly bool
 	// RejectedOnly returns the audit half: what was refused, and why.
 	RejectedOnly bool
 	// Limit caps the rows returned; 0 means unbounded.
