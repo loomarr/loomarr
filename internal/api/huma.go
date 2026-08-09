@@ -158,6 +158,10 @@ type Server struct {
 	timelineThumbs TimelineThumbResolver
 	// playoutFont labels the offline card; nil ⇒ unlabelled, never a failed encode.
 	playoutFont func() string
+	// playoutTonemap reports whether this ffmpeg build can tone-map HDR→SDR; nil ⇒ no, so an HDR
+	// source transcodes untone-mapped rather than emitting a filter the build would reject at
+	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
+	playoutTonemap func() bool
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -747,6 +751,11 @@ type Options struct {
 	// in the handler. Nil or "" ⇒ an unlabelled card, which is a supported rendering and the
 	// deliberate fail-safe: see playout.CardFontFor for why a font file alone is not enough.
 	PlayoutFont func() string
+	// PlayoutTonemap reports whether this ffmpeg build carries the HDR→SDR filters (zscale +
+	// tonemap). A property of the BUILD, so it is injected here rather than probed in the handler,
+	// which keeps ProgramArgs a pure function. Nil ⇒ no tone-mapping: an HDR source still plays,
+	// flat rather than dead. See playout.TonemapperFor.
+	PlayoutTonemap func() bool
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

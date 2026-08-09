@@ -33,10 +33,14 @@ type fakeResolver struct {
 	// test is specifically about track discovery.
 	tracks playout.MediaTracks
 	// plan is what PlanFor returns — zero value (transcode both) unless a test is about direct play.
-	plan    playout.CopyPlan
-	profile playout.Profile
-	calls   int
-	mu      sync.Mutex
+	plan playout.CopyPlan
+	// sourceFormat is the probe PlanFor returns alongside the plan. Zero unless a test is about
+	// something the probe learned about the SOURCE (as opposed to the copy decision derived from
+	// it) — HDR is the first such thing.
+	sourceFormat playout.MediaFormat
+	profile      playout.Profile
+	calls        int
+	mu           sync.Mutex
 }
 
 func (f *fakeResolver) AiringNow(_ context.Context, _ string) (playout.Airing, string, error) {
@@ -65,9 +69,11 @@ func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, err
 }
 
 // PlanFor returns whatever plan the test set — zero value (transcode both) by default, which is
-// what the existing program-path assertions expect (they check the transcode args).
-func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) playout.CopyPlan {
-	return f.plan
+// what the existing program-path assertions expect (they check the transcode args) — plus the
+// source format it was derived from. `sourceFormat` is zero unless a test is about something the
+// probe learned (HDR is the first), which reads as "not probed": SDR, unknown geometry.
+func (f *fakeResolver) PlanFor(context.Context, string, playout.EncodePlan) (playout.CopyPlan, playout.MediaFormat) {
+	return f.plan, f.sourceFormat
 }
 
 func (f *fakeResolver) callCount() int {

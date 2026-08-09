@@ -1,12 +1,8 @@
 package playout
 
 import (
-	"bytes"
-	"context"
 	"os"
-	"os/exec"
 	"sync"
-	"time"
 )
 
 // Font discovery for the test/offline card's `drawtext` filter.
@@ -91,29 +87,12 @@ func CardFontFor(ffmpegPath string) func() string {
 
 // hasDrawText reports whether this ffmpeg build carries the drawtext filter.
 //
-// Matched against the FILTER-NAME COLUMN rather than the whole line: `-filters` output
-// includes a description per row, and a substring search would also match a filter merely
-// mentioning drawtext in its prose.
-func hasDrawText(ffmpegPath string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// A thin caller of filters.go's hasFilter — this file discovered the "a filter is a per-build
+// fact" rule, and filters.go now owns it for every optional filter. Kept as a named function
+// because "can this build draw text?" is the question CardFontFor asks, and spelling it out here
+// keeps that reasoning next to the font list it guards.
+func hasDrawText(ffmpegPath string) bool { return hasFilter(ffmpegPath, "drawtext") }
 
-	raw, err := exec.CommandContext(ctx, ffmpegPath, "-hide_banner", "-filters").Output()
-	if err != nil {
-		return false
-	}
-	return parseHasDrawText(raw)
-}
-
-// parseHasDrawText is the pure half of hasDrawText, split out so the column matching can be
-// tested without a binary to exec.
-func parseHasDrawText(raw []byte) bool {
-	for _, line := range bytes.Split(raw, []byte("\n")) {
-		// Rows look like " TS. drawtext  V->V  Draw text on top of video frames."
-		// — flags, name, signature, description.
-		if f := bytes.Fields(line); len(f) >= 2 && bytes.Equal(f[1], []byte("drawtext")) {
-			return true
-		}
-	}
-	return false
-}
+// parseHasDrawText is the pure half, retained so the existing column-matching tests keep their
+// subject. The matching itself lives in parseHasFilter.
+func parseHasDrawText(raw []byte) bool { return parseHasFilter(raw, "drawtext") }
