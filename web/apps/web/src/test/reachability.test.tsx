@@ -229,6 +229,16 @@ const stubReachable = () => {
       level: "exact",
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
+      // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
+      // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
+      criteria: [
+        { criterion: "era", clips: 4 },
+        { criterion: "audience", clips: 4 },
+        { criterion: "category", clips: 4 },
+        { criterion: "kind", clips: 4 },
+        { criterion: "duration", clips: 4 },
+        { criterion: "quality", clips: 4 },
+      ],
     }),
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
@@ -259,7 +269,13 @@ const stubReachable = () => {
       rows: [],
     }),
     getListTaxonomyMockHandler({ taxa: [] }),
-    getPreviewDraftChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+    getPreviewDraftChannelPodsMockHandler({
+      entries: [],
+      totalMs: 0,
+      matchLevel: "exact",
+      // The draft preview answers with its own coverage since V51f — same selection, one response.
+      coverage: { level: "exact", total: 0, rungs: [], criteria: [] },
+    }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
     getChannelTracksMockHandler({ audio: [], subtitles: [] }),
     ...appHandlers(),

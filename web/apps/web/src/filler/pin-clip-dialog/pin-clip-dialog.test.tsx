@@ -131,7 +131,7 @@ describe("PinClipDialog", () => {
   // the accidental route to it is.
   it("the Block action writes an exclusion", async () => {
     const user = userEvent.setup();
-    const { patches } = stubFetch({ pinned: false });
+    const { patches } = stubPin({ pinned: false });
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
     await user.click(await screen.findByRole("button", { name: /^Block/ }));

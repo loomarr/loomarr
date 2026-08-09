@@ -1,4 +1,4 @@
-import type { ChannelPolicy, ClipDTO, PodPoolDTO } from "@loomarr/api";
+import type { ChannelPolicy, ClipDTO, CoverageDTO, PreviewDraftPodsOutputBody } from "@loomarr/api";
 import {
   getChannelFillerCoverageMockHandler,
   getListFillerMockHandler,
@@ -38,7 +38,21 @@ const renderSection = (ui: ReactNode) => {
   );
 };
 
-const previewBody: PodPoolDTO = {
+// ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
+// diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
+const HEALTHY: CoverageDTO["criteria"] = [
+  { criterion: "era", clips: 4 },
+  { criterion: "audience", clips: 4 },
+  { criterion: "category", clips: 4 },
+  { criterion: "kind", clips: 4 },
+  { criterion: "duration", clips: 4 },
+  { criterion: "quality", clips: 4 },
+];
+
+// ⚠ The DRAFT preview returns the pod AND the coverage for the same selection (§10 V51f), so the
+// meter and the timeline below it can no longer describe two different things.
+const previewBody: PreviewDraftPodsOutputBody = {
+  coverage: { level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }], criteria: HEALTHY },
   entries: [
     {
       path: "b1.mp4",
@@ -102,7 +116,12 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
     // it a CLIP LIST — `{ clips: [...] }` where the component wants `{ level, total, rungs }`. It
     // rendered an empty meter rather than throwing, which is the wrong-shape-looks-fine failure
     // this file's own sibling comments already warned about.
-    getChannelFillerCoverageMockHandler({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }),
+    getChannelFillerCoverageMockHandler({
+      level: "exact",
+      total: 4,
+      rungs: [{ level: "exact", clips: 4 }],
+      criteria: HEALTHY,
+    }),
   );
 
   return { patches, previews, catalogQueries };
@@ -231,7 +250,7 @@ describe("ChannelFiller", () => {
       ),
       getListFillerMockHandler({ clips: [], total: 0 }),
       getListTaxonomyMockHandler({ taxa: [] }),
-      getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [] }),
+      getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [], criteria: HEALTHY }),
     );
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
