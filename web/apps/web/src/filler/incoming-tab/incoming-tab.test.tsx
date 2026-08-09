@@ -1,8 +1,15 @@
+import type { ClipDTO, FillerIncomingOutputBody, IncomingAskDTO } from "@loomarr/api";
+import {
+  getFillerIncomingMockHandler,
+  getSettingsListMockHandler,
+  getTagFillerClipMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { server } from "@/test/msw/server";
 import { IncomingTab } from "./incoming-tab";
 
 // IncomingTab owns the review queue and its four filing mutations. It was extracted from
@@ -15,10 +22,11 @@ import { IncomingTab } from "./incoming-tab";
 // this call site reproduced it once already. `category` is NOT part of the body (§10 V45a): it
 // is a derived shadow of the taxonomy tags, and this confirm never touches tags at all.
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-const ASK = {
+// ⚠ Typed as IncomingAskDTO, which surfaced two MISSING required fields (`kind`, `reason`) the
+// untyped stub happily accepted.
+const ASK: IncomingAskDTO = {
+  kind: "commercial",
+  reason: "era-guess",
   path: "a3/f9/abc.mp4",
   hash: "hash-abc",
   name: "Toy ad",
@@ -29,23 +37,51 @@ const ASK = {
   durationMs: 30_000,
 };
 
-const stubFetch = (incoming: Record<string, unknown> = {}) => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const method = init?.method ?? "GET";
-      const u = String(url);
-      calls.push({ method, url: u, body: init?.body ? JSON.parse(init.body as string) : undefined });
-      if (u.includes("/v1/filler/incoming")) {
-        return Promise.resolve(
-          jsonResponse(200, { asks: [ASK], reels: [], recentlyFiled: [], total: 1, ...incoming }),
-        );
-      }
-      return Promise.resolve(jsonResponse(200, {}));
+// The tagged clip the PATCH answers with. Only its shape matters here — the assertions are on
+// what was SENT — but it has to be a real ClipDTO, which is nine required fields.
+const TAGGED: ClipDTO = {
+  hash: "hash-abc",
+  name: "Toy ad",
+  kind: "commercial",
+  durationMs: 30_000,
+  era: 1993,
+  audience: "kids",
+  tagged: true,
+  aiTagged: false,
+  playCount: 0,
+  playsCounted: true,
+};
+
+// ⚠ The stub this replaced ended in `return Promise.resolve(jsonResponse(200, {}))` — a catch-all
+// answering any other url with an empty object — and its assertions then searched
+// `calls.find((c) => c.method === "PATCH")`. Both are the weakness this migration removes: the
+// catch-all could not fail, and a method filter would match a PATCH to ANY endpoint. Since the
+// whole point of this file is that the PATCH carries the right BODY to the right route, binding
+// the handler to `*/v1/filler/tags` is the assertion the old test could not make.
+const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
+  const body: FillerIncomingOutputBody = {
+    asks: [ASK],
+    reels: [],
+    recentlyFiled: [],
+    // ⚠ `pipeline` and `rejected` are REQUIRED and the old stub supplied NEITHER — two more
+    // fields an untyped catch-all let through.
+    pipeline: [],
+    rejected: [],
+    total: 1,
+    ...incoming,
+  };
+  const patches: unknown[] = [];
+  server.use(
+    getFillerIncomingMockHandler(body),
+    // ⚠ The tab also reads /v1/settings, which the OLD catch-all answered with `{}` — so this
+    // code path ran against an empty settings payload and nothing said so. The guard named it.
+    getSettingsListMockHandler({ settings: [], features: {} }),
+    getTagFillerClipMockHandler(async ({ request }) => {
+      patches.push(await request.json());
+      return TAGGED;
     }),
   );
-  return calls;
+  return { patches };
 };
 
 const makeWrapper = () => {
@@ -62,15 +98,14 @@ const renderTab = (onEditTags = vi.fn()) => {
   return { onEditTags };
 };
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe("IncomingTab", () => {
   it("fetches the incoming queue itself rather than being handed it", async () => {
-    const calls = stubFetch();
+    stubIncoming();
     renderTab();
     // The whole point of the extraction: the tab is self-sufficient, so the shell no longer
-    // unpacks a queue for a tab that may not be showing.
-    await waitFor(() => expect(calls.some((c) => c.url.includes("/v1/filler/incoming"))).toBe(true));
+    // unpacks a queue for a tab that may not be showing. Rendering the ask IS the proof the
+    // fetch happened — and an unmatched request would now fail the test by name, where the old
+    // catch-all would have answered it silently.
     expect(await screen.findByText("Toy ad")).toBeInTheDocument();
   });
 
@@ -79,7 +114,7 @@ describe("IncomingTab", () => {
   // the body — it's a derived shadow (§10 V45a), and `PatchClipInputBody` has no such field any
   // more; sending it would be a stale field the server ignores at best.
   it("confirming an era sends audience too, never era alone, and never category", async () => {
-    const calls = stubFetch();
+    const { patches } = stubIncoming();
     renderTab();
     await screen.findByText("Toy ad");
 
@@ -87,17 +122,16 @@ describe("IncomingTab", () => {
     await userEvent.click(await screen.findByRole("button", { name: /looks right/i }));
 
     await waitFor(() => {
-      const patch = calls.find((c) => c.method === "PATCH");
       // §10 V45a: the clip is identified by `hash` in the body (no {id} URL segment) — this
       // PATCH goes through the single-clip tag route, which is hash-keyed. `ask.path` stays
       // the local UI key for `onEditTags`/`busyClip` (see the test below and the mixed-model
       // note in incoming-tab.tsx itself).
-      expect(patch?.body).toEqual({ hash: "hash-abc", era: 1993, audience: "kids" });
+      expect(patches).toEqual([{ hash: "hash-abc", era: 1993, audience: "kids" }]);
     });
   });
 
   it("hands tag editing up to the shell, which owns the one dialog", async () => {
-    stubFetch();
+    stubIncoming();
     const { onEditTags } = renderTab();
     await screen.findByText("Toy ad");
 
@@ -109,7 +143,7 @@ describe("IncomingTab", () => {
   });
 
   it("renders an empty queue without erroring", async () => {
-    stubFetch({ asks: [], total: 0 });
+    stubIncoming({ asks: [], total: 0 });
     renderTab();
     await waitFor(() => expect(screen.queryByText("Toy ad")).not.toBeInTheDocument());
   });
