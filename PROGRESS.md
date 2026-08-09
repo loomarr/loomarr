@@ -642,18 +642,61 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
-**Next up: V51g — a rung may not spend per SEGMENT what the budget allows per CLIP.** Specified in
-§10 (V51g) with the measurements; not built. Three changes, all small and independent: delete
-`classify` from `Splitter.Propose`; treat `context deadline exceeded` after `stage.Run` as a
-DEFERRAL (queued, attempts unchanged) rather than a failure; and persist failure/deferral through a
-DETACHED context so the record, the backoff and the `MaxAttempts` resolution actually land.
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, branch
+`v51g-pipeline-budget`).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+Diagnosed from a live catalog, and the measurements are in §10 (V51g) because they are what
+corrected the diagnosis twice.
 
-⚠ **The third one is the severe one and it is not about split.** `onFailure` writes its bookkeeping
-through the context whose expiry caused the failure, so none of it persists — only the pre-work
-`status=running, attempts++` survives. **Any rung that ever times out loops forever.** Found live:
-one clip at 12 attempts against a `MaxAttempts` of 3, ~25 minutes of GPU re-doing the first third
-of the same reel while the UI showed it advancing. Measured cause: 51 LLM turns at 7.4s inside a
-120s pass; everything else in that rung totals ~40s.
+**The symptom.** `WAGA-5/Fox Commercial Breaks(2/5/1995)`, a 16m47s reel, sat at *"Finding the ads
+inside"* through **twelve** passes — `attempts: 12` against a `MaxAttempts` of 3 — failing every
+two minutes with `context deadline exceeded` and starting over. ~25 minutes of GPU re-doing the
+same first third while the row animated as though it were progressing.
+
+**Measured on the real file, which is what found the cause** (the first two theories were wrong —
+"the detection scan is too slow" and "cutting is too slow" are both off by two orders of magnitude):
+
+| Step of `split` | Cost |
+| --- | --- |
+| blackdetect + silencedetect | **4s** (319× realtime) |
+| dedup — `GrayFrames` × 51 | **33s** |
+| cut — stream copy × 51 | **3s** |
+| **`classify` — one LLM turn × 51** | **≈377s**, against a 120s pass |
+
+⚠ **`classify` was strictly-worse duplicate work, not merely expensive.** It called the same
+`Classify` the `tag` rung calls, but with `SplitSegment.Transcript` — EMPTY unless `rescue` ran, and
+rescue only transcribes segments over ~120s (none qualified). So it classified 51 adverts from a
+generated name, `"… part 7"`, identical bar the number — then every spawned segment ran
+`transcribe` → `tag` and called the same function again with a real transcript. **Deleted, not
+unwired**: an orphaned method reads as a capability someone can switch back on.
+
+⚠ **The severe half is not about split at all.** `onFailure` computed the failure record, the
+backoff and the `MaxAttempts` resolution and wrote them through **the context whose expiry caused
+the failure** — so every one was discarded, and only the pre-work write (`status=running`,
+`attempts++`) survived. **Any rung that ever times out loops forever**; split was just the first
+slow enough to prove it. All decision-writes now go through a detached context.
+
+⚠ **Running out of time is not failing.** A cancelled context is a DEFERRAL: back to `queued`, the
+attempt rolled back (it was counted before the work began), no backoff, resume next pass — which is
+exactly how budget exhaustion already behaved. `ErrDeferred` and `PipelineResult.Deferred` keep it
+out of the failure count, because a reel too slow for one pass was emitting an identical WARN every
+two minutes and the summary blamed the clip.
+
+⚠ **The fake store had to start honouring cancellation before any of this was testable.**
+`pipeMemStore.UpsertClipPipeline` ignored `ctx`, so the code path that wrote through a dead context
+looked perfect in tests and failed only against a real store. Sabotage-verified: restoring the
+attached save reproduces the original bug precisely — `Advance` returns `context canceled`, the row
+keeps its burnt attempt, and the run counts it as a clip failure.
+
+**Three grounding assertions MOVED rather than being dropped** (§8 is not negotiable). They
+exercised `Classify` through `Propose`'s removed call; the rule is tested at its own seam —
+`TestClassify_EraGroundedBySourceText` and `TestClassify_UngroundedEraBecomesSuggestion`. What
+`Propose` owes now is the CUT, and the tests assert segments arrive with **no** tags at all.
+
+⚠ **Known gap, deliberately not built.** A ~3-hour capture is ~500 segments, so the fingerprint pass
+alone would be ~5 minutes and exceed a pass again. The fix then is a per-pass SEGMENT budget with
+resume by `(ParentHash, index)` — the lineage column exists (§10 V45, migration 00039). Not built
+because the measured corpus does not reach it, and resume interacts with proposal editing in ways
+that need their own design.
 
 **V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
 `v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
