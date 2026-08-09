@@ -1,6 +1,9 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import type { GuideAiring } from "@loomarr/api";
 import { useId, useMemo, useRef, useState } from "react";
+// A sibling path rather than the "@/components/ui" barrel: this file IS inside that barrel, and
+// importing it from within would close a cycle. Matches how every other ui component takes Button.
+import { Image } from "@/components/ui/image";
 import { cn } from "@/lib";
 import type { TimelineScrubberProps } from "./timeline-scrubber.type";
 
@@ -135,7 +138,27 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
                     // The episode still is the hero — a 16:9 image the card is built around. A subtle bottom
                     // gradient lets the S/E badge sit over it. object-cover fills the width without letterbox.
                     <div className="relative aspect-video w-full overflow-hidden bg-static-800">
-                      <img src={hover.block.thumbUrl} alt="" className="size-full object-cover" />
+                      {/*
+                        ⚠ This was <img src={tmdbUrl}> until V52 phase 7. The Watch timeline is one
+                        of the three surfaces §22 names as loading third-party images in the
+                        operator's browser; the still is now adopted and served from our own disk.
+
+                        `thumbImage` accompanies `thumbUrl` whenever the record resolved. It can be
+                        absent while a just-adopted image is still being fetched — but so is
+                        `thumbUrl`, so this whole block is skipped and the card falls back to its
+                        text layout. The plain <img> stays for the case where the URL resolved and
+                        the record did not.
+                      */}
+                      {hover.block.thumbImage ? (
+                        <Image
+                          image={hover.block.thumbImage}
+                          alt=""
+                          sizes="16rem"
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <img src={hover.block.thumbUrl} alt="" className="size-full object-cover" />
+                      )}
                       {episodeTag(hover.block) && (
                         <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-static-0 backdrop-blur-sm">
                           {episodeTag(hover.block)}

@@ -23,12 +23,35 @@ const jsonResponse = (body: unknown, status = 200) =>
 // 1×1 PNGs keep the posters visually distinguishable in the grid.
 // biome-ignore format: data-URI payloads read better unwrapped
 const TNG_POSTER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+// A suggestion's image record. Since V52 phase 7 the backend adopts each TMDB poster and only
+// offers a suggestion once its bytes exist, so `image` present is the ORDINARY state here — which
+// is why the stories carry one: a grid of `<img>` fallbacks would snapshot the path the picker no
+// longer takes.
+//
+// ⚠ Same-origin assets from `.storybook/story-assets/`, NOT data URIs. A base64 data URI always
+// contains a comma — `srcset`'s candidate separator — so it is unloadable there (#210), and remote
+// URLs race the snapshot. Each rung is a different colour so the baseline shows which one the
+// grid's box selected.
+const suggestionImage = (hash: string) => ({
+  hash,
+  role: "icon",
+  width: 500,
+  height: 500,
+  placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+  dominantHex: "#2b4a5e",
+  animated: false,
+  srcSetWebp: "/icon-92.webp 92w, /icon-185.webp 185w, /icon-500.webp 500w",
+  // Empty: AVIF is job-produced, so a just-adopted poster has none — the ordinary state.
+  srcSetAvif: "",
+  src: "/icon-fallback.jpg",
+});
+
 const POSTERS = [
-  { title: "The Next Generation", url: TNG_POSTER },
+  { title: "The Next Generation", url: TNG_POSTER, image: suggestionImage("a".repeat(64)) },
   // biome-ignore format: data-URI payloads read better unwrapped
-  { title: "Deep Space Nine", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYPj/HwAEAQH/7uJ9WQAAAABJRU5ErkJggg==" },
+  { title: "Deep Space Nine", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYPj/HwAEAQH/7uJ9WQAAAABJRU5ErkJggg==", image: suggestionImage("b".repeat(64)) },
   // biome-ignore format: data-URI payloads read better unwrapped
-  { title: "Voyager", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQzwAEjP8ZAAoDAv8T7QhZAAAAAElFTkSuQmCC" },
+  { title: "Voyager", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQzwAEjP8ZAAoDAv8T7QhZAAAAAElFTkSuQmCC", image: suggestionImage("c".repeat(64)) },
 ];
 
 const withSuggestions =
