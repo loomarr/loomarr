@@ -7,7 +7,7 @@ is recorded here. See `CLAUDE.md` for the prime directives; one phase per sessio
 **V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–1 of 8 done.**
 Gate for what has landed: `make check` green (0 lint, `-race`) + `make test-pg` green with the
 11 new `Images` conformance subtests **verified to actually execute under Postgres**.
-Commits `a47cc1a` (§22 doc), `7a6c48a` (codec), `931e23a` (service + store + migration 00044).
+Commits `a47cc1a` (§22 doc), `7a6c48a` (codec), `931e23a` (service + store + migration 00045).
 
 Loomarr shows images from four sources and handled each differently — icons as **database
 blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
@@ -51,16 +51,21 @@ does. Re-check with `gh pr checks 199`; the local gate was green on the same tre
 before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
 *after* a successful install.
 
-⚠⚠ **BLOCKER 1 — the migration number collides. Fix this before anything else.** This branch
-defines `00044_images.sql`; **V51b merged `00044_filler_clip_pipeline.sql` to main** while this
-branch was open. Rebase onto main and renumber both dialects to **`00045_images.sql`**.
+✅ **BLOCKER 1 — the migration collision, resolved.** This branch defined `00044_images.sql`;
+**V51b merged `00044_filler_clip_pipeline.sql` to main** while it was open. Rebased onto main
+(`d7868a9`) and renumbered both dialects to **`00045_images.sql`**; the postgres file's
+"mirror of the sqlite 00044" cross-reference moved with it.
 
-This is worse than a rename, because goose records applied migrations **by version**: a database
-that already ran one `00044` will **silently skip** the other — no error, no failure, until
-something queries a table that was never created. Check `goose_db_version` on the dev DB for a
-stale `44`; if it is there, rebuild the DB rather than hand-editing it. Forward-only (§16) means
-the **unmerged** one moves, never the merged one. This is the concrete form of the conflict
-CLAUDE.md's worktree table warns about, and 00043 carries a comment about the same trap.
+⚠ Keep the reasoning, because the next branch that sits open across a merge hits it again.
+This was worse than a rename: goose records applied migrations **by version parsed from the
+filename prefix**, so a database that already ran one `00044` **silently skips** the other — no
+error, no failure, until something queries a table that was never created. Forward-only (§16)
+decides which one moves: the **unmerged** migration renumbers, never the merged one. Check
+`goose_db_version` on a dev DB for a stale `44`; if it is there, rebuild rather than hand-edit.
+This is the concrete form of the conflict CLAUDE.md's worktree table warns about, and 00043
+carries a comment about the same trap. The renumber was cheap only because
+`internal/store/embed.go` globs `migrations/*/*.sql` — there is no hand-maintained list to
+drift.
 
 ⚠⚠ **BLOCKER 2 — CI is RED on the Go job, and the local gate did not catch it.**
 `panic: test timed out after 10m0s` → `FAIL internal/api 600.060s`. Locally that package takes

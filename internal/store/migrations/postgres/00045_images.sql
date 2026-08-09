@@ -1,5 +1,5 @@
 -- +goose Up
--- V52 (§22): the image service. Postgres mirror of the sqlite 00044; the full reasoning lives
+-- V52 (§22): the image service. Postgres mirror of the sqlite 00045; the full reasoning lives
 -- there and is not duplicated here beyond what the schema itself needs to justify.
 --
 -- ⚠ In short: one record per image with the bytes on disk under a content hash, replacing four
