@@ -6,6 +6,7 @@ export * from "./card";
 export * from "./checkbox";
 export * from "./dialog";
 export * from "./dropdown-menu";
+export * from "./image";
 export * from "./input";
 export * from "./label";
 export * from "./nav-tabs";

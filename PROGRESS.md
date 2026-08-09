@@ -4,10 +4,13 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–3b of 8 done.**
+**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–4 of 8 done.**
 Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
 `make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
-**14** `Images` conformance subtests **verified to actually execute under Postgres**.
+**14** `Images` conformance subtests **verified to actually execute under Postgres** +
+`make fe` (**15** `Image` unit tests, verified by NAME under `--reporter=verbose`, not by exit
+code) + `make fe-visual` (**778** passed, 14 new `UI/Image` baselines, against a
+**freshly rebuilt** `storybook-static`).
 
 ⚠ **"Exit 0" and "the assertions ran" are two different claims, and this branch has now been
 bitten by both halves.** The pipe version is already recorded below (`make … | tail` reports the
@@ -231,14 +234,48 @@ volume once a minute forever, with nothing connecting it to a directory nobody c
 `Dockerfile`, so the CI **Image job runs** (~30 min, both platforms under QEMU) — expected, not a
 misfire.
 
-**Next up: phase 4 — the FE `<Image>` primitive** (+ Storybook, visual baselines, and the
-`ui/index.ts` barrel, which is hand-maintained). ⚠ A fresh worktree needs `npx pnpm@11.13.1 install
---frozen-lockfile && npx pnpm@11.13.1 codegen` first — `packages/api/generated/` is gitignored, so a
-skipped codegen typechecks red *after* a successful install.
+**Phase 4 — the FE `<Image>` primitive (2026-08-09).** One Layer-1 component, seven Storybook
+stories, 15 unit tests, 14 visual baselines, both hand-maintained barrels (`ui/index.ts` and
+`packages/api/src/index.ts`'s `imagesApi`), and the `thumbhash` §14 row. §22's *Frontend contract*
+was already written at phase 0 and the implementation matches it as specified — explicit
+`width`/`height`, a `priority` mode flipping loading/fetchPriority/decoding **together**, a built-in
+error fallback, and explicit `sizes` (never `sizes="auto"`; Safari supports it in no version).
 
-**Then: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
+⚠ **The failure flag was a bare `useState(false)`, and that is a bug a full green suite could not
+see.** React reconciles by POSITION, so a grid that paginates, filters or sorts hands a *different*
+`image` to the same instance — and the flag survived the swap, rendering a perfectly good image as a
+colour block permanently. It would not have looked broken either: the block reads the NEW image's
+`dominantHex`, so it reads as a deliberate empty state. Every existing test rendered one image and
+never swapped it, which is exactly why nothing caught it; the probe that found it was a `rerender`.
+
+Fixed by giving the failure an identity — `const failed = failedHash === image.hash` — which needs
+no effect and no reset, because the comparison goes false in the same render the hash changes.
+⚠ **Sticky per image, deliberately:** a `logo` is an operator-pasted arbitrary URL (§22), so a
+failure is usually permanent and retrying known-bad bytes on every re-render is the worse default.
+
+⚠ **Both halves are sabotage-verified, and the second one mattered.** The recovery test was proven
+red before the fix. The stickiness test passed on the FIRST try, which this file already treats as
+suspect — so the plausible-wrong implementation (reset-on-hash-change via a during-render
+`setState`) was written and run: it passes recovery and **fails** stickiness. The two tests together
+pin the semantics rather than merely the bug.
+
+⚠ **A comment that contradicted its own code, corrected rather than left.** The placeholder memo
+was documented as keyed on the hash while the dep array read `image.placeholder`. The code was
+right and the comment was wrong, and the reason is specific to this service: phase 3b's fetch
+**re-keys** a row from `url:`-hash to content-hash and back-fills `placeholder`, so a hash-keyed
+memo is the classic stale-closure shape — it would hold the previous row's blur.
+
+⚠ **Nothing in the app renders `<Image>` yet, so there is no browser verification to have.** The
+Storybook gallery is the only real surface until phase 5 wires the first consumer; this is stated
+rather than glossed, because "green tests" and "seen working" are different claims and only the
+first one is available here.
+
+**Next up: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
 `scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
-so per CLAUDE.md's worktree rule they are **not** parallelisable.
+so per CLAUDE.md's worktree rule they are **not** parallelisable. ⚠ A fresh worktree needs
+`npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen` first —
+`packages/api/generated/` is gitignored, so a skipped codegen typechecks red *after* a successful
+install.
 
 ⚠ **One known gap remains**: the WebP `-tags nodynamic` gap, unchanged and still open.
 
