@@ -4,13 +4,30 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–4 of 8 done.**
+**V52 — the image service: phases 0–5 of 8 MERGED to main.** `ca15ba1d` (#199, phases 0–4) and
+`309c5dfc` (#209, phase 5). **Next: 6** clip artwork, **7** TMDB, **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ 6–7 each regenerate the orval client, so per
+CLAUDE.md's worktree rule they are **not** parallelisable.
+
 Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
 `make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
 **14** `Images` conformance subtests **verified to actually execute under Postgres** +
 `make fe` (**15** `Image` unit tests, verified by NAME under `--reporter=verbose`, not by exit
-code) + `make fe-visual` (**778** passed, 14 new `UI/Image` baselines, against a
-**freshly rebuilt** `storybook-static`).
+code) + `make fe-visual` (**780** passed, against a **freshly rebuilt** `storybook-static`) +
+phase 5 **verified live in a browser** against an isolated store.
+
+⚠ **This header named a branch that no longer exists and a phase count two behind, within an hour
+of the merge that made both wrong.** It is the same failure this file already warns about for a
+"Next up" that outlives its work — a stale pointer reads as current, and the session-start ritual
+reads THIS line first. When a V52 phase merges, this paragraph is part of the phase, not paperwork
+after it.
+
+⚠ **One open issue blocks the NEXT phase's evidence, not its code: #210.** The `UI/Image` stories'
+`srcset` uses base64 data URIs, which always contain a comma — `srcset`'s candidate separator — so
+those images never load and the baselines captured a ThumbHash placeholder rather than an image.
+Phase 6 puts `<Image>` into a clip GRID, which is precisely what those baselines would need to
+prove. Fixing #210 first (a Storybook `staticDirs` asset, so candidates are same-origin and
+comma-free) is the difference between phase 6 having a real visual gate and inheriting a blind one.
 
 ⚠ **"Exit 0" and "the assertions ran" are two different claims, and this branch has now been
 bitten by both halves.** The pipe version is already recorded below (`make … | tail` reports the
@@ -71,9 +88,9 @@ broken in its own implementation (`Resize` per rung re-walks the halving chain: 
 **Phase 2 is also done** (`1049395`): three Huma operations — `rawOp` byte serve, typed record,
 multipart upload — registered in both register lists, spec regenerated, `openapi-verify` green.
 
-**Open as PR #199**, branch `v52-image-service`, worktree `../loomarr-v52-images`. Not merged:
-CI had not reported at hand-off, and merging past an unreported check is not a thing this project
-does. Re-check with `gh pr checks 199`; the local gate was green on the same tree.
+**MERGED as `ca15ba1d` (PR #199).** It was held at one hand-off because CI had not reported, and
+merging past an unreported check is not a thing this project does — that judgement was right and is
+kept here, but the branch is gone; do not go looking for `v52-image-service`.
 ⚠ A fresh worktree needs `npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen`
 before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
 *after* a successful install.
