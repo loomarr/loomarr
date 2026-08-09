@@ -3432,18 +3432,31 @@ everything except uploads.
 WebP and AVIF are two orders of magnitude apart in encode cost, and treating them uniformly gets one
 of them wrong:
 
-- **WebP and JPEG generate lazily on first request**, behind `singleflight`. Roughly 60 ms. We do not
-  know in advance which widths a surface will ask for, so an eager matrix would encode mostly-unserved
+- **WebP and JPEG generate lazily on first request**, behind `singleflight`. We do not know in
+  advance which widths a surface will ask for, so an eager matrix would encode mostly-unserved
   renditions.
-- **AVIF generates in a background job, never on a request.** Measured at 300–1200 ms per ~1000px
-  image with libaom (SVT-AV1 roughly twice as fast), with peak memory in the hundreds of MB. A lazy
-  AVIF encode would hold a request open for a second, and a grid of fifty posters would fork fifty
-  concurrent encoders.
+- **AVIF generates in a background job, never on a request.**
 
-⚠ **The consequence is that AVIF coverage is eventually-consistent, and the frontend contract must
-tolerate it.** `<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply
-not emitted and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know
-whether the job has caught up.
+⚠ **The usual justification for that split is wrong, and it is worth recording why, because the
+correct reason leads to different decisions later.** The received wisdom is that AVIF costs an order
+of magnitude more than WebP (300–1200 ms per image). **Measured on a development box with
+`libaom -still-picture -cpu-used 6`, a 500px poster encodes in ~86 ms against WebP's ~67 ms** — about
+1.3×, not 10×. The alarming figures in circulation come from running a *video* encoder at video
+defaults: asked for a single 1000×1500 frame, SVT-AV1 allocated **2.34 GB** and spawned **82 threads**
+while producing a file **78% larger** than libaom's still-picture path.
+
+The reason that survives measurement is **concurrency, not latency**. Every AVIF encode is a forked,
+natively-multithreaded process; generating them lazily means a cold grid of fifty posters forks fifty
+at once, which will thrash a four-core NAS whatever the per-image number is. A job runs them at a
+controlled rate. A request cannot.
+
+⚠ Therefore **AVIF coverage is eventually-consistent, and the frontend contract must tolerate it.**
+`<picture>` does this natively: when no AVIF derivative exists the `<source>` is simply not emitted
+and the browser takes WebP. No request ever blocks on AVIF, and no surface has to know whether the
+job has caught up.
+
+⚠ **Use `libaom-av1` with `-still-picture`, never `libsvtav1`,** for the measurements above. The
+dependency row in §14 says the image must *contain* an AV1 encoder; this says which one to call.
 
 ### Formats and negotiation
 
