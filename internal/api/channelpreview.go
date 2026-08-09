@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mantonx/loomarr/internal/channels"
 	"github.com/mantonx/loomarr/internal/filler"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
@@ -316,7 +317,10 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	if s.pods == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
-	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
+	// ⚠ The channel is KEPT, not discarded (V51f): its `scope.era` is what an unset filler era
+	// inherits, so a draft preview that dropped it previewed a different pool than reconcile built.
+	ch, err := s.store.GetChannel(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
 	} else if err != nil {
 		return nil, err
@@ -328,26 +332,21 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}
 
-	pod, err := s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(in.Body.Filler))
+	pod, err := s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope.Era))
 	if err != nil {
 		return nil, err
 	}
 	return podToPreviewOutput(pod), nil
 }
 
-// fillerSelectionToDomain translates the policy/DTO FillerSelection into the filler-
-// package Selection the assembler consumes (the API's boundary translation, mirroring
-// channels.SelectionForChannel but for a draft that isn't tied to a stored channel).
-func fillerSelectionToDomain(f schedule.FillerSelection) filler.Selection {
-	sel := filler.Selection{
-		Audience:   filler.Audience(f.Audience),
-		Categories: f.Categories,
-		Kinds:      f.Kinds,
-		Pinned:     f.Pinned,
-		Excluded:   f.Excluded,
-	}
-	if f.Era != nil {
-		sel.Era = f.Era.From
-	}
-	return sel
+// fillerSelectionToDomain translates a DRAFT FillerSelection into the domain Selection.
+//
+// ⚠ **It delegates to `channels.SelectionFrom` rather than mirroring it (V51f).** The rule had
+// THREE implementations — `SelectionForChannel`, this one, and `podPreviewAdapter.PreviewDraft` —
+// and this was the one that omitted era inheritance. Nothing looked broken only because the
+// adapter downstream re-applied it, so two copies cancelled out. That accident stops working the
+// moment "explicitly any era" is reachable: a fallback keyed on `Era == 0` cannot tell an unset
+// era from a chosen one. `scopeEra` comes from the channel the handler already loads.
+func fillerSelectionToDomain(f schedule.FillerSelection, scopeEra *schedule.Range) filler.Selection {
+	return channels.SelectionFrom(&f, scopeEra)
 }

@@ -21,7 +21,7 @@ func qualityCatalog() []filler.Clip {
 }
 
 func qualityWindow(seed int64) filler.Window {
-	return filler.Window{ChannelID: "ch1", Seed: seed, Era: 1992, Audience: filler.Kids, GapMs: 120000, PodMax: 4}
+	return filler.Window{ChannelID: "ch1", Seed: seed, Era: filler.Year(1992), Audience: filler.Kids, GapMs: 120000, PodMax: 4}
 }
 
 func paths(p filler.Pod) []string {

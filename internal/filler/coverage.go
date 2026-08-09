@@ -27,9 +27,12 @@ type RungCoverage struct {
 
 // CoverageReport is what a target's breaks would draw from.
 type CoverageReport struct {
-	// Rungs, tightest first, in ladder order. A rung the policy skips is ABSENT rather
-	// than present-and-zero — under EraStrict there is no "widened" rung to be empty,
-	// and rendering one at 0 would read as a catalog gap instead of a setting.
+	// Rungs, tightest first, in ladder order.
+	//
+	// ⚠ Since V51f every rung is always present: `EraStrict` was the only thing that could skip
+	// one, and it was unreachable — set in tests and nowhere else. The absent-not-zero rule it
+	// justified is gone with it, so a rung at 0 now means what a reader would assume it means:
+	// nothing in the catalog reaches that rung.
 	Rungs []RungCoverage
 	// Level is the rung a break would actually be filled from — the tightest non-empty
 	// one — matching what Assemble would report as Pod.MatchLevel for the same input.

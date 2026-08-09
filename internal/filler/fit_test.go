@@ -28,10 +28,13 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("wrong-aud", 1992, LateNight),
 		{Hash: "bumper", Path: "bumper", Kind: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
 	}
-	w := Window{Era: 1992, Audience: Kids, GapMs: 120_000, PodMax: 4}
-
-	for _, strict := range []bool{false, true} {
-		policy := Policy{EraStrict: strict}
+	// ⚠ The varied dimension used to be `EraStrict` (a field no operator could set). It is now the
+	// era RANGE, which is the thing that actually varies in the wild — and a single year, a span
+	// and "any" put these clips in genuinely different rungs, so this stays a real cross-check
+	// rather than the same assertion run twice.
+	for _, era := range []EraRange{Year(1992), {From: 1990, To: 1999}, {From: 1975, To: 1992}, {}} {
+		policy := Policy{}
+		w := Window{Era: era, Audience: Kids, GapMs: 120_000, PodMax: 4}
 		pools := candidatePools(catalog, w, policy)
 
 		// The rung each clip really lands in: the FIRST (tightest) pool containing it, which is
@@ -52,25 +55,25 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 			case c.Kind != Commercial:
 				// Bumpers never run the ladder; FitFor says so with no reason.
 				if fit.Level != MatchBumperCard || fit.Reason != "" {
-					t.Errorf("strict=%v %s: bumper reported %s, want bumper_card with no reason",
-						strict, c.ID(), fit)
+					t.Errorf("era=%v %s: bumper reported %s, want bumper_card with no reason",
+						era, c.ID(), fit)
 				}
 			case isCandidate:
 				if fit.Level != want {
-					t.Errorf("strict=%v %s: FitFor says %s, the ladder puts it in %s",
-						strict, c.ID(), fit.Level, want)
+					t.Errorf("era=%v %s: FitFor says %s, the ladder puts it in %s",
+						era, c.ID(), fit.Level, want)
 				}
 				if fit.Reason != "" {
-					t.Errorf("strict=%v %s: a candidate carries reason %q", strict, c.ID(), fit.Reason)
+					t.Errorf("era=%v %s: a candidate carries reason %q", era, c.ID(), fit.Reason)
 				}
 			default:
 				if fit.Level != MatchBumperCard {
-					t.Errorf("strict=%v %s: FitFor says %s, but no pool holds it", strict, c.ID(), fit.Level)
+					t.Errorf("era=%v %s: FitFor says %s, but no pool holds it", era, c.ID(), fit.Level)
 				}
 				// ⚠ A rejected clip must always say WHY. "Won't be picked" with no reason is
 				// what sends an operator hunting through channel settings.
 				if fit.Reason == "" {
-					t.Errorf("strict=%v %s: rejected with no reason", strict, c.ID())
+					t.Errorf("era=%v %s: rejected with no reason", era, c.ID())
 				}
 			}
 		}
@@ -82,7 +85,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 // rather than the outcome.
 func TestFitFor_ExcludedBeatsPinned(t *testing.T) {
 	c := commercial("both", 1992, Kids)
-	w := Window{Era: 1992, Audience: Kids, Pinned: []string{"both"}, Excluded: []string{"both"}}
+	w := Window{Era: Year(1992), Audience: Kids, Pinned: []string{"both"}, Excluded: []string{"both"}}
 
 	fit := FitFor(c, w, Policy{})
 
@@ -100,7 +103,7 @@ func TestFitFor_ExcludedBeatsPinned(t *testing.T) {
 // And the exclusion must really be what Assemble does, not just what FitFor claims.
 func TestFitFor_ExcludedMatchesAssembly(t *testing.T) {
 	catalog := []Clip{commercial("a", 1992, Kids), commercial("b", 1992, Kids)}
-	w := Window{Era: 1992, Audience: Kids, GapMs: 120_000, PodMax: 4, Excluded: []string{"a"}, Seed: 1}
+	w := Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4, Excluded: []string{"a"}, Seed: 1}
 
 	pod := Assemble(catalog, w, Policy{}, nil)
 	for _, e := range pod.Entries {
@@ -123,7 +126,7 @@ func TestFitFor_ExcludedMatchesAssembly(t *testing.T) {
 // what plays.
 func TestFitFor_APinBypassesTheLadder(t *testing.T) {
 	c := commercial("late", 1992, LateNight) // wrong audience for a kids channel
-	w := Window{Era: 1992, Audience: Kids, Pinned: []string{"late"}, GapMs: 120_000, PodMax: 4, Seed: 1}
+	w := Window{Era: Year(1992), Audience: Kids, Pinned: []string{"late"}, GapMs: 120_000, PodMax: 4, Seed: 1}
 
 	fit := FitFor(c, w, Policy{})
 	if fit.Reason != "" {
@@ -151,7 +154,7 @@ func TestFitFor_APinBypassesTheLadder(t *testing.T) {
 // everything", and the note must not over-promise.
 func TestFitFor_APinStillObeysKindAndDuration(t *testing.T) {
 	tooLong := Clip{Hash: "long", Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000}
-	w := Window{Era: 1992, Audience: Kids, Pinned: []string{"long"}, GapMs: 120_000, PodMax: 4, Seed: 1}
+	w := Window{Era: Year(1992), Audience: Kids, Pinned: []string{"long"}, GapMs: 120_000, PodMax: 4, Seed: 1}
 	policy := Policy{MaxClipMs: 60_000}
 
 	if got := FitFor(tooLong, w, policy).Reason; got != FitDuration {
@@ -168,7 +171,7 @@ func TestFitFor_APinStillObeysKindAndDuration(t *testing.T) {
 
 // Each rejection predicate reports itself, so the UI can name the setting to change.
 func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
-	base := Window{Era: 1992, Audience: Kids}
+	base := Window{Era: Year(1992), Audience: Kids}
 
 	for _, tc := range []struct {
 		name   string
@@ -180,7 +183,7 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 		{
 			name:   "kind the channel does not use",
 			clip:   Clip{Hash: "b", Path: "b", Kind: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
-			window: Window{Era: 1992, Audience: Kids, Kinds: []string{"commercial"}},
+			window: Window{Era: Year(1992), Audience: Kids, Kinds: []string{"commercial"}},
 			want:   FitKind,
 		},
 		{
@@ -200,7 +203,7 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 		{
 			name:   "not in the channel's categories",
 			clip:   Clip{Hash: "car", Path: "car", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Category: "auto"},
-			window: Window{Era: 1992, Audience: Kids, Categories: []string{"toys"}},
+			window: Window{Era: Year(1992), Audience: Kids, Categories: []string{"toys"}},
 			want:   FitCategory,
 		},
 		{
@@ -221,23 +224,39 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 // ⚠ A general-audience clip fits ANY channel — the one asymmetry in filterAudience, and the
 // reason a kids channel is not limited to clips tagged `kids`.
 func TestFitFor_GeneralAudienceFitsAnyChannel(t *testing.T) {
-	fit := FitFor(commercial("gen", 1992, General), Window{Era: 1992, Audience: Kids}, Policy{})
+	fit := FitFor(commercial("gen", 1992, General), Window{Era: Year(1992), Audience: Kids}, Policy{})
 
 	if fit.Reason != "" || fit.Level != MatchExact {
 		t.Errorf("got %s, want an exact match with no reason", fit)
 	}
 }
 
-// Strict era removes the widened rung, so a same-decade clip drops to `audience` rather than
-// silently keeping a rung the channel's policy has switched off.
-func TestFitFor_StrictEraSkipsTheWidenedRung(t *testing.T) {
+// ⚠ **This replaces `TestFitFor_StrictEraSkipsTheWidenedRung`, and the replacement is the point.**
+// That test asserted the behaviour of `Policy.EraStrict` — a field set in tests and NOWHERE else,
+// so it proved a branch no operator could reach. Narrowing the RANGE is how a channel gets
+// strictness now, and unlike the flag it moves a clip between rungs in a way the operator can see
+// and undo. Same intent, reachable mechanism.
+func TestFitFor_NarrowingTheRangeMovesAClipDownTheLadder(t *testing.T) {
 	c := commercial("1995", 1995, Kids)
-	w := Window{Era: 1992, Audience: Kids}
 
-	if got := FitFor(c, w, Policy{}).Level; got != MatchWidened {
-		t.Errorf("non-strict: level = %s, want widened", got)
-	}
-	if got := FitFor(c, w, Policy{EraStrict: true}).Level; got != MatchAudience {
-		t.Errorf("strict: level = %s, want audience — the widened rung does not exist", got)
+	for _, tc := range []struct {
+		name string
+		era  EraRange
+		want MatchLevel
+	}{
+		{"inside the range", EraRange{From: 1990, To: 1999}, MatchExact},
+		{"a decade either side", Year(1992), MatchWidened},
+		// ⚠ 1975–1980 widens to 1965–1990, which still does not reach 1995 — so the clip falls to
+		// the audience rung. Under the old decade-BUCKET rule there was no way to express this:
+		// widening always snapped to one decade, so a range could never be too far away.
+		{"outside even the widened range", EraRange{From: 1975, To: 1980}, MatchAudience},
+		{"any era", EraRange{}, MatchExact},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := Window{Era: tc.era, Audience: Kids}
+			if got := FitFor(c, w, Policy{}).Level; got != tc.want {
+				t.Errorf("era %+v: level = %s, want %s", tc.era, got, tc.want)
+			}
+		})
 	}
 }

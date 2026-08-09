@@ -19,10 +19,15 @@ type pool struct {
 
 // candidatePools builds the ladder rungs for a window (§10 fallback ladder):
 //
-//  1. exact    — kind=commercial, exact Era, matching Audience
-//  2. widened  — kind=commercial, same decade as Era, matching Audience
-//     (skipped when policy.EraStrict — the "strict" era setting)
+//  1. exact    — kind=commercial, inside the Era RANGE, matching Audience
+//  2. widened  — kind=commercial, a decade either side of that range, matching Audience
 //  3. audience — kind=commercial, any era, matching Audience
+//
+// ⚠ **All three rungs are always built (V51f).** `policy.EraStrict` used to drop rung 2, and it
+// was set in tests and nowhere else — no settings key, no policy field, no way for an operator to
+// reach it — while `coverage.go`, `fit.go` and `coverage-meter.tsx` all carried special copy for
+// the branch. A real range subsumes it anyway: a channel that wants strictness sets a narrow
+// range, which is a control an operator can actually see and change.
 //
 // Each rung is filtered to eligible durations (density, §10). Clips already used
 // in the window are excluded at fill time (no-repeat), not here.
@@ -43,14 +48,11 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 
 	audienceMatch := filterAudience(commercials, w.Audience)
 
-	pools := []pool{
+	return []pool{
 		{MatchExact, filterEra(audienceMatch, w.Era)},
+		{MatchWidened, filterEra(audienceMatch, w.Era.Widened())},
+		{MatchAudience, audienceMatch},
 	}
-	if !policy.EraStrict {
-		pools = append(pools, pool{MatchWidened, filterDecade(audienceMatch, w.Era)})
-	}
-	pools = append(pools, pool{MatchAudience, audienceMatch})
-	return pools
 }
 
 // fillCommercials draws matched commercials from the tightest non-empty pool,
@@ -168,27 +170,77 @@ func contains(out []Clip, id string) bool {
 
 // --- pure filters (deterministic, no rng) ---
 
-func filterEra(clips []Clip, era int) []Clip {
-	if era <= 0 {
-		return clips
-	}
-	out := make([]Clip, 0, len(clips))
-	for _, c := range clips {
-		if c.Era == era {
-			out = append(out, c)
-		}
-	}
-	return out
+// EraRange is the year window a channel draws its breaks from — §10's "a year range", which the
+// wire has always carried and the domain, until V51f, threw half of away.
+//
+// ⚠ **The zero value means ANY, and the ambiguity that costs is resolved one layer up, not here.**
+// `SelectionForChannel` owns the three states the operator sees (unset = inherit the channel's
+// programming era, `{0,0}` = explicitly any, a set range = that window); by the time a range
+// reaches the ladder the inheritance has already been applied, so the only question left is
+// "which years". Keeping the third state OUT of this type is what stops every filter below from
+// having to know about channel scope.
+type EraRange struct {
+	From int
+	To   int
 }
 
-func filterDecade(clips []Clip, era int) []Clip {
-	if era <= 0 {
+// Any reports whether the range constrains nothing.
+func (r EraRange) Any() bool { return r.From <= 0 && r.To <= 0 }
+
+// Year is the single-year range — what a channel targeting "1992" means, and the shape every
+// call site had before V51f when the field was one int.
+func Year(y int) EraRange { return EraRange{From: y, To: y} }
+
+// Contains reports whether a clip's year falls in the window. A zero bound is unbounded on that
+// end, so {1990, 0} is "1990 onwards" and {0, 1999} is "up to 1999".
+//
+// ⚠ An untagged clip (year 0) is IN no range but in "any" — the same shape as the audience rule.
+// A clip whose era Loomarr could not ground must not silently satisfy an era the operator set.
+func (r EraRange) Contains(year int) bool {
+	if r.Any() {
+		return true
+	}
+	if year <= 0 {
+		return false
+	}
+	if r.From > 0 && year < r.From {
+		return false
+	}
+	if r.To > 0 && year > r.To {
+		return false
+	}
+	return true
+}
+
+// Widened is the ladder's second rung: a decade either side of the range.
+//
+// ⚠ **This deliberately replaces the old decade-BUCKET rule, and the difference matters for
+// ranges.** `filterDecade` snapped a single year to its containing decade (1994 → 1990–1999),
+// which cannot generalise: a range that already spans 1990–1999 snaps to itself, so the widened
+// rung would be identical to `exact` and the ladder would silently lose a rung exactly when the
+// operator asked for a decade. Growing by ten years at each end is strictly wider than `exact`
+// for EVERY range, which is the property a fallback rung has to have to be one.
+func (r EraRange) Widened() EraRange {
+	if r.Any() {
+		return r
+	}
+	w := r
+	if w.From > 0 {
+		w.From -= 10
+	}
+	if w.To > 0 {
+		w.To += 10
+	}
+	return w
+}
+
+func filterEra(clips []Clip, era EraRange) []Clip {
+	if era.Any() {
 		return clips
 	}
-	dec := (era / 10) * 10
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		if c.decade() == dec {
+		if era.Contains(c.Era) {
 			out = append(out, c)
 		}
 	}

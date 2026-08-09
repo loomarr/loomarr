@@ -308,8 +308,22 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
+	return SelectionFrom(ch.Policy.Filler, ch.Policy.Scope.Era)
+}
+
+// SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.
+//
+// ⚠ **It is exported because this rule had THREE implementations, and they did not agree.**
+// This one applied the scope era; `api.fillerSelectionToDomain` (self-described as "mirroring
+// channels.SelectionForChannel") did not; `app.podPreviewAdapter.PreviewDraft` applied it again.
+// The API's omission was invisible because the adapter below it put the era back — two copies
+// cancelling out, which is the worst kind of agreement because nothing looks wrong. It stops
+// working the instant "explicitly any era" exists: a fallback keyed on `Era == 0` cannot tell an
+// unset era from a chosen one, so it would overwrite the operator's answer with the channel's.
+// One writer, called from every derivation, is the only version of this that stays true.
+func SelectionFrom(f *schedule.FillerSelection, scopeEra *schedule.Range) filler.Selection {
 	sel := filler.Selection{}
-	f := ch.Policy.Filler
+	inheritEra := true
 	if f != nil {
 		sel.Audience = filler.Audience(f.Audience)
 		sel.Categories = f.Categories
@@ -317,14 +331,20 @@ func SelectionForChannel(ch store.Channel) filler.Selection {
 		sel.Pinned = f.Pinned
 		sel.Excluded = f.Excluded
 		if f.Era != nil {
-			sel.Era = f.Era.From
+			// ⚠ **PRESENCE is the opt-in, and that is what finally makes "any era" reachable
+			// (§10, V51f).** A present range means the operator has ANSWERED the era question —
+			// including answering "any" with `{0,0}`. Only absence inherits. Before this, the
+			// scope default keyed off `sel.Era == 0`, so clearing the field re-inherited on the
+			// very next derivation and a channel with a programming era had no way to say "draw
+			// from the whole catalog". Same pattern as `AutoCurate`, for the same reason.
+			inheritEra = false
+			sel.Era = filler.EraRange{From: f.Era.From, To: f.Era.To}
 		}
 	}
-	// Default the era from the channel's program scope when the filler selection didn't
-	// set one (the "seed filler era from scope.era" default, applied live rather than
-	// only stamped at create — so an existing channel benefits too).
-	if sel.Era == 0 && ch.Policy.Scope.Era != nil {
-		sel.Era = ch.Policy.Scope.Era.From
+	// The "seed filler era from scope.era" default, applied live rather than only stamped at
+	// create — so an existing channel benefits, and a channel whose scope later changes follows.
+	if inheritEra && scopeEra != nil {
+		sel.Era = filler.EraRange{From: scopeEra.From, To: scopeEra.To}
 	}
 	return sel
 }

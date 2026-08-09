@@ -140,7 +140,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	switch {
 	case len(filterEra(one, w.Era)) > 0:
 		fit.Level = MatchExact
-	case !policy.EraStrict && len(filterDecade(one, w.Era)) > 0:
+	case len(filterEra(one, w.Era.Widened())) > 0:
 		fit.Level = MatchWidened
 	default:
 		fit.Level = MatchAudience
