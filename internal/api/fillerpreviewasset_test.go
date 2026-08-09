@@ -48,10 +48,7 @@ func newHoverServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(root, "hover.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, filepath.Join(root, "hover.db"))
 	t.Cleanup(func() { _ = st.Close() })
 	// Hash → disk path. `hoverHash` maps to the clip whose .webp exists; `noPreviewHash` to one
 	// whose preview was never rendered. A path is never addressable directly, only a catalogued hash.

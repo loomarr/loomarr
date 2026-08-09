@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // errFake stands in for any copy failure the engine can report.
@@ -59,10 +58,7 @@ func (f *fakeDatabase) Switchover(_ context.Context, dsn string) error {
 
 func serverWithDatabase(t *testing.T, svc api.DatabaseService) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/api.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:    st,

@@ -138,10 +138,7 @@ type programOpts struct {
 
 func newProgramServer(t *testing.T, o programOpts) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/prog.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/prog.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := map[string]string{
@@ -438,10 +435,7 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/zero.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/zero.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}

@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,15 +9,11 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 func newDashboardServer(t *testing.T, sessions api.PlayoutSessions) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/dash.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/dash.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{

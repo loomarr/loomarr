@@ -68,10 +68,7 @@ func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
 
 func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/p.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Cartoons", Number: 42, Status: "live"},

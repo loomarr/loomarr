@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeCollections is a CollectionService returning a fixed list, or an error.
@@ -28,10 +27,7 @@ func (f fakeCollections) Collections(context.Context) ([]api.LibraryCollection, 
 // service would 501 and prove nothing about the happy path.
 func collectionsServer(t *testing.T, svc api.CollectionService) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/coll.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/coll.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:       st,

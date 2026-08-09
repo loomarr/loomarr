@@ -20,10 +20,7 @@ import (
 // mock media server, with NO users seeded (so bootstrap is open).
 func provServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/prov.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/prov.db")
 	t.Cleanup(func() { _ = st.Close() })
 
 	ms := testkit.NewMediaServer(t)

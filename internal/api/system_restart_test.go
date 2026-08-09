@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/mantonx/loomarr/internal/api"
 	"github.com/mantonx/loomarr/internal/playout"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // fakeRestart records that the loop was asked to rebuild. Counting rather than a bool so
@@ -22,10 +20,7 @@ func (f *fakeRestart) Restart() { f.calls.Add(1) }
 
 func serverWithRestart(t *testing.T, opts api.Options) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/r.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/r.db")
 	t.Cleanup(func() { _ = st.Close() })
 	opts.Store = st
 	opts.Auth = api.NewTokenAuthorizer(adminToken)

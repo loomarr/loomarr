@@ -33,10 +33,7 @@ import (
 
 func newIconUploadServer(t *testing.T) (*httptest.Server, store.Store) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/iconupload.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
 	if err := st.UpsertChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Star Trek", Number: 42, Status: "live"},

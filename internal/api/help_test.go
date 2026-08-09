@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
-	"github.com/mantonx/loomarr/internal/store"
 )
 
 // readBody drains a response so two of them can be compared verbatim.
@@ -29,10 +27,7 @@ func readBody(t *testing.T, resp *http.Response) string {
 
 func newHelpServer(t *testing.T, ready api.ReadyFunc) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/h.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openTestStore(t, t.TempDir()+"/h.db")
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
