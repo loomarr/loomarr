@@ -365,7 +365,7 @@ const (
 // deviceInitArgs returns args that must appear BEFORE the input — hardware device setup is
 // a global option, and placing it after `-i` silently applies to nothing.
 func deviceInitArgs(enc Encoder) []string {
-	switch enc {
+	switch engineOf(enc) {
 	case EncoderVAAPI:
 		return []string{"-vaapi_device", renderNode()}
 	case EncoderQSV:
@@ -392,7 +392,7 @@ func deviceInitArgs(enc Encoder) []string {
 // force_original_aspect_ratio, and `scale_cuda` needs a conditional hwupload when the
 // source was software-decoded.
 func hardwareUploadFilter(enc Encoder) string {
-	switch enc {
+	switch engineOf(enc) {
 	case EncoderVAAPI:
 		// nv12 first: hwupload will not accept the yuv420p a lavfi source produces.
 		return "format=nv12,hwupload"
@@ -437,7 +437,7 @@ func hardwareUploadFilter(enc Encoder) string {
 // parent's `-c copy` mid-stream — the exact failure §5d predicted for a bare
 // aspect-preserving scale.
 func hardwareDecodeArgs(enc Encoder) []string {
-	switch enc {
+	switch engineOf(enc) {
 	case EncoderNVENC:
 		return []string{"-hwaccel", "cuda"}
 	case EncoderVAAPI, EncoderQSV:
