@@ -66,7 +66,27 @@ describe("ClipRow", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector(".w-\\[54px\\]")).toBeInTheDocument();
 
-    rerender(<ClipRow clip={{ ...base, thumbnail: "clip-test.jpg" }} />);
+    // The image-service record (§22, V52 phase 8) — `thumbnail` and the route it addressed are
+    // retired, so "has a frame" is now "has an adopted artwork record".
+    rerender(
+      <ClipRow
+        clip={{
+          ...base,
+          thumbImage: {
+            hash: "aaaa1111",
+            role: "thumb",
+            width: 500,
+            height: 281,
+            placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+            dominantHex: "#2b4a5e",
+            animated: false,
+            srcSetWebp: "/v1/images/aaaa1111/w342.webp 342w",
+            srcSetAvif: "",
+            src: "/v1/images/aaaa1111/w500.jpg",
+          },
+        }}
+      />,
+    );
     expect(container.querySelector("img")).toBeInTheDocument();
   });
 });

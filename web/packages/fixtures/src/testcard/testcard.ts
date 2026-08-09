@@ -265,18 +265,34 @@ const taggedClip: ClipDTO = {
   tunarrProgramId: "clip-sunnyd-tagged",
 };
 
-// A clip whose frame was extracted (V17b/V30). The `hash` carries an inline data URI rather
-// than a real content hash because `clipThumbURL` passes those through unchanged — stories render
-// offline against storybook-static with no server behind them, so a `/v1/filler/thumb/…` src
-// would be a broken image in the gallery and a flaky pixel in the visual suite.
+// A clip whose frame was extracted (V17b/V30) and adopted into the image service (§22).
 //
-// A 2×1 amber PNG: large enough that `object-cover` on a 16:9 box produces a solid fill, small
-// enough to read as a fixture rather than as artwork.
+// ⚠ **The `hash` used to carry an inline data URI, and that hack retired with V52 phase 8.** It
+// existed because `clipThumbURL` passed `data:` values through unchanged, which was the only way a
+// story could show a card WITH a frame while rendering offline against storybook-static. Artwork
+// is an image record now, so the hash is an ordinary hash again and the assets come from
+// `.storybook/story-assets/` via `staticDirs`.
+//
+// ⚠ Same-origin asset paths, never data URIs — a base64 data URI always contains a comma, which is
+// `srcset`'s candidate separator, so it is unloadable there (#210). Each ladder rung is a
+// different colour so a baseline shows which rung a given box actually chose.
 const thumbnailedClip: ClipDTO = {
   ...taggedClip,
   name: "Frosted Flakes — They're Grrreat!",
-  hash: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAQAAABeK7cBAAAADklEQVR42mP8z8AARIQZADIAAv/kx0EAAAAASUVORK5CYII=",
-  thumbnail: "clip-frosted.jpg",
+  hash: "3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a",
+  thumbImage: {
+    hash: "3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a",
+    role: "thumb",
+    width: 500,
+    height: 750,
+    placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+    dominantHex: "#2b4a5e",
+    animated: false,
+    srcSetWebp: "/poster-154.webp 154w, /poster-342.webp 342w, /poster-500.webp 500w",
+    // Empty: AVIF is job-produced, so freshly-adopted artwork has none — the ordinary state.
+    srcSetAvif: "",
+    src: "/poster-fallback.jpg",
+  },
   tunarrProgramId: "clip-frosted",
 };
 

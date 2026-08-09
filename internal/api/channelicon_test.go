@@ -112,7 +112,7 @@ func postIcon(t *testing.T, srv *httptest.Server, token, filename, declaredType 
 }
 
 // The upload now hands the bytes to the image service (§22, V52 phase 5) instead of writing a
-// BLOB to `channel_icons`, and points the channel's logo at the content-addressed URL.
+// BLOB to `channel_icons`, and points the channel's logo at the content-addressed URL. retired-ok
 func TestUploadChannelIcon_IngestsAndLinksTheChannel(t *testing.T) {
 	srv, st, imgs := newIconUploadServer(t)
 	want := pngBytes(t)

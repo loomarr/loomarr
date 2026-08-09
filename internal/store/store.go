@@ -50,12 +50,9 @@ type ChannelStore interface {
 	SetChannelBroadcastCodec(ctx context.Context, id, codec string) error
 	ListChannels(ctx context.Context) ([]Channel, error)
 	DeleteChannel(ctx context.Context, id string) error
-	// PutChannelIcon stores (or replaces) a channel's uploaded icon bytes + MIME (the
-	// upload icon source). One per channel; updatedAt drives cache-busting on serve.
-	PutChannelIcon(ctx context.Context, channelID, contentType string, data []byte, updatedAt time.Time) error
-	// GetChannelIcon returns a channel's uploaded icon. ok=false when none is stored (the
-	// channel uses a TMDB/URL logo, or has no icon). The serve endpoint 404s on !ok.
-	GetChannelIcon(ctx context.Context, channelID string) (contentType string, data []byte, updatedAt time.Time, ok bool, err error)
+	// ⚠ PutChannelIcon/GetChannelIcon were removed in V52 phase 8 with the `channel_icons` retired-ok
+	// table. A channel's icon is an image-service image (§22) and its bytes are addressed by
+	// content, not by channel id — see ImageStore.
 	// ClaimDueChannels atomically claims up to limit channels whose
 	// reconcile_deadline is at/before now, for the periodic reconcile sweep
 	// (§9). Like ClaimDueTitles it *leases* each claimed channel (deadline →

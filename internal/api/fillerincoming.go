@@ -48,7 +48,13 @@ type IncomingAskDTO struct {
 	// source is producing junk.
 	From       string `json:"from,omitempty"`
 	DurationMs int64  `json:"durationMs"`
-	Thumbnail  string `json:"thumbnail,omitempty"`
+	// ThumbImage is the extracted frame as an image-service record (§22).
+	//
+	// ⚠ It replaced a `thumbnail` string in V52 phase 8. That field held a path relative to the
+	// artwork cache and was only usable via /v1/filler/thumb/{hash}, which is retired — a client
+	// can do nothing with a cache-relative path now. Absent until the adoption job has reached the
+	// clip, or when no frame was extracted; both render as no image, never a placeholder.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"Image-service record for the extracted frame; absent until adopted or when none was extracted"`
 	// Kind is what Loomarr already believes; Era/Audience/Category are its current tags.
 	Kind     string `json:"kind"`
 	Era      int    `json:"era,omitempty"`
@@ -205,8 +211,11 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 
 	out := &fillerIncomingOutput{}
 	out.Body.Asks = make([]IncomingAskDTO, 0, len(held))
+	// One batched lookup for the whole list (§22) — the same shape the catalog grid uses, and the
+	// reason clipArtworkResolver takes a slice rather than a hash.
+	heldImg := s.clipArtworkResolver(ctx, held)
 	for _, c := range held {
-		out.Body.Asks = append(out.Body.Asks, incomingDTO(c, askReasonFor(c)))
+		out.Body.Asks = append(out.Body.Asks, incomingDTO(c, askReasonFor(c), heldImg))
 	}
 	// An ungrounded era sorts ahead of a bare untagged clip: it is a decision with a proposed
 	// answer (one click), where an untagged clip needs the operator to supply everything.
@@ -253,8 +262,9 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 	if filed, ferr := s.store.ListClips(ctx, store.ClipFilter{AutoFiledOnly: true}); ferr != nil {
 		s.log.Warn("list auto-filed clips for incoming", "err", ferr)
 	} else {
+		filedImg := s.clipArtworkResolver(ctx, filed)
 		for _, c := range filed {
-			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c)))
+			out.Body.RecentlyFiled = append(out.Body.RecentlyFiled, incomingDTO(c, autoFiledReason(c), filedImg))
 		}
 		// Highest confidence last: the ones worth a second look are the ones Loomarr was least
 		// sure about, so they sort to the top where an operator scanning the list meets them first.
@@ -349,14 +359,20 @@ func rejectDTO(ctx context.Context, s *Server, r filler.ClipPipeline) IncomingRe
 
 // incomingDTO renders one clip for either half of the tab — shared so an ask and an audit row
 // cannot drift into describing the same clip differently.
-func incomingDTO(c store.Clip, reason string) IncomingAskDTO {
-	return IncomingAskDTO{
+// `img`, when non-nil, resolves an image hash to its record — pre-resolved by the caller so a
+// list of forty asks is one batched lookup rather than forty (see clipArtworkResolver).
+func incomingDTO(c store.Clip, reason string, img func(string) *ImageDTO) IncomingAskDTO {
+	d := IncomingAskDTO{
 		Hash: c.Hash, Path: c.Path, Name: c.Name, From: c.Source, DurationMs: c.DurationMs,
-		Thumbnail: c.Thumbnail, Kind: string(c.Kind), Era: c.Era,
+		Kind: string(c.Kind), Era: c.Era,
 		Audience: string(c.Audience), Category: c.Category,
 		SuggestedEra: c.SuggestedEra, Reason: reason,
 		Confidence: c.Confidence, AutoFiled: c.AutoFiled,
 	}
+	if img != nil {
+		d.ThumbImage = img(c.ThumbImageHash)
+	}
+	return d
 }
 
 // autoFiledReason says why Loomarr filed this without asking, in the operator's terms.

@@ -170,9 +170,14 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 
 // safeFillerPath resolves a clip path inside the drop-folder, returning ok=false if it escapes.
 //
-// The same containment test as `safeThumbPath` against a different base — and it is a separate
-// function rather than a parameter because the two bases are not interchangeable: the thumb
-// directory is Loomarr's own cache, while this one is the operator's folder.
+// It resolves to absolute form and tests with filepath.Rel, because a `..` component in the
+// result is the only reliable containment test however the input was spelled.
+//
+// ⚠ It used to be described as "the same containment test as `safeThumbPath` against a different
+// base". `safeThumbPath` was deleted with the artwork routes in V52 phase 8 — a clip's still and
+// hover loop are image-service images now, and the image service does its own containment. A
+// comment naming a function that no longer exists is the drift this repo greps for, so the
+// property is stated here directly rather than by reference to a neighbour.
 //
 // Note what this function deliberately does NOT do: it does not exclude the thumbnail cache
 // under `.loomarr-thumbs`. It does not need to, and adding the check would imply the containment
