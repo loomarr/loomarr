@@ -5,6 +5,11 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { Badge, Button, Caption } from "@/components/ui";
 import { cn } from "@/lib";
 import type { IncomingPanelProps } from "./incoming-panel.type";
+// ⚠ Private siblings, deliberately absent from the filler barrel. `story-coverage.test.ts`
+// enumerates the barrel's runtime exports, so exporting these would demand a story file each for
+// two halves of one panel — `incoming-panel.stories.tsx` covers all three.
+import { PipelineSection } from "./pipeline-section";
+import { RejectedSection } from "./rejected-section";
 
 // IncomingPanel — what has been downloaded but is not yet filed (V35).
 //
@@ -151,15 +156,23 @@ const IncomingPanel = ({
   asks,
   reels,
   recentlyFiled,
+  pipeline,
+  stageOrder,
+  rejected,
   onConfirmEra,
   onEditTags,
   onDismiss,
   onFile,
   onFileAllAsSuggested,
   onSendBack,
+  onRestore,
   busyPath,
   className,
 }: IncomingPanelProps) => {
+  // ⚠ **"Nothing needs you" is about the ASK queue only, and that is the point of the distinction.**
+  // A clip mid-pipeline is waiting on the machine, and a rejected one is an audit row — neither is
+  // work the operator owes. Folding either into this test would replace an accurate "nothing needs
+  // you" with a queue that never empties, and a count that cannot reach zero stops being read.
   const nothingWaiting = asks.length === 0 && reels.length === 0;
   // "File all as suggested" only means something when something HAS a suggestion — otherwise it
   // is a button that files clips as whatever they already are, which "Use it" already does per
@@ -216,6 +229,14 @@ const IncomingPanel = ({
         </section>
       )}
 
+      {/* What the machine is still working on (§10 V51b). ⚠ Sits BELOW the asks: work the operator
+          owes comes before work they merely watch. It renders alongside "Nothing needs you" quite
+          deliberately — "nothing is waiting on you" and "forty clips are being prepared" are both
+          true at once, and on a fresh download that pair is the whole answer. */}
+      {pipeline && pipeline.length > 0 && stageOrder && stageOrder.length > 0 && (
+        <PipelineSection rows={pipeline} ladder={stageOrder} />
+      )}
+
       {/* The audit half (§10 V38): what was filed with nobody looking. ⚠ It renders even when the
           queue above is empty — "nothing needs you" and "here is what I did without asking" are
           different statements, and an operator who did not expect auto-filing needs the second
@@ -256,6 +277,16 @@ const IncomingPanel = ({
             ))}
           </ul>
         </section>
+      )}
+
+      {/* The audit half of REFUSAL (§10 V51b) — sibling of the section above. Both answer "what
+          did Loomarr decide without me", from opposite ends. */}
+      {rejected && rejected.length > 0 && (
+        <RejectedSection
+          rows={rejected}
+          {...(onRestore ? { onRestore } : {})}
+          {...(busyPath ? { busyHash: busyPath } : {})}
+        />
       )}
 
       {reels.length > 0 && (

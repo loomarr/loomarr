@@ -5,6 +5,7 @@ import { ErrorState, IncomingPanel } from "@/components/loomarr";
 import { TunePanel } from "../tune-panel";
 import { useFillerInvalidate } from "../use-filler-invalidate";
 import type { IncomingTabProps } from "./incoming-tab.type";
+import { useClipPipeline } from "./use-clip-pipeline";
 
 // IncomingTab — the review queue (§10 V38): what has been downloaded but is not yet filed.
 //
@@ -21,10 +22,19 @@ import type { IncomingTabProps } from "./incoming-tab.type";
 const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
   const { invalidateLifecycle } = useFillerInvalidate();
 
+  // ⚠ Mounted BEFORE the query is read, and it must stay a plain subscription rather than
+  // something conditional on the data: the SSE frames are what keep the pipeline rows moving
+  // between refetches, and a listener attached only once rows exist would miss the transition
+  // that produced the first one.
+  useClipPipeline();
+
   const incomingQuery = fillerApi.useFillerIncoming();
   const asks = unwrap(incomingQuery.data, (b) => b.asks) ?? [];
   const reels = unwrap(incomingQuery.data, (b) => b.reels) ?? [];
   const recentlyFiled = unwrap(incomingQuery.data, (b) => b.recentlyFiled) ?? [];
+  const pipeline = unwrap(incomingQuery.data, (b) => b.pipeline) ?? [];
+  const rejected = unwrap(incomingQuery.data, (b) => b.rejected) ?? [];
+  const stageOrder = unwrap(incomingQuery.data, (b) => b.stageOrder) ?? [];
 
   // Which clip a write is in flight for, so ONE row disables rather than the whole list. The
   // mutation's own isPending is global to the hook — using it alone greys out every button on
@@ -78,6 +88,18 @@ const IncomingTab = ({ onEditTags }: IncomingTabProps) => {
         asks={asks}
         reels={reels}
         recentlyFiled={recentlyFiled}
+        pipeline={pipeline}
+        rejected={rejected}
+        stageOrder={stageOrder}
+        // ⚠ Restore rides the EXISTING bulk route with `restore: true`, not a second endpoint.
+        // The V51 plan sketched `POST /v1/filler/clips/{hash}/restore`; V51b deliberately did not
+        // build it, because two ways to un-refuse a clip are two places for the rule about which
+        // refusals may be overturned to disagree. `restorable` on the row and `Soft()` on the
+        // server are already one source of truth — a second route would make three.
+        onRestore={(clip) => {
+          setBusyClip(clip.hash);
+          removeClips.mutate({ data: { hashes: [clip.hash], restore: true } });
+        }}
         // ⚠ Carries the clip's CURRENT audience, not just the era. The BE's UpdateClipTags
         // writes era and audience unconditionally, so a bare `{era}` would silently wipe
         // audience — the hazard the comment above `confirmEra` records, and one this call

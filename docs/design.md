@@ -2544,6 +2544,63 @@ ones they are), `language` (all three states documented), `visionTagged`, `licen
 rows it would be roughly ten times the rest of the payload. ⚠ Not `visibleText`, which is the audit
 trail behind a vision-grounded tag and therefore a detail-surface concern.
 
+### The pipeline becomes visible (V51e)
+
+V51b made ingest an ordered, watchable pipeline and served every fact about it. **Nothing
+rendered any of it.** `GET /v1/filler/incoming` carried `pipeline` and `rejected`, the bus
+published a `filler_clip` frame per transition, and the frontend subscribed to neither — so the
+operator-visible symptom V51b was built to remove ("I downloaded forty commercials and nothing is
+happening") survived V51b intact. V51e is the rendering half, and it is the phase that makes the
+previous one true.
+
+**The Incoming tab gains two sections beside the ask queue**, and neither is work the operator
+owes:
+
+- **"Loomarr is preparing N clips"** — one collapsed row per clip in flight: thumbnail, name,
+  duration, an eight-pip strip, and the active-voice sentence for the rung it is on ("Working out
+  what it is"). Expanding a row gives the named ladder with skip reasons and, where one exists, a
+  percentage.
+- **"Loomarr didn't use N clips"** — the audit half of refusal V51b's own text already promised.
+  Each row carries the reason in the operator's words, the measured detail behind it, and a
+  one-click restore for the soft cases only.
+
+⚠ **The ladder is served, not hardcoded — and `IncomingPipelineDTO.stages` is the wrong source for
+it.** That field is the *visited* ladder, so a clip at `split` carries three records; a strip drawn
+from it would grow as the clip advanced instead of filling, and the operator could never see how
+much was left. The response therefore carries **`stageOrder`**, the whole sequence in run order,
+derived from `filler.StageOrder` — the same list the runner walks. A rung added to the pipeline
+appears in the UI without a second edit, and a guard test compares the served list against
+`StageOrder` itself rather than a literal, so the obvious way to "fix" a failure is not also the
+way to hide the bug.
+
+⚠ **A disabled stage is a `skipped` rung, not an absent one.** An install with vision off still has
+an eight-rung pipeline; the rung renders greyed with its reason inline ("Listen — skipped (the
+description already says enough)"). A stage that silently does not happen reads as broken, and the
+sentence is what turns a bug report into an answer.
+
+⚠ **`stageOrder` and the per-clip status are the only things the frame is allowed to move.** SSE
+frames merge onto the cached row and never assemble it: the bus drops frames for a slow subscriber
+by design, a frame for an unknown clip triggers a refetch rather than inserting a half-built row,
+and a terminal frame invalidates `/v1/filler` outright — a filed clip changes the catalog, which
+nobody watching the catalog tab has a pipeline listener for. Only running frames merge, which is
+what keeps forty clips × eight rungs from becoming 320 refetches.
+
+⚠ **The ordering rule is derived from the ladder, because there is no sequence number.** A frame
+carries no `seq` and no timestamp, so "is this newer than what is shown" is answered by the
+pipeline's own shape: a stage or status CHANGE is always applied, and only the percentage *within*
+one rung is guarded against going backwards. Strict advance-only was rejected — `Rewind`, the
+sanctioned re-tag/re-split path, moves a clip backward on purpose, and a guard that refused it
+would blank the whole re-run until something forced a refetch. A stale repaint lasts until the
+next frame; a suppressed re-run looks like the machine has stopped.
+
+⚠ **This does not contradict V40's "no badge, no review step", and the boundary is worth stating
+because the next reader will otherwise take V40 as forbidding this section.** V40 refuses files at
+the **scan** boundary, before they are catalogued, where listing every skipped file in an
+operator's media folder would be noise about files Loomarr never took responsibility for. These
+refusals happen **after** cataloguing, to clips Loomarr accepted and then decided against — and
+`filler.reject.unidentified` is ON by default, so a default that can turn down a good clip has to
+show its work.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.

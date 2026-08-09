@@ -115,6 +115,15 @@ type IncomingPipelineDTO struct {
 	Status   string `json:"status"`
 	Progress int    `json:"progress"`
 	Attempts int    `json:"attempts,omitempty" doc:"Retries spent on the current stage; absent on the first try"`
+	// DurationMs and Thumbnail make the row a clip CARD rather than a bare progress line — the
+	// operator watching forty of these identifies them by sight, not by hash.
+	//
+	// ⚠ `Thumbnail` is carried even though `/v1/filler/thumb/{hash}` could be addressed from the
+	// hash alone, because its ABSENCE is the fact worth knowing: a clip still at `probe` has no
+	// thumbnail yet, and an <img> fired on the strength of the hash would render broken for
+	// exactly the newest rows — the ones an operator is most likely to be looking at.
+	DurationMs int64  `json:"durationMs,omitempty"`
+	Thumbnail  string `json:"thumbnail,omitempty"`
 	// Stages is the finished ladder — what ran, what was skipped, and why.
 	Stages    []IncomingStageDTO `json:"stages"`
 	UpdatedAt string             `json:"updatedAt" doc:"RFC3339"`
@@ -163,6 +172,22 @@ type fillerIncomingOutput struct {
 		Pipeline []IncomingPipelineDTO `json:"pipeline"`
 		// Rejected is the audit half of refusal, the sibling of RecentlyFiled.
 		Rejected []IncomingRejectDTO `json:"rejected"`
+		// StageOrder is the whole ladder, in order — the answer to "which rungs are still ahead
+		// of this clip", which no per-clip row can give.
+		//
+		// ⚠ **`IncomingPipelineDTO.Stages` is the VISITED ladder, not the whole one.** A clip
+		// sitting at `split` carries three records; a strip that draws one pip per record would
+		// grow as the clip advances, so the operator could never see how far there is left to go.
+		// The remaining rungs have to come from somewhere, and the only honest source is the
+		// server: `filler.StageOrder` is the runner's own sequence, and rendering from it means a
+		// rung added to the pipeline appears in the UI without a second edit.
+		//
+		// ⚠ It is NOT filtered by what applies to this install. A disabled stage still runs as a
+		// `skipped` record with its reason attached — "vision tagging is off" is a fact an
+		// operator needs, and a ladder that silently omitted the rung would present a shorter
+		// pipeline as if that were the whole of it. Applicability is per clip and re-evaluated
+		// every pass (§10 V51b); the ladder is fixed.
+		StageOrder []string `json:"stageOrder" doc:"Every pipeline stage id, in run order"`
 		// RecentlyFiled is what Loomarr filed WITHOUT asking (§10 V38) — the audit half of
 		// auto-filing.
 		//
@@ -275,6 +300,14 @@ func (s *Server) fillerIncoming(ctx context.Context, _ *struct{}) (*fillerIncomi
 			out.Body.Pipeline = append(out.Body.Pipeline, pipelineDTO(ctx, s, r))
 		}
 	}
+	// ⚠ Derived from `filler.StageOrder` rather than listed here. A second copy of the sequence
+	// is the drift class this codebase keeps finding: the runner would advance through one list
+	// and the UI would draw another, and the only symptom would be a pip in the wrong place.
+	out.Body.StageOrder = make([]string, 0, len(filler.StageOrder))
+	for _, id := range filler.StageOrder {
+		out.Body.StageOrder = append(out.Body.StageOrder, string(id))
+	}
+
 	out.Body.Rejected = make([]IncomingRejectDTO, 0)
 	if rows, rerr := s.store.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true, Limit: incomingRejectLimit}); rerr != nil {
 		s.log.Warn("list rejected clips for incoming", "err", rerr)
@@ -318,8 +351,13 @@ func pipelineDTO(ctx context.Context, s *Server, r filler.ClipPipeline) Incoming
 		Stages:    make([]IncomingStageDTO, 0, len(r.Stages)),
 		UpdatedAt: r.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if clip, err := s.store.GetClip(ctx, r.ClipHash); err == nil && clip.Name != "" {
-		dto.Name = clip.Name
+	// One lookup, three fields — the clip this row is about was already being read for its name.
+	if clip, err := s.store.GetClip(ctx, r.ClipHash); err == nil {
+		if clip.Name != "" {
+			dto.Name = clip.Name
+		}
+		dto.DurationMs = clip.DurationMs
+		dto.Thumbnail = clip.Thumbnail
 	}
 	for _, rec := range r.Stages {
 		dto.Stages = append(dto.Stages, IncomingStageDTO{

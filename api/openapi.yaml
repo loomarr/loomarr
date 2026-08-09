@@ -1681,6 +1681,11 @@ components:
           items:
             $ref: "#/components/schemas/IncomingRejectDTO"
           type: array
+        stageOrder:
+          description: Every pipeline stage id, in run order
+          items:
+            type: string
+          type: array
         total:
           description: Everything waiting on a human — asks plus reels
           format: int64
@@ -1690,6 +1695,7 @@ components:
         - reels
         - pipeline
         - rejected
+        - stageOrder
         - recentlyFiled
         - total
       type: object
@@ -2384,6 +2390,9 @@ components:
           description: Retries spent on the current stage; absent on the first try
           format: int64
           type: integer
+        durationMs:
+          format: int64
+          type: integer
         hash:
           type: string
         name:
@@ -2398,6 +2407,8 @@ components:
             $ref: "#/components/schemas/IncomingStageDTO"
           type: array
         status:
+          type: string
+        thumbnail:
           type: string
         updatedAt:
           description: RFC3339

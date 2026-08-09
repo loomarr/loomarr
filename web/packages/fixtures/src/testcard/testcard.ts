@@ -5,7 +5,9 @@ import type {
   FillerSourceDTO,
   GuideChannelTimeline,
   IncomingAskDTO,
+  IncomingPipelineDTO,
   IncomingReelDTO,
+  IncomingRejectDTO,
   PodEntryDTO,
   PodPoolDTO,
   PoolDTO,
@@ -84,6 +86,83 @@ const untaggedAsk: IncomingAskDTO = {
   durationMs: 25_000,
   kind: "commercial",
   reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
+};
+
+// The ingest pipeline, mid-flight (§10 V51b).
+//
+// ⚠ **`stages` is the VISITED ladder and `stageLadder` is the whole one, and they are deliberately
+// DIFFERENT LENGTHS here.** A fixture whose visited list happened to be complete would make the
+// strip look right while it was drawn from the wrong source — the identical shape as the fixture
+// that collapsed two distinct ids onto one string and hid two shipped bugs.
+const stageLadder = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+
+// A clip on the rung that cannot measure itself: progress is the -1 sentinel, so the row must
+// show motion without a bar.
+const taggingClip: IncomingPipelineDTO = {
+  hash: "c4e2000000000000000000000000000000000000000000000000000000001985",
+  name: "Coca-Cola 1985",
+  stage: "tag",
+  status: "running",
+  progress: -1,
+  durationMs: 31_000,
+  thumbnail: "1985/cola.jpg",
+  stages: [
+    { stage: "probe", status: "done", at: "2026-08-01T12:00:00Z" },
+    { stage: "transcode", status: "done", at: "2026-08-01T12:00:20Z" },
+    {
+      stage: "split",
+      status: "skipped",
+      note: "it is a single advert, not a compilation",
+      at: "2026-08-01T12:00:21Z",
+    },
+    { stage: "language", status: "done", at: "2026-08-01T12:00:40Z" },
+    {
+      stage: "transcribe",
+      status: "skipped",
+      note: "the description already says enough",
+      at: "2026-08-01T12:00:41Z",
+    },
+  ],
+  updatedAt: "2026-08-01T12:01:00Z",
+};
+
+// The ONE rung that can measure itself — ffmpeg reports out_time against a known duration.
+// ⚠ No thumbnail: a clip this early has not had one made, which is why the row reads `thumbnail`
+// rather than firing an <img> at the hash and hoping.
+const transcodingClip: IncomingPipelineDTO = {
+  hash: "d1a7000000000000000000000000000000000000000000000000000000001991",
+  name: "Fanta 1991",
+  stage: "transcode",
+  status: "running",
+  progress: 62,
+  durationMs: 28_000,
+  stages: [{ stage: "probe", status: "done", at: "2026-08-01T12:02:00Z" }],
+  updatedAt: "2026-08-01T12:02:10Z",
+};
+
+// A soft refusal: nothing in the clip said what it was. ⚠ `restorable` because
+// `filler.reject.unidentified` is a judgement call an operator can settle — a wordless station
+// ident lands here, and §10 calls a silent advert some of the best filler there is.
+const unidentifiedReject: IncomingRejectDTO = {
+  hash: "e9b3000000000000000000000000000000000000000000000000000000000001",
+  name: "clip_0042.mp4",
+  reason: "unidentified",
+  detail: "no era, audience, tag, brand, transcript or on-screen text",
+  restorable: true,
+  stage: "score",
+  at: "2026-08-01T11:00:00Z",
+};
+
+// ⚠ A HARD refusal, and the fixture exists to prove the button does NOT render. Restoring a clip
+// with no audio puts silence in a break — a control that could not work is worse than none.
+const noAudioReject: IncomingRejectDTO = {
+  hash: "f2c8000000000000000000000000000000000000000000000000000000000002",
+  name: "silent-promo.mp4",
+  reason: "no_audio",
+  detail: "no audio stream in the container",
+  restorable: false,
+  stage: "probe",
+  at: "2026-08-01T11:05:00Z",
 };
 
 // A compilation mid-split, with the count of segments an operator cannot simply accept.
@@ -760,6 +839,7 @@ export {
   guideTo,
   healthyPool,
   intentTemplates,
+  noAudioReject,
   pendingPull,
   podClips,
   podEntries,
@@ -767,10 +847,14 @@ export {
   sampleIntent,
   searchResults,
   splitProposal,
+  stageLadder,
   suggestedEraClip,
   taggedClip,
+  taggingClip,
   thinPool,
   thumbnailedClip,
+  transcodingClip,
+  unidentifiedReject,
   unplaceablePool,
   untaggedAsk,
   untaggedClip,

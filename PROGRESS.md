@@ -642,6 +642,82 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
+**V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
+`v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
+(biome + tsc + unit + SPA + storybook build) + `make openapi-verify`. ⚠ **`make fe-visual` and
+`make e2e` were NOT run locally** — the maintainer's machine cannot carry Playwright, so both are
+**CI-verified only**, and three new stories mean the visual job may legitimately need baselines.
+Said plainly rather than implied green.
+
+**V51b built an ordered, watchable pipeline and shipped it to an audience of zero.**
+`GET /v1/filler/incoming` carried `pipeline` and `rejected`, `eventTypeMap` carried a
+`filler_clip` frame, `FillerClipEvent` was a typed DTO reaching orval — and `grep onFillerClip
+web/apps/web/src` returned nothing. The operator-visible symptom V51b existed to remove ("I
+downloaded forty commercials and nothing is happening") **survived V51b unchanged**, because
+every fact needed to fix it was being served to a frontend that never asked. That is the shape
+worth remembering: a phase can be complete on its own terms and deliver none of its purpose.
+
+⚠ **Two contract gaps between the V51 plan and what V51b actually built, both found by reading
+the Go rather than the plan.**
+
+**1. The plan's reason for "stages come from the server" was wrong; its conclusion was right for a
+different reason.** It argued installs vary in ladder LENGTH (vision off → 7 rungs). They do not:
+`filler.StageOrder` is a fixed eight-element compile-time constant and a disabled rung is recorded
+as `skipped`, which the plan separately insists must be rendered *with its reason*. The real
+constraint is that `IncomingPipelineDTO.stages` is the **visited** ladder — a clip at `split`
+sends three records — so a strip drawn from it would GROW as the clip advanced instead of filling.
+The response now carries `stageOrder`, derived from `StageOrder` itself. ⚠ Its guard compares
+against `filler.StageOrder` rather than a literal list, because a literal here would be the second
+copy of the sequence the field exists to prevent, and editing it is exactly how a real drift gets
+buried.
+
+**2. The plan's out-of-order guard had nothing to key on.** It specified "merge only ever advances,
+using the BE's monotonic `seq`" — `FillerClipEvent` has no `seq` and no timestamp. Ordering is
+derived from the ladder instead, and the rule is deliberately narrow: **a stage or status change
+is always applied; only the percentage within one rung is guarded.** Strictly advance-only was
+rejected on the maintainer's call — `Rewind` moves a clip backward on purpose, and a strict guard
+would blank the entire re-run until something forced a refetch. ⚠ **The status half is
+load-bearing and was not in the original choice**: `pipeline.go`'s retry path re-runs a failed rung
+with `Progress` reset to 0, so guarding on progress alone would pin the row at "failed at 80%"
+while the transcode had genuinely restarted. It has its own test.
+
+**Three defects found while building, none of which any existing test could see.**
+
+⚠ **A false green, and the mechanism is worth recording.** The Bash cwd silently reverted from the
+worktree to the primary repo mid-session (the trap `loomarr-bash-cwd-resets-use-git-c` already
+documents for *commits*). Edits landed correctly by absolute path; `go test ./internal/api/` ran
+against **main's** copy and printed `ok`. A brand-new test was reported verified having never been
+compiled — and once run in the right tree it did not even BUILD (`int` vs `int64`,
+`filler.KindCommercial` undefined). The tell was `[no tests to run]` on a `-run` regex naming a
+test that certainly existed: **a `-run` filter matching nothing exits 0**, so a typo and a
+wrong-directory run are indistinguishable from a pass. Use `-v` on a new test's first run; `--- PASS:
+<name>` proves it existed, `ok` does not.
+
+⚠ **The pipeline half of `/v1/filler/incoming` shipped in V51b with no API test of its contents at
+all** — the same shape as V51a's `clips.confidence`, where a column round-tripped perfectly and had
+no producer. A row is drawn as a clip card, so `durationMs` and `thumbnail` were added from the
+lookup `pipelineDTO` was already performing, and all three fields are now asserted against a clip
+whose values are deliberately distinct from each other and from its hash.
+
+⚠ **The strip and the expanded ladder both claimed the accessible name `Progress for <clip>`**,
+putting two identically-named lists in the tree for one row. It surfaced only because
+`hidden="until-found"` keeps a collapsed panel in the DOM — so `queryByText` found detail that was
+never exposed, and the first draft of the "stays collapsed" test **would have passed against a
+panel that never collapsed**. Names are now variant-specific and the test queries by ROLE, which
+asserts exposure rather than presence.
+
+**What was deliberately not built, so it reads as sequenced rather than forgotten.** Preview-then-
+accept on a pipeline row (a clip mid-`transcode` is being rewritten by ffmpeg; previewing it is a
+question this phase does not answer); the `CollapsibleSection` refactor onto the new `Disclosure`;
+migrating the app's three other progress bars onto `Progress`; and V51d's two parked capabilities
+(the composite container row, the sort control). The catalog decomposition of `filler-page.tsx`
+also stays open — this slice took the Incoming half only.
+
+**Sabotage-verified, each confirmed red then reverted:** the `stageOrder` drift guard (dropped one
+rung), the pipeline-row DTO (dropped `DurationMs`), the SSE merge guard (always-advance), the merge
+itself (wholesale row replacement), the ladder source (drew from `stages` — took 3 tests red), the
+events provider drift guard (removed one of the two wirings), and the collapse rule (`defaultOpen`).
+
 **V51d — the catalog is paged, sorted, and searched wider (2026-08-09).** Gate: `make check`
 (0 lint, `-race`) + `make test-pg` (both dialects, **4 new conformance suites × 2 backends**) +
 `make fe` (biome clean on 918 files + tsc + unit + SPA + storybook build) + `make openapi-verify`

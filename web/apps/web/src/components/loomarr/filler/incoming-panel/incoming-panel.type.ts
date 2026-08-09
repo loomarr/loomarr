@@ -1,9 +1,34 @@
-import type { IncomingAskDTO, IncomingReelDTO } from "@loomarr/api";
+import type { IncomingAskDTO, IncomingPipelineDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
 
 interface IncomingPanelProps {
   // The server's answer, verbatim (contract 1:1) — the two halves of one read.
   asks: IncomingAskDTO[];
   reels: IncomingReelDTO[];
+  /**
+   * What is still being PREPARED (§10 V51b) — the answer to "I downloaded forty clips and nothing
+   * is happening". Nothing here needs the operator; it is the machine showing its work.
+   */
+  pipeline?: IncomingPipelineDTO[];
+  /**
+   * The whole stage ladder in run order — the response's `stageOrder`.
+   *
+   * ⚠ Required alongside `pipeline` and NOT derived from it: a row's `stages` is the VISITED
+   * ladder, so a strip drawn from it would grow as a clip advances instead of filling.
+   */
+  stageOrder?: string[];
+  /**
+   * What ingest REFUSED, and why (§10 V51b) — the audit half of refusal, sibling of
+   * `recentlyFiled`. Not optional in spirit: `filler.reject.unidentified` is on by default, so a
+   * default that can turn down good clips has to show what it caught.
+   */
+  rejected?: IncomingRejectDTO[];
+  /**
+   * Puts a soft-rejected clip back in the catalog.
+   *
+   * ⚠ Rendered only when the server marked that clip `restorable`. A hard reject (no audio, no
+   * video, unreadable) offers no override, because restoring it is a control that could not work.
+   */
+  onRestore?: (clip: IncomingRejectDTO) => void;
   /**
    * What Loomarr filed WITHOUT asking (§10 V38) — the audit half of auto-filing.
    *

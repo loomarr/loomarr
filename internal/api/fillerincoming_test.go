@@ -24,7 +24,22 @@ type incomingBody struct {
 		Segments       int    `json:"segments"`
 		NeedsAttention int    `json:"needsAttention"`
 	} `json:"reels"`
-	Total int `json:"total"`
+	Pipeline []struct {
+		Hash       string `json:"hash"`
+		Name       string `json:"name"`
+		DurationMs int64  `json:"durationMs"`
+		Thumbnail  string `json:"thumbnail"`
+		Stage      string `json:"stage"`
+		Status     string `json:"status"`
+		Progress   int    `json:"progress"`
+		Stages     []struct {
+			Stage  string `json:"stage"`
+			Status string `json:"status"`
+			Note   string `json:"note"`
+		} `json:"stages"`
+	} `json:"pipeline"`
+	StageOrder []string `json:"stageOrder"`
+	Total      int      `json:"total"`
 }
 
 func getIncoming(t *testing.T, url, token string) (*http.Response, incomingBody) {
@@ -200,6 +215,77 @@ func TestFillerIncoming_EmptyHalvesAreArrays(t *testing.T) {
 	for _, k := range []string{"asks", "reels"} {
 		if got := string(raw[k]); got != "[]" {
 			t.Errorf("%s = %s, want []", k, got)
+		}
+	}
+}
+
+// A pipeline row describes a CLIP, not just a position (§10 V51e).
+//
+// ⚠ The pipeline half of this response shipped in V51b with no API-level test of its contents at
+// all, which is the same shape as the defect V51a found in `clips.confidence`: a field can be
+// declared, typed, serialised and completely empty, and the only symptom is a UI that renders
+// nothing where something should be. The row is drawn as a clip card — thumbnail, name,
+// duration — so all three are asserted against a clip whose values are deliberately distinct
+// from each other and from its hash.
+func TestFillerIncoming_PipelineRowCarriesTheClipItDescribes(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	putClip(t, st, filler.Clip{
+		Hash: "hash-cola", Path: "1985/cola.mp4", Name: "Coca-Cola 1985",
+		DurationMs: 31_000, Thumbnail: "1985/cola.jpg", Kind: filler.Commercial,
+	})
+	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
+		ClipHash: "hash-cola", Stage: filler.StageTag, Status: filler.StatusRunning,
+		// -1 is the "this rung cannot measure itself" sentinel, and it must survive the wire as
+		// -1 rather than being flattened to 0 by an `omitempty` someone adds later.
+		Progress: -1, Disposition: filler.DispositionRunning,
+		Stages: []filler.StageRecord{
+			{Stage: filler.StageProbe, Status: filler.StatusDone, At: time.Now().UTC()},
+			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: time.Now().UTC()},
+		},
+		UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.Pipeline) != 1 {
+		t.Fatalf("pipeline has %d rows, want 1", len(body.Pipeline))
+	}
+	got := body.Pipeline[0]
+	if got.Name != "Coca-Cola 1985" || got.DurationMs != 31_000 || got.Thumbnail != "1985/cola.jpg" {
+		t.Errorf("row = {name %q, durationMs %d, thumbnail %q}, want the clip's own three",
+			got.Name, got.DurationMs, got.Thumbnail)
+	}
+	if got.Stage != "tag" || got.Status != "running" || got.Progress != -1 {
+		t.Errorf("row = {stage %q, status %q, progress %d}, want {tag, running, -1}", got.Stage, got.Status, got.Progress)
+	}
+	// ⚠ The VISITED ladder, including the skip and its reason. A stage that silently did not
+	// happen reads as broken, so the note is the half that makes the skip legible.
+	if len(got.Stages) != 2 || got.Stages[1].Status != "skipped" || got.Stages[1].Note == "" {
+		t.Errorf("stages = %+v, want probe/done then transcribe/skipped with its note", got.Stages)
+	}
+}
+
+// The ladder the UI draws is the ladder the runner walks (§10 V51e).
+//
+// ⚠ This is a DRIFT guard, not a shape check, which is why it compares against
+// `filler.StageOrder` itself rather than a literal list of eight ids. A literal here would be the
+// second copy of the sequence the field exists to avoid: adding a rung to the pipeline would leave
+// this test red for the wrong reason, and the obvious fix — editing the literal — is exactly the
+// edit that hides the bug. The strip renders one pip per element, so an omission or a reordering
+// is a pipeline the operator is shown that the machine does not run.
+func TestFillerIncoming_ServesTheWholeStageLadderInRunOrder(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+
+	_, body := getIncoming(t, srv.URL+"/v1/filler/incoming", adminToken)
+
+	if len(body.StageOrder) != len(filler.StageOrder) {
+		t.Fatalf("stageOrder = %v (%d stages), want %d", body.StageOrder, len(body.StageOrder), len(filler.StageOrder))
+	}
+	for i, want := range filler.StageOrder {
+		if body.StageOrder[i] != string(want) {
+			t.Errorf("stageOrder[%d] = %q, want %q", i, body.StageOrder[i], want)
 		}
 	}
 }

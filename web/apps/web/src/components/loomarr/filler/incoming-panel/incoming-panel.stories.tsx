@@ -1,4 +1,14 @@
-import { cleanReel, compilationReel, guessedEraAsk, untaggedAsk } from "@loomarr/fixtures";
+import {
+  cleanReel,
+  compilationReel,
+  guessedEraAsk,
+  noAudioReject,
+  stageLadder,
+  taggingClip,
+  transcodingClip,
+  unidentifiedReject,
+  untaggedAsk,
+} from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { IncomingPanel } from "./incoming-panel";
@@ -103,5 +113,55 @@ const FiledWithoutAsking: Story = {
   },
 };
 
+// ⚠ THE state V51b built and nothing rendered: forty clips downloaded, the machine working, and
+// before this the queue said "waiting to be checked" for up to an hour. Note it renders BESIDE
+// "Nothing needs you" — both statements are true at once, and on a fresh download that pair is
+// the complete answer.
+//
+// The two rows are deliberately on different rungs: `tag` cannot measure itself (the -1 sentinel,
+// so no bar) while `transcode` can. A queue where every row measured would hide the distinction.
+const BeingPrepared: Story = {
+  args: {
+    asks: [],
+    reels: [],
+    pipeline: [taggingClip, transcodingClip],
+    stageOrder: stageLadder,
+  },
+};
+
+// Expanded, so the named ladder and the skip REASONS are in the baseline. A stage that silently
+// does not happen reads as broken — "Listen — skipped" invites the bug report that
+// "(the description already says enough)" answers.
+const BeingPreparedExpanded: Story = {
+  args: { ...BeingPrepared.args },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: /Show what is happening to Coca-Cola/ }));
+  },
+};
+
+// ⚠ The audit half of REFUSAL, and the two rows exist to show the asymmetry: `unidentified` is a
+// judgement call an operator may overturn, `no_audio` is not — restoring a silent clip puts
+// silence in a break, so that row gets NO button. The server decides which is which
+// (`RejectReason.Soft`); deriving it a second time here would be the drift class this codebase
+// keeps finding.
+const Rejected: Story = {
+  args: {
+    asks: [],
+    reels: [],
+    rejected: [unidentifiedReject, noAudioReject],
+    onRestore: () => {},
+  },
+};
+
 export default meta;
-export { BothAskKinds, CompilationsToReview, FiledWithoutAsking, NothingWaiting, OneRowBusy, WithConfidence };
+export {
+  BeingPrepared,
+  BeingPreparedExpanded,
+  BothAskKinds,
+  CompilationsToReview,
+  FiledWithoutAsking,
+  NothingWaiting,
+  OneRowBusy,
+  Rejected,
+  WithConfidence,
+};

@@ -1,4 +1,4 @@
-import type { IncomingAskDTO, IncomingReelDTO } from "@loomarr/api";
+import type { IncomingAskDTO, IncomingPipelineDTO, IncomingReelDTO, IncomingRejectDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -188,5 +188,126 @@ describe("IncomingPanel confidence and filing", () => {
     expect(screen.getByText(/filed 1 clip without asking/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /send it back/i }));
     expect(onSendBack).toHaveBeenCalledWith(filed);
+  });
+});
+
+// The pipeline half (§10 V51b/V51e) — what the machine is still working on.
+describe("IncomingPanel — being prepared", () => {
+  const LADDER = ["probe", "transcode", "split", "language", "transcribe", "tag", "vision", "score"];
+
+  const row = (over: Partial<IncomingPipelineDTO> = {}): IncomingPipelineDTO => ({
+    hash: "hash-cola",
+    name: "Coca-Cola 1985",
+    stage: "tag",
+    status: "running",
+    progress: -1,
+    stages: [{ stage: "probe", status: "done", at: "2026-08-08T10:00:00Z" }],
+    updatedAt: "2026-08-08T10:01:00Z",
+    ...over,
+  });
+
+  // ⚠ Both statements are true at once, and the panel must make both. A clip mid-pipeline is
+  // waiting on the MACHINE; folding it into "needs you" would give the tab a count that never
+  // reaches zero, and a count that cannot clear stops being read.
+  it("says nothing needs you AND that clips are being prepared", () => {
+    renderAsks(<IncomingPanel asks={[]} reels={[]} pipeline={[row()]} stageOrder={LADDER} />);
+
+    expect(screen.getByText("Nothing needs you")).toBeInTheDocument();
+    expect(screen.getByText(/preparing 1 clip/i)).toBeInTheDocument();
+  });
+
+  // The active voice, in the operator's vocabulary — not "tag / running".
+  it("says what is happening to the clip in words", () => {
+    renderAsks(<IncomingPanel asks={[]} reels={[]} pipeline={[row()]} stageOrder={LADDER} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Coca-Cola 1985: Working out what it is");
+  });
+
+  // ⚠ EXACTLY ONE live region for the section, carrying the most recent transition. One per row —
+  // or per rung — is the "chorus of live regions" frontend-design §5.3 forbids: forty clips
+  // announcing themselves is unusable, not forty times as useful.
+  it("announces through exactly one live region, whatever the queue's length", () => {
+    renderAsks(
+      <IncomingPanel
+        asks={[]}
+        reels={[]}
+        pipeline={[row(), row({ hash: "b", name: "Pepsi 1984" }), row({ hash: "c", name: "Fanta 1991" })]}
+        stageOrder={LADDER}
+      />,
+    );
+
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  // Collapsed by default: forty clips × eight rungs is 320 lines of moving text.
+  //
+  // ⚠ Asserted through the ACCESSIBILITY TREE, not `queryByText`. `hiddenUntilFound` leaves the
+  // panel in the DOM on purpose — that is what lets find-in-page reach a collapsed row and open
+  // it — so a text query finds the detail whether or not it is exposed, and the first draft of
+  // this test passed against a panel that was never collapsed at all. Role queries skip what is
+  // hidden from assistive tech, which is the property actually being claimed.
+  it("keeps the stage-by-stage detail out of the accessibility tree until it is opened", async () => {
+    renderAsks(<IncomingPanel asks={[]} reels={[]} pipeline={[row()]} stageOrder={LADDER} />);
+    const detail = { name: "Stage detail for Coca-Cola 1985" } as const;
+
+    expect(screen.queryByRole("list", detail)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /show what is happening to Coca-Cola/i }));
+    expect(screen.getByRole("list", detail)).toBeInTheDocument();
+  });
+});
+
+// The audit half of refusal (§10 V51b/V51e).
+describe("IncomingPanel — rejected", () => {
+  const reject = (over: Partial<IncomingRejectDTO> = {}): IncomingRejectDTO => ({
+    hash: "hash-mystery",
+    name: "clip_0042.mp4",
+    reason: "unidentified",
+    detail: "no era, audience, tag, brand, transcript or on-screen text",
+    restorable: true,
+    stage: "score",
+    at: "2026-08-08T09:00:00Z",
+    ...over,
+  });
+
+  // The server sends a CODE; the wording is the frontend's (§11's refusal-code precedent).
+  it("turns the refusal code into something an operator can read, with the measured detail", () => {
+    renderAsks(<IncomingPanel asks={[]} reels={[]} rejected={[reject()]} />);
+
+    expect(screen.getByText("nothing in it said what it was")).toBeInTheDocument();
+    expect(screen.getByText(/no era, audience, tag/)).toBeInTheDocument();
+  });
+
+  it("offers the override for a soft refusal", async () => {
+    const onRestore = vi.fn();
+    const clip = reject();
+    renderAsks(<IncomingPanel asks={[]} reels={[]} rejected={[clip]} onRestore={onRestore} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /use it anyway/i }));
+    expect(onRestore).toHaveBeenCalledWith(clip);
+  });
+
+  // ⚠ THE asymmetry. Restoring a clip with no audio puts silence in a break, so there is no
+  // answer a human could give — and a control that cannot work is worse than no control. The
+  // server owns which refusals are soft; this only renders what it said.
+  it("offers NO override for a hard refusal", () => {
+    renderAsks(
+      <IncomingPanel
+        asks={[]}
+        reels={[]}
+        rejected={[reject({ reason: "no_audio", restorable: false })]}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("it has no sound")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /use it anyway/i })).not.toBeInTheDocument();
+  });
+
+  // A code this build has no copy for comes from a NEWER backend. The raw code tells an operator —
+  // and a bug report — something; "Unknown reason" tells nobody anything.
+  it("falls back to the server's own code rather than inventing a placeholder", () => {
+    renderAsks(<IncomingPanel asks={[]} reels={[]} rejected={[reject({ reason: "fingerprint_clash" })]} />);
+
+    expect(screen.getByText("fingerprint_clash")).toBeInTheDocument();
   });
 });
