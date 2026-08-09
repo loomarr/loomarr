@@ -45,6 +45,22 @@ func (f *fakeStore) GetImage(_ context.Context, hash string) (Image, error) {
 	return img, nil
 }
 
+// ⚠ Mirrors the real store's `origin_fetched_at > 0` predicate rather than matching on source_url
+// alone. A fake that returned the placeholder row would make Adopt look correct here while the
+// SQL one behaved differently — and the placeholder is precisely the row whose hash stops
+// resolving, so accepting it is the bug this method exists to prevent.
+func (f *fakeStore) GetFetchedBySourceURL(_ context.Context, src string) (Image, error) {
+	if src == "" {
+		return Image{}, ErrNotFound
+	}
+	for _, img := range f.images {
+		if img.SourceURL == src && !img.OriginFetchedAt.IsZero() {
+			return img, nil
+		}
+	}
+	return Image{}, ErrNotFound
+}
+
 func (f *fakeStore) TouchImage(_ context.Context, hash string, at time.Time) error {
 	f.touched[hash] = at
 	return nil

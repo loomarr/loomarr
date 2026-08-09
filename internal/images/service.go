@@ -28,6 +28,9 @@ import (
 type Store interface {
 	PutImage(ctx context.Context, img Image) error
 	GetImage(ctx context.Context, hash string) (Image, error)
+	// GetFetchedBySourceURL finds the row holding the bytes already downloaded from a source URL.
+	// Adopt needs it because the fetch re-key deletes the row Adopt itself created — see there.
+	GetFetchedBySourceURL(ctx context.Context, src string) (Image, error)
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 	PutRef(ctx context.Context, ref Ref) error
 	PutDerivative(ctx context.Context, d Derivative) error
@@ -237,9 +240,28 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 		return Image{}, fmt.Errorf("images: adopt needs an absolute https URL, got %q", srcURL)
 	}
 
+	// ⚠ **Check the FETCHED row first, and the order is the whole fix.** The placeholder lookup
+	// below cannot find an image that already succeeded: the fetch re-keys the row onto the content
+	// hash and deletes the URL-keyed one, so `GetImage(hashOfURL(src))` misses forever afterwards.
+	// Without this, re-adopting a URL minted a second placeholder and the fetch job re-downloaded
+	// bytes already on disk — once per adopt, forever. Harmless while nothing called Adopt twice;
+	// a per-open cost the moment the icon picker did (V52 phase 7).
+	if existing, err := s.store.GetFetchedBySourceURL(ctx, srcURL); err == nil {
+		if req.OwnerKind != "" && req.OwnerID != "" {
+			if err := s.store.PutRef(ctx, Ref{
+				ImageHash: existing.Hash, OwnerKind: req.OwnerKind, OwnerID: req.OwnerID, Role: existing.Role,
+			}); err != nil {
+				return Image{}, err
+			}
+		}
+		return existing, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return Image{}, err
+	}
+
 	hash := hashOfURL(srcURL)
 	if existing, err := s.store.GetImage(ctx, hash); err == nil {
-		return existing, nil // already adopted; the fetch job owns it from here
+		return existing, nil // adopted and still pending; the fetch job owns it from here
 	} else if !errors.Is(err, ErrNotFound) {
 		return Image{}, err
 	}

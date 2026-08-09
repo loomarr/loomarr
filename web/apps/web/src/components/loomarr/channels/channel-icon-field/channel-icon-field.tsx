@@ -213,7 +213,29 @@ const ChannelIconField = ({
                         onClick={() => void pickSuggestion(s.url)}
                         className="block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border border-border transition-colors hover:border-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
+                        {/*
+                          ⚠ These were <img src={tmdbUrl}> until V52 phase 7 — a dozen third-party
+                          requests from the operator's browser every time this popover opened,
+                          which §22 names as one of the three defects the image service exists to
+                          remove. The bytes are now ours, so the primitive applies: srcset at the
+                          icon ladder and a ThumbHash while each loads.
+
+                          `image` is always present here in practice — the backend only offers a
+                          suggestion once its bytes have landed — but it stays optional in the DTO,
+                          so the plain <img> remains as the honest fallback rather than an
+                          assertion that would render nothing if the record went missing.
+                        */}
+                        {s.image ? (
+                          <Image
+                            image={s.image}
+                            alt={s.title}
+                            sizes="(min-width: 640px) 6rem, 4rem"
+                            className="size-full object-cover"
+                            fallback={<ImageOff className="size-4 text-static-500" aria-hidden />}
+                          />
+                        ) : (
+                          <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
+                        )}
                       </button>
                     </li>
                   ))}
