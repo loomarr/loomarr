@@ -315,9 +315,15 @@ func ConcatArgs(playlistURL string) []string {
 
 	// Reconnect flags, PARENT tier — and ONLY for an http playlist. See isHTTP.
 	//
-	// `-reconnect_at_eof 1` is THE MECHANISM, not a resilience nicety: it makes a child
-	// program's EOF non-fatal so the demuxer advances to the next playlist entry instead of
-	// ending the channel. Without it the channel plays exactly one program and stops.
+	// ⚠ These are RESILIENCE, not the advance mechanism. This comment used to claim
+	// `-reconnect_at_eof 1` was "THE MECHANISM … without it the channel plays exactly one program
+	// and stops". Measured 2026-08-09 against a minimal harness: on n7.1 with NO reconnect flags
+	// at all, the demuxer still opened five entries and advanced correctly. What actually makes
+	// the advance work is the concat demuxer reading an entry to a clean EOF — see
+	// TestLive_ConcatAdvancesPastAChunkedHTTPEntry, which is the real guard.
+	//
+	// They are kept because a transient network blip mid-programme should not end a channel, which
+	// is a genuine (if narrower) job than the one previously claimed.
 	if isHTTP(playlistURL) {
 		args = append(args, "-reconnect", "1", "-reconnect_at_eof", "1")
 	}
@@ -330,6 +336,14 @@ func ConcatArgs(playlistURL string) []string {
 		"-protocol_whitelist", "file,http,https,tcp,tls,pipe",
 		// Both playlist entries are the same URL; looping forever is what makes the channel
 		// continuous (prior-art §1).
+		//
+		// ⚠ It also MASKS a broken advance, which is worth knowing when diagnosing a channel that
+		// seems stuck. If the demuxer cannot open the next entry, this replays the buffered
+		// programme instead — so the parent keeps emitting continuous output and exits 0, and the
+		// only evidence is `Error during demuxing` lines that `-loglevel error` plus
+		// Process.LastError (last line only) discard. Measured: a 3s programme became 12s of
+		// output from ONE HTTP fetch. Symptom is "the channel repeats one programme", never a
+		// failure. See TestLive_ConcatAdvancesPastAChunkedHTTPEntry.
 		"-stream_loop", "-1",
 		"-f", "concat",
 		// Entries are absolute URLs, so the demuxer's relative-path safety check must be
