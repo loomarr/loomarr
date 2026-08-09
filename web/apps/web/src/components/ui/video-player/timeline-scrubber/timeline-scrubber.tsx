@@ -1,5 +1,6 @@
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import type { GuideAiring } from "@loomarr/api";
-import { useId, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib";
 import type { TimelineScrubberProps } from "./timeline-scrubber.type";
 
@@ -49,11 +50,37 @@ const durationLabel = (ms: number): string => {
 const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) => {
   const now = nowMs ?? Date.now();
   const trackRef = useRef<HTMLDivElement>(null);
-  // The inspected block, the pointer x (px, within the track) and the track's width — the last two
-  // let the hover card CLAMP itself inside the strip instead of overflowing at the edges. Null = not
-  // hovering.
-  const [hover, setHover] = useState<{ block: GuideAiring; pointerX: number; trackW: number } | null>(null);
+  // The inspected block and the pointer x (px, within the track), which together place the hover
+  // card. Null = not hovering.
+  //
+  // ⚠ `trackW` used to ride along here and is GONE: it existed only to clamp the card's left inside
+  // the strip, and the positioner does that against the viewport now. A width nobody reads is the
+  // kind of leftover that later reads as meaningful.
+  const [hover, setHover] = useState<{ block: GuideAiring; pointerX: number } | null>(null);
   const descId = useId();
+
+  // The hover card is anchored to a VIRTUAL element at the pointer — a zero-size rect on the track
+  // at the inspected x. That is what lets a floating positioner follow a pointer which has no
+  // element of its own to attach to.
+  //
+  // Recomputed per hover so the positioner re-measures; a stable identity would pin the card at the
+  // first point inspected.
+  //
+  // ⚠ ABOVE the empty-airings guard, not beside its use. A hook after an early return runs in a
+  // different order on the render where the guard fires, which is a real hooks violation and not a
+  // style preference — Biome caught it, and it is the kind of thing that shows up later as state
+  // attached to the wrong hook slot rather than as a clean crash.
+  const anchor = useMemo(
+    () => ({
+      getBoundingClientRect: () => {
+        const rect = trackRef.current?.getBoundingClientRect();
+        const left = (rect?.left ?? 0) + (hover?.pointerX ?? 0);
+        const top = rect?.top ?? 0;
+        return new DOMRect(left, top, 0, rect?.height ?? 0);
+      },
+    }),
+    [hover],
+  );
 
   if (airings.length === 0) return null;
 
@@ -75,67 +102,77 @@ const TimelineScrubber = ({ airings, nowMs, className }: TimelineScrubberProps) 
     const frac = pointerX / rect.width;
     const atMs = spanStart + frac * spanTotal;
     const block = airings.find((a) => atMs >= a.startMs && atMs < a.stopMs) ?? airings[airings.length - 1];
-    if (block) setHover({ block, pointerX, trackW: rect.width });
+    if (block) setHover({ block, pointerX });
   };
 
-  // CARD_WIDTH matches the card's `w-64` (256px). The card is centered on the pointer but its left is
-  // clamped so neither edge crosses the track — near the ends it "sticks" to the edge, staying fully
-  // visible (the arrow-less card follows the pointer through the middle, then pins at the extremes).
-  const CARD_WIDTH = 256;
-  const cardLeft = hover
-    ? Math.min(Math.max(hover.pointerX, CARD_WIDTH / 2), hover.trackW - CARD_WIDTH / 2)
-    : 0;
-
+  // ⚠ THIS REPLACED A HAND-ROLLED CLAMP (V50b). The old version hardcoded `CARD_WIDTH = 256` to
+  // match the card's `w-64`, centred the card on the pointer, and clamped its left into
+  // `[W/2, trackW - W/2]` so it "stuck" at the track's ends. Two problems: the constant silently
+  // decoupled from the class the moment either changed, and the card was not portalled, so any
+  // `overflow:hidden` ancestor could clip it. `shift()` inside the positioner keeps it on screen
+  // against the VIEWPORT — measured, not assumed — and the portal removes the clipping risk. Near
+  // the ends the card now stops at the viewport edge rather than the strip edge.
+  //
+  // ⚠ That difference is NOT covered by the visual suite, and it is worth knowing why: the card only
+  // exists while hovering, and the gallery never hovers. The scrubber's baselines cover the STRIP,
+  // not the card — they did not move for this change, and they would not move if it broke.
   return (
     <div className={cn("relative w-full", className)}>
       {/* The hover-preview card — the episode at the inspected point, with its TMDB still, positioned
-          over the pointer. Not interactive (pointer-events-none) so it never eats the move events. */}
-      {hover && (
-        <div
-          role="tooltip"
-          id={descId}
-          className="pointer-events-none absolute bottom-full z-20 mb-2 w-64 -translate-x-1/2 overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
-          // Clamped pixel left (not a % of the pointer) so the card never overflows the strip's edges.
-          style={{ left: `${cardLeft}px` }}
-        >
-          {!isBreak(hover.block) && hover.block.thumbUrl && (
-            // The episode still is the hero — a 16:9 image the card is built around. A subtle bottom
-            // gradient lets the S/E badge sit over it. object-cover fills the width without letterbox.
-            <div className="relative aspect-video w-full overflow-hidden bg-static-800">
-              <img src={hover.block.thumbUrl} alt="" className="size-full object-cover" />
-              {episodeTag(hover.block) && (
-                <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-static-0 backdrop-blur-sm">
-                  {episodeTag(hover.block)}
-                </span>
-              )}
-            </div>
-          )}
-          <div className="flex flex-col gap-1 px-3 py-2.5">
-            {/* Series/movie name (top). When there is NO thumbnail, the S/E badge rides here instead
+          over the pointer. Not interactive (pointer-events-none) so it never eats the move events.
+          `open` is driven by hover rather than by the primitive's own trigger: the "trigger" is a
+          moving point on the strip, not an element. */}
+      <TooltipPrimitive.Root open={hover !== null}>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Positioner anchor={anchor} side="top" sideOffset={8} className="z-20">
+            <TooltipPrimitive.Popup
+              id={descId}
+              className="pointer-events-none w-64 overflow-hidden rounded-lg border border-border bg-popover shadow-2xl"
+            >
+              {hover && (
+                <>
+                  {!isBreak(hover.block) && hover.block.thumbUrl && (
+                    // The episode still is the hero — a 16:9 image the card is built around. A subtle bottom
+                    // gradient lets the S/E badge sit over it. object-cover fills the width without letterbox.
+                    <div className="relative aspect-video w-full overflow-hidden bg-static-800">
+                      <img src={hover.block.thumbUrl} alt="" className="size-full object-cover" />
+                      {episodeTag(hover.block) && (
+                        <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-static-0 backdrop-blur-sm">
+                          {episodeTag(hover.block)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1 px-3 py-2.5">
+                    {/* Series/movie name (top). When there is NO thumbnail, the S/E badge rides here instead
                 of on the image, so it is never lost. */}
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-semibold text-popover-foreground text-sm leading-snug">
-                {showName(hover.block)}
-              </p>
-              {!hover.block.thumbUrl && episodeTag(hover.block) && (
-                <span className="shrink-0 rounded bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-                  {episodeTag(hover.block)}
-                </span>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-popover-foreground text-sm leading-snug">
+                        {showName(hover.block)}
+                      </p>
+                      {!hover.block.thumbUrl && episodeTag(hover.block) && (
+                        <span className="shrink-0 rounded bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+                          {episodeTag(hover.block)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Episode title — wraps to two lines rather than truncating, so a long name is readable. */}
+                    {episodeName(hover.block) && (
+                      <p className="line-clamp-2 text-popover-foreground/90 text-xs leading-snug">
+                        {episodeName(hover.block)}
+                      </p>
+                    )}
+                    <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
+                      {clockTime(hover.block.startMs)}–{clockTime(hover.block.stopMs)} ·{" "}
+                      {durationLabel(hover.block.stopMs - hover.block.startMs)}
+                    </p>
+                  </div>
+                </>
               )}
-            </div>
-            {/* Episode title — wraps to two lines rather than truncating, so a long name is readable. */}
-            {episodeName(hover.block) && (
-              <p className="line-clamp-2 text-popover-foreground/90 text-xs leading-snug">
-                {episodeName(hover.block)}
-              </p>
-            )}
-            <p className="mt-0.5 font-mono text-2xs text-muted-foreground">
-              {clockTime(hover.block.startMs)}–{clockTime(hover.block.stopMs)} ·{" "}
-              {durationLabel(hover.block.stopMs - hover.block.startMs)}
-            </p>
-          </div>
-        </div>
-      )}
+            </TooltipPrimitive.Popup>
+          </TooltipPrimitive.Positioner>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
 
       {/* The strip: proportional blocks, a live playhead, inspect-on-hover. */}
       <div

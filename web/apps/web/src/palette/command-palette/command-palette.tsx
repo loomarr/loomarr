@@ -1,3 +1,4 @@
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { SearchResult } from "@loomarr/core";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -14,12 +15,27 @@ import type { CommandPaletteProps } from "./command-palette.type";
 //
 // SearchCommand stays presentational so the gallery renders it without a router or a
 // query client; this owns the overlay and where a result takes you.
+//
+// ⚠ **IT USED TO ONLY LOOK LIKE A MODAL.** This was a `fixed inset-0` div carrying
+// `role="dialog" aria-modal="true"` with none of the behaviour either attribute promises: no
+// portal, no focus trap, no focus restore, no scroll lock, no inert background. A screen reader
+// was told the page behind was inert while Tab walked straight into it, and closing the palette
+// dropped focus at the top of the document instead of returning it to whatever opened it. V50b
+// makes the claim true rather than deleting it — unlike `RestartOverlay`, this one really is a
+// dialog: it owns a text input and demands a response.
+//
+// ⚠ Built on the Dialog PRIMITIVE, not the app's `DialogContent` wrapper — same reason as
+// `ClipPlayer`. The wrapper centres a padded `max-w-md` card and injects its own close button;
+// the palette is a top-anchored `max-w-xl` surface with no chrome of its own.
+//
+// ⚠ ESCAPE IS NOW THE DIALOG'S. `useCommandShortcut` used to bind it at the window, because
+// `SearchCommand` deliberately does not bind it by default — see that file's comment. The primitive
+// owns Escape now, so the hook's Escape branch is gone; leaving both would have been harmless only
+// by luck, and leaving neither would have made the key dead.
 const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const { results, loading } = usePaletteResults(query);
-
-  if (!open) return null;
 
   const setOpen = (next: boolean) => onOpenChange(next);
 
@@ -48,28 +64,27 @@ const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-24">
-      {/* The backdrop is a real <button>, not a div with a click handler. It is a dismiss
-          CONTROL, so making it one satisfies the a11y rules honestly — no suppression —
-          and gives screen-reader and keyboard users the same escape the pointer has.
-          Rendering it as a sibling rather than a parent also removes the need to stop
-          click propagation out of the dialog. */}
-      <button
-        type="button"
-        aria-label="Close search"
-        className="fixed inset-0 cursor-default bg-black/60"
-        onClick={() => setOpen(false)}
-      />
-      <div role="dialog" aria-modal="true" aria-label="Search Loomarr" className="relative w-full max-w-xl">
-        <SearchCommand
-          query={query}
-          onQueryChange={setQuery}
-          results={results}
-          loading={loading}
-          onSelect={go}
-        />
-      </div>
-    </div>
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Portal>
+        {/* The backdrop no longer needs to be a <button>. It was one so that dismissing by
+            pointer was a real control rather than a click handler on a div — an honest fix at the
+            time. The primitive now dismisses on an outside press AND on Escape, for every input
+            method, so a bespoke control would be a second way to do what the dialog already does. */}
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/60" />
+        <DialogPrimitive.Popup
+          aria-label="Search Loomarr"
+          className="fixed top-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 focus:outline-none"
+        >
+          <SearchCommand
+            query={query}
+            onQueryChange={setQuery}
+            results={results}
+            loading={loading}
+            onSelect={go}
+          />
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 };
 
