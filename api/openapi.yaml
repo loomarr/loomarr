@@ -1973,8 +1973,11 @@ components:
           description: Epoch ms, exclusive
           format: int64
           type: integer
+        thumbImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The preview image's record, for srcset and placeholder rendering
         thumbUrl:
-          description: TMDB preview image (episode still or poster); empty for breaks or when unavailable
+          description: Image-service preview URL (episode still or poster); empty for breaks or when unavailable
           type: string
         title:
           description: The episode's name for a series, or the film's name
@@ -2170,13 +2173,20 @@ components:
     IconSuggestion:
       additionalProperties: false
       properties:
+        image:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The poster's image record, for srcset and placeholder rendering
+        imageHash:
+          description: Content hash of the poster's image record
+          type: string
         title:
           examples:
             - "Star Trek: The Next Generation"
           type: string
         url:
+          description: Image-service URL for the poster; becomes the channel's logo when picked
           examples:
-            - https://image.tmdb.org/t/p/w500/xyz.jpg
+            - https://loomarr.example/v1/images/9f2b1c4e/w500.jpg
           type: string
       required:
         - title

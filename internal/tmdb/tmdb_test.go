@@ -110,7 +110,10 @@ func TestEpisodeStillURL(t *testing.T) {
 	defer srv.Close()
 	c := tmdb.NewWithBase(srv.URL, "key")
 
-	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 1); err != nil || u != "https://image.tmdb.org/t/p/w500/abc.jpg" {
+	// ⚠ `original`, not `w500`, since V52 phase 7: the caller ADOPTS this URL into the image service
+	// rather than handing it to a browser, and §22 fetches the original once then builds the width
+	// ladder locally — asking TMDB for a pre-shrunk copy would upscale the larger rungs.
+	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 1); err != nil || u != "https://image.tmdb.org/t/p/original/abc.jpg" {
 		t.Errorf("EpisodeStillURL(1396,1,1) = %q,%v want image url,nil", u, err)
 	}
 	if u, err := c.EpisodeStillURL(context.Background(), 1396, 1, 2); err != nil || u != "" {

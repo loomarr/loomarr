@@ -96,6 +96,57 @@ func TestFetchRekeysAdoptedRowOntoTheContentHash(t *testing.T) {
 	}
 }
 
+// ⚠ Re-adopting a source URL whose bytes already landed must not queue a second download.
+//
+// The re-key DELETES the URL-keyed placeholder row, so `Adopt`'s `GetImage(hashOfURL(src))` misses
+// every time afterwards and mints a fresh placeholder — and the fetch job then re-downloads bytes
+// the disk already holds. Nothing noticed while `Adopt` had no production caller. V52 phase 7 gave
+// it one on an INTERACTIVE surface, where the symptom is that opening the icon picker re-downloads
+// a dozen posters from TMDB every single time, against an origin that caps us at 20 connections.
+func TestReAdoptingAFetchedURLDoesNotRefetch(t *testing.T) {
+	body := pngBytes(t, testImage(400, 600))
+	hits := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	f, svc, _ := newTestFetcher(t, srv, []string{"127.0.0.1"})
+	ctx := context.Background()
+	src := srv.URL + "/poster.png"
+
+	if _, err := svc.Adopt(ctx, src, IngestRequest{Role: RoleIcon}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.FetchPending(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 {
+		t.Fatalf("origin hits after the first fetch = %d, want 1", hits)
+	}
+
+	// The same URL again — what every re-render of a surface does.
+	again, err := svc.Adopt(ctx, src, IngestRequest{Role: RoleIcon})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := HashBytes(body); again.Hash != want {
+		t.Errorf("re-adopt returned %s, want the content hash %s — it minted a second placeholder", again.Hash, want)
+	}
+	if again.OriginFetchedAt.IsZero() {
+		t.Error("re-adopt returned an unfetched row — it is queued for a download it does not need")
+	}
+
+	if _, err := f.FetchPending(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if hits != 1 {
+		t.Errorf("origin hits = %d, want 1 — re-adopting re-downloaded bytes already on disk", hits)
+	}
+}
+
 // A re-fetch that yields identical bytes must not churn: same hash, same row, same URLs.
 func TestRefetchOfIdenticalBytesKeepsTheSameIdentity(t *testing.T) {
 	body := pngBytes(t, testImage(300, 300))

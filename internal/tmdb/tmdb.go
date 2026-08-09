@@ -336,17 +336,33 @@ func (c *Client) ContentRating(ctx context.Context, mt provision.MediaType, tmdb
 	return "", nil
 }
 
-// imageBase is TMDB's image CDN + a mid-size width good for a channel icon (a poster at
-// w500 is crisp on a guide tile without being a full-res download). TMDB's /configuration
-// endpoint returns the canonical base, but it's stable and documented, so we hardcode it
-// (one fewer round-trip) — same pragmatism as the other pinned TMDB shapes.
-const imageBase = "https://image.tmdb.org/t/p/w500"
+// imageBase is TMDB's image CDN at the ORIGINAL size. TMDB's /configuration endpoint returns
+// the canonical base, but it's stable and documented, so we hardcode it (one fewer round-trip)
+// — same pragmatism as the other pinned TMDB shapes.
+//
+// ⚠ **`original`, not `w500`, since V52 phase 7 — and the width choice moved for a reason worth
+// keeping.** These URLs used to be handed straight to a browser and to Tunarr, so a mid-size
+// rendition was the right compromise: crisp on a guide tile without being a full-res download.
+// They are no longer fetched by any client. Every caller now hands the URL to `images.Adopt`,
+// which downloads it once server-side and generates the whole width ladder locally (§22) — so
+// asking TMDB for a pre-shrunk copy would throw away the resolution the ladder's larger rungs
+// need, and would make our 780px poster an upscale of their 500px one.
+//
+// It also means these URLs are an INTERNAL detail now: they are what we store as `source_url`,
+// never what a page loads. Removing third-party origins from the operator's browser is the whole
+// point of §22, so a caller that cannot adopt returns no image rather than falling back to a
+// hot-link.
+const imageBase = "https://image.tmdb.org/t/p/original"
 
 // PosterURL returns a full, directly-fetchable poster image URL for a title (§icon), or ""
 // (no error) when TMDB has no poster — sparse coverage is normal, so an empty answer is a
 // legitimate result the caller falls back on (no icon), not a failure. Used to give a
-// channel a themed icon from its primary series/movie. Tunarr fetches this URL directly, so
-// no proxying is needed. A poster (portrait) reads better as a channel tile than a backdrop.
+// channel a themed icon from its primary series/movie. A poster (portrait) reads better as a
+// channel tile than a backdrop.
+//
+// ⚠ The caller ADOPTS this URL (§22); nothing fetches it from a browser. This comment used to
+// say "Tunarr fetches this URL directly, so no proxying is needed" — true until V52 phase 7,
+// when the image service became what Tunarr and the operator's browser both fetch from.
 func (c *Client) PosterURL(ctx context.Context, mt provision.MediaType, tmdbID int) (string, error) {
 	if tmdbID <= 0 {
 		return "", nil

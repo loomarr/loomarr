@@ -5,15 +5,69 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mantonx/loomarr/internal/api"
+	"github.com/mantonx/loomarr/internal/images"
 	"github.com/mantonx/loomarr/internal/provision"
 	"github.com/mantonx/loomarr/internal/schedule"
 	"github.com/mantonx/loomarr/internal/store"
 	"github.com/mantonx/loomarr/internal/tmdb"
 )
+
+// iconTestBase is the public URL the test image service builds rendition URLs from, so assertions
+// can compare against the exact string a client would receive.
+const iconTestBase = "https://loomarr.test"
+
+// tmdbPoster is the source URL the adapter resolves a poster path to. `original`, not `w500`,
+// since V52 phase 7 — see the imageBase comment in internal/tmdb.
+func tmdbPoster(path string) string { return "https://image.tmdb.org/t/p/original" + path }
+
+// iconPosterURL is the image-service URL a warm suggestion carries.
+func iconPosterURL(hash string) string {
+	return iconTestBase + "/v1/images/" + hash + "/w" + strconv.Itoa(iconLogoWidth) + ".jpg"
+}
+
+// newIconAdapter wires an iconAdapter over a real image service, pre-seeding `warm` source URLs as
+// already-fetched rows and returning the hash each was given.
+//
+// ⚠ **The fetcher's host allowlist is EMPTY on purpose.** FetchNow is a real download path, and a
+// unit test must never touch the network (CLAUDE.md). An empty allowlist makes `checkURL` refuse
+// before any dial, so the cold branch is exercised honestly — a fetch is attempted and fails —
+// without opening a socket. Anything that should appear as a suggestion is seeded as already
+// fetched instead, which is also the steady state on a real instance after the first minute.
+func newIconAdapter(t *testing.T, st store.Store, client *tmdb.Client, warm ...string) (iconAdapter, map[string]string) {
+	t.Helper()
+	ims := newMemImageStore()
+	svc := newTestImageService(t.TempDir(), iconTestBase, ims)
+
+	const hexDigits = "abcdef0123456789"
+	hashes := make(map[string]string, len(warm))
+	for i, src := range warm {
+		if i >= len(hexDigits) {
+			t.Fatalf("newIconAdapter: %d warm URLs exceeds the distinct-hash supply", len(warm))
+		}
+		h := strings.Repeat(string(hexDigits[i]), 64)
+		hashes[src] = h
+		if err := ims.PutImage(context.Background(), images.Image{
+			Hash: h, Origin: images.OriginRemote, SourceURL: src,
+			Role: images.RoleIcon, Visibility: images.VisibilityPublic,
+			OriginFetchedAt: time.Unix(1_700_000_000, 0),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	f := images.NewFetcher(svc, ims,
+		func() bool { return true },
+		func() int { return 2 },
+		func() []string { return nil }, // refuses every host — see above
+		nil)
+	return iconAdapter{store: st, tmdb: client, images: svc, fetch: f}, hashes
+}
 
 // tmdbPosterStub is a minimal fake TMDB server covering just what iconAdapter needs:
 // /movie/{id} and /tv/{id} poster_path, plus /find/{tvdb_id} for the TVDB bridge. Kept
@@ -76,7 +130,8 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 		{Key: "movie:tmdb:603", Title: "The Matrix"},
 	})
 
-	a := iconAdapter{store: st, tmdb: tmdb.NewWithBase(mock.URL, "key")}
+	a, hashes := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"),
+		tmdbPoster("/tng.jpg"), tmdbPoster("/ds9.jpg"), tmdbPoster("/matrix.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -84,18 +139,64 @@ func TestIconAdapter_ResolvesTMDBAndTVDBEntries(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("suggestions = %d, want 3: %+v", len(got), got)
 	}
-	byTitle := map[string]string{}
+	byTitle := map[string]api.IconSuggestion{}
 	for _, s := range got {
-		byTitle[s.Title] = s.URL
+		byTitle[s.Title] = s
 	}
-	if byTitle["Star Trek: TNG"] != "https://image.tmdb.org/t/p/w500/tng.jpg" {
-		t.Errorf("TNG poster = %q", byTitle["Star Trek: TNG"])
+	// ⚠ Every URL is OURS. A TMDB URL surviving here is the §22 regression this phase exists to
+	// remove: the icon picker is one of the three surfaces that loaded third-party images in the
+	// operator's browser.
+	for _, c := range []struct{ title, src string }{
+		{"Star Trek: TNG", tmdbPoster("/tng.jpg")},
+		{"Star Trek: DS9", tmdbPoster("/ds9.jpg")},
+		{"The Matrix", tmdbPoster("/matrix.jpg")},
+	} {
+		sg := byTitle[c.title]
+		if want := iconPosterURL(hashes[c.src]); sg.URL != want {
+			t.Errorf("%s poster url = %q, want %q", c.title, sg.URL, want)
+		}
+		if sg.ImageHash != hashes[c.src] {
+			t.Errorf("%s image hash = %q, want %q", c.title, sg.ImageHash, hashes[c.src])
+		}
+		if strings.Contains(sg.URL, "image.tmdb.org") {
+			t.Errorf("%s still points at TMDB: %q", c.title, sg.URL)
+		}
 	}
-	if byTitle["Star Trek: DS9"] != "https://image.tmdb.org/t/p/w500/ds9.jpg" {
-		t.Errorf("DS9 (TVDB-bridged) poster = %q", byTitle["Star Trek: DS9"])
+}
+
+// ⚠ A poster whose bytes have not landed is OMITTED, never offered with a placeholder hash.
+//
+// Adopt keys a pending row on a hash of the source URL and the fetch re-keys it onto the content
+// hash, deleting that row. A suggestion's `url` becomes the channel's stored `logo`, so offering
+// the placeholder would mint a logo that resolves for under a minute and 404s forever after.
+func TestIconAdapter_OmitsPostersWhoseBytesHaveNotLanded(t *testing.T) {
+	mock := tmdbPosterStub(t, map[string]string{
+		"/tv/1000": "/tng.jpg",
+		"/tv/1001": "/ds9.jpg",
+	}, nil)
+	defer mock.Close()
+
+	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/icons.db", true)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if byTitle["The Matrix"] != "https://image.tmdb.org/t/p/w500/matrix.jpg" {
-		t.Errorf("Matrix poster = %q", byTitle["The Matrix"])
+	defer func() { _ = st.Close() }()
+	upsertLineupChannel(t, st, "ch-1", []schedule.LineupEntry{
+		{Key: "series:tmdb:1000", Title: "Warm"},
+		{Key: "series:tmdb:1001", Title: "Cold"},
+	})
+
+	// Only TNG is seeded as fetched; DS9 stays cold and its fetch is refused by the empty allowlist.
+	a, hashes := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
+	got, err := a.IconSuggestions(context.Background(), "ch-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "Warm" {
+		t.Fatalf("suggestions = %+v, want exactly the warm one", got)
+	}
+	if want := iconPosterURL(hashes[tmdbPoster("/tng.jpg")]); got[0].URL != want {
+		t.Errorf("url = %q, want %q", got[0].URL, want)
 	}
 }
 
@@ -118,7 +219,7 @@ func TestIconAdapter_SkipsFailingTitleBestEffort(t *testing.T) {
 		{Key: "series:tmdb:1001", Title: "Bad Title"},
 	})
 
-	a := iconAdapter{store: st, tmdb: tmdb.NewWithBase(mock.URL, "key")}
+	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatalf("a bad title must not fail the whole request: %v", err)
@@ -143,7 +244,7 @@ func TestIconAdapter_SkipsEntriesWithNoPoster(t *testing.T) {
 		{Key: "series:tmdb:1000", Title: "No Poster"},
 	})
 
-	a := iconAdapter{store: st, tmdb: tmdb.NewWithBase(mock.URL, "key")}
+	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +273,7 @@ func TestIconAdapter_DedupesByURL(t *testing.T) {
 		{Key: "series:tmdb:99000", Title: "TNG (dup)"},
 	})
 
-	a := iconAdapter{store: st, tmdb: tmdb.NewWithBase(mock.URL, "key")}
+	a, _ := newIconAdapter(t, st, tmdb.NewWithBase(mock.URL, "key"), tmdbPoster("/tng.jpg"))
 	got, err := a.IconSuggestions(context.Background(), "ch-1")
 	if err != nil {
 		t.Fatal(err)

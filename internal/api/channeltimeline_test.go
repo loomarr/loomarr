@@ -19,14 +19,16 @@ import (
 // fakeTimelineThumbs is a canned TimelineThumbResolver — it records the keys it was asked about and
 // returns a stub URL for programme keys, so a test can assert the handler resolves images for
 // programmes (and skips breaks).
+// ⚠ It returns an IMAGE-SERVICE URL, not a TMDB one — the resolver stopped emitting third-party
+// URLs in V52 phase 7 (§22), and a fake still handing one back would let a regression through.
 type fakeTimelineThumbs struct{ asked []string }
 
-func (f *fakeTimelineThumbs) ThumbFor(_ context.Context, key string, _, _ int) string {
+func (f *fakeTimelineThumbs) ThumbFor(_ context.Context, key string, _, _ int) (string, string) {
 	f.asked = append(f.asked, key)
 	if key == "" {
-		return ""
+		return "", ""
 	}
-	return "https://image.tmdb.org/t/p/w500/" + key + ".jpg"
+	return "http://loomarr.local:8080/v1/images/" + key + "/w300.jpg", ""
 }
 
 func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, store.Store) {

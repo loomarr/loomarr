@@ -69,6 +69,11 @@ type ImageDerivative struct {
 type ImageStore interface {
 	PutImage(ctx context.Context, img Image) error
 	GetImage(ctx context.Context, hash string) (Image, error)
+	// GetFetchedImageBySourceURL finds the image already downloaded from a source URL, so a
+	// re-adopt reuses it instead of queueing a download for bytes the disk already holds.
+	// ErrNotFound when the URL has never been fetched — which includes the adopted-but-pending
+	// case, since a placeholder row has no bytes to reuse.
+	GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error)
 	DeleteImage(ctx context.Context, hash string) error
 	TouchImage(ctx context.Context, hash string, at time.Time) error
 
@@ -179,6 +184,34 @@ func (s *sqlStore) GetImage(ctx context.Context, hash string) (Image, error) {
 	}
 	if err != nil {
 		return Image{}, fmt.Errorf("get image %s: %w", hash, err)
+	}
+	return img, nil
+}
+
+// GetFetchedImageBySourceURL resolves a source URL to the row that actually holds its bytes.
+//
+// ⚠ **`origin_fetched_at > 0` is the load-bearing half, not a filter for tidiness.** Two rows share
+// a source URL by design for the width of a re-key — `fetchOne` writes the content-hash row before
+// deleting the URL-keyed placeholder, so that no ref ever points at a hash with no row. Asking only
+// for fetched rows collapses that to at most one, and it is also the only answer a caller can use:
+// a placeholder's hash is about to stop resolving.
+//
+// ORDER BY makes the result deterministic rather than incidentally-single, which is the property a
+// later change to the re-key ordering would otherwise break silently.
+func (s *sqlStore) GetFetchedImageBySourceURL(ctx context.Context, src string) (Image, error) {
+	if src == "" {
+		return Image{}, ErrNotFound // every non-remote row has source_url '' — never a match
+	}
+	row := s.db.QueryRowContext(ctx, s.ph(
+		`SELECT `+imageColumns+` FROM images
+		 WHERE source_url = ? AND origin_fetched_at > 0
+		 ORDER BY origin_fetched_at DESC, hash LIMIT 1`), src)
+	img, err := scanImage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Image{}, ErrNotFound
+	}
+	if err != nil {
+		return Image{}, fmt.Errorf("get image by source url: %w", err)
 	}
 	return img, nil
 }
