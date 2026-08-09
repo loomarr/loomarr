@@ -219,7 +219,17 @@ type PipelineResult struct {
 	Completed int
 	Rejected  int
 	Failed    int
+	// Deferred counts clips whose pass ended before the rung did — the budget ran out, not the
+	// clip. ⚠ Counted SEPARATELY from Failed on purpose: these were logged as failures, so a reel
+	// too slow for one pass produced a WARN every two minutes forever and the run summary blamed
+	// the clip. A number that says "we ran out of time" is the one an operator can act on (raise
+	// the schedule, raise the budget); "failed" sends them looking at the file.
+	Deferred int
 }
+
+// ErrDeferred marks a pass that ended before the stage did. It is NOT a failure: no attempt is
+// spent, no backoff is taken, and the clip resumes exactly where it stopped on the next pass.
+var ErrDeferred = errors.New("filler pipeline: the pass ended before this stage finished")
 
 // RunOnce is the cron driver: enrol anything new, then advance as much due work as the budget
 // allows.
@@ -261,6 +271,13 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		s.clips++
 		outcome, err := p.advance(ctx, row, &s)
 		if err != nil {
+			// ⚠ A deferral is not a failure and must not be logged as one. Before this, a reel too
+			// slow for one pass produced an identical WARN every two minutes indefinitely — twelve
+			// of them for the clip that exposed this — while the row showed no sign of trouble.
+			if errors.Is(err, ErrDeferred) {
+				res.Deferred++
+				continue
+			}
 			res.Failed++
 			if p.log != nil {
 				p.log.Warn("filler pipeline: clip failed", "clip", row.ClipHash, "err", err)
@@ -345,12 +362,20 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		row.Disposition = DispositionRejected
 		row.RejectReason = ReasonUnprobeable
 		row.RejectDetail = "the clip is no longer in the catalog"
-		return row.Disposition, p.save(ctx, row, clip)
+		return row.Disposition, p.persist(ctx, row, clip)
 	}
 
 	for {
-		if err := ctx.Err(); err != nil {
-			return row.Disposition, err
+		// ⚠ Persist before handing the deadline back. Rungs resolved EARLIER in this same pass —
+		// a skip recorded, a `step` onto the next stage — live only in the local `row` until
+		// something saves it, so returning here bare threw that work away and the next pass
+		// re-derived it. On a clip with several skips in a row that is the difference between
+		// converging and looping.
+		if ctx.Err() != nil {
+			if err := p.persist(ctx, row, clip); err != nil {
+				return row.Disposition, err
+			}
+			return row.Disposition, ErrDeferred
 		}
 		idx := StageIndex(row.Stage)
 		if idx < 0 {
@@ -374,7 +399,7 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			// Out of budget for THIS kind of work. Leave the clip queued — it resumes next pass
 			// exactly here, which is what makes a large import drain over cycles.
 			row.Status = StatusQueued
-			return row.Disposition, p.save(ctx, row, clip)
+			return row.Disposition, p.persist(ctx, row, clip)
 		}
 
 		// ⚠ **A composite skips everything except measuring and cutting, and the rule lives HERE
@@ -415,8 +440,29 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		s.charge(stage.Cost())
 
 		if runErr != nil {
+			// ⚠ **Running out of TIME is not failing, and conflating the two is what made a slow
+			// rung permanent.** A cancelled context means the pass's budget ended mid-work — the
+			// clip did nothing wrong, so it must not spend an attempt or take a backoff it has not
+			// earned. It goes back to `queued` and resumes next pass, which is exactly how the
+			// budget-exhausted branch above already behaves; the deadline path simply never got
+			// the same treatment.
+			//
+			// ⚠ The attempt is ROLLED BACK, because it was counted before the work began. That
+			// pre-increment is deliberate and protective — a process killed mid-run still burns an
+			// attempt, so a crash loop stays bounded — but a deadline is our own doing, and
+			// charging the clip for it is what let `attempts` climb without limit.
+			if ctx.Err() != nil {
+				row.Status = StatusQueued
+				if row.Attempts > 0 {
+					row.Attempts--
+				}
+				if err := p.persist(ctx, row, clip); err != nil {
+					return row.Disposition, err
+				}
+				return row.Disposition, ErrDeferred
+			}
 			if resolved := p.onFailure(&row, runErr); !resolved {
-				return row.Disposition, p.save(ctx, row, clip)
+				return row.Disposition, p.persist(ctx, row, clip)
 			}
 			if done := p.step(&row); done {
 				break
@@ -442,11 +488,11 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.Disposition = DispositionRejected
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
-			return row.Disposition, p.save(ctx, row, clip)
+			return row.Disposition, p.persist(ctx, row, clip)
 		case VerdictReview:
 			row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.Disposition = DispositionReview
-			return row.Disposition, p.save(ctx, row, clip)
+			return row.Disposition, p.persist(ctx, row, clip)
 		}
 
 		row.Record(row.Stage, StatusDone, out.Note, row.Attempts, p.now().UTC())
@@ -458,7 +504,10 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	if row.Disposition == DispositionRunning {
 		row.Disposition = DispositionFiled
 	}
-	return row.Disposition, p.save(ctx, row, clip)
+	// ⚠ The terminal write — `filed`, or the last rung done. Detached like the rest: a clip that
+	// finished its whole ladder inside a pass that then expired would otherwise be re-run from
+	// wherever it was last durably recorded, spending the expensive rungs again.
+	return row.Disposition, p.persist(ctx, row, clip)
 }
 
 // step advances to the next stage, returning true when the ladder is finished.
@@ -473,6 +522,27 @@ func (p *Pipeline) step(row *ClipPipeline) bool {
 	row.Attempts = 0
 	row.Progress = 0
 	return false
+}
+
+// persist writes the row through a context DETACHED from the caller's.
+//
+// ⚠ **This exists because the bookkeeping for a timeout was being written through the context whose
+// expiry caused it.** `onFailure` computes the failure record, the backoff and the `MaxAttempts`
+// resolution — and every one of them was discarded, because `p.save(ctx, …)` fails on a cancelled
+// context. The only write that survived was the one made BEFORE the work started
+// (`status=running`, `attempts++`), which is why a clip could reach 12 attempts against a
+// `MaxAttempts` of 3 and never leave `running`.
+//
+// ⚠ Measured live (§10 V51g): one 16m47s reel looped every two minutes for twelve passes, the row
+// animating as though it were progressing. **Any rung that ever times out loops forever** — split
+// was simply the first to be slow enough to prove it.
+//
+// The timeout is short and fixed: this is one row write, and if the store cannot take it in five
+// seconds the next pass re-derives the same state anyway.
+func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip) error {
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return p.save(saveCtx, row, clip)
 }
 
 // onFailure records a stage failure and decides whether the clip can move on. Returns true when
