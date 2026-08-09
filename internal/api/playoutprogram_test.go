@@ -286,16 +286,39 @@ func TestPlayoutProgram_NothingAiringServesABoundedCard(t *testing.T) {
 	}
 }
 
-// A resolver failure is a RETRYABLE 502, not a 500. The usual cause is the media server being
-// unreachable, which is upstream of us, and the demuxer will come back.
-func TestPlayoutProgram_ResolverFailureIsRetryable(t *testing.T) {
+// A resolver failure shows the CARD, not a 502.
+//
+// ⚠ This test used to be TestPlayoutProgram_ResolverFailureIsRetryable and asserted the opposite,
+// on the stated premise that a 502 was "retryable — the demuxer will come back". That premise was
+// false: `ConcatArgs` sets `-reconnect 1 -reconnect_at_eof 1`, neither of which covers an HTTP
+// error STATUS, so a 5xx written into a concat entry ends the parent ffmpeg (measured on the
+// pinned n7.1 build: `Error during demuxing` then `signal: segmentation fault`) and drops every
+// viewer on the channel.
+//
+// The usual cause of a resolver failure is the media server being briefly unreachable — the single
+// most likely failure this handler sees. Trading the whole broadcast for it is the wrong trade, so
+// the handler now renders the card and the demuxer re-asks 30s later, by which time the outage has
+// usually passed.
+func TestPlayoutProgram_ResolverFailureShowsTheCard(t *testing.T) {
+	enc := &fakeEncoder{output: "card-bytes"}
 	srv := newProgramServer(t, programOpts{
 		resolver: &fakeResolver{err: errors.New("emby unreachable")},
-		encoder:  (&fakeEncoder{}).start,
+		encoder:  enc.start,
 	})
 	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status %d, want 502", resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200 — a 5xx here kills the parent demuxer and the whole channel", resp.StatusCode)
+	}
+	if string(body) != "card-bytes" {
+		t.Errorf("body = %q, want the card's bytes", body)
+	}
+	// It must be the CARD, not a half-built program: the resolver failed, so there is no source
+	// to read and the args have to come from the synthetic lavfi generator.
+	if got := strings.Join(enc.args(), " "); !strings.Contains(got, "color=c=black") {
+		t.Errorf("did not render the offline card on a resolver failure: %q", got)
 	}
 }
 
@@ -478,22 +501,38 @@ func TestPlayoutProgram_ZeroBytesIsLoggedAsAWarning(t *testing.T) {
 type ladderEncoder struct {
 	mu     sync.Mutex
 	hwEnc  string   // the hardware encoder token that should FAIL, e.g. "h264_vulkan"
-	tried  []string // "hardware" or "software", in call order
+	tried  []string // "hardware" or "software", in call order — PROGRAM attempts only
+	cards  []string // the same, for OFFLINE CARD renders
 	output string
 }
 
+// start classifies each invocation on two independent axes, because the ladder's invariants are
+// about the two SEPARATELY and a single counter cannot express either.
+//
+// The card renders through this same encoder — it is a real encode of a synthetic source — so a
+// bare "how many times were you called?" conflates "the handler retried the PROGRAM" (which a copy
+// failure must never do) with "the handler fell back to the CARD" (which every failure now should).
+// Discriminating on the lavfi source is not a test convenience: `color=c=black` is what makes the
+// card a card, so the classification tracks the thing itself rather than a label we chose.
 func (e *ladderEncoder) start(ctx context.Context, args []string, _ func(playout.Progress)) (*playout.Process, error) {
-	software := false
+	software, card := false, false
 	for _, a := range args {
 		if a == "libx264" {
 			software = true
 		}
+		if strings.Contains(a, "color=c=black") {
+			card = true
+		}
+	}
+	step := "hardware"
+	if software {
+		step = "software"
 	}
 	e.mu.Lock()
-	if software {
-		e.tried = append(e.tried, "software")
+	if card {
+		e.cards = append(e.cards, step)
 	} else {
-		e.tried = append(e.tried, "hardware")
+		e.tried = append(e.tried, step)
 	}
 	e.mu.Unlock()
 
@@ -509,6 +548,13 @@ func (e *ladderEncoder) path() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]string(nil), e.tried...)
+}
+
+// cardPath is the ladder the OFFLINE CARD climbed, empty when no card was rendered.
+func (e *ladderEncoder) cardPath() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.cards...)
 }
 
 // THE LADDER, END TO END: a hardware encode that produces nothing must not black the channel. The
@@ -569,12 +615,22 @@ func TestPlayoutProgram_CopyPlanIsNotLaddered(t *testing.T) {
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 
-	// One attempt only — no evict, no software retry.
+	// One attempt at the PROGRAM only — no evict, no software retry of the bad file.
 	if path := enc.path(); len(path) != 1 {
-		t.Errorf("copy plan made %d encode attempts, want 1 (no ladder for a copy): %v", len(path), path)
+		t.Errorf("copy plan made %d program encode attempts, want 1 (no ladder for a copy): %v", len(path), path)
 	}
 	if evicted != 0 {
 		t.Errorf("a failing COPY evicted the LLM %d times; a bad file is not a VRAM problem", evicted)
+	}
+	// ...but the CHANNEL survives it. The card is a separate encode of a synthetic source, so it
+	// carries its own hardware→software fallback; what matters is that one was rendered at all.
+	if cards := enc.cardPath(); len(cards) == 0 {
+		t.Error("a failing copy produced no offline card — the channel is left with nothing to play")
+	}
+	// The status is the point: a 5xx here is written INTO the concat demuxer's stream and kills the
+	// parent ffmpeg, taking every viewer with it. One bad file must not end the broadcast.
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200: a 5xx on a concat entry kills the parent and drops every viewer", resp.StatusCode)
 	}
 }
 
