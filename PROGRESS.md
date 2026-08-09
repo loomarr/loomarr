@@ -745,8 +745,34 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
-**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, branch
-`v51g-pipeline-budget`).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+**Next up: V51f** — the last unbuilt phase of the V51 plan: the era RANGE whose `To` is rendered,
+typed, validated and never read; the audience setting that silently empties every ladder rung on an
+untagged catalog; three dead policy fields. ⚠ Before it, close the V51g loop that is still open —
+`WAGA-5/Fox Commercial Breaks(2/5/1995)` has never been seen to finish a split. It sat at
+`split/running` all session because it was STARVED, not because splitting is broken; with the yield
+in (#225) it should now get a turn. Watch it reach review before believing V51g is done.
+
+**V51g — a rung may not spend per SEGMENT what the budget allows per CLIP (2026-08-09, PRs #223 and
+#225).** Gate: `make check` (0 lint, `-race`) + `make retired-verify` (28).
+
+⚠ **Three fixes, and only the first was the one that was planned.** Each was correct and exposed
+the next, one layer up — and **none of the last two were reachable from any test**; all three were
+found by reading a log line that looked fine.
+
+1. **The planned fix** (#223): delete `classify`, defer instead of failing, detach the writes.
+2. **The scheduler had the identical bug** — `UpsertScheduledJob` recorded a job's outcome through
+   the context whose expiry caused it, so ANY job killed by its deadline never persisted
+   `last_result`/`last_error`/`next_run`. Not filler-specific; every job in the registry. Found in
+   the log within a minute of running the first fix.
+3. **The polite deferral then STARVED the queue** (#225). Oldest-first work list, so the 2.4-hour
+   recording that could not fit a pass was handed the whole budget again on the next one — the
+   other **84 clips were never reached**. A deferral now yields (`NextRun` one pass ahead): not the
+   backoff a failure earns, a turn-taking rule.
+
+⚠ **`advanced=0 completed=0 rejected=0 failed=0` is what total starvation looks like**, and it is
+also what a healthy idle pass looks like. The field that distinguishes them — `deferred` — was the
+one added to the struct and forgotten in the log line. The old code at least said "failed". **A
+number removed from a log is a number an operator stops being able to act on.**
 Diagnosed from a live catalog, and the measurements are in §10 (V51g) because they are what
 corrected the diagnosis twice.
 
@@ -800,6 +826,21 @@ alone would be ~5 minutes and exceed a pass again. The fix then is a per-pass SE
 resume by `(ParentHash, index)` — the lineage column exists (§10 V45, migration 00039). Not built
 because the measured corpus does not reach it, and resume interacts with proposal editing in ways
 that need their own design.
+
+⚠ **This entry describes the FIRST half of #208. The second half — the conveyor merge — was found
+by looking at the rendered result and is recorded in §10 (V51e).** Briefly: `asks` and `pipeline`
+shipped as two arrays over overlapping populations, and on 85 real clips **84 appeared in both** —
+a row demanding a decision above a row captioned "nothing here needs you". The state that fixed it
+already existed and was never consulted: V51b's `review` disposition means exactly "the machine is
+finished and a human is needed", which is the population `asks` was inferring from tag-shape. One
+array (`clips`), `needsDecision` per row. `total` counted `len(asks)` — the same number by accident
+and the wrong rule by construction — and now counts `NeedsDecision`, so the badge and the list
+finally agree. Verified live: 85 rows, 85 unique hashes, badge 0.
+
+⚠ Also found by looking, not testing: `resolve` collapsed `queued` into `running`, so all 85
+enrolled clips rendered as actively being worked on when one was. And `role="alert"` on an `<li>`
+replaced its implicit `listitem` role, breaking the ladder's list semantics — an axe `serious` that
+was **hidden behind a colour-contrast failure on the same element** until that one cleared.
 
 **V51e — the pipeline becomes visible; V51b's API finally has a renderer (2026-08-08, branch
 `v51e-incoming-pipeline`, stacked on V51d).** Gate: `make check` (0 lint, `-race`) + `make fe`
