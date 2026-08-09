@@ -432,11 +432,54 @@ coexist until the last stub is gone.
 Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
 fire on that string, and a mention that is deliberate should say so.
 
-**V53e — the migration, in batches (IN PROGRESS, 2026-08-09).** Batch 1 (`#206`): `use-auth`,
-`users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`feat/msw-batch-2`): `wizard-ai-block`,
-`channel-row-menu`, `use-channel-refine`, plus a shared `channel()` fixture. **8 of 31 migrated; 23
-remain** — counted (`grep -rl 'const stubFetch|vi.stubGlobal("fetch"'` vs `@/test/msw/server`), not
-tallied, because a running count in a commit message is exactly the sort of number that drifts.
+**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 12 of 31 migrated; 19 remain.**
+Batch 1 (`#206`): `use-auth`, `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`#207`):
+`wizard-ai-block`, `channel-row-menu`, `use-channel-refine`, plus the shared `channel()` fixture.
+Batch 3 (`#213`): `incoming-tab`, `split-review-page`. Batch 4: `channel-watch`, `app-router`, plus
+the shared `appHandlers()` baseline.
+
+⚠ **The count is COUNTED, never tallied** — a running total in a commit message is exactly the sort
+of number that drifts, and it drifted twice before this rule:
+
+```
+grep -rl 'const stubFetch\|vi.stubGlobal("fetch"' --include=*.test.tsx --include=*.test.ts .   # remaining
+grep -rl '@/test/msw/server' --include=*.test.tsx --include=*.test.ts .                        # migrated
+```
+
+### How to migrate one (the playbook, so the next session does not re-derive it)
+
+1. **Read the old stub for its catch-all.** Nearly every one ends in `return json({})` or similar.
+   That branch is answering real requests — `channel-watch`'s hid THREE, `app-router`'s hid NINE.
+2. **Use the generated handler** from `@loomarr/api/msw`; add `appHandlers()` first for anything
+   that mounts the real route tree. Run the test and let the **unhandled-request guard enumerate**
+   what the catch-all was covering — it reports the full list per test, by name.
+3. **Expect the types to reject the old fixtures.** They are usually missing required fields;
+   `MeBody.local` alone has been absent in FOUR files. Fix the fixture, never cast — `as ChannelDTO`
+   in `channel-watch` was silencing eleven fields.
+4. **Error cases stay hand-written** (`http.get(...)` + `HttpResponse.json(..., { status })`): the
+   spec declares errors via `default:` (RFC 7807) on 132 of 134 operations, with ZERO explicit
+   4xx/5xx, so orval has no status to generate from. Safe against renames anyway — a stale path
+   stops matching and the real request goes unhandled, failing the test by name.
+5. **Replace `mock.calls` assertions with resolver-recorded values.** A url-substring filter only
+   proves the test's own spelling; reaching a route-bound resolver proves the route.
+
+### What is left
+
+**Route-level (8)** — all mount the real app, all had the same catch-all, and `appHandlers()` now
+covers the common surface, so these should go far faster than `app-router` did (it paid the
+discovery cost for the set): `test/reachability` (538), `test/filler` (468), `test/wizard-router`
+(440), `test/settings` (359), `test/guide-page` (269), `settings/tasks-page` (285), `test/users`
+(202), `test/help` (154).
+
+**Component-level (11)** — the established pattern applies directly: `channel-filler` (214),
+`channel-lineup-editor` (209), `tune-panel` (190), `use-channel-rules-draft` (189),
+`use-channel-filler-draft` (175), `refine-panel` (173), `filler-page` (167),
+`channel-suggest-panel` (164), `sources-panel` (152), `pin-clip-dialog` (152),
+`use-channel-lineup` (143).
+
+⚠ **`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the FINAL batch only** — adding
+it sooner fails on every file still waiting. Until it lands, nothing stops a new test adding stub
+#20.
 
 ⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
 wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
@@ -560,6 +603,75 @@ generators. That is a consequence, not the justification: `null` vs `[]` was an 
 own terms, and if codegen had been the only argument the right answer would have been to leave it
 alone.
 
+**V51d — the catalog is paged, sorted, and searched wider (2026-08-09).** Gate: `make check`
+(0 lint, `-race`) + `make test-pg` (both dialects, **4 new conformance suites × 2 backends**) +
+`make fe` (biome clean on 918 files + tsc + unit + SPA + storybook build) + `make openapi-verify`
++ `make retired-verify` (25 identifiers) + `make config-docs`.
+
+`GET /v1/filler` returned **every clip in the install** on every call, and four clients depended on
+it. `limit` now defaults to 100 and caps at 500, `total` rides every response, and the listing
+sorts by `name|duration|added|plays|confidence` in either direction. This also removes a latent
+hard failure: `attachTags` binds one parameter per clip in a single `IN (…)` and Postgres caps a
+statement at 65535, so the unpaginated read stopped working north of ~65k clips.
+
+⚠ **`ClipFilter.Limit == 0` means NO limit, and the default lives in the API.** Pod assembly loads
+the catalog through the zero filter, so a store-side default of 100 would silently cut every
+channel's break pool to a hundred clips — no error, no log line. `TestListFiller_DefaultsToOnePage…`
+pins the number at the HTTP edge for exactly that reason, and `minimum:"1"` on the parameter stops
+a client reaching the store's unbounded sentinel with `limit=0`.
+
+⚠ **The sabotage pass found the property I expected to be load-bearing was not.** Deleting the
+`hash` tie-break left `PagesConcatenateToTheWholeList` **green on SQLite** — its plan happens to be
+stable across `LIMIT/OFFSET` re-executions, so the property that exists to catch a missing total
+order could not catch it there. What does catch it, deterministically and on both backends, is
+`DescendingIsTheExactReverse`. Removing `LOWER(name)` fails loudly (SQLite's BINARY collation puts
+`'Z' < 'a'`), and removing the frontend's `page: undefined` reset turns its own test red. A
+first-try green on a new constraint stays suspect.
+
+**Four unbounded consumers, four different fixes** — the point is that paging *deleted* three of
+them rather than paginating them: the dashboard's clip count reads `/v1/filler/watch`'s SQL-counted
+total (it was fetching every column of every clip for one `.length`); the channel pin/exclude
+resolver asks for **the hashes it holds** (`ClipFilter.Hashes`) — the old catalog-and-map shape was
+not merely wasteful under paging but WRONG, resolving whichever pins landed on page one; the ⌘K
+palette asks for the six rows it renders, through one `CLIP_RESULTS` constant shared with the
+slice; and the Filler page wires the pager.
+
+⚠ **The highest-risk line is the frontend's, not the store's**: every filter change must reset
+`page`. `setFilters` merges blindly, so without it, typing in the search box on page 7 lands on an
+empty page 7 of a two-page result and renders "No clips match" over a catalog that matches plenty.
+The rule lives in the one function every filter control calls, and is sabotage-verified.
+
+**Search widens** to `name | brand | visible_text | tags` (an `EXISTS` over `clip_tags`, never a
+JOIN — a clip with three matching tags must be one row, or `CountClips` counts it three times and
+the total contradicts the rows). `transcript` stays behind `QueryTranscript`: kilobytes per clip
+and "ford" matches "afford". **No FTS** — FTS5 and `tsvector` are different engines with different
+tokenizers, which would force `ListClips` to branch on dialect and the suite to assert
+equivalent-but-not-identical results per backend (§5 forbids it).
+
+**Migration `00046`.** V51b took `00044`; `00045` went to V52's images table, which merged first — so this was renumbered from `00045` before landing, while it was still unapplied anywhere. `clips.created_at`, because
+`updated_at` is bumped by every re-sync and an "added" sort backed by it would reshuffle the whole
+catalog after a routine scan. Existing rows backfill from `updated_at` as a stated estimate. It is
+the **fourth** column omitted from `UpsertClip`'s `DO UPDATE`, and the only one with no `Set…`
+writer at all: nothing may ever change when a clip arrived.
+
+**Two capabilities land in the store and API but are deliberately NOT switched on in the UI yet**,
+both sequenced to V51e rather than left as accidents:
+
+- **Composites-as-containers.** `TopLevelOnly` + `IncludeComposites` work and are conformance-
+  tested, but the catalog listing does not pass them, because **nothing in the frontend renders
+  `isComposite`** (`grep` finds zero uses outside the generated client). Turning them on today
+  would draw a 16-minute recorded break as an ordinary playable clip card with no "NOT AIRABLE"
+  marker — worse than the current inverse, where segments show as flat rows. V51e owns the
+  container row (the `NN CUTS` badge, the expand chevron, the segment grid).
+- **Sort.** The five keys and both directions are live on the wire and pinned by the concatenation
+  property; the catalog sends none of them, because the control is V51e's `Select` with the
+  direction baked into each option. Recorded here so it is a sequenced gap, not a surface-audit
+  orphan.
+
+⚠ **`hashes` is comma-separated on the wire, not repeated.** Huma emits `explode: false`, so
+`?hashes=a&hashes=b` parses as one value and silently resolves one clip; orval's generated URL
+builder calls `value.toString()` on the array, which produces the right thing. An API test asserts
+the comma form so the two halves cannot drift.
 
 **V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
 `feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean

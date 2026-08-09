@@ -166,9 +166,17 @@ type ClipStore interface {
 	// ⚠ Clips the operator removed from the catalog (V35) are excluded unless the filter opts
 	// in. That polarity is load-bearing: pod assembly loads the catalog through this call with
 	// a ZERO filter, so an opt-out would keep a removed clip airing.
+	//
+	// ⚠ Sorted and pageable since V51d, and the same warning applies to the page size: `Limit == 0`
+	// means NO limit, because pod assembly's zero filter must keep loading the whole catalog. The
+	// operator-facing default of 100 lives in the API.
 	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
 	// CountClips is ListClips' question answered without the rows, for callers that only ever
 	// took len() of the result. Same filter, same predicate (they share the WHERE builder).
+	//
+	// ⚠ It IGNORES Limit/Offset/Sort by construction — those live outside the WHERE builder — so
+	// it answers "how many match?", which is what a pager's total means, not "how many are on this
+	// page". Sharing the predicate is why a page's total can never disagree with its rows.
 	CountClips(ctx context.Context, filter ClipFilter) (int, error)
 	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
 	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.

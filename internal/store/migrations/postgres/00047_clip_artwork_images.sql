@@ -1,5 +1,5 @@
 -- +goose Up
--- V52 phase 6 (§22). Postgres mirror of the sqlite 00046; the full reasoning lives there.
+-- V52 phase 6 (§22). Postgres mirror of the sqlite 00047; the full reasoning lives there.
 --
 -- In short: a clip's still and hover loop become image-service images, and the forward pointer
 -- lives on the clip row — `image_refs` is the GC's reverse index, not the lookup. `thumbnail` and
