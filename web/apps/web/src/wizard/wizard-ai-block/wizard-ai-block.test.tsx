@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry, SystemLLMStatus } from "@loomarr/api";
 import {
   getSettingsListMockHandler,
   getSystemLlmDiscoverMockHandler,
@@ -42,9 +42,15 @@ const AI_ENTRIES: SettingEntry[] = [
 // any OTHER url with an empty object. That is precisely what makes a hand-rolled stub unable to
 // fail: an unexpected request was indistinguishable from an expected one. Only the three endpoints
 // this block actually uses are stubbed now, and anything else fails the test by name.
-const stubAi = (probe: Record<string, unknown>) =>
+// ⚠ `probe` is typed as the two fields the tests vary, NOT `Record<string, unknown>`. The loose
+// version type-checked only because a hand-rolled stub never had to satisfy SystemLLMStatus —
+// which requires `local`, `model`, `reachable`, `catalog`, `hosted` and `provider`, and the old
+// fixture supplied neither `local` nor a typed `reachable`.
+const stubAi = (probe: Pick<SystemLLMStatus, "reachable" | "model">) =>
   server.use(
-    getSystemLlmStatusMockHandler({ provider: "ollama", catalog: [], hosted: [], ...probe }),
+    // ⚠ `local` and `model` are REQUIRED on SystemLLMStatus and the old stub supplied neither —
+    // another incomplete fixture an untyped stub let through.
+    getSystemLlmStatusMockHandler({ provider: "ollama", local: true, catalog: [], hosted: [], ...probe }),
     getSettingsListMockHandler({ settings: AI_ENTRIES, features: {} }),
     // ⚠ The block also calls /v1/system/llm/discover — the OLD stub answered it with `{}` from its
     // catch-all, so this code path ran against an empty object and no one knew. The guard named it.
