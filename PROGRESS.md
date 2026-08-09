@@ -41,12 +41,28 @@ broken in its own implementation (`Resize` per rung re-walks the halving chain: 
    `DROP SCHEMA` + `CREATE SCHEMA` so `Open` re-runs every migration: seeded rows return by
    construction and new tables are covered the day they exist. Integration suite 9s → 21s.
 
-**Next up: phase 2** — the API surface (`rawOp` serve + multipart upload + record route, per-row
-visibility, SSRF guard), then 3 jobs, 4 FE `<Image>` primitive, 5–7 the migrations of channel
-icons / clip artwork / TMDB, 8 retirements. ⚠ Phases 5–7 each regenerate the orval client, so
-per CLAUDE.md's worktree rule they are **not** parallelisable with each other.
-⚠ **`images.dir` has no `Dockerfile` pre-create yet** — `/data/filler` has one and `/data/images`
-will need the same, or a zero-env first run writes into a root-owned volume.
+**Phase 2 is also done** (`1049395`): three Huma operations — `rawOp` byte serve, typed record,
+multipart upload — registered in both register lists, spec regenerated, `openapi-verify` green.
+
+⚠ **START HERE: `Server.images` is nil, so those three routes 404 in a running instance.** The
+app adapter (`store.Store` → `images.Store`, constructing `images.Service` from settings) is not
+written. This is precisely the *"a built component nobody imported"* pattern recorded against
+V1/V17a/V23 above — flagged deliberately rather than left to be discovered, and it is the first
+task of phase 3, not a later cleanup.
+
+**Then: phase 3** the jobs (fetch / avif / rehydrate / gc) + the `IMAGES_*` settings registry
+entries + `make config-docs`; **4** the FE `<Image>` primitive (+ Storybook, visual baselines,
+and the `ui/index.ts` barrel, which is hand-maintained); **5–7** migrating channel icons, clip
+artwork and TMDB onto the service; **8** retirements + `scripts/check-retired.sh` + the
+`docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client, so per CLAUDE.md's worktree
+rule they are **not** parallelisable with each other.
+
+⚠ **Two known gaps neither phase closed.** `images.dir` has no `Dockerfile` pre-create;
+`/data/filler` has one and `/data/images` needs the same, or a zero-env first run writes into a
+root-owned volume. And the WebP encoder is **not yet built with `-tags nodynamic`** in the
+Makefile or Dockerfile: without it the library `dlopen`s a system libwebp when present, so the
+same image encodes to different bytes on different base layers — and derivative paths are
+content-addressed, so that is a different URL per host.
 
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
