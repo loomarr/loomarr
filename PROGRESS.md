@@ -4,15 +4,34 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
-**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–3a of 8 done.**
+**V52 — the image service: IN PROGRESS on `v52-image-service`, phases 0–3b of 8 done.**
 Gate for what has landed: `make check` **exit 0, zero failures** (0 lint, `-race`) +
-`make config-docs` regenerated + `make test-pg` green with the 11 new `Images` conformance
-subtests **verified to actually execute under Postgres**. ⚠ Capture the exit code directly —
-`make … | tail` reports 0 over a red suite (see the defect list below).
+`make config-docs` + `make openapi` regenerated with no drift + `make test-pg` green with the
+**14** `Images` conformance subtests **verified to actually execute under Postgres**.
+
+⚠ **"Exit 0" and "the assertions ran" are two different claims, and this branch has now been
+bitten by both halves.** The pipe version is already recorded below (`make … | tail` reports the
+pipe's status over a red suite). The second: `go test -run TestPostgresConformance ./internal/store/`
+prints **`ok … [no tests to run]` and exits 0** without `-tags=integration`, because the file is
+not compiled at all — so the filter matches nothing and the run proves nothing. The only sufficient
+evidence is seeing the subtest NAMES in `-v` output. `make test-pg` passes the tag; a hand-rolled
+`go test` does not.
 
 Commits, rebased onto main `d7868a9`: `7f80749` (§22 doc), `fd18f29` (codec), `511cb97`
 (service + store + migration), `1049395` (routes), `872872b` (renumber to 00045), `c68ec2d`
-(the 10.4× test-harness fix), `c9a05d7` (phase 3a — wiring + `IMAGES_*` settings).
+(the 10.4× test-harness fix), `c9a05d7` (phase 3a — wiring + `IMAGES_*` settings),
+`05e1aee` (gofmt fix, see below), `cc754e6` (phase 3b — the four jobs).
+
+⚠ **Phase 3a's recorded gate evidence was WRONG and this is the correction.** `c9a05d7` says
+`make check` exit 0; it did not. Adding `Images ImageService` to `api.Server` landed inside an
+aligned run of struct fields, so gofmt wanted to re-align its five neighbours and the tree failed
+at the FIRST step of `make check` — `fmt`, before vet, lint or a single test. CI on PR #199 would
+have been red the whole time. Fixed in `05e1aee`.
+
+The mechanism is worth keeping because it is not a typo class: **gofmt aligns a whole run of
+adjacent fields, so inserting one line re-writes lines you did not touch** — a hand-added field in
+an aligned block is unformatted by default rather than by accident. And the reason it was reported
+green is the same masking this file already warns about one paragraph up.
 
 Loomarr shows images from four sources and handled each differently — icons as **database
 blobs**, clip stills and hover loops on disk under `FILLER_DIR`, TMDB posters **hot-linked from
@@ -138,32 +157,90 @@ phase gives them a form.
    that matters — Tunarr fetches stored icon URLs machine-to-machine, so setting it in the wizard
    must not need a restart.
 
-**Next up: phase 3b — the four background jobs** (`images-fetch`, `images-avif`,
-`images-rehydrate`, `images-gc`). Their schedule keys and settings are already declared, so this is
-job bodies + scheduler registration only.
+**Phase 3b done** (`cc754e6`): the four jobs — `images-fetch`, `images-avif`, `images-rehydrate`,
+`images-gc` — registered through `registerImageJobs` and pinned by `TestJobSet`, which went red the
+moment they appeared and is the only test that can see a job constructed and never registered.
 
-⚠ **The GC's eviction policy is DECIDED: plain image-level LRU** — order by `images.last_used_at`,
-drop the coldest images' derivatives entirely, stop once under `images.cache_budget_mb`. Rejected
-per-derivative LRU: `image_derivatives` has `created_at` but no `last_used_at`, and adding one
-would make every image request a row WRITE (a 50-poster grid = 50 writes per page load, on SQLite
-with `SetMaxOpenConns(1)`). Every derivative is regenerable by definition, so a wrong eviction
-costs one re-encode and never data — and at the documented envelope (≤50 channels, ≤10k clips) the
-2 GB budget is a backstop, not a routine event. ⚠ **Eviction is the LEAST important of the GC's
-four duties**; the TMDB TTL is a *compliance* requirement, and orphan deletion and the
-unrecoverable-missing warning both have clear right answers.
+⚠ **The re-key is the part to understand before touching the fetcher.** `Adopt` keys a
+not-yet-fetched row on `sha256("url:"+srcURL)` — a namespaced placeholder, because the content hash
+cannot be known before the bytes arrive. When the bytes land, identity MUST become the real content
+hash or `Cache-Control: immutable` stops being true: a URL would keep its name while its content
+changed, which is the one thing content addressing exists to prevent. So `fetchOne` writes a new
+row, moves the refs, and deletes the placeholder — **in that order**, because `image_refs` cascades
+on delete and the obvious ordering drops the association silently. Sabotage-verified: swapping them
+loses the ref and the test says so.
 
-⚠ `images-gc` needs two store methods that do not exist (total derivative bytes; derivatives
-ordered by their image's last use), which extends the `ImageStore` contract and its Postgres
-conformance suite. The other three jobs need no store change.
+The same machinery covers a case that is not a placeholder at all — a TTL refresh or rehydrate of
+artwork upstream has REPLACED. Hashes differ, the row re-keys, every derivative URL changes. That
+is the honest outcome; the bytes really are different.
 
-**Then: 4** the FE `<Image>` primitive (+ Storybook, visual baselines, and the `ui/index.ts`
-barrel, which is hand-maintained); **5–7** migrating channel icons, clip artwork and TMDB onto the
-service; **8** retirements + `scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each
-regenerate the orval client, so per CLAUDE.md's worktree rule they are **not** parallelisable.
+⚠ **The store needed FOUR new methods, not the two this file predicted.** The two known ones were
+the GC's (`TotalImageDerivativeBytes`, `ListColdestDerivatives`). The two that were missed:
+`RepointImageRefs` for the re-key above, and `ListImagesByOrigin` because rehydrate's work list —
+"every remote row, whatever its fetch state" — is expressible by neither `ListImagesAwaitingFetch`
+(scoped to the never-fetched sentinel) nor `ListImagesExpiredBefore` (scoped to a cutoff). A file
+can go missing under a row in either state. The prediction "the other three jobs need no store
+change" was an estimate, not a gate.
 
-⚠ **One known gap remains.** `images.dir` has no `Dockerfile` pre-create; `/data/filler` has one
-and `/data/images` needs the same, or a zero-env first run writes into a root-owned volume. (The
-WebP `-tags nodynamic` gap is unchanged and still open.)
+⚠ `RepointImageRefs` is **insert-then-delete, never `UPDATE image_refs SET image_hash`**. Two
+distinct source URLs can hold identical bytes, so both placeholders re-key onto ONE content hash and
+the second update violates the primary key. `DO NOTHING` makes the collision the no-op it should be.
+
+**The TTL decision (maintainer's call): purge-then-requeue.** The GC deletes the original and every
+derivative, clears `origin_fetched_at`, and `images-fetch` re-downloads within the minute. Rejected:
+re-fetch in place and delete only on failure, which reads as strictly nicer and puts the compliance
+question **inside an error branch** — TMDB unreachable for a day would silently keep serving expired
+bytes, and the ceiling would be enforced by nothing. A ceiling that holds only while the network is
+up is not a ceiling. Recorded doc-first in §22.
+
+⚠ **The GC collects orphans BEFORE it expires, and a test found the interaction.** Both sweeps can
+select the same row (past its TTL *and* unreferenced). Expiring first purges the bytes and queues a
+fresh download moments before the orphan sweep deletes it — and if that delete fails, a download
+instruction for an image no surface will ever show is what survives.
+
+⚠ **Eviction is image-level LRU**, as decided: order by `images.last_used_at`, drop the coldest
+derivatives, stop once under `images.cache_budget_mb`. Per-derivative LRU stays rejected —
+`image_derivatives` has no `last_used_at` and adding one would make every image request a row WRITE
+(a 50-poster grid = 50 writes per page load, on SQLite with `SetMaxOpenConns(1)`). The conformance
+test pins the ordering by making `created_at` and `last_used_at` **disagree**: the coldest image's
+derivative is the NEWEST file, so a `created_at` ordering returns exactly the wrong answer and still
+looks plausible. Sabotage-verified.
+
+**SSRF** (`images-fetch` is the second job to reach the internet unattended, after `filler-fetch`,
+and the first driven by a URL in a row rather than a source an operator added): https only, host
+allowlist, redirects capped at 3 and refused into private/loopback/link-local ranges, body capped on
+the READ. ⚠ **The private-range rule deliberately does NOT apply to the first hop.** A self-hosted
+media server is normally ON a private address — that is what self-hosted means — so a blanket ban
+would refuse exactly the artwork the install owns. What makes hop one safe is that its host came
+from the install's own configuration; hop two is the one an allowlisted host controls.
+
+⚠ The allowlist is **derived** (`tmdb.org` + the `library.url` host), not a settings key. An
+allowlist is only a control if something other than the attacker decides what is on it, and a knob
+whose only correct values are these two is a third place to get it wrong. ⚠ Matching is exact-or-
+dot-anchored-suffix, never a bare `HasSuffix` — sabotage-verified that the bare version accepts
+`eviltmdb.org` against an allowlist containing `tmdb.org`.
+
+⚠ **`Derivative.Path` was documented as "relative to the images dir" and never was.** Nothing read
+the field before, so the lie was free; the GC hands it straight to a remove, where believing the
+comment would have deleted nothing, reported success, and left the budget permanently over.
+
+**The known Dockerfile gap is CLOSED** — `/data/images` is pre-created alongside `/data/filler`.
+Phase 3b is what made it bite rather than merely untidy: `images-fetch` runs every minute, so on a
+zero-env first run the first thing to touch that path is a background job failing into a root-owned
+volume once a minute forever, with nothing connecting it to a directory nobody created. ⚠ This edits
+`Dockerfile`, so the CI **Image job runs** (~30 min, both platforms under QEMU) — expected, not a
+misfire.
+
+**Next up: phase 4 — the FE `<Image>` primitive** (+ Storybook, visual baselines, and the
+`ui/index.ts` barrel, which is hand-maintained). ⚠ A fresh worktree needs `npx pnpm@11.13.1 install
+--frozen-lockfile && npx pnpm@11.13.1 codegen` first — `packages/api/generated/` is gitignored, so a
+skipped codegen typechecks red *after* a successful install.
+
+**Then: 5–7** migrating channel icons, clip artwork and TMDB onto the service; **8** retirements +
+`scripts/check-retired.sh` + the `docs/help/` sweep. ⚠ Phases 5–7 each regenerate the orval client,
+so per CLAUDE.md's worktree rule they are **not** parallelisable.
+
+⚠ **One known gap remains**: the WebP `-tags nodynamic` gap, unchanged and still open.
 
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
