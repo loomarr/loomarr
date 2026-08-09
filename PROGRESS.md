@@ -6,7 +6,40 @@ is recorded here. See `CLAUDE.md` for the prime directives; one phase per sessio
 
 **V52 — the image service: all 8 phases built.** Merged: `ca15ba1d` (#199, phases 0–4),
 `309c5dfc` (#209, phase 5), `db241852` (#217, phase 6). **Phase 7 is on `v52-phase7-tmdb` (#221);
-phase 8 is on `v52-phase8-retirements`, stacked on it.** Neither is merged.
+phase 8 is on `v52-phase8-retirements`, stacked on it.** Neither is merged. A third branch,
+`v52-attribution-and-binary-coverage`, closes §22's attribution and carries the migrator fix below.
+
+⚠ **THE SQLite→POSTGRES MIGRATOR WAS BROKEN ON MAIN, AND SIX INTEGRATION TESTS HAD NEVER RUN.**
+Found while adding coverage for the binary-coercion branch V52 phase 8 left unexercised — i.e. by
+the act of justifying two lines of code rather than by looking for a bug.
+
+`MigrateData` died partway through with `duplicate key value violates unique constraint
+"filler_sources_pkey"`. Preflight refuses a populated target, so the destination *was* empty when
+the operator chose it — but `Open(dsn, true)` then runs goose, and some migrations INSERT rows. The
+source carries those same seeded rows, so a plain insert collides. Every operator who tried to move
+an established SQLite install to Postgres hit it. Reproduced on unmodified `main` (`a40fa721`) on
+tests nobody had touched, before any fix was written.
+
+⚠ **The reason it was invisible is a THIRD variant of "green that proves nothing".** `make test-pg`
+was `-run TestPostgresConformance`, so every other integration test in the package compiled and was
+never selected — including `TestMigrateSQLiteToPostgres`, which its own file header calls "the V11
+gate", plus `TestMigrateCoversEveryTable` and three `TestPreflight*`. **A filter is invisible in the
+output**: the target printed an honest pass and said nothing about the six tests it skipped. The
+earlier two variants were a pipe masking an exit code, and a missing `-tags=integration` printing
+`ok … [no tests to run]`. The durable lesson: a test EXISTING, COMPILING and EXECUTING are three
+separate facts, and CI output routinely evidences only the first two.
+
+The fix clears the destination's seeded rows before copying, in REVERSE topological order — the
+same graph the insert order uses, backwards, so a child's rows always go before its parent's.
+`DELETE` rather than `ON CONFLICT DO NOTHING` because the SOURCE is authoritative: it holds the
+operator's live data, which began from those same seeds and may since have been edited, and
+DO NOTHING would keep the pristine seed and discard the edit while looking like success.
+
+⚠ **§22's TMDB attribution is now COMPLETE** — the notice shipped in phase 7, and the mark
+(`blue_short`, vendored from TMDB's attribution page, checked for `<script>`/`on*=`, `<title>` added
+for the a11y lint and the artwork otherwise byte-identical) ships here. The SVG ban in §22 applies
+to UPLOADS, whose serve route is public; a vendored asset served by Vite from `public/` is the same
+footing as `favicon.svg`.
 
 ⚠ **Two things V52 does NOT close, and both need the maintainer rather than another phase.**
 (1) §22's TMDB attribution is half-shipped: the notice is live and asserted verbatim, but the LOGO
