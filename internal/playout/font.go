@@ -16,6 +16,19 @@ import (
 // rest of the list covers a developer running the binary on a host rather than in the
 // image — a distro-specific layout should degrade to an unlabelled card, never to a dead
 // channel.
+//
+// ⚠ That first sentence was FALSE from the day it was written until 2026-08-09: the
+// Dockerfile installed no font package and §16 never mentioned one, so `debian:stable-slim`
+// (which ships no `/usr/share/fonts` at all) reached every candidate and matched none. The
+// consequence is invisible by construction — the fail-safe below is *designed* to swallow a
+// missing font — so the shipped offline card was an unlabelled black frame with silent
+// audio, which is exactly what a dead channel looks like. No test can catch this; the
+// degradation is the intended behaviour and only the image was wrong.
+//
+// The durable lesson, and the reason this paragraph stays: a comment asserting a
+// dependency exists is not the dependency existing. Anything here that names a package,
+// a doc section or a build step is a claim about a FILE ELSEWHERE, and only a check
+// against that file can keep it true.
 var fontCandidates = []string{
 	// Debian/Ubuntu — what the image ships.
 	"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
