@@ -58,8 +58,13 @@ globalThis.ResizeObserver ??= class {
 // unhandled-request guard records-and-asserts instead of using `onUnhandledRequest: "error"`,
 // which does not fail a test.
 //
-// ⚠ Installed globally but STARTS WITH NO HANDLERS, so a test that has not been migrated is
-// unaffected: its `vi.stubGlobal("fetch", …)` replaces global fetch outright and never reaches
-// MSW's interceptor. That is what makes the migration incremental rather than a 31-file
-// big-bang — the two mechanisms coexist until the last stub is gone.
+// ⚠ Installed globally but STARTS WITH NO HANDLERS. Every test declares the routes it needs via
+// `server.use(...)`, and anything it did not declare fails BY NAME rather than getting an empty
+// object — which is the whole point, and how this migration turned up ~40 defects that thirty-one
+// green stubs had been hiding.
+//
+// ⚠ The migration is COMPLETE (V53e), and `scripts/check-retired.sh` now bans the old mechanism
+// outright so a thirty-second stub cannot reappear. The single legitimate exception lives outside
+// this app — `packages/api/src/mutator/mutator.test.ts` tests the fetch wrapper itself, below the
+// layer MSW intercepts.
 installServerLifecycle({ beforeAll, afterEach, afterAll });

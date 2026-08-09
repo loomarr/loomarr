@@ -1,7 +1,16 @@
+import type { ApproveOutputBody, MeBody, ProposalDTO } from "@loomarr/api";
+import {
+  getApproveProposalMockHandler,
+  getListProposalsMockHandler,
+  getMeMockHandler,
+  getSubmitProposalMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { me } from "@/test/fixtures/users";
+import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
 
@@ -12,10 +21,11 @@ import { ChannelSuggestPanel } from "./channel-suggest-panel";
 // proposal rides the list). The panel needs a router (it navigates on approve) + a query
 // client + the events provider is absent in isolation (the listener is then a no-op, exactly
 // as suggest-workspace notes).
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
-const MEMBER = { ...ADMIN, role: "member" };
+// ⚠ `local` is REQUIRED on MeBody and this fixture omitted it.
+const ADMIN: MeBody = me();
+const MEMBER: MeBody = me({ role: "member" });
 
-const PROPOSAL = {
+const PROPOSAL: ProposalDTO = {
   id: "p-1",
   jobId: "job-1",
   status: "submitted",
@@ -25,37 +35,44 @@ const PROPOSAL = {
       { mediaType: "movie", tmdbId: 9377, name: "Ferris Bueller's Day Off", year: 1986, inLibrary: true },
     ],
     acquisitions: [],
+    // ⚠ `alternates` and `scores` are REQUIRED on Proposal and this fixture had neither. The
+    // panel renders ProposalReview, which reads `scores` for the fit summary — so the review was
+    // being exercised against a proposal the server could not have produced.
+    alternates: [],
+    scores: { themeFit: 0.9, availabilityRatio: 1, eraBalance: 0.7, overall: 0.85 },
     rationale: "Grounded against your library.",
   },
 };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// ⚠ `u.includes("/v1/proposals") || u.includes("/v1/proposals")` — the SAME condition twice, the
+// second branch unreachable. It is the second duplicated-`/v1/proposals` branch this migration has
+// found (`test/reachability` had the other), and neither could have been noticed: dead code in a
+// stub produces no symptom at all.
+//
+// ⚠ `u.includes("/approve")` also matches `POST /v1/proposals/approve`, the BULK route. The
+// member-gate test below asserts NO approve call fires — an assertion whose whole value depends on
+// naming the right endpoint.
+const stubSuggest = (
+  opts: { proposals?: ProposalDTO[]; me?: MeBody; approveBody?: ApproveOutputBody } = {},
+) => {
+  const approvals: string[] = [];
+  const submissions: unknown[] = [];
 
-const stubFetch = (opts: { proposals?: unknown[]; me?: unknown; approveBody?: unknown } = {}) => {
-  const mock = vi.fn((url: string, init?: RequestInit) => {
-    const u = String(url);
-    const method = String(init?.method ?? "GET");
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(opts.me ?? ADMIN));
+  server.use(
+    getMeMockHandler(opts.me ?? ADMIN),
     // Approve — returns the created channel's id (what the panel navigates to).
-    if (u.includes("/approve") && method === "POST") {
-      return Promise.resolve(json(opts.approveBody ?? { channelId: "ch_new123" }));
-    }
-    if (u.includes("/v1/proposals") && method === "POST") return Promise.resolve(json({ jobId: "job-1" }));
-    if (u.includes("/v1/proposals") || u.includes("/v1/proposals")) {
-      return Promise.resolve(json({ proposals: opts.proposals ?? [] }));
-    }
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
+    getApproveProposalMockHandler(({ params }) => {
+      approvals.push(String(params.id));
+      return opts.approveBody ?? { channelId: "ch_new123", enqueued: 0, status: "approved" };
+    }),
+    getSubmitProposalMockHandler(async ({ request }) => {
+      submissions.push(await request.json());
+      return { jobId: "job-1" };
+    }),
+    getListProposalsMockHandler({ proposals: opts.proposals ?? [] }),
   );
-  return mock;
+
+  return { approvals, submissions };
 };
 
 const renderPanel = (onCreated: (id: string) => void) => {
@@ -73,23 +90,18 @@ const renderPanel = (onCreated: (id: string) => void) => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("ChannelSuggestPanel", () => {
   it("submits the typed intent to start a run", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch();
+    const { submissions } = stubSuggest();
     renderPanel(() => {});
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
     await waitFor(() => {
-      const posted = fetchMock.mock.calls.find(
-        ([u, init]) => String(u).includes("/v1/proposals") && String(init?.method) === "POST",
-      );
-      expect(posted).toBeTruthy();
-      expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({ description: "80s teen comedies" });
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0]).toMatchObject({ description: "80s teen comedies" });
     });
   });
 
@@ -99,7 +111,7 @@ describe("ChannelSuggestPanel", () => {
   // constraints disclosure actually reaches the wire — under the wire's field names.
   it("submits the constraints behind the disclosure, under the wire's field names", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubFetch();
+    const { submissions } = stubSuggest();
     renderPanel(() => {});
 
     await user.type(await screen.findByLabelText("Channel intent"), "90s action movies");
@@ -108,11 +120,8 @@ describe("ChannelSuggestPanel", () => {
     await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
 
     await waitFor(() => {
-      const posted = fetchMock.mock.calls.find(
-        ([u, init]) => String(u).includes("/v1/proposals") && String(init?.method) === "POST",
-      );
-      expect(posted).toBeTruthy();
-      expect(JSON.parse(String(posted?.[1]?.body))).toMatchObject({
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0]).toMatchObject({
         description: "90s action movies",
         runtimeTargetMin: 180,
       });
@@ -121,7 +130,7 @@ describe("ChannelSuggestPanel", () => {
 
   it("shows the grounded proposal inline once the run produces one", async () => {
     const user = userEvent.setup();
-    stubFetch({ proposals: [PROPOSAL] });
+    stubSuggest({ proposals: [PROPOSAL] });
     renderPanel(() => {});
 
     await user.type(await screen.findByLabelText("Channel intent"), "80s teen comedies");
@@ -133,7 +142,10 @@ describe("ChannelSuggestPanel", () => {
 
   it("approving hands the new channel id to onCreated (the list navigates to it)", async () => {
     const user = userEvent.setup();
-    stubFetch({ proposals: [PROPOSAL], approveBody: { channelId: "ch_new123" } });
+    stubSuggest({
+      proposals: [PROPOSAL],
+      approveBody: { channelId: "ch_new123", enqueued: 0, status: "approved" },
+    });
     const onCreated = vi.fn();
     renderPanel(onCreated);
 
@@ -149,7 +161,7 @@ describe("ChannelSuggestPanel", () => {
     // ProposalReview renders the Approve button off the proposal STATUS (same as /suggest);
     // the gate is that a member's onApprove is undefined, so clicking it does nothing — and
     // the server would 403 anyway. Assert the panel never fires the approve POST for a member.
-    const fetchMock = stubFetch({ proposals: [PROPOSAL], me: MEMBER });
+    const { approvals } = stubSuggest({ proposals: [PROPOSAL], me: MEMBER });
     const onCreated = vi.fn();
     renderPanel(onCreated);
 
@@ -158,7 +170,9 @@ describe("ChannelSuggestPanel", () => {
     await user.click(await screen.findByRole("button", { name: /approve/i }));
 
     // No approve POST, no navigation — the control is wired to nothing for a member.
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/approve"))).toBe(false);
+    // ⚠ `approvals` is fed only by `POST /v1/proposals/:id/approve` — the per-proposal route the
+    // panel would call. The old `includes("/approve")` would also have matched the BULK route.
+    expect(approvals).toEqual([]);
     expect(onCreated).not.toHaveBeenCalled();
   });
 });
