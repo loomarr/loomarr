@@ -44,6 +44,13 @@ broken in its own implementation (`Resize` per rung re-walks the halving chain: 
 **Phase 2 is also done** (`1049395`): three Huma operations — `rawOp` byte serve, typed record,
 multipart upload — registered in both register lists, spec regenerated, `openapi-verify` green.
 
+**Open as PR #199**, branch `v52-image-service`, worktree `../loomarr-v52-images`. Not merged:
+CI had not reported at hand-off, and merging past an unreported check is not a thing this project
+does. Re-check with `gh pr checks 199`; the local gate was green on the same tree.
+⚠ A fresh worktree needs `npx pnpm@11.13.1 install --frozen-lockfile && npx pnpm@11.13.1 codegen`
+before any FE work — `packages/api/generated/` is gitignored, so a skipped codegen typechecks red
+*after* a successful install.
+
 ⚠ **START HERE: `Server.images` is nil, so those three routes 404 in a running instance.** The
 app adapter (`store.Store` → `images.Store`, constructing `images.Service` from settings) is not
 written. This is precisely the *"a built component nobody imported"* pattern recorded against
