@@ -785,6 +785,22 @@ type Options struct {
 
 // humaConfig builds the OpenAPI 3.1 config with our metadata (§7.1).
 func humaConfig() huma.Config {
+	// ⚠ Arrays are NOT nullable (V53b). Huma's default is `true` because a Go nil slice really
+	// does marshal to `null`, so out of the box every list field in this API was typed
+	// `T[] | null` — 109 nullable type-unions against 4 plain arrays — and every client had to
+	// handle two representations of "nothing", forever.
+	//
+	// ⚠ This flag alone would make the document LIE, and Huma says so in its own doc comment:
+	// "any `nil` slice will still encode as `null` in JSON". It is only honest because
+	// `TestResponses_ContainNoJSONNull` drives every parameterless GET against an EMPTY store
+	// — the state that actually produces nil slices — and fails on any null in the body. Setting
+	// this without that guard would swap a truthful awkward spec for a tidy false one.
+	//
+	// ⚠ Set HERE deliberately: `humaConfig` is the single constructor behind both the served API
+	// (api.go) and the spec export (export.go), so the runtime and the document cannot disagree
+	// about it. It is a package-level global in Huma rather than a Config field, so there is no
+	// per-instance place to put it.
+	huma.DefaultArrayNullable = false
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
 	cfg.Info.Description = "Turn a sentence into a self-maintaining Tunarr channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."

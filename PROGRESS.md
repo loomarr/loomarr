@@ -279,6 +279,230 @@ install.
 
 ⚠ **One known gap remains**: the WebP `-tags nodynamic` gap, unchanged and still open.
 
+**V53d — one mock layer instead of 31, and the first migrated file found two defects in the stub
+it replaced (2026-08-09, branch `feat/msw-fixtures`).** Gate: `make fe` (**1222** app + **19** api +
+51 core + 5 tokens, biome clean on 922 files) + `make retired-verify` (25). Zero Go files touched.
+
+31 test files each hand-rolled a local `stubFetch`, so **31 places independently encoded what the
+wire looks like** — the frontend doing exactly what the Go side bans (*"Phases do not invent private
+mocks; extend the testkit"*). This is that shared layer: `msw` + orval-generated handlers behind
+`@loomarr/api/msw`, with `src/test/msw/server.ts` owning the lifecycle.
+
+⚠ **V53c was PLANNED AND DISSOLVED, on evidence.** It was to be runtime response validation through
+the mutator. Orval cannot do it here: `runtimeValidation` does not exist in 7.21.0 (zero occurrences
+in any `@orval/*` package), and in 8.24.0 the **only** `.parse()` injection is the Angular
+`.pipe(map(...))` path — the fetch client's mutator branch builds its request function and returns
+before reaching it. Loomarr's transport IS a custom mutator (CSRF, cookie auth, RFC 7807), and orval
+PR #3226 — *"pass zod schema to custom fetch response implementation"* — is still open. **But the
+value survived the design dying:** what it was actually for was catching FIXTURE drift, not backend
+drift (`openapi-verify` already covers that), and a test knows which endpoint it stubs, so
+`validated(schema, fixture)` needs no URL→schema map and no transport change.
+
+**What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so
+a renamed route is fixed by a regenerate where a hand-written path silently stops matching and its
+test keeps passing against nothing. ⚠ **The generated DATA is never trusted:** optional fields emit
+as `arrayElement([value, undefined])`, so presence varies per CALL and nothing is seeded — flaky
+rather than merely arbitrary. `useExamples` stays unset (it reads singular `example`; Huma emits 3.1
+plural `examples:`).
+
+⚠ **`onUnhandledRequest: "error"` is NOT used, because it does not fail a test.** MSW's docs define
+it as *"print an error and halt request execution"*, and the maintainer confirms in mswjs/msw#946
+that the interceptor handles the exception as the native class would, so *"from MSW's perspective no
+exception has happened"* and the runner never sees it. The server records unhandled requests and
+throws in `afterEach` instead. **Verified by direct probe** — a fetch to an unrouted path fails the
+test by name — after a first sabotage attempt passed and looked like a broken guard. It was not: the
+sabotage was invalid, because the component never made the request I removed the handler for.
+
+⚠ **THE FIRST MIGRATED FILE FOUND TWO REAL DEFECTS IN THE STUB IT REPLACED, and this is the argument
+for the sweep.** Neither was findable by reading:
+
+- The old stub answered every non-PATCH call with `{ entries: [] }`, which read as *"the modal loads
+  the settings list on mount."* It does not. **A catch-all stub structurally cannot distinguish
+  "handled" from "never asked for"** — MSW can, because an unmatched request is now an error.
+- It returned `{ results: {} }` where the wire says `results: SettingResult[]`. **The test asserted
+  against a shape the API never produces**, and passed for as long as it existed, because a
+  hand-rolled stub is untyped by construction. The generated handler is typed, so it is now a
+  compile error.
+
+Also: the old stub matched on `init?.method === "PATCH"` alone, so it would have accepted a PATCH to
+ANY url — including one the component should never call.
+
+**Migration is incremental by construction.** MSW installs globally with NO handlers, and an
+unmigrated test's `vi.stubGlobal("fetch", …)` replaces global fetch outright and never reaches the
+interceptor — verified: all 158 files still pass with the server installed. The two mechanisms
+coexist until the last stub is gone.
+
+⚠ **`retired-verify` caught this entry's own prose**: the §14 row and `server.ts` both cite
+`/v1/suggestions` → `/v1/proposals` as the historical rename example, which is a banned identifier.
+Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
+fire on that string, and a mention that is deliberate should say so.
+
+**Next up: V53e+** — migrate the remaining 30 `stubFetch` files in batches of 5–8, then add
+`vi.stubGlobal("fetch"` to `scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard
+would fail on every file still waiting.
+
+**Also still open, and not superseded by the V53 arc: V50d** (house-style conformance across
+`components/ui`), carrying `connection-block`'s collapsed-body focus gap — its Test action and Fix
+link remain keyboard-reachable while the section is closed, and it has no story so axe never sees
+it. Recorded here because V50c's own forward pointer was removed with it: two live "Next up" lines
+is the pattern this file warns about, but a gap with no pointer at all is worse.
+
+**V53b — arrays are not nullable; `null` stops being a second empty list (2026-08-09, branch
+`feat/non-nullable-arrays`).** Gate: `make check` (0 lint, `-race`) + `make openapi-verify` +
+`make retired-verify` (25) + `make fe` (**1222** app + 18 api + 51 core + 5 tokens, biome clean on
+919 files).
+
+Every list field in this API was typed `T[] | null` — **109 nullable type-unions against 4 plain
+arrays** — so every client handled two representations of "nothing", forever. The generated zod
+carried `.nullish()` on every array and the FE coalesced `?? []` at each use.
+
+The cause was `huma.DefaultArrayNullable`, which defaults to true *correctly*: a Go nil slice really
+does marshal to `null`. It is now false, set in `humaConfig` — the single constructor behind both
+the served API and the spec export, so runtime and document cannot disagree.
+
+⚠ **The flag alone would have made the spec LIE**, and Huma says so in its own doc comment: *"any
+`nil` slice will still encode as `null` in JSON."* Flipping it changes what the document CLAIMS
+without changing what the wire SENDS. It ships with a guard or not at all.
+
+**The guard.** `TestResponses_ContainNoJSONNull` drives every parameterless GET — **derived from the
+exported spec**, not a hand-kept roster, because a new list endpoint nobody added to a list is
+exactly the one that would regress — against an **EMPTY STORE**, and fails on any JSON null in a
+success body. ⚠ The empty store is the point, not an accident: nil slices are what a repository
+returns when it finds no rows, so a fresh database is precisely the state that produces them, and a
+seeded fixture would hide the entire class by never taking the empty branch. Since the spec now
+declares nothing nullable, *"no null anywhere in the body"* is the exact invariant.
+
+**It found one leak in 46 paths, and it was the one that matters most.** `/v1/setup/status`
+returned `checks: null`: `runConnectionChecks` used `var checks []SetupCheck` and deliberately
+contributes no check for unwired services — so an **unconfigured install, the wizard's entire reason
+to exist**, was the case that produced it. One leak in 46 is also the shape of the change: 51
+`make([]T, 0)` guards already existed across the handlers, so this finishes an inconsistency rather
+than inventing a convention.
+
+**Frontend fallout, all benign and all worth naming:**
+
+- The generated zod lost `.nullish()` **entirely** (count: 0) — the ambiguity is gone from the
+  schemas, not merely handled at each call site.
+- ⚠ `VocabularyWhen`/`VocabularyWhat`/`VocabularyHow` **stopped being generated, and nothing was
+  renamed.** Orval only emitted those aliases because `X[] | null` needed a name; a non-nullable
+  array inlines to `WhenVocab[]`, so they had no reason to exist. First read was "orval renamed
+  them" — worth checking rather than assuming, because the fix differs.
+- `presets.ts` carried a comment stating the served arrays *"are nullable on the wire"*. True when
+  written, and about to become a lie. The coalescing it justified **stays**, for a different and
+  still-real reason: the vocabulary is `undefined` until its query resolves. **Null is gone;
+  unloaded is not.**
+- Three fixtures passed `models: null`; the component already does `hp.models ?? []` and branches on
+  `length === 0`, so `[]` is the identical branch rather than a changed one — checked before
+  swapping, since a fixture edit that silently moves a branch is how a test stops testing.
+
+⚠ **This also unblocks orval's MOCK generator, which V53a recorded as rejected** — it degraded
+`type: ["array","null"]` to `arrayElement([[], null])` without descending into `items`. Re-measured
+on the new spec: **137 never-populated list mocks → 0**, and **247** populated `Array.from(...)`
+generators. That is a consequence, not the justification: `null` vs `[]` was an API defect on its
+own terms, and if codegen had been the only argument the right answer would have been to leave it
+alone.
+
+
+**V53a — the form schemas stop mirroring the wire and start deriving from it (2026-08-09, branch
+`feat/zod-from-spec`).** Gate: `make fe` (**1222** app + **18** api + 51 core + 5 tokens, biome clean
+on 919 files) + `make retired-verify` (25 identifiers). Zero Go files touched.
+
+`packages/core`'s three zod schemas mirrored wire field names **by hand**, and that shipped a bug:
+`intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` and `runtimeTarget` where it
+says `runtimeTargetMin`. Both parsed, both serialized into JSON the server ignored, and a user's
+acquisition cap and runtime target silently vanished. A contract test was written afterwards to
+catch it — and covered **one of the three**. `bootstrapSchema` and `loginSchema` were unguarded
+(checked: neither had drifted, yet).
+
+Orval now emits zod schemas from the same spec (`@loomarr/api/zod`), and each form schema is
+`.pick()`ed off its wire schema, then `.extend()`ed with the rules. **A lookalike name is now a
+compile error at the schema definition**, for all three and every future one.
+
+⚠ **The error message is cryptic and worth recognising**: picking a key that is not on the wire
+fails as `Type 'true' is not assignable to type 'never'`. It means exactly one thing — *that field
+does not exist on the wire*. Verified by sabotage: restoring `maxAcquire`/`runtimeTarget` fails
+`tsc` at both lines.
+
+⚠ **Generation carries NAMES and TYPES, not RULES — and the split is deliberate, not a shortcut.**
+This spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` across ~9k lines, `maxAcquisitions`
+has no bounds at all, and OpenAPI has nowhere to put a user-facing message. So the trims, the 0–200
+cap, the 8-character password floor and every message stay hand-authored in `.extend()` — and
+`confirm` (form-only, never sent) is added there too. That is why the pattern is pick-then-extend
+rather than a straight derive: **the wire decides which names are real; the form is free to add its
+own on top.**
+
+⚠ **The contract test was kept, not deleted, and the reason is a real distinction.** `.pick()`
+guarantees the NAMES exist on the wire; `intent-contract.test.ts`'s assignability check guarantees
+the parsed OUTPUT still satisfies `Intent` after `.extend()` rewrites the value types. Proven
+complementary rather than assumed: changing `maxAcquisitions` to `z.string()` in the extend produced
+**0 errors** in core and **failed** the assignability check. Two claims, two guards.
+
+**The zod barrel is hand-written and therefore guarded** (`barrel.test.ts`), same as the endpoint
+barrel — a generated module nobody can import is indistinguishable from one that was never built.
+⚠ It checks the ZOD output directory, not the endpoint one: `events` is SSE and has no schemas to
+generate, so comparing against endpoints would fail forever on a tag that is correct to be absent.
+Sabotage-verified (dropping `users` reports it by name). It is FLAT where the endpoint barrel is
+namespaced — namespacing exists there only because orval repeats helper enums per tag file, and zod
+names are operation-scoped and collision-free.
+
+⚠ **Only the zod half of orval's generation was adopted; the mock generator was measured and
+rejected for its DATA.** It targets OpenAPI 3.0 idioms and this spec is 3.1: **109 nullable
+type-unions vs 4 plain arrays, 0 `nullable: true`**. Meeting `type: ["array","null"]` it emits
+`arrayElement([[], null])` without descending into `items` — **137 list fields that are never
+populated** — and `useExamples` reads singular `.example` where Huma emits plural `examples:`, so
+**0 of 53** example tags are used, across **1304 unseeded faker calls**. Not configurable away. The
+zod generator handled the same 3.1 spec correctly, which is what isolates the gap to the mock half.
+
+
+**V51c — sources roll up by provider, with no column, no table and no migration (2026-08-09).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` + `make config-docs`.
+
+Three archive.org collections sat as three sibling rows with no indication they are one service.
+The Sources tab now shows one **Archive.org** row and one **YouTube** row, each twirling down to
+the targets beneath it — and the whole thing is **derived from `kind` at read time**.
+
+⚠ **The argument for deriving it is a correctness argument, not a shortcut: the grouping being
+asked for is already a column.** Every `archive` row belongs under Archive.org and there is no
+representable case where it belongs elsewhere, so a stored `parent_id` would be a second encoding
+of a fact `kind` already carries — and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`). Three concrete costs it would have added, each
+measured against code that exists: a **duplicate** blank-URI YouTube row beside migration 00034's
+seeded one (both invisible to `idx_filler_sources_uri`, whose `WHERE uri <> ''` excludes them —
+"one source appears twice", which 00023 and 00029 both exist to prevent); a **four-state** inherit
+problem for the nil/0/N fetch overrides whose own ⚠ says callers "must not re-derive this
+three-state logic separately"; and a 409 on any pending pull, because `filler_pulls.plan_json`
+stores `SourceID` strings looked up at approve time.
+
+The escape hatch is recorded in §10 so it is not re-litigated: a provider that ever gains state of
+its own gets a `filler_providers` table keyed on the existing `kind` vocabulary — **not**
+`parent_id`, because that state is per-provider, not per-node.
+
+⚠ **The phase found a guard that had been protecting nothing for two phases.**
+`TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop` asserted a 409 for `PATCH
+/v1/filler/sources/remote`. V37 retired that container, so from that point no read model could
+produce the id and no client could send it — the test stayed green by asserting a refusal for a
+row that did not exist, and the handler kept a `case "remote"` that read as protection. The DELETE
+handler had already removed its twin for exactly this reason, in a comment saying so; the PATCH
+side was simply missed. The guard is now a **prefix test over the derived provider ids**, which
+the read model emits on every request, so it covers a case an operator can actually reach.
+
+**Three things deliberately do not inherit**, each an opinionated call: `enabled` (no group switch
+— cascade-on-write destroys each child's own choice, which the store forbids in as many words, and
+a computed `effective = parent && child` fails in the direction of *fetching from a provider the
+operator switched off*); fetch overrides (leaf only); and `lastFetchedAt`, which becomes a
+read-only `MAX` over children computed in the API so no column can disagree.
+
+⚠ **Both new behaviours were sabotage-verified**: splitting the pre-order into "all groups, then
+all children" turns the ordering test red, and disabling the prefix guard turns the 409 test red
+(404, not 409 — the id resolves to nothing). A first-try green on a new constraint is suspect.
+
+**Honest gap, exposed rather than created:** `sync.go` writes `Source = "filler-dir"` for every
+clip the folder scan finds and nothing records which SOURCE a downloaded clip came from, so
+`bySource["archive"]` is 0 on essentially every install. A group reports the **sum of its
+children's counts** — honest arithmetic over whatever they claim, never an invented number.
+Per-source attribution is an intake change, filed separately.
+
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
 `make retired-verify` (**25 identifiers**, up from 9) + `make config-docs`.
@@ -448,8 +672,6 @@ collapsed body — a Test action and a Fix link — **remains focusable and anno
 left alone because scope is one component; it has no story, so axe never sees it. This is the
 strongest candidate for the next slice.
 
-**Next up: V50d** (house-style conformance across `components/ui`), with `connection-block`'s
-collapsed-body focus gap folded in.
 
 **V50b — the hand-rolled overlays fold onto the primitives (2026-08-08, branch
 `feat/base-ui-v50b`).** Gate: `make fe` (**1221** app + 17 api + 51 core + 5 tokens, biome clean on

@@ -6,6 +6,12 @@ allowBuilds:
   esbuild: true
   # @scarf/scarf is analytics/telemetry pulled in transitively — deny its build.
   "@scarf/scarf": false
+  # msw's build script is `msw init` — it copies the browser SERVICE WORKER into a public
+  # directory. Loomarr uses `setupServer` (Node) in vitest, which intercepts in-process and
+  # needs no worker file, so the script has nothing to do here. Denied rather than left
+  # unanswered: pnpm treats an unresolved entry as an install ERROR, not a warning, and
+  # `pnpm codegen` runs a dep check — so an undecided build script fails codegen outright.
+  msw: false
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18

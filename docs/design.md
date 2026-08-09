@@ -532,6 +532,21 @@ Single source of truth: spec, request validation, and served docs all derive fro
 
 **Requirements:** OpenAPI **3.1** at `/openapi.{json,yaml}`; interactive docs at `/docs` with **bundled assets** — note Huma's default docs page loads Stoplight Elements **from a CDN**, which violates the offline rule: override the docs handler to serve self-hosted assets (works air-gapped on LAN); every operation has summary/description/operationId/tags + an example; schemas generated from domain types (`Title`, `Record`, `State` enum, `Channel`, `Proposal`, `Clip`, `Pod`, RFC 7807 error) — the spec `State` enum must equal the code enum; `make openapi` exports and commits `api/openapi.yaml` (diffed in review, published as CI artifact).
 
+⚠ **Arrays are NOT nullable, and `null` is not a valid empty list anywhere in this API (V53b).**
+Huma's `DefaultArrayNullable` defaults to *true* — correctly, in that a Go nil slice really does
+marshal to `null` — which typed every list field `T[] | null` (**109** nullable type-unions against
+4 plain arrays) and forced every client to handle two representations of "nothing" forever. It is
+set to `false` in `humaConfig`, the single constructor behind both the served API and the spec
+export, so the runtime and the document cannot disagree about it.
+
+⚠ **The flag alone would make the document lie**, and Huma says so in its own doc comment: *"any
+`nil` slice will still encode as `null` in JSON."* It is honest only because
+`TestResponses_ContainNoJSONNull` drives every parameterless GET — derived from the exported spec,
+never a hand-kept roster — against an **empty store**, the state that actually produces nil slices,
+and fails on any `null` in a success body. Since the spec now declares nothing nullable, *"no null
+anywhere"* is the exact invariant. **A handler that returns a nil slice is a bug against this
+section, not a style preference:** build response slices with `make([]T, 0, …)`.
+
 **Every `/v1` route is a Huma operation — including the ones that do not return JSON.** "Define each operation once" was true of the typed routes and quietly false elsewhere: a binary download, an image, an SSE stream, a multipart upload and a 302 were registered straight onto the `ServeMux`. That is a fact about a route's *response shape*, and it was being read as a fact about where the route belongs. The cost was never mainly documentation:
 
 - **Authorization forked.** A Huma operation carries its required role in `Operation.Metadata`, enforced by one middleware that **fails closed** for an operation declaring nothing. Raw handlers called a second helper, and two of them had already drifted to opposite answers on what a nil authorizer means (`backupHandler` denied, `eventsHandler` allowed).
@@ -2386,6 +2401,63 @@ gets to make.**
 ⚠ `clips.removed_at` stays the *airability* gate and pod assembly is untouched. Two places, one
 truth: `removed_at` is **whether**, the pipeline row is **why**.
 
+### Sources roll up by provider (V51c)
+
+Three archive.org collections sat as three sibling rows with no indication they are one service,
+and adding YouTube channels would have made it worse. The Sources tab now shows one **Archive.org**
+row and one **YouTube** row, each twirling down to the targets an operator added beneath it.
+
+⚠ **The grouping is DERIVED from `kind` at read time. There is no `parent_id`, no new table, and
+no migration** — and that is a correctness argument, not a shortcut. *The grouping being asked for
+is already a column*: every `archive` row belongs under Archive.org, and there is no representable
+case where it belongs anywhere else. A stored parent would be a second encoding of a fact `kind`
+already carries, and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`).
+
+Three concrete costs a stored parent would have added, each measured against code that exists:
+
+- Migration `00034` already seeds a blank-URI `youtube` row shaped exactly like a provider root.
+  Inserting `provider:youtube` beside it produces **two** blank-URI YouTube rows, both invisible to
+  `idx_filler_sources_uri` (whose `WHERE uri <> ''` predicate excludes them) and both eligible for
+  the read model — "one source appears twice", which `00023` and `00029` both exist to prevent.
+- It creates a **three-tier inherit problem** for `fetch_every_seconds`/`fetch_max_per_run`, whose
+  nil/0/N encoding already carries a ⚠ saying both callers "must not re-derive this three-state
+  logic separately". A parent tier makes `child=nil, parent=0` mean *never* while
+  `child=nil, parent=nil` means *global* — four states, re-derived in three places.
+- `filler_pulls.plan_json` stores `SourceID` strings looked up at approve time, so rewriting the
+  seeded `youtube` row's id would 409 any pending pull.
+
+⚠ **The escape hatch, recorded so this is not re-litigated:** if a provider ever gains state of its
+own — a YouTube API key, an archive.org rate budget — add a `filler_providers` table keyed on the
+existing `kind` vocabulary. **Not `parent_id`**, because that state is per-provider, not per-node.
+
+**Wire shape: flat, pre-ordered, `group` + `parentId`.** Not nested — a recursive `children: []`
+generates badly through orval and the frontend has no tree primitive, while a flat pre-order array
+is exactly what a twirl-down renders from (hide rows whose parent is collapsed). It is purely
+additive, so a client that knows neither field renders the flat list it always did.
+
+**What does NOT inherit, and why each one is deliberate:**
+
+- ⚠ **`enabled`: no group switch.** Cascade-on-write destroys each child's own choice, which §10
+  forbids in as many words ("Disabling is not deleting… switching it back on restores what was
+  there"). A computed `effective = parent && child` is worse: a fifth thing every call site must
+  remember, whose failure direction is *fetching from a provider the operator switched off*. The
+  group reports `enabled` as ANY-child-on and offers no lever. A master switch, if ever wanted,
+  ships as a **visible bulk write** over the children.
+- **Fetch overrides: leaf only** — see the three-tier argument above.
+- **`lastFetchedAt`: a read-only `MAX` over children**, computed in the API so no column can
+  disagree. Absent when no child has fetched, so the row reads "never" rather than an epoch date.
+
+⚠ **`folder` and `library` do not group.** A twirl-down exists because ONE SERVICE offers many
+targets; two watched folders are unrelated directories with no service in common, so a "Folders"
+container would be a row that dims and changes nothing — the shape §10 forbids.
+
+⚠ **An honest gap this exposes rather than creates:** `sync.go` writes `Source = "filler-dir"` for
+every clip the folder scan finds, and the sidecar records only *whether* Loomarr downloaded a clip,
+never *from which source*. So `bySource["archive"]` is 0 on essentially every install. A group
+reports the **sum of its children's counts** — honest arithmetic over whatever the children claim,
+never an invented number. Per-source attribution is an **intake** change, tracked separately.
+
 ### Break & pod policy (per channel)
 The scheduler assembles realistic **ad pods**, not single random clips:
 - **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
@@ -2879,6 +2951,8 @@ Every "pick one" in this doc is now picked. The agent builds with this stack; de
 | Concern | Decision | Why |
 | --- | --- | --- |
 | Server state + API client | **TanStack Query** with hooks **generated by `orval`** from `api/openapi.yaml` | One generator yields both types and query/mutation hooks; `openapi-typescript`+`openapi-fetch` rejected only because orval removes more hand-written glue |
+| Wire schemas for validation | **`orval` `client: "zod"`**, a second output block over the same spec → `@loomarr/api/zod` | The form schemas in `packages/core` used to MIRROR wire field names by hand, and it shipped a bug: `intentSchema` said `maxAcquire` where the wire says `maxAcquisitions` (and `runtimeTarget` for `runtimeTargetMin`), so a user's acquisition cap serialized into JSON the server ignored and silently vanished. Each schema is now `.pick()`ed off its generated wire schema, making a lookalike name a **compile error at the schema definition** (`Type 'true' is not assignable to type 'never'`). ⚠ This replaces a hand-written contract test that covered **one** of three schemas with a guarantee that covers all three and every future one — the same "a grep beats a convention" reasoning as `check-retired.sh`. ⚠ **Generation carries names and types, NOT rules:** the spec declares 5 `minimum`, 3 `maximum` and 7 `minLength` in ~9k lines and `maxAcquisitions` has no bounds at all, and OpenAPI has nowhere to put a user-facing message — so trims, lengths, the 0–200 cap and all copy stay hand-authored in `.extend()`, and `confirm` (form-only, never sent) is added there too. Zod stays on v3; `zod@3.25.76` exposes the `./v4` bridge subpath, so v4 remains a separate decision. ⚠ **This row said the mock generator was rejected outright; that was true at V53a and is no longer.** It was rejected for its DATA because it targets OpenAPI 3.0 idioms while this spec is 3.1 — it degraded `type: ["array","null"]` to `arrayElement([[], null])` without descending into `items` (137 never-populated list fields), and `useExamples` reads singular `.example` where Huma emits plural `examples:` (0 of 53 tags used). **V53b removed the first half** by making arrays non-nullable, taking never-populated list mocks to 0; the `useExamples` half remains, which is why it stays unset. See the MSW row below for what is adopted and what is still not trusted. |
+| FE test mocking | **`msw`** + **`@faker-js/faker`** (devDeps), handlers generated by `orval` `mock: { type: "msw" }` → `@loomarr/api/msw` | Before V53d, **31 test files each hand-rolled a local `stubFetch`**, so 31 places independently encoded what the wire looks like — the FE doing exactly what the Go side bans ("Phases do not invent private mocks; extend the testkit"). This is that shared layer. ⚠ **What is generated is the WIRING, not the data.** The URL, method and status come from the spec, so a renamed route is fixed by a regenerate where a hand-written path would silently stop matching and its test keep passing against nothing — `/v1/suggestions` → `/v1/proposals` (V41) is the case this repo has lived (named here as the historical example, not as a live route — retired-ok). ⚠ **The generated DATA is never trusted and every test passes an override:** optional fields emit as `arrayElement([value, undefined])` so presence varies per CALL, and nothing is seeded, which is flaky rather than merely arbitrary. `useExamples` stays UNSET — it reads singular `example` and Huma emits 3.1 plural `examples:`, so setting it would imply a guarantee that does not hold. ⚠ **`onUnhandledRequest: "error"` is NOT used**, because it does not fail a test: MSW's docs define it as "print an error and halt request execution", and the maintainer confirms (mswjs/msw#946) that the interceptor swallows the exception so the runner never sees it. `src/test/msw/server.ts` records unhandled requests and throws in `afterEach` instead — which is what makes a moved route go red. Fixtures are parsed through their generated zod response schema (`validated()`), catching fixture drift where orval cannot: its `runtimeValidation` is absent in 7.21.0, and in 8.x the only `.parse()` injection is the Angular path while the custom-mutator branch returns before it (orval PR #3226, open). `faker` is a transitive requirement of the generated handlers, imported at module scope even though its values are always overridden. `msw`'s build script is denied in `pnpm-workspace.yaml` — it installs a browser service worker, and `setupServer` (Node) needs none. |
 | Routing | **`@tanstack/react-router`** (file-based; `@tanstack/router-plugin` + `-cli` generate `routeTree.gen.ts`) | End-to-end type-safe routing (typed params/search/links) matching the orval-contract ethos; shares the TanStack Query client via router `context` + loader-based auth guards (`beforeLoad` → `redirect`, no guard-flash). Web-only — routing was always the per-platform seam (frontend-build-plan §), mobile keeps Expo Router; `react-router` v6 replaced 13.3a |
 | Styling / components | **Tailwind CSS + shadcn/ui** on **`@base-ui/react`** (one package; per-component subpath exports) | Fast, decent defaults, copy-in components. The headless primitive library is the runtime piece shadcn wraps. **Every reason below for adopting a primitive still holds — only the vendor changed (V50a).** The enum control is a themed listbox, not a native `<select>`: native first shipped (accessible, mobile-correct, zero-dep) but renders an **unstyleable OS option list** (light popup on some platforms, off-theme), and richer selects (search, groups, icons) are planned that native can't do. Supersedes the earlier native-only choice recorded in `select.tsx`. **Tooltip** serves icon-only-button labels: the app has many icon-only affordances (sidebar search/sign-out, the channel-detail back arrow, row actions) whose meaning needs a hover/focus label, and the native `title=` attribute is unstyled, ~1s-delayed, and keyboard/touch-hostile. **Slider** backs the video scrubber (V39): a seek bar is a slider, and the hand-rolled `role="slider"` it replaced had to re-implement the WAI-ARIA keyboard contract (arrow steps, Home/End, `aria-valuetext`) by hand — semantics that rot silently, because nothing fails when they drift. **Menu** backs the video player's in-bar audio/subtitle controls (V47): these are icon-triggered MENUS (a speaker/CC glyph opens a list of language/mode choices), not a form `<select>`, and need the roving-focus/typeahead/Escape contract a menu has. ⚠ **The vendor change is Radix → Base UI (V50a), and it is a consolidation, not a preference.** Radix was six separately-versioned packages (`react-slot`, `react-select`, `react-tooltip`, `react-slider`, `react-dropdown-menu`, `react-dialog`) plus ~27 transitive `@radix-ui/*`; Base UI is one MIT package covering all of them and 30 more, so the primitives the app still hand-rolls (combobox, toggle-group, meter) stop needing a §14 conversation each. ⚠ **That list shrank twice and the removals are the record:** `menu` left it in V50b (the channel row's ⋮ menu), and `collapsible` in V50c. **Collapsible** backs `CollapsibleSection`, and it was adopted for `hiddenUntilFound` specifically — a closed section's text stays reachable by the browser's find-in-page, where the old `overflow:hidden` clip made it findable by nothing. ⚠ Its MOTION stayed hand-rolled: Base UI measures the panel (`scrollHeight` → `--collapsible-panel-height`) to transition `height`, while `styles.css`'s `.reveal` grid-rows 0fr→1fr trick is height-agnostic and cannot desync from a stale measurement, so the primitive owns state and semantics while the stylesheet still owns motion. **`combobox` remains hand-rolled deliberately, not by omission** — see `search-command.tsx`, which records why Autocomplete's Portal→Positioner→Popup shape does not fit an always-visible panel embedded in six layouts. shadcn ships a Base UI variant of all 57 relevant registry components, so the copy-in philosophy survives. Two API deltas are load-bearing and are recorded where they bite: `asChild` becomes a `render` prop (`useRender`/`mergeProps` replace `Slot`), and Portal→**Positioner**→Popup replaces Radix's single `Content`. ⚠ **One behavioural difference is NOT cosmetic:** Base UI's Tooltip is visual-only by design — no `role="tooltip"`, no `aria-describedby` — where Radix wired that association. Harmless everywhere the trigger's `aria-label` restates the tooltip, but `FieldHelp` renders each setting's `doc` prose and nothing else in the DOM carries it, so that component declares an explicit `sr-only` description. See §12 and `field-help.tsx`. *(This row names the retired vendor and its composition prop deliberately, to record what moved and why — retired-ok.)* |
 | Drag-and-drop (lineup reorder) | **`@dnd-kit`** (`@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`) | Reordering a channel's lineup (§7 PATCH, §12) is a sortable list. `@dnd-kit` is the current-gen, React-18/StrictMode-safe choice (`react-beautiful-dnd` is archived); it is headless (~10kb core, no runtime deps of its own, CSP-safe for the embedded assets) and ships **keyboard + screen-reader reordering** built in (arrow-key sort + live-region announcements), which is the accessibility cost that would otherwise make drag worse than up/down buttons. The reorder still commits through the same `PATCH /v1/channels/{id}` whole-list replace — DnD is presentation only. |

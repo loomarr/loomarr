@@ -272,12 +272,21 @@ func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
 //
 // ⚠ `library` USED TO BE IN THIS LIST and no longer is. V35 refused it because nothing scanned a
 // media-server library; V38c restored the scan (§10), so the row has real work to stop and a real
-// switch. `remote` stays refused for a different reason that has not changed: it is a container
-// whose children carry the switches.
+// switch.
+//
+// ⚠ **`remote` used to be the case this test pinned, and it was pinning a guard that could not
+// fire.** V37 retired the container, so from that point no read model could produce the id and no
+// client could send it — the guard read as protection while protecting nothing, and this test
+// stayed green by asserting a 409 for a row that did not exist. V51c replaces it with the derived
+// PROVIDER nodes, which are real ids the read model emits on every request, so the same guard now
+// covers a case an operator can actually reach.
+//
+// The container reasoning was right all along and is unchanged: a group's children carry the
+// switches, so storing a flag on the group would be a control that changes nothing.
 func TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop(t *testing.T) {
 	srv, _, _ := newFillerServer(t)
 
-	for _, id := range []string{"remote"} {
+	for _, id := range []string{"provider:archive", "provider:youtube"} {
 		res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/"+id, `{"enabled":false}`, adminToken)
 		if res.StatusCode != http.StatusConflict {
 			t.Errorf("%s: status = %d, want 409", id, res.StatusCode)
