@@ -48,6 +48,10 @@ A table the agent maintains — one row per phase: `phase | status (todo/active/
 ```
 make check          # fmt + vet + vet-tags + golangci-lint + unit tests (the default gate)
 make test           # unit tests only
+make go-shard-verify # the GO_SHARD split must be a PARTITION of `go list ./...` (CI red on drift)
+                    # ⚠ A real gate, not a sanity check: a split that DROPS a package does not fail
+                    # — those tests never run, every shard reports success, and CI is green over
+                    # code it did not execute. CI runs this BEFORE the suite.
 make vet-tags       # go vet over the `//go:build ffmpeg|eval|integration` sources
                     # ⚠ these files are INVISIBLE to plain `go vet ./...` and to golangci-lint —
                     # both ask the build system which files exist. `go vet ./...` exited 0 while
@@ -68,7 +72,11 @@ make fe-tokens      # regenerate token artifacts from packages/tokens (CI diffs 
 make storybook      # Storybook dev workshop (the component gallery/contract)
 make storybook-build # offline storybook-static build (what fe-visual snapshots)
 make fe-visual      # Playwright visual suite over the Storybook stories (storybook-static)
-                    # runs ALL 624 locally; CI splits it with PW_SHARD=--shard=N/2 (wall-clock only, never locally)
+                    # runs the WHOLE suite locally (389 stories x 2 viewports, ~780 tests as of
+                    # 2026-08-09); CI splits it with PW_SHARD (wall-clock only, never locally)
+                    # ⚠ Don't write the shard COUNT here or in the Makefile. It lives in ci.yml's
+                    # `matrix.shard`, and the denominator derives from `strategy.job-total`. This
+                    # line used to say "624 … --shard=N/2" long after both had changed.
 make fe-visual-update # sanctioned baseline-update path (image diffs reviewed in PR)
 make e2e            # wizard flow smoke + page snapshots vs a mocked backend (Docker)
 make e2e-update     # sanctioned e2e page-snapshot baseline update (reviewed in PR)
@@ -119,6 +127,19 @@ to get wrong:
   in the wild here: one 473MB entry served every run for days while the source moved under it.
   Use the rolling pattern — `${{ github.run_id }}` in the key so the save always happens, plus
   `restore-keys` prefixes so it still restores the newest prior cache.
+- ⚠ **…and a rolling key never PRUNES**, which is the same trade seen from the other end. Neither
+  cache mode evicts, so the rolling entry grows by accretion: every run restores the previous one,
+  adds to it, and saves the union. Measured 2026-08-09 the Go cache had reached **1.36 GB**, costing
+  85s to restore (74s of that EXTRACTING) plus 83–122s to save — ~168s before a test ran. The bound
+  is an **ISO-week epoch** (`date -u +%GW%V`) in the key *and* in every restore-keys prefix; a prefix
+  that outlives the epoch restores the accretion the epoch exists to drop. It rotates itself, so
+  there is no number to remember to bump. Use `%G`+`%V`, never `%Y`+`%V` — mixing calendar year with
+  ISO week mints a second key inside one week every New Year.
+- ⚠ **Only `main` saves.** A PR's cache is scoped to `refs/pull/N/merge` and can never be read again
+  once the PR closes, so a PR-side save is pure eviction pressure on the caches that ARE read. PRs
+  restore from main's entry (`actions/cache/restore`) and the save (`actions/cache/save`) is gated
+  on `github.ref == 'refs/heads/main'`. ⚠ A cache-KEY change therefore reads COLD on its own PR and
+  only pays off after main repopulates it — judge such a PR on the run after the merge, not its own.
 - ⚠ **The 10GB repo cap evicts LRU across ALL refs**, so caches from closed PRs do not merely
   sit there — they push out live ones. `cache-cleanup.yml` deletes a PR's caches when it closes
   (GitHub's own 7-day expiry is far too slow when one Go cache is ~470MB). Measured 2026-08-01:
