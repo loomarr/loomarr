@@ -1,4 +1,4 @@
-import type { ClipDTO, FillerIncomingOutputBody, IncomingAskDTO } from "@loomarr/api";
+import type { ClipDTO, FillerIncomingOutputBody, IncomingClipDTO } from "@loomarr/api";
 import {
   getFillerIncomingMockHandler,
   getSettingsListMockHandler,
@@ -22,11 +22,16 @@ import { IncomingTab } from "./incoming-tab";
 // this call site reproduced it once already. `category` is NOT part of the body (§10 V45a): it
 // is a derived shadow of the taxonomy tags, and this confirm never touches tags at all.
 
-// ⚠ Typed as IncomingAskDTO, which surfaced two MISSING required fields (`kind`, `reason`) the
+// ⚠ Typed as IncomingClipDTO, which surfaced two MISSING required fields (`kind`, `reason`) the
 // untyped stub happily accepted.
-const ASK: IncomingAskDTO = {
+//
+// ⚠ `needsDecision` is what puts this clip on the OPERATOR's end of the belt (§10 V51e). Without
+// it the row renders as still-being-prepared and carries no controls at all — so every assertion
+// below about buttons and PATCH bodies would fail for a reason that looks nothing like the cause.
+const ASK: IncomingClipDTO = {
   kind: "commercial",
   reason: "era-guess",
+  needsDecision: true,
   path: "a3/f9/abc.mp4",
   hash: "hash-abc",
   name: "Toy ad",
@@ -60,13 +65,13 @@ const TAGGED: ClipDTO = {
 // the handler to `*/v1/filler/tags` is the assertion the old test could not make.
 const stubIncoming = (incoming: Partial<FillerIncomingOutputBody> = {}) => {
   const body: FillerIncomingOutputBody = {
-    asks: [ASK],
+    clips: [ASK],
     reels: [],
     recentlyFiled: [],
-    // ⚠ `pipeline` and `rejected` are REQUIRED and the old stub supplied NEITHER — two more
+    // ⚠ `rejected` and `stageOrder` are REQUIRED and the old stub supplied NEITHER — two more
     // fields an untyped catch-all let through.
-    pipeline: [],
     rejected: [],
+    stageOrder: [],
     total: 1,
     ...incoming,
   };
@@ -143,7 +148,7 @@ describe("IncomingTab", () => {
   });
 
   it("renders an empty queue without erroring", async () => {
-    stubIncoming({ asks: [], total: 0 });
+    stubIncoming({ clips: [], total: 0 });
     renderTab();
     await waitFor(() => expect(screen.queryByText("Toy ad")).not.toBeInTheDocument());
   });

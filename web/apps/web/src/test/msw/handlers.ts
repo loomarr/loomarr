@@ -73,12 +73,14 @@ const appHandlers = (): RequestHandler[] => [
   // The generated client is the coupling, and neither diff mentions the other's file.
   getListFillerMockHandler({ clips: [], total: 0 }),
   getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+  // ⚠ `clips` is the whole conveyor (§10 V51e) — being-prepared and needs-a-decision in ONE list,
+  // where this used to carry `asks` and `pipeline` as separate arrays over overlapping populations.
   getFillerIncomingMockHandler({
-    asks: [],
+    clips: [],
     reels: [],
     recentlyFiled: [],
-    pipeline: [],
     rejected: [],
+    stageOrder: [],
     total: 0,
   }),
   // The guide grid's window read. `fromMs`/`toMs` are required, so an empty grid still has to
