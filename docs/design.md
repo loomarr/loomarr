@@ -3277,6 +3277,8 @@ It pre-creates `/data` owned by uid 65532 and declares it a `VOLUME`, so a fresh
 
 Every binary is invoked via `exec` — `yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and `whisper-cli` (plus its model file, added by V34, §14) are the only vendored non-Go artifacts the project permits (§14).
 
+**Runtime OS packages the app depends on, and why each is load-bearing.** Beyond the vendored binaries the image installs two package sets, both because *ffmpeg dlopens or reads them at run time* rather than because anything links against them at build time. The first is the vendor-neutral hardware-encode driver set (VAAPI, Vulkan, Intel iHD, and the X11/DRM layers underneath) — without it every hardware family fails the §9.1 capability probe on every host. The second is **a font: `fonts-dejavu-core`.** The offline/test card draws its label with ffmpeg's `drawtext`, which fails at filter *init* on a missing `fontfile`, so `playout.FindFont` stats real paths and degrades to an unlabelled card when it finds none. An image with no font at all makes that degradation total: the card becomes an unlabelled black frame with silent audio, which is indistinguishable from the dead-channel failure the card exists to *replace*. Since §9.1's `SlotFlex` routes five distinct shortfalls onto that card — filler unconfigured, empty pod, generated bumper, containment failure, and a pod shorter than its break — the font is a functional dependency of the playout fallback path, not a cosmetic one.
+
 ### Compose (profiles: sqlite · postgres · ai)
 - **sqlite:** just `loomarr` + a `/data` volume for the DB file.
 - **postgres:** `loomarr` + `postgres:16` (or external). No SQLite volume.
