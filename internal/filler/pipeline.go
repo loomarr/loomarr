@@ -582,7 +582,9 @@ func (p *Pipeline) persist(ctx context.Context, row ClipPipeline, clip StoreClip
 func (p *Pipeline) onFailure(row *ClipPipeline, err error) bool {
 	now := p.now().UTC()
 	if row.Attempts < MaxAttempts {
-		row.Status = StatusFailed
+		// ⚠ No `row.Status = StatusFailed` here: `Record` owns it now (see its doc comment). The
+		// assignment was correct but it was ALSO the reason the same omission on the verdict paths
+		// read as deliberate — two writers, one of which was easy to forget.
 		row.NextRun = now.Add(backoff(row.Attempts))
 		row.Record(row.Stage, StatusFailed, err.Error(), row.Attempts, now)
 		return false
