@@ -106,7 +106,12 @@ const taggingClip: IncomingClipDTO = {
   name: "Coca-Cola 1985",
   kind: "commercial",
   durationMs: 31_000,
-  thumbnail: "1985/cola.jpg",
+  // ⚠ NO `thumbnail`, deliberately. The row derives its `<img src>` from the hash
+  // (`/v1/filler/thumb/{hash}`), and `storybook-static` has no server behind it — so a fixture
+  // claiming a thumbnail renders a BROKEN IMAGE into the visual baseline and fires a network
+  // request the snapshot can race. Caught by reading the generated image, not by any assertion.
+  // The thumbnail branch is covered in jsdom instead (`preparing-row.test.tsx`), where the
+  // question is "does an <img> render at all", which needs no bytes.
   reason: "Loomarr is still working on this one.",
   pipeline: {
     stage: "tag",
