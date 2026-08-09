@@ -65,12 +65,17 @@ const stubFillerPage = (over: { clips?: ClipDTO[]; incomingTotal?: number; total
   server.use(
     getMeMockHandler(me({ name: "Admin" })),
     getFillerWatchMockHandler({ sourcesOn: 4, sourcesTotal: 5, clips: 200, held: 0, health: "healthy" }),
+    // ⚠ `total` is deliberately NOT derived from the arrays here — this file's whole point is that
+    // the Incoming badge follows the SERVER's count while the Catalog badge follows the filtered
+    // query, and equal fixtures could not tell those two rules apart. So the belt stays empty and
+    // the count says 3. (§10 V51e renamed `asks`+`pipeline` → `clips`; the badge reads `total`
+    // either way, which is why this survived the rename as a pure field swap.)
     getFillerIncomingMockHandler({
-      asks: [],
+      clips: [],
       reels: [],
       recentlyFiled: [],
-      pipeline: [],
       rejected: [],
+      stageOrder: [],
       total: over.incomingTotal ?? 3,
     }),
     getFillerPoolMockHandler({ clips: 200, commercials: 200, eligible: 200, untagged: 0, channels: [] }),
