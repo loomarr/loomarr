@@ -151,12 +151,15 @@ const ClipPipeline = ({ row, name, ladder, variant = "strip", className }: ClipP
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span
-                className={cn(
-                  status === "upcoming" && "text-static-500",
-                  status === "skipped" && "text-static-400",
-                )}
-              >
+              {/* ⚠ `static-400`, NOT `static-500`, for both. The tokens file states the rule on the
+                  swatch itself — static-500 is "DISABLED-only + decorative glyphs (2.94:1 — fails
+                  for info text)" — and a rung label is info text. The first draft used it for
+                  `upcoming` to make an unreached rung recede, and axe caught it as a SERIOUS
+                  colour-contrast violation in CI. static-400 is the dimmest legal info-text tone.
+                  ⚠ So `upcoming` and `skipped` now share a colour, and that is fine: they are told
+                  apart by the "— skipped (reason)" suffix, which is TEXT. Colour was never allowed
+                  to be the only signal (§5.3), so leaning on it here was the actual mistake. */}
+              <span className={cn((status === "upcoming" || status === "skipped") && "text-static-400")}>
                 {status === "running" ? active : label}
               </span>
               {/* ⚠ The skip REASON is inline, not a tooltip and not omitted. A stage that silently
