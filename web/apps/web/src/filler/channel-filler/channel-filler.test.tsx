@@ -102,6 +102,24 @@ const policy = (filler?: ChannelPolicy["filler"]): ChannelPolicy => ({
 
 afterEach(() => vi.restoreAllMocks());
 
+// ⚠ The section starts CLOSED, and since V50c a closed CollapsibleSection panel carries
+// `hidden="until-found"` — so its contents are out of the accessibility tree until opened.
+// `*ByRole` queries honour that tree, which means any test that reaches a control in the body
+// has to open the section first, exactly as a user does.
+//
+// This is not a workaround for the port; it is the port removing a defect these tests were
+// resting on. The old `.reveal` closed with `grid-template-rows: 0fr` + `overflow:hidden` —
+// zero height but NOT `display:none` — so collapsed controls stayed focusable and announced.
+// A keyboard user could Tab into a section they could not see. `findByRole` reaching into a
+// closed body was that bug, visible in a test rather than in a bug report.
+//
+// ⚠ The failure mode is deliberately unhelpful, so recognise it: `asyncUtilTimeout` and
+// `testTimeout` are both 5000ms, so findBy's own "Unable to find role" never surfaces — the
+// test times out first and reports only "Test timed out in 5000ms".
+const openFiller = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole("button", { name: /^filler/i }));
+};
+
 describe("ChannelFiller", () => {
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubFetch();
@@ -121,6 +139,7 @@ describe("ChannelFiller", () => {
     const { previews } = stubFetch();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
+    await openFiller(user);
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
     // (findBy awaits the router-harness mount.) No Apply until the draft diverges.
     const toys = await screen.findByRole("button", { name: "Toys" });
@@ -142,6 +161,7 @@ describe("ChannelFiller", () => {
     const { patches } = stubFetch();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
 
+    await openFiller(user);
     await user.click(await screen.findByRole("button", { name: "Candy" }));
     const apply = await screen.findByRole("button", { name: /apply filler/i });
     await user.click(apply);
