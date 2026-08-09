@@ -46,8 +46,16 @@ A table the agent maintains — one row per phase: `phase | status (todo/active/
 ## Commands (the harness contract — created in phase 1, used forever)
 
 ```
-make check          # fmt + vet + golangci-lint + unit tests (the default gate)
+make check          # fmt + vet + vet-tags + golangci-lint + unit tests (the default gate)
 make test           # unit tests only
+make vet-tags       # go vet over the `//go:build ffmpeg|eval|integration` sources
+                    # ⚠ these files are INVISIBLE to plain `go vet ./...` and to golangci-lint —
+                    # both ask the build system which files exist. `go vet ./...` exited 0 while
+                    # `go vet -tags '…' ./...` exited 1 for MONTHS, and the one test that proves
+                    # programs actually sequence had not compiled since V47 (GH #227 §1).
+                    # ⚠ A tagged `go build` would NOT catch this: `go build ./...` skips _test.go
+                    # entirely and 9 of the 11 tagged files are tests. Only vet typechecks them.
+make tags-verify    # the Makefile's hand-maintained TAGS list still covers every tag in the tree
 make test-pg        # store conformance vs Postgres (testcontainers; requires Docker)
 make openapi        # export api/openapi.yaml from the running definitions
 make config-docs    # generate docs/configuration.md from the settings registry (CI diffs must be empty)
@@ -72,7 +80,9 @@ CI mirrors `make check` + `openapi-verify` + `test-pg` + `fe` + `e2e`. If a comm
 
 **CI runs jobs only when their inputs changed.** A `changes` job diffs against the merge base
 and each job gates on it: Go/Postgres on `**/*.go`, `go.mod|sum`, `internal/store/migrations/`,
-**`docs/help/`** (embedded in the binary — `retired-verify` reads it), `Makefile`, and the
+**`docs/help/`** (embedded in the binary — `retired-verify` reads it), **`scripts/`** (the job
+RUNS them — `retired-verify` is `check-retired.sh`, `tags-verify` is `check-tags.sh`; without
+it a PR editing only a guard skipped the one job that executes it), `Makefile`, and the
 workflow itself; Frontend/Playwright on `web/`, `Makefile`, and the workflow; **Image on
 `Dockerfile` and `.dockerignore` ONLY**. `Makefile` and the workflow deliberately gate Go and
 Frontend — they define how those jobs run.

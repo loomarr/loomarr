@@ -62,7 +62,14 @@ jobs:
 
           # Makefile and this workflow gate BOTH: they define how every job runs, so a change
           # to either has to be proven against everything.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^Makefile$|^\.github/workflows/'; then
+          #
+          # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make retired-verify`
+          # is `./scripts/check-retired.sh`, and `make tags-verify` is `./scripts/check-tags.sh`.
+          # Without it a PR that edited only a guard script skipped the one job that executes
+          # it, so a broken guard merged unproven. `docs/help/` was already listed for being
+          # retired-verify's INPUT; the script itself was the gap — the guard was covered
+          # against the thing it reads but not against itself.
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^internal/store/migrations/|^docs/help/|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"

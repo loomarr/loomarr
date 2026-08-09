@@ -6,6 +6,34 @@ GO      ?= go
 PKG     := ./...
 BIN_DIR := bin
 
+# Build-tagged sources are INVISIBLE to `go vet ./...` and to golangci-lint, because both ask
+# the Go build system which files exist and the build system honours `//go:build`. That blind
+# spot ran for months (GH #227 §1): `go vet ./...` exited 0 while `go vet -tags '…' ./...`
+# exited 1, and `TestLiveChain_RealFfmpegAdvancesThroughPrograms` — by its own comment "the
+# only test that proves programs actually sequence" — had not compiled since V47 added
+# `PlanFor` and left a stub behind in the same commit.
+#
+# ⚠ `go build -tags` would NOT have caught it, so don't "strengthen" this by adding one.
+# `go build ./...` skips `_test.go` files entirely and 9 of the 11 tagged files are tests;
+# `go vet` typechecks test files, which is why vet is the load-bearing half. `make fmt` was
+# never blind here — it globs with `find`, not the build system.
+#
+# ⚠ These tags are NOT run as tests by the gate. They guard work needing real ffmpeg
+# (`ffmpeg`), a real LLM (`eval`) or Docker (`integration`); `make check` stays hermetic
+# (§19). The gate is only that they still COMPILE — which is free: measured 0.4s warm, and
+# 3.2s for a never-before-seen tag set, because tags only recompile packages whose file
+# selection actually changed.
+#
+# ⚠ HAND-MAINTAINED LIST, CURRENTLY UNGUARDED. A new `//go:build` tag is covered only if it is
+# added here — the same drift class as `scripts/check-retired.sh`. `make tags-verify` is the
+# INTENDED guard and does not guard anything yet: it extracts both lists and prints them, but
+# its comparison policy is an unfilled TODO, which is why it is not in `check`. Until that
+# lands, adding a tag here is a manual step nothing enforces.
+TAGS      := ffmpeg eval integration
+comma     := ,
+space     := $(subst ,, )
+TAGS_CSV  := $(subst $(space),$(comma),$(TAGS))
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -16,7 +44,7 @@ help: ## List targets
 ## ---- the default gate ----------------------------------------------------
 
 .PHONY: check
-check: fmt vet lint test ## fmt + vet + lint + unit tests (the default gate)
+check: fmt vet vet-tags lint test ## fmt + vet (incl. tagged) + lint + unit tests (the default gate)
 
 .PHONY: fmt
 fmt: ## gofmt -l (fails if any file needs formatting)
@@ -27,9 +55,24 @@ fmt: ## gofmt -l (fails if any file needs formatting)
 vet: ## go vet
 	$(GO) vet $(PKG)
 
+.PHONY: vet-tags
+vet-tags: ## go vet over the build-tagged sources (invisible to plain `go vet` — see TAGS)
+	$(GO) vet -tags '$(TAGS)' $(PKG)
+
+.PHONY: tags-verify
+# ⚠ NOT in `check` yet — the comparison policy is an unfilled TODO in the script, so wiring it
+# into the gate today would add a step that exits 0 while proving nothing. Add it to `check`
+# in the same change that fills it in.
+tags-verify: ## the Makefile's TAGS list still covers every //go:build tag in the tree
+	@TAGS='$(TAGS)' ./scripts/check-tags.sh
+
 .PHONY: lint
+# ⚠ `--build-tags` WIDENS the file set, it never narrows it: files with no `//go:build` line
+# compile under every tag set. Verified there is no negated constraint (`!ffmpeg`) anywhere in
+# the tree — one of those WOULD be dropped by this flag, silently creating the blind spot this
+# change exists to close. Re-check before adding a negated tag.
 lint: ## golangci-lint v2 (run via `go run` so no global install needed)
-	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --build-tags '$(TAGS_CSV)'
 
 .PHONY: test
 test: ## unit tests only (never touch the network — §19)
