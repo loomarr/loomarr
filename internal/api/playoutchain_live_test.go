@@ -109,7 +109,11 @@ func TestLiveChain_RealFfmpegAdvancesThroughPrograms(t *testing.T) {
 	// Each card is ~4s, so 12s of output requires the demuxer to have advanced at least twice.
 	if got < 2 {
 		t.Errorf("only %d program request(s) — the demuxer did not ADVANCE, so programs are "+
-			"not sequencing", got)
+			"not sequencing.\n"+
+			"  ⚠ BEFORE suspecting Loomarr: run TestLive_ConcatAdvancesPastAChunkedHTTPEntry\n"+
+			"  (internal/playout). If that also fails, the ffmpeg on PATH cannot read a chunked\n"+
+			"  concat entry to EOF and this failure is environmental, not a regression — ffmpeg\n"+
+			"  n9.0 is known bad, n7.1.x (the Dockerfile pin) is known good.", got)
 	}
 
 	probe, err := exec.LookPath("ffprobe")
