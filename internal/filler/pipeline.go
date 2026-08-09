@@ -262,8 +262,14 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 
 	var s spend
 	for _, row := range work {
-		if err := ctx.Err(); err != nil {
-			return res, err
+		// ⚠ The pass ending is not the JOB failing. This returned the bare context error, so the
+		// scheduler logged "scheduled job failed" every two minutes for a run that had worked
+		// through as many clips as it could — which is the pipeline doing exactly its job. The
+		// summary below still logs, carrying `deferred`, so the run is visible as partial rather
+		// than as broken.
+		if ctx.Err() != nil {
+			res.Deferred += len(work) - res.Advanced - res.Failed - res.Deferred
+			break
 		}
 		if s.clips >= maxClips {
 			break
