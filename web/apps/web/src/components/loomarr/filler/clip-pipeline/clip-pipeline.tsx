@@ -136,13 +136,7 @@ const ClipPipeline = ({ row, name, ladder, variant = "strip", className }: ClipP
         const Icon = ICON[status];
         const { active, label } = copyFor(id);
         return (
-          <li
-            key={id}
-            // ⚠ `role="alert"` is scoped to the FAILED rung rather than the list. One clip failing
-            // must announce; forty rungs quietly succeeding must not.
-            {...(status === "failed" ? { role: "alert" } : {})}
-            className="flex items-start gap-2 text-sm"
-          >
+          <li key={id} className="flex items-start gap-2 text-sm">
             <span className="flex size-4 shrink-0 items-center justify-center pt-0.5">
               {Icon ? (
                 <Icon className={cn("size-3.5", ICON_TONE[status])} aria-hidden />
@@ -150,7 +144,14 @@ const ClipPipeline = ({ row, name, ladder, variant = "strip", className }: ClipP
                 <span aria-hidden className="block size-1.5 rounded-full bg-static-700" />
               )}
             </span>
-            <span className="min-w-0 flex-1">
+            {/* ⚠ `role="alert"` sits on the CONTENT, never on the `<li>`. A role on the list item
+                REPLACES its implicit `listitem` role, so the parent `<ol>` then has a direct child
+                that is not a list item — axe `list`, serious, and the strip's own accessible
+                structure quietly gone. Found in CI after the contrast fix uncovered it: adding
+                ARIA is itself a way to introduce a violation, which is why the announcement is
+                scoped to a wrapper instead. Still per-rung, not per-list: one clip failing must
+                announce, forty rungs quietly succeeding must not. */}
+            <span className="min-w-0 flex-1" {...(status === "failed" ? { role: "alert" } : {})}>
               {/* ⚠ `static-400`, NOT `static-500`, for both. The tokens file states the rule on the
                   swatch itself — static-500 is "DISABLED-only + decorative glyphs (2.94:1 — fails
                   for info text)" — and a rung label is info text. The first draft used it for

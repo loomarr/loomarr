@@ -132,6 +132,27 @@ describe("ClipPipeline — list", () => {
     expect(within(screen.getByRole("alert")).getByText("Look at the picture")).toBeInTheDocument();
   });
 
+  // ⚠ FOUND BY axe IN CI, AFTER a jsdom suite that was fully green — so it is asserted here now,
+  // where it costs a second instead of an 18-minute Playwright cycle.
+  //
+  // `role="alert"` was on the `<li>` itself. A role on a list item REPLACES its implicit
+  // `listitem` role, so the `<ol>` ended up with a direct child that was not a list item: axe
+  // `list`, serious, and the ladder's accessible structure quietly gone. The announcement lives on
+  // a wrapper inside the `<li>` instead. **Adding ARIA is itself a way to introduce a violation.**
+  it("keeps every direct child of the ladder a list item, even the failed one", () => {
+    show(at({ stage: "vision", status: "failed" }), { variant: "list" });
+
+    const list = screen.getByRole("list", { name: /Stage detail/ });
+    for (const child of Array.from(list.children)) {
+      expect(child.tagName).toBe("LI");
+      // ⚠ The tag is not enough: an explicit role on an <li> overrides the implicit one, which is
+      // exactly the bug. Assert the element still has no role attribute of its own.
+      expect(child.getAttribute("role")).toBeNull();
+    }
+    // …and the announcement survives the move.
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
   // ⚠ A newer backend adding a rung must not blank it out of a ladder that claims to be complete.
   // The raw id tells an operator — and a bug report — more than "Unknown stage" would.
   it("falls back to the server's own id for a stage this build has no copy for", () => {
