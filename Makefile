@@ -200,14 +200,28 @@ PW_IMAGE := mcr.microsoft.com/playwright:v1.62.0-noble
 # free, so N runners cost the same as one and finish sooner.
 PW_SHARD ?=
 
+# ⚠ Run the container AS THE HOST USER, or everything it writes into the bind mount is owned by
+# root. The Playwright image runs as root by default, so `test-results/` and its per-test artifacts
+# land root-owned in a directory the host user cannot delete — and the symptom shows up far from
+# the cause: `git worktree remove` half-fails ("Permission denied"), git DEREGISTERS the worktree
+# anyway, and ~550MB per worktree is stranded on disk with no git record that it exists. Three
+# worktrees had accumulated 1.7GB that way before this flag was added.
+#
+# ⚠ `HOME=/tmp` rides along and is not optional. As a non-root uid the container's default HOME is
+# `/root`, which is not writable, so anything wanting a cache/config dir fails in a way that reads
+# like a Playwright bug rather than a permissions one. `/tmp` is writable for any uid.
+#
+# The browsers themselves are unaffected: they live in /ms-playwright, which is world-readable.
+PW_DOCKER_USER ?= --user $(shell id -u):$(shell id -g) -e HOME=/tmp
+
 .PHONY: fe-visual
 fe-visual: storybook-build ## Playwright visual + a11y over storybook-static, in the pinned Docker image (§5.2)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test $(PW_SHARD)
 
 .PHONY: fe-visual-update
 fe-visual-update: storybook-build ## regenerate the committed Linux baselines in the Docker image (sanctioned update path)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD)/web:/work" -w /work/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --update-snapshots
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
@@ -215,7 +229,7 @@ fe-visual-update: storybook-build ## regenerate the committed Linux baselines in
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
 e2e: fe-build ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts
 
 ## ---- Maintainer smoke (NOT CI) -------------------------------------------
@@ -238,7 +252,7 @@ smoke-down: ## tear down the smoke stack (container, volume, temp database)
 
 .PHONY: e2e-update
 e2e-update: fe-build ## regenerate the committed e2e page snapshots (sanctioned update path)
-	docker run --rm --ipc=host -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
+	docker run --rm --ipc=host $(PW_DOCKER_USER) -e CI=$(PW_CI) -v "$(PWD):/work" -w /work/web/apps/web $(PW_IMAGE) \
 		node_modules/.bin/playwright test --config=playwright.e2e.config.ts --update-snapshots
 
 # Just the SPA build the e2e suite serves (a subset of `make fe`, so the gate doesn't

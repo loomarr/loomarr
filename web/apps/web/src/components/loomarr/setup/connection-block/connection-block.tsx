@@ -1,7 +1,7 @@
+import { Collapsible } from "@base-ui/react/collapsible";
 import { parseDocHref } from "@loomarr/core";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Check, ChevronDown, X } from "lucide-react";
-import { useId } from "react";
 import { cn } from "@/lib";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
@@ -12,11 +12,25 @@ import type { ConnectionBlockProps } from "./connection-block.type";
 //
 // This is the wizard's connection block (was hand-rolled in wizard/checklist-step) lifted into
 // a shared primitive so the wizard and Settings/Connections are the same shell by construction,
-// not two lookalikes. It borrows CollapsibleSection's `.reveal` mechanics (grid 0fr→1fr,
+// not two lookalikes. It shares CollapsibleSection's `.reveal` mechanics (grid 0fr→1fr,
 // height-agnostic, reduced-motion frozen; styles.css) but has its own compact header — a small
 // status dot on the left, not an icon — so it reads as a status row, not a heading.
 //
 // Controlled open: the caller drives expansion so broken blocks open and healthy ones collapse.
+//
+// ⚠ **A COLLAPSED BLOCK USED TO BE KEYBOARD-REACHABLE (fixed in V50d).** The hand-rolled version
+// closed with `grid-template-rows: 0fr` + `overflow:hidden` — zero height but NOT `display:none` —
+// so its body stayed in the accessibility tree and stayed focusable. This block's body holds a
+// "Test connection" button and, when a check fails, a "Fix" link into the Help centre: a keyboard
+// user tabbing through the wizard hit both while the section was visibly shut.
+//
+// CollapsibleSection was ported in V50c and this was left behind, which is why the two lookalikes
+// disagreed for three phases. `Collapsible.Panel hiddenUntilFound` renders the closed body as
+// `content-visibility: hidden` — out of the a11y tree, still reachable by the browser's
+// find-in-page, and still mounted so nothing loses state.
+//
+// ⚠ It has no story, so **axe never sees this component** — the fix is verified by a unit test
+// asserting the closed panel carries `hidden="until-found"`, not by the visual suite.
 const ConnectionBlock = ({
   title,
   optional = false,
@@ -28,7 +42,6 @@ const ConnectionBlock = ({
   children,
   action,
 }: ConnectionBlockProps) => {
-  const bodyId = useId();
   const failing = verdict !== undefined && !verdict.ok;
   // The header's one-line summary (the v2 mock's `bk.summary`), DERIVED here rather than
   // sent by the backend: it is display text assembled from state the client already holds,
@@ -44,14 +57,15 @@ const ConnectionBlock = ({
         : "needs attention";
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800"
-      >
+    <Collapsible.Root
+      open={open}
+      // ⚠ Controlled-only by design (the caller opens broken blocks and collapses healthy ones),
+      // so `onToggle` takes no argument and Base UI's `(open, details)` is dropped deliberately
+      // rather than widened into the public prop type.
+      onOpenChange={() => onToggle()}
+      render={<section className="overflow-hidden rounded-lg border border-border" />}
+    >
+      <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-static-800">
         {/* Status dot: green + check when the probe passes; red-ringed when it fails;
             neutral (muted, empty) when untested. It carries the resting signal so the
             header alone says "this one's fine" or "look here" — paired with the text
@@ -84,13 +98,15 @@ const ConnectionBlock = ({
           {summary}
         </span>
         <ChevronDown
-          className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180"
           aria-hidden
         />
-      </button>
+      </Collapsible.Trigger>
 
-      {/* The reveal: grid 0fr→1fr so the body slides open with no fixed height (styles.css). */}
-      <div id={bodyId} className="reveal" data-open={open}>
+      {/* The reveal: grid 0fr→1fr so the body slides open with no fixed height (styles.css).
+          ⚠ `.reveal` matches BOTH `[data-open="true"]` (a React boolean) and `[data-open=""]`
+          (Base UI's valueless attribute); this now emits the latter. */}
+      <Collapsible.Panel hiddenUntilFound className="reveal">
         <div className="reveal-inner">
           <div className="flex flex-col gap-4 border-border border-t px-4 py-4">
             {children}
@@ -126,8 +142,8 @@ const ConnectionBlock = ({
             )}
           </div>
         </div>
-      </div>
-    </section>
+      </Collapsible.Panel>
+    </Collapsible.Root>
   );
 };
 
