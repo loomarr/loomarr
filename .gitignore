@@ -15,7 +15,16 @@
 *.db
 *.db-wal
 *.db-shm
-/data/
+
+# Runtime data directories. ⚠ THE GLOB IS THE POINT — this was `/data/` alone, and a run
+# pointed at a NON-default directory walked straight past it: 170 image files (27.6 MB
+# packed, ~21% of the repo) were committed under `data-p5/` in dfeaee36 before anyone
+# noticed. `/data/` was not wrong, it was just an exact name, and the data dir is
+# configurable — so the one directory it covered was the only one it could ever cover.
+# `/data*/` covers data-p5, data-p6 and whatever the next ad-hoc run is called, without
+# anyone maintaining a list. Verified safe: `data-p5` is the only tracked path matching
+# `^data`, so this hides nothing real.
+/data*/
 
 # Go
 *.test
