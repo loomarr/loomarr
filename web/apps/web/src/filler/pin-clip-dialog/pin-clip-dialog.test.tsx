@@ -1,9 +1,17 @@
-import type { ClipDTO } from "@loomarr/api";
+import type { ChannelDTO, ClipDTO } from "@loomarr/api";
+import {
+  getClipChannelFitMockHandler,
+  getGetChannelMockHandler,
+  getListChannelsMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { channel } from "@/test/fixtures/channels";
+import { server } from "@/test/msw/server";
 import { PinClipDialog } from "./pin-clip-dialog";
 
 const makeWrapper = () => {
@@ -14,9 +22,6 @@ const makeWrapper = () => {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
 };
-
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const clip: ClipDTO = {
   hash: "clip-9-hash",
@@ -32,64 +37,52 @@ const clip: ClipDTO = {
 
 // A channel with a full policy AND an existing pin, so the test can prove the merge keeps
 // both the rest of the policy and the prior pin.
-const channelDetail = {
+//
+// ⚠ Was an inline five-field object served as a ChannelDTO. `channel()` carries the eleven the
+// wire requires — and this dialog READS the channel back to merge onto it, so a short channel is
+// exactly the input that would make a merge bug invisible.
+const channelDetail: ChannelDTO = channel({
   id: "ch-1",
   name: "90s Action Hour",
   number: 42,
-  status: "live",
   policy: {
     ordering: "shuffle",
     scope: { era: { from: 1990, to: 1999 } },
     filler: { audience: "general", pinned: ["already-here"] },
   },
-};
+});
 
-// Dispatches by method+path: GET /v1/channels (list), GET /v1/channels/{id} (the live-policy
-// read the merge depends on), PATCH /v1/channels/{id} (the pin write). PATCH bodies captured.
-const stubFetch = (opts: { detail?: unknown; pinned?: boolean } = {}) => {
+// GET /v1/filler/fit (which channels this clip suits), GET /v1/channels/{id} (the live-policy
+// read the merge depends on), GET /v1/channels (the list), PATCH /v1/channels/{id} (the pin
+// write). PATCH bodies captured from the resolver.
+//
+// ⚠ The PATCH branch was `method === "PATCH"` with no path check at all, and the FINAL branch was
+// an unconditional channel list — so any request that was not a fit-read or the by-id read got
+// answered with a list of channels, whatever it had asked for.
+const stubPin = (opts: { detail?: ChannelDTO; pinned?: boolean } = {}) => {
   const patches: unknown[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const u = String(url);
-      const method = init?.method ?? "GET";
-      if (method === "PATCH") {
-        patches.push(init?.body ? JSON.parse(init.body as string) : undefined);
-        return Promise.resolve(jsonResponse(200, { id: "ch-1" }));
-      }
-      if (method === "GET" && /\/v1\/filler\/fit/.test(u)) {
-        return Promise.resolve(
-          jsonResponse(200, {
-            channels: [
-              {
-                channelId: "ch-1",
-                name: "90s Action Hour",
-                number: 42,
-                level: "exact",
-                pinned: opts.pinned ?? false,
-                excluded: false,
-              },
-            ],
-          }),
-        );
-      }
-      if (method === "GET" && /\/v1\/channels\/ch-1$/.test(u)) {
-        return Promise.resolve(jsonResponse(200, opts.detail ?? channelDetail));
-      }
-      // GET /v1/channels — the list.
-      return Promise.resolve(
-        jsonResponse(200, {
-          channels: [
-            { id: "ch-1", name: "90s Action Hour", number: 42, status: "live", policy: channelDetail.policy },
-          ],
-        }),
-      );
+  server.use(
+    getClipChannelFitMockHandler({
+      channels: [
+        {
+          channelId: "ch-1",
+          name: "90s Action Hour",
+          number: 42,
+          level: "exact",
+          pinned: opts.pinned ?? false,
+          excluded: false,
+        },
+      ],
+    }),
+    getGetChannelMockHandler(opts.detail ?? channelDetail),
+    getListChannelsMockHandler({ channels: [channelDetail] }),
+    getUpdateChannelMockHandler(async ({ request }) => {
+      patches.push(await request.json());
+      return channelDetail;
     }),
   );
   return { patches };
 };
-
-afterEach(() => vi.restoreAllMocks());
 
 describe("PinClipDialog", () => {
   // ⚠ Still the load-bearing property after V35 rewrote this surface: PATCH replaces `policy`
@@ -97,7 +90,7 @@ describe("PinClipDialog", () => {
   // and merges onto it.
   it("appends the clip to filler.pinned and MERGES onto the whole saved policy", async () => {
     const user = userEvent.setup();
-    const { patches } = stubFetch();
+    const { patches } = stubPin();
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
     await user.click(await screen.findByRole("checkbox", { name: /Always play/ }));
@@ -118,7 +111,7 @@ describe("PinClipDialog", () => {
   // the pin. A single flag would make this a no-op and the operator's intent would vanish.
   it("unticking an overridden channel writes an exclusion, not just a missing pin", async () => {
     const user = userEvent.setup();
-    const { patches } = stubFetch({ pinned: true });
+    const { patches } = stubPin({ pinned: true });
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
     await user.click(await screen.findByRole("checkbox", { name: /Always play/ }));
@@ -133,7 +126,7 @@ describe("PinClipDialog", () => {
   // checkbox cannot express.
   it("back to automatic clears both lists", async () => {
     const user = userEvent.setup();
-    const { patches } = stubFetch({ pinned: true });
+    const { patches } = stubPin({ pinned: true });
     render(<PinClipDialog clip={clip} onClose={() => {}} />, { wrapper: makeWrapper() });
 
     await user.click(await screen.findByRole("button", { name: /Back to automatic/ }));
@@ -145,7 +138,7 @@ describe("PinClipDialog", () => {
   });
 
   it("renders nothing when no clip is given", () => {
-    stubFetch();
+    stubPin();
     const { container } = render(<PinClipDialog onClose={() => {}} />, { wrapper: makeWrapper() });
     expect(container).toBeEmptyDOMElement();
   });

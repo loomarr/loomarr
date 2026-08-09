@@ -1,14 +1,28 @@
+import type { SettingEntry } from "@loomarr/api";
+import {
+  getBootstrapMockHandler,
+  getLoginMockHandler,
+  getSettingsListMockHandler,
+  getSettingsPatchMockHandler,
+  getSetupStatusMockHandler,
+  getSetupTestMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { setting } from "@/test/fixtures/settings";
+import { me } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
 // Wizard coverage driven through the REAL generated route tree (§13, config-design §6):
 // first-run routing off `setup.completed`, the unauthenticated bootstrap step, and the
 // bootstrap → auto-login → checklist advance.
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
+const ADMIN = me();
 const GREEN_CHECKS = [
   { name: "media_server", ok: true },
   { name: "tunarr", ok: true },
@@ -18,20 +32,11 @@ const GREEN_CHECKS = [
 // The connections step (config-design §6) renders the settings GROUP forms, so the
 // settings list must carry a field per group for its blocks to appear. One essential key
 // each is enough to exercise the block headings + Test/verdict.
-const entry = (key: string, group: string) => ({
-  key,
-  group,
-  kind: "string",
-  doc: `${key} for tests`,
-  advanced: false,
-  secret: false,
-  set: false,
-  provenance: "db",
-  value: "",
-});
-// An enum entry renders as the Radix Select — the control the flavor-save regression
+const entry = (key: string, group: string): SettingEntry =>
+  setting({ key, group, doc: `${key} for tests`, set: false, value: "" });
+// An enum entry renders as the Base UI Select — the control the flavor-save regression
 // (below) exercises. `enum` fills its options; the jsdom Select shims live in test/setup.ts.
-const enumEntry = (key: string, group: string, options: string[]) => ({
+const enumEntry = (key: string, group: string, options: string[]): SettingEntry => ({
   ...entry(key, group),
   kind: "enum",
   enum: options,
@@ -44,72 +49,74 @@ const CONNECTION_ENTRIES = [
   entry("tmdb.api_key", "connections.tmdb"),
 ];
 
-const json = (body: unknown, status: number) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
 // `backend` is the saved `playout.backend` (§9.1), which decides which steps the wizard has
 // at all. Defaults to `tunarr` here rather than to the registry default, because most of the
 // assertions in this file predate the playout choice and describe the Tunarr-shaped flow;
 // the internal path gets its own explicit cases below.
-const stubFetch = (opts: {
+//
+// ⚠ `me` is HAND-WRITTEN because it is STATEFUL (401 until a login lands) and status-bearing:
+// the spec declares errors via `default:` with no 401, so orval has nothing to generate from.
+// Everything else here is route-bound, and the request SEQUENCE is recorded because two
+// assertions below are about order, not presence.
+const stubWizard = (opts: {
   authed: boolean;
   setupCompleted?: boolean;
-  checks?: unknown[];
+  checks?: Array<{ name: string; ok: boolean; hint?: string }>;
   backend?: "internal" | "tunarr";
 }) => {
   let authed = opts.authed;
-  const mock = vi.fn((url: string, _init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/v1/setup/bootstrap")) return Promise.resolve(json(ADMIN, 200));
-    if (u.includes("/v1/auth/login")) {
+  const seq: string[] = [];
+  const patches: string[] = [];
+
+  server.use(
+    http.get("*/v1/auth/me", () =>
+      authed ? HttpResponse.json(ADMIN) : HttpResponse.json({ title: "Unauthorized" }, { status: 401 }),
+    ),
+    getBootstrapMockHandler(() => {
+      seq.push("bootstrap");
+      return { id: ADMIN.id, name: ADMIN.name, role: ADMIN.role };
+    }),
+    getLoginMockHandler(() => {
+      seq.push("login");
       authed = true;
-      return Promise.resolve(json(ADMIN, 200));
-    }
-    if (u.includes("/v1/auth/me")) {
-      return Promise.resolve(authed ? json(ADMIN, 200) : json({ title: "Unauthorized" }, 401));
-    }
-    if (u.includes("/v1/setup/status")) {
-      return Promise.resolve(json({ checks: opts.checks ?? GREEN_CHECKS }, 200));
-    }
-    if (u.includes("/v1/setup/test")) {
-      // The real endpoint tests PERSISTED settings; the FE must save first, so the mock
-      // just acks. The flavor-save regression asserts the PATCH landed BEFORE this call.
-      return Promise.resolve(json({ ok: true, hint: "Connection OK" }, 200));
-    }
-    if (u.includes("/v1/settings")) {
-      return Promise.resolve(
-        json(
-          {
-            features: {},
-            settings: [
-              ...CONNECTION_ENTRIES,
-              {
-                ...entry("playout.backend", "playout"),
-                kind: "enum",
-                enum: ["internal", "tunarr"],
-                value: opts.backend ?? "tunarr",
-              },
-              {
-                key: "setup.completed",
-                group: "advanced",
-                kind: "bool",
-                doc: "First-run wizard completed.",
-                advanced: true,
-                secret: false,
-                set: true,
-                provenance: "db",
-                value: String(opts.setupCompleted ?? true),
-              },
-            ],
-          },
-          200,
-        ),
-      );
-    }
-    return Promise.resolve(json({}, 200));
-  });
-  vi.stubGlobal("fetch", mock);
-  return mock;
+      return ADMIN;
+    }),
+    getSetupStatusMockHandler({ checks: opts.checks ?? GREEN_CHECKS }),
+    // The real endpoint tests PERSISTED settings, so the FE must save first; the mock just
+    // acks. The flavor-save regression asserts the PATCH landed BEFORE this call.
+    getSetupTestMockHandler(() => {
+      seq.push("test");
+      return { ok: true, hint: "Connection OK" };
+    }),
+    getSettingsPatchMockHandler(async ({ request }) => {
+      seq.push("patch");
+      patches.push(JSON.stringify(await request.json()));
+      return { results: [] };
+    }),
+    getSettingsListMockHandler({
+      features: {},
+      settings: [
+        ...CONNECTION_ENTRIES,
+        {
+          ...entry("playout.backend", "playout"),
+          kind: "enum",
+          enum: ["internal", "tunarr"],
+          value: opts.backend ?? "tunarr",
+        },
+        setting({
+          key: "setup.completed",
+          group: "advanced",
+          kind: "bool",
+          doc: "First-run wizard completed.",
+          advanced: true,
+          value: String(opts.setupCompleted ?? true),
+        }),
+      ],
+    }),
+    ...appHandlers(),
+  );
+
+  return { seq, patches };
 };
 
 const renderAt = (initialPath: string) => {
@@ -126,17 +133,15 @@ const renderAt = (initialPath: string) => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("first-run routing", () => {
   it("sends the operator to the wizard while setup.completed is false", async () => {
-    stubFetch({ authed: true, setupCompleted: false });
+    stubWizard({ authed: true, setupCompleted: false });
     renderAt("/");
     expect(await screen.findByText(/first-run setup/i)).toBeInTheDocument();
   });
 
   it("goes straight to Channels once setup is completed", async () => {
-    stubFetch({ authed: true, setupCompleted: true });
+    stubWizard({ authed: true, setupCompleted: true });
     renderAt("/");
     expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
   });
@@ -144,7 +149,7 @@ describe("first-run routing", () => {
 
 describe("wizard", () => {
   it("opens on bootstrap when no one is signed in", async () => {
-    stubFetch({ authed: false });
+    stubWizard({ authed: false });
     renderAt("/wizard");
     expect(await screen.findByRole("heading", { name: /create your admin account/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Username")).toBeInTheDocument();
@@ -152,7 +157,7 @@ describe("wizard", () => {
   });
 
   it("creates the admin, signs in, and advances to the checklist", async () => {
-    const fetchMock = stubFetch({ authed: false });
+    const { seq } = stubWizard({ authed: false });
     renderAt("/wizard");
 
     await userEvent.type(await screen.findByLabelText("Username"), "ada");
@@ -165,13 +170,13 @@ describe("wizard", () => {
     expect(
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
     ).toBeInTheDocument();
-    const called = (path: string) => fetchMock.mock.calls.some(([u]) => String(u).includes(path));
-    expect(called("/v1/setup/bootstrap")).toBe(true);
-    expect(called("/v1/auth/login")).toBe(true);
+    // Bootstrap THEN login, in that order — the auto-login is the whole point of the step, and
+    // "both were called" would also be true if they fired the other way round.
+    expect(seq.filter((s) => s === "bootstrap" || s === "login")).toEqual(["bootstrap", "login"]);
   });
 
   it("rejects a mismatched confirmation before calling the API", async () => {
-    const fetchMock = stubFetch({ authed: false });
+    const { seq } = stubWizard({ authed: false });
     renderAt("/wizard");
 
     await userEvent.type(await screen.findByLabelText("Username"), "ada");
@@ -180,11 +185,11 @@ describe("wizard", () => {
     await userEvent.click(screen.getByRole("button", { name: /create admin/i }));
 
     expect(await screen.findByText(/passwords don't match/i)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/setup/bootstrap"))).toBe(false);
+    expect(seq).not.toContain("bootstrap");
   });
 
   it("shows the connections as inline forms and blocks while a required one is red", async () => {
-    stubFetch({
+    stubWizard({
       authed: true,
       setupCompleted: false,
       checks: [
@@ -217,7 +222,7 @@ describe("wizard", () => {
     // ran against the OLD (empty) flavor — picking "emby" then Testing showed "set a media
     // server flavor". Test must PATCH the dirty edits first, THEN test. Asserted by call
     // ORDER: the PATCH (carrying library.flavor) must precede the /v1/setup/test POST.
-    const fetchMock = stubFetch({
+    const { seq, patches } = stubWizard({
       authed: true,
       setupCompleted: false,
       // Both required checks red so the wizard STAYS on the connections step (a
@@ -230,7 +235,7 @@ describe("wizard", () => {
     renderAt("/wizard");
 
     // Wait for the connections step to mount (auth + route resolve async), then open
-    // the media-server block from the rail and pick a flavor in the Radix Select.
+    // the media-server block from the rail and pick a flavor in the Select.
     await screen.findByRole("heading", { name: /connect your services/i });
     const rail = within(screen.getByRole("complementary"));
     await userEvent.click(rail.getByRole("button", { name: "Media server" }));
@@ -243,18 +248,12 @@ describe("wizard", () => {
     await userEvent.click(testButton);
 
     // The save landed before the test — and carried the flavor the operator just picked.
+    // ⚠ Order comes from two ROUTE-BOUND resolvers appending to `seq`, not from indices into
+    // the stub's own call log filtered by url substring.
     await vi.waitFor(() => {
-      const patch = fetchMock.mock.calls.find(
-        ([u, init]) => String(u).includes("/v1/settings") && (init as RequestInit)?.method === "PATCH",
-      );
-      const testCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/test"));
-      expect(patch).toBeDefined();
-      expect(testCall).toBeDefined();
-      const patchIdx = fetchMock.mock.calls.indexOf(patch as (typeof fetchMock.mock.calls)[number]);
-      const testIdx = fetchMock.mock.calls.indexOf(testCall as (typeof fetchMock.mock.calls)[number]);
-      expect(patchIdx).toBeLessThan(testIdx);
-      expect(String((patch?.[1] as RequestInit)?.body)).toContain("library.flavor");
+      expect(seq.filter((s) => s === "patch" || s === "test")).toEqual(["patch", "test"]);
     });
+    expect(patches.join()).toContain("library.flavor");
   });
 
   it("resumes past the checklist when only optional integrations are red", async () => {
@@ -263,7 +262,7 @@ describe("wizard", () => {
     // on to the next unfinished step rather than stranding them on a red X. With no standalone
     // Live TV or Webhooks step (Live TV auto-wires on the Tunarr save; availability is polled),
     // that next step is Library.
-    stubFetch({ authed: true, setupCompleted: false });
+    stubWizard({ authed: true, setupCompleted: false });
     renderAt("/wizard");
 
     expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
@@ -275,7 +274,7 @@ describe("wizard", () => {
     it("opens the step a link names", async () => {
       // The frontier here is Library (media_server + tunarr green, tunarr_library red), so a
       // link to the earlier Connections step is behind it and honoured.
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=checklist");
 
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
@@ -284,14 +283,14 @@ describe("wizard", () => {
     // ⚠ The stranding case. Honouring this link would drop an unauthenticated operator on a
     // step whose Continue can never enable, with no clickable rail and no way forward.
     it("clamps a link that points past what the server says is done", async () => {
-      stubFetch({ authed: false });
+      stubWizard({ authed: false });
       renderAt("/wizard?step=channel");
 
       expect(await screen.findByRole("heading", { name: /create your admin account/i })).toBeInTheDocument();
     });
 
     it("lands somewhere real when a link names a step that no longer exists", async () => {
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=not-a-step");
 
       expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
@@ -299,7 +298,7 @@ describe("wizard", () => {
 
     // The support case this feature is really for: point someone at ONE service's form.
     it("reveals the connection block a link names", async () => {
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=checklist&conn=requester");
 
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
@@ -316,7 +315,7 @@ describe("wizard", () => {
     // form for an action guaranteed to 409 — discoverable only by filling it in and
     // submitting. The backend was never at risk; the UI was advertising an impossible action.
     it("shows the completed bootstrap step read-only instead of a form that can only fail", async () => {
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=bootstrap");
 
       // Names the account, so the operator learns WHICH admin owns the instance — the
@@ -331,7 +330,7 @@ describe("wizard", () => {
     // bootstrap because the step self-advanced via its own submit. With the form gone there
     // would be no form AND no Continue — a worse dead end than the one being fixed.
     it("still offers Continue on a completed bootstrap step, which has no form to self-advance", async () => {
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=bootstrap");
 
       await screen.findByText(/signed in as Ada/i);
@@ -351,7 +350,7 @@ describe("wizard", () => {
     // was shown a Tunarr connection block, given a "Give Tunarr your library" step, and
     // BLOCKED on a `tunarr` check they could never turn green.
     it("hides Tunarr's connection block when Loomarr does the streaming", async () => {
-      stubFetch({
+      stubWizard({
         authed: true,
         setupCompleted: false,
         backend: "internal",
@@ -370,7 +369,7 @@ describe("wizard", () => {
     });
 
     it("does not block the internal path on a Tunarr check it can never satisfy", async () => {
-      stubFetch({
+      stubWizard({
         authed: true,
         setupCompleted: false,
         backend: "internal",
@@ -387,7 +386,7 @@ describe("wizard", () => {
     });
 
     it("drops the Tunarr library step from the rail on the internal path", async () => {
-      stubFetch({ authed: true, setupCompleted: false, backend: "internal" });
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal" });
       renderAt("/wizard?step=checklist");
 
       await screen.findByRole("heading", { name: /connect your services/i });
@@ -398,7 +397,7 @@ describe("wizard", () => {
     });
 
     it("keeps the Tunarr library step when Tunarr does the streaming", async () => {
-      stubFetch({ authed: true, setupCompleted: false, backend: "tunarr" });
+      stubWizard({ authed: true, setupCompleted: false, backend: "tunarr" });
       renderAt("/wizard?step=checklist");
 
       await screen.findByRole("heading", { name: /connect your services/i });
@@ -409,7 +408,7 @@ describe("wizard", () => {
     // Tunarr's own settings live on the Playout step, under the choice that makes them
     // relevant — not in Connections, which would split one decision across two screens.
     it("puts Tunarr's connection form on the playout step when Tunarr is chosen", async () => {
-      stubFetch({ authed: true, setupCompleted: false, backend: "tunarr" });
+      stubWizard({ authed: true, setupCompleted: false, backend: "tunarr" });
       renderAt("/wizard?step=playout");
 
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
@@ -418,7 +417,7 @@ describe("wizard", () => {
     });
 
     it("shows no Tunarr form on the playout step when Loomarr does the streaming", async () => {
-      stubFetch({ authed: true, setupCompleted: false, backend: "internal" });
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal" });
       renderAt("/wizard?step=playout");
 
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i });
@@ -426,7 +425,7 @@ describe("wizard", () => {
     });
 
     it("falls back to the default block when a link names one that isn't a connection", async () => {
-      stubFetch({ authed: true, setupCompleted: false });
+      stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=checklist&conn=library");
 
       // `library` is a STEP id, not a connection — narrowed away, so the step opens on its
