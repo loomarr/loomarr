@@ -46,7 +46,13 @@ const InfoScreen = () => {
             an editing tab. The component gates its own affordances on `isAdmin` — a viewer
             sees the current artwork, an admin can change it. */}
         <div className="border-border border-t pt-3">
-          <ChannelIconField channelId={id} logo={ch.logo} onSetLogo={saveLogo} isAdmin={isAdmin} />
+          <ChannelIconField
+            channelId={id}
+            logo={ch.logo}
+            logoImage={ch.logoImage}
+            onSetLogo={saveLogo}
+            isAdmin={isAdmin}
+          />
         </div>
       </section>
 

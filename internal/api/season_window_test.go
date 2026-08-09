@@ -15,7 +15,7 @@ func TestChannelToDTO_SurfacesSeasonWindow(t *testing.T) {
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
 		{Key: provision.Key("series:tvdb:71663"), Title: "The Simpsons", SeasonMin: 1, SeasonMax: 10},
 	}}
-	dto := channelToDTO(ch, nil)
+	dto := channelToDTO(ch, nil, nil)
 	if len(dto.Lineup) != 1 {
 		t.Fatalf("want 1 lineup entry, got %d", len(dto.Lineup))
 	}

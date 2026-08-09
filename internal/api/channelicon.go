@@ -1,15 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/mantonx/loomarr/internal/images"
 )
 
 // Channel icon upload + serve. Both are Huma operations registered in registerChannels: the
@@ -27,6 +28,14 @@ import (
 // maxIconBytes caps an upload at 2 MiB — a channel icon is a small poster/logo; this fences
 // a hostile or accidental large upload out of the DB blob without a config knob.
 const maxIconBytes = 2 << 20
+
+// channelLogoWidth is the rendition width stored on the channel — the top of the icon ladder
+// (images.RoleIcon.Widths() = 92, 185, 500). See channelLogoURL for why this rung and why JPEG.
+const channelLogoWidth = 500
+
+// ownerKindChannel is the image_refs owner kind for a channel icon. A Ref is what keeps the GC
+// from collecting the icon as an orphan while a channel still points at it (§22).
+const ownerKindChannel = "channel"
 
 // allowedIconTypes is the MIME allowlist for an uploaded icon — RASTER ONLY. SVG is
 // deliberately excluded: the serve endpoint is public and returns the bytes with their
@@ -112,15 +121,29 @@ func (s *Server) uploadChannelIcon(ctx context.Context, in *uploadIconInput) (*u
 			"Use a PNG, JPEG, WebP, or GIF image. SVG isn't accepted.")
 	}
 
-	now := time.Now()
-	if err := s.store.PutChannelIcon(ctx, in.ID, ct, data, now); err != nil {
+	if s.images == nil {
+		return nil, apiErr(http.StatusServiceUnavailable, "Images aren't available",
+			"The image service isn't configured on this instance.")
+	}
+
+	// ⚠ The bytes go to the image service (§22), NOT into the database. `channel_icons` stored
+	// them as a BLOB specifically so they would ride the §16 backup; §22 reverses that trade
+	// deliberately and records what replaces the guarantee (uploads are the one unrecoverable
+	// origin — see Durability). The Ref recorded here is what keeps the GC from collecting the
+	// icon as an orphan while a channel still points at it.
+	img, err := s.images.Ingest(ctx, bytes.NewReader(data), images.IngestRequest{
+		Role:       images.RoleIcon,
+		Visibility: images.VisibilityPublic,
+		Origin:     images.OriginUpload,
+		OwnerKind:  ownerKindChannel,
+		OwnerID:    in.ID,
+	})
+	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't save the icon",
 			"Something went wrong storing the image. Try again.", err)
 	}
 
-	// Point the channel at the serve URL, cache-busted by the upload time so Tunarr/Emby
-	// refetch a replaced icon instead of serving a stale cached image.
-	ch.Logo = s.iconServeURL(in.ID, now)
+	ch.Logo = s.channelLogoURL(img.Hash)
 	if err := s.store.UpsertChannel(ctx, ch); err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update the channel",
 			"The icon was saved but linking it to the channel failed. Try again.", err)
@@ -167,21 +190,27 @@ func (s *Server) serveChannelIcon(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// iconServeURL builds the icon URL stored on the channel + pushed to Tunarr. It is derived
-// from the OPERATOR-CONFIGURED server.public_url — NOT from request headers (r.Host /
-// X-Forwarded-Host are attacker-controllable, and this URL is stored and fetched downstream
-// by Tunarr, so a spoofed header could poison it). The ?v= is the upload epoch so a replaced
-// icon gets a fresh URL that busts any downstream cache.
+// channelLogoURL builds the icon URL stored on the channel and pushed to Tunarr. It delegates
+// to the image service's URLFor, which derives the base from the OPERATOR-CONFIGURED
+// server.public_url — NOT from request headers (r.Host / X-Forwarded-Host are
+// attacker-controllable, and this URL is stored and fetched downstream by Tunarr, so a spoofed
+// header could poison it). When server.public_url is unset it yields a RELATIVE URL, which
+// still works when Tunarr resolves Loomarr at the same origin.
 //
-// When server.public_url is unset, fall back to a RELATIVE URL. That still works when Tunarr
-// resolves Loomarr at the same origin the guide is served from, and is safe (no header
-// trust); the setting's doc tells the operator to set it if uploaded icons don't appear.
-func (s *Server) iconServeURL(channelID string, at time.Time) string {
-	base := ""
-	if s.liveConfig != nil {
-		base = strings.TrimRight(strings.TrimSpace(s.liveConfig("server.public_url")), "/")
-	}
-	return fmt.Sprintf("%s/v1/channels/%s/icon?v=%d", base, channelID, at.Unix())
+// ⚠ **The `?v=` cache-bust is gone, and its absence is the point.** The old URL addressed a
+// channel (`/v1/channels/{id}/icon`), so replacing the icon reused the URL and needed a query
+// param to defeat downstream caches. This one addresses the BYTES: a different icon is a
+// different hash is a different URL, so the cache-bust is structural rather than bolted on.
+// That is the same property that lets the serve route send `Cache-Control: immutable`.
+//
+// ⚠ **JPEG, deliberately, and this is the one place the compatibility floor earns its keep.**
+// §22 keeps a JPEG rendition for old iOS and legacy Android WebViews, over-represented among a
+// self-hosted media server's clients — and this URL is consumed by exactly that chain: Tunarr
+// hands it to Emby, which hands it to a television. WebP would be smaller and is ~97%
+// supported in BROWSERS, which is not the population fetching this. w500 is the top of the
+// icon ladder: small enough to be cheap, large enough not to look soft on a 4K guide grid.
+func (s *Server) channelLogoURL(hash string) string {
+	return s.images.URLFor(hash, channelLogoWidth, images.FormatJPEG)
 }
 
 // iconContentType returns the media type from a byte-signature sniff

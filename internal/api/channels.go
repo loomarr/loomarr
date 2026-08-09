@@ -69,8 +69,10 @@ func (s *Server) registerChannels(api huma.API) {
 		OperationID: "channel-icon", Method: http.MethodGet, Path: "/v1/channels/{id}/icon",
 		Summary: "A channel's uploaded icon",
 		Description: "Public, no credential: Tunarr and the media server fetch this machine-to-machine " +
-			"while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a " +
-			"day; the ?v= cache-bust changes on re-upload.",
+			"while building the guide. 404 when the channel uses a TMDB/URL logo or none. Cached for a day. " +
+			"LEGACY since V52 phase 5: uploads now go to the image service and a channel's logo points at " +
+			"/v1/images/{hash}, so this serves only icons uploaded before that. It is the migration window, " +
+			"and it retires with the channel_icons table in phase 8.",
 		Tags: []string{"channels"},
 	}, "The stored icon bytes.", "image/png", "image/jpeg", "image/webp", "image/gif"),
 		RolePublic, s.serveChannelIcon)
@@ -82,8 +84,10 @@ func (s *Server) registerChannels(api huma.API) {
 		OperationID: "upload-channel-icon", Method: http.MethodPost, Path: "/v1/channels/{id}/icon",
 		Summary: "Upload a channel icon",
 		Description: "Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — " +
-			"SVG is refused because the serve half is public and an SVG can carry script). Stores the " +
-			"bytes, points the channel's logo at the serve URL, and reconciles so Tunarr picks it up.",
+			"SVG is refused because the serve half is public and an SVG can carry script). Ingests the " +
+			"bytes into the image service (§22), points the channel's logo at the content-addressed URL, " +
+			"and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a " +
+			"different image yields a different one, so no cache-bust is needed.",
 		Tags:         []string{"channels"},
 		MaxBodyBytes: maxIconBytes + 1024,
 	}, RoleAdmin), s.uploadChannelIcon)
@@ -171,9 +175,17 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 	}
 	out := &listChannelsOutput{}
 	out.Body.Channels = make([]ChannelDTO, 0, len(all))
+	// ⚠ Resolved ONCE for the whole list, before the loop. A lookup inside channelToDTO would be
+	// an N+1 — one image row read per channel — which is the shape a profile here has already
+	// caught once. Distinct hashes are fetched once each even when channels share an icon.
+	logos := make([]string, 0, len(all))
 	for _, ch := range all {
-		// nil resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil))
+		logos = append(logos, ch.Logo)
+	}
+	logoImage := s.logoImageResolver(ctx, logos)
+	for _, ch := range all {
+		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
+		out.Body.Channels = append(out.Body.Channels, channelToDTO(ch, nil, logoImage))
 	}
 	return out, nil
 }
@@ -186,7 +198,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -327,7 +339,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -465,7 +477,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx))}, nil
+	return &channelOutput{Body: channelToDTO(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}))}, nil
 }
 
 type refineChannelInput struct {
@@ -559,7 +571,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx))}, nil
+	return &reconcileOutput{Body: channelToDTO(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}))}, nil
 }
 
 type deleteChannelInput struct {
