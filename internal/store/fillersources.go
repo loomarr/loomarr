@@ -131,6 +131,19 @@ func (f FillerSource) Scannable() bool {
 	}
 }
 
+// Configured reports whether this source has been pointed at anything (§10 V51c).
+//
+// ⚠ **The third state `Fetchable`/`Scannable` can only answer by side effect.** A row can be
+// neither fetchable nor scannable for two entirely different reasons — it is a grouping with
+// nothing behind it yet (the seeded `youtube` row, which becomes that provider's empty state), or
+// it is a malformed remote — and the Sources tab renders those differently: one is an invitation,
+// the other is a fault. Reading "not fetchable and not scannable" as either would be wrong half
+// the time.
+//
+// It replaces three inline `URI == ""` tests that each re-derived the same idea in a different
+// file, which is how one of them ends up disagreeing after a kind is added.
+func (f FillerSource) Configured() bool { return f.URI != "" }
+
 // NewFillerSource builds a source that is ON.
 //
 // ⚠ **A constructor rather than a struct literal, because the safe value here is not the zero

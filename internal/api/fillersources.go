@@ -93,6 +93,47 @@ type FillerSourceDTO struct {
 	// surface, so the operator could not see what a source claimed even though Loomarr had
 	// recorded it.
 	License string `json:"license,omitempty" doc:"Licence the source declared; absent means unknown, NOT public domain"`
+	// Group marks a PROVIDER node — one service, with the targets an operator added beneath it
+	// (§10 V51c). Three archive.org collections stop being three sibling rows and become one
+	// Archive.org row that twirls down.
+	//
+	// ⚠ **A separate axis from `Kind`, deliberately** — the same call §10 V45 makes for
+	// `IsComposite`. Adding `provider` to the kind enum would force every switch on kind to grow
+	// a case, which is how a container leaks into a place that expects a source: a pull planner
+	// or a fetch loop that handled the new value by falling through its `default`.
+	Group bool `json:"group,omitempty"`
+	// ParentID is the provider node this row sits under, or empty for a top-level row.
+	//
+	// ⚠ **Derived from `Kind` at read time — there is no `parent_id` column and no migration.**
+	// The grouping being asked for IS already a column: every `archive` row belongs under
+	// Archive.org, and there is no representable case where it belongs anywhere else. A stored
+	// parent would be a second encoding of that fact, and second encodings make illegal states
+	// representable (`kind='archive', parentId='provider:youtube'`).
+	//
+	// ⚠ **Never accepted on a request body.** `POST /v1/filler/sources` takes a kind and derives
+	// the parent; accepting one would let a client assert a parent that contradicts the kind.
+	ParentID string `json:"parentId,omitempty"`
+}
+
+// providerIDPrefix namespaces the derived group ids (`provider:archive`, `provider:youtube`) so
+// they can never collide with an operator-produced source id, and so ONE prefix test guards every
+// route that addresses a row.
+const providerIDPrefix = "provider:"
+
+// isProviderID reports whether an id addresses a derived group node rather than a real source.
+func isProviderID(id string) bool { return strings.HasPrefix(id, providerIDPrefix) }
+
+// providerGroups are the kinds that roll up, in the order their groups appear.
+//
+// ⚠ **`folder` and `library` deliberately do NOT group.** A twirl-down exists because ONE SERVICE
+// offers many targets; two watched folders are two unrelated directories with no service in
+// common, so a "Folders" container would be a row that dims and changes nothing — §10's own
+// forbidden shape. It also leaves the config-backed projection in `listFillerSources` untouched.
+var providerGroups = []struct {
+	kind, id, label, detail string
+}{
+	{"archive", providerIDPrefix + "archive", "Archive.org", "collections you've added — searchable here, downloaded when you queue or approve"},
+	{"youtube", providerIDPrefix + "youtube", "YouTube", "playlists you've added — titles and descriptions are kept for tagging"},
 }
 
 // ⚠ `Remotes` is GONE from this DTO (V37). It carried the archive collections nested under the
@@ -388,6 +429,14 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
+	// ⚠ A derived GROUP node carries no state, so there is nothing here to write (§10 V51c). One
+	// prefix test rather than a case per provider: the ids are namespaced precisely so a single
+	// guard covers every group that exists now and every one added later.
+	if isProviderID(in.ID) {
+		return nil, errConflict("That source has no switch",
+			"This row groups the sources you've added — switch them off individually.")
+	}
+
 	out := &setFillerSourceEnabledOutput{}
 	out.Body.ID, out.Body.Enabled = in.ID, in.Body.Enabled
 	out.Body.FetchEverySeconds, out.Body.FetchMaxPerRun = in.Body.FetchEverySeconds, in.Body.FetchMaxPerRun
@@ -413,15 +462,16 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 			}
 		}
 		return out, nil
-	case "remote":
-		// Refused rather than silently accepted: `remote` is a CONTAINER whose children carry
-		// the switches, so storing a flag on it would be a control that changes nothing.
-		//
-		// ⚠ `library` used to be refused here too, on the grounds that nothing scanned a
-		// media-server library. V38c reverses that (§10) — a library source is scanned like any
-		// other, so it has a real switch and lands in the default branch below.
-		return nil, errConflict("That source has no switch",
-			"This row groups the sources you've added — switch them off individually.")
+	// ⚠ `case "remote"` was here and is gone (§10 V51c). It guarded the V37-retired container —
+	// an id nothing could produce for two phases, so it read as protection while protecting
+	// nothing, exactly what the DELETE handler's own comment says about removing its twin. The
+	// prefix guard above now covers the ids that DO exist, and inherits the copy verbatim,
+	// because the sentence was right all along: the row groups sources, and the switches are on
+	// the children.
+	//
+	// ⚠ `library` used to be refused here too, on the grounds that nothing scanned a
+	// media-server library. V38c reverses that (§10) — a library source is scanned like any
+	// other, so it has a real switch and lands in the default branch below.
 	default:
 		if s.store == nil {
 			return nil, huma.Error501NotImplemented("no store configured")
@@ -458,6 +508,13 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 	}
 	if s.store == nil {
 		return nil, huma.Error501NotImplemented("no store configured")
+	}
+	// ⚠ A derived GROUP node is not a registration either (§10 V51c). Deleting Archive.org would
+	// have to mean deleting every collection beneath it — a bulk act an operator should perform
+	// deliberately, one row at a time, seeing exactly what goes.
+	if isProviderID(in.ID) {
+		return nil, errConflict("That source can't be removed here",
+			"This row groups the sources you've added — remove them individually.")
 	}
 	switch in.ID {
 	case "folder", "library":
@@ -538,16 +595,28 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// the one whose URI IS the configured directory; a folder pointing anywhere else is a genuine
 	// peer. The seeded library row carries a blank URI (nothing was ever configured into it) and
 	// is skipped on that basis, with the provenance row below covering old clips.
+	// ⚠ Split by whether the kind ROLLS UP (§10 V51c): ungrouped rows stay top-level peers, and
+	// the provider kinds are collected per-provider so the group node can be emitted above its
+	// own children in one pre-ordered pass.
 	var registered []FillerSourceDTO
+	byProvider := map[string][]FillerSourceDTO{}
 	if srcs, srcErr := s.store.ListFillerSources(ctx); srcErr != nil {
 		s.log.Warn("list filler sources", "err", srcErr)
 	} else {
 		for _, src := range srcs {
-			if src.Kind == "folder" && (src.URI == "" || src.URI == dir) {
+			if src.Kind == "folder" && (!src.Configured() || src.URI == dir) {
 				continue // the config-backed drop-folder; rendered from configuration above
 			}
-			if src.Kind == "library" && src.URI == "" {
+			if src.Kind == "library" && !src.Configured() {
 				continue // the seeded placeholder, never configured into
+			}
+			// ⚠ The seeded blank-URI `youtube` row (migration 00034) is skipped for the same
+			// reason, and V51c is what makes that correct rather than a loss. It was shaped like
+			// a provider root all along — no URI, nothing to fetch — and rendered as a peer with
+			// a blank target. The DERIVED group node is now that row, so skipping the stored one
+			// removes a duplicate instead of removing YouTube from the list.
+			if src.Kind == "youtube" && !src.Configured() {
+				continue
 			}
 			label := src.Label
 			if label == "" {
@@ -589,6 +658,14 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			// would have Loomarr asserting a legal fact about ~92% of archive.org items that
 			// declare no licence at all.
 			row.License = src.License
+			// ⚠ The parent is DERIVED from the kind here, at the one place a row is built. Any
+			// other arrangement — a stored column, a second pass that assigns parents — is a
+			// place the parent could disagree with the kind.
+			if parent, grouped := providerFor(src.Kind); grouped {
+				row.ParentID = parent
+				byProvider[src.Kind] = append(byProvider[src.Kind], row)
+				continue
+			}
 			registered = append(registered, row)
 		}
 	}
@@ -641,7 +718,90 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// provenance is the older `ingest` string are counted by the folder row they physically live
 	// in. Keeping an empty container would show a source that nothing can be.
 	out.Body.Sources = append(out.Body.Sources, registered...)
+	// The provider roll-up (§10 V51c), appended last and PRE-ORDERED: each group node immediately
+	// followed by its own children.
+	//
+	// ⚠ **Flat and pre-ordered, not nested.** A nested `children: []` would generate a recursive
+	// type through orval, which it handles badly, and the frontend has no tree primitive — a
+	// twirl-down renders from exactly this shape by hiding rows whose parent is collapsed. It is
+	// also purely ADDITIVE, so a client that knows nothing about `group`/`parentId` renders the
+	// same flat list it always did rather than breaking.
+	for _, g := range providerGroups {
+		out.Body.Sources = append(out.Body.Sources, providerNode(g.id, g.kind, g.label, g.detail, byProvider[g.kind]))
+		out.Body.Sources = append(out.Body.Sources, byProvider[g.kind]...)
+	}
 	return out, nil
+}
+
+// providerFor maps a source kind to its group id, and reports whether that kind rolls up at all.
+func providerFor(kind string) (string, bool) {
+	for _, g := range providerGroups {
+		if g.kind == kind {
+			return g.id, true
+		}
+	}
+	return "", false
+}
+
+// providerNode builds one derived group row from the children beneath it.
+//
+// ⚠ **Emitted even with ZERO children**, which is what keeps the top-level row count stable when
+// an operator deletes their last collection: the service does not vanish from the page, it becomes
+// an empty state inviting them to add another. It is also the answer to "where did Archive.org
+// go?" — the same reasoning that keeps the unconfigured drop-folder row visible.
+func providerNode(id, kind, label, detail string, children []FillerSourceDTO) FillerSourceDTO {
+	node := FillerSourceDTO{
+		ID: id, Kind: kind, Group: true,
+		Target: label, Detail: detail,
+		// ⚠ **No group switch, and this is the opinionated call of the phase.** Cascade-on-write
+		// destroys each child's own choice, which the store forbids in as many words ("Disabling
+		// is not deleting… switching it back on restores what was there"). A computed
+		// `effective = parent && child` is worse: it adds a fifth thing four call sites must all
+		// remember, and the direction it fails is *fetching from a provider the operator switched
+		// off*. The row reports what its children are doing and offers no lever; if a master
+		// switch is ever wanted, it ships as a VISIBLE bulk write over the children.
+		Switchable: false,
+		// Not removable: there is no registration to forget. Deleting Archive.org would have to
+		// mean deleting every collection under it, which is a bulk act an operator should perform
+		// deliberately, one row at a time, seeing what goes.
+		Removable: false,
+		// Nothing to fetch or search AT the provider: a group has no URI. Its children each carry
+		// their own "Fetch now" and, for archive, their own search box.
+		Fetchable:  false,
+		Searchable: false,
+		// ⚠ **Configured tracks whether anything is BEHIND it**, which is the distinction
+		// `Configured()` was extracted for: a provider with no children is an invitation, not a
+		// fault, and the tab renders those differently.
+		Configured: len(children) > 0,
+	}
+	// ⚠ Enabled is a REPORT, not a control: true when any child is doing work, so a provider
+	// whose collections are all switched off reads as dormant rather than as running. The "2 of 3
+	// on" summary is the frontend's to render — it already has every child row in this same array,
+	// so sending a count would be a second copy of a number that could disagree with the rows
+	// beside it.
+	//
+	// The clip count is the honest SUM of what the children claim. ⚠ It is not an estimate and
+	// never invents attribution: `sync.go` writes `filler-dir` for everything the folder scan
+	// finds and nothing records which SOURCE a downloaded clip came from, so most children
+	// legitimately report 0 — and the group reports 0 too, rather than a plausible-looking total.
+	for _, c := range children {
+		if c.Enabled {
+			node.Enabled = true
+		}
+		node.Count += c.Count
+		// LastFetchedAt is a read-only MAX over the children, computed HERE so no column can
+		// disagree with it. Absent when no child has ever fetched, so the row renders "never"
+		// rather than an epoch date nobody meant.
+		//
+		// ⚠ Compared as STRINGS, which is correct only because every one of them was formatted
+		// by the same `.UTC().Format(time.RFC3339)` two hundred lines up: fixed width, fixed
+		// offset, so lexical order is chronological order. A local-time or variable-offset
+		// timestamp would break that silently, which is why the formatting has one home.
+		if c.LastFetchedAt > node.LastFetchedAt {
+			node.LastFetchedAt = c.LastFetchedAt
+		}
+	}
+	return node
 }
 
 // sourceDetail is the operator-facing sentence under a registered source's name. Per KIND rather

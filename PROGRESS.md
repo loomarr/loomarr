@@ -4,6 +4,55 @@ One row per phase (design doc §21). A phase is **done** only when its gate (a s
 tests) is green and the evidence — commit SHA + the exact test command that proves it —
 is recorded here. See `CLAUDE.md` for the prime directives; one phase per session/PR.
 
+**V51c — sources roll up by provider, with no column, no table and no migration (2026-08-09).**
+Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
+`make retired-verify` + `make config-docs`.
+
+Three archive.org collections sat as three sibling rows with no indication they are one service.
+The Sources tab now shows one **Archive.org** row and one **YouTube** row, each twirling down to
+the targets beneath it — and the whole thing is **derived from `kind` at read time**.
+
+⚠ **The argument for deriving it is a correctness argument, not a shortcut: the grouping being
+asked for is already a column.** Every `archive` row belongs under Archive.org and there is no
+representable case where it belongs elsewhere, so a stored `parent_id` would be a second encoding
+of a fact `kind` already carries — and second encodings make illegal states representable
+(`kind='archive', parent_id='provider:youtube'`). Three concrete costs it would have added, each
+measured against code that exists: a **duplicate** blank-URI YouTube row beside migration 00034's
+seeded one (both invisible to `idx_filler_sources_uri`, whose `WHERE uri <> ''` excludes them —
+"one source appears twice", which 00023 and 00029 both exist to prevent); a **four-state** inherit
+problem for the nil/0/N fetch overrides whose own ⚠ says callers "must not re-derive this
+three-state logic separately"; and a 409 on any pending pull, because `filler_pulls.plan_json`
+stores `SourceID` strings looked up at approve time.
+
+The escape hatch is recorded in §10 so it is not re-litigated: a provider that ever gains state of
+its own gets a `filler_providers` table keyed on the existing `kind` vocabulary — **not**
+`parent_id`, because that state is per-provider, not per-node.
+
+⚠ **The phase found a guard that had been protecting nothing for two phases.**
+`TestSetFillerSourceEnabled_RefusesRowsWithNothingToStop` asserted a 409 for `PATCH
+/v1/filler/sources/remote`. V37 retired that container, so from that point no read model could
+produce the id and no client could send it — the test stayed green by asserting a refusal for a
+row that did not exist, and the handler kept a `case "remote"` that read as protection. The DELETE
+handler had already removed its twin for exactly this reason, in a comment saying so; the PATCH
+side was simply missed. The guard is now a **prefix test over the derived provider ids**, which
+the read model emits on every request, so it covers a case an operator can actually reach.
+
+**Three things deliberately do not inherit**, each an opinionated call: `enabled` (no group switch
+— cascade-on-write destroys each child's own choice, which the store forbids in as many words, and
+a computed `effective = parent && child` fails in the direction of *fetching from a provider the
+operator switched off*); fetch overrides (leaf only); and `lastFetchedAt`, which becomes a
+read-only `MAX` over children computed in the API so no column can disagree.
+
+⚠ **Both new behaviours were sabotage-verified**: splitting the pre-order into "all groups, then
+all children" turns the ordering test red, and disabling the prefix guard turns the 409 test red
+(404, not 409 — the id resolves to nothing). A first-try green on a new constraint is suspect.
+
+**Honest gap, exposed rather than created:** `sync.go` writes `Source = "filler-dir"` for every
+clip the folder scan finds and nothing records which SOURCE a downloaded clip came from, so
+`bySource["archive"]` is 0 on essentially every install. A group reports the **sum of its
+children's counts** — honest arithmetic over whatever they claim, never an invented number.
+Per-source attribution is an intake change, filed separately.
+
 **V51b — ingest becomes one watchable pipeline; seven sweeps become two jobs (2026-08-08).**
 Gate: `make check` (0 lint, `-race`) + `make test-pg` (both dialects) + `make openapi-verify` +
 `make retired-verify` (**25 identifiers**, up from 9) + `make config-docs`.
