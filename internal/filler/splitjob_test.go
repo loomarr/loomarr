@@ -209,7 +209,12 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	if tools.blackSilenceCall != 0 {
 		t.Error("chapters present, but the coarse detector still ran")
 	}
-	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" || p.Segments[1].Category != "toys" {
+	// ⚠ Names come from the CHAPTERS, not from a model. The `Category` assertion that stood here
+	// was checking `classify`, which V51g removed from `Propose` — 51 LLM turns inside a 120s pass,
+	// on segments whose only input was a generated name. Tagging happens on each spawned segment's
+	// own `tag` rung now, and the grounding rule it must obey is tested at `Classify` itself
+	// (`TestClassify_UngroundedEraBecomesSuggestion`, `TestClassify_EraGroundedBySourceText`).
+	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" || p.Segments[1].Name != "Lego" {
 		t.Errorf("proposal = %+v", p.Segments)
 	}
 	// Persisted — review happens later, possibly after a restart.
@@ -245,8 +250,17 @@ func TestPropose_CoarseSplit(t *testing.T) {
 	if len(p.Segments) != 3 {
 		t.Fatalf("segments = %+v, want 3", p.Segments)
 	}
-	if p.Segments[0].Name == "" || p.Segments[0].Era != 1987 {
-		t.Errorf("segment naming/era wrong: %+v", p.Segments[0])
+	// ⚠ Name only. The `Era != 1987` half asserted `classify`, which no longer runs here (V51g) —
+	// the era is settled on the segment's own `tag` rung, after `transcribe`, where there is
+	// actually text to ground it in. Here the name is derived from the parent, and that IS
+	// `Propose`'s job.
+	if p.Segments[0].Name == "" {
+		t.Errorf("segment naming wrong: %+v", p.Segments[0])
+	}
+	// ⚠ And the proposal must carry NO tags at all — a half-classified segment would be worse
+	// than an untagged one, because the review screen would present a guess as a finding.
+	if p.Segments[0].Era != 0 || p.Segments[0].SuggestedEra != 0 || len(p.Segments[0].Tags) != 0 {
+		t.Errorf("Propose classified a segment; that belongs to the tag rung: %+v", p.Segments[0])
 	}
 	if p.Segments[0].StartMs != 1000 || p.Segments[2].EndMs != 90_000 {
 		t.Errorf("cut positions wrong: %+v", p.Segments)
@@ -291,13 +305,19 @@ func TestPropose_RescueSplitsWhatDetectorsCouldNot(t *testing.T) {
 	if p.Segments[1].Name != "Aqua Globes" || p.Segments[1].StartMs != 27_000 {
 		t.Errorf("rescued boundary wrong: %+v", p.Segments[1])
 	}
-	// Era grounding INSIDE the pipeline: the grounded year lands as a tag…
-	if p.Segments[1].Era != 1987 {
-		t.Errorf("grounded era not tagged: %+v", p.Segments[1])
-	}
-	// …and the invented one is a suggestion, never a tag (§8).
-	if p.Segments[2].Era != 0 || p.Segments[2].SuggestedEra != 1950 {
-		t.Errorf("invented era mishandled: %+v", p.Segments[2])
+	// ⚠ The era-grounding assertions that stood here MOVED, they were not dropped (§8 is not
+	// negotiable). They exercised `Classify` through `Propose`'s `classify` call, which V51g
+	// removed; the rule itself is unchanged and is tested at its own seam —
+	// `TestClassify_EraGroundedBySourceText` (a year present in the text becomes `Era`) and
+	// `TestClassify_UngroundedEraBecomesSuggestion` (an invented one becomes `SuggestedEra`,
+	// never a tag). Every spawned segment reaches that code on its own `tag` rung.
+	//
+	// What `Propose` owes is the CUT, and that is what is asserted above: three segments, the
+	// rescued boundary at the right millisecond, named from the parent. Tags are the tag rung's.
+	for i, seg := range p.Segments {
+		if seg.Era != 0 || seg.SuggestedEra != 0 || len(seg.Tags) != 0 {
+			t.Errorf("segment %d arrived classified; Propose cuts, it does not describe: %+v", i, seg)
+		}
 	}
 }
 
