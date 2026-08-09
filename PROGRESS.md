@@ -53,6 +53,67 @@ and `Confirm` is exercised end to end against a real store for the first time.
 sits above V41 because that is the last recorded phase, not because nothing happened between.
 Back-filling them is scheduled with the V51 doc pass — see the plan.
 
+**V50c — CollapsibleSection onto Base UI, and a collapsed section stops being focusable
+(2026-08-08, branch `feat/base-ui-v50c`).** Gate: `make fe` (**1222** app + 17 api + 51 core + 5
+tokens, biome clean on 918 files) + `make fe-visual` (**764 passed, 0 failed, 0 flaky, 0 axe**, no
+baseline changed) + `make check` + `retired-verify` (14 identifiers).
+
+⚠ **Scope is ONE component, deliberately.** V50c was sketched as "disclosure/form primitives" and
+the form half is dropped: `checkbox` and `switch` are native `<input>`s carrying explicit decisions
+AGAINST a primitive, and both record that the reasoning **predates V50a and survives the vendor
+change**. Porting them would re-implement semantics the platform already gets right. `search-command`'s
+hand-written `role="combobox"` was audited in the same pass and honours its contract in full. **The
+sketch was written before anyone read the files; the files had already decided.**
+
+**What the port buys.** The old version's header a11y was already correct (a real
+`<button aria-expanded aria-controls>`), so the win is `hiddenUntilFound`: the browser's find-in-page
+reaches text inside a CLOSED section and opens it, where `overflow:hidden` left it findable by
+nothing.
+
+⚠ **And it removes a defect two tests were resting on.** The old `.reveal` closed with
+`grid-template-rows: 0fr` + `overflow:hidden` — zero height but **NOT `display:none`** — so collapsed
+controls stayed in the accessibility tree and stayed **focusable**. A keyboard user could Tab into a
+section they could not see. Two `channel-filler` tests reached a control inside a closed body with
+`findByRole` and passed; they open the section first now, as a user must. **The bug surfaced as a
+test that could only pass while it existed.** ⚠ Its failure mode is deliberately unhelpful and worth
+recognising: `asyncUtilTimeout` and `testTimeout` are both 5000ms, so findBy's own "Unable to find
+role" never surfaces — the test times out first and reports only `Test timed out in 5000ms`.
+
+⚠ **`hiddenUntilFound` is load-bearing, not a bonus.** Sabotaging it to prove the new test could fail
+showed both tests failing with *"Unable to find an element with the text"* — Base UI's Panel
+**unmounts its children when closed** by default, where the hand-rolled version always kept the body
+mounted and merely clipped it. A port that swapped the elements and adjusted assertions to match
+would have shipped a silent change to a **mounting** contract, breaking anything holding form state,
+scroll position or a ref in a collapsed section. Nothing in the gate reads a mounting contract.
+
+⚠ **The motion stayed hand-rolled, verified rather than assumed.** Base UI measures the panel
+(`scrollHeight` → `--collapsible-panel-height`) so an author can transition `height`; the `.reveal`
+grid-rows 0fr→1fr trick is height-agnostic, so nothing is measured and a body that changes size
+mid-open cannot desync from a stale measurement. The primitive owns state and semantics; the
+stylesheet still owns motion. Reduced-motion needed no work — it is a global `*` rule inside a media
+query, independent of implementation.
+
+⚠ **The CSS rule is two selectors on purpose.** `.reveal` has a second consumer: `connection-block`
+borrows its mechanics and passes `data-open={open}`, a React boolean, while Base UI emits `data-open`
+VALUELESS when open. Loosening the rule to `.reveal[data-open]` would match the **string `"false"`**
+that React renders for `data-open={false}` — React stringifies booleans for `data-*` rather than
+omitting them — and pin connection-block permanently open. **Caught by nothing:** jsdom does not
+apply the stylesheet, and connection-block has no story for the visual suite to snapshot.
+
+**Doc-first (§14):** no dependency conversation needed, because the row already anticipated this
+("the primitives the app still hand-rolls … stop needing a §14 conversation each"). ⚠ But its list
+was stale in **two** places — `menu` left it in V50b without the doc catching up, and `collapsible`
+leaves it here. Both removed, with `combobox` recorded as deliberately kept rather than merely
+omitted.
+
+⚠ **KNOWN GAP, not fixed here.** `connection-block` still closes with the bare `.reveal`, so its
+collapsed body — a Test action and a Fix link — **remains focusable and announced**. Same defect,
+left alone because scope is one component; it has no story, so axe never sees it. This is the
+strongest candidate for the next slice.
+
+**Next up: V50d** (house-style conformance across `components/ui`), with `connection-block`'s
+collapsed-body focus gap folded in.
+
 **V50b — the hand-rolled overlays fold onto the primitives (2026-08-08, branch
 `feat/base-ui-v50b`).** Gate: `make fe` (**1221** app + 17 api + 51 core + 5 tokens, biome clean on
 911 files + tsc + SPA build + storybook build) + `make fe-visual` (**764 passed, 0 failed, 0 flaky,
@@ -121,9 +182,6 @@ migration took the suite from 2 intermittent failures to 6 — every one passing
 contention across parallel specs rather than anything in the code. ⚠ A longer wait cannot make a
 broken assertion pass; it only stops a red build that means nothing. Net effect: the two
 PRE-EXISTING baseline flakes (help, filler) are green too.
-
-**Next up: V50c** (disclosure/form primitives), then V50d (house-style conformance across
-`components/ui`).
 
 **V50a — Radix → Base UI, the vendor consolidation (2026-08-08, branch `feat/base-ui-v50a`).**
 Gate: `make fe` (**1219** app + 17 api + 51 core + 5 tokens, biome + tsc + SPA build + storybook

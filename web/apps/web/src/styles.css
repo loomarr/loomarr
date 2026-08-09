@@ -223,7 +223,16 @@ body {
   grid-template-rows: 0fr;
   transition: grid-template-rows 260ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.reveal[data-open="true"] {
+/* ⚠ TWO selectors for two attribute SHAPES, and the omission is the load-bearing part.
+   `[data-open="true"]` is a React boolean (connection-block passes `data-open={open}`);
+   `[data-open=""]` is Base UI's Collapsible.Panel, which emits `data-open` valueless when
+   open and swaps to `data-closed` when shut (CollapsibleSection, since V50c).
+   Do NOT collapse these into a bare `.reveal[data-open]`. React renders `data-open={false}`
+   as the STRING "false", not as an absent attribute, so presence-matching would hold
+   connection-block permanently open — and nothing here would catch it: jsdom does not apply
+   this stylesheet, and connection-block has no story for the visual suite to snapshot. */
+.reveal[data-open="true"],
+.reveal[data-open=""] {
   grid-template-rows: 1fr;
 }
 .reveal > .reveal-inner {
