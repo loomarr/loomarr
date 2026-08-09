@@ -46,6 +46,25 @@ export default defineConfig({
       httpClient: "fetch",
       clean: true,
       prettier: false,
+      // MSW handlers per operation (V53d). What is generated here is the WIRING — the URL, the
+      // method, the status — and that is the part worth generating: when a route is renamed, a
+      // regenerate fixes every handler, where hand-written ones would silently stop matching.
+      // `/v1/suggestions` → `/v1/proposals` (V41) is the case this repo has actually lived.
+      //
+      // ⚠ THE DEFAULT DATA IS NOT TRUSTWORTHY AND TESTS MUST PASS AN OVERRIDE. Optional fields
+      // generate as `arrayElement([value, undefined])`, so presence varies per CALL, and nothing
+      // is seeded — a handler left on its defaults produces a different shape each run, which is
+      // flaky rather than merely arbitrary. Fixtures live in `src/test/fixtures`.
+      //
+      // ⚠ `useExamples` is deliberately NOT set. It reads the singular `example` keyword; Huma
+      // emits OpenAPI 3.1 plural `examples:` arrays, so it silently matches nothing and falls
+      // back to faker. Setting it would imply a guarantee that does not hold — measured before
+      // V53b: 0 of 53 example tags used. (V53b did fix the OTHER half of this: non-nullable
+      // arrays took never-populated list mocks from 137 to 0.)
+      mock: {
+        type: "msw",
+        delay: false, // the default is a random delay — pure flakiness in a test suite
+      },
       override: {
         mutator: {
           path: "./src/mutator/mutator.ts",

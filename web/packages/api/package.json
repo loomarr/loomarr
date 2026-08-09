@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./mutator": "./src/mutator/index.ts",
-    "./zod": "./src/zod/index.ts"
+    "./zod": "./src/zod/index.ts",
+    "./msw": "./src/msw/index.ts"
   },
   "scripts": {
     "generate": "orval --config orval.config.ts",
@@ -22,8 +23,10 @@
     "react": "^18.3.1 || ^19.0.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.5.0",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.17",
+    "msw": "^2.15.0",
     "orval": "^7.3.0",
     "react": "^19.2.8",
     "typescript": "^7.0.2",

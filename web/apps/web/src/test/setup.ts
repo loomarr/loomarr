@@ -1,6 +1,8 @@
 // Vitest global setup — jest-dom matchers (toBeInTheDocument, toHaveAccessibleName,
 // …) for the Testing Library component tests. Loaded via vite.config test.setupFiles.
 import { configure } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll } from "vitest";
+import { installServerLifecycle } from "./msw/server";
 import "@testing-library/jest-dom/vitest";
 
 // Testing Library's async utilities (`findBy*`, `waitFor`) default to a 1000ms timeout, which is
@@ -50,3 +52,14 @@ globalThis.ResizeObserver ??= class {
   unobserve(): void {}
   disconnect(): void {}
 } as unknown as typeof ResizeObserver;
+
+// The shared MSW server (V53d) — one mock layer for the whole suite, replacing the per-file
+// `stubFetch` helpers that 31 test files each hand-rolled. See `./msw/server` for why the
+// unhandled-request guard records-and-asserts instead of using `onUnhandledRequest: "error"`,
+// which does not fail a test.
+//
+// ⚠ Installed globally but STARTS WITH NO HANDLERS, so a test that has not been migrated is
+// unaffected: its `vi.stubGlobal("fetch", …)` replaces global fetch outright and never reaches
+// MSW's interceptor. That is what makes the migration incremental rather than a 31-file
+// big-bang — the two mechanisms coexist until the last stub is gone.
+installServerLifecycle({ beforeAll, afterEach, afterAll });
