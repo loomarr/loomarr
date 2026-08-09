@@ -880,3 +880,116 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 		t.Errorf("missing proposal → %d, want 404", resp.StatusCode)
 	}
 }
+
+// ⚠ **The default page size is an API concern, and this test is what pins it there** (§10 V51d).
+// `store.ClipFilter.Limit == 0` means "no LIMIT" because pod assembly loads the catalog through
+// the zero filter; if the default ever migrates into the store, every channel's break pool
+// silently truncates to 100 clips with no error and no log line. Asserting it at the HTTP edge is
+// what keeps the two layers honest about which one owns the number.
+func TestListFiller_DefaultsToOnePageAndReportsTheTotal(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for i := range 120 {
+		seedClip(t, st, fmt.Sprintf("p%03d", i), filler.Commercial, 1992, filler.Kids, "cereal")
+	}
+
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 100 {
+		t.Errorf("unparameterised list returned %d clips, want the 100-row default page", len(body.Clips))
+	}
+	if body.Total != 120 {
+		t.Errorf("total = %d, want 120 — the total is how many MATCH, not how many are on the page", body.Total)
+	}
+
+	// The last page is short, and the total does not change with it.
+	resp = do(t, srv, http.MethodGet, "/v1/filler?limit=100&offset=100", adminToken, "")
+	body.Clips = nil
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 20 || body.Total != 120 {
+		t.Errorf("page 2 = %d clips / total %d, want 20 / 120", len(body.Clips), body.Total)
+	}
+}
+
+// The cap and the floor are both real. ⚠ The floor matters as much: `limit=0` would otherwise
+// reach the store's "unbounded" sentinel and restore the exact behaviour paging removed.
+func TestListFiller_RejectsUnboundedAndOversizedPages(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	for _, q := range []string{"limit=0", "limit=501", "limit=-1", "sort=path", "order=sideways"} {
+		resp := do(t, srv, http.MethodGet, "/v1/filler?"+q, adminToken, "")
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s → %d, want 422 — an out-of-range page or an unknown sort must be refused, "+
+				"never quietly coerced to something else", q, resp.StatusCode)
+		}
+	}
+}
+
+// Held clips are opt-in on the wire, and the DTO says which ones they are (§10 V38/V51d). ⚠ The
+// pair is the point: a client that can ASK for held clips but cannot TELL which they are renders
+// an unreviewed clip identically to a filed one.
+func TestListFiller_HeldIsOptInAndLabelled(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedClip(t, st, "filed", filler.Commercial, 1992, filler.Kids, "cereal")
+	seedClip(t, st, "waiting", filler.Commercial, 1992, filler.Kids, "cereal")
+	if _, err := st.SetClipsHeld(context.Background(), []string{"waiting"}, true, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	var body struct {
+		Clips []struct {
+			Hash string
+			Held bool
+		}
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 1 || body.Total != 1 {
+		t.Fatalf("default list = %d clips / total %d, want just the filed one — a held clip is not "+
+			"in the playable catalog", len(body.Clips), body.Total)
+	}
+
+	body.Clips = nil
+	resp = do(t, srv, http.MethodGet, "/v1/filler?includeHeld=true", adminToken, "")
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 2 || body.Total != 2 {
+		t.Fatalf("includeHeld = %d clips / total %d, want 2 / 2", len(body.Clips), body.Total)
+	}
+	var labelled int
+	for _, c := range body.Clips {
+		if c.Held {
+			labelled++
+		}
+	}
+	if labelled != 1 {
+		t.Errorf("%d clips carry held=true, want exactly 1 — the flag ships WITH the parameter, "+
+			"or the client cannot tell an unreviewed clip from a filed one", labelled)
+	}
+}
+
+// The batch read the pin/exclude editor uses instead of loading the catalog (§10 V51d).
+func TestListFiller_HashesResolvesExactlyThoseClips(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	for _, id := range []string{"k1", "k2", "k3"} {
+		seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "cereal")
+	}
+	var body struct {
+		Clips []struct{ Hash string }
+		Total int
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=k1,k3,gone", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("hashes → %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Clips) != 2 || body.Total != 2 {
+		t.Errorf("got %d clips / total %d, want the 2 that exist (an unknown hash is absent, not an error)",
+			len(body.Clips), body.Total)
+	}
+}

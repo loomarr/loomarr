@@ -62,7 +62,13 @@ const DashboardScreen = () => {
   });
   const acquiringCount = acquiring.reduce((n, q) => n + (unwrap(q.data, (b) => b.titles?.length) ?? 0), 0);
 
-  const clips = fillerApi.useListFiller(undefined, { query: { enabled } });
+  // The catalog's size comes from the WATCH endpoint, which counts it in SQL (§10 V51d).
+  //
+  // ⚠ This used to be an unbounded `useListFiller()` whose only use was `.length` — every column
+  // of every clip fetched to render one number. Paging would have made it not merely wasteful but
+  // WRONG: a 100-row default page reports "100 clips" on an install with a thousand. The same
+  // endpoint backs the Filler page header, so the two cannot disagree.
+  const fillerWatch = fillerApi.useFillerWatch({ query: { enabled } });
 
   // Restart control (§9.2, V13). One cost query drives the restart-needed banner AND the
   // confirm line, so the two can never disagree about what a restart would do.
@@ -104,7 +110,7 @@ const DashboardScreen = () => {
   const rows = unwrap(channels.data, (b) => b.channels) ?? [];
   const onAir = rows.filter((c) => c.status === "live").length;
   const playoutStatus = unwrap(playout.data);
-  const clipCount = unwrap(clips.data, (b) => b.clips?.length) ?? 0;
+  const clipCount = unwrap(fillerWatch.data, (b) => b.clips) ?? 0;
   const cost = unwrap(restartCost.data);
 
   return (

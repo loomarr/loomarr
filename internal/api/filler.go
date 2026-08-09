@@ -22,7 +22,13 @@ import (
 func (s *Server) registerFiller(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
-		Summary: "List filler clips", Description: "Filter by kind/era/audience/category.",
+		Summary: "List filler clips",
+		Description: "Filter by kind/era/audience/category, search across name/brand/on-screen-text/tags, sort, and page (§10 V51d). " +
+			"⚠ **Paged by default — `limit` is 100 and caps at 500.** The unbounded read this replaced hard-fails past ~65k clips on " +
+			"Postgres (one bind parameter per clip in the tag batch, against a 65535-parameter statement cap). `total` is the number " +
+			"MATCHING THE FILTER, counted in SQL through the same predicate as the rows, so a pager can say 'showing 61-120 of 1,204' " +
+			"without the two disagreeing. " +
+			"Held clips and composites are excluded unless asked for, because neither is in the playable catalog.",
 		Tags: []string{"filler"},
 	}, RoleMember), s.listFiller)
 
@@ -242,6 +248,39 @@ type ClipDTO struct {
 	// a clip with no parent. The lineage link: a segment card shows "from <break>", and a composite's
 	// segments are fetched by this value.
 	ParentHash string `json:"parentHash,omitempty" doc:"The composite this clip was split from; absent for a non-segment clip (§10 V45)"`
+	// Brand is the advertiser the clip is FOR (§10 V44) — grounded, so absent is the common and
+	// honest case, never a gap to fill in with a guess.
+	Brand string `json:"brand,omitempty" doc:"The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred."`
+	// Confidence is the grounding-capped tagging score (§10 V38), 0-100. 0 means never scored,
+	// which is not the same as scored-low: it can never clear an auto-file threshold.
+	Confidence int `json:"confidence,omitempty" doc:"Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score"`
+	// Held marks a clip recorded but NOT yet in the playable catalog (§10 V38).
+	//
+	// ⚠ Shipped in the same change as the `includeHeld` parameter, never after it. A client that
+	// can ASK for held clips and cannot TELL which ones they are renders an unreviewed clip
+	// identically to a filed one — the parameter alone would be worse than neither.
+	Held bool `json:"held,omitempty" doc:"Waiting for review in Incoming, not in the playable catalog (§10 V38). Only ever true when includeHeld or heldOnly was passed."`
+	// Language has THREE states and a client must not collapse them (§10 V40):
+	// absent = NOT YET CHECKED (the detection job has not reached this clip; never a fault),
+	// "none" = CHECKED and there is no speech to judge (a wordless visual spot, always kept),
+	// "en"/… = CHECKED, and this is what was heard.
+	Language string `json:"language,omitempty" doc:"Absent = not yet checked; 'none' = checked and wordless; otherwise the detected language (§10 V40). The first two are different facts."`
+	// VisionTagged records that a VISION pass contributed to this clip's tags, distinct from
+	// AITagged (text-only). Different trust and different cost, so a reviewer wants both.
+	VisionTagged bool `json:"visionTagged,omitempty" doc:"A vision pass over keyframes contributed tags, distinct from aiTagged (text-only) (§10 V44)"`
+	// License is the licence URL the SOURCE declared.
+	//
+	// ⚠ **"" means UNKNOWN, never "public domain".** About 92% of archive.org items declare no
+	// licence at all, so an empty value is the COMMON case and carries no permission. This field
+	// is a record of what a source claimed, not a rights determination, and it never gates
+	// selection or playback.
+	License string `json:"license,omitempty" doc:"The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none."`
+	// HasTranscript reports whether a transcript exists, without shipping it.
+	//
+	// ⚠ Deliberately NOT the transcript itself: it is kilobytes per clip that no grid renders, so
+	// at a 100-row page it would be roughly ten times the rest of the payload. The detail surface
+	// fetches the text; the listing only needs to know there is some.
+	HasTranscript bool `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
 }
 
 // playsCounted reports whether THIS install can observe a filler clip airing.
@@ -280,6 +319,10 @@ func clipToDTO(c store.Clip, playsCounted bool) ClipDTO {
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
+		Brand: c.Brand, Confidence: c.Confidence, Held: c.Held, Language: c.Language,
+		VisionTagged: c.VisionTagged, License: c.License,
+		// ⚠ The PRESENCE of the transcript, not the transcript. See the field's own warning.
+		HasTranscript: c.Transcript != "",
 	}
 	if !c.LastPlayedAt.IsZero() {
 		d.LastPlayedAt = c.LastPlayedAt.UTC().Format(time.RFC3339)
@@ -296,27 +339,95 @@ type listFillerInput struct {
 	// Q is the clip corpus's search box (§7.2). Clip search lives here rather than on
 	// /v1/search because a clip is not a provisionable title (§10) and cannot be a
 	// federated Candidate without leaking a non-title into the LLM grounding path.
-	Q string `query:"q" doc:"Case-insensitive substring match on the clip name"`
+	Q string `query:"q" doc:"Case-insensitive substring match across name, brand, on-screen text and tags (§10 V51d)"`
+	// SearchTranscript widens Q to the persisted transcript (§10 V51d) — opt-in because it is the
+	// one long column (megabytes over a 500-row page) and the one noisy one ("ford" matches
+	// "afford", with no ranking to explain the hit).
+	SearchTranscript bool `query:"searchTranscript" doc:"Also search the transcript. Opt-in: it is kilobytes per clip and matches inside words."`
+	// Limit / Offset page the catalog (§10 V51d).
+	//
+	// ⚠ **The default lives HERE, never in the store.** `ClipFilter.Limit == 0` means no LIMIT
+	// clause because pod assembly loads the catalog through the zero filter — a store-side default
+	// would silently cut every channel's break pool to the first hundred clips.
+	//
+	// ⚠ `minimum:"1"` matters as much as the default: it stops a client sending `limit=0` and
+	// reaching the store's "unbounded" sentinel by accident.
+	Limit  int `query:"limit" minimum:"1" maximum:"500" default:"100" doc:"Page size (§10 V51d). Capped at 500 — the unbounded read this replaced hard-fails past ~65k clips on Postgres."`
+	Offset int `query:"offset" minimum:"0" doc:"Rows to skip. Use with total to render 'showing 61-120 of 1,204'."`
+	// Sort / Order. ⚠ A closed enum, mapped to a column by a fixed switch in the store; an unknown
+	// value is rejected rather than silently ignored.
+	Sort  string `query:"sort" enum:"name,duration,added,plays,confidence" doc:"Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d)."`
+	Order string `query:"order" enum:"asc,desc" doc:"Sort direction; default ascending."`
+	// IncludeHeld / HeldOnly surface the review queue's clips (§10 V38).
+	//
+	// ⚠ Opt-in on the wire exactly as in the store, and for the same reason: a held clip is not in
+	// the playable catalog. `ClipDTO.held` ships with this so a client can tell them apart.
+	IncludeHeld bool `query:"includeHeld" doc:"Include clips awaiting review (§10 V38). They are excluded by default because they are not in the playable catalog."`
+	// IncludeComposites / TopLevel are how the catalog listing renders breaks as CONTAINERS.
+	//
+	// ⚠ Both opt-in, and NOT defaults for this route, because /v1/filler is also the add-search
+	// behind the channel pin/exclude editor and the ⌘K palette. Those want AIRABLE clips —
+	// segments, not the 16-minute break they came out of — so flipping either default would put a
+	// non-airable container into a channel's pin list.
+	IncludeComposites bool `query:"includeComposites" doc:"Include composites — recorded breaks, which are NOT airable (§10 V45). The catalog listing pairs this with topLevel to render them as containers."`
+	TopLevel          bool `query:"topLevel" doc:"Only clips with no parent, so a break paginates as one container row instead of the twenty adverts inside it (§10 V51d)."`
+	// ParentHash loads the SEGMENTS of one composite — what expanding a break asks for.
+	ParentHash string `query:"parentHash" doc:"Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction."`
+	// Hashes is the batch read: resolve these specific clips.
+	//
+	// ⚠ It exists because paging deleted the alternative. The channel pin/exclude editor used to
+	// load the whole catalog to map N saved ids to names, which a 100-row page truncates.
+	Hashes []string `query:"hashes" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent."`
 }
 type listFillerOutput struct {
 	Body struct {
 		Clips []ClipDTO `json:"clips"`
+		// Total is how many clips MATCH THE FILTER, not how many are on this page (§10 V51d).
+		//
+		// ⚠ Counted in SQL through the same WHERE builder the rows come from, so a page's total can
+		// never disagree with its contents — including under a search, which widens both together.
+		Total int `json:"total" doc:"Total matching the filter, ignoring limit/offset — the 'of 1,204' in a pager (§10 V51d)"`
 	}
 }
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
-	clips, err := s.store.ListClips(ctx, store.ClipFilter{
-		Kind:         filler.Kind(in.Kind),
-		Era:          in.Era,
-		Audience:     filler.Audience(in.Audience),
-		Category:     in.Category,
-		UntaggedOnly: in.Untagged,
-		Query:        in.Q,
-	})
+	f := store.ClipFilter{
+		Kind:              filler.Kind(in.Kind),
+		Era:               in.Era,
+		Audience:          filler.Audience(in.Audience),
+		Category:          in.Category,
+		UntaggedOnly:      in.Untagged,
+		Query:             in.Q,
+		QueryTranscript:   in.SearchTranscript,
+		IncludeHeld:       in.IncludeHeld,
+		IncludeComposites: in.IncludeComposites,
+		TopLevelOnly:      in.TopLevel,
+		ParentHash:        in.ParentHash,
+		Hashes:            in.Hashes,
+		Sort:              store.ClipSort(in.Sort),
+		Desc:              in.Order == "desc",
+		Limit:             in.Limit,
+		Offset:            in.Offset,
+	}
+	clips, err := s.store.ListClips(ctx, f)
 	if err != nil {
+		// ⚠ Defence in depth: huma's enum already rejects an unknown sort at validation, so this
+		// can only fire if the two vocabularies drift. It is a 422 rather than a 500 because it is
+		// the caller's value that is wrong — and never a silent fall-back to the default order.
+		if errors.Is(err, store.ErrUnknownClipSort) {
+			return nil, huma.Error422UnprocessableEntity("unknown sort", err)
+		}
 		return nil, err
 	}
+	// ⚠ Counted with the SAME filter, deliberately including limit/offset — CountClips ignores
+	// them by construction (they live outside the WHERE builder), so passing the whole filter is
+	// what guarantees the count and the rows share every predicate.
+	total, err := s.store.CountClips(ctx, f)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("count filler clips", err)
+	}
 	out := &listFillerOutput{}
+	out.Body.Total = total
 	out.Body.Clips = make([]ClipDTO, 0, len(clips))
 	for _, c := range clips {
 		out.Body.Clips = append(out.Body.Clips, clipToDTO(c, s.playsCounted()))

@@ -754,17 +754,30 @@ components:
             - late_night
             - ""
           type: string
+        brand:
+          description: The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred.
+          type: string
         category:
           description: Derived primary product-leaf tag; the full set is in tags (§10 V45a)
           type: string
+        confidence:
+          description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
+          format: int64
+          type: integer
         durationMs:
           format: int64
           type: integer
         era:
           format: int64
           type: integer
+        hasTranscript:
+          description: Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders.
+          type: boolean
         hash:
           type: string
+        held:
+          description: Waiting for review in Incoming, not in the playable catalog (§10 V38). Only ever true when includeHeld or heldOnly was passed.
+          type: boolean
         isComposite:
           description: A recorded break (many ads in one file), not airable — render as a container whose segments are the airable clips (§10 V45)
           type: boolean
@@ -777,8 +790,14 @@ components:
             - trailer
             - interstitial
           type: string
+        language:
+          description: Absent = not yet checked; 'none' = checked and wordless; otherwise the detected language (§10 V40). The first two are different facts.
+          type: string
         lastPlayedAt:
           description: RFC3339; absent if never played (or not counted)
+          type: string
+        license:
+          description: The licence URL the source declared. ⚠ Absent means UNKNOWN, never public domain — most archive.org items declare none.
           type: string
         name:
           type: string
@@ -815,6 +834,9 @@ components:
           type: string
         tunarrProgramId:
           type: string
+        visionTagged:
+          description: A vision pass over keyframes contributed tags, distinct from aiTagged (text-only) (§10 V44)
+          type: boolean
       required:
         - hash
         - name
@@ -2827,8 +2849,13 @@ components:
           items:
             $ref: "#/components/schemas/ClipDTO"
           type: array
+        total:
+          description: Total matching the filter, ignoring limit/offset — the 'of 1,204' in a pager (§10 V51d)
+          format: int64
+          type: integer
       required:
         - clips
+        - total
       type: object
     ListFillerPullsOutputBody:
       additionalProperties: false
@@ -6457,7 +6484,7 @@ paths:
         - events
   /v1/filler:
     get:
-      description: Filter by kind/era/audience/category.
+      description: Filter by kind/era/audience/category, search across name/brand/on-screen-text/tags, sort, and page (§10 V51d). ⚠ **Paged by default — `limit` is 100 and caps at 500.** The unbounded read this replaced hard-fails past ~65k clips on Postgres (one bind parameter per clip in the tag batch, against a 65535-parameter statement cap). `total` is the number MATCHING THE FILTER, counted in SQL through the same predicate as the rows, so a pager can say 'showing 61-120 of 1,204' without the two disagreeing. Held clips and composites are excluded unless asked for, because neither is in the playable catalog.
       operationId: list-filler
       parameters:
         - explode: false
@@ -6500,13 +6527,100 @@ paths:
           schema:
             description: Only commercials missing match tags
             type: boolean
-        - description: Case-insensitive substring match on the clip name
+        - description: Case-insensitive substring match across name, brand, on-screen text and tags (§10 V51d)
           explode: false
           in: query
           name: q
           schema:
-            description: Case-insensitive substring match on the clip name
+            description: Case-insensitive substring match across name, brand, on-screen text and tags (§10 V51d)
             type: string
+        - description: "Also search the transcript. Opt-in: it is kilobytes per clip and matches inside words."
+          explode: false
+          in: query
+          name: searchTranscript
+          schema:
+            description: "Also search the transcript. Opt-in: it is kilobytes per clip and matches inside words."
+            type: boolean
+        - description: Page size (§10 V51d). Capped at 500 — the unbounded read this replaced hard-fails past ~65k clips on Postgres.
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            description: Page size (§10 V51d). Capped at 500 — the unbounded read this replaced hard-fails past ~65k clips on Postgres.
+            format: int64
+            maximum: 500
+            minimum: 1
+            type: integer
+        - description: Rows to skip. Use with total to render 'showing 61-120 of 1,204'.
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Rows to skip. Use with total to render 'showing 61-120 of 1,204'.
+            format: int64
+            minimum: 0
+            type: integer
+        - description: Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d).
+          explode: false
+          in: query
+          name: sort
+          schema:
+            description: Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d).
+            enum:
+              - name
+              - duration
+              - added
+              - plays
+              - confidence
+            type: string
+        - description: Sort direction; default ascending.
+          explode: false
+          in: query
+          name: order
+          schema:
+            description: Sort direction; default ascending.
+            enum:
+              - asc
+              - desc
+            type: string
+        - description: Include clips awaiting review (§10 V38). They are excluded by default because they are not in the playable catalog.
+          explode: false
+          in: query
+          name: includeHeld
+          schema:
+            description: Include clips awaiting review (§10 V38). They are excluded by default because they are not in the playable catalog.
+            type: boolean
+        - description: Include composites — recorded breaks, which are NOT airable (§10 V45). The catalog listing pairs this with topLevel to render them as containers.
+          explode: false
+          in: query
+          name: includeComposites
+          schema:
+            description: Include composites — recorded breaks, which are NOT airable (§10 V45). The catalog listing pairs this with topLevel to render them as containers.
+            type: boolean
+        - description: Only clips with no parent, so a break paginates as one container row instead of the twenty adverts inside it (§10 V51d).
+          explode: false
+          in: query
+          name: topLevel
+          schema:
+            description: Only clips with no parent, so a break paginates as one container row instead of the twenty adverts inside it (§10 V51d).
+            type: boolean
+        - description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
+          explode: false
+          in: query
+          name: parentHash
+          schema:
+            description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
+            type: string
+        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
+          explode: false
+          in: query
+          name: hashes
+          schema:
+            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Unknown hashes are simply absent.
+            items:
+              type: string
+            type: array
       responses:
         "200":
           content:
