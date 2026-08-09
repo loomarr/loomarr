@@ -269,6 +269,61 @@ func TestPipeline_RejectStopsTheClipWithItsReason(t *testing.T) {
 	if stages[filler.StageScore].runs != 0 {
 		t.Error("a rejected clip carried on through the rest of the pipeline")
 	}
+	assertRowAgreesWithItsLadder(t, row)
+}
+
+// assertRowAgreesWithItsLadder checks the one invariant that ties `Status` to the ladder: the row's
+// Status IS whatever its current rung recorded.
+//
+// ⚠ **This is asserted rather than the literal value `done`, because the value is not the point.**
+// A verdict path that records `failed` and a verdict path that records `done` are both correct; a
+// row whose Status says `running` while its own entry for the SAME rung says otherwise is not, and
+// that disagreement is what shipped. Checking the relationship catches every future verdict path,
+// including ones with a status neither of these tests names.
+func assertRowAgreesWithItsLadder(t *testing.T, row filler.ClipPipeline) {
+	t.Helper()
+	for _, rung := range row.Stages {
+		if rung.Stage != row.Stage {
+			continue
+		}
+		if row.Status != rung.Status {
+			t.Errorf("row says %s/%q but its own ladder entry for %s says %q — one row disagreeing with itself",
+				row.Stage, row.Status, rung.Stage, rung.Status)
+		}
+		return
+	}
+	t.Errorf("the current rung %q has no ladder entry at all", row.Stage)
+}
+
+// ⚠ A clip handed to a PERSON must stop looking like work in progress.
+//
+// `Disposition` is the clip's outcome and `Status` is the current rung's — and the verdict paths
+// set the first, recorded the rung, and left the second at the `running` written on entry. Nothing
+// functional broke (every store predicate keys on `disposition`), so the suite stayed green; what
+// broke was the picture. `ClipPipeline.resolve` on the frontend prefers `row.stage`/`row.status`
+// over the visited ladder — correctly, since a rung mid-run has no entry yet — so the pip pulsed
+// "in progress" forever and the rung's note was never rendered. Measured live (§10 V51g): eight
+// reels, WAGA-5 among them, every one finished within seconds and every one drawn as still working.
+func TestPipeline_ReviewStopsLookingLikeWorkInProgress(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := allStages()
+	stages[filler.StageProbe].result = filler.StageResult{
+		Verdict: filler.VerdictReview, Note: "a segment could not be classified",
+	}
+
+	if _, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	row := st.rows["c1"]
+	if row.Disposition != filler.DispositionReview {
+		t.Fatalf("disposition = %q, want review", row.Disposition)
+	}
+	if row.Status == filler.StatusRunning {
+		t.Error("a clip waiting on a person still reports status=running — the belt draws it busy forever")
+	}
+	assertRowAgreesWithItsLadder(t, row)
 }
 
 // ⚠ A backend failure says nothing about the CLIP, so a non-fatal stage that exhausts its retries
@@ -316,6 +371,9 @@ func TestPipeline_FatalFailureRejects(t *testing.T) {
 	if row.Disposition != filler.DispositionRejected || row.RejectReason != filler.ReasonUnprobeable {
 		t.Fatalf("unprobeable clip = %q / %q, want rejected/unprobeable", row.Disposition, row.RejectReason)
 	}
+	// ⚠ The fatal branch had the SAME omission as the verdict paths, one function away: it records
+	// the rung `failed` and sets the disposition, and left Status at `running`.
+	assertRowAgreesWithItsLadder(t, row)
 }
 
 // A failure short of the retry limit BACKS OFF rather than resolving — it stays on the same stage,
