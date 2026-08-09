@@ -16,7 +16,23 @@ import type { RestartOverlayProps } from "./restart-overlay.type";
 // ⚠ **Success is stated, not implied by disappearance.** The overlay lingers briefly on
 // return, because a spinner that simply vanishes leaves "it worked" and "it never
 // restarted" indistinguishable.
-
+//
+// ⚠ **THIS IS A STATUS REGION, NOT A DIALOG — and it used to claim otherwise.** It carried
+// `role="alertdialog" aria-modal="true"` on a plain `fixed inset-0` div, with none of the
+// behaviour either attribute promises: no portal, no focus trap, no focus restore, no scroll
+// lock, no inert background. A screen reader was told the rest of the page was inert; Tab walked
+// straight into it.
+//
+// V50b was going to make the claim true by rebuilding this on a real AlertDialog. It should not,
+// for two reasons that only surfaced on reading it: `alertdialog` is defined for interrupting with
+// a REQUIRED RESPONSE and requires a focusable element, and this overlay has no interactive
+// content in any of its three states; and the "came back" state is deliberately
+// `pointer-events-none` so a lingering confirmation cannot swallow a click on the app behind it,
+// which a modal would forbid. Dropping the false attributes is the honest fix — a real modal would
+// have satisfied the audit and broken the interaction.
+//
+// `alert` (assertive) when the restart FAILED, because that is an interruption worth one; `status`
+// (polite) otherwise, so a routine restart does not talk over whatever the operator is reading.
 const RestartOverlay = ({ restarting, justCameBack, failed, className }: RestartOverlayProps) => {
   const visible = restarting || justCameBack || Boolean(failed);
   if (!visible) return null;
@@ -30,12 +46,15 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
         restarting || failed ? "cursor-progress" : "pointer-events-none",
         className,
       )}
-      // A modal status: it takes the screen, and a screen reader should announce it
-      // without waiting for focus to move.
-      role="alertdialog"
-      aria-modal="true"
-      aria-live="polite"
-      aria-label={restarting ? "Loomarr is restarting" : "Loomarr is back"}
+      // It takes the screen, and a screen reader should announce it without waiting for focus to
+      // move — which is what a live region does and what `aria-modal` never did here.
+      //
+      // ⚠ NO `aria-label`. The old one restated the heading below it, and on a live region a name
+      // is the wrong tool: what gets announced is the region's CONTENTS, so the label was at best
+      // redundant and at worst competing with the message it duplicated. Biome flagged it too —
+      // the role is computed here, so the rule cannot narrow it and falls back to the div's
+      // implicit role, which supports no label at all.
+      role={failed ? "alert" : "status"}
     >
       <div className="flex max-w-sm items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-lg">
         {restarting ? (

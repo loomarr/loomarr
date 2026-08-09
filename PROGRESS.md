@@ -53,6 +53,78 @@ and `Confirm` is exercised end to end against a real store for the first time.
 sits above V41 because that is the last recorded phase, not because nothing happened between.
 Back-filling them is scheduled with the V51 doc pass — see the plan.
 
+**V50b — the hand-rolled overlays fold onto the primitives (2026-08-08, branch
+`feat/base-ui-v50b`).** Gate: `make fe` (**1221** app + 17 api + 51 core + 5 tokens, biome clean on
+911 files + tsc + SPA build + storybook build) + `make fe-visual` (**764 passed, 0 failed, 0 flaky,
+0 axe**, and **no baseline changed** — V50b touches no story or spec) + `make check` +
+`retired-verify` (14 identifiers).
+
+Five components, and **two of them were asserting accessibility they did not implement**. That is
+the through-line: a hand-rolled overlay can spell `role="dialog" aria-modal="true"` into the DOM
+without owning a single behaviour the role promises, and nothing in this repo's gate reads a role
+and checks whether it is TRUE. Not types, not lint, and — the surprising one — not axe, which
+validates that attributes are well-formed, not that they are honest.
+
+- **`channel-row-menu` → Menu.** Deletes the app's only `createPortal`, a `getBoundingClientRect`
+  layout effect, three hardcoded pixel constants, both-axis viewport clamping, flip-up-on-overflow,
+  `invisible`-until-measured, a full-bleed `<button>` backdrop, capture-phase scroll/resize
+  listeners, and hand-written menu roles. ⚠ Two were latent BUGS, not verbosity: `PANEL_MAX_H = 210`
+  went stale the moment the menu's content changed (nothing enforced it, and the armed-confirm state
+  is the tallest), and **dismiss-on-scroll was a workaround for an anchor the portal could not
+  track** — the popup follows its trigger now instead of closing. Gains arrow-key nav, typeahead, a
+  focus trap, focus restore and Escape, none of which it had.
+- **`command-palette` → Dialog.** It claimed `aria-modal="true"` on a `fixed inset-0` div with no
+  portal, no focus trap, no focus restore, no scroll lock and no inert background: a screen-reader
+  user was told the page behind was inert while Tab walked straight into it, and closing dropped
+  focus at the top of the document. ⚠ Escape moved WITH it — `useCommandShortcut` bound Escape at
+  the window only because the palette had no dismiss of its own; keeping both would be two closers
+  racing.
+- **`restart-overlay` — ⚠ DELIBERATELY NOT AlertDialog, against the plan.** It made the same false
+  claim, and the planned fix was to make the claim true. Reading the spec says otherwise:
+  `alertdialog` is defined for interrupting with a REQUIRED RESPONSE and needs a focusable element,
+  and this overlay has no interactive content in any of its three states. Worse, its "came back"
+  state is deliberately `pointer-events-none` so a lingering confirmation cannot swallow the
+  operator's next click — which a modal forbids. The false attributes are dropped instead: `status`
+  (polite) normally, `alert` (assertive) on failure. **A real modal would have satisfied the audit
+  and broken the interaction.**
+- **`timeline-scrubber` → Tooltip positioner with a virtual anchor.** Deletes `CARD_WIDTH = 256`,
+  which duplicated the `w-64` class and would decouple the moment either changed; `shift()` now
+  keeps the card on screen against the VIEWPORT, measured rather than assumed, and the portal
+  removes the `overflow:hidden` clipping risk.
+- **`search-command` — ⚠ RE-EXAMINED AND DELIBERATELY KEPT**, with the reasoning written into the
+  file so it is not re-litigated from scratch. The standing objection ("cmdk would need a §14
+  change") dissolved when Base UI landed, but Autocomplete still does not fit on SHAPE, not effort:
+  it is Portal→Positioner→Popup with no inline mode, and this is an always-visible panel embedded in
+  six layouts that each position it themselves. The v2 mock decides it — the ⌘K block draws a modal
+  overlay with the list in a centred card, which is what the Dialog port produces; a floating
+  combobox would be moving AWAY from the mock.
+
+⚠ **A hooks-order violation shipped in the first cut of the scrubber and is worth recording**,
+because the test that should have caught it existed and could not. The anchor's `useMemo` sat BELOW
+the empty-airings `return null`, so an empty render runs one fewer hook than a populated one and
+React — which matches hooks by CALL ORDER — throws on a channel whose guide data empties out. The
+existing "renders nothing when there are no airings" test mounts once with `[]`, so it never sees a
+change in hook count and passes either way. **A test can cover a state and still not cover the
+TRANSITION into it.** The added regression test rerenders one instance both ways; confirmed red
+against the pre-fix component with the other three tests passing beside it. `trackW` left hover
+state in the same pass — the clamp was its only reader, and a width still riding in state would read
+as though the card bounds itself to the strip, which is exactly what stopped being true.
+
+⚠ **The scrubber's visible behaviour change is NOT covered by the visual suite, and the reason
+generalises**: near the track's ends the hover card now stops at the viewport edge rather than the
+strip edge. No baseline moved — because the card only exists while hovering and the gallery never
+hovers. Those stories cover the STRIP, not the card, and they would not have moved if the change
+had broken it either.
+
+**Test harness:** `asyncUtilTimeout` raised to 5s. Turning `getBy` into `findBy` across the
+migration took the suite from 2 intermittent failures to 6 — every one passing in isolation, all CPU
+contention across parallel specs rather than anything in the code. ⚠ A longer wait cannot make a
+broken assertion pass; it only stops a red build that means nothing. Net effect: the two
+PRE-EXISTING baseline flakes (help, filler) are green too.
+
+**Next up: V50c** (disclosure/form primitives), then V50d (house-style conformance across
+`components/ui`).
+
 **V50a — Radix → Base UI, the vendor consolidation (2026-08-08, branch `feat/base-ui-v50a`).**
 Gate: `make fe` (**1219** app + 17 api + 51 core + 5 tokens, biome + tsc + SPA build + storybook
 build) + `make fe-visual` (**760 passed, 0 failed, 0 flaky, 0 axe** on a CLEAN verify run, after a
@@ -92,10 +164,6 @@ over `getBy` (waiting, not weakening); `closeOnClick` defaults false where Radix
 `check-retired.sh` so neither vocabulary creeps back. **The single visual delta in 760 snapshots**
 was the volume thumb at value 0 — Radix clamped it inside the track at the extremes, Base UI centres
 it on the value; 54px, reviewed, baseline updated. Debt register 43 → 40 (tooltip, select, dialog).
-
-**Next up: V50b** (hand-rolled overlays onto Base UI — `channel-row-menu`, `search-command`,
-`command-palette`, `restart-overlay`, `timeline-scrubber`), then V50c (disclosure/form primitives)
-and V50d (house-style conformance across `components/ui`).
 
 **V41 — the audit pass: three live defects, six cleanups (2026-08-05, `aba3b22`, PRs #169–#175).**
 Gate, per PR: `make check` (0 lint, `-race`) + `test-pg` (both dialects) + `openapi-verify` +

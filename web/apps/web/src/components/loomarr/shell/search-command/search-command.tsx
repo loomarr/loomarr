@@ -19,6 +19,24 @@ import type { PaletteScope, SearchCommandProps } from "./search-command.type";
 // Hand-rolled rather than adopting cmdk: cmdk is not a dependency today, and adding one
 // requires a §14 change in the same PR. The pattern below is small enough not to warrant it.
 //
+// ⚠ **V50b RE-EXAMINED THIS AGAINST BASE UI AND KEPT IT. Read this before trying again.**
+// The §14 objection above dissolved when Base UI landed — the dependency is already here, and its
+// Autocomplete owns exactly the contract this file hand-rolls. It still does not fit, for a reason
+// that is about SHAPE rather than effort: Base UI's Autocomplete is
+// `Portal → Positioner → Popup`, a floating listbox anchored to an input, and its docs show no
+// inline mode (removing the Portal is explicitly untested). This component is an ALWAYS-VISIBLE
+// panel embedded in six different layouts — the ⌘K dialog plus five scoped pickers, each of which
+// lays it out itself.
+//
+// The alternative considered was redesigning the palette AS a floating combobox so the primitive
+// fits. The v2 mock decides that one: `design/loomarr-prototype-desktop-v2.dc.html` (the ⌘K block)
+// draws a modal overlay with the list INSIDE a centred card — the shape this already has. Changing
+// it to a floating popup would move away from the mock, not toward it.
+//
+// So the keyboard contract below stays ours. It is correct today and covered; what it needs is
+// not a rewrite but the awareness that nothing external enforces it — see the note above about
+// the bug that shipped while axe stayed green.
+//
 // `aria-activedescendant` rather than roving `tabindex`: DOM focus must STAY in the input
 // (the user is mid-type) while the *active option* moves. Moving focus onto each option
 // would break typing.
