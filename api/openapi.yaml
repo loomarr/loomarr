@@ -685,6 +685,9 @@ components:
           $ref: "#/components/schemas/AudiencePolicy"
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
+        breaksPerHour:
+          format: int64
+          type: integer
         filler:
           $ref: "#/components/schemas/FillerSelection"
         operatorSet:

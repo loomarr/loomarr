@@ -62,7 +62,8 @@ const KNOWN_GAPS = new Set([
   "dashboard/restart-watch-provider/restart-watch-provider.tsx",
   "dashboard/use-restart-watch/use-restart-watch.ts",
   "filler/channel-filler/filler-clip-list/filler-clip-list.tsx",
-  "filler/channel-filler/filler-criteria/filler-criteria.tsx",
+  // filler-criteria.tsx left this register in V51f — it grew tests when the era field gained
+  // three states worth defending.
   "filler/channel-filler/use-filler-catalog/use-filler-catalog.ts",
   "filler/clip-tag-dialog/clip-tag-dialog.tsx",
   "help/help-page/help-page.tsx",

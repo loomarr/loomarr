@@ -89,10 +89,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 	// once clips land, the next reconcile sees a pool and re-inserts breaks.
 	chDomain := ch.Channel
 	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
-	chDomain.BreaksPerHour = 0
-	if hasFillerPool {
-		chDomain.BreaksPerHour = e.breaksPerHour
-	}
+	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHour)
 	chDomain.DefaultWindow = e.defaultWindow // §6.5 rolling-window horizon from settings
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 
@@ -309,6 +306,32 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
 	return SelectionFrom(ch.Policy.Filler, ch.Policy.Scope.Era)
+}
+
+// BreaksPerHourFor resolves a channel's commercial-break density (§10, V51f).
+//
+// ⚠ **One writer, because there were two identical copies and a third would have been easy.**
+// `reconcile.go` and `preview.go` each carried the same `= 0; if hasFillerPool { = global }`
+// three-liner — fine while there was one global value to read, and exactly the shape that grows a
+// quiet disagreement the moment a per-channel override exists. Preview claiming a density
+// reconcile does not apply is the drift preview exists to prevent.
+//
+// ⚠ **The dead-air rule wins over the operator's override, deliberately.** No pool means no
+// breaks whatever the policy says: break gaps with nothing to fill them leave empty flex that
+// Tunarr renders as large channel-named blocks. The override lowers density or switches breaks
+// off; it cannot conjure clips.
+func BreaksPerHourFor(pol schedule.ChannelPolicy, hasFillerPool bool, global int) int {
+	if !hasFillerPool {
+		return 0
+	}
+	if pol.BreaksPerHour == nil {
+		return global
+	}
+	if n := *pol.BreaksPerHour; n > 0 {
+		return n
+	}
+	// A present zero (or a nonsense negative) is "no breaks on this channel".
+	return 0
 }
 
 // SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.
