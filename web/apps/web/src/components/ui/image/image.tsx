@@ -88,7 +88,23 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
   }
 
   return (
-    <picture>
+    // ⚠ `contents` (display: contents) so the <picture> does NOT participate in layout — the
+    // <img> becomes the direct flex/grid child of whatever the caller rendered this into.
+    //
+    // Without it this primitive silently mis-sizes wherever the caller sizes it with classes.
+    // `className` lands on the <img>, so `size-full` resolves against the <picture>, which has
+    // no size of its own and shrink-wraps — MEASURED at 1×1 in the channel icon field's 64px
+    // preview, against 62×62 for the plain <img> beside it.
+    //
+    // ⚠ Two defects overlapped here and each hid the other's evidence: the story's data-URI
+    // `srcset` also meant the image never loaded (naturalWidth 0, issue #210), so the placeholder
+    // rendered either way and the screenshot looked identical with and without this line. Only
+    // measuring both `naturalWidth` AND the bounding box separated them. Do not "simplify" this
+    // away on the strength of a screenshot.
+    //
+    // <picture> exists only to host the <source> elements and carries no semantics of its own,
+    // so removing it from layout costs nothing — the <img> keeps its role and its alt text.
+    <picture className="contents">
       {/*
         ⚠ The AVIF source is omitted when the job has not caught up, rather than emitted and
         left to 404. §22 makes AVIF coverage EVENTUALLY CONSISTENT on purpose — every encode

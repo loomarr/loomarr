@@ -99,8 +99,15 @@ const WithServiceHostedIcon: Story = {
       placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
       dominantHex: "#2b4a5e",
       animated: false,
-      // Inline data: URIs, never remote — a remote <img> races the visual snapshot.
-      srcSetWebp: `${TNG_POSTER} 92w, ${TNG_POSTER} 185w, ${TNG_POSTER} 500w`,
+      // ⚠ **Both srcsets are EMPTY, and that is forced rather than lazy.** A base64 data URI
+      // always contains a comma (`data:image/png;base64,…`), and a comma is srcset's candidate
+      // separator — so a data URI in `srcset` yields a candidate the browser cannot load, and
+      // the <img> renders at naturalWidth 0. Remote URLs are banned in visual stories because
+      // they race the snapshot, so neither option works here. Empty srcsets make <picture> fall
+      // through to `src`, where a data URI is perfectly valid, and the story renders the icon it
+      // is meant to show. See issue: UI/Image's own stories hit this and their baselines
+      // captured the placeholder instead of the image.
+      srcSetWebp: "",
       srcSetAvif: "",
       src: TNG_POSTER,
     },
