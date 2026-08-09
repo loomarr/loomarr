@@ -1,43 +1,50 @@
+import type { FillerSourcesOutputBody } from "@loomarr/api";
+import { getListFillerSourcesMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { server } from "@/test/msw/server";
 import { SourcesTab } from "./sources-tab";
 
 // SourcesTab is a thin wrapper: it owns the one query the Sources tab needs so the shell no
 // longer runs it for a tab that may not be showing. `SourcesPanel` has its own tests for the
 // switches, the add form and the per-source search — these cover only the seam.
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const ADMIN = {
+  local: true,
+  id: "u1",
+  name: "Admin",
+  role: "admin",
+  autoApprove: true,
+  disabled: false,
+  quota: 0,
+} as const;
 
-const stubFetch = (sourcesStatus = 200, body: unknown = { sources: [], total: 0 }) => {
-  const calls: string[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      const u = String(url);
-      calls.push(u);
-      if (u.includes("/v1/auth/me")) {
-        return Promise.resolve(
-          jsonResponse(200, {
-            id: "u1",
-            name: "Admin",
-            role: "admin",
-            autoApprove: true,
-            disabled: false,
-            quota: 0,
-          }),
-        );
-      }
-      if (u.includes("/v1/filler/sources")) {
-        return Promise.resolve(jsonResponse(sourcesStatus, body));
-      }
-      return Promise.resolve(jsonResponse(200, {}));
+// ⚠ `listed` replaces a `calls: string[]` array that recorded every url and was then searched for
+// a substring. Reaching the resolver is a stronger claim than a string match: the handler is bound
+// to the generated route, so it cannot fire for the wrong endpoint, and a request to a route with
+// NO handler now fails the test outright instead of falling through to a catch-all `{}`.
+const stubSources = (body: FillerSourcesOutputBody = { sources: [], total: 0 }) => {
+  let listed = false;
+  server.use(
+    getMeMockHandler({ ...ADMIN }),
+    getListFillerSourcesMockHandler(() => {
+      listed = true;
+      return body;
     }),
   );
-  return calls;
+  return () => listed;
 };
+
+// ⚠ Hand-written: the failure is a STATUS, and this spec declares errors via `default:` (RFC 7807)
+// rather than enumerating 5xx, so orval has no code to generate a handler from. A rename still
+// fails loudly — the stale path stops matching and the component's real request goes unhandled.
+const sourcesFail = () =>
+  http.get("*/v1/filler/sources", () =>
+    HttpResponse.json({ title: "Boom", detail: "the store is unreachable" }, { status: 500 }),
+  );
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -48,18 +55,16 @@ const makeWrapper = () => {
   );
 };
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe("SourcesTab", () => {
   it("fetches the source list itself rather than being handed it", async () => {
-    const calls = stubFetch();
+    const wasListed = stubSources();
     render(<SourcesTab />, { wrapper: makeWrapper() });
 
-    await waitFor(() => expect(calls.some((u) => u.includes("/v1/filler/sources"))).toBe(true));
+    await waitFor(() => expect(wasListed()).toBe(true));
   });
 
   it("renders a source the server returned", async () => {
-    stubFetch(200, {
+    stubSources({
       sources: [
         {
           id: "folder",
@@ -88,7 +93,7 @@ describe("SourcesTab", () => {
   // beside the rows), so what this seam guarantees is that a 500 does not throw and the
   // "Add a source" affordance survives — the operator can still act.
   it("stays renderable when the source list fails", async () => {
-    stubFetch(500, { title: "Boom", detail: "the store is unreachable" });
+    server.use(getMeMockHandler({ ...ADMIN }), sourcesFail());
     render(<SourcesTab />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText(/add a source/i)).toBeInTheDocument();
