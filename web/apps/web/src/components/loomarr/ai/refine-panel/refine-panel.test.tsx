@@ -1,10 +1,16 @@
-import type { Proposal } from "@loomarr/api";
+import type { Proposal, ProposalDTO } from "@loomarr/api";
+import {
+  getApproveProposalMockHandler,
+  getListProposalsMockHandler,
+  getRefineChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events";
+import { server } from "@/test/msw/server";
 import { RefinePanel } from "./refine-panel";
 
 const makeWrapper = () => {
@@ -45,9 +51,6 @@ const makeEventfulWrapper = () => {
   );
 };
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
 const proposal: Proposal = {
   intent: { description: "add more Schwarzenegger" },
   lineup: [{ name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true }],
@@ -58,32 +61,33 @@ const proposal: Proposal = {
 
 // Dispatches by method+path: POST .../refine starts the run, GET /v1/proposals is the
 // approval-queue poll that lands the proposal, POST .../approve applies it.
-const stubFetch = (opts: { proposals: unknown[]; approveStatus?: number }) =>
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      if (typeof url === "string" && url.includes("/refine")) {
-        return Promise.resolve(jsonResponse(200, { jobId: "job-1" }));
-      }
-      if (init?.method === "POST" && typeof url === "string" && url.includes("/approve")) {
-        return Promise.resolve(jsonResponse(opts.approveStatus ?? 200, { channelId: "ch-1", enqueued: 0 }));
-      }
-      return Promise.resolve(jsonResponse(200, { proposals: opts.proposals }));
-    }),
+// ⚠ Three route-bound handlers replacing three substring branches, and the last one was the
+// dangerous shape: an unconditional `{ proposals }` for EVERY unmatched request, at any path.
+// `url.includes("/approve")` was also true of `POST /v1/proposals/approve` (the BULK route), which
+// is a different endpoint from the per-proposal one this panel calls.
+const stubRefine = (opts: { proposals: ProposalDTO[] }) =>
+  server.use(
+    getRefineChannelMockHandler({ jobId: "job-1" }),
+    // ⚠ `status` is REQUIRED on ApproveOutputBody and no stub ever sent it.
+    getApproveProposalMockHandler({ channelId: "ch-1", enqueued: 0, status: "approved" }),
+    getListProposalsMockHandler({ proposals: opts.proposals }),
   );
 
-afterEach(() => vi.restoreAllMocks());
+// ⚠ `unstubAllGlobals`, not `restoreAllMocks`: the last test installs MockEventSource with
+// `vi.stubGlobal`, and restoreAllMocks does not undo a stubbed global — it would leak into the
+// next file's EventSource.
+afterEach(() => vi.unstubAllGlobals());
 
 describe("RefinePanel", () => {
   it("starts collapsed with the entry point only", () => {
-    stubFetch({ proposals: [] });
+    stubRefine({ proposals: [] });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
     expect(screen.getByRole("button", { name: /refine with ai/i })).toBeInTheDocument();
     expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
   });
 
   it("opens the textarea on click and disables Refine until there's text", async () => {
-    stubFetch({ proposals: [] });
+    stubRefine({ proposals: [] });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
@@ -95,7 +99,7 @@ describe("RefinePanel", () => {
   });
 
   it("runs the full idle -> running -> landed flow and applies the diff", async () => {
-    stubFetch({
+    stubRefine({
       proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
     });
     const onApplied = vi.fn();
@@ -119,7 +123,7 @@ describe("RefinePanel", () => {
   });
 
   it("discarding a landed proposal returns to idle without applying", async () => {
-    stubFetch({
+    stubRefine({
       proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
     });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
@@ -136,7 +140,7 @@ describe("RefinePanel", () => {
   });
 
   it("cancel from the open textarea returns to idle", async () => {
-    stubFetch({ proposals: [] });
+    stubRefine({ proposals: [] });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
@@ -153,7 +157,7 @@ describe("RefinePanel", () => {
   it("surfaces a generation failure inline and keeps the typed change", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
     // The queue never lands a proposal for this job — a failed run produces none.
-    stubFetch({ proposals: [] });
+    stubRefine({ proposals: [] });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeEventfulWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));

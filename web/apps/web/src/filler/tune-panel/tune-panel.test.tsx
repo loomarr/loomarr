@@ -1,8 +1,12 @@
+import type { SettingEntry } from "@loomarr/api";
+import { getSettingsListMockHandler, getSettingsPatchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { setting } from "@/test/fixtures/settings";
+import { server } from "@/test/msw/server";
 import { TunePanel } from "./tune-panel";
 
 // The auto-file policy panel (§10 V42, the v2 mock's `toggleAuto` block).
@@ -11,43 +15,29 @@ import { TunePanel } from "./tune-panel";
 // settings that change what happens to clips without a human — a control that looks right and
 // writes the wrong key is the failure worth catching, and no rendering assertion sees it.
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const autofile = (key: string, value: string, provenance: SettingEntry["provenance"] = "default") =>
+  setting({ key, value, provenance, kind: key.includes("confidence") ? "int" : "bool", group: "filler" });
 
-const setting = (key: string, value: string, provenance = "default") => ({
-  key,
-  value,
-  provenance,
-  kind: key.includes("confidence") ? "int" : "bool",
-  group: "filler",
-  doc: "",
-  advanced: false,
-  secret: false,
-  set: true,
-});
-
-const stubFetch = (over: { settings?: unknown[] } = {}) => {
-  const calls: { method: string; url: string; body: unknown }[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const u = String(url);
-      const method = init?.method ?? "GET";
-      calls.push({ method, url: u, body: init?.body ? JSON.parse(init.body as string) : undefined });
-      if (u.includes("/v1/settings")) {
-        return Promise.resolve(
-          jsonResponse(200, {
-            settings: over.settings ?? [
-              setting("filler.autofile.min_confidence", "85"),
-              setting("filler.autofile.normalize_loudness", "false"),
-            ],
-          }),
-        );
-      }
-      return Promise.resolve(jsonResponse(200, {}));
+// ⚠ The settings list was served WITHOUT `features`, which `SettingsListOutputBody` requires —
+// the response shape the API always sends and this test never did. And the PATCH was matched by
+// `c.method === "PATCH"`: true of a PATCH to any endpoint, in a file whose stated purpose is
+// "assert the PATCH BODIES, not that a click rendered something".
+const stubTune = (over: { settings?: SettingEntry[] } = {}) => {
+  const edits: unknown[] = [];
+  server.use(
+    getSettingsListMockHandler({
+      features: {},
+      settings: over.settings ?? [
+        autofile("filler.autofile.min_confidence", "85"),
+        autofile("filler.autofile.normalize_loudness", "false"),
+      ],
+    }),
+    getSettingsPatchMockHandler(async ({ request }) => {
+      edits.push(await request.json());
+      return { results: [] };
     }),
   );
-  return calls;
+  return edits;
 };
 
 const makeWrapper = () => {
@@ -62,13 +52,11 @@ const makeWrapper = () => {
 const renderPanel = (filed = 12, needsYou = 3) =>
   render(<TunePanel filed={filed} needsYou={needsYou} />, { wrapper: makeWrapper() });
 
-afterEach(() => vi.unstubAllGlobals());
-
 describe("TunePanel", () => {
   // ⚠ COLLAPSED by default, matching the mock. The policy is context, not the task — an
   // expanded settings form above the queue would push the clips that need a human below the fold.
   it("starts collapsed and opens on Tune", async () => {
-    stubFetch();
+    stubTune();
     renderPanel();
 
     expect(screen.queryByText(/file automatically above/i)).not.toBeInTheDocument();
@@ -79,10 +67,10 @@ describe("TunePanel", () => {
   });
 
   it("marks the stored confidence as the pressed chip", async () => {
-    stubFetch({
+    stubTune({
       settings: [
-        setting("filler.autofile.min_confidence", "95"),
-        setting("filler.autofile.normalize_loudness", "false"),
+        autofile("filler.autofile.min_confidence", "95"),
+        autofile("filler.autofile.normalize_loudness", "false"),
       ],
     });
     renderPanel();
@@ -96,7 +84,7 @@ describe("TunePanel", () => {
 
   // ⚠ THE regression this file exists for: the exact key and the exact value.
   it("writes the confidence chip to filler.autofile.min_confidence", async () => {
-    const calls = stubFetch();
+    const edits = stubTune();
     renderPanel();
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
     await screen.findByRole("button", { name: "75%" });
@@ -104,13 +92,12 @@ describe("TunePanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "75%" }));
 
     await waitFor(() => {
-      const patch = calls.find((c) => c.method === "PATCH");
-      expect(patch?.body).toEqual({ edits: { "filler.autofile.min_confidence": "75" } });
+      expect(edits).toEqual([{ edits: { "filler.autofile.min_confidence": "75" } }]);
     });
   });
 
   it("writes the loudness toggle as a string bool", async () => {
-    const calls = stubFetch();
+    const edits = stubTune();
     renderPanel();
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
     const box = await screen.findByRole("checkbox", { name: /normalize loudness/i });
@@ -118,15 +105,14 @@ describe("TunePanel", () => {
     await userEvent.click(box);
 
     await waitFor(() => {
-      const patch = calls.find((c) => c.method === "PATCH");
-      expect(patch?.body).toEqual({ edits: { "filler.autofile.normalize_loudness": "true" } });
+      expect(edits).toEqual([{ edits: { "filler.autofile.normalize_loudness": "true" } }]);
     });
   });
 
   // ⚠ The label must name the SHIPPED target. The mock says −16; the system normalises to −23,
   // and a number on screen that the system does not use is a lie rather than a design delta.
   it("names the shipped −23 LUFS target, not the mock's −16", async () => {
-    stubFetch();
+    stubTune();
     renderPanel();
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
 
@@ -137,17 +123,17 @@ describe("TunePanel", () => {
   // ⚠ This rewrites the operator's files irreversibly. A checkbox alone is the wrong affordance
   // for that, so the warning appears exactly when the setting is ON.
   it("warns that files are replaced only while the loudness toggle is on", async () => {
-    stubFetch();
+    stubTune();
     const { unmount } = renderPanel();
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
     await screen.findByRole("checkbox", { name: /normalize loudness/i });
     expect(screen.queryByText(/can't be recovered/i)).not.toBeInTheDocument();
     unmount();
 
-    stubFetch({
+    stubTune({
       settings: [
-        setting("filler.autofile.min_confidence", "85"),
-        setting("filler.autofile.normalize_loudness", "true"),
+        autofile("filler.autofile.min_confidence", "85"),
+        autofile("filler.autofile.normalize_loudness", "true"),
       ],
     });
     renderPanel();
@@ -159,10 +145,10 @@ describe("TunePanel", () => {
   // ⚠ An env-pinned key is read-only, as it is everywhere else (§3.1). A chip that looks
   // clickable and then silently loses to the environment is worse than a disabled one.
   it("disables the chips when the key is pinned by the environment", async () => {
-    stubFetch({
+    stubTune({
       settings: [
-        setting("filler.autofile.min_confidence", "85", "env"),
-        setting("filler.autofile.normalize_loudness", "false"),
+        autofile("filler.autofile.min_confidence", "85", "env"),
+        autofile("filler.autofile.normalize_loudness", "false"),
       ],
     });
     renderPanel();
@@ -172,7 +158,7 @@ describe("TunePanel", () => {
   });
 
   it("summarises what the current policy does to the queue in front of it", async () => {
-    stubFetch();
+    stubTune();
     renderPanel(12, 3);
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
 
@@ -181,7 +167,7 @@ describe("TunePanel", () => {
   });
 
   it("says nothing needs you when the queue is empty", async () => {
-    stubFetch();
+    stubTune();
     renderPanel(4, 0);
     await userEvent.click(screen.getByRole("button", { name: /tune/i }));
 

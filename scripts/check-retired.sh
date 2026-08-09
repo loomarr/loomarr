@@ -79,6 +79,19 @@ RETIRED=(
   # for merging onto a CHILD is the half-migrated vocabulary that outlives whoever reintroduced it.
   '@radix-ui|the primitive vendor is Base UI since V50a (design §14) — import from @base-ui/react'
   'asChild|Radix composition prop; Base UI composes with render={<El />} (design §14, V50a)'
+  # V53e: 31 test files each hand-rolled a `stubFetch` that replaced global fetch. Every one was
+  # UNTYPED (so a fixture could omit required fields indefinitely) and UNBOUND (so assertions
+  # matched a url SUBSTRING the test itself wrote). The migration found ~40 defects across those
+  # files, including catch-alls answering 13 real endpoints with `{}` in the suite whose entire
+  # job is proving screens render real content. Without this line nothing stops #32.
+  #
+  # ⚠ THE CARVE-OUT IS THE SEARCH PATH, not an allow-rule: `packages/api/src/mutator/mutator.test.ts`
+  # legitimately stubs fetch — it TESTS `customFetch`, asserting on `credentials: "include"` and the
+  # CSRF header, neither of which an MSW resolver can observe because MSW intercepts BELOW the layer
+  # under test. It survives only because SEARCH covers `web/apps/web/src` and not `web/packages`.
+  # Anyone widening SEARCH to `web/` must add an explicit exemption for that file in the same edit,
+  # or the guard fails on the one file that is right.
+  'vi.stubGlobal("fetch"|V53e: use the shared MSW layer (src/test/msw) — a hand-rolled fetch stub is untyped AND unbound to a route'
 )
 ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
