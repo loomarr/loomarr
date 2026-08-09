@@ -699,11 +699,11 @@ type Options struct {
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
-	Images ImageService
-	Events        EventSource       // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Filler        FillerService     // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	Pods          PodPreviewer      // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	SystemLLM     SystemLLMService  // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
+	Images    ImageService
+	Events    EventSource      // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Filler    FillerService    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	Pods      PodPreviewer     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	SystemLLM SystemLLMService // /v1/system/llm* model selection (§8.1); nil ⇒ routes 501
 	// Database backs /v1/system/database* — the SQLite→PostgreSQL migration stepper
 	// (§18, V11). nil ⇒ routes 501 (e.g. an install already on Postgres wires it nil).
 	Database DatabaseService
