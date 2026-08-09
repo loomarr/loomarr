@@ -42,6 +42,33 @@ const SuggestedEraAdmin: Story = { args: { clip: suggestedEraClip, onConfirmEra:
 const SplitAction: Story = { args: { clip: taggedClip, onTag: noop, onSplit: noop } };
 const SplitPending: Story = { args: { clip: taggedClip, onSplit: noop, splitPending: true } };
 
+// ⚠ The image-service path (§22, V52 phase 6). `thumbnail` is still set, exactly as it is on a
+// real clip during the migration window — so this story also proves the component PREFERS
+// `thumbImage` when both are present. Without that, a card would keep rendering the legacy route
+// forever after adoption and nothing would notice.
+//
+// Assets are same-origin static files (comma-free, so they work in srcset) rather than data URIs;
+// each ladder rung is a different colour, so the baseline shows which one a card-sized box chose.
+const ServiceHostedArtwork: Story = {
+  args: {
+    clip: {
+      ...thumbnailedClip,
+      thumbImage: {
+        hash: "3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a3c1f9ab2e4d7650a",
+        role: "thumb",
+        width: 500,
+        height: 750,
+        placeholder: "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+        dominantHex: "#2b4a5e",
+        animated: false,
+        srcSetWebp: "/poster-154.webp 154w, /poster-342.webp 342w, /poster-500.webp 500w",
+        srcSetAvif: "",
+        src: "/poster-fallback.jpg",
+      },
+    },
+  },
+};
+
 export default meta;
 // Retag from the card (the v2 mock's cycleEra/cycleAud/cycleCat). ⚠ These two are the ONLY
 // stories carrying `onCycle`, and they exist because the chips are invisible without it: the
@@ -57,6 +84,7 @@ export {
   AiSuggestedTags,
   Cycleable,
   CycleableUnset,
+  ServiceHostedArtwork,
   SplitAction,
   SplitPending,
   SuggestedEra,

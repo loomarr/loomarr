@@ -53,7 +53,11 @@ const appHandlers = (): RequestHandler[] => [
   getListProposalsMockHandler({ proposals: [] }),
   getListUsersMockHandler({ users: [] }),
   getSettingsListMockHandler({ settings: [], features: {} }),
-  getListFillerMockHandler({ clips: [] }),
+  // ⚠ `total` is REQUIRED since §10 V51d added paging. This line and that field arrived in two
+  // different PRs (#214 added the handler, #203 added the field); each was green against the main
+  // it branched from, and together they did not typecheck — main went red on the second merge.
+  // The generated client is the coupling, and neither diff mentions the other's file.
+  getListFillerMockHandler({ clips: [], total: 0 }),
   getListFillerSourcesMockHandler({ sources: [], total: 0 }),
   getFillerIncomingMockHandler({
     asks: [],

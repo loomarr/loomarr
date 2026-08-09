@@ -1077,6 +1077,16 @@ func declared() []Setting {
 			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
 		},
 		{
+			// ⚠ Every five minutes: this is the step between a clip's artwork being RENDERED and
+			// that artwork being visible through the image service, so a slow cadence reads as the
+			// feature not working while an operator watches an import. Cheap to run often — the
+			// work list selects only clips with artwork on disk and no image identity yet, so a
+			// healthy install pays one indexed query.
+			Key: "job.images_adopt_artwork.schedule", EnvVar: "JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see.",
+		},
+		{
 			// At :20, clear of the filler media cluster (:15/:30/:45/:50) and of the two 04:xx
 			// backup/retention jobs. AVIF encoding forks a multithreaded ffmpeg per image, so this
 			// is the one image job that genuinely contends for the box — the reason §22 makes AVIF
