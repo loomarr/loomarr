@@ -94,6 +94,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerFillerBulk(humaAPI)
 	srv.registerFillerFile(humaAPI)
 	srv.registerTaxonomy(humaAPI)
+	srv.registerImages(humaAPI)
 	srv.registerJobs(humaAPI)
 	srv.registerDashboard(humaAPI)
 	srv.registerPlayoutStatus(humaAPI) // §9.1 V47: playout status projection
