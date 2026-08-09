@@ -262,6 +262,63 @@ func TestChannel_CarriesLogoImageAfterUpload(t *testing.T) {
 	}
 }
 
+// ⚠ **THE AVIF TEST, and it guards a broken image rather than a missed optimisation.**
+//
+// `<picture>` selects a source by declared `type` and COMMITS to it — its fallback chain is for
+// format SUPPORT, not for availability, so a 404 on the chosen source renders nothing and does not
+// fall through to WebP. AVIF is job-produced (§22 makes coverage eventually consistent on purpose),
+// so a freshly-uploaded image has none. Advertising it anyway broke EVERY image in the app until
+// the job caught up — measured in a real browser as `net::ERR_BLOCKED_BY_ORB` on `w92.avif` with
+// the surface showing its fallback, while WebP and JPEG both served 200.
+//
+// Neither the unit suite nor the visual baselines could see it: nothing there fetches a rendition.
+func TestChannel_OmitsAvifSrcsetUntilTheRenditionExists(t *testing.T) {
+	srv, _, imgs := newIconUploadServer(t)
+
+	resp := postIcon(t, srv, adminToken, "logo.png", "image/png", pngBytes(t))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload = %d, want 200", resp.StatusCode)
+	}
+
+	read := func() (avif, webp string) {
+		t.Helper()
+		r := do(t, srv, http.MethodGet, "/v1/channels/ch-1", adminToken, "")
+		defer func() { _ = r.Body.Close() }()
+		var got struct {
+			LogoImage *struct {
+				SrcSetAVIF string `json:"srcSetAvif"`
+				SrcSetWebP string `json:"srcSetWebp"`
+			} `json:"logoImage"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.LogoImage == nil {
+			t.Fatal("logoImage absent")
+		}
+		return got.LogoImage.SrcSetAVIF, got.LogoImage.SrcSetWebP
+	}
+
+	// No AVIF rendition yet — the normal state for up to an hour after an upload.
+	avif, webp := read()
+	if avif != "" {
+		t.Errorf("srcSetAvif = %q, want empty. Advertising an AVIF that 404s makes <picture> "+
+			"commit to a source it cannot load, and the image breaks outright", avif)
+	}
+	if webp == "" {
+		t.Error("srcSetWebp is empty; WebP is generated on demand and must always be advertised")
+	}
+
+	// Once the job has produced one, it is advertised.
+	imgs.mu.Lock()
+	imgs.formats[images.FormatAVIF] = true
+	imgs.mu.Unlock()
+	if avif, _ = read(); avif == "" {
+		t.Error("srcSetAvif is empty after the AVIF rendition exists — the ladder would never be offered")
+	}
+}
+
 // ⚠ An external logo must NOT get a logoImage, and this is the case that keeps the fallback path
 // honest. Pasting a URL is a supported way to set a channel icon (§icon), so a resolver that
 // guessed — or that treated any non-empty logo as one of ours — would either 404 the record or

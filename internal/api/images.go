@@ -32,6 +32,10 @@ type ImageService interface {
 	Ingest(ctx context.Context, r io.Reader, req images.IngestRequest) (images.Image, error)
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format) string
+	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
+	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
+	// optimisation — see the method's own comment in internal/images.
+	HasFormat(ctx context.Context, hash string, f images.Format) (bool, error)
 }
 
 // registerImages mounts the image operations.
@@ -229,7 +233,7 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 	if err != nil {
 		return nil, errNotFound("Image not found", "That image doesn't exist — it may have been removed.")
 	}
-	return &getImageOutput{Body: s.imageToDTO(rec)}, nil
+	return &getImageOutput{Body: s.imageToDTO(ctx, rec)}, nil
 }
 
 // imageToDTO renders an image record for the wire.
@@ -239,7 +243,15 @@ func (s *Server) getImage(ctx context.Context, in *getImageInput) (*getImageOutp
 // class this repo has already been bitten by more than once — the second copy is the one that
 // forgets `srcSetAvif` when the AVIF job lands, and nothing fails, it just quietly serves WebP
 // forever on one surface.
-func (s *Server) imageToDTO(rec images.Image) ImageDTO {
+func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
+	// ⚠ AVIF is advertised only when a rendition actually EXISTS. <picture> commits to the source
+	// it selects by type and does not fall back on a 404, so a job-produced AVIF that has not been
+	// generated yet breaks the image outright rather than degrading to WebP. A lookup failure is
+	// treated as "no AVIF" for the same reason: the safe direction is to under-advertise.
+	avif := ""
+	if ok, err := s.images.HasFormat(ctx, rec.Hash, images.FormatAVIF); err == nil && ok {
+		avif = s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF)
+	}
 	return ImageDTO{
 		Hash:        rec.Hash,
 		Role:        string(rec.Role),
@@ -248,7 +260,7 @@ func (s *Server) imageToDTO(rec images.Image) ImageDTO {
 		Placeholder: rec.Placeholder,
 		DominantHex: rec.DominantHex,
 		Animated:    rec.Animated,
-		SrcSetAVIF:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF),
+		SrcSetAVIF:  avif,
 		SrcSetWebP:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP),
 		Src:         s.images.URLFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
 	}
@@ -299,16 +311,8 @@ func (s *Server) uploadImage(ctx context.Context, in *uploadImageInput) (*upload
 			"Use a PNG, JPEG, WebP or GIF under the size limit. SVG isn't accepted.")
 	}
 
-	return &uploadImageOutput{Body: ImageDTO{
-		Hash:        rec.Hash,
-		Role:        string(rec.Role),
-		Width:       rec.Width,
-		Height:      rec.Height,
-		Placeholder: rec.Placeholder,
-		DominantHex: rec.DominantHex,
-		Animated:    rec.Animated,
-		SrcSetAVIF:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatAVIF),
-		SrcSetWebP:  s.images.SrcSet(rec.Hash, rec.Role, images.FormatWebP),
-		Src:         s.images.URLFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
-	}}, nil
+	// ⚠ Through imageToDTO, NOT a second hand-written copy. This handler HAD one, and that is
+	// exactly how the AVIF bug survived: the projection existed twice, so gating one did nothing
+	// for the other. One constructor is the fix for the class, not just for this instance.
+	return &uploadImageOutput{Body: s.imageToDTO(ctx, rec)}, nil
 }

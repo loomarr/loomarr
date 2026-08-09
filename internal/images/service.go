@@ -127,6 +127,35 @@ func (s *Service) Produces(f Format) bool {
 	return false
 }
 
+// HasFormat reports whether a rendition in this format ALREADY EXISTS for an image.
+//
+// ⚠ **This is the difference between "we would emit AVIF" and "AVIF is there right now", and
+// conflating them shipped a bug that broke every image in the app.** `Produces` answers the first
+// from `images.formats`; only this answers the second. AVIF is job-produced (§22 makes its coverage
+// eventually consistent on purpose), so a freshly-ingested image has none for up to an hour.
+//
+// The consequence is not a missing optimisation, it is a BROKEN IMAGE: `<picture>` selects a source
+// by declared `type` and COMMITS to it. Its fallback chain is for format SUPPORT, not for
+// availability — a 404 on the chosen source renders nothing and does not fall through to the next
+// one. Advertising an AVIF that 404s therefore breaks the image for every browser that supports
+// AVIF, which is all current ones. Measured in a real browser: the request for `w92.avif` failed
+// and the surface rendered its fallback while the WebP and JPEG renditions both served 200.
+func (s *Service) HasFormat(ctx context.Context, hash string, f Format) (bool, error) {
+	if !s.Produces(f) {
+		return false, nil
+	}
+	ds, err := s.store.ListDerivatives(ctx, hash)
+	if err != nil {
+		return false, err
+	}
+	for _, d := range ds {
+		if d.Format == f {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Ingest stores bytes and returns the canonical record.
 //
 // Idempotent by construction: identical bytes produce an identical hash, so re-ingesting something

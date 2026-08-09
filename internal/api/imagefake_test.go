@@ -39,10 +39,13 @@ type fakeImageService struct {
 
 	// records is the hash → image map Get serves from, seeded by Ingest.
 	records map[string]images.Image
+
+	// formats is which rendition formats "already exist" — see HasFormat.
+	formats map[images.Format]bool
 }
 
 func newFakeImageService() *fakeImageService {
-	return &fakeImageService{records: map[string]images.Image{}}
+	return &fakeImageService{records: map[string]images.Image{}, formats: map[images.Format]bool{}}
 }
 
 // Ingest records the request and derives a hash from the BYTES.
@@ -90,6 +93,18 @@ func (f *fakeImageService) Get(_ context.Context, hash string) (images.Image, er
 
 func (f *fakeImageService) Rendition(_ context.Context, hash string, _ images.Format, _ int) (images.Rendition, error) {
 	return images.Rendition{Hash: hash}, nil
+}
+
+// HasFormat defaults to FALSE for every format, which is the state a freshly-ingested image is
+// actually in: AVIF is job-produced, so it does not exist at upload time.
+//
+// ⚠ Defaulting to true would make the fake disagree with reality in the exact direction that hid
+// the bug this method exists to prevent — advertising an AVIF that 404s, which `<picture>` turns
+// into a broken image rather than a fallback. `formats` lets a test opt one in explicitly.
+func (f *fakeImageService) HasFormat(_ context.Context, _ string, format images.Format) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.formats[format], nil
 }
 
 // URLFor mirrors the real service's shape (`/v1/images/{hash}/w{width}.{ext}`) with no base URL,

@@ -95,7 +95,7 @@ func (s *Server) logoImageResolver(ctx context.Context, logos []string) func(str
 		if err != nil {
 			continue
 		}
-		dto := s.imageToDTO(rec)
+		dto := s.imageToDTO(ctx, rec)
 		byHash[hash] = &dto
 	}
 	if len(byHash) == 0 {
