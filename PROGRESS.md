@@ -471,11 +471,38 @@ coexist until the last stub is gone.
 Both carry the explicit `retired-ok` opt-out rather than a reworded dodge — the guard is supposed to
 fire on that string, and a mention that is deliberate should say so.
 
-**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 12 of 31 migrated; 19 remain.**
+**V53e — the migration, in batches (IN PROGRESS, 2026-08-09). 20 of 32 migrated; 12 remain
+(11 files + one sanctioned exception).** Gate: `make fe` (**1243** app + 19 api + 51 core + 5
+tokens, biome clean on 931 files).
 Batch 1 (`#206`): `use-auth`, `users-step`, `first-channel-step`, `sources-tab`. Batch 2 (`#207`):
 `wizard-ai-block`, `channel-row-menu`, `use-channel-refine`, plus the shared `channel()` fixture.
 Batch 3 (`#213`): `incoming-tab`, `split-review-page`. Batch 4: `channel-watch`, `app-router`, plus
-the shared `appHandlers()` baseline.
+the shared `appHandlers()` baseline. **Batch 5: the whole ROUTE-LEVEL set** — `help`, `users`,
+`guide-page`, `tasks-page`, `settings`, `wizard-router`, `filler`, `reachability` — plus the shared
+`me()`/`user()`/`setting()` fixtures.
+
+⚠ **`packages/api/src/mutator/mutator.test.ts` is a PERMANENT exception, not a to-do.** It tests
+`customFetch` itself and asserts on `credentials: "include"` and the `X-Loomarr-Csrf` header —
+neither of which an MSW resolver can observe, because MSW intercepts BELOW the layer under test.
+Stubbing `fetch` is the correct tool for testing the fetch wrapper. **When
+`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the final batch, this file needs an
+explicit carve-out** or the guard fails on the one file that is right.
+
+⚠ **`appHandlers()` MUST BE SPREAD LAST**, and this is the batch that found out why. MSW resolves
+the FIRST matching handler and `server.use()` PREPENDS, so "the most recent registration wins" is
+true across `use()` CALLS and exactly backwards WITHIN one. `test/help` overrode `/v1/docs` with two
+pages, got the baseline's `{ docs: [] }` instead, and failed as five 5-second TIMEOUTS with **no
+unhandled-request error** — the guard cannot help, because the request WAS handled, just by the
+wrong handler. Batch 4 never hit it only because everything `app-router` adds is absent from the
+baseline. The rule is now in `handlers.ts`'s header.
+
+⚠ **`main` WAS RED at `6f7269aa` and nobody knew.** `#214` added `handlers.ts` with
+`getListFillerMockHandler({ clips: [] })`; `#203` made `total` required on `ListFillerOutputBody`.
+Each was green against the main it branched from; together they did not typecheck, so main went red
+on the second merge and stayed red until `#217` fixed it in passing. **The coupling is the
+generated client, and neither diff mentions the other's file** — which is precisely the "two phases
+touching the same generated output" hazard CLAUDE.md's worktree section describes, in its
+harder-to-see form: not a merge conflict, but a clean merge that does not compile.
 
 ⚠ **The count is COUNTED, never tallied** — a running total in a commit message is exactly the sort
 of number that drifts, and it drifted twice before this rule:
@@ -504,11 +531,9 @@ grep -rl '@/test/msw/server' --include=*.test.tsx --include=*.test.ts .         
 
 ### What is left
 
-**Route-level (8)** — all mount the real app, all had the same catch-all, and `appHandlers()` now
-covers the common surface, so these should go far faster than `app-router` did (it paid the
-discovery cost for the set): `test/reachability` (538), `test/filler` (468), `test/wizard-router`
-(440), `test/settings` (359), `test/guide-page` (269), `settings/tasks-page` (285), `test/users`
-(202), `test/help` (154).
+**Route-level: DONE (batch 5).** The prediction that they would go faster than `app-router` held —
+`appHandlers()` covered most of the surface — but the catch-alls were hiding far more than expected:
+`test/reachability` alone had **13** (see below), against `app-router`'s nine.
 
 **Component-level (11)** — the established pattern applies directly: `channel-filler` (214),
 `channel-lineup-editor` (209), `tune-panel` (190), `use-channel-rules-draft` (189),
@@ -517,8 +542,42 @@ discovery cost for the set): `test/reachability` (538), `test/filler` (468), `te
 `use-channel-lineup` (143).
 
 ⚠ **`vi.stubGlobal("fetch"` goes into `scripts/check-retired.sh` in the FINAL batch only** — adding
-it sooner fails on every file still waiting. Until it lands, nothing stops a new test adding stub
-#20.
+it sooner fails on every file still waiting, and it needs the `mutator.test.ts` carve-out described
+above. Until it lands, nothing stops a new test adding another stub.
+
+### Batch 5's findings — the yield went UP, not down
+
+**`test/reachability` was rendering 13 screens against `{}`.** It mounts every route in the
+generated tree, so it touches more of the API than any other file, and its entire purpose is to
+prove a screen shows REAL CONTENT. The catch-all was answering `/v1/playout/status`,
+`/v1/system/services`, `/v1/system/database`, `/v1/system/backups`, `/v1/system/restart`,
+`/v1/programming/vocabulary`, `/v1/library/collections`, `/v1/taxonomy`, `/v1/filler/pulls`,
+`/v1/channels/:id/{cycle,upcoming,tracks}`, `/v1/channels/:id/filler/coverage` and
+`POST …/pods/preview` — every one of which is a required array the page maps over. **A suite named
+"reachability" was asserting reachability against empty objects.**
+
+⚠ **Its own stub documented two of its failures in comments and they were never fixed** — both
+begin "Before the /v1/filler catalog match", describing how the sources tab and the incoming queue
+fell through to the CLIPS payload and rendered a wrong-shaped page that still passed. Its own words:
+*"a stub that answers the wrong shape is indistinguishable from a working page until something
+depends on the shape."* That is the argument for this whole migration, written by the thing it
+indicts. It also registered `/v1/proposals` **twice**, the second branch unreachable.
+
+**Eight more required fields no stub ever sent**, caught by `tsc` the moment the fixtures became
+typed: `UserBody.effectiveQuota` + `.pendingAcquisitions` (the users list was built by SPREADING
+the signed-in `MeBody`, a different type), `SettingEntry` × 4 (`advanced`/`doc`/`group`/`kind` —
+tests wrote four of its eight), `ClipDTO.playCount` + `.playsCounted`, `IncomingAskDTO.hash` (the
+clip's content identity, which every row action keys on), `SecretRevealOutputBody.displayable`,
+`LLMModelView.tools`, `ListFillerOutputBody.total`. Plus one response shape the API cannot
+produce: `TunarrConnectOutputBody` is `{ librariesEnabled, sourceId }`, and the test served
+`{ ok: true }`.
+
+**Three more substring collapses**, all in files that looked fine: `u.includes("/sessions")`
+matched both `GET /v1/users/:id/sessions` and `DELETE /v1/sessions/:hash`; `u.endsWith("/split")`
+was one character from `/v1/filler/splits/:id`, the read that immediately follows it; and
+`u.includes("/v1/filler/") && method === "PATCH"` matched both the single-clip tag write and
+`PATCH /v1/filler/sources/:id` — three assertions in `test/filler` then searched for "a PATCH, to
+anything" and read its body.
 
 ⚠ **Nine defects in eight files — the yield is not tapering, and every one is the same root cause
 wearing a different face: a hand-rolled stub is UNTYPED and UNBOUND.**
@@ -549,11 +608,14 @@ Batch 1's first CI run went red on `mcr.microsoft.com` TLS handshake timeout —
 identical commit while 2/2 died in 57s, and a real snapshot diff cannot be shard-asymmetric on the
 same code. Re-run, not a code change.
 
-**Next up: V53f+** — the remaining 23 files in batches of 5–8, then add `vi.stubGlobal("fetch"` to
-`scripts/check-retired.sh` in the FINAL batch. ⚠ Not before: the guard would fail on every file
-still waiting. `use-channel-refine` is deliberately deferred — deferred promises plus method-only
-dispatch (its own comment says it avoids "pinning to exact URL strings", which is the weakness being
-removed), so it needs a careful pass rather than a batch slot.
+**Next up: V53f+** — the 11 remaining component-level files in batches of 5–6, then add
+`vi.stubGlobal("fetch"` to `scripts/check-retired.sh` in the FINAL batch **with the
+`mutator.test.ts` carve-out**. ⚠ Not before: the guard would fail on every file still waiting.
+
+They are all component-level, so none of them mounts the route tree and none needs
+`appHandlers()` — the shape to copy is `settings/tasks-page` (batch 5) or `incoming-tab`
+(batch 3), not the route-level files. Expect the same two yields regardless: a required field the
+fixture never sent, and an assertion that matched a URL substring the test wrote itself.
 
 **V50d(a) — the collapsed-body focus gap V50c left behind (2026-08-09).** Gate: `make fe`
 (**1223** app + 19 api + 51 core + 5 tokens, biome clean on 923 files).

@@ -1,58 +1,86 @@
+import {
+  getMeMockHandler,
+  getSettingsListMockHandler,
+  getSettingsPatchMockHandler,
+  getSetupStatusMockHandler,
+  getSetupTestMockHandler,
+  getSystemLlmDiscoverMockHandler,
+  getSystemLlmPullMockHandler,
+  getSystemLlmStatusMockHandler,
+  getTunarrConnectMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { setting } from "@/test/fixtures/settings";
+import { me } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
-const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disabled: false, quota: 0 };
-
-const entry = (over: Record<string, unknown>) => ({
-  group: "connections.media_server",
-  kind: "string",
-  doc: "help",
-  advanced: false,
-  secret: false,
-  set: true,
-  provenance: "db",
-  ...over,
-});
-
+// ⚠ Was a local `entry()` helper duplicating what `setting()` now carries — and the local one
+// was the reason four required SettingEntry fields could go missing elsewhere in the suite
+// without anything noticing they were required at all.
 const SETTINGS = [
-  entry({ key: "library.url", kind: "url", value: "http://emby:8096" }),
-  entry({ key: "library.token", kind: "secret", secret: true, preview: "…a1b2", value: "" }),
-  entry({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
-  entry({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
+  setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
+  setting({
+    key: "library.token",
+    group: "connections.media_server",
+    kind: "secret",
+    secret: true,
+    preview: "…a1b2",
+    value: "",
+  }),
+  setting({ key: "tunarr.url", group: "connections.tunarr", kind: "url", value: "http://tunarr:8000" }),
+  setting({ key: "job.workers", group: "advanced", kind: "int", value: "2", provenance: "env" }),
 ];
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// Every write this page can make, route-bound, with the request SEQUENCE recorded.
+//
+// ⚠ The sequence is the point for one test below: `/v1/setup/test` evaluates PERSISTED settings,
+// so a dirty edit has to be PATCHed before the test runs. Proving that needs ORDER, not presence.
+// The old version derived order from indices into `fetchMock.mock.calls` filtered by url
+// substring — which is order in the STUB, and the stub matched `/v1/settings` for the PATCH and
+// `/v1/setup/test` for the test with no route binding behind either.
+const stubSettings = () => {
+  const seq: string[] = [];
+  const patches: unknown[] = [];
+  const connects: string[] = [];
 
-const stubFetch = () => {
-  const mock = vi.fn((url: string, init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-    if (u.includes("/v1/setup/status")) {
-      return Promise.resolve(
-        json({ checks: [{ name: "media_server", ok: false, hint: "Emby refused the token." }] }),
-      );
-    }
-    if (u.includes("/v1/setup/test")) return Promise.resolve(json({ ok: true }));
-    if (u.includes("/v1/settings") && String(init?.method) === "PATCH") {
-      return Promise.resolve(json({ results: [] }));
-    }
-    if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
+  server.use(
+    getMeMockHandler(me()),
+    getSetupStatusMockHandler({
+      checks: [{ name: "media_server", ok: false, hint: "Emby refused the token." }],
+    }),
+    getSetupTestMockHandler(() => {
+      seq.push("test");
+      return { ok: true };
+    }),
+    getSettingsPatchMockHandler(async ({ request }) => {
+      seq.push("patch");
+      patches.push(await request.json());
+      // ⚠ `results` is a `SettingResult[]`. A sibling file was serving `{ results: {} }` — a
+      // shape the API cannot produce — and passing.
+      return { results: [] };
+    }),
+    getSettingsListMockHandler({ features: {}, settings: SETTINGS }),
+    // Registered so the negative assertion below has something to be negative ABOUT. If the FE
+    // ever calls it, `connects` is non-empty and the test says why; if this handler were absent
+    // the unhandled-request guard would fail the test instead, which is a fine second net but a
+    // worse error message.
+    // ⚠ The response is `{ librariesEnabled, sourceId }`, NOT `{ ok }` — a shape the API has
+    // never produced. Nothing caught it before because the FE is not supposed to call this at
+    // all, which is exactly what the assertion below asserts.
+    getTunarrConnectMockHandler(({ request }) => {
+      connects.push(request.url);
+      return { librariesEnabled: 0, sourceId: "src-1" };
+    }),
+    ...appHandlers(),
   );
-  return mock;
+
+  return { seq, patches, connects };
 };
 
 const renderAt = (path: string) => {
@@ -69,11 +97,9 @@ const renderAt = (path: string) => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("Settings", () => {
   it("self-diagnoses each connection on its own block (§5 status-per-block)", async () => {
-    stubFetch();
+    stubSettings();
     renderAt("/settings/connections");
     // media_server's check fails, so its ConnectionBlock opens and shows the BE's hint
     // inline — diagnosis on the thing that fixes it, not in a separate checklist above.
@@ -84,7 +110,7 @@ describe("Settings", () => {
   });
 
   it("saves the whole page from one bar, sending only what changed", async () => {
-    const fetchMock = stubFetch();
+    const { patches } = stubSettings();
     renderAt("/settings/connections");
 
     // The bar is absent until something is dirty — a page being read stays quiet.
@@ -95,17 +121,15 @@ describe("Settings", () => {
     expect(bar).toHaveTextContent("1 unsaved change");
 
     await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
-    const patch = fetchMock.mock.calls.find(
-      ([u, i]) => String(u).includes("/v1/settings") && String(i?.method) === "PATCH",
-    );
-    const body = JSON.parse(String(patch?.[1]?.body));
+    await expect.poll(() => patches).toHaveLength(1);
+    const body = patches[0] as { edits: Record<string, string> };
     // Only the edited key — an untouched secret must not be sent, or it would be cleared (§9).
     expect(Object.keys(body.edits)).toEqual(["library.url"]);
     expect(body.edits["library.url"]).toBe("http://emby:80969");
   });
 
   it("discards edits without saving", async () => {
-    stubFetch();
+    stubSettings();
     renderAt("/settings/connections");
 
     await userEvent.type(await screen.findByLabelText("Library URL"), "9");
@@ -114,12 +138,12 @@ describe("Settings", () => {
   });
 
   it("runs a per-block connection test", async () => {
-    const fetchMock = stubFetch();
+    const { seq } = stubSettings();
     renderAt("/settings/connections");
 
     const tests = await screen.findAllByRole("button", { name: /test connection/i });
     await userEvent.click(tests[0] as HTMLElement);
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/v1/setup/test"))).toBe(true);
+    await expect.poll(() => seq).toContain("test");
   });
 
   // Regression: /v1/setup/test evaluates PERSISTED settings, so testing an UNSAVED edit
@@ -127,7 +151,7 @@ describe("Settings", () => {
   // empty stored token, even though the right value was on screen. Test must PATCH the dirty
   // edits FIRST, then test. Asserted by call ORDER: the PATCH must precede the /setup/test.
   it("saves a dirty edit before testing, so Test checks what's on screen", async () => {
-    const fetchMock = stubFetch();
+    const { seq } = stubSettings();
     renderAt("/settings/connections");
 
     // Type into the media-server block (its Test button is the first), then Test WITHOUT Save.
@@ -135,23 +159,16 @@ describe("Settings", () => {
     const tests = await screen.findAllByRole("button", { name: /test connection/i });
     await userEvent.click(tests[0] as HTMLElement);
 
-    const order = fetchMock.mock.calls
-      .map(([u, i], idx) => ({ idx, u: String(u), method: String((i as RequestInit)?.method) }))
-      .filter(
-        (c) => (c.u.includes("/v1/settings") && c.method === "PATCH") || c.u.includes("/v1/setup/test"),
-      );
-    const patchIdx = order.find((c) => c.u.includes("/v1/settings"))?.idx ?? -1;
-    const testIdx = order.find((c) => c.u.includes("/v1/setup/test"))?.idx ?? -1;
-    expect(patchIdx, "a dirty edit must be saved before testing").toBeGreaterThanOrEqual(0);
-    expect(testIdx, "the test must still run").toBeGreaterThanOrEqual(0);
-    expect(patchIdx).toBeLessThan(testIdx);
+    // Both must happen, and in this order. `seq` is appended by the two ROUTE-BOUND resolvers,
+    // so "patch" can only mean PATCH /v1/settings and "test" can only mean POST /v1/setup/test.
+    await expect.poll(() => seq).toEqual(["patch", "test"]);
   });
 
   // All settings is a TABLE (V10), so its controls carry the raw key rather than a humanized
   // label. The env lock still applies — and this is the surface where someone would most likely
   // try to work around it, since it is the editor of last resort.
   it("locks an env-pinned key on the all-settings table", async () => {
-    stubFetch();
+    stubSettings();
     const { container } = renderAt("/settings/all");
     await screen.findByText("job.workers");
     expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
@@ -166,7 +183,7 @@ describe("Settings", () => {
 // work gone. The buffer now lives in the layout, above the <Outlet />.
 describe("Settings — the save bar spans tabs (V9)", () => {
   it("keeps an unsaved edit when you switch tabs and come back", async () => {
-    stubFetch();
+    stubSettings();
     renderAt("/settings/connections");
 
     const url = await screen.findByLabelText("Library URL");
@@ -187,7 +204,7 @@ describe("Settings — the save bar spans tabs (V9)", () => {
   // The count is global BY DESIGN. Per-tab buffers would make "2 unsaved" mean something
   // different depending on where you were standing, which is worse than no count.
   it("counts edits made on different tabs together", async () => {
-    stubFetch();
+    stubSettings();
     renderAt("/settings/connections");
 
     const url = await screen.findByLabelText("Library URL");
@@ -212,44 +229,55 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 // refreshed — indistinguishable from success, leaving the operator to eventually notice
 // the row still said "Download". The frame carries the reason; it belongs on screen.
 describe("AI model pull", () => {
+  // ⚠ EventSource is stubbed GLOBALLY in src/test/setup.ts; this test replaces it to capture the
+  // listener so it can push a frame. `unstubAllGlobals` puts the shared one back — without it the
+  // capture leaks into whichever test runs next.
+  afterEach(() => vi.unstubAllGlobals());
+
   it("surfaces a failed download instead of silently clearing it", async () => {
     let emit: ((e: MessageEvent) => void) | undefined;
-    const mock = vi.fn((url: string) => {
-      const u = String(url);
-      if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-      if (u.includes("/v1/system/llm")) {
-        return Promise.resolve(
-          json({
-            local: true,
-            reachable: true,
-            provider: "ollama",
-            model: "",
-            catalog: [
-              {
-                tag: "qwen3:8b",
-                label: "Qwen3 8B",
-                approxVramGiB: 5,
-                fit: "fits",
-                pulled: false,
-                recommended: true,
-                runtimeOk: true,
-                why: "Good fit.",
-              },
-            ],
-            hosted: [],
-          }),
-        );
-      }
-      if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
-      return Promise.resolve(json({}));
-    });
-    vi.stubGlobal("fetch", mock);
+
+    server.use(
+      getMeMockHandler(me()),
+      getSystemLlmStatusMockHandler({
+        local: true,
+        reachable: true,
+        provider: "ollama",
+        model: "",
+        catalog: [
+          {
+            tag: "qwen3:8b",
+            label: "Qwen3 8B",
+            approxVramGiB: 5,
+            fit: "fits",
+            pulled: false,
+            recommended: true,
+            runtimeOk: true,
+            // ⚠ Required, and it is a CAPABILITY flag (whether the model supports tool calls),
+            // not a cosmetic one — the picker uses it to decide what a model can be used for.
+            tools: true,
+            why: "Good fit.",
+          },
+        ],
+        hosted: [],
+      }),
+      getSystemLlmPullMockHandler(),
+      // ⚠ FOUND BY THE GUARD. The AI settings page fetches the downloadable-model catalogue on
+      // mount, and the old `json({})` catch-all answered it with an empty object — so the whole
+      // discover path ran against `{}` with `models` undefined and nothing said so. Same endpoint,
+      // same silent answer, as the one `wizard-ai-block` turned up in batch 2.
+      getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+      getSettingsListMockHandler({ features: {}, settings: SETTINGS }),
+      ...appHandlers(),
+    );
+
     vi.stubGlobal(
       "EventSource",
       class {
         addEventListener(type: string, cb: (e: MessageEvent) => void) {
           if (type === "llm_pull") emit = cb;
         }
+        removeEventListener() {}
         close() {}
       },
     );
@@ -277,15 +305,7 @@ describe("AI model pull", () => {
 // green. Asserting the panel reaches the page is what the component tests can't do.
 describe("Settings page footers", () => {
   it("mounts the secrets panel on Security", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        const u = String(url);
-        if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-        if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
-        return Promise.resolve(json({}));
-      }),
-    );
+    stubSettings();
 
     renderAt("/settings/security");
     // The three generated secrets are a closed set held in the component (config-design
@@ -302,34 +322,19 @@ describe("Settings page footers", () => {
 // the confusing manual scaffolding stayed gone and didn't creep back.
 describe("Connections auto-wires on save (no manual wiring UI)", () => {
   const stubWiring = () => {
-    const mock = vi.fn((url: string, init?: RequestInit) => {
-      const u = String(url);
-      if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-      if (u.includes("/v1/setup/status")) {
-        return Promise.resolve(
-          json({
-            checks: [
-              { name: "livetv", ok: false, hint: "Tunarr is not a tuner yet." },
-              { name: "tunarr_library", ok: false, hint: "Tunarr has no media source." },
-            ],
-          }),
-        );
-      }
-      if (u.includes("/v1/settings") && String(init?.method) === "PATCH") {
-        return Promise.resolve(json({ results: [] }));
-      }
-      if (u.includes("/v1/settings")) return Promise.resolve(json({ features: {}, settings: SETTINGS }));
-      return Promise.resolve(json({}));
-    });
-    vi.stubGlobal("fetch", mock);
-    vi.stubGlobal(
-      "EventSource",
-      class {
-        addEventListener() {}
-        close() {}
-      },
+    const base = stubSettings();
+    // Two failing wiring checks, replacing the single media-server one. A second `server.use`
+    // PREPENDS, so this one wins over the status handler registered above — the across-calls
+    // half of the precedence rule in handlers.ts.
+    server.use(
+      getSetupStatusMockHandler({
+        checks: [
+          { name: "livetv", ok: false, hint: "Tunarr is not a tuner yet." },
+          { name: "tunarr_library", ok: false, hint: "Tunarr has no media source." },
+        ],
+      }),
     );
-    return mock;
+    return base;
   };
 
   it("shows no manual wiring buttons on Connections", async () => {
@@ -342,18 +347,14 @@ describe("Connections auto-wires on save (no manual wiring UI)", () => {
   });
 
   it("saving a connection PATCHes settings and never calls a connect endpoint from the FE", async () => {
-    const fetchMock = stubWiring();
+    const { patches, connects } = stubWiring();
     renderAt("/settings/connections");
 
     await userEvent.type(await screen.findByLabelText("Library URL"), "9");
     await userEvent.click(await screen.findByRole("button", { name: /save changes/i }));
 
     // The FE only saves — the server does the wiring. No /v1/setup/*-connect from here.
-    const patched = fetchMock.mock.calls.find(
-      ([u, i]) => String(u).includes("/v1/settings") && String(i?.method) === "PATCH",
-    );
-    expect(patched, "saving must PATCH settings").toBeTruthy();
-    const connectCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/v1/setup/tunarr-connect"));
-    expect(connectCall, "the FE must not wire directly — the BE auto-wires on save").toBeFalsy();
+    await expect.poll(() => patches, { message: "saving must PATCH settings" }).toHaveLength(1);
+    expect(connects, "the FE must not wire directly — the BE auto-wires on save").toEqual([]);
   });
 });

@@ -1,9 +1,46 @@
+import {
+  getChannelFillerCoverageMockHandler,
+  getChannelTracksMockHandler,
+  getChannelUpcomingMockHandler,
+  getDiscoverFillerMockHandler,
+  getFillerIncomingMockHandler,
+  getGetChannelMockHandler,
+  getGetFillerSplitMockHandler,
+  getGetPlayoutStatusMockHandler,
+  getGetProgrammingVocabularyMockHandler,
+  getImportCandidatesMockHandler,
+  getListChannelsMockHandler,
+  getListDocsMockHandler,
+  getListFillerMockHandler,
+  getListFillerPullsMockHandler,
+  getListFillerSourcesMockHandler,
+  getListLibraryCollectionsMockHandler,
+  getListTaxonomyMockHandler,
+  getListUserSessionsMockHandler,
+  getListUsersMockHandler,
+  getMeMockHandler,
+  getPreviewChannelCycleMockHandler,
+  getPreviewChannelPodsMockHandler,
+  getPreviewDraftChannelPodsMockHandler,
+  getSecretRevealMockHandler,
+  getSettingsListMockHandler,
+  getSystemBackupsListMockHandler,
+  getSystemDatabaseStatusMockHandler,
+  getSystemRestartCostMockHandler,
+  getSystemServicesMockHandler,
+  getSystemVersionMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { channel } from "@/test/fixtures/channels";
+import { setting } from "@/test/fixtures/settings";
+import { me, user } from "@/test/fixtures/users";
+import { appHandlers } from "@/test/msw/handlers";
+import { server } from "@/test/msw/server";
 
 // REACHABILITY — the gate this phase earned.
 //
@@ -21,19 +58,8 @@ import { routeTree } from "@/routeTree.gen";
 
 // `local: true` mirrors the meBody field (§11 credential path) — the Account screen
 // offers a password form only for a Loomarr-stored credential, so a fixture without it
-// would silently exercise the media-server branch instead.
-const ADMIN = {
-  id: "u1",
-  name: "Ada",
-  role: "admin",
-  autoApprove: true,
-  disabled: false,
-  quota: 0,
-  local: true,
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// would silently exercise the media-server branch instead. It is `me()`'s default.
+const ADMIN = me();
 
 // Every feature on, so gated panels are expected to appear rather than explain themselves.
 const FEATURES = {
@@ -44,272 +70,189 @@ const FEATURES = {
   ingest: true,
 };
 
-const stubFetch = () => {
-  const mock = vi.fn((url: string) => {
-    const u = String(url);
-    if (u.includes("/v1/auth/me")) return Promise.resolve(json(ADMIN));
-    if (u.includes("/v1/setup/status")) return Promise.resolve(json({ checks: [] }));
-    if (u.includes("/v1/settings/secrets")) return Promise.resolve(json({ value: "" }));
-    if (u.includes("/v1/settings")) {
-      return Promise.resolve(
-        json({
-          features: FEATURES,
-          settings: [
-            {
-              key: "library.url",
-              group: "connections.media_server",
-              kind: "url",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "http://emby:8096",
-            },
-            {
-              key: "filler.dir",
-              group: "filler",
-              kind: "string",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "/filler",
-            },
-            {
-              key: "job.workers",
-              group: "advanced",
-              kind: "int",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "2",
-            },
-            {
-              key: "channel.reconcile_every",
-              group: "channels",
-              kind: "duration",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "5m",
-            },
-            {
-              key: "session.ttl",
-              group: "users_security",
-              kind: "duration",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "720h",
-            },
-            {
-              key: "llm.url",
-              group: "ai",
-              kind: "url",
-              doc: "help",
-              advanced: false,
-              secret: false,
-              set: true,
-              provenance: "db",
-              value: "http://ollama:11434",
-            },
-          ],
-        }),
-      );
-    }
-    if (u.includes("/v1/system/llm")) {
-      return Promise.resolve(
-        json({
-          local: true,
-          reachable: true,
-          provider: "ollama",
-          model: "qwen3:8b",
-          catalog: [],
-          hosted: [],
-        }),
-      );
-    }
-    if (u.includes("/v1/system/version")) {
-      return Promise.resolve(json({ version: "dev", ready: true }));
-    }
-    if (u.includes("/v1/users/candidates")) return Promise.resolve(json({ candidates: [] }));
-    if (u.includes("/sessions")) return Promise.resolve(json({ sessions: [] }));
-    if (u.includes("/v1/users")) return Promise.resolve(json({ users: [{ ...ADMIN, local: true }] }));
-    if (u.includes("/v1/docs/")) {
-      return Promise.resolve(
-        json({ slug: "troubleshooting", title: "Troubleshooting", markdown: "# Troubleshooting\n\nHere." }),
-      );
-    }
-    if (u.includes("/v1/docs"))
-      return Promise.resolve(json({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }));
-    // Before the /v1/filler catalog match below: this path contains "/filler" but is the
-    // per-CHANNEL coverage route, and a clips payload would not satisfy the meter.
-    if (u.includes("/filler/discover")) {
-      return Promise.resolve(
-        json({ items: [], total: 0, licenceNote: "Licence information isn't available." }),
-      );
-    }
-    if (u.includes("/filler/coverage")) {
-      return Promise.resolve(json({ level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }] }));
-    }
-    // Before the /v1/filler catalog match: the Sources tab's rows.
-    //
-    // ⚠ Without this branch the request fell through to the clips payload below, so the tab
-    // rendered ZERO source rows — and the old "Find clips" assertion still passed, because
-    // that heading sat OUTSIDE the list. V35b moved the search inside the row that owns it,
-    // which is what surfaced the gap. A stub that answers the wrong shape is indistinguishable
-    // from a working page until something depends on the shape.
-    if (u.includes("/v1/filler/sources")) {
-      return Promise.resolve(
-        json({
-          // ⚠ V37: a flat list. `remote` was the CONTAINER row and is retired — a registered
-          // archive collection is a peer carrying `searchable`, which is what the search
-          // expander now keys on (the page no longer tests the kind itself).
-          sources: [
-            {
-              id: "archive:classic_tv_commercials",
-              enabled: true,
-              switchable: true,
-              removable: true,
-              kind: "archive",
-              target: "Classic TV Commercials",
-              detail: "an archive.org collection — searchable here",
-              count: 0,
-              configured: true,
-              fetchable: true,
-              searchable: true,
-            },
-          ],
-          total: 1,
-        }),
-      );
-    }
-    // Before the /v1/filler catalog match: the Incoming queue (§10 V35/V38).
-    //
-    // ⚠ Same gap as the sources one above — without this branch the request fell through to the
-    // clips payload, so the tab rendered whatever `asks: undefined` produces. That is the second
-    // time this stub's catch-all has quietly answered the wrong shape; a route added to the app
-    // needs a branch here, or its assertion tests the fallback rather than the feature.
-    if (u.includes("/v1/filler/incoming")) {
-      return Promise.resolve(
-        json({
-          asks: [
-            {
-              path: "held.mp4",
-              name: "Unidentified toy spot",
-              durationMs: 30000,
-              kind: "commercial",
-              reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
-              confidence: 45,
-            },
-          ],
-          reels: [],
-          // V38's audit half — what was filed with nobody looking.
-          recentlyFiled: [
-            {
-              path: "auto.mp4",
-              name: "Hot Wheels spot",
-              durationMs: 30000,
-              kind: "commercial",
-              reason: "Loomarr was confident enough about these tags to file it without asking.",
-              confidence: 88,
-              autoFiled: true,
-            },
-          ],
-          total: 1,
-        }),
-      );
-    }
-    // Before the /v1/filler catalog match: a persisted split proposal (V34) for the
-    // /filler/splits/$proposalId review route this suite derives from the router.
-    if (u.includes("/v1/filler/splits/")) {
-      return Promise.resolve(
-        json({
-          id: "sp-1",
-          clipHash: "comp-hash",
-          createdAt: "2026-07-25T20:00:00Z",
-          segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
-        }),
-      );
-    }
+// One entry per settings GROUP — the groups are what the pages render, and a group with no
+// field renders no form. ⚠ Each of these was ten hand-written lines repeating the same eight
+// required SettingEntry fields; `setting()` owns them now, so a new required field on the wire
+// breaks one fixture instead of seven copies.
+const SETTINGS = [
+  setting({ key: "library.url", group: "connections.media_server", kind: "url", value: "http://emby:8096" }),
+  setting({ key: "filler.dir", group: "filler", kind: "string", value: "/filler" }),
+  setting({ key: "job.workers", group: "advanced", kind: "int", value: "2" }),
+  setting({ key: "channel.reconcile_every", group: "channels", kind: "duration", value: "5m" }),
+  setting({ key: "session.ttl", group: "users_security", kind: "duration", value: "720h" }),
+  setting({ key: "llm.url", group: "ai", kind: "url", value: "http://ollama:11434" }),
+];
+
+// ⚠ THE STUB THIS REPLACES DOCUMENTED ITS OWN FAILURES, twice, in comments that both begin
+// "Before the /v1/filler catalog match": the sources tab and the incoming queue each fell
+// through to the CLIPS payload and rendered a wrong-shaped page that still passed. Its own
+// words — "a stub that answers the wrong shape is indistinguishable from a working page until
+// something depends on the shape" — are the argument for this whole migration, and the ordering
+// discipline they demanded is gone now that MSW matches on the route rather than a substring.
+//
+// ⚠ It also carried `/v1/proposals` TWICE, the second branch unreachable. Nothing noticed,
+// because nothing could.
+const stubReachable = () => {
+  server.use(
+    getMeMockHandler(ADMIN),
+    getSettingsListMockHandler({ features: FEATURES, settings: SETTINGS }),
+    // ⚠ `displayable` is required and says whether the secret CAN be shown at all — a reveal
+    // answering `{ value: "" }` reads as "displayable: undefined", i.e. falsy, which is a
+    // different screen from the one this suite means to reach.
+    getSecretRevealMockHandler({ displayable: false, value: "" }),
+    getSystemVersionMockHandler({ version: "dev", ready: true }),
+    getImportCandidatesMockHandler({ candidates: [] }),
+    getListUserSessionsMockHandler({ sessions: [] }),
+    getListUsersMockHandler({ users: [user()] }),
+    getListDocsMockHandler({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }),
+    getGetFillerSplitMockHandler({
+      id: "sp-1",
+      clipHash: "comp-hash",
+      createdAt: "2026-07-25T20:00:00Z",
+      segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
+    }),
+    getDiscoverFillerMockHandler({
+      items: [],
+      total: 0,
+      licenceNote: "Licence information isn't available.",
+    }),
+    getListFillerSourcesMockHandler({
+      // ⚠ V37: a flat list. `remote` was the CONTAINER row and is retired — a registered
+      // archive collection is a peer carrying `searchable`, which is what the search
+      // expander now keys on (the page no longer tests the kind itself).
+      sources: [
+        {
+          id: "archive:classic_tv_commercials",
+          enabled: true,
+          switchable: true,
+          removable: true,
+          kind: "archive",
+          target: "Classic TV Commercials",
+          detail: "an archive.org collection — searchable here",
+          count: 0,
+          configured: true,
+          fetchable: true,
+          searchable: true,
+        },
+      ],
+      total: 1,
+    }),
+    getFillerIncomingMockHandler({
+      // ⚠ `hash` is REQUIRED on IncomingAskDTO — it is the clip's content identity (§10, the
+      // filler-path-identity rule), and every row action keys on it. Both of these fixtures
+      // omitted it, so the queue rendered rows whose identity was undefined.
+      asks: [
+        {
+          hash: "held-hash",
+          path: "held.mp4",
+          name: "Unidentified toy spot",
+          durationMs: 30000,
+          kind: "commercial",
+          reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
+          confidence: 45,
+        },
+      ],
+      reels: [],
+      // V38's audit half — what was filed with nobody looking.
+      recentlyFiled: [
+        {
+          hash: "auto-hash",
+          path: "auto.mp4",
+          name: "Hot Wheels spot",
+          durationMs: 30000,
+          kind: "commercial",
+          reason: "Loomarr was confident enough about these tags to file it without asking.",
+          confidence: 88,
+          autoFiled: true,
+        },
+      ],
+      pipeline: [],
+      rejected: [],
+      total: 1,
+    }),
     // One clip, not an empty catalog: the per-clip actions (split, tag, pin) only render
     // when there is a card to hang them on, and this suite exists to prove they mount.
-    if (u.includes("/v1/filler")) {
-      return Promise.resolve(
-        json({
-          clips: [
-            {
-              hash: "hash-comp",
-              name: "80s compilation",
-              kind: "commercial",
-              durationMs: 900000,
-              tagged: false,
-              aiTagged: false,
-              playCount: 0,
-              playsCounted: true,
-            },
-          ],
-        }),
-      );
-    }
-    if (u.includes("/v1/channels/now-next")) return Promise.resolve(json({ channels: [] }));
-    if (u.includes("/pods")) return Promise.resolve(json({ entries: [], totalMs: 0, matchLevel: "exact" }));
-    if (u.includes("/v1/channels/")) {
-      return Promise.resolve(
-        json({
-          id: "ch-1",
-          name: "Cartoons",
-          number: 42,
-          status: "live",
-          strategy: "shuffle",
-          programCount: 3,
-          pendingCount: 1,
-          breakCount: 0,
-          slotCount: 4,
-          policy: {},
-        }),
-      );
-    }
-    if (u.includes("/v1/channels")) {
-      return Promise.resolve(
-        json({
-          channels: [
-            {
-              id: "ch-1",
-              name: "Cartoons",
-              number: 42,
-              status: "live",
-              strategy: "shuffle",
-              programCount: 3,
-              pendingCount: 1,
-              breakCount: 0,
-              slotCount: 4,
-              policy: {},
-            },
-          ],
-        }),
-      );
-    }
-    if (u.includes("/v1/titles")) return Promise.resolve(json({ titles: [] }));
-    if (u.includes("/v1/proposals")) return Promise.resolve(json({ proposals: [] }));
-    if (u.includes("/v1/proposals")) return Promise.resolve(json({ proposals: [] }));
-    return Promise.resolve(json({}));
-  });
-  vi.stubGlobal("fetch", mock);
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
+    getListFillerMockHandler({
+      total: 1,
+      clips: [
+        {
+          hash: "hash-comp",
+          name: "80s compilation",
+          kind: "commercial",
+          durationMs: 900000,
+          tagged: false,
+          aiTagged: false,
+          playCount: 0,
+          playsCounted: true,
+        },
+      ],
+    }),
+    // ⚠ `GET /v1/channels/:id/pods` — orval names it `getPreviewChannelPods…` after its operation
+    // id, which is NOT the URL. The old stub matched `u.includes("/pods")`, which is also true of
+    // `/pods/preview`, the POST one route over.
+    getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+    getGetChannelMockHandler(
+      channel({ id: "ch-1", name: "Cartoons", number: 42, programCount: 3, pendingCount: 1, slotCount: 4 }),
+    ),
+    getListChannelsMockHandler({
+      channels: [
+        channel({ id: "ch-1", name: "Cartoons", number: 42, programCount: 3, pendingCount: 1, slotCount: 4 }),
+      ],
+    }),
+    // ⚠ THE THIRTEEN THE CATCH-ALL WAS ANSWERING WITH `{}`. This suite mounts EVERY route in the
+    // generated tree, so it touches more of the API than any other file — and its whole purpose is
+    // to prove a screen renders REAL CONTENT. Each of these was reaching `json({})`, which means
+    // thirteen screens were being asserted "reachable" against an empty object: `channels` for the
+    // playout status page, `rows` for services, `tables` for the database page, `backups` for
+    // backup, `what/when/how` for the programming vocabulary. Every one of those is a required
+    // array the page maps over.
+    //
+    // They stay HERE rather than in `appHandlers()`: the baseline is the common surface, and these
+    // are per-screen reads that only a suite mounting all routes at once needs.
+    getPreviewChannelCycleMockHandler({
+      at: "2026-07-25T20:00:00Z",
+      windowMs: 3_600_000,
+      slots: [],
+      activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
+    }),
+    getChannelFillerCoverageMockHandler({
+      level: "exact",
+      total: 4,
+      rungs: [{ level: "exact", clips: 4 }],
+    }),
+    getChannelUpcomingMockHandler({ upcoming: [] }),
+    getListFillerPullsMockHandler({ pulls: [], total: 0 }),
+    getListLibraryCollectionsMockHandler({ collections: [] }),
+    getGetPlayoutStatusMockHandler({ running: false, channels: [], gpu: { contended: false } }),
+    getGetProgrammingVocabularyMockHandler({ what: [], when: [], how: [] }),
+    getSystemBackupsListMockHandler({
+      backups: [],
+      dir: "/backups",
+      retain: 7,
+      schedule: "0 30 3 * * *",
+      supported: true,
+    }),
+    getSystemDatabaseStatusMockHandler({
+      backend: "sqlite",
+      canMigrate: false,
+      parity: "n/a",
+      phase: "idle",
+      tables: [],
+    }),
+    getSystemRestartCostMockHandler({
+      available: true,
+      restartRequired: false,
+      streamingChannels: 0,
+    }),
+    getSystemServicesMockHandler({
+      loomarr: { name: "Loomarr", ok: true },
+      rows: [],
+    }),
+    getListTaxonomyMockHandler({ taxa: [] }),
+    getPreviewDraftChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+    // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
+    getChannelTracksMockHandler({ audio: [], subtitles: [] }),
+    ...appHandlers(),
   );
 };
 
@@ -361,11 +304,9 @@ const routeIds = (): string[] => {
   );
 };
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("every route is reachable", () => {
   it.each(routeIds().map((id) => [id, pathOf(id)] as const))("%s renders real content", async (_id, path) => {
-    stubFetch();
+    stubReachable();
     renderAt(path);
 
     // A heading proves the screen composed, not just that the shell painted around an
@@ -445,7 +386,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     // YouTube could not be registered was partly that no UI ever tried.
     ["/filler/sources", /add a source/i, "the add-a-source form"],
   ])("%s mounts %s", async (path, pattern) => {
-    stubFetch();
+    stubReachable();
     renderAt(path);
     // findAllBy, not findBy: a panel legitimately renders its name more than once (a
     // heading plus a row label). Presence is the assertion here, not uniqueness.
@@ -461,7 +402,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // previously sat in a card that was always mounted. Behind a click it needs a click to guard,
   // or the promise could silently stop rendering with every test still green.
   it("/filler/sources opens the archive row's search onto its downloads-nothing promise", async () => {
-    stubFetch();
+    stubReachable();
     renderAt("/filler/sources");
     await userEvent.click(await screen.findByRole("button", { name: /search it/i }));
     const found = await screen.findAllByText(/nothing downloads until you queue it/i, undefined, {
@@ -474,7 +415,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // is now a tabbed layout, one section shown at a time. This guards the tab is WIRED +
   // reachable: the Filler tab is present, and selecting it reveals the live draft-sandbox break.
   it("/channels/ch-1 reaches the §12 filler section (its tab) with the break preview", async () => {
-    stubFetch();
+    stubReachable();
     // ⚠ Rendered AT the section's own URL rather than clicking through from `/channels/ch-1`.
     // The section bar moved onto `NavTabs` (V-nav-paths), so each section is a real route — and
     // a deep link is the stronger reachability claim: it proves the URL an operator can bookmark
@@ -489,7 +430,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // proves a URL works for someone who already knows it. This is the V1/V17a/V23 failure in tab
   // form — a panel that exists at an address nobody can navigate to.
   it("/channels/ch-1 offers the Filler section as a link", async () => {
-    stubFetch();
+    stubReachable();
     renderAt("/channels/ch-1");
     // ⚠ Scoped to the section bar by NAME, because the app SIDEBAR also has a "Filler" link
     // (to `/filler`, the catalog) and it wins a bare `findByRole("link", { name: "Filler" })`.
@@ -506,7 +447,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // proving it agrees with pod assembly, and every one of those passes whether or not anything
   // renders it. Only a route test answers "can an operator see it".
   it("/channels/ch-1 reaches the filler coverage meter", async () => {
-    stubFetch();
+    stubReachable();
     renderAt("/channels/ch-1/filler");
     expect(await screen.findByText(/catalog coverage/i, undefined, { timeout: 3000 })).toBeInTheDocument();
     // And the meter itself rendered, not just its heading.
@@ -518,7 +459,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // channel icon was unreachable in the app. Its component tests all passed, which is
   // exactly the blind spot this suite exists for.
   it("/channels/ch-1 reaches the channel icon field on the info panel", async () => {
-    stubFetch();
+    stubReachable();
     renderAt("/channels/ch-1");
     // Info is the default panel (and the viewer's only one), so no tab click is needed.
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
@@ -529,7 +470,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   // change their password by clicking anything. A route test is the gate — the
   // endpoint being correct was never the question.
   it("/account reaches the change-password form for a local user", async () => {
-    stubFetch();
+    stubReachable();
     renderAt("/account");
     expect(await screen.findByText("Your account")).toBeInTheDocument();
     expect(await screen.findByLabelText("Current password")).toBeInTheDocument();
