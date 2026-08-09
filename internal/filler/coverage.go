@@ -14,6 +14,41 @@ package filler
 // It reports pools rather than drawing from them, so it is independent of Seed, no-repeat and
 // category variety — those decide WHICH clip plays, not whether the rung can fill a break.
 
+// Criterion names one of the channel's break settings, for the per-criterion breakdown.
+//
+// ⚠ **A separate vocabulary from `FitReason`, deliberately.** `FitReason` answers "why was THIS
+// clip rejected", and `era` is not in it because an out-of-era clip is never rejected — it drops
+// a rung and still plays. A criterion is a SETTING the operator can change, which is a different
+// question with a different membership.
+type Criterion string
+
+const (
+	CriterionEra      Criterion = "era"
+	CriterionAudience Criterion = "audience"
+	CriterionCategory Criterion = "category"
+	CriterionKind     Criterion = "kind"
+	CriterionDuration Criterion = "duration"
+	CriterionQuality  Criterion = "quality"
+)
+
+// CriterionCoverage is one setting and how much of the commercial catalog survives it ON ITS OWN.
+//
+// ⚠ **Independent, not cumulative, and that is the entire value.** The question an operator has
+// is "which of my settings is costing me the clips" — and a cumulative funnel cannot answer it,
+// because the order the predicates happen to run in decides which setting gets the blame. Counting
+// each in isolation over the same base means "Audience: 0" identifies the culprit rather than
+// reporting a race.
+//
+// ⚠ **It is also why this cannot be derived from `FitFor`, which the V51f plan proposed.** FitFor
+// short-circuits on the first failing predicate, so a clip failing both category and audience is
+// attributed to whichever check is written first — an answer that would change if someone
+// reordered that function, with nothing to catch it.
+type CriterionCoverage struct {
+	Criterion Criterion
+	// Clips is how many break-body commercials pass THIS criterion, ignoring the others.
+	Clips int
+}
+
 // RungCoverage is one ladder rung and how much material it holds for a target.
 type RungCoverage struct {
 	// Level is the rung — exact / widened / audience. Same vocabulary as Pod.MatchLevel,
@@ -27,9 +62,13 @@ type RungCoverage struct {
 
 // CoverageReport is what a target's breaks would draw from.
 type CoverageReport struct {
+	// Criteria is the per-setting breakdown — which single setting is emptying the ladder.
+	// Always the same six entries in the same order, so the UI renders a stable list rather
+	// than one that reshuffles as counts change.
+	Criteria []CriterionCoverage
 	// Rungs, tightest first, in ladder order.
 	//
-	// ⚠ Since V51f every rung is always present: `EraStrict` was the only thing that could skip
+	// ⚠ Since V51f every rung is always present: `EraStrict` (retired-ok) was the only thing that could skip
 	// one, and it was unreachable — set in tests and nowhere else. The absent-not-zero rule it
 	// justified is gone with it, so a rung at 0 now means what a reader would assume it means:
 	// nothing in the catalog reaches that rung.
@@ -144,6 +183,50 @@ func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 	return report
 }
 
+// criterionCoverage counts, per setting, how much break-body material survives that setting alone.
+//
+// ⚠ **Every count comes from the predicate the LADDER uses, never a re-derived one.** This is the
+// same rule `Coverage` itself follows and for the same reason: `coverage.go` exists because the
+// mock's meter recomputed its buckets inline with five mutually inconsistent era/audience tests. A
+// per-criterion breakdown that disagrees with what airs is a more specific version of exactly that
+// confident wrong answer — it names a setting to change.
+//
+// The base is break-BODY material: commercials only, after excluded ids are gone. Bumpers bookend
+// a pod and are not what an operator means by "my clips".
+func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCoverage {
+	var body []Clip
+	for _, c := range catalog {
+		if c.Kind == Commercial {
+			body = append(body, c)
+		}
+	}
+
+	count := func(keep func(Clip) bool) int {
+		n := 0
+		for _, c := range body {
+			if keep(c) {
+				n++
+			}
+		}
+		return n
+	}
+
+	return []CriterionCoverage{
+		{CriterionEra, count(func(c Clip) bool { return w.Era.Contains(c.Era) })},
+		{CriterionAudience, count(func(c Clip) bool {
+			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
+		})},
+		{CriterionCategory, count(func(c Clip) bool {
+			return len(filterCategories([]Clip{c}, w.Categories)) > 0
+		})},
+		{CriterionKind, count(func(c Clip) bool {
+			return len(filterKinds([]Clip{c}, w.Kinds)) > 0
+		})},
+		{CriterionDuration, count(func(c Clip) bool { return durationEligible(c, policy) })},
+		{CriterionQuality, count(func(c Clip) bool { return qualityEligible(c, policy) })},
+	}
+}
+
 // Coverage reports which rung a break for `w` would draw from, given `catalog`.
 //
 // ⚠ The catalog is narrowed in the SAME ORDER Assemble narrows it — excluded ids, then kinds,
@@ -164,13 +247,19 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 		}
 		catalog = kept
 	}
+	// ⚠ The per-criterion breakdown is measured BEFORE the kind filter, because "kind" is itself
+	// one of the criteria being reported. Measuring it after would make that line always equal the
+	// base — a row that can never say anything.
+	criteria := criterionCoverage(catalog, w, policy)
+
 	catalog = filterKinds(catalog, w.Kinds)
 
 	pools := candidatePools(catalog, w, policy)
 
 	report := CoverageReport{
-		Rungs: make([]RungCoverage, 0, len(pools)),
-		Level: MatchBumperCard,
+		Criteria: criteria,
+		Rungs:    make([]RungCoverage, 0, len(pools)),
+		Level:    MatchBumperCard,
 	}
 	for _, p := range pools {
 		report.Rungs = append(report.Rungs, RungCoverage{Level: p.level, Clips: len(p.clips)})

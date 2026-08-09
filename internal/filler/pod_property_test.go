@@ -74,7 +74,7 @@ func randomWindow(rng *rand.Rand, windowSeed int64) filler.Window {
 // randomEraRange picks one of the THREE shapes an operator can express since V51f — any era, a
 // single year, or a span — rather than the single year the field used to be limited to.
 //
-// ⚠ It replaces `EraStrict` as this generator's era-varying dimension. That flag was reachable
+// ⚠ It replaces `EraStrict` (retired-ok) as this generator's era-varying dimension. That flag was reachable
 // only from tests, so randomising it explored a branch no install could ever be in; randomising
 // the range explores the branch every install is in.
 func randomEraRange(rng *rand.Rand) filler.EraRange {

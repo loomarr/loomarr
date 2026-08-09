@@ -17,9 +17,23 @@ import { CoverageMeter } from "./coverage-meter";
 //      looks like a component bug and is not one. connection-block's tests record the same.
 const renderMeter = (ui: ReactElement) => render(<RouterHarness content={ui} initialPath="/guide" />);
 
+// ⚠ Every CoverageDTO carries the per-setting breakdown (V51f). Most tests here are about the
+// RUNG rendering, so they use a HEALTHY breakdown — nothing at zero — which keeps the diagnosis
+// panel out of the way and leaves those assertions testing what they were written to test.
+// The breakdown gets its own tests below rather than perturbing every existing one.
+const HEALTHY: CoverageDTO["criteria"] = [
+  { criterion: "era", clips: 9 },
+  { criterion: "audience", clips: 9 },
+  { criterion: "category", clips: 9 },
+  { criterion: "kind", clips: 9 },
+  { criterion: "duration", clips: 9 },
+  { criterion: "quality", clips: 9 },
+];
+
 const full: CoverageDTO = {
   level: "exact",
   total: 9,
+  criteria: HEALTHY,
   rungs: [
     { level: "exact", clips: 4 },
     { level: "widened", clips: 5 },
@@ -39,7 +53,7 @@ describe("CoverageMeter", () => {
   it("renders every rung with its own clip count", async () => {
     renderMeter(<CoverageMeter coverage={full} />);
     expect(await screen.findByText("Exact era + audience")).toBeInTheDocument();
-    expect(screen.getByText("Same decade")).toBeInTheDocument();
+    expect(screen.getByText("A decade either side")).toBeInTheDocument();
     expect(screen.getByText("Any era, right audience")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
@@ -53,15 +67,21 @@ describe("CoverageMeter", () => {
     expect(screen.queryByText(/18 eligible/)).not.toBeInTheDocument();
   });
 
-  // ⚠ A skipped rung is absent from the server's response, and must stay absent here. Drawing
-  // it at 0 reads as a catalog gap to go fix rather than the strict-era setting the operator
-  // chose.
-  it("omits a rung the channel's policy skips rather than drawing it at zero", async () => {
+  // ⚠ **The component renders the rungs it is GIVEN and never invents a missing one.**
+  //
+  // This test used to be about `EraStrict`, which dropped the widened rung server-side — a field
+  // set in tests and nowhere else, deleted in V51f, so every rung now always arrives. The
+  // assertion survives its premise because the real property was never about that setting: a
+  // component that filled in an absent rung at zero would be manufacturing a catalog gap the
+  // server never reported, and would do it for any future reason a rung goes missing (an older
+  // server, a partial response) rather than only for the one flag that used to cause it.
+  it("renders only the rungs the server sent, never a fabricated zero", async () => {
     renderMeter(
       <CoverageMeter
         coverage={{
           level: "exact",
           total: 9,
+          criteria: HEALTHY,
           rungs: [
             { level: "exact", clips: 4 },
             { level: "audience", clips: 9 },
@@ -70,13 +90,15 @@ describe("CoverageMeter", () => {
       />,
     );
     await screen.findByText("Exact match");
-    expect(screen.queryByText("Same decade")).not.toBeInTheDocument();
+    expect(screen.queryByText("A decade either side")).not.toBeInTheDocument();
   });
 
   // bumper_card is the honest "nothing fits" answer — distinct from a zero that reads as
   // still-loading, and the one state an operator most needs named.
   it("says plainly when nothing in the catalog fits", async () => {
-    renderMeter(<CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [] }} />);
+    renderMeter(
+      <CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY }} />,
+    );
     expect(await screen.findByText("No commercials")).toBeInTheDocument();
     expect(screen.getByText("No eligible commercials for this channel.")).toBeInTheDocument();
   });
@@ -91,7 +113,7 @@ describe("CoverageMeter", () => {
     renderMeter(
       <CoverageMeter
         // Cast, because the whole point is a value outside the generated union.
-        coverage={{ level: "sideways" as CoverageDTO["level"], total: 2, rungs: [] }}
+        coverage={{ level: "sideways" as CoverageDTO["level"], total: 2, rungs: [], criteria: HEALTHY }}
       />,
     );
     expect(await screen.findByText("Coverage unavailable")).toBeInTheDocument();
@@ -105,6 +127,7 @@ describe("CoverageMeter", () => {
         coverage={{
           level: "exact",
           total: 3,
+          criteria: HEALTHY,
           rungs: [{ level: "sideways" as CoverageDTO["level"], clips: 3 }],
         }}
       />,
@@ -126,13 +149,17 @@ describe("CoverageMeter", () => {
 
     // Widened: matched material ran out, which is the fixable condition.
     const widened = renderMeter(
-      <CoverageMeter coverage={{ level: "widened", total: 6, rungs: [{ level: "widened", clips: 2 }] }} />,
+      <CoverageMeter
+        coverage={{ level: "widened", total: 6, rungs: [{ level: "widened", clips: 2 }], criteria: HEALTHY }}
+      />,
     );
     expect(await screen.findByTestId("find-clips")).toBeInTheDocument();
     widened.unmount();
 
     // And the worst case obviously offers it.
-    renderMeter(<CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [] }} />);
+    renderMeter(
+      <CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY }} />,
+    );
     expect(await screen.findByTestId("find-clips")).toBeInTheDocument();
   });
 
@@ -140,7 +167,9 @@ describe("CoverageMeter", () => {
   // learns to stop reading.
   it("stays quiet on a healthy channel even with few clips", async () => {
     renderMeter(
-      <CoverageMeter coverage={{ level: "exact", total: 3, rungs: [{ level: "exact", clips: 3 }] }} />,
+      <CoverageMeter
+        coverage={{ level: "exact", total: 3, rungs: [{ level: "exact", clips: 3 }], criteria: HEALTHY }}
+      />,
     );
     await screen.findByText("Exact match");
     expect(screen.queryByTestId("find-clips")).not.toBeInTheDocument();
@@ -148,8 +177,86 @@ describe("CoverageMeter", () => {
 
   it("uses the singular for one clip", async () => {
     renderMeter(
-      <CoverageMeter coverage={{ level: "exact", total: 1, rungs: [{ level: "exact", clips: 1 }] }} />,
+      <CoverageMeter
+        coverage={{ level: "exact", total: 1, rungs: [{ level: "exact", clips: 1 }], criteria: HEALTHY }}
+      />,
     );
     expect(await screen.findByText("1 eligible commercial")).toBeInTheDocument();
+  });
+
+  // --- the per-setting breakdown (§10 V51f) ---
+
+  // ⚠ **The failure the breakdown exists for.** "Nothing in the catalog fits" reads as "go and
+  // acquire more clips"; naming the audience says the catalog is fine and one setting is not.
+  // Before this, an operator picking an Audience on an untagged catalog got the first message
+  // and no way to reach the second.
+  it("names the one setting that is ruling out every commercial", async () => {
+    renderMeter(
+      <CoverageMeter
+        coverage={{
+          level: "bumper_card",
+          total: 0,
+          rungs: [],
+          // ⚠ Distinct counts on purpose: with three settings sharing 214 the assertion below
+          // matched three nodes and threw. Duplicates also make the fixture read as if the
+          // criteria were correlated, which is the one thing they are specifically not.
+          criteria: [
+            { criterion: "era", clips: 214 },
+            { criterion: "audience", clips: 0 },
+            { criterion: "category", clips: 112 },
+            { criterion: "kind", clips: 198 },
+            { criterion: "duration", clips: 205 },
+            { criterion: "quality", clips: 211 },
+          ],
+        }}
+      />,
+    );
+    expect(await screen.findByText("One setting is ruling out every commercial:")).toBeInTheDocument();
+    expect(screen.getByText("Audience")).toBeInTheDocument();
+    expect(screen.getByText("nothing matches")).toBeInTheDocument();
+    // The healthy settings are still listed, with their counts — the contrast is what makes the
+    // zero legible as the culprit rather than as one number among six.
+    expect(screen.getByText("214 clips")).toBeInTheDocument();
+  });
+
+  it("pluralises the heading when more than one setting is empty", async () => {
+    renderMeter(
+      <CoverageMeter
+        coverage={{
+          level: "bumper_card",
+          total: 0,
+          rungs: [],
+          criteria: [
+            { criterion: "era", clips: 0 },
+            { criterion: "audience", clips: 0 },
+            { criterion: "category", clips: 5 },
+            { criterion: "kind", clips: 5 },
+            { criterion: "duration", clips: 5 },
+            { criterion: "quality", clips: 5 },
+          ],
+        }}
+      />,
+    );
+    expect(await screen.findByText("These settings are ruling out every commercial:")).toBeInTheDocument();
+  });
+
+  // ⚠ A healthy channel gets no breakdown. Six rows restating that everything is fine is how an
+  // operator learns to stop reading this panel — and then misses it on the day it matters.
+  it("stays out of the way when the channel resolves exactly", async () => {
+    renderMeter(<CoverageMeter coverage={full} />);
+    await screen.findByText("Exact match");
+    expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
+  });
+
+  // ...and equally when the ladder widened but no single setting is the cause. There is nothing
+  // to name, so naming nothing is the honest answer.
+  it("shows no breakdown when the channel is thin but no setting is empty", async () => {
+    renderMeter(
+      <CoverageMeter
+        coverage={{ level: "widened", total: 6, rungs: [{ level: "widened", clips: 6 }], criteria: HEALTHY }}
+      />,
+    );
+    await screen.findByText("Widened the era");
+    expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
   });
 });

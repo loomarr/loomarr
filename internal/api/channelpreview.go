@@ -74,6 +74,20 @@ type previewPodsOutput struct {
 	Body PodPoolDTO
 }
 
+// previewDraftPodsOutput is the DRAFT preview: the assembled pod AND the coverage the same draft
+// resolves to (§10 V51f).
+//
+// ⚠ **They ship together because they were describing two different selections.** The coverage
+// meter read the SAVED policy while the timeline directly beneath it rendered the DRAFT — so
+// during an edit the page showed a meter for one selection above a pod for another, with nothing
+// saying so. One response, one selection, computed from the same `filler.Selection`.
+type previewDraftPodsOutput struct {
+	Body struct {
+		PodPoolDTO
+		Coverage CoverageDTO `json:"coverage" doc:"What this DRAFT selection resolves to on the ladder — the same selection the pod above was assembled from."`
+	}
+}
+
 // previewChannelPods shows the filler pool a channel would receive, without touching
 // Tunarr (§12). It runs the SAME assembler and the SAME seed as reconcile, so preview
 // and reality cannot disagree — a preview that could drift from what actually ships
@@ -104,15 +118,29 @@ type CoverageRungDTO struct {
 	Clips int    `json:"clips" doc:"Eligible clips this rung holds, after the channel's kind/category/exclusion narrowing"`
 }
 
+// CoverageCriterionDTO is one of the channel's break SETTINGS and how much of the commercial
+// catalog survives it on its own.
+//
+// ⚠ **Independent, not cumulative — that is what makes it actionable.** The operator's question is
+// "which of my settings is costing me the clips", and a cumulative funnel cannot answer it: the
+// order the predicates run in would decide which setting gets the blame. Counted in isolation,
+// `audience: 0` beside `era: 214` names the culprit.
+type CoverageCriterionDTO struct {
+	Criterion string `json:"criterion" enum:"era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
+	Clips     int    `json:"clips" doc:"Break-body commercials passing THIS setting alone, ignoring the others"`
+}
+
 // CoverageDTO answers "what would this channel's breaks resolve to", from the same ladder
 // reconcile uses (V29a/V29b).
 type CoverageDTO struct {
-	// ⚠ A skipped rung is ABSENT, not present-at-zero. Under the strict-era setting there is
-	// no widened rung to be empty, and rendering one at 0 reads as a catalog gap to go fix
-	// rather than a setting the operator chose.
-	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. A rung the channel's policy skips is absent, not zero."`
-	Level string            `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
-	Total int               `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
+	// ⚠ Every rung is always present since V51f. `EraStrict` (retired-ok) was the only thing that could skip
+	// one, and it was unreachable — set in tests and nowhere else — so the absent-not-zero rule
+	// it justified went with it. A rung at 0 now means what a reader assumes it means.
+	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it."`
+	// Criteria is the per-setting breakdown — which single setting is emptying the ladder (V51f).
+	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
+	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
+	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
 }
 
 type channelCoverageOutput struct {
@@ -147,15 +175,28 @@ func (s *Server) channelFillerCoverage(ctx context.Context, in *previewPodsInput
 
 	// Non-nil even when empty: a JSON `null` here would make every consumer guard before
 	// iterating, and "no rungs" is a real answer (an unconfigured catalog), not a missing one.
+	return &channelCoverageOutput{Body: coverageDTO(report)}, nil
+}
+
+// coverageDTO renders a coverage report. Shared by the saved-coverage endpoint and the DRAFT
+// preview (V51f) so the two cannot describe the same ladder differently.
+func coverageDTO(report filler.CoverageReport) CoverageDTO {
+	// Non-nil even when empty: a JSON `null` here would make every consumer guard before
+	// iterating, and "no rungs" is a real answer (an unconfigured catalog), not a missing one.
 	rungs := make([]CoverageRungDTO, 0, len(report.Rungs))
 	for _, r := range report.Rungs {
 		rungs = append(rungs, CoverageRungDTO{Level: string(r.Level), Clips: r.Clips})
 	}
-	return &channelCoverageOutput{Body: CoverageDTO{
-		Rungs: rungs,
-		Level: string(report.Level),
-		Total: report.Total,
-	}}, nil
+	criteria := make([]CoverageCriterionDTO, 0, len(report.Criteria))
+	for _, c := range report.Criteria {
+		criteria = append(criteria, CoverageCriterionDTO{Criterion: string(c.Criterion), Clips: c.Clips})
+	}
+	return CoverageDTO{
+		Rungs:    rungs,
+		Criteria: criteria,
+		Level:    string(report.Level),
+		Total:    report.Total,
+	}
 }
 
 // CycleSlotDTO is one slot of the previewed cycle (§8.1): what airs, in play order. A
@@ -310,7 +351,7 @@ type previewDraftPodsInput struct {
 // tool (applying the selection is a normal PATCH of policy.filler). Runs the SAME
 // assembler + seed as the saved preview and reconcile, so the sandbox shows exactly what
 // will air once applied — only the (draft) selection differs.
-func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewPodsOutput, error) {
+func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPodsInput) (*previewDraftPodsOutput, error) {
 	if err := requireAdmin(ctx); err != nil {
 		return nil, err
 	}
@@ -332,11 +373,23 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 			"Some filler options are invalid. Check the audience, kinds, and categories, then try again.", err)
 	}
 
-	pod, err := s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope.Era))
+	// ⚠ ONE resolved selection feeds both the pod and the meter (V51f). Resolving it twice would
+	// reintroduce, inside a single handler, exactly the drift this pairing exists to remove.
+	sel := fillerSelectionToDomain(in.Body.Filler, ch.Policy.Scope.Era)
+
+	pod, err := s.pods.PreviewDraft(ctx, in.ID, sel)
 	if err != nil {
 		return nil, err
 	}
-	return podToPreviewOutput(pod), nil
+	report, err := s.pods.CoverageDraft(ctx, in.ID, sel)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &previewDraftPodsOutput{}
+	out.Body.PodPoolDTO = podToPoolDTO(pod)
+	out.Body.Coverage = coverageDTO(report)
+	return out, nil
 }
 
 // fillerSelectionToDomain translates a DRAFT FillerSelection into the domain Selection.

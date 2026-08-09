@@ -74,7 +74,7 @@ func TestCoverageRungsAreInLadderOrder(t *testing.T) {
 }
 
 // ⚠ **Every rung is now always reported, and the test that asserted the opposite is gone with the
-// field it tested.** `TestCoverageOmitsTheWidenedRungUnderEraStrict` proved that `EraStrict`
+// field it tested.** `TestCoverageOmitsTheWidenedRungUnderEraStrict` (retired-ok) proved that `EraStrict`
 // removed the widened rung — true, but unreachable: no key, no env var, no policy field, set in
 // tests and nowhere else. The absent-not-zero rule existed only to serve it. With the flag deleted
 // a rung at 0 means what a reader assumes: nothing in the catalog reaches it.

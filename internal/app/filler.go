@@ -687,6 +687,20 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (fill
 	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
 }
 
+// CoverageDraft is Coverage for an UNSAVED selection (§10 V51f).
+//
+// ⚠ It takes the selection already resolved by the caller — `channels.SelectionFrom` at the API
+// boundary — for the same reason `PreviewDraft` stopped re-applying the scope era: the era's
+// inherit-vs-explicitly-any decision has exactly one writer, and a second application here could
+// not tell an operator who chose "any era" from one who left the field alone.
+func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return filler.CoverageReport{}, err
+	}
+	return a.pods.CoverageFor(ctx, ch.ID, sel)
+}
+
 // ClipFit reports how one clip relates to every channel's selection (§10 V35 item 1.7).
 //
 // ⚠ Resolved through `SelectionForChannel` per channel, exactly like Coverage above — the note

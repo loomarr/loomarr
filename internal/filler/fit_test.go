@@ -232,7 +232,7 @@ func TestFitFor_GeneralAudienceFitsAnyChannel(t *testing.T) {
 }
 
 // ⚠ **This replaces `TestFitFor_StrictEraSkipsTheWidenedRung`, and the replacement is the point.**
-// That test asserted the behaviour of `Policy.EraStrict` — a field set in tests and NOWHERE else,
+// That test asserted the behaviour of `Policy.EraStrict` (retired-ok) — a field set in tests and NOWHERE else,
 // so it proved a branch no operator could reach. Narrowing the RANGE is how a channel gets
 // strictness now, and unlike the flag it moves a clip between rungs in a way the operator can see
 // and undo. Same intent, reachable mechanism.

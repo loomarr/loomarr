@@ -19,10 +19,14 @@ import (
 type fakePods struct {
 	asked      []string
 	draftAsked []filler.Selection // the draft selections PreviewDraft received
-	atAsked    []int64            // the break starts PreviewAt received
-	pod        filler.Pod
-	coverage   filler.CoverageReport
-	pool       filler.PoolReport
+	// ⚠ SEPARATE from draftAsked, so a test can assert the pod and the meter were built from
+	// the SAME selection — which is the property V51f added CoverageDraft for. One shared slice
+	// would make "both got the draft" indistinguishable from "one got it twice".
+	draftCoverageAsked []filler.Selection
+	atAsked            []int64 // the break starts PreviewAt received
+	pod                filler.Pod
+	coverage           filler.CoverageReport
+	pool               filler.PoolReport
 	// fits is what ClipFit returns, keyed by channel id; fitAsked records the clip paths it
 	// was asked about, so a test can prove the route resolves the id it was given.
 	fits     map[string]filler.Fit
@@ -53,6 +57,20 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs i
 // rather than reporting on some other channel's catalog.
 func (f *fakePods) Coverage(_ context.Context, channelID string) (filler.CoverageReport, error) {
 	f.asked = append(f.asked, channelID)
+	return f.coverage, f.err
+}
+
+// CoverageDraft records the SELECTION as well as the channel, so a test can prove the draft
+// handler passed the draft it was given rather than re-reading the saved policy.
+//
+// ⚠ It honours ctx. A double that ignores cancellation cannot catch a handler doing work through
+// a dead context, which is a class this repo has already been bitten by twice.
+func (f *fakePods) CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error) {
+	if err := ctx.Err(); err != nil {
+		return filler.CoverageReport{}, err
+	}
+	f.asked = append(f.asked, channelID)
+	f.draftCoverageAsked = append(f.draftCoverageAsked, sel)
 	return f.coverage, f.err
 }
 
@@ -198,6 +216,65 @@ func TestPreviewDraftPods_AssemblesTheDraftSelection(t *testing.T) {
 	}
 	if len(got.Pinned) != 1 || got.Pinned[0] != "p1" {
 		t.Errorf("pinned not passed through: %+v", got.Pinned)
+	}
+}
+
+// ⚠ **The pod and the coverage meter must come from ONE selection (§10 V51f).** Before this the
+// meter read the SAVED policy while the timeline directly beneath it rendered the DRAFT, so during
+// an edit the page showed a meter for one selection above a pod for another — with nothing on
+// screen saying they disagreed. Asserting the two adapter calls received the SAME selection is
+// what makes that unrepresentable, rather than asserting a number the handler could compute twice.
+func TestPreviewDraftPods_MeterAndPodDescribeTheSameSelection(t *testing.T) {
+	srv, _, fp := newPodsServer(t)
+	fp.coverage = filler.CoverageReport{
+		Level: filler.MatchAudience,
+		Total: 7,
+		Criteria: []filler.CriterionCoverage{
+			{Criterion: filler.CriterionAudience, Clips: 0},
+			{Criterion: filler.CriterionEra, Clips: 7},
+		},
+	}
+
+	body := `{"filler":{"audience":"kids","era":{"from":1990,"to":1999}}}`
+	resp := do(t, srv, http.MethodPost, "/v1/channels/ch-1/pods/preview", adminToken, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("draft preview → %d, want 200", resp.StatusCode)
+	}
+
+	if len(fp.draftCoverageAsked) != 1 {
+		t.Fatalf("CoverageDraft called %d times, want 1 — the meter is not being computed for the draft", len(fp.draftCoverageAsked))
+	}
+	if len(fp.draftAsked) != 1 {
+		t.Fatalf("PreviewDraft called %d times, want 1", len(fp.draftAsked))
+	}
+	pod, meter := fp.draftAsked[0], fp.draftCoverageAsked[0]
+	if pod.Audience != meter.Audience || pod.Era != meter.Era {
+		t.Errorf("pod was built from %+v but the meter from %+v — they must describe one selection", pod, meter)
+	}
+	// ⚠ Both bounds reach the domain: the era range is the V51f fix, and a handler that dropped
+	// `to` here would look identical to the pre-fix behaviour.
+	if meter.Era != (filler.EraRange{From: 1990, To: 1999}) {
+		t.Errorf("era reached the domain as %+v, want 1990-1999", meter.Era)
+	}
+
+	var got struct {
+		Coverage struct {
+			Level    string `json:"level"`
+			Total    int    `json:"total"`
+			Criteria []struct {
+				Criterion string `json:"criterion"`
+				Clips     int    `json:"clips"`
+			} `json:"criteria"`
+		} `json:"coverage"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode draft preview body: %v", err)
+	}
+	if got.Coverage.Level != "audience" || got.Coverage.Total != 7 {
+		t.Errorf("coverage = %+v, want the draft's report on the wire", got.Coverage)
+	}
+	if len(got.Coverage.Criteria) != 2 || got.Coverage.Criteria[0].Criterion != "audience" {
+		t.Errorf("criteria = %+v, want the per-setting breakdown", got.Coverage.Criteria)
 	}
 }
 

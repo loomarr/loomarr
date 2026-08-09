@@ -61,7 +61,7 @@ func TestAssemble_Deterministic(t *testing.T) {
 // Era + audience matching (§10): exact-era kids ads are chosen; the wrong-audience
 // (late_night) and wrong-decade (1985) clips are NOT in an exact match.
 func TestAssemble_EraAudienceMatch(t *testing.T) {
-	// ⚠ No `EraStrict` needed to make this exact — and that flag never was what made it exact.
+	// ⚠ No `EraStrict` (retired-ok) needed to make this exact — and that flag never was what made it exact.
 	// `fillCommercials` takes the TIGHTEST non-empty pool, so as long as the catalog has 1992 kids
 	// ads the exact rung wins on its own. The flag only ever removed the rung BELOW this one.
 	p := filler.Assemble(sampleCatalog(), kidsWindow(1), filler.Policy{}, nil)
