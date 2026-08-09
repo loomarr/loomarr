@@ -138,10 +138,15 @@ const stubReachable = () => {
       total: 1,
     }),
     getFillerIncomingMockHandler({
-      // ⚠ `hash` is REQUIRED on IncomingAskDTO — it is the clip's content identity (§10, the
+      // ⚠ `hash` is REQUIRED on an incoming clip — it is the content identity (§10, the
       // filler-path-identity rule), and every row action keys on it. Both of these fixtures
       // omitted it, so the queue rendered rows whose identity was undefined.
-      asks: [
+      //
+      // ⚠ These were `asks` until §10 V51e made Incoming ONE conveyor: `asks` and `pipeline` were
+      // separate arrays over overlapping populations (84 of 85 clips appeared in both on a fresh
+      // scan), and they collapsed into `clips`, where `needsDecision` says which end a clip is at.
+      // The old field name is now a BANNED identifier — see `scripts/check-retired.sh`.
+      clips: [
         {
           hash: "held-hash",
           path: "held.mp4",
@@ -150,6 +155,11 @@ const stubReachable = () => {
           kind: "commercial",
           reason: "Loomarr couldn't work out what this is, so it will only match broadly.",
           confidence: 45,
+          // ⚠ `needsDecision: true` is the FAITHFUL translation of the old `asks` array, not a
+          // detail to leave off. On one belt the flag is the only thing saying which end a clip is
+          // at, and the panel counts exactly this (`clips.filter(c => c.needsDecision)`) — a clip
+          // without it lands in the queue as already-handled, which is the opposite of an ask.
+          needsDecision: true,
         },
       ],
       reels: [],
@@ -166,8 +176,8 @@ const stubReachable = () => {
           autoFiled: true,
         },
       ],
-      pipeline: [],
       rejected: [],
+      stageOrder: [],
       total: 1,
     }),
     // One clip, not an empty catalog: the per-clip actions (split, tag, pin) only render

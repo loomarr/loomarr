@@ -135,11 +135,11 @@ const stubFiller = ({
       channels: [],
     }),
     getFillerIncomingMockHandler({
-      asks: [],
+      clips: [],
       reels: [],
       recentlyFiled: [],
-      pipeline: [],
       rejected: [],
+      stageOrder: [],
       total: 0,
     }),
     // The header pill's live status (§10 V38c). ⚠ Served here because the header reads it from
