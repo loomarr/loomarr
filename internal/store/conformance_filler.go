@@ -1624,3 +1624,170 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("DeleteSplitProposal twice = %v, want ErrNotFound", err)
 	}
 }
+
+// testClipPipeline covers the per-clip ingest pipeline's state (§10 V51b) on BOTH backends: the
+// ladder round-trip, the work-list's due/terminal filtering and total order, lazy enrolment, and —
+// the property the whole table exists for — that a folder re-scan cannot touch it.
+func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	s := newStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	clip := clipAt("a/b/one.mp4", "One", filler.Commercial, 30_000)
+	if err := s.UpsertClip(ctx, Clip{Clip: clip, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	// --- Lazy enrolment: a catalogued clip with no row is work waiting to be picked up. ---
+	missing, err := s.ListClipsWithoutPipeline(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0].Hash != clip.Hash {
+		t.Fatalf("ListClipsWithoutPipeline = %+v, want just %s", missing, clip.Hash)
+	}
+
+	p := filler.ClipPipeline{
+		ClipHash: clip.Hash, Stage: filler.StageTag, Status: filler.StatusRunning,
+		Progress: 40, Disposition: filler.DispositionRunning,
+		Attempts: 1, NextRun: now, EnrolledAt: now, UpdatedAt: now,
+		Stages: []filler.StageRecord{
+			{Stage: filler.StageProbe, Status: filler.StatusDone, At: now},
+			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: now},
+		},
+	}
+	if err := s.UpsertClipPipeline(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	// Enrolled clips drop out of the enrolment list — otherwise every pass would re-enrol
+	// everything and reset the catalog to the start of the pipeline.
+	if again, aerr := s.ListClipsWithoutPipeline(ctx, 10); aerr != nil || len(again) != 0 {
+		t.Fatalf("an enrolled clip is still listed as missing: %+v (%v)", again, aerr)
+	}
+
+	got, found, err := s.GetClipPipeline(ctx, clip.Hash)
+	if err != nil || !found {
+		t.Fatalf("GetClipPipeline = (%+v, %v, %v)", got, found, err)
+	}
+	if got.Stage != filler.StageTag || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
+		t.Errorf("header round-trip lost fields: %+v", got)
+	}
+	// The LADDER is what the Incoming tab renders as history — including WHY a stage was skipped.
+	// A skip with no note reads as "nothing happened", which is a different and false claim.
+	if len(got.Stages) != 2 || got.Stages[1].Status != filler.StatusSkipped ||
+		got.Stages[1].Note != "the description already says enough" {
+		t.Errorf("ladder round-trip = %+v", got.Stages)
+	}
+
+	// --- An absent row is ordinary, not an error. An un-enrolled clip is the common case. ---
+	if _, ok, gerr := s.GetClipPipeline(ctx, "no-such-clip"); gerr != nil || ok {
+		t.Errorf("GetClipPipeline(missing) = (%v, %v), want (false, nil)", ok, gerr)
+	}
+
+	// --- The work list: due, non-terminal, oldest first. ---
+	work, err := s.ListPipelineWork(ctx, now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(work) != 1 || work[0].ClipHash != clip.Hash {
+		t.Fatalf("work list = %+v, want the running clip", work)
+	}
+	// ⚠ A row backing off is NOT due. Without this the retry schedule is decorative: a failing
+	// stage would be re-run on the very next pass, which is the "retried at full cost forever"
+	// behaviour the backoff was added to stop.
+	future := p
+	future.NextRun = now.Add(time.Hour)
+	if err := s.UpsertClipPipeline(ctx, future); err != nil {
+		t.Fatal(err)
+	}
+	if backed, berr := s.ListPipelineWork(ctx, now, 10); berr != nil || len(backed) != 0 {
+		t.Errorf("a backing-off row was returned as due: %+v (%v)", backed, berr)
+	}
+
+	// ⚠ A TERMINAL row is never work again, whatever its schedule says. `review` counts as
+	// terminal here: the pipeline has done all it can and is waiting on a person, so re-running
+	// the ladder would burn Whisper and vision calls on a clip whose only missing input is a
+	// human decision.
+	for _, d := range []filler.Disposition{filler.DispositionReview, filler.DispositionFiled, filler.DispositionRejected} {
+		term := p
+		term.Disposition = d
+		term.NextRun = now.Add(-time.Hour) // overdue on purpose
+		if err := s.UpsertClipPipeline(ctx, term); err != nil {
+			t.Fatal(err)
+		}
+		if w, werr := s.ListPipelineWork(ctx, now, 10); werr != nil || len(w) != 0 {
+			t.Errorf("disposition %q was returned as work: %+v (%v)", d, w, werr)
+		}
+	}
+
+	// --- The rejected read model carries the CODE and the measured detail. ---
+	rej := p
+	rej.Disposition = filler.DispositionRejected
+	rej.RejectReason = filler.ReasonTooShort
+	rej.RejectDetail = "8.2s; floor is 10s"
+	if err := s.UpsertClipPipeline(ctx, rej); err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := s.ListClipPipelines(ctx, filler.PipelineFilter{RejectedOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rejected) != 1 || rejected[0].RejectReason != filler.ReasonTooShort ||
+		rejected[0].RejectDetail != "8.2s; floor is 10s" {
+		t.Fatalf("rejected read model = %+v — the code AND the measured fact must both survive", rejected)
+	}
+
+	// --- ⚠ THE property this table exists for. ---
+	//
+	// `clips` is a synced CACHE: the folder scan re-upserts every file it finds. Pipeline state
+	// records that ~341s of Whisper and a paid vision call have ALREADY been spent. If a re-scan
+	// could touch these rows, one sync would re-run the whole catalog through the whole pipeline
+	// and re-spend the money — which is precisely the class of failure `UpsertClip`'s DO UPDATE
+	// omission list defends against by hand, one table over. Here it is structural: the scan does
+	// not know this table exists.
+	rescan := Clip{Clip: clip, UpdatedAt: now.Add(time.Minute)}
+	if err := s.UpsertClip(ctx, rescan); err != nil {
+		t.Fatal(err)
+	}
+	after, found, err := s.GetClipPipeline(ctx, clip.Hash)
+	if err != nil || !found {
+		t.Fatalf("a re-scan DELETED the pipeline row (%v, %v)", found, err)
+	}
+	if after.Stage != rej.Stage || after.Disposition != rej.Disposition ||
+		after.RejectReason != rej.RejectReason || len(after.Stages) != len(rej.Stages) {
+		t.Errorf("a re-scan altered pipeline state: %+v, want %+v", after, rej)
+	}
+
+	// --- ⚠ The other side of that independence: the PRUNE must take the rows with it. ---
+	//
+	// The sibling table has no foreign key, deliberately, so it survives a `clips` rebuild. The
+	// price is that nothing else will ever clean it up — and an orphan row is not inert. It stays
+	// in the work list, `advance` cannot find its clip, and it is re-tombstoned as "no longer in
+	// the catalog" on every pass, forever. `DeleteClipsNotIn` is the one place clips disappear in
+	// bulk, so it is the one place that has to prune them.
+	//
+	// A second clip is enrolled first, so the assertion distinguishes "pruned the orphan" from
+	// "emptied the table".
+	keeper := clipAt("c/d/two.mp4", "Two", filler.Commercial, 30_000)
+	if err := s.UpsertClip(ctx, Clip{Clip: keeper, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	kept := filler.ClipPipeline{
+		ClipHash: keeper.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
+		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertClipPipeline(ctx, kept); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DeleteClipsNotIn(ctx, []string{keeper.Hash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, orphan, oerr := s.GetClipPipeline(ctx, clip.Hash); oerr != nil || orphan {
+		t.Errorf("the pruned clip's pipeline row survived (found=%v, %v) — it would be worked forever", orphan, oerr)
+	}
+	if _, stillThere, kerr := s.GetClipPipeline(ctx, keeper.Hash); kerr != nil || !stillThere {
+		t.Errorf("the prune took a LIVE clip's pipeline row with it (found=%v, %v)", stillThere, kerr)
+	}
+}

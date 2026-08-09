@@ -96,6 +96,52 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 	return a.st.DeleteClipsNotIn(ctx, keep)
 }
 
+// fillerPipelineClipAdapter bridges the store → the CLIP-facing seams the ingest pipeline needs
+// (§10 V51b): `filler.ClipStore` for the runner, plus the probe and transcode rungs' writers.
+//
+// ⚠ The PIPELINE table itself needs no adapter — `store.Store` satisfies `filler.PipelineStore`
+// directly, because those five methods already speak `filler.ClipPipeline`. This adapter exists
+// only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
+// adapter here performs.
+type fillerPipelineClipAdapter struct{ st store.Store }
+
+func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
+	return fillerStoreAdapter(a).GetClip(ctx, id)
+}
+func (a fillerPipelineClipAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
+	return fillerStoreAdapter(a).UpsertClip(ctx, c)
+}
+func (a fillerPipelineClipAdapter) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
+	return a.st.SetClipsRemoved(ctx, paths, at)
+}
+func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error {
+	return a.st.SetClipComposite(ctx, hash, composite, at)
+}
+
+// fillerRewindAdapter bridges the store → filler.RewindStore — the invalidation seam behind
+// re-running a stage (§10 V51b).
+//
+// ⚠ Every method here is an EXISTING single writer, called with the "not yet" value it already
+// defines. Rewind introduces no new writer of any clip column, which is what keeps the
+// single-writer story the store conformance suite pins.
+type fillerRewindAdapter struct{ st store.Store }
+
+func (a fillerRewindAdapter) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
+	return a.st.SetClipLanguage(ctx, path, language, at)
+}
+func (a fillerRewindAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
+	return a.st.SetClipTranscript(ctx, path, transcript, at)
+}
+func (a fillerRewindAdapter) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+	return a.st.ClearClipVisionTags(ctx, path, at)
+}
+func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
+}
+func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
+	return a.st.DeleteSplitProposal(ctx, id)
+}
+
 // fillerScanSourceAdapter bridges the store → filler.ScanSourceStore (§10 V38c).
 //
 // ⚠ The `Enabled && Scannable()` filter lives HERE rather than in the syncer, matching where the
@@ -403,6 +449,13 @@ func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id str
 	return a.st.DeleteSplitProposal(ctx, id)
 }
 
+// ListSplitProposals is the split RUNG's "is one already waiting?" read (§10 V51b) — one read of
+// the pending queue rather than an existence check per candidate. Re-detecting over a proposal an
+// operator is halfway through editing is what it prevents.
+func (a fillerSplitStoreAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
+	return a.st.ListSplitProposals(ctx)
+}
+
 // fillerServiceAdapter bridges filler.Syncer/Tagger → api.FillerService.
 type fillerServiceAdapter struct {
 	syncer *filler.Syncer
@@ -422,6 +475,11 @@ type fillerServiceAdapter struct {
 	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
 	splitter   *filler.Splitter
 	splitClips fillerSplitStoreAdapter
+	// pipeline is the ingest pipeline (§10 V51b), so the operator-triggered paths reach the same
+	// machinery the cron driver does: a confirmed split enrols its segments, and an ingest nudges
+	// the runner instead of leaving a fresh download until the next tick. nil on an install with
+	// no drop-folder, where there is nothing to ingest.
+	pipeline *filler.Pipeline
 }
 
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
@@ -547,7 +605,22 @@ func (a fillerServiceAdapter) ConfirmSplit(ctx context.Context, proposalID strin
 	if a.splitter == nil {
 		return api.ErrSplitUnavailable
 	}
-	return a.splitter.Confirm(ctx, proposalID, segments)
+	spawned, err := a.splitter.Confirm(ctx, proposalID, segments)
+	if err != nil {
+		return err
+	}
+	// ⚠ Enrol the cuts, exactly as the split RUNG does (§10 V51b). Without this a segment an
+	// operator confirmed by hand would sit outside the pipeline entirely — never transcoded, never
+	// tagged, never scored — while one the pipeline cut itself ran the full ladder. The manual and
+	// unattended paths must produce the same clip.
+	if a.pipeline != nil {
+		for _, hash := range spawned {
+			if err := a.pipeline.Enrol(ctx, hash); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // publishSplit emits one split-detection frame (§7, type=filler_split). The
@@ -926,29 +999,7 @@ func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAs
 	})
 }
 
-// fillerSplitRunStoreAdapter bridges the store → filler.SplitRunStore (the scheduled split, V43).
-type fillerSplitRunStoreAdapter struct{ st store.Store }
-
-// ListClips is the runner's candidate list: the catalog, never the held queue.
-//
-// ⚠ `IncludeHeld` is deliberately NOT honoured, unlike the language gate's adapter. A held clip
-// is waiting for a human to decide whether it belongs at all; spending minutes of ffmpeg and
-// whisper detecting cuts inside something that may be about to be dropped is work done for a
-// file that might never enter the catalog.
-func (a fillerSplitRunStoreAdapter) ListClips(ctx context.Context, _ filler.ClipQuery) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]filler.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-	}
-	return out, nil
-}
-
-// ListSplitProposals is the pending-review queue, read once per pass so the runner does not
-// re-detect a recording whose proposal an operator may be halfway through editing.
-func (a fillerSplitRunStoreAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
-	return a.st.ListSplitProposals(ctx)
-}
+// (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its
+// candidate-list half is gone with the sweep — the split RUNG acts on the `is_composite` mark the
+// probe rung sets, so nothing lists the catalog looking for long files any more. Its
+// pending-proposal read moved onto `fillerSplitStoreAdapter`, which the rung already used.)

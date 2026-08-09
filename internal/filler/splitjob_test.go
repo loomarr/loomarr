@@ -447,7 +447,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
 		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys"},
 	}
-	if err := sp.Confirm(context.Background(), propID, edited); err != nil {
+	if _, err := sp.Confirm(context.Background(), propID, edited); err != nil {
 		t.Fatal(err)
 	}
 
@@ -511,14 +511,14 @@ func TestConfirm_ValidatesTheEdit(t *testing.T) {
 		propID = id
 	}
 
-	if err := sp.Confirm(context.Background(), propID, nil); err == nil {
+	if _, err := sp.Confirm(context.Background(), propID, nil); err == nil {
 		t.Error("zero-segment confirm accepted — the compilation would be gutted")
 	}
 	overlap := []filler.SplitSegment{
 		{StartMs: 0, EndMs: 31000, Name: "a"},
 		{StartMs: 30000, EndMs: 61000, Name: "b"},
 	}
-	if err := sp.Confirm(context.Background(), propID, overlap); err == nil {
+	if _, err := sp.Confirm(context.Background(), propID, overlap); err == nil {
 		t.Error("overlapping confirm accepted")
 	}
 	// Nothing was written on the failures.
